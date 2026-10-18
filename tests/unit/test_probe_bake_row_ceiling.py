@@ -13,8 +13,11 @@ import pytest
 from adapters.jobs.preset_artifact_publisher import bakeability
 from adapters.outbound.athena.execution import StatementOutcome
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "validation"))
-import probe_bake_row_ceiling as probe
+_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(_ROOT / "validation"))
+sys.path.insert(0, str(_ROOT))
+
+from validation import probe_bake_row_ceiling as probe  # noqa: E402
 
 pytestmark = [pytest.mark.unit, pytest.mark.covers("ADR-143")]
 
@@ -57,7 +60,11 @@ def test_a_profile_that_resolves_elsewhere_writes_nothing(tmp_path: Path) -> Non
         "--bake-workgroup", "wg-bake", "--interactive-workgroup", "wg-chat",
         "--database", "db",
     ]  # fmt: skip
-    assert probe.main(arguments, lambda **_kw: _Session()) == 2
+
+    def session(**_arguments: object) -> _Session:
+        return _Session()
+
+    assert probe.main(arguments, session) == 2
     assert not output.exists()
 
 
@@ -132,7 +139,7 @@ _CSV = (
 
 
 def _run(body: bytes) -> Any:
-    run = probe._Run(_Athena([_ROW]), _S3(body), "db")
+    run = probe._Run(_Athena([_ROW]), _S3(body), "db")  # pyright: ignore[reportPrivateUsage]
 
     def execute(_sql: str, _workgroup: str, _reuse: int) -> tuple[str, StatementOutcome]:
         return "execution-1", StatementOutcome(output_location="s3://fictional/bake/x.csv")
@@ -152,7 +159,11 @@ def test_p2a_parity_passes_when_both_readers_agree_and_reports_a_differing_cell(
 
 def test_p1_measures_every_term_through_the_real_path(monkeypatch: pytest.MonkeyPatch) -> None:
     """At a fictional size, with the two render fixtures stubbed to fixed fictional peaks."""
-    monkeypatch.setattr(probe, "measure_retail_render", lambda products: 10 * products)
+
+    def retail(products: int) -> int:
+        return 10 * products
+
+    monkeypatch.setattr(probe, "measure_retail_render", retail)
     monkeypatch.setattr(probe, "measure_campaign_render", lambda: (5_000, 1_000, 10))
     measured = probe.run_p1(sizes=(200,), runs=1)
     terms = measured["terms_bytes_per_row"]

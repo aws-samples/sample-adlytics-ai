@@ -271,7 +271,7 @@ class RetailQueries:
         if request.ranked is not None and (
             request.ranked.restriction.projection is RankedProjection.RANKED_KEYS
         ):
-            keyed = tuple(
+            keyed: tuple[QueryRow, ...] = tuple(
                 {
                     "amazon_asin": asin,
                     "marketplace_key": MARKETPLACE,
@@ -511,7 +511,9 @@ def _ranked_renderer(
     return _renderer(
         queries,
         FakeHierarchy(_hierarchy_result(products)),
-        FakeReported(RetailReportedTotals(0, 0, ("reported-total-publication-1",))),
+        FakeReported(
+            RetailReportedTotals(Decimal(0), Decimal(0), ("reported-total-publication-1",))
+        ),
     )
 
 

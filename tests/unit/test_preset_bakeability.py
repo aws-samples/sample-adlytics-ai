@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -540,7 +541,9 @@ def test_the_retail_estate_at_the_bake_ceiling_stays_within_its_modelled_bytes()
     renderer = _renderer(
         RetailQueries(products, PERIOD),
         FakeHierarchy(_hierarchy_result(products)),
-        FakeReported(RetailReportedTotals(0, 0, ("reported-total-publication-1",))),
+        FakeReported(
+            RetailReportedTotals(Decimal(0), Decimal(0), ("reported-total-publication-1",))
+        ),
     )
     tracemalloc.start()
     try:
