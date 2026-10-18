@@ -13,12 +13,13 @@ serving path cannot honor.
 
 from __future__ import annotations
 
+import functools
 import math
 import pathlib
 import sys
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, TypedDict, cast
 
 from adapters.campaign_measurement import (
     CampaignArtifactMeasurementService,
@@ -169,6 +170,7 @@ from domain.semantics.calendar_periods import (
 from domain.semantics.time import TimeGrain
 from domain.shared_kernel.values import DateRange
 from ports.outbound.pack_coverage import PackCoverageReadRequest
+from ports.outbound.query import BAKE_LONGEST_WINDOW_DAYS, BAKE_MAX_ROWS
 from ports.outbound.rosters import RosterRequest
 from ports.outbound.served_periods import ServedPeriods, ServedPeriodsRequest
 
@@ -271,9 +273,221 @@ RETAIL_HEALTH_BAKE_BODY_COUNT = 2 + 2 * RETAIL_HEALTH_MAX_ROWS
 # The envelope a bake's writes are checked against, independent of any page's estimate.
 # Must match the Baker's memorySize in infra/lib/stacks/publisher-stack.ts; a test reads it.
 BAKER_MEMORY_BYTES = 1024 * 1024 * 1024
-# A publication request holds every body it writes in memory at once, beside the parsed batch
-# and the rendered artifacts, so its encoded bytes may use at most this share of the baker.
+# A bake's resident bytes (`resident`, ADR-143) may use at most this share of the baker; the
+# rest is the interpreter, its libraries and the allocator's own overhead.
 BAKE_RESIDENT_SHARE = 0.5
+
+# --- ADR-143: the memory model (the gate counts everything a row holds) ---------------------
+
+
+@dataclass(frozen=True, slots=True)
+class BakeMemoryTerms:
+    """Bytes per row the baker holds, measured by `validation/probe_bake_row_ceiling.py` (P1).
+
+    Each is the largest `tracemalloc` peak over three runs at N in {10,000; 30,000; 50,000},
+    through the real stream, shape and fold path, divided by N, on the widest held shapes.
+    """
+
+    raw: int
+    """B_raw: one result row in flight, as the dict a slot's worker maps it to."""
+    shaped: int
+    """B_shaped: one row of a shaped answer, resident until the render ends."""
+    kept: int
+    """B_kept: one entry a fold keeps (the largest over the fold kinds)."""
+    render: int
+    """B_render: the render's own per-row structures."""
+    measured: str
+    """When and how the terms were measured: the evidence ADR-143 cites."""
+
+
+BAKE_MEMORY_TERMS = BakeMemoryTerms(
+    raw=1_200,
+    shaped=1_200,
+    kept=400,
+    render=4_000,
+    measured="provisional upper estimates, pending the row-ceiling probe's P1",
+)
+"""The measured per-row terms; ADR-143's Decision cites them by date."""
+
+WRITES_IN_FLIGHT_BYTES = 2 * int(BAKE_TASKS["s3_chains_per_baker"]) * MAX_PRESET_ARTIFACT_BYTES
+"""W: two bodies per S3 chain in flight, the most a bake's writes hold at once (bodies stream)."""
+
+_FIXED_AXES = frozenset({"date_key", "marketplace_key"})
+"""Grain columns whose cardinality is the read's own (days of its window, the governed
+marketplaces), not the population's: a read over only these is bounded by them."""
+
+
+def _certified_width(plan: QueryPlan, max_rows: int, marketplaces: int) -> int:
+    """Return a held slot's width: a fixed axis's own bound, or `max_rows` for a population."""
+    if not plan.group_by or not set(plan.group_by) <= _FIXED_AXES:
+        return max_rows
+    bound = 1
+    for column in plan.group_by:
+        bound *= plan.window.days if column == "date_key" else marketplaces
+    return min(bound, max_rows)
+
+
+@dataclass(frozen=True, slots=True)
+class ResidentModel:
+    """One roster row's resident bytes, term by term (03 §3.5), at one held ceiling."""
+
+    key: str
+    ceiling: int
+    writes: int
+    raw: int
+    shaped: int
+    kept: int
+    render: int
+    memory_bytes: int
+
+    @property
+    def total(self) -> int:
+        """`resident(row)`: the sum of every term."""
+        return self.writes + self.raw + self.shaped + self.kept + self.render
+
+    @property
+    def limit(self) -> int:
+        """`BAKE_RESIDENT_SHARE x BAKER_MEMORY_BYTES`."""
+        return int(BAKE_RESIDENT_SHARE * self.memory_bytes)
+
+    @property
+    def certified(self) -> bool:
+        """Whether the row's resident bytes fit its share of the baker."""
+        return self.total <= self.limit
+
+    def terms(self) -> str:
+        """Print every term, so the gate's number is derived in the open, never typed."""
+        return (
+            f"W {self.writes} + raw {self.raw} + shaped {self.shaped} + kept {self.kept} + "
+            f"render {self.render} = {self.total} B <= {self.limit} B "
+            f"({BAKE_RESIDENT_SHARE:g} x {self.memory_bytes}) at ceiling {self.ceiling}"
+        )
+
+
+def resident(  # noqa: PLR0913 -- one row's certified widths, the ceiling, terms and memory
+    certificate: RowCertificate,
+    key: str,
+    *,
+    ceiling: int = BAKE_MAX_ROWS,
+    terms: BakeMemoryTerms = BAKE_MEMORY_TERMS,
+    memory_bytes: int = BAKER_MEMORY_BYTES,
+    marketplaces: int = 1,
+) -> ResidentModel:
+    """Model one row's resident bytes with every held ceiling-wide slot at `ceiling` (03 §3.5).
+
+        resident(row) = W + Q x max_held x B_raw + sum(held widths) x B_shaped
+                        + sum(fold max_kept) x B_kept + max_held x B_render
+
+    A slot certified at `BAKE_MAX_ROWS` is counted at `ceiling`, so the probe can ask what each
+    candidate value means; a slot with its own smaller bound (a fixed axis, the ranked 50)
+    keeps it. At most Q slots' raw rows exist at once (the shaping seam).
+    """
+    widths = tuple(
+        _certified_width(plan, ceiling if width == BAKE_MAX_ROWS else width, marketplaces)
+        for plan, width in zip(certificate.plans, certificate.widths, strict=False)
+    )
+    kept = tuple(ceiling if item == BAKE_MAX_ROWS else item for item in certificate.kept)
+    held = max(widths, default=0)
+    return ResidentModel(
+        key=key,
+        ceiling=ceiling,
+        writes=WRITES_IN_FLIGHT_BYTES,
+        raw=CERTIFIED_QUERY_CAP * held * terms.raw,
+        shaped=sum(widths) * terms.shaped,
+        kept=sum(kept) * terms.kept,
+        render=held * terms.render,
+        memory_bytes=memory_bytes,
+    )
+
+
+@functools.cache
+def roster_certificates(root: pathlib.Path) -> tuple[tuple[str, RowCertificate], ...]:
+    """Certify every roster row (both bake entries) on its own counter, in roster order.
+
+    Cached per root: the counters are pure over the checked-out contracts, and the memory model
+    and the row-ceiling probe ask for the same rows at each candidate ceiling.
+    """
+    rows: list[tuple[str, RowCertificate]] = []
+    for row in BAKE_TASKS["roster"]:
+        page, variant = str(row["page"]), str(row["variant"])
+        certificate = (
+            _audiences_row(root, variant, page_write_seconds(page).seconds)
+            if page == "audiences"
+            else _TASK_COUNTERS[page](root, variant)
+        )
+        rows.append((f"{page}#{variant}", certificate))
+    return tuple(rows)
+
+
+def longest_daily_window_days(rows: tuple[tuple[str, RowCertificate], ...]) -> int:
+    """Return the longest window any bake read sums day by day, in days.
+
+    A daily read's series spans at most its window's days; a periodic read is one row set per
+    complete period whatever its length (a quarter, a vintage), so it multiplies nothing.
+    """
+    return max(
+        (
+            plan.window.days
+            for _key, certificate in rows
+            for plan in certificate.plans
+            if not plan.periodic
+        ),
+        default=0,
+    )
+
+
+def memory_findings(root: pathlib.Path) -> tuple[BakeabilityFinding, ...]:
+    """Refuse a row whose resident bytes exceed its share, or a drifted longest window.
+
+    `BAKE_LONGEST_WINDOW_DAYS` is held equal to the longest daily window any bake reads, so a
+    page policy that adds a longer one fails here rather than under-sizing every reduction.
+    """
+    rows = roster_certificates(root)
+    marketplaces = audiences_marketplace_count(root)
+    findings: list[BakeabilityFinding] = []
+    longest = longest_daily_window_days(rows)
+    if longest != BAKE_LONGEST_WINDOW_DAYS:
+        findings.append(
+            BakeabilityFinding(
+                "roster",
+                "bake-longest-window",
+                f"BAKE_LONGEST_WINDOW_DAYS is {BAKE_LONGEST_WINDOW_DAYS}; the longest daily "
+                f"(non-periodic) bake read spans {longest} days.",
+            )
+        )
+    for key, certificate in rows:
+        model = resident(certificate, key, marketplaces=marketplaces)
+        if not model.certified:
+            findings.append(
+                BakeabilityFinding(
+                    key.split("#", 1)[0], "bake-memory-model", f"{key}: {model.terms()}"
+                )
+            )
+    return tuple(findings)
+
+
+def memory_models(  # noqa: PLR0913 -- the root, the candidate ceiling, memory and terms
+    root: pathlib.Path,
+    *,
+    ceiling: int = BAKE_MAX_ROWS,
+    memory_bytes: int = BAKER_MEMORY_BYTES,
+    terms: BakeMemoryTerms = BAKE_MEMORY_TERMS,
+) -> tuple[ResidentModel, ...]:
+    """Model every D2 row at one ceiling, memory size and set of terms (the probe derives V)."""
+    marketplaces = audiences_marketplace_count(root)
+    return tuple(
+        resident(
+            certificate,
+            key,
+            ceiling=ceiling,
+            terms=terms,
+            memory_bytes=memory_bytes,
+            marketplaces=marketplaces,
+        )
+        for key, certificate in roster_certificates(root)
+    )
+
+
 # Budget for one sequential immutable write (an S3 PutObject of at most one capped body) from
 # the baker. A budget, not a measurement: the deployed bake's duration is its live check.
 PER_OBJECT_WRITE_MS = 100
@@ -488,15 +702,17 @@ def evaluate_bakeability(
                     ),
                 )
             )
-        resident = int(BAKER_MEMORY_BYTES * BAKE_RESIDENT_SHARE)
-        if estimate.total_bytes > resident:
+        # Until bodies stream (04 §4), a page holds every body it writes at once beside its
+        # measured rows (`resident`, ADR-143), so its encoded bytes keep their own share too.
+        body_share = int(BAKER_MEMORY_BYTES * BAKE_RESIDENT_SHARE)
+        if estimate.total_bytes > body_share:
             findings.append(
                 BakeabilityFinding(
                     page.page_id,
                     "bake-memory-bound",
                     (
                         f"{estimate.body_count} bodies of {estimate.total_bytes} bytes exceed "
-                        f"the {resident}-byte share of the {BAKER_MEMORY_BYTES}-byte baker."
+                        f"the {body_share}-byte share of the {BAKER_MEMORY_BYTES}-byte baker."
                     ),
                 )
             )
@@ -668,6 +884,7 @@ def main() -> int:
         *write_allowance_findings(),
         *source_horizon_findings(root),
         *d2_contract_findings(root),
+        *memory_findings(root),
     )
     if findings:
         for finding in sorted(findings, key=lambda item: (item.page_id, item.rule, item.message)):
@@ -683,6 +900,19 @@ def main() -> int:
             f"{certificate.seconds} s <= {certificate.budget_seconds} s"
         )
     print(f"  WRITE_ALLOWANCE_SECONDS={WRITE_ALLOWANCE_SECONDS:g}")
+    # ADR-143: the memory model, term by term, and the binding row.
+    models = memory_models(root)
+    print(
+        f"  BAKE_MAX_ROWS={BAKE_MAX_ROWS}, BAKE_LONGEST_WINDOW_DAYS={BAKE_LONGEST_WINDOW_DAYS}, "
+        f"BAKE_MAX_STREAMED_ROWS={BAKE_LONGEST_WINDOW_DAYS * BAKE_MAX_ROWS}; terms "
+        f"B_raw {BAKE_MEMORY_TERMS.raw}, B_shaped {BAKE_MEMORY_TERMS.shaped}, B_kept "
+        f"{BAKE_MEMORY_TERMS.kept}, B_render {BAKE_MEMORY_TERMS.render} B "
+        f"({BAKE_MEMORY_TERMS.measured}); W {WRITES_IN_FLIGHT_BYTES} B"
+    )
+    for model in models:
+        print(f"  memory {model.key}: {model.terms()}")
+    binding = max(models, key=lambda item: item.total)
+    print(f"  binding row: {binding.key} ({binding.total} B)")
     for row in BAKE_TASKS["roster"]:
         page = str(row["page"])
         print(
@@ -747,6 +977,10 @@ class RowCertificate:
     """The real production builders the counter invoked, as `module.qualname` (rev5 O2)."""
     fixture: tuple[tuple[str, str], ...] = field(default=(), compare=False, repr=False)
     """The closed maximum-cardinality fixture's parameters, by name (rev5 O2)."""
+    widths: tuple[int, ...] = field(default=(), compare=False, repr=False)
+    """Each held measurement slot's certified row bound (`max_rows`), read from the batch."""
+    kept: tuple[int, ...] = field(default=(), compare=False, repr=False)
+    """Each reduction slot's enforced `max_kept`, read from the fold the source declares."""
 
     def __post_init__(self) -> None:
         if self.count < 1 or not self.phases or sum(self.phases) != self.count:
@@ -854,20 +1088,51 @@ def _largest(certificates: tuple[RowCertificate, ...]) -> RowCertificate:
     return replace(chosen, fixture=(*chosen.fixture, instances))
 
 
-def _single_phase(  # noqa: PLR0913 -- the row's plans, derivation and its O2 protocol
-    plans: tuple[QueryPlan, ...],
+def _single_phase(  # noqa: PLR0913 -- the row's batch, derivation and its O2 protocol
+    prepared: PreparedMeasurementBatch,
     derivation: str,
     *,
     builder: tuple[str, ...],
     fixture: tuple[tuple[str, str], ...],
 ) -> RowCertificate:
+    plans = _distinct_plans(prepared)
     return RowCertificate(
-        len(plans), (len(plans),), derivation, plans, builder=builder, fixture=fixture
+        len(plans),
+        (len(plans),),
+        derivation,
+        plans,
+        builder=builder,
+        fixture=fixture,
+        **_width_terms(prepared),
     )
 
 
 def _distinct_plans(prepared: PreparedMeasurementBatch) -> tuple[QueryPlan, ...]:
     return tuple(plan.logical for plan in prepared.plans)
+
+
+class _WidthTerms(TypedDict):
+    widths: tuple[int, ...]
+    kept: tuple[int, ...]
+
+
+def _width_terms(*batches: PreparedMeasurementBatch) -> _WidthTerms:
+    """Read each slot's certified width: a held slot's `max_rows`, a fold's enforced `max_kept`.
+
+    Read from the batch the source really builds, never declared beside it (ADR-143), so the
+    memory model counts exactly what the code can hold.
+    """
+    widths: list[int] = []
+    kept: list[int] = []
+    for prepared in batches:
+        for operation in prepared.operations:
+            reduction = operation.request.reduction
+            for item in operation.plans:
+                if reduction is None:
+                    widths.append(item.max_rows)
+                else:
+                    kept.append(reduction().max_kept)
+    return _WidthTerms(widths=tuple(widths), kept=tuple(kept))
 
 
 def _symbols(*builders: Callable[..., object]) -> tuple[str, ...]:
@@ -916,6 +1181,7 @@ def _campaigns_row(root: pathlib.Path, variant: str) -> RowCertificate:
         plans,
         tuple(rosters.read),
         builder=_symbols(CampaignArtifactMeasurementService.portfolio_batch),
+        **_width_terms(batch.prepared),
         fixture=(
             _REFERENCE_FIXTURE,
             ("window", _range(period)),
@@ -938,16 +1204,18 @@ def _retail_row(root: pathlib.Path, variant: str) -> RowCertificate:
         prior_period=prior,
         computed_at=BAKEABILITY_REFERENCE_INSTANT,
     )
-    main_plans = _distinct_plans(retail_health_measurement_batch(request).prepared)
-    ad_plans = _distinct_plans(retail_product_ad_batch(request).prepared)
+    main = retail_health_measurement_batch(request).prepared
+    ad = retail_product_ad_batch(request).prepared
+    main_plans, ad_plans = _distinct_plans(main), _distinct_plans(ad)
     return RowCertificate(
         len(main_plans) + len(ad_plans),
         (len(main_plans), len(ad_plans)),
-        f"main batch {len(main_plans)} over {variant} and its prior with one spark query per "
-        f"day, then the product-ad batch {len(ad_plans)} (sequential: reached after the main "
-        "answer)",
+        f"main batch {len(main_plans)} over {variant} and its prior: compares and trends, the "
+        "ranked top-50 keys and four ranked series (constant in the catalog, ADR-143), then "
+        f"the product-ad batch {len(ad_plans)} (sequential: reached after the main answer)",
         (*main_plans, *ad_plans),
         builder=_symbols(retail_health_measurement_batch, retail_product_ad_batch),
+        **_width_terms(main, ad),
         fixture=(
             _REFERENCE_FIXTURE,
             ("window", _range(period)),
@@ -973,7 +1241,7 @@ def _scorecard_row(root: pathlib.Path, variant: str) -> RowCertificate:
             )
         ).prepared
         return _single_phase(
-            _distinct_plans(prepared),
+            prepared,
             f"one batch per governed marketplace ({len(labels.marketplaces)}), "
             + ("window and equal prior" if prior is not None else "the calendar period alone"),
             builder=_symbols(scorecard_measurement_batch),
@@ -1026,6 +1294,7 @@ def _new_customers_row(root: pathlib.Path, variant: str) -> RowCertificate:
             f"{len(port.read)} spend-roster read(s), each once per bake, then measurement",
             plans,
             tuple(port.read),
+            **_width_terms(prepared),
             builder=_symbols(
                 _NewCustomersBatchBuilder.batch,  # pyright: ignore[reportPrivateUsage]
                 _NewCustomersRostersOnce,  # pyright: ignore[reportPrivateUsage]
@@ -1103,7 +1372,8 @@ def _reach_row(root: pathlib.Path, variant: str) -> RowCertificate:
         if preset in FREQUENCY_DECLARED_PERIODS:
             for market in renderer.marketplaces:
                 renderer._frequency(market, period, plan_batch)  # pyright: ignore[reportPrivateUsage]
-        plans = _distinct_plans(prepare_batch(tuple(plan_batch.plans)))
+        reach_prepared = prepare_batch(tuple(plan_batch.plans))
+        plans = _distinct_plans(reach_prepared)
         phases = (*(1 for _ in port.read), len(plans))
         return RowCertificate(
             sum(phases),
@@ -1113,6 +1383,7 @@ def _reach_row(root: pathlib.Path, variant: str) -> RowCertificate:
             "measurement",
             plans,
             tuple(port.read),
+            **_width_terms(reach_prepared),
             builder=_symbols(
                 ReachArtifactRenderer._plan_exposure,  # pyright: ignore[reportPrivateUsage]
                 ReachArtifactRenderer._frequency,  # pyright: ignore[reportPrivateUsage]
@@ -1160,9 +1431,8 @@ def _retention_row(root: pathlib.Path, variant: str) -> RowCertificate:
                 renderer._request(market, path, metric, (period, grain))  # pyright: ignore[reportPrivateUsage]
                 for metric in metrics
             )
-    plans = _distinct_plans(prepare_batch(tuple(requests)))
     return _single_phase(
-        plans,
+        prepare_batch(tuple(requests)),
         f"M x ({len(STANDARD_METRICS)} standard + {len(ARP_METRICS)} ARP), "
         f"M = {len(renderer.marketplaces)}",
         builder=_symbols(
@@ -1280,8 +1550,8 @@ def _audiences_row(root: pathlib.Path, variant: str, write_seconds: float) -> Ro
     for scope in scopes:
         roster = renderer._roster(period, scope)  # pyright: ignore[reportPrivateUsage]
         renderer._plan(scope, (period, roster), plan_batch)  # pyright: ignore[reportPrivateUsage]
-    measured = _distinct_plans(prepare_batch(tuple(plan_batch.plans)))
-    listed = _distinct_plans(prepare_batch(listing))
+    measured_batch, listed_batch = prepare_batch(tuple(plan_batch.plans)), prepare_batch(listing)
+    measured, listed = _distinct_plans(measured_batch), _distinct_plans(listed_batch)
     phases = audiences_phases(len(markets), bound)
     observed = (len(listed), len(port.read), phases[2], phases[3], len(measured))
     if observed != phases:
@@ -1292,6 +1562,7 @@ def _audiences_row(root: pathlib.Path, variant: str, write_seconds: float) -> Ro
         f"19 + 6C at C = {bound} (M = {len(markets)}, P = {len(PROFILE_CONTRACTS)}): list, "
         "roster rounds of P + C, C and C, then P x 5 + 3C measurement",
         (*listed, *measured),
+        **_width_terms(listed_batch, measured_batch),
         builder=_symbols(
             AudiencesArtifactRenderer._request,  # pyright: ignore[reportPrivateUsage]
             AudiencesArtifactRenderer._scopes,  # pyright: ignore[reportPrivateUsage]
