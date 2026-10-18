@@ -941,6 +941,8 @@ def _changed(name: str, document: dict[str, Any]) -> None:
     prompts = cast("list[dict[str, str]]", document["prompts"])
     if name == "five":
         document["prompts"] = prompts[:5]
+    elif name == "seven":
+        prompts.append({"prompt_id": "seventh", "conversation": "e", "question": "Hello again."})
     elif name == "duplicate":
         prompts[1] = prompts[0]
     elif name == "outside":
@@ -959,6 +961,8 @@ def _changed(name: str, document: dict[str, Any]) -> None:
     ("change", "message"),
     [
         ("five", "six unique prompts"),
+        # The control for `--turns`: the D8 manifest still holds exactly six prompts.
+        ("seven", "six unique prompts"),
         ("duplicate", "six unique prompts"),
         ("outside", "outside-list"),
         ("twice", "outside-list"),
@@ -1197,3 +1201,224 @@ def test_bound_samples_feed_the_gate_comparator_exactly() -> None:
         (binding["bake_run_started_at"], binding["bake_finalize_ended_at"]),
     )
     assert refused["reasons"] == ["outside_list_unproven"]
+
+
+_TURNS = _ROOT / "validation" / "fixtures" / "chat-latency-turns-v1.json"
+
+
+def _turn(turn_id: str, kind: str, conversation: str, **changes: object) -> dict[str, object]:
+    return {
+        "turn_id": turn_id,
+        "class": kind,
+        "conversation": conversation,
+        "question": f"Question {turn_id}?",
+        "follow_up_of": None,
+        **changes,
+    }
+
+
+def _turn_list(turns: list[dict[str, object]], **changes: object) -> dict[str, object]:
+    return {
+        "schema_version": "chat-latency-turns/v1",
+        "persona_id": "probe-a",
+        "turns": turns,
+        **changes,
+    }
+
+
+def _valid_turns() -> list[dict[str, object]]:
+    return [
+        _turn("warm-up", "warm_up", "w"),
+        _turn("single-01", "single_tool", "a"),
+        _turn("multi-01", "multi_tool", "b"),
+        _turn("clarify-01", "clarification", "c"),
+        _turn("clarify-02", "clarification", "c", follow_up_of="clarify-01"),
+    ]
+
+
+def _write(tmp_path: Path, document: object) -> Path:
+    path = tmp_path / "turns.json"
+    path.write_text(json.dumps(document), encoding="utf-8")
+    return path
+
+
+def test_a_valid_turn_list_loads_its_steps_and_classes_in_order(tmp_path: Path) -> None:
+    loaded = probe.load_latency_turns(_write(tmp_path, _turn_list(_valid_turns())))
+    assert [step.label for step in loaded.steps] == [
+        "warm-up",
+        "single-01",
+        "multi-01",
+        "clarify-01",
+        "clarify-02",
+    ]
+    assert loaded.classes == (
+        "warm_up",
+        "single_tool",
+        "multi_tool",
+        "clarification",
+        "clarification",
+    )
+    assert loaded.steps[4].conversation == "c" and loaded.persona_id == "probe-a"
+    assert len(loaded.sha256) == 64
+
+
+def test_the_tracked_turn_list_loads_with_the_planned_classes() -> None:
+    loaded = probe.load_latency_turns(_TURNS)
+    counts = {kind: loaded.classes.count(kind) for kind in probe.TURN_CLASSES}
+    # 1 warm-up, 15 single-tool, 15 multi-tool, 10 clarification, plus the two Q0 reruns.
+    assert counts == {"warm_up": 1, "single_tool": 17, "multi_tool": 15, "clarification": 10}
+    labels = [step.label for step in loaded.steps]
+    assert {"q0-outside-top-n-segments", "q0-reach-absent-week"} <= set(labels)
+    # The fixture names fictional dev entities only and no outside-list placeholder.
+    assert all(probe.OUTSIDE_PLACEHOLDER not in step.question for step in loaded.steps)
+
+
+def _mutate(turns: list[dict[str, object]], rule: str) -> dict[str, object]:  # noqa: PLR0912 -- one case per schema rule
+    document = _turn_list(turns)
+    if rule == "unknown_class":
+        turns[1]["class"] = "two_tool"
+    elif rule == "duplicate_id":
+        turns[2]["turn_id"] = "single-01"
+    elif rule == "bad_id":
+        turns[1]["turn_id"] = "Single_01"
+    elif rule == "follow_up_later":
+        turns[3]["follow_up_of"] = "clarify-02"
+    elif rule == "follow_up_other_conversation":
+        turns[4]["follow_up_of"] = "single-01"
+    elif rule == "no_warm_up":
+        turns[0]["class"] = "single_tool"
+    elif rule == "second_warm_up":
+        turns[2]["class"] = "warm_up"
+    elif rule == "warm_up_not_first":
+        turns[0], turns[1] = turns[1], turns[0]
+    elif rule == "too_many":
+        document["turns"] = [turns[0]] + [
+            _turn(f"single-{index:02d}", "single_tool", f"s{index}") for index in range(60)
+        ]
+    elif rule == "too_few":
+        document["turns"] = turns[:1]
+    elif rule == "placeholder":
+        turns[1]["question"] = "Report {outside_list_item}."
+    elif rule == "long_question":
+        turns[1]["question"] = "x" * 2_001
+    elif rule == "blank_conversation":
+        turns[1]["conversation"] = " "
+    elif rule == "unknown_field":
+        turns[1]["prompt_id"] = "single-01"
+    elif rule == "persona":
+        document["persona_id"] = "probe-b"
+    elif rule == "schema":
+        document["schema_version"] = "chat-bake-acceptance-v2"
+    return document
+
+
+@pytest.mark.parametrize(
+    ("rule", "message"),
+    [
+        ("unknown_class", "unknown class"),
+        ("duplicate_id", "turn_id is repeated"),
+        ("bad_id", r"turn_id is not \[a-z0-9-\]\{1,40\}"),
+        ("follow_up_later", "follow_up_of names no earlier turn"),
+        ("follow_up_other_conversation", "follow_up_of names no earlier turn"),
+        ("no_warm_up", "exactly one warm_up, first"),
+        ("second_warm_up", "exactly one warm_up, first"),
+        ("warm_up_not_first", "exactly one warm_up, first"),
+        ("too_many", "2 to 60 turns"),
+        ("too_few", "2 to 60 turns"),
+        ("placeholder", "outside-list placeholder"),
+        ("long_question", "over 2,000 characters"),
+        ("blank_conversation", "blank conversation"),
+        ("unknown_field", "malformed"),
+        ("persona", "probe-a persona"),
+        ("schema", "wrong schema"),
+    ],
+)
+def test_each_turn_list_rule_refuses_its_violation(tmp_path: Path, rule: str, message: str) -> None:
+    path = _write(tmp_path, _mutate(_valid_turns(), rule))
+    with pytest.raises(probe.SampleError, match=message):
+        probe.load_latency_turns(path)
+
+
+def test_a_turn_list_at_sixty_turns_and_a_2000_character_question_loads(tmp_path: Path) -> None:
+    turns = [_turn("warm-up", "warm_up", "w")] + [
+        _turn(f"single-{index:02d}", "single_tool", f"s{index}") for index in range(59)
+    ]
+    turns[1]["question"] = "x" * 2_000
+    assert len(probe.load_latency_turns(_write(tmp_path, _turn_list(turns))).steps) == 60
+
+
+def test_turns_with_a_d8_sample_flag_is_refused_before_anything_runs(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = _write(tmp_path, _turn_list(_valid_turns()))
+    base = ["--profile", "p", "--expected-account", "1", "--turns", str(path)]
+    assert probe.main([*base, "--phase", "paired-no-bake"]) == 2
+    assert "--turns takes no D8 sample flag (--phase)" in capsys.readouterr().out
+    assert probe.main([*base, "--bind-draft", str(path)]) == 2
+    assert "--bind-draft" in capsys.readouterr().out
+    # Paired: `--turns` and `--manifest` are one choice, never both.
+    with pytest.raises(SystemExit):
+        probe.main([*base, "--manifest", str(_MANIFEST)])
+
+
+def test_turns_with_no_sample_flag_passes_the_refusal() -> None:
+    args = probe._parser().parse_args(  # pyright: ignore[reportPrivateUsage]
+        ["--profile", "p", "--expected-account", "1", "--turns", str(_TURNS)]
+    )
+    probe.refuse_d8_flags_with_turns(args)
+    assert args.manifest is None and args.turns == _TURNS
+
+
+def _class_row(kind: str, *, first: int | None, answer: int | None, end: int) -> dict[str, object]:  # noqa: PLR0913 -- one fixture builder
+    return {
+        "class": kind,
+        "client_ms": {"first_text": first, "first_answer_text": answer, "stream_end": end},
+    }
+
+
+def test_the_summary_groups_client_times_by_class_and_discards_the_warm_up() -> None:
+    rows = [
+        _class_row("warm_up", first=90_000, answer=90_000, end=99_000),
+        *(
+            _class_row("single_tool", first=1_000 * i, answer=2_000 * i, end=3_000 * i)
+            for i in range(1, 21)
+        ),
+        _class_row("multi_tool", first=5_000, answer=9_000, end=30_000),
+        _class_row("multi_tool", first=None, answer=None, end=60_000),
+    ]
+    grouped = probe.class_percentiles(rows)
+    single = cast("dict[str, Any]", grouped["single_tool"])
+    assert single["turns"] == 20
+    assert single["first_text"] == {"n": 20, "median_ms": 10_000, "p95_ms": 19_000}
+    assert single["after_tool_text"] == {"n": 20, "median_ms": 20_000, "p95_ms": 38_000}
+    assert single["stream_end"] == {"n": 20, "median_ms": 30_000, "p95_ms": 57_000}
+    multi = cast("dict[str, Any]", grouped["multi_tool"])
+    # A turn that rendered no text counts only where it was measured.
+    assert multi["first_text"] == {"n": 1, "median_ms": 5_000, "p95_ms": 5_000}
+    assert multi["stream_end"]["n"] == 2
+    assert cast("dict[str, Any]", grouped["clarification"])["turns"] == 0
+    assert "warm_up" not in grouped
+    loaded = probe.load_latency_turns(_TURNS)
+    summary = probe.latency_turns_summary(loaded, rows)
+    assert summary["turns_sha256"] == loaded.sha256 and summary["by_class"] == grouped
+    first_row = cast("list[dict[str, object]]", summary["turns"])[0]
+    assert first_row["class"] == "warm_up"
+
+
+def test_the_q0_hop_split_reads_route_and_harness_span_starts() -> None:
+    times = probe.ClientTimes(sent_epoch_ms=1_000_000, stream_end_ms=36_000)
+    route = [
+        {"name": "conversation.turn", "start_epoch_ms": 1_000_400},
+        {"name": "Bedrock AgentCore.InvokeHarness", "start_epoch_ms": 1_000_700},
+    ]
+    harness = {"post_start_epoch_ms": 1_033_000, "harness_total_ms": 3_000}
+    split = probe.hop_split(times, route_spans=route, harness=harness, timing={"cold_start": False})
+    assert split["client_send_to_route_start_ms"] == 400
+    assert split["route_start_to_harness_start_ms"] == 32_600
+    assert split["harness_start_to_stream_end_ms"] == 3_000
+    assert split["invoke_harness_spans"] == 1 and split["unmeasured"] == []
+    # Paired: a missing harness span leaves its hops unmeasured, never inferred.
+    missing = probe.hop_split(times, route_spans=route, harness={}, timing={})
+    assert missing["route_start_to_harness_start_ms"] is None
+    assert missing["harness_start_to_stream_end_ms"] is None
+    assert missing["unmeasured"] == ["harness_span"]

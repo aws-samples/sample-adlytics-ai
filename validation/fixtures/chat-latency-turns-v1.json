@@ -1,0 +1,53 @@
+{
+  "schema_version": "chat-latency-turns/v1",
+  "persona_id": "probe-a",
+  "turns": [
+    {"turn_id": "warm-up", "class": "warm_up", "conversation": "w", "question": "Hello. Briefly, what can you help me with here?", "follow_up_of": null},
+
+    {"turn_id": "single-01", "class": "single_tool", "conversation": "s01", "question": "What was retail revenue shipped by product in the US marketplace on August 11, 2026?", "follow_up_of": null},
+    {"turn_id": "single-02", "class": "single_tool", "conversation": "s02", "question": "How much did Northstar DSP | Flight 03 spend in September 2026?", "follow_up_of": null},
+    {"turn_id": "single-03", "class": "single_tool", "conversation": "s03", "question": "How many impressions did Northstar DSP | Flight 04 get in September 2026?", "follow_up_of": null},
+    {"turn_id": "single-04", "class": "single_tool", "conversation": "s04", "question": "What was the ROAS of Northstar Sponsored | Flight 03 in September 2026?", "follow_up_of": null},
+    {"turn_id": "single-05", "class": "single_tool", "conversation": "s05", "question": "How many shoppers did we reach in the week of September 28, 2026 to October 4, 2026, by exposure group and ID type?", "follow_up_of": null},
+    {"turn_id": "single-06", "class": "single_tool", "conversation": "s06", "question": "How many new-to-brand buyers did we have in the US marketplace in September 2026?", "follow_up_of": null},
+    {"turn_id": "single-07", "class": "single_tool", "conversation": "s07", "question": "What was total retail revenue shipped in the US marketplace in September 2026?", "follow_up_of": null},
+    {"turn_id": "single-08", "class": "single_tool", "conversation": "s08", "question": "How many clicks did Northstar DSP | Flight 05 get in September 2026?", "follow_up_of": null},
+    {"turn_id": "single-09", "class": "single_tool", "conversation": "s09", "question": "What was the total DSP spend across all campaigns in September 2026?", "follow_up_of": null},
+    {"turn_id": "single-10", "class": "single_tool", "conversation": "s10", "question": "How many glance views did our products get in the US marketplace on August 11, 2026?", "follow_up_of": null},
+    {"turn_id": "single-11", "class": "single_tool", "conversation": "s11", "question": "What was the average exposure frequency per reached shopper in September 2026?", "follow_up_of": null},
+    {"turn_id": "single-12", "class": "single_tool", "conversation": "s12", "question": "How many attributed purchases did Northstar Sponsored | Flight 04 drive in September 2026?", "follow_up_of": null},
+    {"turn_id": "single-13", "class": "single_tool", "conversation": "s13", "question": "Which declared metrics can this fictional workspace report? Put them in a table.", "follow_up_of": null},
+    {"turn_id": "single-14", "class": "single_tool", "conversation": "s14", "question": "What was retail revenue shipped in the US marketplace on August 10, 2026?", "follow_up_of": null},
+    {"turn_id": "single-15", "class": "single_tool", "conversation": "s15", "question": "How many impressions did all DSP campaigns deliver in September 2026?", "follow_up_of": null},
+
+    {"turn_id": "multi-01", "class": "multi_tool", "conversation": "m01", "question": "For our latest acquisition cohorts, what share of new customers bought again anywhere on Amazon, counting all Amazon purchases? Which cohort vintage is that?", "follow_up_of": null},
+    {"turn_id": "multi-02", "class": "multi_tool", "conversation": "m02", "question": "How many new-to-brand customers did we acquire in September 2026?", "follow_up_of": null},
+    {"turn_id": "multi-03", "class": "multi_tool", "conversation": "m03", "question": "Among our DSP-exposed buyers, which audience segments over-indexed in September 2026?", "follow_up_of": null},
+    {"turn_id": "multi-04", "class": "multi_tool", "conversation": "m04", "question": "What did Northstar DSP | Flight 28 spend in September 2026, and how many impressions did it get?", "follow_up_of": null},
+    {"turn_id": "multi-05", "class": "multi_tool", "conversation": "m05", "question": "Compare spend and ROAS for Northstar DSP | Flight 03 and Northstar DSP | Flight 04 in September 2026.", "follow_up_of": null},
+    {"turn_id": "multi-06", "class": "multi_tool", "conversation": "m06", "question": "Which five DSP campaigns had the most spend in September 2026, and what was each one's ROAS?", "follow_up_of": null},
+    {"turn_id": "multi-07", "class": "multi_tool", "conversation": "m07", "question": "How did reach and new-to-brand buyers change between August 2026 and September 2026?", "follow_up_of": null},
+    {"turn_id": "multi-08", "class": "multi_tool", "conversation": "m08", "question": "For September 2026, show DSP spend, impressions and clicks next to Sponsored Products spend, impressions and clicks.", "follow_up_of": null},
+    {"turn_id": "multi-09", "class": "multi_tool", "conversation": "m09", "question": "What was retail revenue shipped in the US marketplace in September 2026, and how much of it did ad-attributed purchases account for?", "follow_up_of": null},
+    {"turn_id": "multi-10", "class": "multi_tool", "conversation": "m10", "question": "For Northstar DSP | Flight 05 in September 2026, give spend, impressions, reach and new-to-brand buyers.", "follow_up_of": null},
+    {"turn_id": "multi-11", "class": "multi_tool", "conversation": "m11", "question": "How many shoppers did we reach each week in September 2026, and how did average frequency move week to week?", "follow_up_of": null},
+    {"turn_id": "multi-12", "class": "multi_tool", "conversation": "m12", "question": "Which audience segments did Northstar DSP | Flight 03 reach most in September 2026, and how do those segments index among buyers?", "follow_up_of": null},
+    {"turn_id": "multi-13", "class": "multi_tool", "conversation": "m13", "question": "Compare glance views and retail revenue shipped by product in the US marketplace on August 10, 2026 and August 11, 2026.", "follow_up_of": null},
+    {"turn_id": "multi-14", "class": "multi_tool", "conversation": "m14", "question": "For our latest acquisition cohorts, compare the repeat rate counting all Amazon purchases with the share of the cohort that came from DSP exposure.", "follow_up_of": null},
+    {"turn_id": "multi-15", "class": "multi_tool", "conversation": "m15", "question": "Which Sponsored Products campaigns had zero attributed purchases in September 2026, and what did they spend?", "follow_up_of": null},
+
+    {"turn_id": "clarify-01", "class": "clarification", "conversation": "k01", "question": "For our latest acquisition cohorts, what's the repeat buyer rate from ad-touched purchases? Which cohort vintage is that?", "follow_up_of": null},
+    {"turn_id": "clarify-02", "class": "clarification", "conversation": "k02", "question": "How much did we spend last month?", "follow_up_of": null},
+    {"turn_id": "clarify-03", "class": "clarification", "conversation": "k02", "question": "Now the same for the month before.", "follow_up_of": "clarify-02"},
+    {"turn_id": "clarify-04", "class": "clarification", "conversation": "k04", "question": "How many shoppers did we reach last quarter?", "follow_up_of": null},
+    {"turn_id": "clarify-05", "class": "clarification", "conversation": "k05", "question": "How many shoppers did we reach?", "follow_up_of": null},
+    {"turn_id": "clarify-06", "class": "clarification", "conversation": "k06", "question": "How is the Northstar campaign doing?", "follow_up_of": null},
+    {"turn_id": "clarify-07", "class": "clarification", "conversation": "k06", "question": "I mean Northstar DSP | Flight 03, for September 2026.", "follow_up_of": "clarify-06"},
+    {"turn_id": "clarify-08", "class": "clarification", "conversation": "k08", "question": "What was retail revenue shipped yesterday?", "follow_up_of": null},
+    {"turn_id": "clarify-09", "class": "clarification", "conversation": "k09", "question": "Show me new-to-brand buyers for the last 7 days.", "follow_up_of": null},
+    {"turn_id": "clarify-10", "class": "clarification", "conversation": "k10", "question": "What is our repeat rate?", "follow_up_of": null},
+
+    {"turn_id": "q0-outside-top-n-segments", "class": "single_tool", "conversation": "q01", "question": "How many impressions did Northstar DSP | Flight 28 deliver to each audience segment in September 2026?", "follow_up_of": null},
+    {"turn_id": "q0-reach-absent-week", "class": "single_tool", "conversation": "q02", "question": "How many shoppers did we reach in the week of October 5, 2026 to October 11, 2026, by exposure group and ID type?", "follow_up_of": null}
+  ]
+}
