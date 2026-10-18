@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import io
 import random
 from typing import TYPE_CHECKING, Any, cast
 
@@ -13,18 +14,22 @@ from botocore.stub import Stubber
 from adapters.outbound.athena.execution import (
     QUERY_FAILED,
     QUERY_TIMED_OUT,
+    RESULT_LOCATION_INVALID,
     StartedStatement,
     StatementOutcome,
     StatementRequest,
     await_completion,
+    iter_pages,
     start_counted,
+    stream_result_rows,
 )
 from adapters.outbound.athena.query import (
     BAKE_INVOCATION_WAIT,
     INTERACTIVE_WAIT,
     THROTTLED_START_MAX_WAIT_SECONDS,
 )
-from domain.shared_kernel.errors import DependencyError
+from domain.measurement.figures import MEASURE_ABSENT
+from domain.shared_kernel.errors import DependencyError, InvariantError
 
 if TYPE_CHECKING:
     from types_boto3_athena.client import AthenaClient
@@ -260,3 +265,169 @@ def test_a_named_wait_policy_timeout_carries_its_policy_waited_and_limit() -> No
         await_completion(cast("AthenaClient", client), "query-timeout", limit=0)
     assert "wait_policy" not in unnamed.value.context
     assert unnamed.value.context["waited_seconds"] == 0
+
+
+# --- ADR-143: the result-object reader (OBJECT) beside the paged one (PAGED) ------------------
+
+_LOCATION = "s3://fictional-results/bake/execution-1.csv"
+_CSV = (
+    b'"marketplace_key","note","value_0"\n'
+    b'"amazon_us",,"1.50"\n'
+    b'"amazon_us","","2"\n'
+    b'"amazon_us","line one\nline two, with ""quotes""","3"\n'
+    b'"amazon_us","caf\xc3\xa9",\n'
+)
+_PAGED = [
+    ["amazon_us", None, "1.50"],
+    ["amazon_us", "", "2"],
+    ["amazon_us", 'line one\nline two, with "quotes"', "3"],
+    ["amazon_us", "café", None],
+]
+
+
+def _s3_with(body: bytes) -> tuple[Any, Stubber]:
+    from botocore.response import StreamingBody  # noqa: PLC0415 -- test-only
+
+    client = boto3.client(
+        "s3", region_name="us-east-1", aws_access_key_id="x", aws_secret_access_key="x"
+    )
+    stubber = Stubber(client)
+    stubber.add_response(
+        "get_object",
+        {"Body": StreamingBody(io.BytesIO(body), len(body)), "ContentLength": len(body)},
+        {"Bucket": "fictional-results", "Key": "bake/execution-1.csv"},
+    )
+    stubber.activate()
+    return client, stubber
+
+
+def _paged_athena(rows: list[list[str | None]]) -> Any:
+    client = boto3.client(
+        "athena", region_name="us-east-1", aws_access_key_id="x", aws_secret_access_key="x"
+    )
+    stubber = Stubber(client)
+    header = {"Data": [{"VarCharValue": name} for name in ("marketplace_key", "note", "value_0")]}
+    data = [
+        {"Data": [{} if value is None else {"VarCharValue": value} for value in row]}
+        for row in rows
+    ]
+    stubber.add_response(
+        "get_query_results",
+        {"ResultSet": {"Rows": [header, *data[:2]]}, "NextToken": "page-2"},
+        {"QueryExecutionId": "execution-1"},
+    )
+    stubber.add_response(
+        "get_query_results",
+        {"ResultSet": {"Rows": data[2:]}},
+        {"QueryExecutionId": "execution-1", "NextToken": "page-2"},
+    )
+    stubber.activate()
+    return client
+
+
+def test_the_object_reader_drops_the_header_and_keeps_null_empty_and_quoted_cells() -> None:
+    """None for an empty unquoted cell, "" for a quoted one; quoted newlines stay in a cell."""
+    s3, stubber = _s3_with(_CSV)
+    rows = list(
+        stream_result_rows(
+            s3, StatementOutcome(output_location=_LOCATION), execution_id="execution-1", cells=3
+        )
+    )
+    assert rows == _PAGED
+    stubber.assert_no_pending_responses()
+
+
+def test_paged_and_object_transports_read_identical_rows_for_one_result() -> None:
+    """Paired: the same result read both ways gives the same rows, header dropped both times."""
+    s3, _ = _s3_with(_CSV)
+    streamed = list(
+        stream_result_rows(
+            s3, StatementOutcome(output_location=_LOCATION), execution_id="execution-1", cells=3
+        )
+    )
+    paged = list(iter_pages(_paged_athena(_PAGED), "execution-1"))
+    assert streamed == paged == _PAGED
+
+
+class _BrokenBody(io.RawIOBase):
+    def __init__(self, head: bytes) -> None:
+        self._head = head
+        self._sent = False
+
+    def readable(self) -> bool:
+        return True
+
+    def readinto(self, buffer: Any) -> int:
+        if self._sent:
+            raise ConnectionResetError("fictional mid-stream reset")
+        self._sent = True
+        buffer[: len(self._head)] = self._head
+        return len(self._head)
+
+
+class _BrokenS3:
+    def get_object(self, **_arguments: str) -> dict[str, object]:
+        return {"Body": io.BufferedReader(_BrokenBody(b'"a"\n"1"\n'))}
+
+
+def test_a_mid_stream_failure_is_a_dependency_error_the_task_retries() -> None:
+    reader = stream_result_rows(
+        cast("Any", _BrokenS3()),
+        StatementOutcome(output_location=_LOCATION),
+        execution_id="execution-1",
+        cells=1,
+    )
+    assert next(reader) == ["1"]
+    with pytest.raises(DependencyError) as raised:
+        next(reader)
+    assert raised.value.code == QUERY_FAILED
+    assert raised.value.context["cause"] == "ConnectionResetError"
+
+
+@pytest.mark.parametrize(
+    "location",
+    [
+        None,
+        "",
+        "bake/execution-1.csv",
+        "s3://fictional-results/bake/execution-1.txt",
+        "s3:///x.csv",
+    ],
+)
+def test_a_missing_or_malformed_output_location_is_an_invariant(location: str | None) -> None:
+    """Paired with the valid location above: no GetObject is attempted."""
+    with pytest.raises(InvariantError) as raised:
+        list(
+            stream_result_rows(
+                cast("Any", object()),
+                StatementOutcome(output_location=location),
+                execution_id="execution-1",
+                cells=3,
+            )
+        )
+    assert raised.value.code == RESULT_LOCATION_INVALID
+
+
+def test_a_row_whose_cells_do_not_match_the_statement_is_an_invariant() -> None:
+    s3, _ = _s3_with(_CSV)
+    with pytest.raises(InvariantError) as raised:
+        list(
+            stream_result_rows(
+                s3, StatementOutcome(output_location=_LOCATION), execution_id="execution-1", cells=4
+            )
+        )
+    assert raised.value.code == MEASURE_ABSENT
+
+
+def test_the_completion_outcome_carries_the_result_location() -> None:
+    class _Done:
+        def get_query_execution(self, **_arguments: str) -> dict[str, object]:
+            return {
+                "QueryExecution": {
+                    "Status": {"State": "SUCCEEDED"},
+                    "ResultConfiguration": {"OutputLocation": _LOCATION},
+                }
+            }
+
+    outcome = await_completion(cast("AthenaClient", _Done()), "execution-1", limit=1)
+    assert outcome.output_location == _LOCATION

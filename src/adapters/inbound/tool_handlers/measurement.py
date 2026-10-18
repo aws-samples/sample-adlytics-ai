@@ -47,7 +47,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from enum import StrEnum
 from functools import partial
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from adapters.inbound.tool_handlers.dimension_labels import DimensionLabelResolver
 from domain.catalog.capability import (
@@ -70,6 +70,7 @@ from domain.measurement.answers import (
     AnswerRequest,
     ComparisonAnswerRequest,
     DimensionDisplayLabels,
+    FoldingAnswer,
     MeasurementContext,
     RankingAnswerRequest,
     answer_comparison,
@@ -80,6 +81,7 @@ from domain.measurement.answers import (
 )
 from domain.measurement.comparison import RankOrder, RankRequest, compare, rank
 from domain.measurement.figures import measure
+from domain.measurement.folds import Fold, FoldResult, require_foldable
 from domain.measurement.lenses import LENS_DEFAULTS
 from domain.measurement.pack_coverage import PackDayVersions, pack_versioned_columns
 from domain.measurement.periodic import (
@@ -115,6 +117,7 @@ from domain.measurement.planning import (
     served_grain_set,
 )
 from domain.measurement.publications import BoundQueryPlan
+from domain.measurement.ranking import RankedRead, RankedRestriction, require_rankable
 from domain.measurement.rosters import (
     ROSTER_REFUSED,
     ROSTER_WITHDRAWN,
@@ -176,6 +179,7 @@ from domain.shopper_aggregates.cohorts import cohort_grain_changed_text
 from ports.outbound.pack_coverage import PackCoveragePort, PackCoverageReadRequest
 from ports.outbound.publication_selection import (
     PresentationEvidenceInspectionResult,
+    PresentationEvidenceInspectionSlot,
     PresentationEvidenceRole,
     PublicationSelection,
     PublicationSelectionPort,
@@ -183,10 +187,14 @@ from ports.outbound.publication_selection import (
 )
 from ports.outbound.query import (
     MAX_ROWS_CEILING,
+    FoldingQueryPort,
+    FoldRead,
     PeriodSeriesRequest,
     QueryPort,
     QueryRequest,
     QueryResult,
+    RowCeiling,
+    row_ceiling,
 )
 from ports.outbound.rosters import RosterPort, RosterRequest
 from ports.outbound.served_periods import ServedPeriods, ServedPeriodsPort, ServedPeriodsRequest
@@ -253,6 +261,11 @@ SELECTION_MISMATCH = ErrorCode(area="MEASUREMENT", number=3)
 
 QUERY_FAN_IN_COLLISION = ErrorCode(area="MEASUREMENT", number=4)
 """Plan 4.4 (DB20): two complete requests share a canonical digest but are not equal; fatal."""
+
+PUBLISH_TIME_ONLY = ErrorCode(area="MEASUREMENT", number=7)
+"""A ranked or folded request reached a path that serves narration (ADR-143): a defect."""
+RANKED_POPULATION_UNBOUND = ErrorCode(area="MEASUREMENT", number=8)
+"""A ranked read's declared population isn't a read of its own batch (ADR-143): a defect."""
 
 PERIODS_UNAVAILABLE = ErrorCode(area="MEASUREMENT", number=5)
 """A periodic metric was asked for on a runtime with no served-period reader (ADR-100)."""
@@ -333,6 +346,18 @@ class MeasurementToolRequest:
     """Resolver-applied defaults, kept separate so no governed choice looks explicit."""
 
     max_rows: int = DEFAULT_MAX_ROWS
+
+    row_ceiling: RowCeiling = RowCeiling.NARRATION
+    """Which caller kind bounds `max_rows` (ADR-143). Never a tool input: chat and request-time
+    presentation reads are `NARRATION`; only publish-time bake sources name a bake ceiling."""
+
+    ranked: RankedRestriction | None = None
+    """Restrict a publish-time read to a ranked set computed inside the query (Retail's top 50).
+    Never a tool input. Its population must be reads of the same batch (`prepare_batch`)."""
+
+    reduction: Callable[[], Fold[Any]] | None = field(default=None, compare=False)
+    """A publish-time reduction: a fresh fold per execution, so the read keeps only the fold's
+    bounded summary (ADR-143). Never a tool input; eligibility is checked at prepare time."""
 
     prior_window: DateRange | None = None
     """The earlier period to compare against, for the two tools that take one.
@@ -427,14 +452,26 @@ class MeasurementToolRequest:
         # `FunctionError: Unhandled` on deployed dev [verified 2026-08-22]. Refusing it here keeps
         # the port's convention intact and makes this adapter responsible for handing the port only
         # values it accepts, which is where that responsibility belongs.
-        if not 1 <= self.max_rows <= MAX_ROWS_CEILING:
+        ceiling = row_ceiling(self.row_ceiling)
+        if not 1 <= self.max_rows <= ceiling:
             raise ValidationError(
                 code=BAD_REQUEST,
                 description=(
                     f"max_rows must be between 1 and {MAX_ROWS_CEILING}. A result larger than "
                     "that cannot be narrated honestly, so asking for it would hide a truncation."
+                    if self.row_ceiling is RowCeiling.NARRATION
+                    else f"max_rows must be between 1 and the {self.row_ceiling.value} ceiling "
+                    f"{ceiling}, which the baker's memory model certifies."
                 ),
-                context={"max_rows": self.max_rows, "ceiling": MAX_ROWS_CEILING},
+                context={"max_rows": self.max_rows, "ceiling": ceiling},
+            )
+        if (self.ranked is not None or self.reduction is not None) and (
+            self.row_ceiling is RowCeiling.NARRATION
+            or self.tool is not MeasurementTool.METRIC_BY_GRAIN
+        ):
+            raise ValidationError(
+                code=BAD_REQUEST,
+                description="A ranked or folded read is a publish-time breakdown of one window.",
             )
         if self.prior_window is not None and self.prior_window.end >= self.window.start:
             raise ValidationError(
@@ -571,6 +608,17 @@ class PreparedMeasurementPlan:
     role: PresentationEvidenceRole
     logical: QueryPlan
     max_rows: int
+    ceiling: RowCeiling = RowCeiling.NARRATION
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedRanking:
+    """A ranked request's planned rank and population reads, found in its batch at execution."""
+
+    restriction: RankedRestriction
+    rank: QueryPlan
+    population: tuple[QueryPlan, ...]
+    key_columns: tuple[str, str]
 
 
 @dataclass(frozen=True, slots=True)
@@ -581,6 +629,7 @@ class PreparedMeasurementOperation:
     applied: dict[str, str]
     current: QueryPlan
     prior: QueryPlan | None = None
+    ranking: PreparedRanking | None = None
 
     @property
     def plans(self) -> tuple[PreparedMeasurementPlan, ...]:
@@ -589,6 +638,7 @@ class PreparedMeasurementOperation:
             PresentationEvidenceRole.CURRENT,
             self.current,
             self.request.max_rows,
+            self.request.row_ceiling,
         )
         if self.prior is None:
             return (current,)
@@ -598,6 +648,7 @@ class PreparedMeasurementOperation:
                 PresentationEvidenceRole.COMPARATOR,
                 self.prior,
                 self.request.max_rows,
+                self.request.row_ceiling,
             ),
         )
 
@@ -671,16 +722,24 @@ class PresentationMeasurementQueryResult:
 
 @dataclass(frozen=True, slots=True)
 class PresentationMeasurementAnswerSlot:
-    """One prepared presentation role's shaped answer, or stable absence."""
+    """One prepared presentation role's shaped answer, or stable absence.
+
+    A held slot carries `answer`; a reduction slot carries `folded` (ADR-143), never both.
+    """
 
     role: PresentationEvidenceRole
     logical: QueryPlan
     answer: ShapedResponse | None
+    folded: FoldResult[Any] | None = None
+
+    def __post_init__(self) -> None:
+        if self.answer is not None and self.folded is not None:
+            raise ValueError("a presentation slot is held or folded, never both.")
 
     @property
     def present(self) -> bool:
         """Whether exact evidence was present and the governed query ran."""
-        return self.answer is not None
+        return self.answer is not None or self.folded is not None
 
 
 @dataclass(frozen=True, slots=True)
@@ -707,12 +766,15 @@ def prepare_batch(requests: tuple[MeasurementToolRequest, ...]) -> PreparedMeasu
         later, earlier = _plan_requests(request, applied)
         current = plan(request.catalog, later, shape)
         prior = plan(request.catalog, earlier, shape) if earlier is not None else None
+        if request.reduction is not None:
+            require_foldable(current)
         operations.append(
             PreparedMeasurementOperation(
                 request=request,
                 applied=applied,
                 current=current,
                 prior=prior,
+                ranking=None if request.ranked is None else _prepared_ranking(request, current),
             )
         )
         for contract in request.contributing_contracts:
@@ -723,6 +785,47 @@ def prepare_batch(requests: tuple[MeasurementToolRequest, ...]) -> PreparedMeasu
         contracts=tuple(contracts_by_id.values()),
         now=requests[0].computed_at,
     )
+
+
+def _prepared_ranking(request: MeasurementToolRequest, restricted: QueryPlan) -> PreparedRanking:
+    """Plan a ranked request's rank and population reads exactly as their own requests would.
+
+    Each is planned through the same defaults and filters as a breakdown of that metric over
+    that window, so it equals the batch's own read of it (`_ranked_read` finds it there).
+    """
+    restriction = restricted_ranking(request)
+    key_columns = (GRAIN_COLUMNS[restriction.key], GRAIN_COLUMNS["marketplace"])
+
+    def _planned(metric: str, window: DateRange) -> QueryPlan:
+        read = replace(
+            request,
+            metric_name=metric,
+            window=window,
+            grains=(restriction.key, "marketplace"),
+            ranked=None,
+            reduction=None,
+        )
+        shape = read.shape
+        later, _ = _plan_requests(read, _lens_defaults(read, shape))
+        return plan(read.catalog, later, shape)
+
+    rank = _planned(restriction.rank_metric, restriction.rank_window)
+    population = tuple(_planned(metric, window) for metric, window in restriction.population)
+    require_rankable(
+        restriction,
+        restricted=restricted,
+        rank=rank,
+        population=population,
+        key_columns=key_columns,
+    )
+    return PreparedRanking(restriction, rank, population, key_columns)
+
+
+def restricted_ranking(request: MeasurementToolRequest) -> RankedRestriction:
+    """Return a ranked request's restriction (a defect to ask of one without)."""
+    if request.ranked is None:  # pragma: no cover - callers branch on `ranked` first
+        raise InvariantError(PUBLISH_TIME_ONLY, "a ranked read was expected.")
+    return request.ranked
 
 
 def bind_batch(
@@ -748,6 +851,11 @@ def execute_batch(
     operations: list[_Operation] = []
     offset = 0
     for prepared in bound.prepared.operations:
+        if prepared.ranking is not None or prepared.request.reduction is not None:
+            raise InvariantError(
+                PUBLISH_TIME_ONLY,
+                "a ranked or folded read reached the chat execution path.",
+            )
         bound_current = bound.selection.plans[offset]
         offset += 1
         bound_prior = None
@@ -767,7 +875,9 @@ def execute_batch(
             )
         )
     requests = tuple(
-        QueryRequest(plan=plan, max_rows=operation.request.max_rows)
+        QueryRequest(
+            plan=plan, max_rows=operation.request.max_rows, ceiling=operation.request.row_ceiling
+        )
         for operation in operations
         for plan in (operation.bound_current, operation.bound_prior)
         if plan is not None
@@ -903,20 +1013,90 @@ def _execution_phase(queries: QueryPort, name: str) -> Generator[None]:
         yield
 
 
+def _presentation_requests(
+    prepared: PreparedMeasurementBatch, inspection: PresentationEvidenceInspectionResult
+) -> tuple[QueryRequest | None, ...]:
+    """Build each present slot's complete request; a ranked one binds its batch's own reads."""
+    plans = prepared.plans
+    _require_exact_inspection(plans, inspection)
+    operations = tuple(operation for operation in prepared.operations for _ in operation.plans)
+    requests: list[QueryRequest | None] = []
+    for operation, expected, inspected in zip(operations, plans, inspection.slots, strict=True):
+        if inspected.bound is None:
+            requests.append(None)
+            continue
+        ranked = None
+        if operation.ranking is not None:
+            ranked = _ranked_read(operation.ranking, prepared, inspection)
+            if ranked is None:
+                requests.append(None)
+                continue
+        requests.append(
+            QueryRequest(
+                plan=inspected.bound,
+                max_rows=expected.max_rows,
+                ceiling=expected.ceiling,
+                ranked=ranked,
+            )
+        )
+    return tuple(requests)
+
+
+def _ranked_read(
+    ranking: PreparedRanking,
+    prepared: PreparedMeasurementBatch,
+    inspection: PresentationEvidenceInspectionResult,
+) -> RankedRead | None:
+    """Bind a ranked read to the batch's own bound reads of its rank and population.
+
+    The population is the very reads the stated total is measured from, so the ranked set and
+    the total can't drift apart. A declared read missing from the batch is a defect; one whose
+    evidence is absent leaves the ranked read absent too.
+    """
+    rows = tuple(
+        (expected.logical, inspected.bound)
+        for expected, inspected in zip(prepared.plans, inspection.slots, strict=True)
+    )
+
+    def _bound(logical: QueryPlan) -> BoundQueryPlan | bool | None:
+        for candidate, bound in rows:
+            if candidate == logical:
+                return bound
+        return False
+
+    found = tuple(_bound(item) for item in (ranking.rank, *ranking.population))
+    if any(item is False for item in found):
+        raise InvariantError(
+            RANKED_POPULATION_UNBOUND,
+            "a ranked read's population is not a read of its own batch.",
+            context={"metric": ranking.restriction.rank_metric},
+        )
+    if any(item is None for item in found):
+        return None
+    rank, *population = cast("tuple[BoundQueryPlan, ...]", found)
+    return RankedRead(
+        restriction=ranking.restriction,
+        key_column=ranking.key_columns[0],
+        marketplace_column=ranking.key_columns[1],
+        population=tuple(population),
+        rank=rank,
+    )
+
+
 def execute_presentation_query_batch(
     prepared: PreparedMeasurementBatch,
     inspection: PresentationEvidenceInspectionResult,
     tooling: MeasurementExecutionTooling,
 ) -> PresentationMeasurementQueryResult:
-    """Validate the complete inspection, then execute each present raw plan exactly once."""
+    """Validate the complete inspection, then execute each present raw plan exactly once.
+
+    Raw results for the one caller that shapes nothing itself; a fold slot has no raw result,
+    so one here is a defect.
+    """
+    if any(operation.request.reduction is not None for operation in prepared.operations):
+        raise InvariantError(PUBLISH_TIME_ONLY, "a folded read has no raw presentation result.")
     plans = prepared.plans
-    _require_exact_inspection(plans, inspection)
-    requests = tuple(
-        None
-        if inspected.bound is None
-        else QueryRequest(plan=inspected.bound, max_rows=expected.max_rows)
-        for expected, inspected in zip(plans, inspection.slots, strict=True)
-    )
+    requests = _presentation_requests(prepared, inspection)
     with _execution_phase(tooling.queries, "query"):
         results = _execute_queries(requests, tooling)
     slots = tuple(
@@ -937,61 +1117,140 @@ def execute_presentation_batch(
     inspection: PresentationEvidenceInspectionResult,
     tooling: MeasurementExecutionTooling,
 ) -> PresentationMeasurementExecutionResult:
-    """Shape present results from the shared exact raw presentation execution seam."""
-    queried = execute_presentation_query_batch(prepared, inspection, tooling)
-    with _execution_phase(tooling.queries, "render"):
-        return _shape_presentation_batch(prepared, inspection, tooling, queried)
+    """Execute every present slot and shape it in its own worker (the shaping seam, ADR-143).
 
-
-def _shape_presentation_batch(  # noqa: PLR0913, PLR0917 -- one closed shaping seam
-    prepared: PreparedMeasurementBatch,
-    inspection: PresentationEvidenceInspectionResult,
-    tooling: MeasurementExecutionTooling,
-    queried: PresentationMeasurementQueryResult,
-) -> PresentationMeasurementExecutionResult:
-    """Shape an already executed presentation batch without further source I/O."""
+    Each distinct request runs once (exact fan-in), and its worker shapes every slot sharing it
+    (held) or folds it (reduction) before returning, so a slot's raw rows are released when its
+    worker returns and at most `query_batch_max_concurrency` slots' raw rows exist at once. The
+    answers are the ones shaping after the whole batch gave: shaping was already per slot and
+    pure.
+    """
+    requests = _presentation_requests(prepared, inspection)
     aligned = tuple(
         (operation, plan) for operation in prepared.operations for plan in operation.plans
     )
-    slots: list[PresentationMeasurementAnswerSlot] = []
-    for (operation, expected), queried_slot in zip(aligned, queried.slots, strict=True):
-        result = queried_slot.result
-        coverage = queried_slot.coverage
-        if result is None or coverage is None:
-            slots.append(PresentationMeasurementAnswerSlot(expected.role, expected.logical, None))
-            continue
-        bound = inspection.slots[len(slots)].bound
-        if bound is None:  # pragma: no cover - raw result presence proves the bound existed
-            raise AssertionError("present presentation query lost its bound plan")
-        selected = PublicationSelection(
-            plans=(bound,),
-            coverage=coverage,
-            qualified_dq=queried_slot.qualified_dq,
+    leaders = _fan_in(requests)
+    followers: dict[int, list[int]] = {}
+    for index, leader in enumerate(leaders):
+        if leader is not None:
+            followers.setdefault(leader, []).append(index)
+
+    def _worker(leader: int) -> tuple[tuple[int, PresentationMeasurementAnswerSlot], ...]:
+        request = requests[leader]
+        if request is None:  # pragma: no cover - a leader is always a present request
+            raise AssertionError("a fan-in leader has no request")
+        operation = aligned[leader][0]
+        if operation.request.reduction is not None:
+            return tuple(
+                (index, _folded_slot(aligned[index], request, inspection.slots[index], tooling))
+                for index in followers[leader]
+            )
+        result = tooling.queries.run(request)
+        return tuple(
+            (index, _shaped_slot(aligned[index], inspection.slots[index], tooling, result))
+            for index in followers[leader]
         )
-        ready = _Operation(
-            request=operation.request,
-            tooling=tooling,
-            applied=operation.applied,
-            current=expected.logical,
-            bound_current=selected.plans[0],
-            selection=selected,
+
+    with _execution_phase(tooling.queries, "query"):
+        shaped = run_bounded(
+            tuple(partial(_worker, leader) for leader in sorted(followers)),
+            tooling.query_batch_max_concurrency,
         )
-        answer = answer_measurement(
-            AnswerRequest(
-                plan=expected.logical,
-                context=operation.request.context,
-                rows=result.rows,
-                suppression=result.suppression,
-                coverage=coverage,
-                applied_defaults=operation.applied,
-                additive=ready.additive,
-                truncated=result.truncated,
-                contract_ids=ready.contract_ids,
-                qualified_dq=queried_slot.qualified_dq,
+    with _execution_phase(tooling.queries, "render"):
+        by_index = {index: slot for group in shaped for index, slot in group}
+        return PresentationMeasurementExecutionResult(
+            tuple(
+                by_index.get(index)
+                or PresentationMeasurementAnswerSlot(expected.role, expected.logical, None)
+                for index, (_operation, expected) in enumerate(aligned)
             )
         )
-        slots.append(PresentationMeasurementAnswerSlot(expected.role, expected.logical, answer))
-    return PresentationMeasurementExecutionResult(tuple(slots))
+
+
+def _slot_operation(  # noqa: PLR0913, PLR0917 -- one slot's operation, plan, evidence and tooling
+    operation: PreparedMeasurementOperation,
+    expected: PreparedMeasurementPlan,
+    inspected: PresentationEvidenceInspectionSlot,
+    tooling: MeasurementExecutionTooling,
+) -> _Operation:
+    """Build the one-plan operation a presentation slot is shaped as."""
+    bound = inspected.bound
+    coverage = inspected.coverage
+    if bound is None or coverage is None:  # pragma: no cover - present slots carry both
+        raise AssertionError("present presentation query lost its bound plan")
+    selected = PublicationSelection(
+        plans=(bound,), coverage=coverage, qualified_dq=inspected.qualified_dq
+    )
+    return _Operation(
+        request=operation.request,
+        tooling=tooling,
+        applied=operation.applied,
+        current=expected.logical,
+        bound_current=bound,
+        selection=selected,
+    )
+
+
+def _shaped_slot(  # noqa: PLR0913, PLR0917 -- one slot, its evidence, tooling and result
+    aligned: tuple[PreparedMeasurementOperation, PreparedMeasurementPlan],
+    inspected: PresentationEvidenceInspectionSlot,
+    tooling: MeasurementExecutionTooling,
+    result: QueryResult,
+) -> PresentationMeasurementAnswerSlot:
+    """Shape one held slot's executed result, as a breakdown of its one plan."""
+    operation, expected = aligned
+    ready = _slot_operation(operation, expected, inspected, tooling)
+    return PresentationMeasurementAnswerSlot(
+        expected.role,
+        expected.logical,
+        answer_measurement(_slot_answer_request(ready, inspected, result.rows, result)),
+    )
+
+
+def _slot_answer_request(  # noqa: PLR0913, PLR0917 -- one slot's operation, evidence, rows and read
+    ready: _Operation,
+    inspected: PresentationEvidenceInspectionSlot,
+    rows: tuple[dict[str, str | int | Decimal | None], ...],
+    read: QueryResult | FoldRead,
+) -> AnswerRequest:
+    coverage = inspected.coverage
+    if coverage is None:  # pragma: no cover - present slots carry coverage
+        raise AssertionError("present presentation query lost its coverage")
+    return AnswerRequest(
+        plan=ready.current,
+        context=ready.request.context,
+        rows=rows,
+        suppression=read.suppression,
+        coverage=coverage,
+        applied_defaults=ready.applied,
+        additive=ready.additive,
+        truncated=read.truncated,
+        contract_ids=ready.contract_ids,
+        qualified_dq=inspected.qualified_dq,
+    )
+
+
+def _folded_slot(  # noqa: PLR0913, PLR0917 -- one slot, its request, evidence and tooling
+    aligned: tuple[PreparedMeasurementOperation, PreparedMeasurementPlan],
+    request: QueryRequest,
+    inspected: PresentationEvidenceInspectionSlot,
+    tooling: MeasurementExecutionTooling,
+) -> PresentationMeasurementAnswerSlot:
+    """Stream one reduction slot through a fresh fold; only its bounded summary survives."""
+    operation, expected = aligned
+    factory = operation.request.reduction
+    queries = tooling.queries
+    if factory is None or not isinstance(queries, FoldingQueryPort):
+        raise InvariantError(PUBLISH_TIME_ONLY, "a folded read needs a folding query port.")
+    ready = _slot_operation(operation, expected, inspected, tooling)
+    sink = FoldingAnswer(expected.logical, factory())
+    read = queries.fold(request, sink)
+    folded = sink.finish(
+        _slot_answer_request(ready, inspected, (), read),
+        rows_read=read.rows_read,
+        bytes_scanned=read.bytes_scanned,
+    )
+    return PresentationMeasurementAnswerSlot(expected.role, expected.logical, None, folded)
 
 
 def handle(request: MeasurementToolRequest, tooling: MeasurementTooling) -> ShapedResponse:
@@ -1192,6 +1451,7 @@ def attach_roster(
                 platform_key=contract.platform_key,
                 filters=roster_filters(kind, request.filters),
                 fact=contract.target_table,
+                ceiling=request.row_ceiling,
             )
         )
         for window in windows
@@ -1845,7 +2105,10 @@ def answer_arp_rate(request: MeasurementToolRequest, tooling: MeasurementTooling
         )
     )
     results = _execute_queries(
-        tuple(QueryRequest(plan=item, max_rows=request.max_rows) for item in (sizes, repeats)),
+        tuple(
+            QueryRequest(plan=item, max_rows=request.max_rows, ceiling=request.row_ceiling)
+            for item in (sizes, repeats)
+        ),
         MeasurementExecutionTooling(
             queries=tooling.queries,
             query_batch_max_concurrency=tooling.query_batch_max_concurrency,
@@ -1964,7 +2227,10 @@ def answer_segment_profile_ratio(
     asked = (*segments, *totals)
     bound = bind_batch(prepare_batch(asked), tooling.publications)
     results = _execute_queries(
-        tuple(QueryRequest(plan=item, max_rows=request.max_rows) for item in bound.selection.plans),
+        tuple(
+            QueryRequest(plan=item, max_rows=request.max_rows, ceiling=request.row_ceiling)
+            for item in bound.selection.plans
+        ),
         MeasurementExecutionTooling(
             queries=tooling.queries,
             query_batch_max_concurrency=tooling.query_batch_max_concurrency,
@@ -2609,7 +2875,9 @@ def _query_result(operation: _Operation, bound: BoundQueryPlan) -> QueryResult:
     if bound is operation.bound_prior and operation.prior_result is not None:
         return operation.prior_result
     return operation.tooling.queries.run(
-        QueryRequest(plan=bound, max_rows=operation.request.max_rows)
+        QueryRequest(
+            plan=bound, max_rows=operation.request.max_rows, ceiling=operation.request.row_ceiling
+        )
     )
 
 

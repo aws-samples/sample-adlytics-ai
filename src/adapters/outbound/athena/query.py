@@ -13,8 +13,10 @@ from __future__ import annotations
 
 import random
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
+from enum import StrEnum
 from typing import TYPE_CHECKING, Final, Literal
 
 import boto3
@@ -27,8 +29,9 @@ from adapters.outbound.athena.execution import (
     StatementOutcome,
     StatementRequest,
     await_completion,
-    fetch_rows,
+    iter_pages,
     start_counted,
+    stream_result_rows,
 )
 from adapters.outbound.telemetry.span_context import (
     QueryStatistics,
@@ -37,15 +40,23 @@ from adapters.outbound.telemetry.span_context import (
     correlation,
 )
 from adapters.outbound.telemetry.tracing import ATHENA_QUERY, span, trace_boundary
-from domain.measurement.figures import Withholding, withholding_in
+from domain.measurement.figures import Withholding, WithholdingAccumulator
 from domain.measurement.periodic import PERIOD_END_COLUMN, PERIOD_START_COLUMN
 from domain.measurement.planning import QueryPlan, measure_alias, withheld_rows_alias
 from domain.shared_kernel.errors import DependencyError, ErrorCode, ValidationError
 from domain.shared_kernel.provenance import Suppression
-from ports.outbound.query import PeriodSeriesRequest, QueryRequest, QueryResult, QueryRow
+from ports.outbound.query import (
+    FoldRead,
+    PeriodSeriesRequest,
+    QueryRequest,
+    QueryResult,
+    QueryRow,
+    RowSink,
+)
 
 if TYPE_CHECKING:  # pragma: no cover — kept out of the Lambda import path
     from types_boto3_athena.client import AthenaClient
+    from types_boto3_s3.client import S3Client
 
 __all__ = [
     "ALL_ROWS_WITHHELD",
@@ -56,6 +67,7 @@ __all__ = [
     "THROTTLED_START_MAX_WAIT_SECONDS",
     "AthenaQueryAdapter",
     "AthenaQueryTarget",
+    "ResultTransport",
     "StatementWait",
 ]
 
@@ -115,18 +127,32 @@ BAKE_INVOCATION_WAIT: Final = StatementWait("bake_invocation")
 """The baker: the statement waits within its invocation (ADR-144)."""
 
 
+class ResultTransport(StrEnum):
+    """How a target reads its statements' rows (ADR-143). Closed; no caller has two.
+
+    `PAGED` pages `GetQueryResults` (at most 1,000 rows a call, from an account-wide 100 calls a
+    second): chat and request-time presentation reads, whose results live under a prefix their
+    roles can't read as objects, bounded by `MAX_ROWS_CEILING`. `OBJECT` streams the statement's
+    CSV result object with one `GetObject`, one buffer resident at any row count: the baker only.
+    """
+
+    PAGED = "paged"
+    OBJECT = "object"
+
+
 @dataclass(frozen=True, slots=True)
 class AthenaQueryTarget:
     """One enforced V2 interactive workgroup and current-only generated database.
 
-    `wait` is required with no default: every composition names its policy, so none can
-    silently get another caller's wait (ADR-144).
+    `wait` and `results` are required with no default: every composition names its policy and
+    its transport, so none can silently get another caller's (ADR-144, ADR-143).
     """
 
     workgroup: str
     database: str
     reuse_minutes: int
     wait: StatementWait
+    results: ResultTransport
 
     def __post_init__(self) -> None:
         if not self.workgroup.strip() or not self.database.strip():
@@ -155,29 +181,34 @@ class AthenaQueryAdapter:
     future edit tried to.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 -- the target, its two clients and the injectable jitter
         self,
         target: AthenaQueryTarget,
         client: AthenaClient | None = None,
         random_source: random.Random | None = None,
+        *,
+        s3: S3Client | None = None,
     ) -> None:
         self._target = target
         self._client = client or boto3.client("athena")
+        # The result-object reader's client, made only for a target that reads objects.
+        self._s3 = s3
         # The throttled start's full jitter; injectable so a test fixes the sleeps.
         self._random = random_source or random.Random()  # noqa: S311 -- jitter, not a secret
 
     def run(self, request: QueryRequest) -> QueryResult:
         """Execute a plan and return its rows, or raise a `DependencyError`."""
-        _refuse_withheld_only(request)
-        _refuse_unreadable_suppression(request)
-        logical = request.plan.logical
-        return self._execute(
-            _Statement(
-                compose(request.plan, request.max_rows),
-                logical,
-                logical.selected_columns,
-                request.max_rows,
-            )
+        statement = self._statement(request)
+        held = _Held()
+        read = self._execute(statement, held)
+        return QueryResult(
+            # The statement asked for one row more than requested, which is the only way to
+            # tell "there were exactly this many" from "there were more and you got a page".
+            rows=tuple(held.rows),
+            bytes_scanned=read.bytes_scanned,
+            truncated=read.truncated,
+            # Measured from the rows the statement returned, never asserted. ADR-035.
+            suppression=read.suppression,
         )
 
     def run_series(self, request: PeriodSeriesRequest) -> QueryResult:
@@ -186,22 +217,63 @@ class AthenaQueryAdapter:
         Every plan passes the same preflight `run` applies, before any statement starts, so a
         period Amazon withheld whole refuses the series exactly as it would refuse its own read.
         """
+        statement = self._series_statement(request)
+        held = _Held()
+        read = self._execute(statement, held)
+        return QueryResult(
+            rows=tuple(held.rows),
+            bytes_scanned=read.bytes_scanned,
+            truncated=read.truncated,
+            suppression=read.suppression,
+        )
+
+    def fold(self, request: QueryRequest, sink: RowSink) -> FoldRead:
+        """Execute a plan and hand each kept row to `sink`, holding none (ADR-143)."""
+        return self._execute(self._statement(request), sink)
+
+    def fold_series(self, request: PeriodSeriesRequest, sink: RowSink) -> FoldRead:
+        """Execute a period series and hand each kept row to `sink`, holding none (ADR-143)."""
+        return self._execute(self._series_statement(request), sink)
+
+    @staticmethod
+    def _statement(request: QueryRequest) -> _Statement:
+        _refuse_withheld_only(request)
+        _refuse_unreadable_suppression(request)
+        logical = request.plan.logical
+        return _Statement(
+            compose(request.plan, request.max_rows, request.ranked),
+            logical,
+            logical.selected_columns,
+            request.max_rows,
+        )
+
+    @staticmethod
+    def _series_statement(request: PeriodSeriesRequest) -> _Statement:
         for bound in request.plans:
-            single = QueryRequest(plan=bound, max_rows=request.max_rows)
+            single = QueryRequest(plan=bound, max_rows=request.max_rows, ceiling=request.ceiling)
             _refuse_withheld_only(single)
             _refuse_unreadable_suppression(single)
         logical = request.plans[0].logical
-        return self._execute(
-            _Statement(
-                compose_series(request.plans, request.max_rows),
-                logical,
-                (PERIOD_START_COLUMN, PERIOD_END_COLUMN, *logical.selected_columns),
-                request.max_rows,
-            )
+        return _Statement(
+            compose_series(request.plans, request.max_rows),
+            logical,
+            (PERIOD_START_COLUMN, PERIOD_END_COLUMN, *logical.selected_columns),
+            request.max_rows,
         )
 
+    def _values(
+        self, execution_id: str, outcome: StatementOutcome, cells: int
+    ) -> Iterator[list[str | None]]:
+        """Read a completed statement's rows through the target's one transport."""
+        if self._target.results is ResultTransport.OBJECT:
+            if self._s3 is None:
+                self._s3 = boto3.client("s3")
+            return stream_result_rows(self._s3, outcome, execution_id=execution_id, cells=cells)
+        # Page by page, held or folded: one page is resident while the sink takes its rows.
+        return iter_pages(self._client, execution_id)
+
     @trace_boundary(ATHENA_QUERY)
-    def _execute(self, statement: _Statement) -> QueryResult:
+    def _execute(self, statement: _Statement, sink: RowSink) -> FoldRead:
         """Run one composed statement and shape its rows, or raise a `DependencyError`.
 
         Wrapped in the `athena.query` span observability §3 requires, which did not exist at all
@@ -238,6 +310,7 @@ class AthenaQueryAdapter:
                 statement_kind=STATEMENT_KIND,
                 admission_wait_millis=waited,
                 wait_policy=wait.name,
+                transport=self._target.results.value,
             )
             # ADR-144: the deadline is fixed before the start, so a throttled start's retries
             # come out of the statement's own wait, never on top of it.
@@ -280,12 +353,23 @@ class AthenaQueryAdapter:
                 statistics_unavailable=None if outcome.statistics_present else "statistics_absent",
             )
             collect_query(_statistics("SUCCEEDED", outcome, waited, throttled=throttled))
-            raw = fetch_rows(self._client, execution_id)
             aliases = logical.result_aliases
-            rows = [_as_row(statement.columns, values, aggregates=aliases) for values in raw]
-
-            kept = tuple(rows[:max_rows])
-            truncated = len(rows) > max_rows
+            suppression = _SuppressionAccumulator(logical)
+            rows_read = 0
+            # Each row is mapped, measured for withholding and handed on as it is read; a held
+            # read's sink keeps it, a fold's keeps only its summary. The one row past `max_rows`
+            # is counted, never kept: it is how truncation is told from an exact fit.
+            for values in self._values(
+                execution_id, outcome, len(statement.columns) + len(aliases)
+            ):
+                rows_read += 1
+                if rows_read > max_rows:
+                    continue
+                row = _as_row(statement.columns, values, aggregates=aliases)
+                suppression.add(row)
+                sink.add(row)
+            kept = min(rows_read, max_rows)
+            truncated = rows_read > max_rows
             recording.record(
                 bytes_scanned=outcome.bytes_scanned,
                 cache_hit=outcome.reused_previous_result,
@@ -293,17 +377,14 @@ class AthenaQueryAdapter:
                 planning_millis=outcome.planning_millis,
                 queue_millis=outcome.queue_millis,
                 total_millis=outcome.total_millis,
-                rows_returned=len(kept),
+                rows_returned=kept,
                 truncated=truncated,
             )
-            return QueryResult(
-                # The statement asked for one row more than requested, which is the only way to
-                # tell "there were exactly this many" from "there were more and you got a page".
-                rows=kept,
-                bytes_scanned=outcome.bytes_scanned,
+            return FoldRead(
+                rows_read=rows_read,
                 truncated=truncated,
-                # Measured from the rows the statement returned, never asserted. ADR-035.
-                suppression=_suppression_from(logical, kept),
+                bytes_scanned=outcome.bytes_scanned,
+                suppression=suppression.result(),
             )
 
 
@@ -408,7 +489,40 @@ def _refuse_unreadable_suppression(request: QueryRequest) -> None:
     )
 
 
-def _suppression_from(plan: QueryPlan, rows: tuple[QueryRow, ...]) -> Suppression:
+class _Held:
+    """A held read's sink: keeps every row it is handed (at most `max_rows`), in order."""
+
+    def __init__(self) -> None:
+        self.rows: list[QueryRow] = []
+
+    def add(self, row: QueryRow) -> None:
+        self.rows.append(row)
+
+
+class _SuppressionAccumulator:
+    """`_suppression_from`, one row at a time, so a held and a folded read can't diverge."""
+
+    def __init__(self, plan: QueryPlan) -> None:
+        self._plan = plan
+        self._measured = bool(plan.suppression_columns) or (
+            plan.join is not None and bool(plan.join.suppression_columns)
+        )
+        self._withholding = WithholdingAccumulator(plan)
+
+    def add(self, row: QueryRow) -> None:
+        if self._measured:
+            self._withholding.add(dict(row))
+
+    def result(self) -> Suppression:
+        if not self._measured:
+            return Suppression(rows_suppressed=False)
+        withholding = self._withholding.result()
+        if not withholding.occurred:
+            return Suppression(rows_suppressed=False)
+        return Suppression(rows_suppressed=True, reason=_reason(self._plan, withholding))
+
+
+def _suppression_from(plan: QueryPlan, rows: tuple[QueryRow, ...]) -> Suppression:  # pyright: ignore[reportUnusedFunction] -- the tuple form of the accumulator
     """State what was withheld, measured from the rows that came back.
 
     A fact with no suppression columns cannot have withheld anything — Vendor Central has no
@@ -420,13 +534,10 @@ def _suppression_from(plan: QueryPlan, rows: tuple[QueryRow, ...]) -> Suppressio
     conformed fact (G-28) because a per-delivery value has no meaning at a row several deliveries
     assembled, so an answer says what it measured.
     """
-    if not plan.suppression_columns and (plan.join is None or not plan.join.suppression_columns):
-        return Suppression(rows_suppressed=False)
-
-    withholding = withholding_in(plan, tuple(dict(row) for row in rows))
-    if not withholding.occurred:
-        return Suppression(rows_suppressed=False)
-    return Suppression(rows_suppressed=True, reason=_reason(plan, withholding))
+    accumulator = _SuppressionAccumulator(plan)
+    for row in rows:
+        accumulator.add(row)
+    return accumulator.result()
 
 
 def _reason(plan: QueryPlan, withholding: Withholding) -> str:

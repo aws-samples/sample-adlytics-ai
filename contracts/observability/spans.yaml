@@ -32,6 +32,7 @@ spans:
       - wait_policy
       - wait_limit_s
       - start_throttled_attempts
+      - transport
       - run_id
       - task_id
       - cohort_revision

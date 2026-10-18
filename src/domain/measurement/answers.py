@@ -36,9 +36,11 @@ UTC midnight when vendor days close in PST.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Iterable
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, time
 from decimal import Decimal
+from typing import Any
 
 from domain.catalog.capability import MetricKind
 from domain.catalog.freshness import Coverage
@@ -52,7 +54,15 @@ from domain.measurement.comparison import (
     Ranking,
     RankOrder,
 )
-from domain.measurement.figures import Measurement, measure, total_of, varying_columns
+from domain.measurement.figures import (
+    CurrencyAccumulator,
+    Measurement,
+    figure_from_row,
+    measure,
+    total_of,
+    varying_columns,
+)
+from domain.measurement.folds import Fold, FoldResult, require_foldable
 from domain.measurement.lenses import LENS_DEFAULTS, defaults_for
 from domain.measurement.periodic import GRAIN_SET_COLUMN
 from domain.measurement.planning import GRAIN_NAMES, MEASURE_ALIAS, Combination, QueryPlan
@@ -93,12 +103,15 @@ __all__ = [
     "ComparisonAnswerRequest",
     "DimensionDisplayLabel",
     "DimensionDisplayLabels",
+    "FoldingAnswer",
     "MeasurementContext",
     "RankingAnswerRequest",
     "answer_comparison",
     "answer_measurement",
+    "answer_metadata",
     "answer_ranking",
     "defaults_for",
+    "fold_answer",
     "plan_roster_outcome",
 ]
 
@@ -282,18 +295,6 @@ def answer_measurement(request: AnswerRequest) -> ShapedResponse:
         total=total,
         roster=roster,
     )
-    qualifiers = _typed_qualifiers(
-        _QualifierEvidence(
-            plan=plan,
-            narrative=narrative,
-            coverage=request.coverage,
-            suppression=request.suppression,
-            requested_windows=(plan.window,),
-            truncated=request.truncated,
-            qualified_dq=request.qualified_dq,
-        )
-    )
-
     return ShapedResponse(
         data=ResponseData(
             values=values,
@@ -314,42 +315,142 @@ def answer_measurement(request: AnswerRequest) -> ShapedResponse:
             additivity=additivity,
         ),
         narrative=narrative,
-        metadata=Metadata(
-            facts_read=plan.facts_read,
-            measurement_basis=plan.measurement_basis,
-            # The window the figures describe, which is the window the query filtered to. Not
-            # the loaded window: reporting what is loaded would answer a different question
-            # than the one asked. Whether the data reaches across it is carried by
-            # `freshness_status` and, when it does not, by a narrative sentence naming what is
-            # actually there.
-            coverage_start=_start_of(plan.window),
-            coverage_end=_end_of(plan.window),
-            freshness_status=request.coverage.freshness,
-            actual_coverage_start=(
-                None if request.coverage.window is None else _start_of(request.coverage.window)
-            ),
-            actual_coverage_end=(
-                None if request.coverage.window is None else _end_of(request.coverage.window)
-            ),
-            loaded_at=request.coverage.loaded_at,
-            freshness_reason=request.coverage.failure_reason,
-            time_class=plan.metric.time_class,
-            source_timezone=plan.source_timezone,
-            qualified_dq=request.qualified_dq,
-            suppression=request.suppression,
-            row_count=len(values),
-            computed_at=request.context.computed_at,
-            correlation_id=request.context.correlation_id,
-            resolution_provenance=request.context.resolution_provenance,
-            truncated=request.truncated,
-            semantic_qualifiers=plan.semantic_qualifiers,
-            requested_coverage_intervals=(plan.window,),
-            actual_coverage_intervals=_actual_coverage_intervals(request.coverage),
-            coverage_holes=request.coverage.holes,
-            qualifiers=qualifiers,
-            contract_ids=request.contract_ids,
-        ),
+        metadata=answer_metadata(request, narrative=narrative, row_count=len(values)),
     )
+
+
+def answer_metadata(
+    request: AnswerRequest, *, narrative: tuple[str, ...], row_count: int
+) -> Metadata:
+    """Build a one-window answer's metadata: the one home a held and a folded answer share.
+
+    Coverage intervals and holes, freshness, data-quality caveats, typed qualifiers,
+    suppression, measurement basis and truncation all come from here, so a fold
+    (`fold_answer`, with `row_count = rows_read`) can't state them differently from the held
+    answer over the same rows.
+    """
+    plan = request.plan
+    qualifiers = _typed_qualifiers(
+        _QualifierEvidence(
+            plan=plan,
+            narrative=narrative,
+            coverage=request.coverage,
+            suppression=request.suppression,
+            requested_windows=(plan.window,),
+            truncated=request.truncated,
+            qualified_dq=request.qualified_dq,
+        )
+    )
+    return Metadata(
+        facts_read=plan.facts_read,
+        measurement_basis=plan.measurement_basis,
+        # The window the figures describe, which is the window the query filtered to. Not
+        # the loaded window: reporting what is loaded would answer a different question
+        # than the one asked. Whether the data reaches across it is carried by
+        # `freshness_status` and, when it does not, by a narrative sentence naming what is
+        # actually there.
+        coverage_start=_start_of(plan.window),
+        coverage_end=_end_of(plan.window),
+        freshness_status=request.coverage.freshness,
+        actual_coverage_start=(
+            None if request.coverage.window is None else _start_of(request.coverage.window)
+        ),
+        actual_coverage_end=(
+            None if request.coverage.window is None else _end_of(request.coverage.window)
+        ),
+        loaded_at=request.coverage.loaded_at,
+        freshness_reason=request.coverage.failure_reason,
+        time_class=plan.metric.time_class,
+        source_timezone=plan.source_timezone,
+        qualified_dq=request.qualified_dq,
+        suppression=request.suppression,
+        row_count=row_count,
+        computed_at=request.context.computed_at,
+        correlation_id=request.context.correlation_id,
+        resolution_provenance=request.context.resolution_provenance,
+        truncated=request.truncated,
+        semantic_qualifiers=plan.semantic_qualifiers,
+        requested_coverage_intervals=(plan.window,),
+        actual_coverage_intervals=_actual_coverage_intervals(request.coverage),
+        coverage_holes=request.coverage.holes,
+        qualifiers=qualifiers,
+        contract_ids=request.contract_ids,
+    )
+
+
+class FoldingAnswer:
+    """A held answer's row rules applied one row at a time, into a fold (ADR-143).
+
+    The sink a streamed read feeds. Each row becomes a figure by `figure_from_row`, its
+    currency is checked by the shared accumulator, and the figure goes to the fold; no row is
+    kept. `finish` states the result with the one metadata builder a held answer uses.
+    """
+
+    def __init__(self, plan: QueryPlan, fold: Fold[Any]) -> None:
+        require_foldable(plan)
+        self._plan = plan
+        self._fold = fold
+        self._currency = CurrencyAccumulator(plan)
+        self._figures = 0
+        self.undefined = 0
+
+    def add(self, row: dict[str, str | int | Decimal | None]) -> None:
+        """Read one row into a figure and fold it; a row with no figure is counted."""
+        code = self._currency.add(row) if self._plan.units is UnitKind.CURRENCY else None
+        figure = figure_from_row(self._plan, row, code)
+        if figure is None:
+            self.undefined += 1
+            return
+        self._figures += 1
+        self._fold.add(figure)
+
+    def finish(
+        self, request: AnswerRequest, *, rows_read: int, bytes_scanned: int
+    ) -> FoldResult[Any]:
+        """State the fold's summary with the held answer's metadata over the same rows.
+
+        `request` carries the read's suppression and truncation (rows read past `max_rows`);
+        a fold that overflowed its bound is truncated too, so it refuses the same way.
+        """
+        plan = self._plan
+        truncated = request.truncated or self._fold.overflowed
+        stated = replace(request, rows=(), truncated=truncated)
+        units: Units | None = None
+        if self._figures:
+            if plan.units is UnitKind.CURRENCY:
+                code = self._currency.result()
+                units = None if code is None else Units(kind=UnitKind.CURRENCY, currency_code=code)
+            else:
+                units = Units(kind=plan.units)
+        qualifiers = _qualifiers_for(stated, empty=not self._figures)
+        narrative = (
+            *_opening_lines(qualifiers, _restatement_line(plan)),
+            *_closing_lines(qualifiers),
+        )
+        return FoldResult(
+            value=self._fold.value(),
+            rows_read=rows_read,
+            truncated=truncated,
+            units=units,
+            bytes_scanned=bytes_scanned,
+            metadata=answer_metadata(stated, narrative=narrative, row_count=rows_read),
+        )
+
+
+def fold_answer(
+    request: AnswerRequest, rows: Iterable[dict[str, str | int | Decimal | None]], fold: Fold[Any]
+) -> FoldResult[Any]:
+    """Fold `rows` by `answer_measurement`'s rules: the same figures, units, caveats, truncation.
+
+    The held and the folded answer over one eligible plan's rows agree on every figure the fold
+    keeps and on the metadata (`tests/unit/test_fold_answer_parity.py`).
+    """
+    sink = FoldingAnswer(request.plan, fold)
+    count = 0
+    for row in rows:
+        count += 1
+        sink.add(row)
+    return sink.finish(request, rows_read=count, bytes_scanned=0)
 
 
 def _requested_windows(current: DateRange, prior: DateRange | None = None) -> tuple[DateRange, ...]:

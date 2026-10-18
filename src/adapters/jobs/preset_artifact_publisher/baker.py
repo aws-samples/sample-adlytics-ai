@@ -85,6 +85,7 @@ from adapters.outbound.athena.query import (
     BAKE_INVOCATION_WAIT,
     AthenaQueryAdapter,
     AthenaQueryTarget,
+    ResultTransport,
 )
 from adapters.outbound.bake_sources import BakeClock, BakeQueryCapture, BakeSourceReads
 from adapters.outbound.commerce_identity import load_commerce_identity_bridge
@@ -156,11 +157,14 @@ from ports.outbound.preset_artifacts import (
     PresetArtifactPointerStorePort,
 )
 from ports.outbound.query import (
+    FoldingQueryPort,
+    FoldRead,
     PeriodSeriesQueryPort,
     PeriodSeriesRequest,
     QueryPort,
     QueryRequest,
     QueryResult,
+    RowSink,
 )
 
 __all__ = [
@@ -241,7 +245,17 @@ class AthenaBatchAdmission:
             lambda: cast("PeriodSeriesQueryPort", self._queries).run_series(request)
         )
 
-    def _admitted(self, execute: Callable[[], QueryResult]) -> QueryResult:
+    def fold(self, request: QueryRequest, sink: RowSink) -> FoldRead:
+        """Stream one read through `sink` under the same FIFO ticket and capacity (ADR-143)."""
+        return self._admitted(lambda: cast("FoldingQueryPort", self._queries).fold(request, sink))
+
+    def fold_series(self, request: PeriodSeriesRequest, sink: RowSink) -> FoldRead:
+        """Stream one period series through `sink` under the same admission (ADR-143)."""
+        return self._admitted(
+            lambda: cast("FoldingQueryPort", self._queries).fold_series(request, sink)
+        )
+
+    def _admitted[R](self, execute: Callable[[], R]) -> R:
         ticket = object()
         queued = monotonic()
         with self._condition:
@@ -1394,6 +1408,7 @@ def application() -> PresetArtifactBakeApplication:
                     database=settings.semantic_v2_current_database,
                     reuse_minutes=settings.athena_result_reuse_max_age_minutes,
                     wait=BAKE_INVOCATION_WAIT,
+                    results=ResultTransport.PAGED,
                 )
             ),
             settings.athena_query_batch_max_concurrency,
@@ -1499,6 +1514,18 @@ class _NoQueries:
 
     def run_series(self, request: PeriodSeriesRequest) -> QueryResult:
         del request
+        raise InvariantError(
+            ErrorCode("PRESET_ARTIFACT_BAKE", 3), "an unconfigured bake reached a query."
+        )
+
+    def fold(self, request: QueryRequest, sink: RowSink) -> FoldRead:
+        del request, sink
+        raise InvariantError(
+            ErrorCode("PRESET_ARTIFACT_BAKE", 3), "an unconfigured bake reached a query."
+        )
+
+    def fold_series(self, request: PeriodSeriesRequest, sink: RowSink) -> FoldRead:
+        del request, sink
         raise InvariantError(
             ErrorCode("PRESET_ARTIFACT_BAKE", 3), "an unconfigured bake reached a query."
         )

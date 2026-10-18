@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass
 from time import monotonic
 from types import SimpleNamespace
@@ -28,9 +29,25 @@ from adapters.outbound.athena.query import (
     INTERACTIVE_WAIT,
     AthenaQueryAdapter,
     AthenaQueryTarget,
+    ResultTransport,
 )
 from domain.shared_kernel.errors import DependencyError, InvariantError, ValidationError
+from domain.shared_kernel.provenance import Suppression
 from ports.outbound.query import QueryRequest
+
+
+class _NoWithholding:
+    """Stands in for the adapter's withholding accumulator over a stub plan."""
+
+    def __init__(self, _plan: object) -> None:
+        return None
+
+    def add(self, _row: object) -> None:
+        return None
+
+    def result(self) -> Suppression:
+        return Suppression(rows_suppressed=False)
+
 
 if TYPE_CHECKING:
     from types_boto3_athena.client import AthenaClient
@@ -76,7 +93,9 @@ def test_withheld_only_publication_refuses_before_athena() -> None:
         ),
     )
     adapter = AthenaQueryAdapter(
-        AthenaQueryTarget("unit-workgroup", "unit-current", 0, INTERACTIVE_WAIT),
+        AthenaQueryTarget(
+            "unit-workgroup", "unit-current", 0, INTERACTIVE_WAIT, ResultTransport.PAGED
+        ),
         cast("AthenaClient", _NoAthenaCalls()),
     )
 
@@ -135,14 +154,14 @@ def _composed_adapter(
     monkeypatch.setattr(athena_query, "compose", composed)
     monkeypatch.setattr(athena_query, "start_counted", started)
 
-    def fetched(*_arguments: object) -> list[list[str | None]]:
-        return []
+    def fetched(*_arguments: object) -> Iterator[list[str | None]]:
+        return iter([])
 
-    monkeypatch.setattr(athena_query, "fetch_rows", fetched)
-    monkeypatch.setattr(athena_query, "_suppression_from", nothing)
+    monkeypatch.setattr(athena_query, "iter_pages", fetched)
+    monkeypatch.setattr(athena_query, "_SuppressionAccumulator", _NoWithholding)
     if client is None:
         monkeypatch.setattr(athena_query, "await_completion", completion)
-    target = AthenaQueryTarget("unit-workgroup", "unit-current", 0, wait)
+    target = AthenaQueryTarget("unit-workgroup", "unit-current", 0, wait, ResultTransport.PAGED)
     return AthenaQueryAdapter(target, cast("AthenaClient", client or object())), recorded
 
 
@@ -153,7 +172,7 @@ def _plan_request() -> Any:
         selected_columns=(),
         result_aliases=(),
     )
-    return SimpleNamespace(plan=SimpleNamespace(logical=logical), max_rows=10)
+    return SimpleNamespace(plan=SimpleNamespace(logical=logical), max_rows=10, ranked=None)
 
 
 def test_the_interactive_wait_limits_thirty_seconds_and_the_bake_its_deadline(
