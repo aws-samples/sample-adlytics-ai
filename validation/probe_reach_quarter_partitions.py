@@ -455,9 +455,17 @@ def ask_chat(current: Any, now: datetime) -> dict[str, dict[str, object]]:
         except DependencyError:
             raise
         except AdlyticsError as error:
-            outcomes[label] = {"outcome": "refused", "code": str(error.code)}
+            # The wrapped cause's code, when a refusal names one (a roster refusal does).
+            reason = error.context.get("reason")
+            outcomes[label] = {
+                "outcome": "refused",
+                "code": str(error.code),
+                "cause_code": reason
+                if isinstance(reason, str) and reason.startswith("ADLY-")
+                else None,
+            }
             continue
-        outcomes[label] = {"outcome": "answered", "code": None}
+        outcomes[label] = {"outcome": "answered", "code": None, "cause_code": None}
     return outcomes
 
 

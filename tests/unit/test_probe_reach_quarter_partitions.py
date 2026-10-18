@@ -224,6 +224,6 @@ def test_chat_outcomes_are_recorded_per_question(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(probe, "MeasurementDispatch", lambda **_keywords: _Refusing())  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
     outcomes = probe.ask_chat(object(), cast("Any", None))
     assert outcomes == {
-        label: {"outcome": "refused", "code": str(SELECTION_TOO_LARGE)}
+        label: {"outcome": "refused", "code": str(SELECTION_TOO_LARGE), "cause_code": None}
         for label, _ in probe.CHAT_QUESTIONS
     }
