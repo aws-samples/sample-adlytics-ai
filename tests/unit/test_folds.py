@@ -3,17 +3,24 @@
 
 from __future__ import annotations
 
+from dataclasses import FrozenInstanceError
 from datetime import date
 from decimal import Decimal
+from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 
+from domain.catalog.capability import MetricKind
 from domain.measurement.figures import Figure
 from domain.measurement.folds import (
+    FOLD_INELIGIBLE,
     FOLD_UNDECLARED_CELL,
     AuthorizedDailySums,
+    FoldResult,
     KeysByGroup,
     ObservedKeys,
+    require_foldable,
 )
 from domain.shared_kernel.errors import InvariantError
 
@@ -88,3 +95,76 @@ def test_authorized_daily_sums_refuse_an_undeclared_day() -> None:
 def test_a_fold_keeps_at_least_one_entry(bound: int) -> None:
     with pytest.raises(ValueError, match="at least one"):
         ObservedKeys(("campaign_key",), max_kept=bound)
+
+
+def test_the_fold_error_codes_are_stable() -> None:
+    assert (str(FOLD_INELIGIBLE), str(FOLD_UNDECLARED_CELL)) == (
+        "ADLY-FOLD-0001",
+        "ADLY-FOLD-0002",
+    )
+
+
+def test_a_large_bound_is_enforced_by_value_not_identity() -> None:
+    """Paired with the small bounds above: a bound past the small-int cache still holds."""
+    fold = ObservedKeys(("campaign_key",), max_kept=300)
+    for index in range(301):
+        fold.add(_figure(campaign_key=f"c{index}"))
+    assert fold.overflowed and len(fold.value()) == 300
+
+
+def test_authorized_daily_sums_declare_subsets_times_days_and_refuse_either_empty() -> None:
+    days = (*DAYS, date(2026, 8, 3))
+    fold = AuthorizedDailySums(
+        {"a": frozenset({"c1"}), "b": frozenset({"c2"})},
+        days,
+        identity="campaign_key",
+        day_column="date_key",
+    )
+    assert fold.max_kept == 6
+    with pytest.raises(ValueError, match="at least one subset"):
+        AuthorizedDailySums({}, days, identity="campaign_key", day_column="date_key")
+    with pytest.raises(ValueError, match="at least one subset"):
+        AuthorizedDailySums(
+            {"a": frozenset({"c1"})}, (), identity="campaign_key", day_column="date_key"
+        )
+
+
+def _plan(kind: MetricKind, measures: int) -> Any:
+    return SimpleNamespace(
+        metric=SimpleNamespace(kind=kind, name="fictional"),
+        measures=tuple(f"m{index}" for index in range(measures)),
+        join=None,
+        roster=None,
+    )
+
+
+@pytest.mark.parametrize(
+    ("kind", "measures", "problem"),
+    [
+        (MetricKind.RATIO, 1, "not a simple metric"),
+        (MetricKind.SIMPLE, 2, "not one measure"),
+    ],
+)
+def test_require_foldable_refuses_each_ineligible_shape(
+    kind: MetricKind, measures: int, problem: str
+) -> None:
+    """Paired: a simple one-measure plan passes; each other shape is refused with its reason."""
+    require_foldable(_plan(MetricKind.SIMPLE, 1))
+    with pytest.raises(InvariantError) as raised:
+        require_foldable(_plan(kind, measures))
+    assert raised.value.code == FOLD_INELIGIBLE
+    assert raised.value.context["problem"] == problem
+
+
+def test_a_fold_result_is_frozen_and_slotted() -> None:
+    result = FoldResult(
+        value=(),
+        rows_read=0,
+        truncated=False,
+        units=None,
+        bytes_scanned=0,
+        metadata=cast("Any", None),
+    )
+    with pytest.raises(FrozenInstanceError):
+        result.rows_read = 1  # type: ignore[misc]
+    assert not hasattr(result, "__dict__")
