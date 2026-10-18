@@ -301,11 +301,14 @@ class BakeMemoryTerms:
 
 
 BAKE_MEMORY_TERMS = BakeMemoryTerms(
-    raw=1_200,
-    shaped=1_200,
-    kept=400,
-    render=4_000,
-    measured="provisional upper estimates, pending the row-ceiling probe's P1",
+    raw=987,
+    shaped=930,
+    kept=241,
+    render=10_467,
+    measured=(
+        "row-ceiling probe P1, 2026-10-18: tracemalloc, the maximum over 3 runs at 10k, 30k and "
+        "50k rows; B_render is the Retail render's own structures per product"
+    ),
 )
 """The measured per-row terms; ADR-143's Decision cites them by date."""
 

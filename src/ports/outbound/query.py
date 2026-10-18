@@ -55,12 +55,13 @@ partial and must say so. Capping the request keeps that decision visible instead
 letting a caller ask for a million rows and quietly receive a page.
 """
 
-BAKE_MAX_ROWS: Final = 50_000
+BAKE_MAX_ROWS: Final = 10_000
 """The most rows one publish-time held answer may keep (ADR-143): a memory-sized defect guard.
 
 Sized by the baker's memory model only (`bakeability.resident`), never by narration: a bake
 renders a page, it does not narrate. Finite on purpose, because an unbounded fetch crashed dev
-(2026-08-22). Provisional at the owner's proposal until the row-ceiling probe sets it.
+(2026-08-22). Derived by the row-ceiling probe on 2026-10-18 at 1,024 MiB (ADR-143 decision 6);
+re-derived after bodies stream and the baker's memory changes.
 """
 
 BAKE_LONGEST_WINDOW_DAYS: Final = 31

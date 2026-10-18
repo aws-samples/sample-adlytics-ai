@@ -1408,7 +1408,9 @@ def application() -> PresetArtifactBakeApplication:
                     database=settings.semantic_v2_current_database,
                     reuse_minutes=settings.athena_result_reuse_max_age_minutes,
                     wait=BAKE_INVOCATION_WAIT,
-                    results=ResultTransport.PAGED,
+                    # ADR-143: the baker streams each result object from its bake/ prefix;
+                    # the probe's reader parity and reuse checks passed on 2026-10-18.
+                    results=ResultTransport.OBJECT,
                 )
             ),
             settings.athena_query_batch_max_concurrency,
