@@ -12,6 +12,8 @@ so the slice's live checks on dev are pending. Amends
 returns, see its 2026-10-08 amendment) and
 [ADR-071](adr-071-reach-the-full-campaign-estate-through-baked-ordered-segments.md) when accepted.
 
+> **Proposed amendment, 2026-10-18.** [ADR-145](adr-145-serve-ten-thousand-campaigns-with-a-sharded-roster-and-streamed-writes.md) (Proposed) would shard each filter sibling's name roster into ordered sibling bodies and move every filter's segment descriptors from its custody into one sharded custody digest index per publication. This decision stays as written until ADR-145 is accepted.
+
 ## Context
 
 The owner's coverage gap 1 is a DSP versus sponsored split and filter. Campaigns has no channel filter

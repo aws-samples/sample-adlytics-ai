@@ -2,6 +2,7 @@
 
 Date: 2026-09-15
 Status: Accepted — parent artifact serving implemented in development; displayed-detail bake remains pending
+> **Proposed amendment, 2026-10-18.** [ADR-146](adr-146-publish-the-reach-quarter-or-retire-it-on-measured-partitions.md) (Proposed) would, under its measured branch (a), apply the exact-partition bound per pack at the bake pin, as decision point 5 already attests bakes; or, under branch (d) if the owner chooses it, attest a quarter through one precomputed manifest item per pack that moves in the same transaction as the publications it lists. This decision stays in force, unchanged, until ADR-146 is accepted.
 > **Amendment, 2026-10-16.** [ADR-139](adr-139-serve-designed-absence-and-advance-pages-only-with-a-grantable-cohort.md): a GRAPH cohort moves `CURRENT` only under a binding that authorizes serving, and a page's designed absence serves its typed absence or last-bound body. Current serve semantics: [preset artifact publisher, "The serve path"](../ui/preset-artifact-publisher.md#the-serve-path).
 
 > **Proposed amendments, 2026-10-07.** [ADR-116](adr-116-give-every-tab-one-time-model-and-one-window.md) (Proposed) would add `resolved_window` and `comparison_window` to the pointer, so drill links name the target's dates. [ADR-127](adr-127-serve-the-campaigns-channel-filter-from-render-only-siblings-of-one-bake.md) (Proposed) would bind render-only channel filter siblings under one pointer. This decision stays in force, unchanged, until they're accepted.
