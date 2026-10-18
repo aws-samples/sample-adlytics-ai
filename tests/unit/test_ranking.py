@@ -5,9 +5,11 @@ from __future__ import annotations
 
 import pathlib
 import re
-from dataclasses import replace
+from dataclasses import FrozenInstanceError, replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 from publication_support import StubPublications
@@ -25,14 +27,18 @@ from adapters.jobs.preset_artifact_publisher.retail_source import (
 )
 from adapters.outbound.athena.composition import compose
 from adapters.outbound.metric_dictionary import load_catalog
+from domain.catalog.capability import MetricKind
 from domain.measurement.ranking import (
     RANK_ORDER,
+    RANKED_INVARIANT,
     RANKING_INELIGIBLE,
     RankDirection,
     RankedProjection,
+    RankedRead,
     RankedRestriction,
     RankedValue,
     RankField,
+    require_rankable,
 )
 from domain.presentation.retail_health import RETAIL_HEALTH_MAX_ROWS, RETAIL_HEALTH_TREND_METRICS
 from domain.shared_kernel.errors import InvariantError, ValidationError
@@ -240,3 +246,132 @@ def test_a_ranked_or_folded_request_is_refused_on_the_narration_ceiling() -> Non
 
     with pytest.raises(ValidationError, match="publish-time"):
         replace(keys, row_ceiling=RowCeiling.NARRATION)
+
+
+# --- The restriction's own rules, on fictional stub plans (each refusal paired with a pass) ----
+
+_KEY, _MARKET = "amazon_asin", "marketplace_key"
+
+
+def _stub(  # noqa: PLR0913 -- one stub plan's closed set of eligibility fields
+    metric: str,
+    window: DateRange,
+    *,
+    group_by: tuple[str, ...] = (_KEY, _MARKET),
+    kind: MetricKind = MetricKind.SIMPLE,
+    measures: int = 1,
+    join: object = None,
+    roster: object = None,
+) -> Any:
+    return SimpleNamespace(
+        metric=SimpleNamespace(name=metric, kind=kind),
+        window=window,
+        group_by=group_by,
+        measures=tuple(f"m{index}" for index in range(measures)),
+        join=join,
+        roster=roster,
+        suppression_columns=(),
+        periodic=False,
+    )
+
+
+_RESTRICTION = RankedRestriction(
+    key="product",
+    rank_metric="metric_b",
+    rank_window=PERIOD,
+    population_metrics=("metric_b", "metric_c"),
+    population_windows=(PERIOD, PRIOR),
+    n=1,
+    projection=RankedProjection.RANKED_KEYS,
+)
+
+
+def _population(**changes: Any) -> tuple[Any, ...]:
+    return tuple(_stub(metric, window, **changes) for metric, window in _RESTRICTION.population)
+
+
+def _rankable(
+    *,
+    rank: Any = None,
+    population: tuple[Any, ...] | None = None,
+    restricted: Any = None,
+) -> None:
+    require_rankable(
+        _RESTRICTION,
+        restricted=restricted if restricted is not None else _stub("metric_b", PERIOD),
+        rank=rank if rank is not None else _stub("metric_b", PERIOD),
+        population=population if population is not None else _population(),
+        key_columns=(_KEY, _MARKET),
+    )
+
+
+def test_the_ranking_error_codes_are_stable() -> None:
+    assert (str(RANKING_INELIGIBLE), str(RANKED_INVARIANT)) == (
+        "ADLY-RANKING-0001",
+        "ADLY-RANKING-0002",
+    )
+
+
+@pytest.mark.parametrize(
+    ("change", "problem"),
+    [
+        ({"rank": _stub("metric_a", PERIOD)}, "not the declared rank read"),
+        ({"rank": _stub("metric_z", PERIOD)}, "not the declared rank read"),
+        ({"rank": _stub("metric_b", PRIOR)}, "not the declared rank read"),
+        ({"population": _population()[:-1]}, "not the declared population"),
+        ({"population": (*_population(), _stub("metric_z", PRIOR))}, "not the declared population"),
+        ({"population": tuple(reversed(_population()))}, "not the declared population"),
+        ({"rank": _stub("metric_b", PERIOD, measures=2)}, "not a simple one-measure metric"),
+        ({"rank": _stub("metric_b", PERIOD, kind=MetricKind.RATIO)}, "simple"),
+        ({"population": _population(group_by=(_KEY,))}, "not at the ranked grain"),
+        ({"population": _population(group_by=(_KEY, _MARKET, "x"))}, "not at the ranked grain"),
+        ({"population": _population(group_by=("a", "b"))}, "not at the ranked grain"),
+        ({"restricted": _stub("metric_b", PERIOD, join=object())}, "joined or rostered"),
+        ({"restricted": _stub("metric_b", PERIOD, roster=object())}, "joined or rostered"),
+        ({"restricted": _stub("metric_b", PERIOD, group_by=(_MARKET,))}, "without the ranked key"),
+    ],
+)
+def test_each_ineligible_ranked_read_is_refused(change: dict[str, Any], problem: str) -> None:
+    """Paired with the eligible stubs: each one change is refused with its own reason."""
+    _rankable()
+    with pytest.raises(InvariantError) as raised:
+        _rankable(**change)
+    assert raised.value.code == RANKING_INELIGIBLE
+    assert problem in str(raised.value.context["problem"])
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        ({"n": True}, "at least one key"),
+        ({"key": " "}, "names its key"),
+        ({"rank_metric": " "}, "names its key"),
+        ({"population_metrics": ()}, "declares its population"),
+        ({"population_windows": ()}, "declares its population"),
+        ({"population_metrics": ("metric_b", "metric_b")}, "repeats a metric"),
+        ({"population_windows": (PERIOD, PERIOD)}, "repeats a window"),
+    ],
+)
+def test_a_malformed_restriction_does_not_construct(change: dict[str, Any], message: str) -> None:
+    """Paired with `_RESTRICTION`, which constructs at n = 1."""
+    assert _RESTRICTION.n == 1
+    with pytest.raises(ValueError, match=message):
+        replace(_RESTRICTION, **change)
+
+
+def test_a_ranked_read_binds_exactly_its_declared_population() -> None:
+    bound = cast("Any", object())
+    read = RankedRead(_RESTRICTION, _KEY, _MARKET, (bound,) * 4, bound)
+    with pytest.raises(ValueError, match="exactly its declared population"):
+        RankedRead(_RESTRICTION, _KEY, _MARKET, (bound,) * 3, bound)
+    with pytest.raises(ValueError, match="exactly its declared population"):
+        RankedRead(_RESTRICTION, _KEY, _MARKET, (bound,) * 5, bound)
+    for value in (read, _RESTRICTION, RankedValue("a", 1)):
+        assert not hasattr(value, "__dict__")
+        with pytest.raises(FrozenInstanceError):
+            value.n = 2  # type: ignore[attr-defined, misc]
+
+
+def test_the_order_rule_is_callable_from_a_restriction_value() -> None:
+    rows = (RankedValue("b", 1), RankedValue("a", 1), RankedValue("c", 2))
+    assert [item.key for item in _RESTRICTION.order(rows)] == ["c", "a", "b"]
