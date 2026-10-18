@@ -56,13 +56,16 @@ from adapters.outbound.bake_sources import (
 )
 from adapters.outbound.commerce_identity import load_commerce_identity_bridge
 from adapters.outbound.dynamodb.semantic_state import DynamoCurrentPublications
+from adapters.outbound.media_taxonomy import load_media_taxonomy
 from adapters.outbound.metric_dictionary import load_catalog
 from adapters.outbound.publication_selection import (
     SELECTION_TOO_LARGE,
     PerPackPresentationEvidenceInspection,
     PublicationSelector,
 )
+from adapters.outbound.segment_roster import RosterReaders
 from adapters.outbound.source_pack import load_source_packs
+from adapters.outbound.spend_roster import SpendRosterReader, ad_product_labels
 from adapters.producer.packs import load_query_packs
 from domain.operations.execution_graph_release import BakeRoster
 from domain.semantics.analytical_resolution import AuthorizedAnalyticalScope
@@ -412,11 +415,24 @@ def ask_chat(current: Any, now: datetime) -> dict[str, dict[str, object]]:
             pack.contract_id: pack.effective_cadence_lag_days for pack in load_query_packs(root)
         },
     )
+    queries = cast("Any", EmptyAnswers())
     tooling = MeasurementTooling(
-        queries=cast("Any", EmptyAnswers()),
+        queries=queries,
         publications=selector,
         periods=selector,
         pack_coverage=selector,
+        # Chat's spend roster, as the measurement entrypoint composes it: a per-channel answer
+        # rosters the ad products with spend in the period through the same selector.
+        rosters=RosterReaders(
+            spend=SpendRosterReader(
+                catalog=catalog,
+                contracts=contracts,
+                publications=selector,
+                queries=queries,
+                labels=ad_product_labels(load_media_taxonomy(root)),
+                clock=lambda: now,
+            )
+        ),
     )
     dispatch = MeasurementDispatch(
         catalog=catalog,
