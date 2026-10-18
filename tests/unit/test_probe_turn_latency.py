@@ -1470,3 +1470,9 @@ def test_a_turn_whose_body_is_not_sse_is_recorded_and_the_diagnosis_continues(
     # Paired: a D8 sample turn still refuses a body that isn't a stream.
     with pytest.raises(Exception, match="same_origin_route"):
         probe._call(**call)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_the_persona_signs_in_again_before_its_fifteen_minute_token_expires() -> None:
+    # A run longer than one access token (15 min) refreshes it at 10 min, before any turn 403s.
+    assert probe.needs_sign_in(0.0, 600.0) is True
+    assert probe.needs_sign_in(0.0, 599.0) is False

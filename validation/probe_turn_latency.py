@@ -88,6 +88,10 @@ _HARNESS_LOG_PREFIX = "/aws/bedrock-agentcore/runtimes/harness_"
 _QUERY_TIMEOUT_SECONDS = 90
 # Spans, EMF, and Lambda logs arrive in CloudWatch after the turn; wait before reading them.
 _TELEMETRY_SETTLE_SECONDS = 75
+_SIGN_IN_REFRESH_SECONDS = 600
+"""Sign the persona in again after 10 minutes: its Cognito access token lives 15 (the auth
+stack's `accessTokenValidity`), and the route refuses an expired one with 403, so a run longer
+than one token never sends a turn on an expiring one."""
 _MAX_FILTER_PAGES = 400
 _DURATION = re.compile(r"\bDuration: ([\d.]+) ms")
 _INIT_DURATION = re.compile(r"Init Duration: ([\d.]+) ms")
@@ -822,6 +826,11 @@ def _parser() -> argparse.ArgumentParser:
         help="Where the per-turn telemetry directory is created (default validation/evidence).",
     )
     return parser
+
+
+def needs_sign_in(signed_in_at: float, now: float) -> bool:
+    """Whether the persona's token is old enough to be refreshed before the next turn."""
+    return now - signed_in_at >= _SIGN_IN_REFRESH_SECONDS
 
 
 def _ms(seconds: float | None) -> int | None:
@@ -2105,11 +2114,10 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     ssm = session.client("ssm")
     origin = published_parameter(ssm, args.environment, "publicBaseUrl").rstrip("/")
-    tokens = sign_in(
-        session.client("cognito-idp"),
-        load_persona(ssm, args.environment, "probe-a"),
-        app_client(session, args.environment),
-    )
+    persona = load_persona(ssm, args.environment, "probe-a")
+    client = app_client(session, args.environment)
+    tokens = sign_in(session.client("cognito-idp"), persona, client)
+    signed_in_at = time.monotonic()
     csrf = secrets.token_urlsafe(24)
     logs = _Logs(session)
     groups = _stack_log_groups(session, args.environment)
@@ -2133,6 +2141,9 @@ def main(argv: list[str] | None = None) -> int:
                 else None
             )
             before = None if phase_reads is None else phase_reads.generation()
+            if needs_sign_in(signed_in_at, time.monotonic()):
+                tokens = sign_in(session.client("cognito-idp"), persona, client)
+                signed_in_at = time.monotonic()
             times = _call(
                 origin=origin,
                 token=tokens.access_token,
