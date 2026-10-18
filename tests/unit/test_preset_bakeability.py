@@ -406,3 +406,31 @@ def test_the_page_level_audiences_gate_uses_the_one_campaign_authority() -> None
     gated = audiences_page_plan_count(ROOT)
     assert gated == audiences_bake_plan_count(1, bound)
     assert gated <= certified["audiences#last_complete_month"]
+
+
+def test_every_row_write_term_fits_the_derived_write_allowance() -> None:
+    """ADR-144: half the contract's Lambda timeout, derived; every row fits today (16.6 s)."""
+    assert bakeability.WRITE_ALLOWANCE_SECONDS == BAKE_TASKS["lambda_timeout_seconds"] / 2 == 450
+    assert bakeability.write_allowance_findings() == ()
+    assert all(
+        float(BAKE_TASKS["write_seconds"][str(row["page"])]) <= 450 for row in BAKE_TASKS["roster"]
+    )
+
+
+def test_a_row_whose_write_term_exceeds_the_allowance_fails_the_gate() -> None:
+    terms = {**BAKE_TASKS["write_seconds"], "audiences": 450.1}
+    findings = bakeability.write_allowance_findings(terms)
+    assert [(item.page_id, item.rule) for item in findings] == [("audiences", "write-allowance")]
+    assert "WRITE_ALLOWANCE_SECONDS=450" in findings[0].message
+    # Control: exactly at the allowance fits.
+    assert bakeability.write_allowance_findings({**terms, "audiences": 450.0}) == ()
+
+
+def test_the_gate_prints_the_allowance_and_every_row_write_term(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert bakeability.main() == 0
+    out = capsys.readouterr().out
+    assert "WRITE_ALLOWANCE_SECONDS=450" in out
+    for row in BAKE_TASKS["roster"]:
+        assert f"write {row['page']}#{row['variant']}: write_seconds" in out
