@@ -144,6 +144,14 @@ task. Run, task, grant and page identifiers are never dimensions.
 | `GraphBakeTraceIncomplete` (`graph-bake-trace-incomplete`) | Baker: a succeeded Athena execution whose `athena.query` span carries `statistics_unavailable` | not breaching | the task's `task_summary` line |
 | `GraphServingWithheld` (`graph-serving-withheld`) | Baker finalizer, a 0/1 gauge ([ADR-139](../decisions/adr-139-serve-designed-absence-and-advance-pages-only-with-a-grantable-cohort.md)): `1`, at least once and read from the committed binding, for a cohort whose binding is withheld (`serving_withheld`: a failure entry kept its pages on last-good, including a stale precompute the finalizer settled, ADR-140); `0` only on a fresh `FINALIZED` commit that is not withheld. The Release emits `1` only, at least once, for a withheld binding it completes (a POST_GRANT invariant, ADR-140). A cohort of designed absences only never emits `1` | ignore: only a real `0` clears `ALARM` | the Baker's `finalize serving_withheld` WARNING line, or the Release's `serving_withheld` WARNING (`phase=complete`) (run, `failure_reasons`) |
 
+Each `athena.query` span records its `wait_policy` (`interactive` or `bake_invocation`), the
+`wait_limit_s` it waited at most, and `start_throttled_attempts`, the throttled starts its start
+retried through ([query path](../capabilities/query-path/architecture.md#statement-wait-policies)).
+A bake page's summary sums them as `throttled_starts`: the graph task's `task_summary` line and the
+legacy entry's per-bake `terminal` line both carry it, with `deadline_clamped` when the invocation
+reported negative remaining time. It is a scale signal, not an alarm: a burst the retry absorbed
+changes nothing a user sees.
+
 The four sweep gauges come from one complete sweep. Silence means the detector could not read,
 which `OpenFlowsPastProtocolCeiling` already treats as breaching, so the bake alarms never read
 silence as success. The two Baker counts are events and are absent when nothing happened. A visible

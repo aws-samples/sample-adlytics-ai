@@ -13,6 +13,7 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
+from bake_application_support import apply_with_deadline, legacy_application, remaining_ms
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
@@ -44,13 +45,11 @@ from adapters.jobs.preset_artifact_publisher.baker import (
     AthenaBatchAdmission,
     CampaignPresetArtifactBaker,
     CampaignPresetArtifactSource,
-    PresetArtifactBakeApplication,
     PresetArtifactBaker,
     RegisteredPresetArtifactBaker,
     RetailHealthPresetArtifactBaker,
     UnavailableRetailHealthPresetArtifactSource,
 )
-from adapters.jobs.preset_artifact_publisher.baker import apply_records as apply_bake_records
 from adapters.jobs.preset_artifact_publisher.enqueue import (
     PresetArtifactEnqueueApplication,
     PublicationIntentPlanner,
@@ -334,13 +333,13 @@ def test_o1_node_lock_and_source_key_shapes_fit_dynamodb_at_the_grammar_maxima()
 def test_baker_acknowledges_malformed_intent_and_returns_unavailable_without_persistence() -> None:
     unavailable = BakeUnavailable(INTENT, "page_baker_unavailable")
     baker, persistence = Baker(unavailable), Persistence()
-    application = PresetArtifactBakeApplication(
+    application = legacy_application(
         DECLARED,
         cast("PresetArtifactBaker", baker),
         cast("PresetArtifactPersistencePort", persistence),
     )
 
-    failures = apply_bake_records(
+    failures = apply_with_deadline(
         {
             "Records": [
                 {"messageId": "malformed", "body": "{}"},
@@ -360,13 +359,13 @@ def test_baker_persists_real_bake_request_and_retries_only_its_message_on_failur
     declared = DeclaredBakeIntents((persisted_intent,))
     publication = BakePublication(_request())
     baker, persistence = Baker(publication), Persistence(fail=True)
-    application = PresetArtifactBakeApplication(
+    application = legacy_application(
         declared,
         cast("PresetArtifactBaker", baker),
         cast("PresetArtifactPersistencePort", persistence),
     )
 
-    failures = apply_bake_records(
+    failures = apply_with_deadline(
         {"Records": [{"messageId": "retry", "body": persisted_intent.serialize()}]},
         application,
     )
@@ -567,13 +566,13 @@ def test_baker_routes_completion_through_shared_operation_reporting(
         operations.append(event)
 
     monkeypatch.setattr(baker_module, "report_operation", record_operation)
-    application = PresetArtifactBakeApplication(
+    application = legacy_application(
         DECLARED,
         cast("PresetArtifactBaker", Baker(BakeUnavailable(INTENT, "unavailable"))),
         cast("PresetArtifactPersistencePort", Persistence()),
     )
 
-    result = application.apply(INTENT.serialize())
+    result = application.apply(INTENT.serialize(), remaining_ms=remaining_ms, final=False)
 
     assert isinstance(result, BakeUnavailable)
     assert len(operations) == 1
@@ -596,13 +595,13 @@ def test_baker_routes_failure_and_retry_through_shared_reporting(
 
     monkeypatch.setattr(baker_module, "report_operation", record_operation)
     monkeypatch.setattr(baker_module, "report_error", record_error)
-    application = PresetArtifactBakeApplication(
+    application = legacy_application(
         DECLARED,
         cast("PresetArtifactBaker", Baker(BakeUnavailable(INTENT, "unavailable"), fail=True)),
         cast("PresetArtifactPersistencePort", Persistence()),
     )
 
-    failures = apply_bake_records(
+    failures = apply_with_deadline(
         {"Records": [{"messageId": "retry", "body": INTENT.serialize()}]},
         application,
     )
@@ -758,13 +757,13 @@ def test_d26_the_legacy_apply_reports_unchanged_as_unchanged_and_writes_nothing(
     monkeypatch.setattr(baker_module, "report_operation", record_operation)
     persistence = Persistence()
     revision = PresetArtifactRevision.from_publication_identities(("publication-1",))
-    application = PresetArtifactBakeApplication(
+    application = legacy_application(
         DECLARED,
         cast("PresetArtifactBaker", Baker(BakeUnchanged(INTENT, revision))),
         cast("PresetArtifactPersistencePort", persistence),
     )
 
-    result = application.apply(INTENT.serialize())
+    result = application.apply(INTENT.serialize(), remaining_ms=remaining_ms, final=False)
 
     assert result == BakeUnchanged(INTENT, revision)
     assert persistence.results == []
@@ -780,13 +779,13 @@ def test_d26_control_the_legacy_apply_still_reports_unavailable_as_unavailable(
         operations.append(event)
 
     monkeypatch.setattr(baker_module, "report_operation", record_operation)
-    application = PresetArtifactBakeApplication(
+    application = legacy_application(
         DECLARED,
         cast("PresetArtifactBaker", Baker(BakeUnavailable(INTENT, "page_baker_unavailable"))),
         cast("PresetArtifactPersistencePort", Persistence()),
     )
 
-    application.apply(INTENT.serialize())
+    application.apply(INTENT.serialize(), remaining_ms=remaining_ms, final=False)
 
     assert [operation.outcome for operation in operations] == ["unavailable"]
 
@@ -896,7 +895,7 @@ def test_a_graph_bake_envelope_outside_graph_is_refused_with_zero_effect(
     monkeypatch.setattr(baker_module, "report_error", record_error)
     graph = _GraphConsumer()
     baker = Baker(BakeUnavailable(INTENT, "unavailable"))
-    application = PresetArtifactBakeApplication(
+    application = legacy_application(
         DECLARED,
         cast("PresetArtifactBaker", baker),
         cast("PresetArtifactPersistencePort", Persistence()),
@@ -904,7 +903,7 @@ def test_a_graph_bake_envelope_outside_graph_is_refused_with_zero_effect(
         mode=lambda: AuthorityMode.SHADOW,
     )
 
-    failures = apply_bake_records({"Records": [_graph_record()]}, application)
+    failures = apply_with_deadline({"Records": [_graph_record()]}, application)
 
     assert failures == ("graph-1",)
     assert (graph.consumed, baker.received) == ([], [])
@@ -915,7 +914,7 @@ def test_a_graph_bake_envelope_outside_graph_is_refused_with_zero_effect(
 def test_control_a_graph_bake_envelope_in_graph_reaches_the_graph_bake() -> None:
     graph = _GraphConsumer()
     baker = Baker(BakeUnavailable(INTENT, "unavailable"))
-    application = PresetArtifactBakeApplication(
+    application = legacy_application(
         DECLARED,
         cast("PresetArtifactBaker", baker),
         cast("PresetArtifactPersistencePort", Persistence()),
@@ -923,7 +922,7 @@ def test_control_a_graph_bake_envelope_in_graph_reaches_the_graph_bake() -> None
         mode=lambda: AuthorityMode.GRAPH,
     )
 
-    failures = apply_bake_records({"Records": [_graph_record()]}, application)
+    failures = apply_with_deadline({"Records": [_graph_record()]}, application)
 
     assert failures == ()
     assert len(graph.consumed) == 1 and baker.received == []
@@ -977,7 +976,7 @@ def test_d6_control_the_enqueue_stream_proceeds_in_shadow() -> None:
 def test_d6_the_baker_drops_a_legacy_intent_in_graph_and_acknowledges_it() -> None:
     scripted = _Gate(AuthorityMode.GRAPH)
     baker, persistence = Baker(BakePublication(_request())), Persistence()
-    application = PresetArtifactBakeApplication(
+    application = legacy_application(
         DECLARED,
         cast("PresetArtifactBaker", baker),
         cast("PresetArtifactPersistencePort", persistence),
@@ -985,7 +984,7 @@ def test_d6_the_baker_drops_a_legacy_intent_in_graph_and_acknowledges_it() -> No
         cutover_drop=lambda signal, count: scripted.drops.append((signal, count)),
     )
 
-    failures = apply_bake_records(
+    failures = apply_with_deadline(
         {"Records": [{"messageId": "legacy", "body": INTENT.serialize()}]}, application
     )
 
@@ -997,7 +996,7 @@ def test_d6_the_baker_drops_a_legacy_intent_in_graph_and_acknowledges_it() -> No
 def test_d6_control_the_baker_bakes_a_legacy_intent_in_shadow() -> None:
     scripted = _Gate(AuthorityMode.SHADOW)
     baker = Baker(BakeUnavailable(INTENT, "page_baker_unavailable"))
-    application = PresetArtifactBakeApplication(
+    application = legacy_application(
         DECLARED,
         cast("PresetArtifactBaker", baker),
         cast("PresetArtifactPersistencePort", Persistence()),
@@ -1005,7 +1004,7 @@ def test_d6_control_the_baker_bakes_a_legacy_intent_in_shadow() -> None:
         cutover_drop=lambda signal, count: scripted.drops.append((signal, count)),
     )
 
-    apply_bake_records(
+    apply_with_deadline(
         {"Records": [{"messageId": "legacy", "body": INTENT.serialize()}]}, application
     )
 
@@ -1024,7 +1023,7 @@ def test_agg3_6_a_legacy_write_refused_across_the_cas_is_acknowledged_and_counte
             raise LegacyPointerAfterCutoverError(request.pointer_advance.pointer.partition_key)
 
     persisted = BakeIntent("campaigns", "seven-days")
-    application = PresetArtifactBakeApplication(
+    application = legacy_application(
         DeclaredBakeIntents((persisted,)),
         cast("PresetArtifactBaker", Baker(BakePublication(_request()))),
         cast("PresetArtifactPersistencePort", _Refusing()),
@@ -1032,7 +1031,7 @@ def test_agg3_6_a_legacy_write_refused_across_the_cas_is_acknowledged_and_counte
         cutover_drop=lambda signal, count: scripted.drops.append((signal, count)),
     )
 
-    failures = apply_bake_records(
+    failures = apply_with_deadline(
         {"Records": [{"messageId": "drain", "body": persisted.serialize()}]}, application
     )
 
@@ -1117,7 +1116,7 @@ _COMPOSED_SETTINGS = PresetArtifactBakeSettings(
 
 def _compose_baker(
     monkeypatch: pytest.MonkeyPatch, settings: PresetArtifactBakeSettings, queries: object
-) -> tuple[PresetArtifactBakeApplication, list[tuple[str, object]]]:
+) -> tuple[baker_module.PresetArtifactBakeApplication, list[tuple[str, object]]]:
     """Run `baker.application` with fakes, recording each source factory's `queries`."""
     factories: list[tuple[str, object]] = []
     module = cast("Any", baker_module)
@@ -1164,7 +1163,7 @@ def test_baker_composition_feeds_q_10_into_the_one_admission_every_source_shares
 ) -> None:
     queries = _GatedQueries(release_at=10)
     composed, factories = _compose_baker(monkeypatch, _COMPOSED_SETTINGS, queries)
-    admission = cast("RegisteredPresetArtifactBaker", composed.baker).admission
+    admission = cast("RegisteredPresetArtifactBaker", composed.parts.baker).admission
     assert isinstance(admission, AthenaBatchAdmission)
     # Each roster page's factory receives the one capturable port over the shared admission,
     # never an adapter of its own (plan 4.3: the capture is the source's bind step).
@@ -1183,7 +1182,7 @@ def test_control_a_cap_of_3_observes_exactly_3_in_flight(
     queries = _GatedQueries(release_at=3)
     settings = replace(_COMPOSED_SETTINGS, athena_query_batch_max_concurrency=3)
     composed, _ = _compose_baker(monkeypatch, settings, queries)
-    admission = cast("RegisteredPresetArtifactBaker", composed.baker).admission
+    admission = cast("RegisteredPresetArtifactBaker", composed.parts.baker).admission
     assert isinstance(admission, AthenaBatchAdmission)
     assert _occupancy(admission, 12) == 3
 
@@ -1194,7 +1193,7 @@ def test_an_absent_admission_setting_composes_every_source_as_none(
     queries = _GatedQueries(release_at=1)
     settings = replace(_COMPOSED_SETTINGS, athena_workgroup="")
     composed, factories = _compose_baker(monkeypatch, settings, queries)
-    assert cast("RegisteredPresetArtifactBaker", composed.baker).admission is None
+    assert cast("RegisteredPresetArtifactBaker", composed.parts.baker).admission is None
     # No factory is called without the admission, so none can build an unbounded adapter.
     assert factories == []
     assert queries.calls == 0

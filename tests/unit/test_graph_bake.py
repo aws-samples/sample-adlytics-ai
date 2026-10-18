@@ -843,7 +843,7 @@ def _receive(  # noqa: PLR0913 -- the world, its run, the receive and the record
     assert body is not None
     delivery = baker_module._delivery(record, body)  # pyright: ignore[reportPrivateUsage]
     assert delivery is not None
-    return delivery, bake.graph.consume_v3(delivery)
+    return delivery, bake.graph.consume_v3(delivery, bake.remaining_ms)
 
 
 def _wait_before_next_receive(bake: Bake, delivery: BakeDelivery) -> int:

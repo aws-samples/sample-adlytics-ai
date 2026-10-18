@@ -1283,6 +1283,10 @@ class BakeRoster:
             ],
         )
 
+    def contains(self, key: str) -> bool:
+        """Whether `key` is a roster row; a declared page with no bake source is not (ADR-144)."""
+        return key in self.keys
+
     def row(self, key: str) -> BakeRosterRow:
         """Return the row with `key`; a key outside the roster is an invariant."""
         for item in self.rows:

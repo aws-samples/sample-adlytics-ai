@@ -1766,3 +1766,13 @@ def test_h6_contribute_after_a_lost_bind_returns_the_stored_binding() -> None:
     stored = store.read_serving_binding(run.grant_id)
     assert stored is not None and stored.stale
     assert contributed.binding == stored
+
+
+def test_the_roster_contains_exactly_its_keys_and_row_keeps_its_invariant() -> None:
+    """ADR-144: the legacy entry asks `contains` first, so `row` never sees a non-roster key."""
+    roster = BakeRoster.from_contract()
+    assert all(roster.contains(key) for key in roster.keys)
+    assert roster.contains("workspace#7d") is False
+    # Paired: `row` still refuses the same key, so only the branch keeps it acknowledged.
+    with pytest.raises(DurableBakeEffectInvalidError):
+        roster.row("workspace#7d")

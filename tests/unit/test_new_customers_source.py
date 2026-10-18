@@ -15,6 +15,7 @@ from decimal import Decimal
 from typing import Any, cast
 
 import pytest
+from bake_application_support import apply_with_deadline, legacy_application, remaining_ms
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
@@ -34,13 +35,11 @@ from adapters.jobs.preset_artifact_publisher.bake_results import (
 from adapters.jobs.preset_artifact_publisher.baker import (
     CampaignPresetArtifactBaker,
     NewCustomersPresetArtifactBaker,
-    PresetArtifactBakeApplication,
     RegisteredPresetArtifactBaker,
     UnavailableCampaignPresetArtifactSource,
     UnavailableNewCustomersPresetArtifactSource,
     UnavailablePresetArtifactBaker,
 )
-from adapters.jobs.preset_artifact_publisher.baker import apply_records as apply_bake_records
 from adapters.jobs.preset_artifact_publisher.new_customers_source import (
     NewCustomersArtifactRenderer,
     NewCustomersRenderInput,
@@ -65,6 +64,7 @@ from adapters.outbound.telemetry.reporting import OperationLog, Report
 from domain.measurement.pack_coverage import PackDayVersions
 from domain.measurement.planning import measure_alias
 from domain.measurement.rosters import Roster, RosterEntry
+from domain.operations.execution_graph_release import BakeRoster
 from domain.presentation.insights import InsightSlotId, InsightSlotState
 from domain.presentation.new_customers import (
     NEW_CUSTOMERS_PAGE_ID,
@@ -1269,7 +1269,7 @@ def test_the_hand_off_entry_composes_the_application_and_its_calendar_variants_b
     ]
     assert new_customers_policy(load_v2_page_schemas(root)) == POLICY
     persistence = _Persistence()
-    application = PresetArtifactBakeApplication(
+    application = legacy_application(
         declared,
         RegisteredPresetArtifactBaker(
             bakers={
@@ -1280,9 +1280,10 @@ def test_the_hand_off_entry_composes_the_application_and_its_calendar_variants_b
             roster_pages=("campaigns", "new-customers"),
         ),
         cast("PresetArtifactPersistencePort", persistence),
+        roster=BakeRoster.from_contract(),
     )
     week = BakeIntent(NEW_CUSTOMERS_PAGE_ID, "last_complete_week")
-    assert application.apply(week.serialize()) is not None
+    assert application.apply(week.serialize(), remaining_ms=remaining_ms, final=False) is not None
     ((request,),) = (persistence.published,)
     assert (request.body.page.value, request.body.variant.value) == (
         NEW_CUSTOMERS_PAGE_ID,
@@ -1290,7 +1291,11 @@ def test_the_hand_off_entry_composes_the_application_and_its_calendar_variants_b
     )
     # Control: an undeclared calendar variant of the same page is acknowledged and bakes nothing.
     assert (
-        application.apply(BakeIntent(NEW_CUSTOMERS_PAGE_ID, "last_complete_quarter").serialize())
+        application.apply(
+            BakeIntent(NEW_CUSTOMERS_PAGE_ID, "last_complete_quarter").serialize(),
+            remaining_ms=remaining_ms,
+            final=False,
+        )
         is None
     )
     assert len(persistence.published) == 1
@@ -1322,7 +1327,7 @@ def test_a_new_customers_bake_is_found_by_page_through_its_log_line_and_its_own_
     monkeypatch.setattr(baker_module, "report_operation", record)
     ours = BakeIntent(NEW_CUSTOMERS_PAGE_ID, "7d")
     other = BakeIntent("retail-health", "7d")
-    application = PresetArtifactBakeApplication(
+    application = legacy_application(
         DeclaredBakeIntents((ours, other)),
         RegisteredPresetArtifactBaker(
             bakers={
@@ -1334,7 +1339,7 @@ def test_a_new_customers_bake_is_found_by_page_through_its_log_line_and_its_own_
         ),
         cast("PresetArtifactPersistencePort", _Persistence()),
     )
-    failures = apply_bake_records(
+    failures = apply_with_deadline(
         {
             "Records": [
                 {"messageId": "one", "body": ours.serialize()},

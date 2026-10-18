@@ -13,6 +13,7 @@ from types import SimpleNamespace
 from typing import cast
 
 import pytest
+from bake_application_support import legacy_application, remaining_ms
 from campaign_portfolio_support import LABELS, ONE_CHANNEL_FILTER
 from change_support import SEMANTICS
 from insight_key_support import PENDING_INPUT_DIGEST, with_card_digest
@@ -25,7 +26,6 @@ from adapters.jobs.preset_artifact_publisher.bake_results import (
     BakePublication,
 )
 from adapters.jobs.preset_artifact_publisher.baker import (
-    PresetArtifactBakeApplication,
     PresetArtifactBaker,
 )
 from adapters.jobs.preset_artifact_publisher.insight_fill import PresetInsightFillChild
@@ -344,14 +344,14 @@ def test_bake_application_warms_only_after_a_real_pointer_advance(
     intent = BakeIntent("campaigns", "7d")
     request = _publication_request("campaigns")
     child = _RecordingChild()
-    application = PresetArtifactBakeApplication(
+    application = legacy_application(
         declared=DeclaredBakeIntents((intent,)),
         baker=cast("PresetArtifactBaker", _Baker(BakePublication(request))),
         persistence=cast("PresetArtifactPersistencePort", _Persistence(outcome)),
         insight_fill=cast("PresetInsightFillChild", child),
     )
 
-    application.apply(intent.serialize())
+    application.apply(intent.serialize(), remaining_ms=remaining_ms, final=False)
 
     assert len(child.warmed) == expected_warms
 
