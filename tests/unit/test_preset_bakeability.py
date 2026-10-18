@@ -434,3 +434,79 @@ def test_the_gate_prints_the_allowance_and_every_row_write_term(
     assert "WRITE_ALLOWANCE_SECONDS=450" in out
     for row in BAKE_TASKS["roster"]:
         assert f"write {row['page']}#{row['variant']}: write_seconds" in out
+
+
+# --- ADR-143: the memory model ------------------------------------------------------------------
+
+BAKE_MAX_ROWS_FOR_TEST = bakeability.BAKE_MAX_ROWS
+
+
+@pytest.mark.covers("ADR-143")
+def test_every_roster_rows_resident_bytes_are_derived_term_by_term() -> None:
+    """Each term is computed from the row's own certified widths, never typed."""
+    terms = bakeability.BAKE_MEMORY_TERMS
+    for (key, certificate), model in zip(
+        bakeability.roster_certificates(ROOT), bakeability.memory_models(ROOT), strict=True
+    ):
+        assert model.key == key
+        assert len(certificate.widths) + len(certificate.kept) == len(certificate.plans)
+        held = max(
+            (
+                bakeability._certified_width(  # pyright: ignore[reportPrivateUsage]
+                    plan, width, bakeability.audiences_marketplace_count(ROOT)
+                )
+                for plan, width in zip(certificate.plans, certificate.widths, strict=False)
+            ),
+            default=0,
+        )
+        assert model.writes == bakeability.WRITES_IN_FLIGHT_BYTES
+        assert model.raw == bakeability.CERTIFIED_QUERY_CAP * held * terms.raw
+        assert model.render == held * terms.render
+        assert model.total == model.writes + model.raw + model.shaped + model.kept + model.render
+        assert f"= {model.total} B <= {model.limit} B" in model.terms()
+        assert model.certified
+
+
+@pytest.mark.covers("ADR-143")
+def test_a_row_past_its_share_fails_and_its_terms_name_why() -> None:
+    """Paired with the certified rows above: the same row at a far wider ceiling fails."""
+    key, certificate = next(
+        item for item in bakeability.roster_certificates(ROOT) if item[0] == "retail-health#14d"
+    )
+    fits = bakeability.resident(certificate, key)
+    assert fits.certified
+    over = bakeability.resident(certificate, key, ceiling=50 * BAKE_MAX_ROWS_FOR_TEST)
+    assert not over.certified and over.shaped > fits.shaped
+
+
+@pytest.mark.covers("ADR-143")
+def test_the_widths_are_read_from_the_batches_the_sources_build() -> None:
+    """Retail's widths: the ranked 50, its 50 x 31 series bound, and the bake ceiling."""
+    widths = dict(bakeability.roster_certificates(ROOT))["retail-health#7d"].widths
+    assert set(widths) == {50, 50 * bakeability.BAKE_LONGEST_WINDOW_DAYS, BAKE_MAX_ROWS_FOR_TEST}
+
+
+@pytest.mark.covers("ADR-143")
+def test_the_longest_bake_window_is_held_equal_to_the_longest_daily_read(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rows = bakeability.roster_certificates(ROOT)
+    assert bakeability.longest_daily_window_days(rows) == bakeability.BAKE_LONGEST_WINDOW_DAYS == 31
+    assert not [
+        item for item in bakeability.memory_findings(ROOT) if item.rule == "bake-longest-window"
+    ]
+    # Control: a constant one day short is a finding.
+    monkeypatch.setattr(bakeability, "BAKE_LONGEST_WINDOW_DAYS", 30)
+    assert [item.rule for item in bakeability.memory_findings(ROOT)] == ["bake-longest-window"]
+
+
+@pytest.mark.covers("ADR-143")
+def test_the_gate_prints_the_memory_model_and_its_binding_row(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert bakeability.main() == 0
+    out = capsys.readouterr().out
+    assert f"BAKE_MAX_ROWS={BAKE_MAX_ROWS_FOR_TEST}" in out
+    assert "binding row: " in out
+    for row in BAKE_TASKS["roster"]:
+        assert f"memory {row['page']}#{row['variant']}: W " in out

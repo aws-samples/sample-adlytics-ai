@@ -148,13 +148,20 @@ class TestRowCeilingPerCallerKind:
         with pytest.raises(ValueError, match="max_rows"):
             PeriodSeriesRequest((revenue_plan,), bound + 1, kind)
 
-    def test_a_bake_width_is_refused_under_narration(self, revenue_plan: BoundQueryPlan) -> None:
+    def test_a_streamed_bake_width_is_refused_under_narration(
+        self, revenue_plan: BoundQueryPlan
+    ) -> None:
+        """Paired: the same width a reduction may stream is chat's over-bound refusal."""
+        streamed = QueryRequest(
+            plan=revenue_plan, max_rows=BAKE_MAX_STREAMED_ROWS, ceiling=RowCeiling.BAKE_STREAMED
+        )
+        assert streamed.max_rows == BAKE_MAX_STREAMED_ROWS
         with pytest.raises(ValueError, match="cannot be narrated honestly"):
-            QueryRequest(plan=revenue_plan, max_rows=BAKE_MAX_ROWS)
+            QueryRequest(plan=revenue_plan, max_rows=BAKE_MAX_STREAMED_ROWS)
 
     def test_the_streamed_ceiling_is_derived_from_the_held_one(self) -> None:
         assert BAKE_MAX_STREAMED_ROWS == BAKE_LONGEST_WINDOW_DAYS * BAKE_MAX_ROWS
-        assert MAX_ROWS_CEILING < BAKE_MAX_ROWS <= 50_000  # finite, never above the proposal
+        assert MAX_ROWS_CEILING <= BAKE_MAX_ROWS <= 50_000  # finite, never above the proposal
 
 
 class TestQueryResultCarriesProvenance:

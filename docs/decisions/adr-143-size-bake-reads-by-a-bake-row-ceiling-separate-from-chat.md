@@ -2,8 +2,8 @@
 Date: 2026-10-18
 Status: Proposed (2026-10-18). The owner approved a separate bake ceiling on 2026-10-18 (UTC),
 proposed at 50,000 rows, with the final value set by a dev probe. Chat is unchanged. Later the
-same day the owner also approved ranking Retail health's top 50 inside the query (decision 7). The value in
-decision 1 is the proposal until the probe's evidence is recorded here, before acceptance.
+same day the owner also approved ranking Retail health's top 50 inside the query (decision 7). The
+probe ran on dev on 2026-10-18 and set `BAKE_MAX_ROWS` to 10,000 (decision 8).
 
 ## Context
 Every page bake asks for at most 500 rows per question. That number is chat's narration rule: a
@@ -32,8 +32,10 @@ crashed dev on 2026-08-22, so a ceiling must stay finite.
 ## Decision
 1. **Separate ceilings by caller kind.** The query port declares `NARRATION` (chat and
    request-time reads: 500 by default, 10,000 at most, unchanged) and two bake kinds:
-   - `BAKE` for a held answer: `BAKE_MAX_ROWS`, proposed 50,000, final value the probe's;
-   - `BAKE_STREAMED` for a reduction: the longest bake window (31 days) times `BAKE_MAX_ROWS`.
+   - `BAKE` for a held answer: `BAKE_MAX_ROWS`, proposed 50,000, set at 10,000 by the probe
+     (decision 8);
+   - `BAKE_STREAMED` for a reduction: the longest daily bake window (31 days) times
+     `BAKE_MAX_ROWS`.
 
    The tool's wire input can't select either bake kind: it isn't a tool argument.
 2. **Every bake read asks for a bake ceiling, as a constant.** No bake source imports chat's
@@ -77,6 +79,27 @@ crashed dev on 2026-08-22, so a ceiling must stay finite.
    bake ceiling. Retail runs 47 plans at every preset and returns at most 50 × days series rows
    per read, at any catalog size.
 
+8. **`BAKE_MAX_ROWS` = 10,000, a memory-sized defect guard, not a product bound.** Measured by
+   the row-ceiling probe on dev on 2026-10-18 (09:08Z), on `feat/scale-limits` at the commit
+   carrying the probe:
+   - P1, local `tracemalloc`, the maximum over 3 runs at 10,000, 30,000 and 50,000 rows of the two
+     widest held shapes: B_raw 987 B, B_shaped 930 B, B_kept 241 B per row; B_render 10,467 B per
+     product (the Retail render's own structures). With W = 4,096,000 B and Q = 10, every roster
+     row fits half of 1,024 MiB at 10,000 and not at 20,000. The binding row is
+     `audiences#last_complete_month`: 4.1 MB + 98.7 MB + 288.3 MB + 0 + 104.7 MB = 495.8 MB of
+     536.9 MB. The same terms derive 20,000 at 2,048 MiB.
+   - P2a: the paged and streamed readers returned identical cells for a row of NULL, empty, quoted,
+     comma, newline, non-ASCII, decimal and timestamp values; Athena writes NULL as an empty
+     unquoted cell, which both read as absent.
+   - P2b: 50,000 to 1,550,000 `UNNEST` rows streamed at 0.03 to 0.42 s per 100,000 rows.
+   - P2c: a statement run in the interactive workgroup and then in the bake workgroup with reuse on
+     did not reuse; the same-workgroup control did; every bake location was under the bake prefix.
+   The stop rule fired on one term: today's Campaigns estate render costs 98,208 B per campaign
+   excluding its encoded bodies, because Campaigns holds every rendered body until bodies stream
+   (ADR-145). Campaigns keeps chat's ceilings, its 1,000-campaign guard and the whole-body memory
+   check until then, so the orchestrator applied the owner's A3 default, the probe's value. The
+   streamed-writes, grouped-Audiences and Campaigns changes re-run the probe and re-derive the
+   value; one below 10,000 stops for the owner.
 Decided by rubric item (1) of
 [delivery practice](../delivery-practice.md#5-the-decision-weighting-rubric): pages showed nothing
 for real catalogs because of a rule written for chat.
