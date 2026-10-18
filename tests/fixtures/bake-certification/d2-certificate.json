@@ -46,6 +46,44 @@
           "aggregate_bytes_at_measured_history": 1088191
         }
       }
+    },
+    "remeasure_2026_10_18": {
+      "note": "re-measured 2026-10-18 after ADR-143: Retail health ranks its top 50 in the query",
+      "measured_on": "c09f7232b756a2b03393137af946f216d0df97d2",
+      "cause": "Retail health runs 47 plans at every preset (one ranked-keys read and four ranked series reads replace one spark read per day), budget 240 s; the memory model is printed by check-bakeability",
+      "changed_rows": [
+        "retail-health#1d",
+        "retail-health#7d",
+        "retail-health#14d"
+      ],
+      "digests": {
+        "d2-roster.out": {
+          "before": "sha256:8ce35ae9a9cafb082597394388e76ead2eed24079ba628a045073d66ddfffa5a",
+          "after": "sha256:a6a5b4f9d92d294746a19c56a49c9d4115b9157165cbe02c0fd8f73be7203f8a"
+        },
+        "check-bakeability.out": {
+          "before": "sha256:889a240899c1de6ae54a10ff54bfd26ca7dcd36d4681d9dd653027969a513fc2",
+          "after": "sha256:2680dfbe83504044b29991645657c55e0e710e5f9e73185223e9e612670d9d45"
+        },
+        "pin-section.json": {
+          "before": "sha256:074dad6d06eaaf6060b9e06515f3fab22fea95b56cb487cd8ecd8337fe126e0b",
+          "after": "sha256:05cc68fbabc41febaaba746a21abbca47e54e762a20806619b37ed76d1808a25"
+        }
+      },
+      "pin_aggregate_bytes": {
+        "before": 838395,
+        "after": 833066
+      },
+      "pin_largest_item": {
+        "before": {
+          "sk": "BAKE_SOURCE#scorecard#30d",
+          "bytes": 71062
+        },
+        "after": {
+          "sk": "BAKE_SOURCE#scorecard#30d",
+          "bytes": 71062
+        }
+      }
     }
   },
   "owning_design_digest": {
@@ -57,17 +95,17 @@
     {
       "command": "uv run python -m adapters.jobs.preset_artifact_publisher.bakeability --d2-roster",
       "raw_output": "d2-roster.out",
-      "sha256": "sha256:8ce35ae9a9cafb082597394388e76ead2eed24079ba628a045073d66ddfffa5a"
+      "sha256": "sha256:a6a5b4f9d92d294746a19c56a49c9d4115b9157165cbe02c0fd8f73be7203f8a"
     },
     {
       "command": "make check-bakeability",
       "raw_output": "check-bakeability.out",
-      "sha256": "sha256:889a240899c1de6ae54a10ff54bfd26ca7dcd36d4681d9dd653027969a513fc2"
+      "sha256": "sha256:2680dfbe83504044b29991645657c55e0e710e5f9e73185223e9e612670d9d45"
     },
     {
       "command": "uv run python <custody>/pin_section.py",
       "raw_output": "pin-section.json",
-      "sha256": "sha256:074dad6d06eaaf6060b9e06515f3fab22fea95b56cb487cd8ecd8337fe126e0b"
+      "sha256": "sha256:05cc68fbabc41febaaba746a21abbca47e54e762a20806619b37ed76d1808a25"
     },
     {
       "command": "python3 <custody>/write_seconds_extract.py graph-bake-delivery/benchmark/extract-bake/spans.json",
@@ -278,10 +316,10 @@
     },
     {
       "key": "retail-health#1d",
-      "certified_count": 46,
-      "derivation": "main batch 42 over 1d and its prior with one spark query per day, then the product-ad batch 4 (sequential: reached after the main answer)",
+      "certified_count": 47,
+      "derivation": "main batch 43 over 1d and its prior: compares and trends, the ranked top-50 keys and four ranked series (constant in the catalog, ADR-143), then the product-ad batch 4 (sequential: reached after the main answer)",
       "phases": [
-        42,
+        43,
         4
       ],
       "write_seconds": {
@@ -290,7 +328,7 @@
         "source": "campaigns' 16.6 adopted as a conservative upper bound: no deployed write trace"
       },
       "certification_seconds": 226.6,
-      "budget_seconds": 420,
+      "budget_seconds": 240,
       "budget_basis": "contract budget, re-certified",
       "source_horizon_days": 106,
       "source_horizon_terms": {
@@ -314,15 +352,15 @@
           "window": "2026-03-01..2026-03-01",
           "prior_window": "2026-02-28..2026-02-28"
         },
-        "output": "  retail-health#1d: count 46, phases [42, 4], write 16.6 s [projection], 226.6 s <= 420 s (contract budget, re-certified), source horizon 106 d"
+        "output": "  retail-health#1d: count 47, phases [43, 4], write 16.6 s [projection], 226.6 s <= 240 s (contract budget, re-certified), source horizon 106 d"
       }
     },
     {
       "key": "retail-health#7d",
-      "certified_count": 70,
-      "derivation": "main batch 66 over 7d and its prior with one spark query per day, then the product-ad batch 4 (sequential: reached after the main answer)",
+      "certified_count": 47,
+      "derivation": "main batch 43 over 7d and its prior: compares and trends, the ranked top-50 keys and four ranked series (constant in the catalog, ADR-143), then the product-ad batch 4 (sequential: reached after the main answer)",
       "phases": [
-        66,
+        43,
         4
       ],
       "write_seconds": {
@@ -330,8 +368,8 @@
         "marker": "projection",
         "source": "campaigns' 16.6 adopted as a conservative upper bound: no deployed write trace"
       },
-      "certification_seconds": 286.6,
-      "budget_seconds": 420,
+      "certification_seconds": 226.6,
+      "budget_seconds": 240,
       "budget_basis": "contract budget, re-certified",
       "source_horizon_days": 106,
       "source_horizon_terms": {
@@ -355,15 +393,15 @@
           "window": "2026-02-23..2026-03-01",
           "prior_window": "2026-02-16..2026-02-22"
         },
-        "output": "  retail-health#7d: count 70, phases [66, 4], write 16.6 s [projection], 286.6 s <= 420 s (contract budget, re-certified), source horizon 106 d"
+        "output": "  retail-health#7d: count 47, phases [43, 4], write 16.6 s [projection], 226.6 s <= 240 s (contract budget, re-certified), source horizon 106 d"
       }
     },
     {
       "key": "retail-health#14d",
-      "certified_count": 98,
-      "derivation": "main batch 94 over 14d and its prior with one spark query per day, then the product-ad batch 4 (sequential: reached after the main answer)",
+      "certified_count": 47,
+      "derivation": "main batch 43 over 14d and its prior: compares and trends, the ranked top-50 keys and four ranked series (constant in the catalog, ADR-143), then the product-ad batch 4 (sequential: reached after the main answer)",
       "phases": [
-        94,
+        43,
         4
       ],
       "write_seconds": {
@@ -371,8 +409,8 @@
         "marker": "projection",
         "source": "campaigns' 16.6 adopted as a conservative upper bound: no deployed write trace"
       },
-      "certification_seconds": 376.6,
-      "budget_seconds": 420,
+      "certification_seconds": 226.6,
+      "budget_seconds": 240,
       "budget_basis": "contract budget, re-certified",
       "source_horizon_days": 106,
       "source_horizon_terms": {
@@ -396,7 +434,7 @@
           "window": "2026-02-16..2026-03-01",
           "prior_window": "2026-02-02..2026-02-15"
         },
-        "output": "  retail-health#14d: count 98, phases [94, 4], write 16.6 s [projection], 376.6 s <= 420 s (contract budget, re-certified), source horizon 106 d"
+        "output": "  retail-health#14d: count 47, phases [43, 4], write 16.6 s [projection], 226.6 s <= 240 s (contract budget, re-certified), source horizon 106 d"
       }
     },
     {
@@ -1050,8 +1088,8 @@
   ],
   "totals": {
     "n": 20,
-    "sum_budget_seconds": 4080,
-    "root_bound_seconds": 4140,
+    "sum_budget_seconds": 3540,
+    "root_bound_seconds": 3600,
     "winner_policy_seconds": 7200,
     "audiences_roster_fan_out_width": 10
   },
@@ -1059,10 +1097,10 @@
     "n": 20,
     "gray_code_steps": 524288,
     "loads_seconds": [
-      1379.4,
-      1382.6
+      1276.0,
+      1276.0
     ],
-    "makespan_seconds": 1382.6
+    "makespan_seconds": 1276.0
   },
   "o3_scope_families": [
     {
@@ -2103,7 +2141,7 @@
         "reads": 11,
         "blob_bytes": 15936,
         "item_sk": "BAKE_SOURCE#retail-health#1d",
-        "item_bytes": 25071,
+        "item_bytes": 25144,
         "scope_reads": [
           {
             "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-44afe5f0db1ad0490dd9c9a7|snapshot|iso_gregorian|0|UTC|source_business_date",
@@ -2155,7 +2193,7 @@
         "reads": 11,
         "blob_bytes": 19122,
         "item_sk": "BAKE_SOURCE#retail-health#7d",
-        "item_bytes": 31071,
+        "item_bytes": 29392,
         "scope_reads": [
           {
             "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-44afe5f0db1ad0490dd9c9a7|snapshot|iso_gregorian|0|UTC|source_business_date",
@@ -2207,7 +2245,7 @@
         "reads": 11,
         "blob_bytes": 22672,
         "item_sk": "BAKE_SOURCE#retail-health#14d",
-        "item_bytes": 37853,
+        "item_bytes": 34130,
         "scope_reads": [
           {
             "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-44afe5f0db1ad0490dd9c9a7|snapshot|iso_gregorian|0|UTC|source_business_date",
@@ -3271,30 +3309,30 @@
       "sk": "BAKE_SOURCE#scorecard#30d",
       "bytes": 71062
     },
-    "aggregate_bytes": 838395,
-    "oracle_aggregate_bytes": 813819,
+    "aggregate_bytes": 833066,
+    "oracle_aggregate_bytes": 808490,
     "headroom": {
       "item_bytes": 328938,
-      "aggregate_bytes": 3161605,
-      "vs_previous_aggregate_bytes": 376564,
+      "aggregate_bytes": 3166934,
+      "vs_previous_aggregate_bytes": 381893,
       "vs_previous_largest_item_bytes": 22471
     },
     "by_history_days": {
       "85": {
         "largest_item_bytes": 56317,
-        "aggregate_bytes": 623031
+        "aggregate_bytes": 617702
       },
       "463": {
         "largest_item_bytes": 71062,
-        "aggregate_bytes": 833635
+        "aggregate_bytes": 828306
       },
       "731": {
         "largest_item_bytes": 71062,
-        "aggregate_bytes": 837271
+        "aggregate_bytes": 831942
       },
       "1257": {
         "largest_item_bytes": 71062,
-        "aggregate_bytes": 838395
+        "aggregate_bytes": 833066
       }
     },
     "invariance": {
@@ -3308,8 +3346,8 @@
     },
     "negative_control_unbounded": {
       "item_over_400000_at_history_days": 670,
-      "aggregate_over_4000000_at_history_days": 380,
-      "aggregate_bytes_at_measured_history": 1088191
+      "aggregate_over_4000000_at_history_days": 381,
+      "aggregate_bytes_at_measured_history": 1082862
     },
     "over_cap_plans": [
       [
