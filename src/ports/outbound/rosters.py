@@ -18,6 +18,7 @@ from typing import Protocol, runtime_checkable
 
 from domain.measurement.rosters import Roster, RosterKind, roster_scope_columns
 from domain.shared_kernel.values import DateRange
+from ports.outbound.query import RowCeiling
 
 __all__ = ["RosterPort", "RosterRequest"]
 
@@ -37,6 +38,9 @@ class RosterRequest:
     path (C2, `PROFILE_ROSTER_SCOPE`) instead."""
     fact: str | None = None
     """The fact the graded figure reads; a segment roster's reader follows it (C1 or C2)."""
+    ceiling: RowCeiling = RowCeiling.NARRATION
+    """Which caller kind's row ceiling the reader's own reads ask for (ADR-143): a bake source's
+    roster reads at the bake ceiling, chat's at narration's. Never a tool input."""
 
     def __post_init__(self) -> None:
         if not self.marketplace_key.strip() or not self.platform_key.strip():

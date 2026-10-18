@@ -39,7 +39,6 @@ from aws_lambda_powertools import Logger
 from adapters.campaign_insight_requests import FindingSource, predicate_findings
 from adapters.inbound.tool_handlers.gateway import contracts_root
 from adapters.inbound.tool_handlers.measurement import (
-    DEFAULT_MAX_ROWS,
     MeasurementExecutionTooling,
     MeasurementTool,
     MeasurementTooling,
@@ -158,6 +157,7 @@ from ports.outbound.publication_selection import (
     PresentationEvidenceInspectionPlan,
     PresentationEvidenceInspectionRequest,
 )
+from ports.outbound.query import BAKE_MAX_ROWS, RowCeiling
 from ports.outbound.semantic_state import scope_horizon_policy
 from ports.outbound.source_coverage import (
     SourceCoverageRequest,
@@ -353,7 +353,8 @@ def _request(  # noqa: PLR0913 — the marketplace and model selectors are keywo
         computed_at=request.computed_at,
         correlation_id=_CORRELATION_ID,
         filters=filters,
-        max_rows=DEFAULT_MAX_ROWS,
+        max_rows=BAKE_MAX_ROWS,
+        row_ceiling=RowCeiling.BAKE,
     )
 
 

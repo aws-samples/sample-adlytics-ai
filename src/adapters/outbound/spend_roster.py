@@ -39,7 +39,7 @@ from ports.outbound.publication_selection import (
     PublicationSelectionPort,
     PublicationSelectionRequest,
 )
-from ports.outbound.query import MAX_ROWS_CEILING, QueryPort, QueryRequest
+from ports.outbound.query import QueryPort, QueryRequest, row_ceiling
 
 if TYPE_CHECKING:  # pragma: no cover
     from datetime import datetime
@@ -162,7 +162,13 @@ class SpendRosterReader:
                 f"{request.period.end.isoformat()} can't be read: {error.description}",
                 context={"roster": request.kind.value, "reason": str(error.code)},
             ) from error
-        result = self.queries.run(QueryRequest(plan=selection.plans[0], max_rows=MAX_ROWS_CEILING))
+        result = self.queries.run(
+            QueryRequest(
+                plan=selection.plans[0],
+                max_rows=row_ceiling(request.ceiling),
+                ceiling=request.ceiling,
+            )
+        )
         if (
             result.truncated
             or result.suppression.rows_suppressed

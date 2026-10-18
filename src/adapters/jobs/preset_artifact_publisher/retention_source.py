@@ -37,7 +37,6 @@ from typing import TYPE_CHECKING, Protocol, cast
 from adapters.campaign_insight_requests import FindingSource, predicate_findings
 from adapters.inbound.tool_handlers.gateway import contracts_root
 from adapters.inbound.tool_handlers.measurement import (
-    DEFAULT_MAX_ROWS,
     MeasurementExecutionTooling,
     MeasurementTool,
     MeasurementTooling,
@@ -124,6 +123,7 @@ from ports.outbound.publication_selection import (
     PresentationEvidenceInspectionPlan,
     PresentationEvidenceInspectionRequest,
 )
+from ports.outbound.query import BAKE_MAX_ROWS, RowCeiling
 from ports.outbound.semantic_state import scope_horizon_policy
 from ports.outbound.served_periods import ServedPeriods, ServedPeriodsRequest
 
@@ -332,7 +332,8 @@ class RetentionArtifactRenderer:
                 COHORT_PATH_COLUMN: path,
                 COHORT_GRAIN_COLUMN: grain.value,
             },
-            max_rows=DEFAULT_MAX_ROWS,
+            max_rows=BAKE_MAX_ROWS,
+            row_ceiling=RowCeiling.BAKE,
         )
 
     def render_retention(self, request: RetentionRenderInput) -> RetentionRenderResult:

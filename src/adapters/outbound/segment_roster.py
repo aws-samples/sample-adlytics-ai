@@ -53,10 +53,10 @@ from ports.outbound.publication_selection import (
     PublicationSelectionRequest,
 )
 from ports.outbound.query import (
-    MAX_ROWS_CEILING,
     PeriodSeriesQueryPort,
     PeriodSeriesRequest,
     QueryRequest,
+    row_ceiling,
 )
 from ports.outbound.rosters import RosterPort, RosterRequest
 from ports.outbound.segment_labels import SegmentLabelPort, SegmentLabelRequest
@@ -84,6 +84,11 @@ SEGMENT_ROW_KIND = "segment"
 def _previous_month(period: DateRange) -> DateRange:
     month = period_containing(TimeGrain.MONTH, period.start - timedelta(days=1))
     return DateRange(month.start, month.end)
+
+
+def _roster_query(request: RosterRequest, plan: BoundQueryPlan) -> QueryRequest:
+    """Build one roster read at the caller kind's row ceiling (ADR-143)."""
+    return QueryRequest(plan=plan, max_rows=row_ceiling(request.ceiling), ceiling=request.ceiling)
 
 
 @dataclass(frozen=True, slots=True)
@@ -261,7 +266,7 @@ class SegmentRosterReader:
         except DomainError as error:
             raise self._refused(request, month, error) from error
         selection = self._select(request, (logical,), month)
-        result = self.queries.run(QueryRequest(plan=selection.plans[0], max_rows=MAX_ROWS_CEILING))
+        result = self.queries.run(_roster_query(request, selection.plans[0]))
         if result.truncated or not selection.coverage.covers_all((month,)):
             raise self._unreadable(request, month)
         return tuple(
@@ -320,7 +325,9 @@ class SegmentRosterReader:
 
     def _observed_in(self, request: RosterRequest, bound: tuple[BoundQueryPlan, ...]) -> bool:
         """Read these bound months in one statement: whether the campaign returned any segment."""
-        result = self.queries.run_series(PeriodSeriesRequest(bound, MAX_ROWS_CEILING))
+        result = self.queries.run_series(
+            PeriodSeriesRequest(bound, row_ceiling(request.ceiling), request.ceiling)
+        )
         observed = bool(measure(bound[0].logical, result.rows).figures)
         # A truncated result still proves a returned segment; only an empty page would mislead.
         if result.truncated and not observed:
@@ -333,7 +340,7 @@ class SegmentRosterReader:
         """Plan, bind and read the segments the campaign returned in one published month."""
         logical = self._plan_month(request, month)
         selection = self._select(request, (logical,), month)
-        result = self.queries.run(QueryRequest(plan=selection.plans[0], max_rows=MAX_ROWS_CEILING))
+        result = self.queries.run(_roster_query(request, selection.plans[0]))
         if result.truncated or not selection.coverage.covers_all((month,)):
             raise self._unreadable(request, month)
         return tuple(
