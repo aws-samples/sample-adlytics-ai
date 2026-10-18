@@ -140,9 +140,9 @@ bake_tasks:
     "campaigns#7d": 240
     "campaigns#14d": 270
     "campaigns#30d": 300
-    "retail-health#1d": 420
-    "retail-health#7d": 420
-    "retail-health#14d": 420
+    "retail-health#1d": 240
+    "retail-health#7d": 240
+    "retail-health#14d": 240
     "scorecard#7d": 120
     "scorecard#30d": 120
     "scorecard#last_complete_week": 120
@@ -171,9 +171,9 @@ bake_tasks:
     "campaigns#7d": 26
     "campaigns#14d": 30
     "campaigns#30d": 34
-    "retail-health#1d": 46
-    "retail-health#7d": 70
-    "retail-health#14d": 98
+    "retail-health#1d": 47
+    "retail-health#7d": 47
+    "retail-health#14d": 47
     "scorecard#7d": 19
     "scorecard#30d": 19
     "scorecard#last_complete_week": 11

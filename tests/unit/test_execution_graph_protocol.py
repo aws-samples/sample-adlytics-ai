@@ -383,9 +383,9 @@ def test_the_bake_roster_and_start_budget_are_generated_with_exact_values() -> N
         240,
         270,
         300,
-        420,
-        420,
-        420,
+        240,
+        240,
+        240,
         120,
         120,
         120,
@@ -420,7 +420,7 @@ def test_the_bake_roster_and_start_budget_are_generated_with_exact_values() -> N
 
 
 _ROSTER_ROW = "    - {page: retail-health, variant: 14d}\n"
-_BUDGET_ROW = '    "retail-health#14d": 420\n'
+_BUDGET_ROW = '    "retail-health#14d": 240\n'
 
 
 @pytest.mark.parametrize(
@@ -456,7 +456,7 @@ _BUDGET_ROW = '    "retail-health#14d": 420\n'
         ),
         (
             "bake_winner_over_root_bound",
-            '    "retail-health#14d": 420\n',
+            '    "retail-health#14d": 240\n',
             '    "retail-health#14d": 7000\n',
         ),
         (
