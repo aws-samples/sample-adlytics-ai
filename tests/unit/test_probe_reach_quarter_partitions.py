@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
+from dynamodb_reserved_words import guard_reserved_words
 
 _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT / "validation"))
@@ -146,6 +147,7 @@ def test_a_resolution_within_the_bound_records_no_raise(monkeypatch: pytest.Monk
     assert probe.classify([call])["raising_call"] is None
 
 
+@guard_reserved_words
 class _Client:
     def __init__(self) -> None:
         self.sent: list[str] = []
