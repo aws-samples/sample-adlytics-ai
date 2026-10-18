@@ -23,9 +23,11 @@ from adapters.inbound.tool_handlers.measurement import MeasurementTooling
 from adapters.jobs.contract_validation.insight_loader import load_insight_contracts
 from adapters.jobs.contract_validation.loader import load_contracts
 from adapters.jobs.preset_artifact_publisher import scorecard_source
+from adapters.jobs.preset_artifact_publisher.bake_results import (
+    BakeUnavailable,
+)
 from adapters.jobs.preset_artifact_publisher.baker import (
     PAGE_BAKERS,
-    BakeUnavailable,
     CampaignPresetArtifactBaker,
     RegisteredPresetArtifactBaker,
     UnavailableCampaignPresetArtifactSource,

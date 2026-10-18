@@ -67,10 +67,12 @@ from adapters.jobs.preset_artifact_publisher.audiences_source import (
     governed_campaign_names,
     retained_audiences_preset_artifact_source,
 )
-from adapters.jobs.preset_artifact_publisher.baker import (
-    AudiencesPresetArtifactBaker,
+from adapters.jobs.preset_artifact_publisher.bake_results import (
     BakePublication,
     BakeUnavailable,
+)
+from adapters.jobs.preset_artifact_publisher.baker import (
+    AudiencesPresetArtifactBaker,
     CampaignPresetArtifactBaker,
     RegisteredPresetArtifactBaker,
     UnavailableCampaignPresetArtifactSource,

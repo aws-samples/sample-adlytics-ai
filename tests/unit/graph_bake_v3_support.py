@@ -35,7 +35,7 @@ from adapters.jobs.execution_graph.fence_settler import due_shards
 from adapters.jobs.execution_graph.instantiate import ingestion_node_plan
 from adapters.jobs.execution_graph.post_grant_consumer import ConsumeResult, post_grant_envelope
 from adapters.jobs.execution_graph.promoter import PromoterContext, arm_pass
-from adapters.jobs.preset_artifact_publisher.baker import (
+from adapters.jobs.preset_artifact_publisher.bake_results import (
     BakePublication,
     BakeResult,
     BakeUnavailable,
