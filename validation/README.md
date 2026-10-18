@@ -984,6 +984,20 @@ the ignored `.agents/tasks/integration-publish-ready/s0-remeasure-2026-10-17/`. 
 `measured_tree.remeasure` records the same before and after. No count, phase, second or budget
 changed. The S0 suites passed 33 of 33.
 
+**Re-measure, 2026-10-18: Retail health ranks its top 50 in the query (ADR-143).** The three Retail
+rows certify 47 plans at every preset (phases 43 and 4, 226.6 s, budget 240 s) instead of 46, 70
+and 98 at 420 s, because one ranked-keys read and four ranked series reads replace one spark read
+per day. The certificate's own measurement code re-ran on the working tree; the raw outputs stay
+in ignored task evidence. `measured_tree.remeasure_2026_10_18` records the before and after:
+| Figure | Before | After |
+| --- | --- | --- |
+| Sum of `budget_seconds` / root bound | 4,080 s / 4,140 s | 3,540 s / 3,600 s of 7,200 s |
+| Lanes / makespan | 1,379.4 s and 1,382.6 s / 1,382.6 s | 1,276.0 s and 1,276.0 s / 1,276.0 s |
+| Pin aggregate | 838,395 B | 833,066 B (ceiling 4,000,000); largest item unchanged at 71,062 B |
+| `d2-certificate.json` SHA-256 | `9395ccaa…` | `ae30222f59ff88424b451f13c29b17d93305966a989eff5ccfdc81fd04c971b2` |
+The `--d2-roster`, `check-bakeability` and pin-section digests changed with them; no other row
+changed. `test_bake_pin_certificate.py` re-derives every row on each run.
+
 **M2: the over-bound Audiences month through GRAPH and the actual route.** Owner decision 1b: an
 over-bound month shows the typed unavailable state, never a stale month labelled current. The
 new deploy-gated `tests/integration/test_d2_audiences_over_bound_acceptance.py` runs the prep
