@@ -510,3 +510,50 @@ def test_the_gate_prints_the_memory_model_and_its_binding_row(
     assert "binding row: " in out
     for row in BAKE_TASKS["roster"]:
         assert f"memory {row['page']}#{row['variant']}: W " in out
+
+
+@pytest.mark.covers("ADR-143")
+def test_the_retail_estate_at_the_bake_ceiling_stays_within_its_modelled_bytes() -> None:
+    """Local estate at the bound (03 §3.5): BAKE_MAX_ROWS products bake within `resident`.
+
+    The real renderer and seam over the unit tier's fictional query fake, at the certified width.
+    """
+    import tracemalloc  # noqa: PLC0415 -- evidence-only instrumentation
+
+    from test_retail_health_preset_source import (  # noqa: PLC0415
+        PERIOD,
+        PRIOR,
+        FakeHierarchy,
+        FakeReported,
+        RetailQueries,
+        RetailReportedTotals,
+        _hierarchy_result,  # pyright: ignore[reportPrivateUsage]
+        _products,  # pyright: ignore[reportPrivateUsage]
+        _renderer,  # pyright: ignore[reportPrivateUsage]
+    )
+
+    from adapters.jobs.preset_artifact_publisher.retail_source import (  # noqa: PLC0415
+        RetailHealthRenderInput,
+    )
+
+    products = _products(BAKE_MAX_ROWS_FOR_TEST)
+    renderer = _renderer(
+        RetailQueries(products, PERIOD),
+        FakeHierarchy(_hierarchy_result(products)),
+        FakeReported(RetailReportedTotals(0, 0, ("reported-total-publication-1",))),
+    )
+    tracemalloc.start()
+    try:
+        rendered = renderer.render_retail_health(RetailHealthRenderInput(PERIOD, PRIOR))
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert rendered.artifact is not None
+    assert rendered.artifact.total_count == BAKE_MAX_ROWS_FOR_TEST
+    certificate = dict(bakeability.roster_certificates(ROOT))["retail-health#7d"]
+    model = bakeability.resident(
+        certificate,
+        "retail-health#7d",
+        marketplaces=bakeability.audiences_marketplace_count(ROOT),
+    )
+    assert peak <= model.total, model.terms()
