@@ -375,3 +375,10 @@ def test_a_ranked_read_binds_exactly_its_declared_population() -> None:
 def test_the_order_rule_is_callable_from_a_restriction_value() -> None:
     rows = (RankedValue("b", 1), RankedValue("a", 1), RankedValue("c", 2))
     assert [item.key for item in _RESTRICTION.order(rows)] == ["c", "a", "b"]
+
+
+def test_the_rank_window_is_compared_by_value_not_identity() -> None:
+    """A planned rank read carries an equal window, not the declaration's own object."""
+    equal = DateRange(date(PERIOD.start.year, PERIOD.start.month, PERIOD.start.day), PERIOD.end)
+    assert equal == PERIOD and equal is not PERIOD
+    _rankable(rank=_stub("metric_b", equal))
