@@ -1422,3 +1422,51 @@ def test_the_q0_hop_split_reads_route_and_harness_span_starts() -> None:
     assert missing["route_start_to_harness_start_ms"] is None
     assert missing["harness_start_to_stream_end_ms"] is None
     assert missing["unmeasured"] == ["harness_span"]
+
+
+class _Body:
+    def __init__(self, chunks: list[bytes]) -> None:
+        self._chunks = chunks
+
+    def read1(self, _size: int) -> bytes:
+        return self._chunks.pop(0) if self._chunks else b""
+
+
+class _Response:
+    def __init__(self, status: int, body: bytes) -> None:
+        self.status_code = status
+        self.headers = {"x-correlation-id": "c-1", "content-type": "text/html"}
+        self.raw = _Body([body])
+
+    def __enter__(self) -> _Response:
+        return self
+
+    def __exit__(self, *_arguments: object) -> None:
+        return None
+
+
+def _gateway_page(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _Session:
+        def request(self, *_arguments: object, **_keywords: object) -> _Response:
+            return _Response(504, b"<html>Gateway Timeout</html>")
+
+    monkeypatch.setattr(probe, "HttpsSession", _Session)
+
+
+def test_a_turn_whose_body_is_not_sse_is_recorded_and_the_diagnosis_continues(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _gateway_page(monkeypatch)
+    call: dict[str, Any] = {
+        "origin": "https://example.invalid",
+        "token": "t",
+        "csrf": "c",
+        "question": "q",
+        "session_id": "s",
+    }
+    times = probe._call(**call, record_stream_errors=True)  # pyright: ignore[reportPrivateUsage]
+    assert (times.status, times.stream_error, times.terminal) == (504, "invalid_sse", None)
+    assert times.content_type == "text/html" and times.body_bytes == 28
+    # Paired: a D8 sample turn still refuses a body that isn't a stream.
+    with pytest.raises(Exception, match="same_origin_route"):
+        probe._call(**call)  # pyright: ignore[reportPrivateUsage]
