@@ -60,6 +60,7 @@ from typing import Any, cast
 import boto3
 from accept_managed_harness import (
     _decoded_frames,  # pyright: ignore[reportPrivateUsage]
+    _StageError,  # pyright: ignore[reportPrivateUsage]
 )
 from cognito_personas import app_client, load_persona, published_parameter, sign_in
 
@@ -770,6 +771,10 @@ class ClientTimes:
     text_deltas: int = 0
     released_text: str = ""
     refusal_reason: str = ""
+    stream_error: str | None = None
+    """Why the body was not a complete SSE stream (an error page), or None; never its text."""
+    content_type: str = ""
+    body_bytes: int = 0
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -823,8 +828,20 @@ def _ms(seconds: float | None) -> int | None:
     return None if seconds is None else round(seconds * 1000)
 
 
-def _call(*, origin: str, token: str, csrf: str, question: str, session_id: str) -> ClientTimes:
-    """Send one turn and stamp every arrival against the moment the request left."""
+def _call(
+    *,
+    origin: str,
+    token: str,
+    csrf: str,
+    question: str,
+    session_id: str,
+    record_stream_errors: bool = False,
+) -> ClientTimes:
+    """Send one turn and stamp every arrival against the moment the request left.
+
+    With `record_stream_errors` (the `--turns` diagnosis) a body that isn't a complete SSE
+    stream is recorded on the turn and the run continues; a D8 sample still refuses it.
+    """
     payload = json.dumps(
         {
             "schema_version": "ConversationRequest.v3",
@@ -861,7 +878,17 @@ def _call(*, origin: str, token: str, csrf: str, question: str, session_id: str)
         # The body's end, which the browser waits for after `done` (frontend `sendChat`).
         times.stream_end_ms = _ms(time.monotonic() - started)
     times.ended_epoch_ms = int(time.time() * 1000)
-    events, _ = _decoded_frames(chunks)
+    times.content_type = response.headers.get("content-type", "")[:80]
+    times.body_bytes = sum(len(chunk) for _, chunk in chunks)
+    try:
+        events, _ = _decoded_frames(chunks)
+    except _StageError as error:
+        # A body that isn't a complete SSE stream (a gateway or error page) is this turn's
+        # recorded failure; the run continues, so no other turn's telemetry is lost.
+        if not record_stream_errors:
+            raise
+        times.stream_error = error.reason
+        events = []
     texts = [at for at, event in events if isinstance(event, ConversationTextEventV4)]
     tools = [(at, event) for at, event in events if isinstance(event, ConversationToolEventV4)]
     last_tool = max((at for at, _ in tools), default=None)
@@ -2112,6 +2139,7 @@ def main(argv: list[str] | None = None) -> int:
                 csrf=csrf,
                 question=step.question,
                 session_id=conversations[step.conversation],
+                record_stream_errors=turn_list is not None,
             )
             turns.append((round_index, step, times))
             if phase_reads is not None and before is not None:
@@ -2131,7 +2159,13 @@ def main(argv: list[str] | None = None) -> int:
             print(
                 f"ran {step.label} round {round_index + 1}: status {times.status}, "
                 f"terminal {times.terminal}, first text {times.first_text_ms} ms, "
-                f"terminal at {times.terminal_ms} ms",
+                f"terminal at {times.terminal_ms} ms"
+                + (
+                    ""
+                    if times.stream_error is None
+                    else f", stream {times.stream_error} ({times.content_type}, "
+                    f"{times.body_bytes} B)"
+                ),
                 flush=True,
             )
             time.sleep(args.gap_seconds)
@@ -2189,6 +2223,9 @@ def main(argv: list[str] | None = None) -> int:
             "turn": step.label,
             "status": times.status,
             "terminal": times.terminal,
+            "stream_error": times.stream_error,
+            "content_type": times.content_type,
+            "body_bytes": times.body_bytes,
             # The client's send time, so offsets below can be placed on the wall clock later.
             "sent_epoch_ms": times.sent_epoch_ms,
             "client_ms": {
