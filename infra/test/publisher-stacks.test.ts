@@ -245,7 +245,7 @@ describe('disposable preset artifact publisher', () => {
     expect(listBucketPrefixes(publisher, role, results)).toEqual(['bake/*']);
     const athena = [...grantsOfRoleLogicalId(publisher, role)].filter((grant) => grant.startsWith('athena:'));
     expect(athena.every((grant) => grant.endsWith(`:workgroup/${semanticV2AthenaWorkgroupName(TEST_CONFIG.envName, 'bake')}`))).toBe(true);
-    expect(athena).toHaveLength(4);
+    expect(athena).toHaveLength(3);
     // Paired control: the same equality fails once DeleteObject joins the bake prefix.
     const mutated = JSON.parse(JSON.stringify(publisher)) as Record<string, unknown>;
     for (const policy of resourcesOfType(mutated, 'AWS::IAM::Policy')) {
