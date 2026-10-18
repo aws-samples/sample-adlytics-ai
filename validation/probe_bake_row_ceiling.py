@@ -47,6 +47,7 @@ import uuid
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, Final, cast
 
@@ -339,7 +340,9 @@ def measure_retail_render(products: int) -> int:
     renderer = fixture._renderer(
         fixture.RetailQueries(keys, fixture.PERIOD),
         fixture.FakeHierarchy(fixture._hierarchy_result(keys)),
-        fixture.FakeReported(fixture.RetailReportedTotals(0, 0, ("reported-total",))),
+        fixture.FakeReported(
+            fixture.RetailReportedTotals(Decimal(0), Decimal(0), ("reported-total",))
+        ),
     )
     real = retail.execute_presentation_batch
     baseline: list[int] = []

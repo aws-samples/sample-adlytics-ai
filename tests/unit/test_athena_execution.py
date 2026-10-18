@@ -277,7 +277,7 @@ _CSV = (
     b'"amazon_us","line one\nline two, with ""quotes""","3"\n'
     b'"amazon_us","caf\xc3\xa9",\n'
 )
-_PAGED = [
+_PAGED: list[list[str | None]] = [
     ["amazon_us", None, "1.50"],
     ["amazon_us", "", "2"],
     ["amazon_us", 'line one\nline two, with "quotes"', "3"],

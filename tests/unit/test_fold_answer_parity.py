@@ -13,6 +13,7 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from functools import cache
+from typing import Any, cast
 
 import pytest
 
@@ -83,10 +84,11 @@ def eligible_plans() -> tuple[QueryPlan, ...]:
     """Every catalog metric's first plannable breakdown that a fold may read."""
     catalog, _ = _catalog_and_contracts()
     plans: list[QueryPlan] = []
-    for metric in catalog.metrics:  # type: ignore[attr-defined]
+    for metric in cast("Any", catalog).metrics:
+        name = cast("str", metric.name)
         for grains in _GRAINS:
             try:
-                current = prepare_batch((_request(metric.name, grains),)).operations[0].current
+                current = prepare_batch((_request(name, grains),)).operations[0].current
             except Exception:  # noqa: BLE001, S112 -- a metric this breakdown doesn't serve
                 continue
             if (
