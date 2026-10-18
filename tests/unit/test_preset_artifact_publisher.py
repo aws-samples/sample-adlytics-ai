@@ -34,12 +34,14 @@ from adapters.jobs.preset_artifact_publisher.backfill import (
     BackfillApplication,
     physical_resource_id,
 )
-from adapters.jobs.preset_artifact_publisher.baker import (
-    AthenaBatchAdmission,
+from adapters.jobs.preset_artifact_publisher.bake_results import (
     BakePublication,
     BakeResult,
     BakeUnavailable,
     BakeUnchanged,
+)
+from adapters.jobs.preset_artifact_publisher.baker import (
+    AthenaBatchAdmission,
     CampaignPresetArtifactBaker,
     CampaignPresetArtifactSource,
     PresetArtifactBakeApplication,

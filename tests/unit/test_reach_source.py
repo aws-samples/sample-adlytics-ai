@@ -35,9 +35,11 @@ from adapters.jobs.contract_validation.insight_loader import load_insight_contra
 from adapters.jobs.contract_validation.loader import load_contracts
 from adapters.jobs.presentation_validation.loader import load_v2_page_schemas
 from adapters.jobs.preset_artifact_publisher import reach_source
-from adapters.jobs.preset_artifact_publisher.baker import (
+from adapters.jobs.preset_artifact_publisher.bake_results import (
     BakePublication,
     BakeUnavailable,
+)
+from adapters.jobs.preset_artifact_publisher.baker import (
     CampaignPresetArtifactBaker,
     ReachPresetArtifactBaker,
     RegisteredPresetArtifactBaker,

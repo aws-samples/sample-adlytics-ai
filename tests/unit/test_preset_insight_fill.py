@@ -21,8 +21,10 @@ import adapters.jobs.preset_artifact_publisher.insight_fill as insight_fill_modu
 from adapters.campaign_insight_requests import portfolio_insight_request_derivation
 from adapters.inbound.presentation_handlers.insights import InsightAssemblyRequest
 from adapters.jobs.contract_validation.insight_loader import load_insight_contracts
-from adapters.jobs.preset_artifact_publisher.baker import (
+from adapters.jobs.preset_artifact_publisher.bake_results import (
     BakePublication,
+)
+from adapters.jobs.preset_artifact_publisher.baker import (
     PresetArtifactBakeApplication,
     PresetArtifactBaker,
 )

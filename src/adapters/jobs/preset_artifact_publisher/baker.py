@@ -37,6 +37,12 @@ from adapters.jobs.preset_artifact_publisher.audiences_source import (
     AUDIENCES_MATERIALIZATION_UNAVAILABLE,
     retained_audiences_preset_artifact_source,
 )
+from adapters.jobs.preset_artifact_publisher.bake_results import (
+    BakePublication,
+    BakeResult,
+    BakeUnavailable,
+    BakeUnchanged,
+)
 from adapters.jobs.preset_artifact_publisher.campaign_source import (
     retained_campaign_preset_artifact_source,
 )
@@ -124,7 +130,6 @@ from domain.presentation.preset_artifacts import (
     PresetArtifactPage,
     PresetArtifactPublicationRequest,
     PresetArtifactPublicationResult,
-    PresetArtifactRevision,
     PresetArtifactVariant,
     SourceUnchanged,
 )
@@ -149,11 +154,7 @@ __all__ = [
     "NOT_GRAPH_BAKED_PAGES",
     "PAGE_BAKERS",
     "AthenaBatchAdmission",
-    "BakePublication",
     "BakeRegistryMismatchError",
-    "BakeResult",
-    "BakeUnavailable",
-    "BakeUnchanged",
     "PresetArtifactBakeApplication",
     "RegisteredPresetArtifactBaker",
     "apply_records",
@@ -249,32 +250,6 @@ class AthenaBatchAdmission:
             with self._condition:
                 self._active -= 1
                 self._condition.notify_all()
-
-
-@dataclass(frozen=True, slots=True)
-class BakePublication:
-    """A real page baker's capability-free artifact ready for persistence."""
-
-    request: PresetArtifactPublicationRequest
-
-
-@dataclass(frozen=True, slots=True)
-class BakeUnavailable:
-    """Typed result used until a page-specific baker is registered."""
-
-    intent: BakeIntent
-    reason: str
-
-
-@dataclass(frozen=True, slots=True)
-class BakeUnchanged:
-    """The source computed the revision the current pointer carries: nothing to write (D26)."""
-
-    intent: BakeIntent
-    revision: PresetArtifactRevision
-
-
-BakeResult = BakePublication | BakeUnavailable | BakeUnchanged
 
 
 class PresetArtifactBaker(Protocol):
@@ -1352,8 +1327,8 @@ def application() -> PresetArtifactBakeApplication:
             insight_fill=_insight_fill_child(settings),
             clock=clock,
         )
-    # The V3 graph bake shares the composed registry, reader, port and persistence; graph_bake
-    # imports this module's result types, so it is imported here, at composition.
+    # The V3 graph bake shares the composed registry, reader, port and persistence; it is
+    # imported here, at composition, so a deployment without the graph authority never loads it.
     from adapters.jobs.preset_artifact_publisher.graph_bake import (  # noqa: PLC0415
         BakeRuntime,
         GraphBakeRuntime,

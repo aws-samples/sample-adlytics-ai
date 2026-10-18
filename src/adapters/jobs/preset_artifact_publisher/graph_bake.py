@@ -66,7 +66,7 @@ from adapters.jobs.execution_graph.release import (
     record_contribution_once,
     serving_binding_for,
 )
-from adapters.jobs.preset_artifact_publisher.baker import (
+from adapters.jobs.preset_artifact_publisher.bake_results import (
     BakeResult,
     BakeUnavailable,
     BakeUnchanged,

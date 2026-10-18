@@ -15,12 +15,14 @@ from dataclasses import dataclass, field, fields
 import pytest
 
 from adapters.inbound.tool_handlers.gateway import contracts_root
+from adapters.jobs.preset_artifact_publisher.bake_results import (
+    BakeResult,
+    BakeUnavailable,
+)
 from adapters.jobs.preset_artifact_publisher.baker import (
     NOT_GRAPH_BAKED_PAGES,
     PAGE_BAKERS,
     BakeRegistryMismatchError,
-    BakeResult,
-    BakeUnavailable,
     RegisteredPresetArtifactBaker,
 )
 from adapters.jobs.preset_artifact_publisher.transport import (
