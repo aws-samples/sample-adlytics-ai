@@ -190,6 +190,7 @@ __all__ = [
     "MAX_PRESET_SNAPSHOT_PARTITIONS",
     "PER_OBJECT_WRITE_MS",
     "PER_QUERY_SECONDS",
+    "WRITE_ALLOWANCE_SECONDS",
     "ArtifactServedPage",
     "BakeabilityFinding",
     "RosterTaskCertificate",
@@ -205,6 +206,7 @@ __all__ = [
     "evaluate_bakeability",
     "main",
     "roster_plan_counts",
+    "write_allowance_findings",
 ]
 
 # Conservative per-execution latency budget. The observed envelope in
@@ -218,6 +220,10 @@ PER_QUERY_SECONDS = int(BAKE_TASKS["per_query_seconds"])
 # Lambda's timeout and the SQS visibility base. A drift here makes this gate prove the
 # wrong promise.
 BAKER_LAMBDA_TIMEOUT_SECONDS = 900
+WRITE_ALLOWANCE_SECONDS = float(BAKE_TASKS["lambda_timeout_seconds"]) / 2
+"""The write half of one bake invocation (ADR-144, class A): a page's statement deadline
+reserves its row's `write_seconds` before any statement starts, so every row's write term must
+fit this half, leaving the other for statements. Derived from the contract's Lambda timeout."""
 # The budget this gate proves one variant's bake within. S6 §2.8 raised the Lambda to 900 s
 # because one graph bake node iterates every registered intent in one invocation; this gate
 # still proves one variant per invocation, so each variant keeps its 300 s budget rather than
@@ -659,6 +665,7 @@ def main() -> int:
     findings = (
         *evaluate_bakeability(pages, plan_counts, storage),
         *roster_findings,
+        *write_allowance_findings(),
         *source_horizon_findings(root),
         *d2_contract_findings(root),
     )
@@ -674,6 +681,13 @@ def main() -> int:
         print(
             f"  task {certificate.key}: {certificate.plan_count} plans, "
             f"{certificate.seconds} s <= {certificate.budget_seconds} s"
+        )
+    print(f"  WRITE_ALLOWANCE_SECONDS={WRITE_ALLOWANCE_SECONDS:g}")
+    for row in BAKE_TASKS["roster"]:
+        page = str(row["page"])
+        print(
+            f"  write {page}#{row['variant']}: write_seconds "
+            f"{float(BAKE_TASKS['write_seconds'][page]):g} s <= {WRITE_ALLOWANCE_SECONDS:g} s"
         )
     # One live variant per task (streamed) is the shape the memory bound certifies; the pooled
     # shape (every variant of a page resident at once) is reported, never certified.
@@ -1488,6 +1502,33 @@ def _budget(key: str, page: str, seconds: float) -> tuple[int, str]:
     if page == "audiences":
         return AUDIENCES_PHASE_BUDGET_SECONDS, "fixed AUDIENCES_PHASE_BUDGET_SECONDS"
     return 30 * math.ceil(seconds / 30), "certified seconds rounded up to a multiple of 30"
+
+
+def write_allowance_findings(
+    write_seconds: Mapping[str, object] | None = None,
+) -> tuple[BakeabilityFinding, ...]:
+    """Refuse a roster row whose write term exceeds `WRITE_ALLOWANCE_SECONDS` (ADR-144)."""
+    terms = (
+        cast("Mapping[str, object]", BAKE_TASKS["write_seconds"])
+        if write_seconds is None
+        else write_seconds
+    )
+    findings: list[BakeabilityFinding] = []
+    for row in BAKE_TASKS["roster"]:
+        page = str(row["page"])
+        seconds = float(cast("float", terms[page]))
+        if seconds > WRITE_ALLOWANCE_SECONDS:
+            findings.append(
+                BakeabilityFinding(
+                    page,
+                    "write-allowance",
+                    (
+                        f"{page}#{row['variant']}: write_seconds {seconds:g} s exceeds "
+                        f"WRITE_ALLOWANCE_SECONDS={WRITE_ALLOWANCE_SECONDS:g} s."
+                    ),
+                )
+            )
+    return tuple(findings)
 
 
 def source_horizon_findings(root: pathlib.Path) -> tuple[BakeabilityFinding, ...]:
