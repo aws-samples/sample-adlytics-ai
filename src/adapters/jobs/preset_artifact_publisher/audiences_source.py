@@ -43,7 +43,6 @@ from adapters.campaign_insight_requests import FindingSource, predicate_findings
 from adapters.inbound.tool_handlers.dimension_labels import DimensionLabelResolver
 from adapters.inbound.tool_handlers.gateway import contracts_root
 from adapters.inbound.tool_handlers.measurement import (
-    DEFAULT_MAX_ROWS,
     MeasurementExecutionTooling,
     MeasurementTool,
     MeasurementTooling,
@@ -156,7 +155,7 @@ from ports.outbound.publication_selection import (
     PresentationEvidenceInspectionPlan,
     PresentationEvidenceInspectionRequest,
 )
-from ports.outbound.query import QueryResult
+from ports.outbound.query import BAKE_MAX_ROWS, QueryResult, RowCeiling
 from ports.outbound.rosters import RosterRequest
 from ports.outbound.segment_labels import SegmentLabelRequest
 from ports.outbound.semantic_state import scope_horizon_policy
@@ -459,7 +458,8 @@ class AudiencesArtifactRenderer:
                 _PERIOD_GRAIN_SELECTOR: TimeGrain.MONTH.value,
                 **filters,
             },
-            max_rows=DEFAULT_MAX_ROWS,
+            max_rows=BAKE_MAX_ROWS,
+            row_ceiling=RowCeiling.BAKE,
             rosters=() if roster is None else (roster,),
         )
 
@@ -474,6 +474,7 @@ class AudiencesArtifactRenderer:
                 platform_key=contract.platform_key,
                 filters=roster_filters(RosterKind.SEGMENT, scope.filters),
                 fact=scope.fact,
+                ceiling=RowCeiling.BAKE,
             )
         )
 

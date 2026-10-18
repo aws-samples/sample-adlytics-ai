@@ -32,7 +32,6 @@ from typing import TYPE_CHECKING, NamedTuple, Protocol, cast
 from adapters.campaign_insight_requests import FindingSource, predicate_findings
 from adapters.inbound.tool_handlers.gateway import contracts_root
 from adapters.inbound.tool_handlers.measurement import (
-    DEFAULT_MAX_ROWS,
     MeasurementExecutionTooling,
     MeasurementTool,
     MeasurementTooling,
@@ -139,6 +138,7 @@ from ports.outbound.publication_selection import (
     PresentationEvidenceInspectionPlan,
     PresentationEvidenceInspectionRequest,
 )
+from ports.outbound.query import BAKE_MAX_ROWS, RowCeiling
 from ports.outbound.rosters import RosterRequest
 from ports.outbound.semantic_state import scope_horizon_policy
 from ports.outbound.served_periods import ServedPeriodsRequest
@@ -376,7 +376,8 @@ class ReachArtifactRenderer:
                 _GRAIN_SET_SELECTOR: _PLATFORM_GRAIN_SET,
                 ROW_KIND_COLUMN: row_kind,
             },
-            max_rows=DEFAULT_MAX_ROWS,
+            max_rows=BAKE_MAX_ROWS,
+            row_ceiling=RowCeiling.BAKE,
         )
 
     def _served(
@@ -527,7 +528,8 @@ class ReachArtifactRenderer:
                 ROW_KIND_COLUMN: "window",
                 BUCKET_SCHEME_COLUMN: scheme,
             },
-            max_rows=DEFAULT_MAX_ROWS,
+            max_rows=BAKE_MAX_ROWS,
+            row_ceiling=RowCeiling.BAKE,
         )
 
     def _frequency(
@@ -566,7 +568,13 @@ class ReachArtifactRenderer:
             channel_roster = attached.rosters[0] if attached.rosters else None
             batch.add(attached, (market, "shoppers", "channels"), CHANNEL_GRAINS)
         campaigns = rosters.roster(
-            RosterRequest(RosterKind.CAMPAIGN, period.window, market, _AMAZON_ADS)
+            RosterRequest(
+                RosterKind.CAMPAIGN,
+                period.window,
+                market,
+                _AMAZON_ADS,
+                ceiling=RowCeiling.BAKE,
+            )
         )
         return _FrequencyRead(market, period, scheme, channel_roster, len(campaigns.entries))
 
