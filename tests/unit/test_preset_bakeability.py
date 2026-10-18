@@ -298,7 +298,7 @@ def test_the_sibling_envelope_counts_every_governed_channel() -> None:
 
 
 def test_each_roster_task_is_counted_at_its_own_window_never_a_page_total() -> None:
-    """Plan 4.2: retail spark plans grow by four per day; no page total is a runtime."""
+    """Plan 4.2: each task at its own window; Retail ranks in the query, so 47 at any window."""
     counts = roster_plan_counts(ROOT)
 
     assert counts == {
@@ -306,9 +306,9 @@ def test_each_roster_task_is_counted_at_its_own_window_never_a_page_total() -> N
         "campaigns#7d": 26,
         "campaigns#14d": 30,
         "campaigns#30d": 34,
-        "retail-health#1d": 46,
-        "retail-health#7d": 70,
-        "retail-health#14d": 98,
+        "retail-health#1d": 47,
+        "retail-health#7d": 47,
+        "retail-health#14d": 47,
     }
     assert list(counts) == [
         f"{row['page']}#{row['variant']}"
@@ -327,9 +327,9 @@ def test_every_roster_task_is_certified_within_its_contract_budget() -> None:
         ("campaigns#7d", 136.6, 240),
         ("campaigns#14d", 136.6, 270),
         ("campaigns#30d", 166.6, 300),
-        ("retail-health#1d", 196.6, 420),
-        ("retail-health#7d", 256.6, 420),
-        ("retail-health#14d", 346.6, 420),
+        ("retail-health#1d", 196.6, 240),
+        ("retail-health#7d", 196.6, 240),
+        ("retail-health#14d", 196.6, 240),
     ]
 
 
@@ -351,7 +351,7 @@ def test_a_roster_task_over_its_budget_or_without_a_count_is_a_named_finding() -
     assert "retail-health#14d has no true plan count" in findings[1].message
     # The boundary: 6 waves (60 plans) is 226.6 s and certifies.
     counts["campaigns#1d"] = 60
-    counts["retail-health#14d"] = 98
+    counts["retail-health#14d"] = 47
     assert certify_roster_tasks(counts)[1] == ()
 
 
