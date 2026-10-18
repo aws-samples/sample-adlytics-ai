@@ -29,6 +29,9 @@ spans:
       - service_processing_millis
       - admission_wait_millis
       - statistics_unavailable
+      - wait_policy
+      - wait_limit_s
+      - start_throttled_attempts
       - run_id
       - task_id
       - cohort_revision

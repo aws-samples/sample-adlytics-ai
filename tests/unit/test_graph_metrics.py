@@ -26,8 +26,8 @@ from adapters.jobs.preset_artifact_publisher.graph_bake import query_rollup, tas
 from adapters.jobs.trace_contract.contract import load_trace_contract
 from adapters.outbound import preset_artifacts as artifacts_module
 from adapters.outbound.athena import query as athena_query
-from adapters.outbound.athena.execution import StatementOutcome
-from adapters.outbound.athena.query import AthenaQueryAdapter, AthenaQueryTarget
+from adapters.outbound.athena.execution import StartedStatement, StatementOutcome
+from adapters.outbound.athena.query import INTERACTIVE_WAIT, AthenaQueryAdapter, AthenaQueryTarget
 from adapters.outbound.telemetry import graph_metrics
 from adapters.outbound.telemetry.graph_metrics import (
     BakeTaskReading,
@@ -216,8 +216,8 @@ def _adapter(monkeypatch: pytest.MonkeyPatch, outcome: StatementOutcome | Except
     def composed(*_arguments: object) -> object:
         return SimpleNamespace(sql="s", parameters=())
 
-    def started(*_arguments: object) -> str:
-        return "execution-1"
+    def started(*_arguments: object, **_keywords: object) -> StartedStatement:
+        return StartedStatement("execution-1", 0)
 
     def fetched(*_arguments: object) -> list[list[str | None]]:
         return []
@@ -225,19 +225,22 @@ def _adapter(monkeypatch: pytest.MonkeyPatch, outcome: StatementOutcome | Except
     monkeypatch.setattr(athena_query, "_refuse_withheld_only", _nothing)
     monkeypatch.setattr(athena_query, "_refuse_unreadable_suppression", _nothing)
     monkeypatch.setattr(athena_query, "compose", composed)
-    monkeypatch.setattr(athena_query, "start", started)
+    monkeypatch.setattr(athena_query, "start_counted", started)
     monkeypatch.setattr(athena_query, "fetch_rows", fetched)
     monkeypatch.setattr(athena_query, "_suppression_from", _nothing)
 
-    def completion(_client: object, _execution: str, *, limit: float) -> StatementOutcome:
-        del limit
+    def completion(
+        _client: object, _execution: str, *, limit: float, wait_policy: str | None
+    ) -> StatementOutcome:
+        del limit, wait_policy
         if isinstance(outcome, Exception):
             raise outcome
         return outcome
 
     monkeypatch.setattr(athena_query, "await_completion", completion)
     return AthenaQueryAdapter(
-        AthenaQueryTarget("fictional-bake", "fictional-current", 0), cast("Any", object())
+        AthenaQueryTarget("fictional-bake", "fictional-current", 0, INTERACTIVE_WAIT),
+        cast("Any", object()),
     )
 
 

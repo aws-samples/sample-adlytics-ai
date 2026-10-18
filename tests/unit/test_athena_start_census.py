@@ -64,7 +64,8 @@ SRC = ROOT / "src"
 
 START_SITES = frozenset(
     {
-        "adapters.outbound.athena.execution.start",
+        # `start`/`start_counted`'s one submission, which its throttled-start retry repeats.
+        "adapters.outbound.athena.execution._submit",
         "adapters.outbound.athena.table_attempt_start.Stage1AthenaStartClient._start_once",
     }
 )

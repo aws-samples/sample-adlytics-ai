@@ -84,7 +84,11 @@ from adapters.insight_requests import InsightRequestContext
 from adapters.jobs.contract_validation.insight_loader import load_insight_contracts
 from adapters.jobs.contract_validation.loader import load_contracts
 from adapters.jobs.presentation_validation.loader import load_page_schemas, load_v2_page_schemas
-from adapters.outbound.athena.query import AthenaQueryAdapter, AthenaQueryTarget
+from adapters.outbound.athena.query import (
+    INTERACTIVE_WAIT,
+    AthenaQueryAdapter,
+    AthenaQueryTarget,
+)
 from adapters.outbound.attribution_models import load_attribution_models
 from adapters.outbound.bedrock.insights import BedrockInsightGenerator, InsightModelRouteModels
 from adapters.outbound.catalog import (
@@ -10471,6 +10475,7 @@ QUERIES = AthenaQueryAdapter(
         workgroup=SETTINGS.athena_workgroup,
         database=SETTINGS.semantic_v2_current_database,
         reuse_minutes=SETTINGS.athena_result_reuse_max_age_minutes,
+        wait=INTERACTIVE_WAIT,
     )
 )
 MEASUREMENTS = MeasurementTooling(

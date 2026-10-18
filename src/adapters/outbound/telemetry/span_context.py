@@ -60,6 +60,8 @@ class QueryStatistics:
     scanned_bytes: int
     admission_wait_ms: int
     statistics_available: bool
+    throttled_starts: int = 0
+    """Throttled `StartQueryExecution` attempts the start retried through (ADR-144)."""
 
 
 _CORRELATION: ContextVar[SpanCorrelation | None] = ContextVar(

@@ -43,6 +43,7 @@ from adapters.outbound.athena.execution import (
 )
 from adapters.outbound.athena.query import (
     AGGREGATE_COLUMN,
+    INTERACTIVE_WAIT,
     AthenaQueryAdapter,
     AthenaQueryTarget,
 )
@@ -104,6 +105,7 @@ def _target(settings: Settings) -> AthenaQueryTarget:
         workgroup=settings.athena_workgroup,
         database=settings.semantic_v2_current_database,
         reuse_minutes=settings.athena_result_reuse_max_age_minutes,
+        wait=INTERACTIVE_WAIT,
     )
 
 

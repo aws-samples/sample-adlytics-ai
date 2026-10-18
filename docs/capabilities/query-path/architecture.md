@@ -15,6 +15,17 @@ A semantic planner resolves declared metric semantics, axes, filters, and requir
 
 Target atomic operations remain server-owned contracts; independent calls and browser/model joins never simulate an atomic result.
 
+## Statement wait policies
+
+Every `AthenaQueryTarget` names its wait policy (`StatementWait`, `src/adapters/outbound/athena/query.py`); the field has no default, so no composition gets another caller's wait ([ADR-144](../../decisions/adr-144-wait-for-a-bake-statement-within-its-invocation.md)).
+
+| Policy | Callers | Statement wait | Throttled start (`TooManyRequestsException`) |
+|---|---|---|---|
+| `interactive` | chat's measurement tool, presentation, insight precompute | `MAX_WAIT_SECONDS` (30 s) from the start, below the API Gateway integration timeout | retried for up to 10 s inside the 30 s, so at least 20 s remain for the statement |
+| `bake_invocation` | the Baker, on both bake entries | until the page's statement deadline: the invocation's remaining time less the row's write term and the contract's 30 s tail, set by `page_bake.render_page` | retried for up to 60 s, never past the deadline |
+
+A throttled start backs off with full jitter (`uniform(0, min(8, 0.5 × 2^attempt))` seconds); past its window, or on any other start error, the statement fails as before (`ATHENA/1`, with `throttled_attempts`). A bake statement outside `render_page` has no deadline and is an invariant (`ATHENA/5`). On a timeout the error carries `wait_policy`, `waited_seconds` and `wait_limit_seconds`. `BATCH_MAX_WAIT_SECONDS` (600 s) stays the semantic writer's wait; the bake doesn't use it.
+
 ## Athena workgroups and the batch start budget
 
 Each execution class runs in its own Athena workgroup, so a burst in one class never queues another's queries or reads its results. `DataV2Stack` owns all of them; consumers derive the physical names with `semanticV2AthenaWorkgroupName` and never configure one by hand.

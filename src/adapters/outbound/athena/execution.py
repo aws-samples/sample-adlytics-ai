@@ -15,7 +15,9 @@ description, which can reach a caller.
 
 from __future__ import annotations
 
+import random
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
@@ -32,12 +34,16 @@ __all__ = [
     "POLL_INTERVAL_SECONDS",
     "QUERY_FAILED",
     "QUERY_TIMED_OUT",
+    "THROTTLED_START_BASE_SECONDS",
+    "THROTTLED_START_CAP_SECONDS",
     "AthenaTarget",
+    "StartedStatement",
     "StatementOutcome",
     "StatementRequest",
     "await_completion",
     "fetch_rows",
     "start",
+    "start_counted",
 ]
 
 QUERY_FAILED = ErrorCode("ATHENA", 1)
@@ -66,6 +72,8 @@ reused result.
 MAX_WAIT_SECONDS: Final = 30.0
 """How long an interactive statement may take before it is abandoned.
 
+Interactive callers only; a bake waits within its invocation (ADR-144).
+
 Below the API Gateway integration timeout deliberately: a function outliving its caller burns
 cost and returns nothing. A read needing longer is answering at a grain the interactive
 workgroup should not serve, and the scan cutoff usually stops it first.
@@ -80,6 +88,14 @@ slow one.
 """
 
 TERMINAL: Final = frozenset({"SUCCEEDED", "FAILED", "CANCELLED"})
+
+THROTTLED_START_BASE_SECONDS: Final = 0.5
+"""The full-jitter backoff's base for a throttled start (ADR-144): attempt n sleeps
+`uniform(0, min(cap, base * 2**n))`."""
+THROTTLED_START_CAP_SECONDS: Final = 8.0
+"""The full-jitter backoff's cap for a throttled start (ADR-144)."""
+_THROTTLED: Final = "TooManyRequestsException"
+"""What Athena raises over the account's active-DML quota; the only start error retried."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,8 +136,52 @@ class StatementRequest:
     reuse_minutes: int
 
 
-def start(client: AthenaClient, request: StatementRequest) -> str:
-    """Submit a statement with its values encoded, and return the execution id.
+@dataclass(frozen=True, slots=True)
+class StartedStatement:
+    """A submitted statement's execution id and the throttled starts it waited through."""
+
+    execution_id: str
+    throttled_attempts: int
+
+
+def start(  # noqa: PLR0913 -- the request, its throttle window and its injectable clock
+    client: AthenaClient,
+    request: StatementRequest,
+    *,
+    retry_throttled_until: float | None = None,
+    random_source: random.Random | None = None,
+    clock: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
+) -> str:
+    """Submit a statement and return its execution id; see `start_counted`."""
+    return start_counted(
+        client,
+        request,
+        retry_throttled_until=retry_throttled_until,
+        random_source=random_source,
+        clock=clock,
+        sleep=sleep,
+    ).execution_id
+
+
+def start_counted(  # noqa: PLR0913 -- the request, its throttle window and its injectable clock
+    client: AthenaClient,
+    request: StatementRequest,
+    *,
+    retry_throttled_until: float | None = None,
+    random_source: random.Random | None = None,
+    clock: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
+) -> StartedStatement:
+    """Submit a statement with its values encoded; return its id and its throttled attempts.
+
+    **A throttled start is retried only inside its window** (ADR-144). With
+    `retry_throttled_until` set (a `clock` instant), a `TooManyRequestsException` sleeps
+    `uniform(0, min(8, 0.5 * 2**attempt))` (full jitter, from `random_source`) and resubmits,
+    while `clock() + sleep < retry_throttled_until`. Past the window, and for every other error,
+    it raises today's `QUERY_FAILED`; a throttle's context carries `throttled_attempts`. With no
+    window (an interactive caller by default) nothing is retried. The jitter never touches the
+    request, so it never changes a request's identity or digest.
 
     **Every parameter is encoded here, and this is the only place it happens.** Athena parses an
     `ExecutionParameters` entry as a SQL expression rather than binding it as a value, so an
@@ -137,54 +197,76 @@ def start(client: AthenaClient, request: StatementRequest) -> str:
     deliberately" is necessarily per-statement.
     """
     encoded = [sql_literal(value) for value in request.parameters]
+    jitter = random_source or random.Random()  # noqa: S311 -- backoff jitter, not a secret
+    throttled = 0
+    while True:
+        try:
+            return StartedStatement(_submit(client, request, encoded), throttled)
+        except ClientError as exc:
+            error = exc.response.get("Error", {})
+            code = str(error.get("Code", ""))
+            if code == _THROTTLED and retry_throttled_until is not None:
+                throttled += 1
+                pause = jitter.uniform(
+                    0.0,
+                    min(
+                        THROTTLED_START_CAP_SECONDS,
+                        THROTTLED_START_BASE_SECONDS * 2 ** (throttled - 1),
+                    ),
+                )
+                if clock() + pause < retry_throttled_until:
+                    sleep(pause)
+                    continue
+            context: dict[str, object] = {
+                "cause": type(exc).__name__,
+                "workgroup": request.workgroup,
+                "aws_code": code,
+            }
+            if throttled:
+                context["throttled_attempts"] = throttled
+            raise DependencyError(
+                QUERY_FAILED, "The statement could not be submitted.", context=context
+            ) from None
+        except Exception as exc:
+            raise DependencyError(
+                QUERY_FAILED,
+                "The statement could not be submitted.",
+                context={"cause": type(exc).__name__, "workgroup": request.workgroup},
+            ) from None
+
+
+def _submit(client: AthenaClient, request: StatementRequest, encoded: list[str]) -> str:
+    """Submit one statement once; the SDK's own error propagates to `start_counted`."""
     # Inlined at each call site rather than built as a variable, so pyright checks it
     # against `ResultReuseConfigurationTypeDef` from context instead of inferring a plain dict.
     reuse_enabled = request.reuse_minutes > 0
-    try:
-        if request.parameters:
-            started = client.start_query_execution(
-                QueryString=request.sql,
-                WorkGroup=request.workgroup,
-                QueryExecutionContext={"Database": request.database},
-                ExecutionParameters=encoded,
-                ResultReuseConfiguration={
-                    "ResultReuseByAgeConfiguration": {
-                        "Enabled": reuse_enabled,
-                        "MaxAgeInMinutes": request.reuse_minutes,
-                    }
-                },
-            )
-        else:
-            # A statement with no placeholders must omit the key entirely. Athena rejects an
-            # empty `ExecutionParameters` list rather than treating it as "none".
-            started = client.start_query_execution(
-                QueryString=request.sql,
-                WorkGroup=request.workgroup,
-                QueryExecutionContext={"Database": request.database},
-                ResultReuseConfiguration={
-                    "ResultReuseByAgeConfiguration": {
-                        "Enabled": reuse_enabled,
-                        "MaxAgeInMinutes": request.reuse_minutes,
-                    }
-                },
-            )
-    except ClientError as exc:
-        error = exc.response.get("Error", {})
-        raise DependencyError(
-            QUERY_FAILED,
-            "The statement could not be submitted.",
-            context={
-                "cause": type(exc).__name__,
-                "workgroup": request.workgroup,
-                "aws_code": str(error.get("Code", "")),
+    if request.parameters:
+        started = client.start_query_execution(
+            QueryString=request.sql,
+            WorkGroup=request.workgroup,
+            QueryExecutionContext={"Database": request.database},
+            ExecutionParameters=encoded,
+            ResultReuseConfiguration={
+                "ResultReuseByAgeConfiguration": {
+                    "Enabled": reuse_enabled,
+                    "MaxAgeInMinutes": request.reuse_minutes,
+                }
             },
-        ) from None
-    except Exception as exc:
-        raise DependencyError(
-            QUERY_FAILED,
-            "The statement could not be submitted.",
-            context={"cause": type(exc).__name__, "workgroup": request.workgroup},
-        ) from None
+        )
+    else:
+        # A statement with no placeholders must omit the key entirely. Athena rejects an
+        # empty `ExecutionParameters` list rather than treating it as "none".
+        started = client.start_query_execution(
+            QueryString=request.sql,
+            WorkGroup=request.workgroup,
+            QueryExecutionContext={"Database": request.database},
+            ResultReuseConfiguration={
+                "ResultReuseByAgeConfiguration": {
+                    "Enabled": reuse_enabled,
+                    "MaxAgeInMinutes": request.reuse_minutes,
+                }
+            },
+        )
     return started["QueryExecutionId"]
 
 
@@ -226,14 +308,21 @@ class _Progress:
     outcome: StatementOutcome
 
 
-def await_completion(client: AthenaClient, execution_id: str, *, limit: float) -> StatementOutcome:
+def await_completion(  # noqa: PLR0913 -- the execution, its limit and its named policy
+    client: AthenaClient, execution_id: str, *, limit: float, wait_policy: str | None = None
+) -> StatementOutcome:
     """Poll to a terminal state and return what the statement cost.
 
     The cost figures are returned rather than discarded because they are the only measure of what a
     statement cost, and a tool that cannot report them cannot explain a bill or a wait. Three of
     the four callers ignore the result; the read path does not.
+
+    A caller with a named `wait_policy` (the read path, ADR-144) gets it on a timeout, with the
+    seconds actually waited and the limit it was given, so a page can tell a bake-wait timeout
+    from any other.
     """
-    deadline = time.monotonic() + limit
+    began = time.monotonic()
+    deadline = began + limit
     while True:
         progress = _state_of(client, execution_id)
         if progress.state == "SUCCEEDED":
@@ -262,14 +351,19 @@ def await_completion(client: AthenaClient, execution_id: str, *, limit: float) -
                 }
             else:
                 cancellation = {"cancellation_requested": True}
+            waited: dict[str, object] = (
+                {"waited_seconds": limit}
+                if wait_policy is None
+                else {
+                    "wait_policy": wait_policy,
+                    "waited_seconds": round(time.monotonic() - began, 3),
+                    "wait_limit_seconds": limit,
+                }
+            )
             raise DependencyError(
                 QUERY_TIMED_OUT,
                 "The statement took too long.",
-                context={
-                    "waited_seconds": limit,
-                    "query_id": execution_id,
-                    **cancellation,
-                },
+                context={**waited, "query_id": execution_id, **cancellation},
             )
         time.sleep(POLL_INTERVAL_SECONDS)
 
