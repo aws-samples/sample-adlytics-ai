@@ -15,6 +15,7 @@ from __future__ import annotations
 # The publication fixture spec is a shared test seam.
 # pyright: reportPrivateUsage=false
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Any, cast
@@ -46,6 +47,7 @@ from adapters.jobs.preset_artifact_publisher.graph_bake import (
     GraphBakeRuntime,
     task_node_name,
 )
+from adapters.jobs.preset_artifact_publisher.page_bake import ProcessBakeLedger
 from adapters.jobs.preset_artifact_publisher.transport import (
     BakeDelivery,
     BakeIntent,
@@ -396,6 +398,8 @@ class Bake:
     """Every POST_GRANT invariant signal a task counted."""
     visibility_calls: list[tuple[str, str, int]] = field(default_factory=list[tuple[str, str, int]])
     """Every bake-queue visibility override: (queue URL, receipt handle, seconds)."""
+    remaining_ms: Callable[[], int] = field(default=lambda: 600_000)
+    """The fictional invocation's remaining time (the Lambda context's callable)."""
     sources: LakeSources = field(init=False)
     runtime: BakeRuntime = field(init=False)
     graph: GraphBakeRuntime = field(init=False)
@@ -415,6 +419,7 @@ class Bake:
             pointer_table=POINTER_TABLE,
             query_cap=10,
             now=lambda: NOW,
+            process=ProcessBakeLedger(peak=lambda: 0.0),
         )
         self.graph = GraphBakeRuntime(
             release_store(self.tables),
@@ -474,7 +479,8 @@ class Bake:
         body = parse_bake_v3_body(record["body"])
         assert body is not None
         return self.graph.consume_v3(
-            BakeDelivery(body, record["body"], record["messageId"], receive_count)
+            BakeDelivery(body, record["body"], record["messageId"], receive_count),
+            self.remaining_ms,
         )
 
     def task(self, run: str, key: str, receive_count: int = 1) -> ConsumeResult:

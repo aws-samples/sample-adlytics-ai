@@ -134,7 +134,11 @@ def _composed_adapter(
     monkeypatch.setattr(athena_query, "_refuse_unreadable_suppression", nothing)
     monkeypatch.setattr(athena_query, "compose", composed)
     monkeypatch.setattr(athena_query, "start_counted", started)
-    monkeypatch.setattr(athena_query, "fetch_rows", lambda *_arguments: [])  # pyright: ignore[reportUnknownLambdaType]
+
+    def fetched(*_arguments: object) -> list[list[str | None]]:
+        return []
+
+    monkeypatch.setattr(athena_query, "fetch_rows", fetched)
     monkeypatch.setattr(athena_query, "_suppression_from", nothing)
     if client is None:
         monkeypatch.setattr(athena_query, "await_completion", completion)

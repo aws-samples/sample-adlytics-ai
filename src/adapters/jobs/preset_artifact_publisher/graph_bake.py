@@ -71,6 +71,16 @@ from adapters.jobs.preset_artifact_publisher.bake_results import (
     BakeUnavailable,
     BakeUnchanged,
 )
+from adapters.jobs.preset_artifact_publisher.page_bake import (
+    PROCESS_LEDGER,
+    PageFatalError,
+    PageParts,
+    PageWindow,
+    ProcessBakeLedger,
+    page_absence,
+    render_page,
+    stage_page,
+)
 from adapters.jobs.preset_artifact_publisher.transport import (
     BakeDelivery,
     BakeIntent,
@@ -140,7 +150,6 @@ from domain.operations.execution_graph_dispatch import (
     NodeState,
 )
 from domain.operations.execution_graph_release import (
-    BAKE_EXECUTIONS_OVER_CERTIFIED_BOUND,
     BAKE_FINALIZE_NODE,
     BAKE_PLAN_COUNT_MISMATCH,
     BAKE_TASK_NODE,
@@ -352,6 +361,8 @@ class BakeRuntime:
     """The invocation-shared FIFO admission, read for per-task occupancy and wait (plan 4.7)."""
     metrics: Callable[[BakeTaskReading], None] = emit_bake_task
     memory_peak_mb: Callable[[], float] = process_memory_peak_mb
+    process: ProcessBakeLedger = PROCESS_LEDGER
+    """The process's render ledger (`page_bake`); composition passes `PROCESS_LEDGER`."""
     live_payloads: int = 0
     peak_live_payloads: int = 0
     """One live variant payload at a time (plan 4.6); observed by tests."""
@@ -745,20 +756,12 @@ def row_horizon(run: RunRecord, row: BakeRosterRow) -> BakeRowHorizon:
 # --- tasks ------------------------------------------------------------------------------------
 
 
-class _TaskFatalError(Exception):
-    """A deterministic task failure: settle FAILED with a `fatal` recovery obligation."""
-
-    def __init__(self, code: str) -> None:
-        super().__init__(code)
-        self.code = code
-
-
 def _fatal_code(error: BaseException) -> str:
     if isinstance(error, PresetArtifactBodyCeilingError):
         return error.reason
     if isinstance(error, DurableBakeSourceManifestInvalidError | DurableBakeEffectInvalidError):
         return error.signal
-    if isinstance(error, _TaskFatalError):
+    if isinstance(error, PageFatalError):
         return error.code
     if isinstance(error, AdlyticsError):
         return str(error.code)
@@ -770,11 +773,6 @@ _SOURCE_REFUSALS: Final = (DomainError, ValidationError)
 (its plan pass and its render), where it is the page's designed absence, never a failure."""
 
 
-def _refused(intent: BakeIntent) -> BakeUnavailable:
-    """Return a refused row's designed absence: its page's generated unavailable reason."""
-    return BakeUnavailable(intent, unavailable_reason(intent.page))
-
-
 def _is_invariant(error: BaseException) -> bool:
     """Whether a task failure is an invariant (alarmed), not a refusal or the D18 ceiling."""
     return isinstance(
@@ -782,7 +780,7 @@ def _is_invariant(error: BaseException) -> bool:
         InvariantError
         | DurableBakeSourceManifestInvalidError
         | DurableBakeEffectInvalidError
-        | _TaskFatalError,
+        | PageFatalError,
     )
 
 
@@ -794,7 +792,7 @@ def _is_fatal(error: BaseException) -> bool:
     """
     if isinstance(error, DependencyError):
         return False
-    return isinstance(error, AdlyticsError | PresetArtifactBodyCeilingError | _TaskFatalError)
+    return isinstance(error, AdlyticsError | PresetArtifactBodyCeilingError | PageFatalError)
 
 
 def _output_manifest_digest(staged: PresetArtifactStageResult) -> str:
@@ -845,6 +843,10 @@ class _TaskInputs:
     intent: BakeIntent
     pinned: PinnedBakeSources
     observation: _TaskObservation
+    remaining_ms: Callable[[], int]
+    """The invocation's remaining time (the Lambda context's): the page's statement window."""
+    final: bool
+    """Whether this receive is the message's last (`BakeDelivery.final`)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -862,6 +864,9 @@ class GraphBakeTaskWork:
         reads = decode_reads(inputs.pinned.reads[index], source.reads_digest)
         observation = inputs.observation
         row = runtime.roster.row(key)
+        window = PageWindow(
+            inputs.remaining_ms, row, float(BAKE_TASKS["tail_seconds"]), inputs.final
+        )
         try:
             with (
                 runtime.reads.clock.pinned(compute_instant(inputs.run)),
@@ -877,24 +882,27 @@ class GraphBakeTaskWork:
                     # F1: the pinned replay refused as the fan-out's pass did (a refused pin
                     # carries zero requests): the row's designed absence, nothing executed.
                     observation.refusal_code = str(refusal.code)
-                    return self._classified(inputs, source.digest, _refused(inputs.intent))
+                    return self._classified(
+                        inputs, source.digest, page_absence(inputs.intent), window
+                    )
                 bound = captured.requests
                 digests = tuple(sorted(bake_request_digest(request) for request in bound))
                 observation.query_count, observation.distinct_count = len(bound), len(set(digests))
                 if digests != source.request_digests or len(set(digests)) != source.plan_count:
-                    raise _TaskFatalError(BAKE_PLAN_COUNT_MISMATCH)
-                result, limit = self._rendered(inputs, row.certified_plan_count)
+                    raise PageFatalError(BAKE_PLAN_COUNT_MISMATCH)
+                result, limit = self._rendered(inputs, window)
                 observation.executed_distinct = limit.distinct
                 observation.executed_request_digests = limit.keys
-                return self._classified(inputs, source.digest, result)
+                return self._classified(inputs, source.digest, result, window)
         finally:
             runtime.reads.done()
 
-    def _rendered(self, inputs: _TaskInputs, bound: int) -> tuple[BakeResult, LimitResult]:
-        """Render under the row's certified bound; an over-bound refusal wins (A5.1 I5).
+    def _rendered(self, inputs: _TaskInputs, window: PageWindow) -> tuple[BakeResult, LimitResult]:
+        """Render through the one page execution, inside the pinned replay (ADR-142, ADR-144).
 
-        The refusal is sticky, so a source that catches it still fails the task, and it takes
-        precedence over any render error raced in another worker, chained as its cause.
+        `render_page` owns the statement deadline and the certified bound (over it is sticky
+        and wins, A5.1 I5). A source refusing on what its queries returned (a suppressed result)
+        is the page's designed absence, with the executions it ran (F1).
         """
         runtime = self.runtime
         observation = inputs.observation
@@ -904,34 +912,26 @@ class GraphBakeTaskWork:
         runtime.queries.observe(lambda name: _phase(observation, name))
         runtime.live_payloads += 1
         runtime.peak_live_payloads = max(runtime.peak_live_payloads, runtime.live_payloads)
-        render_error: Exception | None = None
-        result: BakeResult | None = None
         try:
-            with runtime.queries.limited(bound) as limit:
-                try:
-                    result = runtime.baker.bake(inputs.intent)
-                except Exception as error:
-                    render_error = error
+            page = render_page(
+                PageParts(runtime.baker, runtime.queries, runtime.process),
+                inputs.intent,
+                window,
+                absent_on=_SOURCE_REFUSALS,
+            )
+        finally:
             if admission is not None:
                 observation.max_occupancy = admission.maximum_occupancy
                 observation.admission_wait_ms = admission.waited_ms
-        finally:
             runtime.queries.observed()
             runtime.live_payloads -= 1
-        executed = cast("LimitResult", limit.result)
-        if executed.over_bound:
-            raise _TaskFatalError(BAKE_EXECUTIONS_OVER_CERTIFIED_BOUND) from render_error
-        if isinstance(render_error, _SOURCE_REFUSALS):
-            # F1: a source refusing on what its queries returned (a suppressed result) is the
-            # page's designed absence, with the executions it ran.
-            observation.refusal_code = str(render_error.code)
-            return _refused(inputs.intent), executed
-        if render_error is not None:
-            raise render_error
-        return cast("BakeResult", result), executed
+        observation.deadline_clamped = page.deadline_clamped
+        if page.refusal is not None:
+            observation.refusal_code = str(cast("AdlyticsError", page.refusal).code)
+        return page.result, page.executed
 
-    def _classified(
-        self, inputs: _TaskInputs, source_digest: str, result: BakeResult
+    def _classified(  # noqa: PLR0913, PLR0917 -- the task, its source, its result and window
+        self, inputs: _TaskInputs, source_digest: str, result: BakeResult, window: PageWindow
     ) -> tuple[DurableBakeEffectV3, dict[str, object]]:
         run, intent = inputs.run, inputs.intent
         fields: dict[str, Any] = {
@@ -955,7 +955,7 @@ class GraphBakeTaskWork:
             return effect, {"pointer": None}
         if isinstance(result, BakeUnavailable):
             if result.reason != unavailable_reason(intent.page):
-                raise _TaskFatalError(result.reason)
+                raise PageFatalError(result.reason)
             effect = DurableBakeEffectV3(
                 **fields,
                 effect_kind=BakeEffectKind.UNAVAILABLE,
@@ -968,12 +968,12 @@ class GraphBakeTaskWork:
         publication = result
         body = publication.request.body
         if (body.page.value, body.variant.value) != (intent.page, intent.variant):
-            raise _TaskFatalError("bake_intent_mismatch")
+            raise PageFatalError("bake_intent_mismatch")
         request = granted_request(
             publication.request, cast("str", run.grant_id), pointer_written_at(self.runtime.now())
         )
         with _phase(inputs.observation, "write"):
-            staged = self.runtime.stage.stage(request)
+            staged = stage_page(self.runtime.stage.stage, request, window)
         inputs.observation.pairs = 1 + len(request.sibling_bodies)
         inputs.observation.written_bytes = _request_bytes(request)
         candidate = _candidate(request.pointer_advance)
@@ -1077,8 +1077,11 @@ def _node(store: ReleaseStore, run_id: str, node_id: str) -> NodeRecord | None:
 
 
 @trace_boundary(BAKE_TASK)
-def consume_bake_task(
-    ports: BakePorts, delivery: BakeDelivery, work: GraphBakeTaskWork
+def consume_bake_task(  # noqa: PLR0913, PLR0917 -- the task's ports, message, work and window
+    ports: BakePorts,
+    delivery: BakeDelivery,
+    work: GraphBakeTaskWork,
+    remaining_ms: Callable[[], int],
 ) -> ConsumeResult:
     """Claim and run one roster task inside its `bake.task` span (plan 4.7, A2.1).
 
@@ -1107,7 +1110,7 @@ def consume_bake_task(
             budget_seconds=budget,
         ) as recording,
     ):
-        result = _consume_task(ports, delivery, work, observation)
+        result = _consume_task(ports, delivery, work, observation, remaining_ms)
         recording.record(
             effect_kind=observation.effect_kind,
             reason=observation.reason,
@@ -1146,6 +1149,8 @@ class _TaskObservation:
     """Their bytewise-sorted canonical `<kind>:<digest>` keys."""
     refusal_code: str | None = None
     """The source refusal a designed-absence effect was mapped from (F1), if any."""
+    deadline_clamped: bool = False
+    """Whether the invocation reported negative remaining time, read as zero (ADR-144)."""
 
 
 @trace_boundary(BAKE_PHASE)
@@ -1184,6 +1189,7 @@ def query_rollup(statistics: tuple[QueryStatistics, ...]) -> dict[str, int]:
         "statistics_unavailable": sum(not item.statistics_available for item in statistics),
         "scanned_bytes": sum(item.scanned_bytes for item in statistics),
         "admission_wait_ms_total": sum(item.admission_wait_ms for item in statistics),
+        "throttled_starts": sum(item.throttled_starts for item in statistics),
     }
     for name in ("queue_ms", "engine_ms", "total_ms"):
         values = [int(getattr(item, name)) for item in statistics]
@@ -1235,6 +1241,7 @@ def _report_task(runtime: BakeRuntime, report: _TaskReport) -> None:
         "written_bytes": observation.written_bytes or 0,
         "executed_distinct": observation.executed_distinct or 0,
         "executed_request_digests": list(observation.executed_request_digests),
+        "deadline_clamped": observation.deadline_clamped,
     }
     runtime.log("task_summary", result.outcome, LogSeverity.INFO, **details)
     incomplete = trace_incomplete_count(statistics)
@@ -1256,8 +1263,13 @@ def _consume_task(  # noqa: PLR0911, PLR0913, PLR0917 -- one ordered task lifecy
     delivery: BakeDelivery,
     work: GraphBakeTaskWork,
     observation: _TaskObservation,
+    remaining_ms: Callable[[], int],
 ) -> ConsumeResult:
-    """Claim and run one roster task; settle its effect, or FAILED with its recovery owner."""
+    """Claim and run one roster task; settle its effect, or FAILED with its recovery owner.
+
+    `remaining_ms` is the invocation's remaining time, the window `render_page` sets the page's
+    statement deadline from.
+    """
     claim, refused = _claim(ports, delivery)
     if claim is None:
         return refused
@@ -1274,9 +1286,11 @@ def _consume_task(  # noqa: PLR0911, PLR0913, PLR0917 -- one ordered task lifecy
     try:
         pinned = store.read_durable_bake_sources(run.run_id)
         if pinned is None or pinned.manifest.digest != body.manifest_digest:
-            raise _TaskFatalError(DURABLE_BAKE_SOURCE_PIN_ABSENT)
+            raise PageFatalError(DURABLE_BAKE_SOURCE_PIN_ABSENT)
         intent = BakeIntent(cast("str", body.page), cast("str", body.variant))
-        effect, extra = work.effect_for(_TaskInputs(run, node, head, intent, pinned, observation))
+        effect, extra = work.effect_for(
+            _TaskInputs(run, node, head, intent, pinned, observation, remaining_ms, delivery.final)
+        )
     except Exception as error:
         _report(ports, delivery, error)
         if _is_invariant(error):
@@ -1912,9 +1926,9 @@ class GraphBakeRuntime:
             envelope, remaining_ms
         )
 
-    def consume_v3(self, delivery: BakeDelivery) -> ConsumeResult:
-        """Consume one task or finalize message."""
+    def consume_v3(self, delivery: BakeDelivery, remaining_ms: Callable[[], int]) -> ConsumeResult:
+        """Consume one task or finalize message; a task's deadline derives from `remaining_ms`."""
         ports = BakePorts(self.store, self.now, self.logger, self.invariant_metric, self.visibility)
         if delivery.body.kind == "bake_finalize":
             return consume_bake_finalize(ports, delivery, self.runtime)
-        return consume_bake_task(ports, delivery, self.tasks)
+        return consume_bake_task(ports, delivery, self.tasks, remaining_ms)

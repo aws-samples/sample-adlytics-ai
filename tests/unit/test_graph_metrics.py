@@ -411,12 +411,20 @@ def test_a_legacy_artifact_write_outside_a_cohort_writes_and_records_no_cohort_f
 
 
 def test_the_query_rollup_reports_count_total_p50_and_max_and_counts_unavailable() -> None:
-    def stat(timings: tuple[int, int, int], *, available: bool = True) -> QueryStatistics:
+    def stat(
+        timings: tuple[int, int, int], *, available: bool = True, throttled: int = 0
+    ) -> QueryStatistics:
         queue, engine, total = timings
-        return QueryStatistics("SUCCEEDED", queue, 0, engine, 0, total, 10, 1, available)
+        return QueryStatistics(
+            "SUCCEEDED", queue, 0, engine, 0, total, 10, 1, available, throttled_starts=throttled
+        )
 
     rolled = query_rollup(
-        (stat((5, 30, 40)), stat((1, 10, 12)), stat((9, 50, 70), available=False))
+        (
+            stat((5, 30, 40), throttled=2),
+            stat((1, 10, 12)),
+            stat((9, 50, 70), available=False, throttled=1),
+        )
     )
 
     assert rolled == {
@@ -424,6 +432,7 @@ def test_the_query_rollup_reports_count_total_p50_and_max_and_counts_unavailable
         "statistics_unavailable": 1,
         "scanned_bytes": 30,
         "admission_wait_ms_total": 3,
+        "throttled_starts": 3,
         "queue_ms_total": 15,
         "queue_ms_p50": 5,
         "queue_ms_max": 9,
@@ -457,6 +466,8 @@ def test_each_task_ends_with_one_summary_line_and_one_metric_reading() -> None:
         "phase_render_ms",
         "phase_write_ms",
         "query_executions",
+        "throttled_starts",
+        "deadline_clamped",
     } <= set(summaries[0])
     assert [(item.page, item.variant, item.effect_kind) for item in readings] == [
         ("campaigns", "1d", "written"),
