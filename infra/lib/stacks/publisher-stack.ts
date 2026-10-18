@@ -304,9 +304,11 @@ export class PublisherStack extends cdk.Stack {
         conditions: { StringLike: { 's3:prefix': ['canonical/current/*'] } },
       }),
     );
+    // ADR-143: the baker reads each result object from its own bake/ prefix (below), never
+    // GetQueryResults, so the grant is gone (A1, least privilege).
     baker.addToRolePolicy(
       new iam.PolicyStatement({
-        actions: ['athena:StartQueryExecution', 'athena:GetQueryExecution', 'athena:GetQueryResults', 'athena:StopQueryExecution'],
+        actions: ['athena:StartQueryExecution', 'athena:GetQueryExecution', 'athena:StopQueryExecution'],
         resources: [`arn:${this.partition}:athena:${this.region}:${this.account}:workgroup/${semanticV2AthenaWorkgroupName(config.envName, 'bake')}`],
       }),
     );
