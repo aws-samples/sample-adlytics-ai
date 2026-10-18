@@ -73,7 +73,7 @@ from adapters.jobs.preset_artifact_publisher.transport import (
     load_declared_bake_intents,
     parse_bake_v3_body,
 )
-from adapters.outbound.athena.query import AthenaQueryAdapter, AthenaQueryTarget
+from adapters.outbound.athena.query import INTERACTIVE_WAIT, AthenaQueryAdapter, AthenaQueryTarget
 from adapters.outbound.bake_sources import BakeClock, BakeQueryCapture, BakeSourceReads
 from adapters.outbound.commerce_identity import load_commerce_identity_bridge
 from adapters.outbound.dynamodb.execution_graph_release import DynamoGraphReleaseStore
@@ -1287,6 +1287,7 @@ def application() -> PresetArtifactBakeApplication:
                     workgroup=settings.athena_workgroup,
                     database=settings.semantic_v2_current_database,
                     reuse_minutes=settings.athena_result_reuse_max_age_minutes,
+                    wait=INTERACTIVE_WAIT,
                 )
             ),
             settings.athena_query_batch_max_concurrency,

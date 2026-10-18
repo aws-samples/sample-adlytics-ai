@@ -49,7 +49,11 @@ from adapters.jobs.insight_precompute.planning import (
 )
 from adapters.jobs.insight_precompute.requests import CampaignRetainedPublicationRequestBuilder
 from adapters.jobs.presentation_validation.loader import load_page_schemas, load_v2_page_schemas
-from adapters.outbound.athena.query import AthenaQueryAdapter, AthenaQueryTarget
+from adapters.outbound.athena.query import (
+    INTERACTIVE_WAIT,
+    AthenaQueryAdapter,
+    AthenaQueryTarget,
+)
 from adapters.outbound.bedrock.insights import BedrockInsightGenerator, InsightModelRouteModels
 from adapters.outbound.catalog import PageWindowCatalog
 from adapters.outbound.commerce_identity import load_commerce_identity_bridge
@@ -513,6 +517,7 @@ def application() -> PublicationInsightPrecomputeApplication:
             workgroup=settings.athena_workgroup,
             database=settings.semantic_v2_current_database,
             reuse_minutes=settings.athena_result_reuse_max_age_minutes,
+            wait=INTERACTIVE_WAIT,
         )
     )
     publications = PublicationSelector(current, source_packs, bridge)

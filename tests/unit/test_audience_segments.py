@@ -50,7 +50,12 @@ from adapters.jobs.ingest_delivery.semantic_ingestion import (
 )
 from adapters.jobs.ingest_delivery.semantic_sidecar import SemanticSidecarOutcome
 from adapters.outbound.athena.composition import compose, compose_series
-from adapters.outbound.athena.query import ALL_ROWS_WITHHELD, AthenaQueryAdapter, AthenaQueryTarget
+from adapters.outbound.athena.query import (
+    ALL_ROWS_WITHHELD,
+    INTERACTIVE_WAIT,
+    AthenaQueryAdapter,
+    AthenaQueryTarget,
+)
 from adapters.outbound.audience_segment_providers import (
     load_segment_providers,
     parse_segment_providers,
@@ -1693,7 +1698,8 @@ def test_a_period_series_refuses_a_month_withheld_whole_before_athena() -> None:
         ),
     )
     adapter = AthenaQueryAdapter(
-        AthenaQueryTarget("unit-workgroup", "unit-current", 0), cast("Any", _NoAthena())
+        AthenaQueryTarget("unit-workgroup", "unit-current", 0, INTERACTIVE_WAIT),
+        cast("Any", _NoAthena()),
     )
     with pytest.raises(ValidationError) as refused:
         adapter.run_series(PeriodSeriesRequest((_bound_month(AUGUST), withheld), 10))

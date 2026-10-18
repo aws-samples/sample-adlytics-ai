@@ -327,6 +327,9 @@ def _composition(settings: PresetArtifactBakeSettings) -> tuple[Any, BakeSourceR
             workgroup=settings.athena_workgroup,
             database=settings.semantic_v2_current_database,
             reuse_minutes=settings.athena_result_reuse_max_age_minutes,
+            # This harness renders sources directly, outside the page execution that sets a
+            # bake statement deadline, so its statements take the interactive wait.
+            wait=athena_query.INTERACTIVE_WAIT,
         )
     )
     current = DynamoCurrentPublications(settings.semantic_publications_table)

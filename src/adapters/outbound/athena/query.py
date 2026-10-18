@@ -11,13 +11,16 @@ reject what we wrote.
 
 from __future__ import annotations
 
+import random
+import time
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final, Literal
 
 import boto3
 
 from adapters.outbound.athena.composition import ComposedQuery, compose, compose_series
+from adapters.outbound.athena.deadline import bake_statement_deadline
 from adapters.outbound.athena.execution import (
     MAX_WAIT_SECONDS,
     QUERY_FAILED,
@@ -25,7 +28,7 @@ from adapters.outbound.athena.execution import (
     StatementRequest,
     await_completion,
     fetch_rows,
-    start,
+    start_counted,
 )
 from adapters.outbound.telemetry.span_context import (
     QueryStatistics,
@@ -46,9 +49,14 @@ if TYPE_CHECKING:  # pragma: no cover — kept out of the Lambda import path
 
 __all__ = [
     "ALL_ROWS_WITHHELD",
+    "BAKE_INVOCATION_WAIT",
+    "INTERACTIVE_THROTTLED_START_MAX_WAIT_SECONDS",
+    "INTERACTIVE_WAIT",
     "SUPPRESSION_UNREADABLE",
+    "THROTTLED_START_MAX_WAIT_SECONDS",
     "AthenaQueryAdapter",
     "AthenaQueryTarget",
+    "StatementWait",
 ]
 
 SUPPRESSION_UNREADABLE = ErrorCode("ATHENA", 3)
@@ -65,13 +73,60 @@ difference of sums and a same-fact ratio each select two — so this names the f
 """
 
 
+THROTTLED_START_MAX_WAIT_SECONDS: Final = 60.0
+"""How long a bake's throttled start keeps retrying (ADR-144): at least 3x the longest observed
+bake statement (16.2 s), so active queries finish and free quota inside it. A throttle that
+outlasts it is a sustained overload, which the task's receive retry handles."""
+
+INTERACTIVE_THROTTLED_START_MAX_WAIT_SECONDS: Final = 10.0
+"""How long a chat or presentation throttled start keeps retrying (owner, A7 option 1): it
+leaves at least 20 s of the interactive 30 s wait for the statement itself."""
+
+
+@dataclass(frozen=True, slots=True)
+class StatementWait:
+    """How long a target's statements may wait, and for how long a throttled start retries.
+
+    Two policies for two kinds of caller (ADR-144). `interactive` waits `MAX_WAIT_SECONDS` from
+    the statement's start and retries a throttled start for 10 s inside that. `bake_invocation`
+    waits until the page's statement deadline, which the page execution sets from the Lambda
+    invocation's remaining time; outside it a bake statement is an invariant (ATHENA/5). Its
+    throttled start retries for 60 s, never past the deadline. No caller has both.
+    """
+
+    name: Literal["interactive", "bake_invocation"]
+
+    def deadline(self) -> float:
+        """Return the monotonic instant a statement started now must finish by."""
+        if self.name == "interactive":
+            return time.monotonic() + MAX_WAIT_SECONDS
+        return bake_statement_deadline()
+
+    def throttled_start_until(self, first_throttle: float) -> float | None:
+        """Return the monotonic instant a throttled start stops retrying."""
+        if self.name == "interactive":
+            return first_throttle + INTERACTIVE_THROTTLED_START_MAX_WAIT_SECONDS
+        return min(bake_statement_deadline(), first_throttle + THROTTLED_START_MAX_WAIT_SECONDS)
+
+
+INTERACTIVE_WAIT: Final = StatementWait("interactive")
+"""Chat, presentation and precompute: the API Gateway-bounded 30 s wait."""
+BAKE_INVOCATION_WAIT: Final = StatementWait("bake_invocation")
+"""The baker: the statement waits within its invocation (ADR-144)."""
+
+
 @dataclass(frozen=True, slots=True)
 class AthenaQueryTarget:
-    """One enforced V2 interactive workgroup and current-only generated database."""
+    """One enforced V2 interactive workgroup and current-only generated database.
+
+    `wait` is required with no default: every composition names its policy, so none can
+    silently get another caller's wait (ADR-144).
+    """
 
     workgroup: str
     database: str
     reuse_minutes: int
+    wait: StatementWait
 
     def __post_init__(self) -> None:
         if not self.workgroup.strip() or not self.database.strip():
@@ -100,9 +155,16 @@ class AthenaQueryAdapter:
     future edit tried to.
     """
 
-    def __init__(self, target: AthenaQueryTarget, client: AthenaClient | None = None) -> None:
+    def __init__(
+        self,
+        target: AthenaQueryTarget,
+        client: AthenaClient | None = None,
+        random_source: random.Random | None = None,
+    ) -> None:
         self._target = target
         self._client = client or boto3.client("athena")
+        # The throttled start's full jitter; injectable so a test fixes the sleeps.
+        self._random = random_source or random.Random()  # noqa: S311 -- jitter, not a secret
 
     def run(self, request: QueryRequest) -> QueryResult:
         """Execute a plan and return its rows, or raise a `DependencyError`."""
@@ -170,12 +232,17 @@ class AthenaQueryAdapter:
         ) as recording:
             # A2.1: the closed statement kind, the workgroup, the admission wait and the bake's
             # correlation ids (absent outside a bake) are known before the start.
+            wait = self._target.wait
             recording.record(
                 workgroup=self._target.workgroup,
                 statement_kind=STATEMENT_KIND,
                 admission_wait_millis=waited,
+                wait_policy=wait.name,
             )
-            execution_id = start(
+            # ADR-144: the deadline is fixed before the start, so a throttled start's retries
+            # come out of the statement's own wait, never on top of it.
+            deadline = wait.deadline()
+            started = start_counted(
                 self._client,
                 StatementRequest(
                     sql=composed.sql,
@@ -184,25 +251,35 @@ class AthenaQueryAdapter:
                     database=self._target.database,
                     reuse_minutes=self._target.reuse_minutes,
                 ),
+                retry_throttled_until=wait.throttled_start_until(time.monotonic()),
+                random_source=self._random,
             )
+            execution_id, throttled = started.execution_id, started.throttled_attempts
+            limit = max(0.0, deadline - time.monotonic())
             # Not a user-facing identifier — it goes in the span and the log, never in a
             # description — but it is the one handle that ties a span to Athena's own history.
-            recording.record(query_id=execution_id)
+            recording.record(
+                query_id=execution_id,
+                start_throttled_attempts=throttled,
+                wait_limit_s=round(limit, 3),
+            )
             try:
-                outcome = await_completion(self._client, execution_id, limit=MAX_WAIT_SECONDS)
+                outcome = await_completion(
+                    self._client, execution_id, limit=limit, wait_policy=wait.name
+                )
             except DependencyError as error:
                 # A2.2: a failed, cancelled or timed-out execution keeps its span, with its
                 # terminal state; its statistics are recorded as unavailable, never dropped.
                 state = _terminal_state(error)
                 recording.record(state=state, statistics_unavailable="execution_not_succeeded")
-                collect_query(_statistics(state, None, waited))
+                collect_query(_statistics(state, None, waited, throttled=throttled))
                 raise
             recording.record(
                 state="SUCCEEDED",
                 service_processing_millis=outcome.service_processing_millis,
                 statistics_unavailable=None if outcome.statistics_present else "statistics_absent",
             )
-            collect_query(_statistics("SUCCEEDED", outcome, waited))
+            collect_query(_statistics("SUCCEEDED", outcome, waited, throttled=throttled))
             raw = fetch_rows(self._client, execution_id)
             aliases = logical.result_aliases
             rows = [_as_row(statement.columns, values, aggregates=aliases) for values in raw]
@@ -238,12 +315,23 @@ def _terminal_state(error: DependencyError) -> str:
     return "CANCELLED" if error.context.get("cancellation_requested") else "UNKNOWN"
 
 
-def _statistics(
-    state: str, outcome: StatementOutcome | None, waited: int | None
+def _statistics(  # noqa: PLR0913 -- one execution's state, outcome, wait and throttles
+    state: str, outcome: StatementOutcome | None, waited: int | None, *, throttled: int
 ) -> QueryStatistics:
     """Project one execution's statistics for the bake task's summary roll-up (A2.3)."""
     if outcome is None:
-        return QueryStatistics(state, 0, 0, 0, 0, 0, 0, waited or 0, statistics_available=False)
+        return QueryStatistics(
+            state,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            waited or 0,
+            statistics_available=False,
+            throttled_starts=throttled,
+        )
     return QueryStatistics(
         state,
         outcome.queue_millis,
@@ -254,6 +342,7 @@ def _statistics(
         outcome.bytes_scanned,
         waited or 0,
         statistics_available=outcome.statistics_present,
+        throttled_starts=throttled,
     )
 
 
