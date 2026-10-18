@@ -202,7 +202,6 @@ describe('disposable preset artifact publisher', () => {
         'dynamodb:Query',
         'athena:StartQueryExecution',
         'athena:GetQueryExecution',
-        'athena:GetQueryResults',
         'athena:StopQueryExecution',
         'glue:GetDatabase',
         'glue:GetTable',
@@ -215,6 +214,8 @@ describe('disposable preset artifact publisher', () => {
         's3:GetBucketLocation',
       ]),
     );
+    // ADR-143 (A1): the baker streams its result objects and never pages GetQueryResults.
+    expect(granted).not.toContain('athena:GetQueryResults');
     const rendered = JSON.stringify(statements);
     expect(rendered).toContain('/index/scope-current');
     expect(rendered).toContain(
