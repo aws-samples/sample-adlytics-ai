@@ -294,6 +294,32 @@ flow identity is a required recovery capability. The custom-resource path remain
 revision/pointer boundary, but neither substitutes for dependency-aware scheduling or objective
 attainment evidence.
 
+## Bake width and the memory model
+Every bake read asks for a bake row ceiling, never chat's 500-row narration bound ([ADR-143](../decisions/adr-143-size-bake-reads-by-a-bake-row-ceiling-separate-from-chat.md); the ceilings and transports are owned by [the query path](../capabilities/query-path/architecture.md#row-ceilings-result-transports-and-folds)). A held answer keeps up to `BAKE_MAX_ROWS` rows; a reduction streams up to `BAKE_MAX_STREAMED_ROWS` through a fold that keeps a bounded summary. The Baker reads each result as a stream from its result object, so one buffer is resident at any row count. One row more than the ceiling is a refusal of that read, never a page of an unknown whole.
+
+`make check-bakeability` certifies every roster row's resident bytes term by term and prints them:
+
+```text
+resident(row) = W                               # writes in flight: 2 x S3 chains per baker x 256,000 B
+              + Q x max_held x B_raw            # raw rows of at most Q slots being shaped at once
+              + sum(held widths) x B_shaped     # every shaped answer, resident until the render ends
+              + sum(fold max_kept) x B_kept     # each fold's enforced bound
+              + max_held x B_render             # the render's own per-row structures
+certified iff resident(row) <= 0.5 x the Baker's memory
+```
+
+A held slot's width is read from the batch the source builds: a fixed axis's own bound (days by marketplaces), the ranked 50, or the bake ceiling for a population read. The per-row byte terms are the row-ceiling probe's (`validation/probe_bake_row_ceiling.py`), recorded with their date in `bakeability.BAKE_MEMORY_TERMS`. Until bodies stream, the gate also keeps its check that every body a page writes fits the same share.
+
+## Scale envelope
+The one home of each page's own-absence thresholds at publish time. The README's known-limits line links here.
+
+| Threshold | Value | Above it | Owner |
+|---|---|---|---|
+| `BAKE_MAX_ROWS`, rows one held bake answer may keep | 10,000, set by the row-ceiling probe on dev on 2026-10-18 at the Baker's 1,024 MiB; binding row Audiences (495.8 MB of 536.9 MB). A memory-sized defect guard, not a product bound; re-derived when bodies stream and the Baker's memory changes | the page whose read it is shows its own absence | ADR-143 |
+| `BAKE_MAX_STREAMED_ROWS`, rows one bake reduction may stream | 310,000 (31 days x `BAKE_MAX_ROWS`) | the reduction's section shows its absence | ADR-143 |
+| Retail health product rows | the top 50 by current shipped revenue, with the stated total of every product, at any catalog under `BAKE_MAX_ROWS` | the page's own absence | [Retail LLD](retail-health/low-level-design.md) |
+| Campaigns population | 1,000 campaigns (`CAMPAIGN_PRESET_POPULATION_BOUND`) | the page's own absence | ADR-145 |
+
 ## Scaling and operational gaps
 
 The legacy bake unit is one variant. On the `GRAPH` path one page row's scale failure withholds the

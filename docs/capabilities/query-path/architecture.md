@@ -26,6 +26,24 @@ Every `AthenaQueryTarget` names its wait policy (`StatementWait`, `src/adapters/
 
 A throttled start backs off with full jitter (`uniform(0, min(8, 0.5 × 2^attempt))` seconds); past its window, or on any other start error, the statement fails as before (`ATHENA/1`, with `throttled_attempts`). A bake statement outside `render_page` has no deadline and is an invariant (`ATHENA/5`). On a timeout the error carries `wait_policy`, `waited_seconds` and `wait_limit_seconds`. `BATCH_MAX_WAIT_SECONDS` (600 s) stays the semantic writer's wait; the bake doesn't use it.
 
+## Row ceilings, result transports and folds
+Every read names the caller kind whose row ceiling bounds it (`RowCeiling`, `src/ports/outbound/query.py`; [ADR-143](../../decisions/adr-143-size-bake-reads-by-a-bake-row-ceiling-separate-from-chat.md)). The kind isn't a tool input, so chat can't reach a bake ceiling.
+| Kind | Callers | Most rows one read may ask for | Why |
+|---|---|---|---|
+| `NARRATION` | chat's measurement tool, presentation live reads | 500 by default, `MAX_ROWS_CEILING` (10,000) at most | a model can't narrate more honestly; unchanged |
+| `BAKE` | publish-time held answers, every bake source and the rosters it reads | `BAKE_MAX_ROWS`, sized by the baker's memory model (value in [the publisher's scale envelope](../../ui/preset-artifact-publisher.md#scale-envelope)) | a page bakes from its whole population |
+| `BAKE_STREAMED` | publish-time reductions | `BAKE_LONGEST_WINDOW_DAYS` (31) × `BAKE_MAX_ROWS`, derived | a daily series of a population the held ceiling bounds |
+
+Every statement asks for `LIMIT max_rows + 1`; one row more than asked is a truncated read, which a bake refuses, never shows as a page of an unknown whole.
+
+Every `AthenaQueryTarget` also names its result transport (`ResultTransport`, no default):
+- `PAGED` pages `GetQueryResults`, at most 1,000 rows a call: chat, presentation and insight precompute.
+- `OBJECT` streams the statement's CSV result object with one `s3:GetObject` (`stream_result_rows`), one buffer resident at any row count. Only the Baker reads this way, from its own `bake/` result prefix; result reuse stays inside one workgroup, so a reused bake result is also under `bake/`.
+
+A bake slot is read **held** (its answer keeps every row, up to `BAKE_MAX_ROWS`) or as a **reduction**: the rows stream through a fold (`src/domain/measurement/folds.py`: `ObservedKeys`, `KeysByGroup`, `AuthorizedDailySums`) that keeps only a bounded summary and enforces its own `max_kept`; keeping more is the same refusal as a truncated read. `fold_answer` applies a held answer's per-row rules and builds its metadata with the one `answer_metadata` builder, so a held and a folded answer over the same rows can't differ. A fold reads a simple one-measure, unjoined plan only; anything else is refused when the batch is prepared. The presentation batch shapes or folds each slot in the worker that ran it, so a slot's raw rows are gone when its worker returns.
+
+A publish-time read may also carry a **ranked restriction** (`src/domain/measurement/ranking.py`): one `ranked` CTE ranks a declared population inside the statement, fenced to the publications of the batch's own reads of it, and the read either returns the ranked keys or semi-joins its own rows to them. Retail health ranks its top 50 this way.
+
 ## Athena workgroups and the batch start budget
 
 Each execution class runs in its own Athena workgroup, so a burst in one class never queues another's queries or reads its results. `DataV2Stack` owns all of them; consumers derive the physical names with `semanticV2AthenaWorkgroupName` and never configure one by hand.
