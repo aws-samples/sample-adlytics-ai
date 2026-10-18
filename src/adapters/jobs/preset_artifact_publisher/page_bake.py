@@ -180,7 +180,6 @@ def render_page(  # noqa: PLR0913 -- the page's parts, intent, window and absenc
             try:
                 result = parts.baker.bake(intent)
             # Held, not swallowed: the over-bound check below must win over any render error.
-            # error-propagation: re-raised below, after the sticky over-bound check
             except Exception as error:
                 render_error = error
     finally:
