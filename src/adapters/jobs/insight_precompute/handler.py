@@ -53,6 +53,7 @@ from adapters.outbound.athena.query import (
     INTERACTIVE_WAIT,
     AthenaQueryAdapter,
     AthenaQueryTarget,
+    ResultTransport,
 )
 from adapters.outbound.bedrock.insights import BedrockInsightGenerator, InsightModelRouteModels
 from adapters.outbound.catalog import PageWindowCatalog
@@ -518,6 +519,7 @@ def application() -> PublicationInsightPrecomputeApplication:
             database=settings.semantic_v2_current_database,
             reuse_minutes=settings.athena_result_reuse_max_age_minutes,
             wait=INTERACTIVE_WAIT,
+            results=ResultTransport.PAGED,
         )
     )
     publications = PublicationSelector(current, source_packs, bridge)

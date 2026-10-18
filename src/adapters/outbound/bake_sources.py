@@ -51,7 +51,7 @@ from ports.outbound.publication_selection import (
     PublicationSelectionExactPort,
     PublicationSelectionExactRequest,
 )
-from ports.outbound.query import PeriodSeriesRequest, QueryRequest, QueryResult
+from ports.outbound.query import FoldRead, PeriodSeriesRequest, QueryRequest, QueryResult, RowSink
 from ports.outbound.semantic_state import InspectExactResult, ScopeHorizon
 
 if TYPE_CHECKING:
@@ -629,6 +629,9 @@ class BakeSourceReads:
 _EMPTY: Final = QueryResult(
     rows=(), bytes_scanned=0, truncated=False, suppression=Suppression(rows_suppressed=False)
 )
+_EMPTY_FOLD: Final = FoldRead(
+    rows_read=0, truncated=False, bytes_scanned=0, suppression=Suppression(rows_suppressed=False)
+)
 
 
 @dataclass
@@ -792,3 +795,15 @@ class BakeQueryCapture:
         if self._admit(request):
             return _EMPTY
         return self.inner.run_series(request)
+
+    def fold(self, request: QueryRequest, sink: RowSink) -> FoldRead:
+        """Capture the request (its sink gets no rows), or stream it through the admission."""
+        if self._admit(request):
+            return _EMPTY_FOLD
+        return self.inner.fold(request, sink)
+
+    def fold_series(self, request: PeriodSeriesRequest, sink: RowSink) -> FoldRead:
+        """Capture the series request (no rows), or stream it through the same admission."""
+        if self._admit(request):
+            return _EMPTY_FOLD
+        return self.inner.fold_series(request, sink)

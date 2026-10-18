@@ -46,6 +46,7 @@ from adapters.outbound.athena.query import (
     INTERACTIVE_WAIT,
     AthenaQueryAdapter,
     AthenaQueryTarget,
+    ResultTransport,
 )
 from adapters.outbound.catalog import MetricWindowDefaults, PageWindowCatalog
 from adapters.outbound.commerce_identity import load_commerce_identity_bridge
@@ -132,6 +133,7 @@ QUERIES = AthenaQueryAdapter(
         database=SETTINGS.semantic_v2_current_database,
         reuse_minutes=SETTINGS.athena_result_reuse_max_age_minutes,
         wait=INTERACTIVE_WAIT,
+        results=ResultTransport.PAGED,
     )
 )
 CANONICAL = S3CanonicalAdapter(SETTINGS.semantic_v2_bucket)

@@ -55,6 +55,7 @@ from adapters.outbound.athena.query import (
     INTERACTIVE_WAIT,
     AthenaQueryAdapter,
     AthenaQueryTarget,
+    ResultTransport,
 )
 from adapters.outbound.audience_segment_providers import (
     load_segment_providers,
@@ -1698,7 +1699,9 @@ def test_a_period_series_refuses_a_month_withheld_whole_before_athena() -> None:
         ),
     )
     adapter = AthenaQueryAdapter(
-        AthenaQueryTarget("unit-workgroup", "unit-current", 0, INTERACTIVE_WAIT),
+        AthenaQueryTarget(
+            "unit-workgroup", "unit-current", 0, INTERACTIVE_WAIT, ResultTransport.PAGED
+        ),
         cast("Any", _NoAthena()),
     )
     with pytest.raises(ValidationError) as refused:

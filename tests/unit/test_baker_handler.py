@@ -8,7 +8,7 @@ both receive that callable, and an invocation without it refuses every record be
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from typing import Any, cast
 
@@ -31,12 +31,28 @@ from adapters.outbound.athena.query import (
     BAKE_INVOCATION_WAIT,
     AthenaQueryAdapter,
     AthenaQueryTarget,
+    ResultTransport,
 )
 from adapters.outbound.bake_sources import BakeQueryCapture
 from domain.operations.execution_graph import AuthorityMode
 from domain.operations.execution_graph_release import BakeRoster
 from domain.operations.generated_execution_graphs import BAKE_TASKS
 from domain.shared_kernel.errors import InvariantError
+from domain.shared_kernel.provenance import Suppression
+
+
+class _NoWithholding:
+    """Stands in for the adapter's withholding accumulator over a stub plan."""
+
+    def __init__(self, _plan: object) -> None:
+        return None
+
+    def add(self, _row: object) -> None:
+        return None
+
+    def result(self) -> Suppression:
+        return Suppression(rows_suppressed=False)
+
 
 pytestmark = pytest.mark.unit
 
@@ -218,8 +234,8 @@ def _deadline_adapter(
         waits.append((wait_policy, limit))
         return StatementOutcome()
 
-    def fetched(*_arguments: object) -> list[list[str | None]]:
-        return []
+    def fetched(*_arguments: object) -> Iterator[list[str | None]]:
+        return iter([])
 
     for name, value in (
         ("_refuse_withheld_only", nothing),
@@ -227,11 +243,13 @@ def _deadline_adapter(
         ("compose", composed),
         ("start_counted", started),
         ("await_completion", completion),
-        ("fetch_rows", fetched),
-        ("_suppression_from", nothing),
+        ("iter_pages", fetched),
+        ("_SuppressionAccumulator", _NoWithholding),
     ):
         monkeypatch.setattr(athena_query, name, value)
-    target = AthenaQueryTarget("adlytics-dev-v2-bake", "current", 0, BAKE_INVOCATION_WAIT)
+    target = AthenaQueryTarget(
+        "adlytics-dev-v2-bake", "current", 0, BAKE_INVOCATION_WAIT, ResultTransport.PAGED
+    )
     return AthenaQueryAdapter(target, cast("Any", object())), waits
 
 
@@ -253,7 +271,9 @@ class _QueryingBaker:
             },
         )()
         request = type(
-            "Request", (), {"plan": type("Plan", (), {"logical": logical})(), "max_rows": 10}
+            "Request",
+            (),
+            {"plan": type("Plan", (), {"logical": logical})(), "max_rows": 10, "ranked": None},
         )()
         self.queries.run(cast("Any", request))
         return BakeUnavailable(intent, "scorecard_materialization_unavailable")

@@ -10,7 +10,7 @@ Every identity is fictional.
 
 from __future__ import annotations
 
-from collections.abc import Generator
+from collections.abc import Generator, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -27,7 +27,12 @@ from adapters.jobs.trace_contract.contract import load_trace_contract
 from adapters.outbound import preset_artifacts as artifacts_module
 from adapters.outbound.athena import query as athena_query
 from adapters.outbound.athena.execution import StartedStatement, StatementOutcome
-from adapters.outbound.athena.query import INTERACTIVE_WAIT, AthenaQueryAdapter, AthenaQueryTarget
+from adapters.outbound.athena.query import (
+    INTERACTIVE_WAIT,
+    AthenaQueryAdapter,
+    AthenaQueryTarget,
+    ResultTransport,
+)
 from adapters.outbound.telemetry import graph_metrics
 from adapters.outbound.telemetry.graph_metrics import (
     BakeTaskReading,
@@ -44,6 +49,21 @@ from adapters.outbound.telemetry.span_context import (
 from domain.operations.execution_graph_dispatch import NodeState
 from domain.operations.execution_graph_release import BakeEffectKind
 from domain.shared_kernel.errors import DependencyError, ErrorCode
+from domain.shared_kernel.provenance import Suppression
+
+
+class _NoWithholding:
+    """Stands in for the adapter's withholding accumulator over a stub plan."""
+
+    def __init__(self, _plan: object) -> None:
+        return None
+
+    def add(self, _row: object) -> None:
+        return None
+
+    def result(self) -> Suppression:
+        return Suppression(rows_suppressed=False)
+
 
 pytestmark = [pytest.mark.unit, pytest.mark.covers("ADR-075")]
 
@@ -219,15 +239,15 @@ def _adapter(monkeypatch: pytest.MonkeyPatch, outcome: StatementOutcome | Except
     def started(*_arguments: object, **_keywords: object) -> StartedStatement:
         return StartedStatement("execution-1", 0)
 
-    def fetched(*_arguments: object) -> list[list[str | None]]:
-        return []
+    def fetched(*_arguments: object) -> Iterator[list[str | None]]:
+        return iter([])
 
     monkeypatch.setattr(athena_query, "_refuse_withheld_only", _nothing)
     monkeypatch.setattr(athena_query, "_refuse_unreadable_suppression", _nothing)
     monkeypatch.setattr(athena_query, "compose", composed)
     monkeypatch.setattr(athena_query, "start_counted", started)
-    monkeypatch.setattr(athena_query, "fetch_rows", fetched)
-    monkeypatch.setattr(athena_query, "_suppression_from", _nothing)
+    monkeypatch.setattr(athena_query, "iter_pages", fetched)
+    monkeypatch.setattr(athena_query, "_SuppressionAccumulator", _NoWithholding)
 
     def completion(
         _client: object, _execution: str, *, limit: float, wait_policy: str | None
@@ -239,7 +259,9 @@ def _adapter(monkeypatch: pytest.MonkeyPatch, outcome: StatementOutcome | Except
 
     monkeypatch.setattr(athena_query, "await_completion", completion)
     return AthenaQueryAdapter(
-        AthenaQueryTarget("fictional-bake", "fictional-current", 0, INTERACTIVE_WAIT),
+        AthenaQueryTarget(
+            "fictional-bake", "fictional-current", 0, INTERACTIVE_WAIT, ResultTransport.PAGED
+        ),
         cast("Any", object()),
     )
 
@@ -251,7 +273,7 @@ def _request() -> Any:
         selected_columns=(),
         result_aliases=(),
     )
-    return SimpleNamespace(plan=SimpleNamespace(logical=logical), max_rows=10)
+    return SimpleNamespace(plan=SimpleNamespace(logical=logical), max_rows=10, ranked=None)
 
 
 def test_an_execution_under_a_task_records_statistics_admission_wait_and_correlation(
