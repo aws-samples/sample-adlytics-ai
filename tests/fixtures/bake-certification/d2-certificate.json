@@ -1,0 +1,3327 @@
+{
+  "schema": "d2-bake-certificate/v2",
+  "authority": "plan A5.3 (b) + O4; remedy A5.1 I9 (owner-decisions ~14:05Z)",
+  "measured_tree": {
+    "base_sha": "24854c92b24c5f10b763552794bb869e71e19bd6",
+    "o1_clean_status_before_s0": "",
+    "o1_note": "git status --porcelain was empty at the base SHA before S0 measured; the S0 commit carrying this file is the reproducing tree (validation/README.md receipt records its SHA and the clean re-run).",
+    "regenerated_on_parent": "a2ff0d5e037fbc1b32b5f75ae532ba88061d6273",
+    "regeneration_note": "merge-gate round 4 (M1) re-ran every command on the clean committed tip a2ff0d5e (git status --porcelain empty before and after); each output's SHA-256 equals the digest recorded below, unchanged from round 3. The commit carrying this edit has a2ff0d5e as its parent and changes no counter code. test_bake_pin_certificate.py re-derives the --d2-roster digest and every row's counter fields on each run.",
+    "remeasure": {
+      "note": "re-measured 2026-10-17, pin aggregate shrank, within bounds, cause dc8374dc",
+      "measured_on": "ff36d6b806f446096d544e195ec357b81ea0d4cf",
+      "cause": "dc8374dc scopes source coverage to the facts each metric reads, so the campaigns, scorecard and new-customers rows pin fewer coverage scopes",
+      "unchanged_digests": [
+        "d2-roster.out",
+        "check-bakeability.out"
+      ],
+      "raw_custody": ".agents/tasks/integration-publish-ready/s0-remeasure-2026-10-17/ (ignored)",
+      "pin_section_sha256": {
+        "before": "sha256:70074f21cb1fbf5c60d3b78acb607a098da7271e6b7c6f3eb050fe1bfd5a25a5",
+        "after": "sha256:074dad6d06eaaf6060b9e06515f3fab22fea95b56cb487cd8ecd8337fe126e0b"
+      },
+      "before": {
+        "largest_item": {
+          "sk": "BAKE_SOURCE#scorecard#30d",
+          "bytes": 84770
+        },
+        "aggregate_bytes": 970919,
+        "oracle_aggregate_bytes": 946343,
+        "negative_control_unbounded": {
+          "item_over_400000_at_history_days": 598,
+          "aggregate_over_4000000_at_history_days": 353,
+          "aggregate_bytes_at_measured_history": 1175855
+        }
+      },
+      "after": {
+        "largest_item": {
+          "sk": "BAKE_SOURCE#scorecard#30d",
+          "bytes": 71062
+        },
+        "aggregate_bytes": 838395,
+        "oracle_aggregate_bytes": 813819,
+        "negative_control_unbounded": {
+          "item_over_400000_at_history_days": 670,
+          "aggregate_over_4000000_at_history_days": 380,
+          "aggregate_bytes_at_measured_history": 1088191
+        }
+      }
+    }
+  },
+  "owning_design_digest": {
+    "path": ".agents/tasks/ingestion-traceability/evidence/graph-bake-delivery/plan.md",
+    "sha256": "f8aee28d814a38aea8175482a061a9accc8e93a9e897e935f67ff420bf55369e",
+    "remedy_sha256": "c867c23f3cfe30df503c4a977c4ae4bd09538f3607e34c1e9cda2910cbfd460c"
+  },
+  "commands": [
+    {
+      "command": "uv run python -m adapters.jobs.preset_artifact_publisher.bakeability --d2-roster",
+      "raw_output": "d2-roster.out",
+      "sha256": "sha256:8ce35ae9a9cafb082597394388e76ead2eed24079ba628a045073d66ddfffa5a"
+    },
+    {
+      "command": "make check-bakeability",
+      "raw_output": "check-bakeability.out",
+      "sha256": "sha256:889a240899c1de6ae54a10ff54bfd26ca7dcd36d4681d9dd653027969a513fc2"
+    },
+    {
+      "command": "uv run python <custody>/pin_section.py",
+      "raw_output": "pin-section.json",
+      "sha256": "sha256:074dad6d06eaaf6060b9e06515f3fab22fea95b56cb487cd8ecd8337fe126e0b"
+    },
+    {
+      "command": "python3 <custody>/write_seconds_extract.py graph-bake-delivery/benchmark/extract-bake/spans.json",
+      "raw_output": "write-seconds.out",
+      "sha256": "sha256:9fe387868c30d076085b204f8fba8e54274d16fbfa7888b5a46e88113e3e36db",
+      "input_sha256": "sha256:21a790ed433cfd8160f1801db95c1faa18fb7eafa8dc9044c235fd7ab549440f"
+    },
+    {
+      "command": "uv run pytest -q tests/unit/test_bake_pin_certificate.py tests/unit/test_bake_source_horizons.py tests/unit/test_preset_bakeability.py",
+      "raw_output": "s0-tests.out"
+    }
+  ],
+  "raw_custody": ".agents/tasks/dev-integration/d2-merge/s0/round4/ (ignored)",
+  "write_seconds_benchmark": {
+    "run_id": "69e71e5d32c96f9009ce09c301a0cf2701c7fe9ad423218eb05590ec27bda2bf",
+    "pipeline": "A2.3 task_summary / benchmark extract-bake (spans.json)",
+    "artifact_write_spans": 180,
+    "statistic": "maximum over the written campaigns tasks of the per-task artifact.write duration sum, rounded up to one decimal place",
+    "campaigns_measured_seconds": 11.2,
+    "campaigns_adopted_seconds": 16.6,
+    "other_pages": "no deployed write trace: campaigns' 16.6 adopted as a [projection] upper bound",
+    "audiences_branch": "w_aud = 16.6 <= 30, so C = 7 (19 + 6C = 61)"
+  },
+  "rows": [
+    {
+      "key": "campaigns#1d",
+      "certified_count": 26,
+      "derivation": "portfolio batch at the 1000-campaign estate bound over 1d and its equal prior; 0 spend-roster reads",
+      "phases": [
+        26
+      ],
+      "write_seconds": {
+        "value": 16.6,
+        "marker": "projection",
+        "source": "adopted (conservative) 16.6 s; measured 11.2 s"
+      },
+      "certification_seconds": 136.6,
+      "budget_seconds": 240,
+      "budget_basis": "contract budget, re-certified",
+      "source_horizon_days": 123,
+      "source_horizon_terms": {
+        "window_days": 30,
+        "comparison_days": 30,
+        "lookback_days": 32,
+        "slack_days": 31,
+        "contributing_contracts": [
+          "amc-attributed-conversion",
+          "amc-dsp-clicks",
+          "amc-dsp-impressions",
+          "amc-dsp-reach",
+          "amc-dsp-views",
+          "amc-reach-frequency"
+        ]
+      },
+      "counter": {
+        "builder": [
+          "adapters.campaign_measurement.CampaignArtifactMeasurementService.portfolio_batch"
+        ],
+        "fixture": {
+          "reference_instant": "2025-01-01T00:00:00+00:00",
+          "window": "2026-03-01..2026-03-01",
+          "prior_window": "2026-02-28..2026-02-28",
+          "campaign_selections": "1000",
+          "selection_marketplaces": "1",
+          "sort": "spend desc",
+          "roster_port": "counting port answering an empty roster"
+        },
+        "output": "  campaigns#1d: count 26, phases [26], write 16.6 s [projection], 136.6 s <= 240 s (contract budget, re-certified), source horizon 123 d"
+      }
+    },
+    {
+      "key": "campaigns#7d",
+      "certified_count": 26,
+      "derivation": "portfolio batch at the 1000-campaign estate bound over 7d and its equal prior; 0 spend-roster reads",
+      "phases": [
+        26
+      ],
+      "write_seconds": {
+        "value": 16.6,
+        "marker": "projection",
+        "source": "adopted (conservative) 16.6 s; measured 11.2 s"
+      },
+      "certification_seconds": 136.6,
+      "budget_seconds": 240,
+      "budget_basis": "contract budget, re-certified",
+      "source_horizon_days": 123,
+      "source_horizon_terms": {
+        "window_days": 30,
+        "comparison_days": 30,
+        "lookback_days": 32,
+        "slack_days": 31,
+        "contributing_contracts": [
+          "amc-attributed-conversion",
+          "amc-dsp-clicks",
+          "amc-dsp-impressions",
+          "amc-dsp-reach",
+          "amc-dsp-views",
+          "amc-reach-frequency"
+        ]
+      },
+      "counter": {
+        "builder": [
+          "adapters.campaign_measurement.CampaignArtifactMeasurementService.portfolio_batch"
+        ],
+        "fixture": {
+          "reference_instant": "2025-01-01T00:00:00+00:00",
+          "window": "2026-02-23..2026-03-01",
+          "prior_window": "2026-02-16..2026-02-22",
+          "campaign_selections": "1000",
+          "selection_marketplaces": "1",
+          "sort": "spend desc",
+          "roster_port": "counting port answering an empty roster"
+        },
+        "output": "  campaigns#7d: count 26, phases [26], write 16.6 s [projection], 136.6 s <= 240 s (contract budget, re-certified), source horizon 123 d"
+      }
+    },
+    {
+      "key": "campaigns#14d",
+      "certified_count": 30,
+      "derivation": "portfolio batch at the 1000-campaign estate bound over 14d and its equal prior; 0 spend-roster reads",
+      "phases": [
+        30
+      ],
+      "write_seconds": {
+        "value": 16.6,
+        "marker": "projection",
+        "source": "adopted (conservative) 16.6 s; measured 11.2 s"
+      },
+      "certification_seconds": 136.6,
+      "budget_seconds": 270,
+      "budget_basis": "contract budget, re-certified",
+      "source_horizon_days": 123,
+      "source_horizon_terms": {
+        "window_days": 30,
+        "comparison_days": 30,
+        "lookback_days": 32,
+        "slack_days": 31,
+        "contributing_contracts": [
+          "amc-attributed-conversion",
+          "amc-dsp-clicks",
+          "amc-dsp-impressions",
+          "amc-dsp-reach",
+          "amc-dsp-views",
+          "amc-reach-frequency"
+        ]
+      },
+      "counter": {
+        "builder": [
+          "adapters.campaign_measurement.CampaignArtifactMeasurementService.portfolio_batch"
+        ],
+        "fixture": {
+          "reference_instant": "2025-01-01T00:00:00+00:00",
+          "window": "2026-02-16..2026-03-01",
+          "prior_window": "2026-02-02..2026-02-15",
+          "campaign_selections": "1000",
+          "selection_marketplaces": "1",
+          "sort": "spend desc",
+          "roster_port": "counting port answering an empty roster"
+        },
+        "output": "  campaigns#14d: count 30, phases [30], write 16.6 s [projection], 136.6 s <= 270 s (contract budget, re-certified), source horizon 123 d"
+      }
+    },
+    {
+      "key": "campaigns#30d",
+      "certified_count": 34,
+      "derivation": "portfolio batch at the 1000-campaign estate bound over 30d and its equal prior; 0 spend-roster reads",
+      "phases": [
+        34
+      ],
+      "write_seconds": {
+        "value": 16.6,
+        "marker": "projection",
+        "source": "adopted (conservative) 16.6 s; measured 11.2 s"
+      },
+      "certification_seconds": 166.6,
+      "budget_seconds": 300,
+      "budget_basis": "contract budget, re-certified",
+      "source_horizon_days": 123,
+      "source_horizon_terms": {
+        "window_days": 30,
+        "comparison_days": 30,
+        "lookback_days": 32,
+        "slack_days": 31,
+        "contributing_contracts": [
+          "amc-attributed-conversion",
+          "amc-dsp-clicks",
+          "amc-dsp-impressions",
+          "amc-dsp-reach",
+          "amc-dsp-views",
+          "amc-reach-frequency"
+        ]
+      },
+      "counter": {
+        "builder": [
+          "adapters.campaign_measurement.CampaignArtifactMeasurementService.portfolio_batch"
+        ],
+        "fixture": {
+          "reference_instant": "2025-01-01T00:00:00+00:00",
+          "window": "2026-01-31..2026-03-01",
+          "prior_window": "2026-01-01..2026-01-30",
+          "campaign_selections": "1000",
+          "selection_marketplaces": "1",
+          "sort": "spend desc",
+          "roster_port": "counting port answering an empty roster"
+        },
+        "output": "  campaigns#30d: count 34, phases [34], write 16.6 s [projection], 166.6 s <= 300 s (contract budget, re-certified), source horizon 123 d"
+      }
+    },
+    {
+      "key": "retail-health#1d",
+      "certified_count": 46,
+      "derivation": "main batch 42 over 1d and its prior with one spark query per day, then the product-ad batch 4 (sequential: reached after the main answer)",
+      "phases": [
+        42,
+        4
+      ],
+      "write_seconds": {
+        "value": 16.6,
+        "marker": "projection",
+        "source": "campaigns' 16.6 adopted as a conservative upper bound: no deployed write trace"
+      },
+      "certification_seconds": 226.6,
+      "budget_seconds": 420,
+      "budget_basis": "contract budget, re-certified",
+      "source_horizon_days": 106,
+      "source_horizon_terms": {
+        "window_days": 14,
+        "comparison_days": 14,
+        "lookback_days": 47,
+        "slack_days": 31,
+        "contributing_contracts": [
+          "amc-attributed-conversion",
+          "vendor-sales-by-asin",
+          "vendor-traffic-by-asin"
+        ]
+      },
+      "counter": {
+        "builder": [
+          "adapters.jobs.preset_artifact_publisher.retail_source.retail_health_measurement_batch",
+          "adapters.jobs.preset_artifact_publisher.retail_source.retail_product_ad_batch"
+        ],
+        "fixture": {
+          "reference_instant": "2025-01-01T00:00:00+00:00",
+          "window": "2026-03-01..2026-03-01",
+          "prior_window": "2026-02-28..2026-02-28"
+        },
+        "output": "  retail-health#1d: count 46, phases [42, 4], write 16.6 s [projection], 226.6 s <= 420 s (contract budget, re-certified), source horizon 106 d"
+      }
+    },
+    {
+      "key": "retail-health#7d",
+      "certified_count": 70,
+      "derivation": "main batch 66 over 7d and its prior with one spark query per day, then the product-ad batch 4 (sequential: reached after the main answer)",
+      "phases": [
+        66,
+        4
+      ],
+      "write_seconds": {
+        "value": 16.6,
+        "marker": "projection",
+        "source": "campaigns' 16.6 adopted as a conservative upper bound: no deployed write trace"
+      },
+      "certification_seconds": 286.6,
+      "budget_seconds": 420,
+      "budget_basis": "contract budget, re-certified",
+      "source_horizon_days": 106,
+      "source_horizon_terms": {
+        "window_days": 14,
+        "comparison_days": 14,
+        "lookback_days": 47,
+        "slack_days": 31,
+        "contributing_contracts": [
+          "amc-attributed-conversion",
+          "vendor-sales-by-asin",
+          "vendor-traffic-by-asin"
+        ]
+      },
+      "counter": {
+        "builder": [
+          "adapters.jobs.preset_artifact_publisher.retail_source.retail_health_measurement_batch",
+          "adapters.jobs.preset_artifact_publisher.retail_source.retail_product_ad_batch"
+        ],
+        "fixture": {
+          "reference_instant": "2025-01-01T00:00:00+00:00",
+          "window": "2026-02-23..2026-03-01",
+          "prior_window": "2026-02-16..2026-02-22"
+        },
+        "output": "  retail-health#7d: count 70, phases [66, 4], write 16.6 s [projection], 286.6 s <= 420 s (contract budget, re-certified), source horizon 106 d"
+      }
+    },
+    {
+      "key": "retail-health#14d",
+      "certified_count": 98,
+      "derivation": "main batch 94 over 14d and its prior with one spark query per day, then the product-ad batch 4 (sequential: reached after the main answer)",
+      "phases": [
+        94,
+        4
+      ],
+      "write_seconds": {
+        "value": 16.6,
+        "marker": "projection",
+        "source": "campaigns' 16.6 adopted as a conservative upper bound: no deployed write trace"
+      },
+      "certification_seconds": 376.6,
+      "budget_seconds": 420,
+      "budget_basis": "contract budget, re-certified",
+      "source_horizon_days": 106,
+      "source_horizon_terms": {
+        "window_days": 14,
+        "comparison_days": 14,
+        "lookback_days": 47,
+        "slack_days": 31,
+        "contributing_contracts": [
+          "amc-attributed-conversion",
+          "vendor-sales-by-asin",
+          "vendor-traffic-by-asin"
+        ]
+      },
+      "counter": {
+        "builder": [
+          "adapters.jobs.preset_artifact_publisher.retail_source.retail_health_measurement_batch",
+          "adapters.jobs.preset_artifact_publisher.retail_source.retail_product_ad_batch"
+        ],
+        "fixture": {
+          "reference_instant": "2025-01-01T00:00:00+00:00",
+          "window": "2026-02-16..2026-03-01",
+          "prior_window": "2026-02-02..2026-02-15"
+        },
+        "output": "  retail-health#14d: count 98, phases [94, 4], write 16.6 s [projection], 376.6 s <= 420 s (contract budget, re-certified), source horizon 106 d"
+      }
+    },
+    {
+      "key": "scorecard#7d",
+      "certified_count": 19,
+      "derivation": "one batch per governed marketplace (1), window and equal prior",
+      "phases": [
+        19
+      ],
+      "write_seconds": {
+        "value": 16.6,
+        "marker": "projection",
+        "source": "campaigns' 16.6 adopted as a conservative upper bound: no deployed write trace"
+      },
+      "certification_seconds": 106.6,
+      "budget_seconds": 120,
+      "budget_basis": "contract budget, re-certified",
+      "source_horizon_days": 140,
+      "source_horizon_terms": {
+        "window_days": 31,
+        "comparison_days": 31,
+        "lookback_days": 47,
+        "slack_days": 31,
+        "contributing_contracts": [
+          "amc-attributed-conversion",
+          "amc-deduplicated-temporal-attribution",
+          "amc-dsp-clicks",
+          "amc-dsp-impressions",
+          "amc-dsp-reach",
+          "amc-dsp-views",
+          "amc-reach-frequency",
+          "vendor-sales-by-asin"
+        ]
+      },
+      "counter": {
+        "builder": [
+          "adapters.jobs.preset_artifact_publisher.scorecard_source.scorecard_measurement_batch"
+        ],
+        "fixture": {
+          "reference_instant": "2025-01-01T00:00:00+00:00",
+          "window": "2026-02-23..2026-03-01",
+          "prior_window": "2026-02-16..2026-02-22",
+          "marketplaces": "1",
+          "models": "3"
+        },
+        "output": "  scorecard#7d: count 19, phases [19], write 16.6 s [projection], 106.6 s <= 120 s (contract budget, re-certified), source horizon 140 d"
+      }
+    },
+    {
+      "key": "scorecard#30d",
+      "certified_count": 19,
+      "derivation": "one batch per governed marketplace (1), window and equal prior",
+      "phases": [
+        19
+      ],
+      "write_seconds": {
+        "value": 16.6,
+        "marker": "projection",
+        "source": "campaigns' 16.6 adopted as a conservative upper bound: no deployed write trace"
+      },
+      "certification_seconds": 106.6,
+      "budget_seconds": 120,
+      "budget_basis": "contract budget, re-certified",
+      "source_horizon_days": 140,
+      "source_horizon_terms": {
+        "window_days": 31,
+        "comparison_days": 31,
+        "lookback_days": 47,
+        "slack_days": 31,
+        "contributing_contracts": [
+          "amc-attributed-conversion",
+          "amc-deduplicated-temporal-attribution",
+          "amc-dsp-clicks",
+          "amc-dsp-impressions",
+          "amc-dsp-reach",
+          "amc-dsp-views",
+          "amc-reach-frequency",
+          "vendor-sales-by-asin"
+        ]
+      },
+      "counter": {
+        "builder": [
+          "adapters.jobs.preset_artifact_publisher.scorecard_source.scorecard_measurement_batch"
+        ],
+        "fixture": {
+          "reference_instant": "2025-01-01T00:00:00+00:00",
+          "window": "2026-01-31..2026-03-01",
+          "prior_window": "2026-01-01..2026-01-30",
+          "marketplaces": "1",
+          "models": "3"
+        },
+        "output": "  scorecard#30d: count 19, phases [19], write 16.6 s [projection], 106.6 s <= 120 s (contract budget, re-certified), source horizon 140 d"
+      }
+    },
+    {
+      "key": "scorecard#last_complete_week",
+      "certified_count": 11,
+      "derivation": "one batch per governed marketplace (1), the calendar period alone",
+      "phases": [
+        11
+      ],
+      "write_seconds": {
+        "value": 16.6,
+        "marker": "projection",
+        "source": "campaigns' 16.6 adopted as a conservative upper bound: no deployed write trace"
+      },
+      "certification_seconds": 106.6,
+      "budget_seconds": 120,
+      "budget_basis": "contract budget, re-certified",
+      "source_horizon_days": 140,
+      "source_horizon_terms": {
+        "window_days": 31,
+        "comparison_days": 31,
+        "lookback_days": 47,
+        "slack_days": 31,
+        "contributing_contracts": [
+          "amc-attributed-conversion",
+          "amc-deduplicated-temporal-attribution",
+          "amc-dsp-clicks",
+          "amc-dsp-impressions",
+          "amc-dsp-reach",
+          "amc-dsp-views",
+          "amc-reach-frequency",
+          "vendor-sales-by-asin"
+        ]
+      },
+      "counter": {
+        "builder": [
+          "adapters.jobs.preset_artifact_publisher.scorecard_source.scorecard_measurement_batch"
+        ],
+        "fixture": {
+          "reference_instant": "2025-01-01T00:00:00+00:00",
+          "window": "2024-12-23..2024-12-29",
+          "prior_window": "none",
+          "marketplaces": "1",
+          "models": "3",
+          "instances": "12 over the 12 2025 month starts; the largest"
+        },
+        "output": "  scorecard#last_complete_week: count 11, phases [11], write 16.6 s [projection], 106.6 s <= 120 s (contract budget, re-certified), source horizon 140 d"
+      }
+    },
+    {
+      "key": "scorecard#last_complete_month",
+      "certified_count": 11,
+      "derivation": "one batch per governed marketplace (1), the calendar period alone",
+      "phases": [
+        11
+      ],
+      "write_seconds": {
+        "value": 16.6,
+        "marker": "projection",
+        "source": "campaigns' 16.6 adopted as a conservative upper bound: no deployed write trace"
+      },
+      "certification_seconds": 106.6,
+      "budget_seconds": 120,
+      "budget_basis": "contract budget, re-certified",
+      "source_horizon_days": 140,
+      "source_horizon_terms": {
+        "window_days": 31,
+        "comparison_days": 31,
+        "lookback_days": 47,
+        "slack_days": 31,
+        "contributing_contracts": [
+          "amc-attributed-conversion",
+          "amc-deduplicated-temporal-attribution",
+          "amc-dsp-clicks",
+          "amc-dsp-impressions",
+          "amc-dsp-reach",
+          "amc-dsp-views",
+          "amc-reach-frequency",
+          "vendor-sales-by-asin"
+        ]
+      },
+      "counter": {
+        "builder": [
+          "adapters.jobs.preset_artifact_publisher.scorecard_source.scorecard_measurement_batch"
+        ],
+        "fixture": {
+          "reference_instant": "2025-01-01T00:00:00+00:00",
+          "window": "2024-12-01..2024-12-31",
+          "prior_window": "none",
+          "marketplaces": "1",
+          "models": "3",
+          "instances": "12 over the 12 2025 month starts; the largest"
+        },
+        "output": "  scorecard#last_complete_month: count 11, phases [11], write 16.6 s [projection], 106.6 s <= 120 s (contract budget, re-certified), source horizon 140 d"
+      }
+    },
+    {
+      "key": "new-customers#7d",
+      "certified_count": 9,
+      "derivation": "1 marketplace(s), every section published; 0 spend-roster read(s), each once per bake, then measurement",
+      "phases": [
+        9
+      ],
+      "write_seconds": {
+        "value": 16.6,
+        "marker": "projection",
+        "source": "campaigns' 16.6 adopted as a conservative upper bound: no deployed write trace"
+      },
+      "certification_seconds": 76.6,
+      "budget_seconds": 90,
+      "budget_basis": "contract budget, re-certified",
+      "source_horizon_days": 125,
+      "source_horizon_terms": {
+        "window_days": 31,
+        "comparison_days": 31,
+        "lookback_days": 32,
+        "slack_days": 31,
+        "contributing_contracts": [
+          "amc-attributed-conversion",
+          "amc-dsp-clicks",
+          "amc-dsp-impressions",
+          "amc-dsp-reach",
+          "amc-dsp-views",
+          "amc-new-to-brand-buyers-campaign",
+          "amc-new-to-brand-buyers-channel",
+          "amc-new-to-brand-buyers-platform",
+          "amc-reach-frequency"
+        ]
+      },
+      "counter": {
+        "builder": [
+          "adapters.jobs.preset_artifact_publisher.new_customers_source._BatchBuilder.batch",
+          "adapters.jobs.preset_artifact_publisher.new_customers_source._RostersOnce",
+          "adapters.inbound.tool_handlers.measurement.prepare_batch"
+        ],
+        "fixture": {
+          "reference_instant": "2025-01-01T00:00:00+00:00",
+          "window": "2026-02-23..2026-03-01",
+          "prior_window": "2026-02-16..2026-02-22",
+          "marketplaces": "1",
+          "sections": "buyers and channel published, every market pack-covered",
+          "pack_coverage": "every day of every window at every pack version",
+          "roster_port": "counting port answering an empty roster"
+        },
+        "output": "  new-customers#7d: count 9, phases [9], write 16.6 s [projection], 76.6 s <= 90 s (contract budget, re-certified), source horizon 125 d"
+      }
+    },
+    {
+      "key": "new-customers#30d",
+      "certified_count": 9,
+      "derivation": "1 marketplace(s), every section published; 0 spend-roster read(s), each once per bake, then measurement",
+      "phases": [
+        9
+      ],
+      "write_seconds": {
+        "value": 16.6,
+        "marker": "projection",
+        "source": "campaigns' 16.6 adopted as a conservative upper bound: no deployed write trace"
+      },
+      "certification_seconds": 76.6,
+      "budget_seconds": 90,
+      "budget_basis": "contract budget, re-certified",
+      "source_horizon_days": 125,
+      "source_horizon_terms": {
+        "window_days": 31,
+        "comparison_days": 31,
+        "lookback_days": 32,
+        "slack_days": 31,
+        "contributing_contracts": [
+          "amc-attributed-conversion",
+          "amc-dsp-clicks",
+          "amc-dsp-impressions",
+          "amc-dsp-reach",
+          "amc-dsp-views",
+          "amc-new-to-brand-buyers-campaign",
+          "amc-new-to-brand-buyers-channel",
+          "amc-new-to-brand-buyers-platform",
+          "amc-reach-frequency"
+        ]
+      },
+      "counter": {
+        "builder": [
+          "adapters.jobs.preset_artifact_publisher.new_customers_source._BatchBuilder.batch",
+          "adapters.jobs.preset_artifact_publisher.new_customers_source._RostersOnce",
+          "adapters.inbound.tool_handlers.measurement.prepare_batch"
+        ],
+        "fixture": {
+          "reference_instant": "2025-01-01T00:00:00+00:00",
+          "window": "2026-01-31..2026-03-01",
+          "prior_window": "2026-01-01..2026-01-30",
+          "marketplaces": "1",
+          "sections": "buyers and channel published, every market pack-covered",
+          "pack_coverage": "every day of every window at every pack version",
+          "roster_port": "counting port answering an empty roster"
+        },
+        "output": "  new-customers#30d: count 9, phases [9], write 16.6 s [projection], 76.6 s <= 90 s (contract budget, re-certified), source horizon 125 d"
+      }
+    },
+    {
+      "key": "new-customers#last_complete_week",
+      "certified_count": 14,
+      "derivation": "1 marketplace(s), every section published; 1 spend-roster read(s), each once per bake, then measurement",
+      "phases": [
+        1,
+        13
+      ],
+      "write_seconds": {
+        "value": 16.6,
+        "marker": "projection",
+        "source": "campaigns' 16.6 adopted as a conservative upper bound: no deployed write trace"
+      },
+      "certification_seconds": 136.6,
+      "budget_seconds": 150,
+      "budget_basis": "contract budget, re-certified",
+      "source_horizon_days": 125,
+      "source_horizon_terms": {
+        "window_days": 31,
+        "comparison_days": 31,
+        "lookback_days": 32,
+        "slack_days": 31,
+        "contributing_contracts": [
+          "amc-attributed-conversion",
+          "amc-dsp-clicks",
+          "amc-dsp-impressions",
+          "amc-dsp-reach",
+          "amc-dsp-views",
+          "amc-new-to-brand-buyers-campaign",
+          "amc-new-to-brand-buyers-channel",
+          "amc-new-to-brand-buyers-platform",
+          "amc-reach-frequency"
+        ]
+      },
+      "counter": {
+        "builder": [
+          "adapters.jobs.preset_artifact_publisher.new_customers_source._BatchBuilder.batch",
+          "adapters.jobs.preset_artifact_publisher.new_customers_source._RostersOnce",
+          "adapters.inbound.tool_handlers.measurement.prepare_batch"
+        ],
+        "fixture": {
+          "reference_instant": "2025-01-01T00:00:00+00:00",
+          "window": "2024-12-23..2024-12-29",
+          "prior_window": "none",
+          "marketplaces": "1",
+          "sections": "buyers and channel published, every market pack-covered",
+          "pack_coverage": "every day of every window at every pack version",
+          "roster_port": "counting port answering an empty roster",
+          "instances": "12 over the 12 2025 month starts; the largest"
+        },
+        "output": "  new-customers#last_complete_week: count 14, phases [1, 13], write 16.6 s [projection], 136.6 s <= 150 s (contract budget, re-certified), source horizon 125 d"
+      }
+    },
+    {
+      "key": "new-customers#last_complete_month",
+      "certified_count": 14,
+      "derivation": "1 marketplace(s), every section published; 1 spend-roster read(s), each once per bake, then measurement",
+      "phases": [
+        1,
+        13
+      ],
+      "write_seconds": {
+        "value": 16.6,
+        "marker": "projection",
+        "source": "campaigns' 16.6 adopted as a conservative upper bound: no deployed write trace"
+      },
+      "certification_seconds": 136.6,
+      "budget_seconds": 150,
+      "budget_basis": "contract budget, re-certified",
+      "source_horizon_days": 125,
+      "source_horizon_terms": {
+        "window_days": 31,
+        "comparison_days": 31,
+        "lookback_days": 32,
+        "slack_days": 31,
+        "contributing_contracts": [
+          "amc-attributed-conversion",
+          "amc-dsp-clicks",
+          "amc-dsp-impressions",
+          "amc-dsp-reach",
+          "amc-dsp-views",
+          "amc-new-to-brand-buyers-campaign",
+          "amc-new-to-brand-buyers-channel",
+          "amc-new-to-brand-buyers-platform",
+          "amc-reach-frequency"
+        ]
+      },
+      "counter": {
+        "builder": [
+          "adapters.jobs.preset_artifact_publisher.new_customers_source._BatchBuilder.batch",
+          "adapters.jobs.preset_artifact_publisher.new_customers_source._RostersOnce",
+          "adapters.inbound.tool_handlers.measurement.prepare_batch"
+        ],
+        "fixture": {
+          "reference_instant": "2025-01-01T00:00:00+00:00",
+          "window": "2024-12-01..2024-12-31",
+          "prior_window": "none",
+          "marketplaces": "1",
+          "sections": "buyers and channel published, every market pack-covered",
+          "pack_coverage": "every day of every window at every pack version",
+          "roster_port": "counting port answering an empty roster",
+          "instances": "12 over the 12 2025 month starts; the largest"
+        },
+        "output": "  new-customers#last_complete_month: count 14, phases [1, 13], write 16.6 s [projection], 136.6 s <= 150 s (contract budget, re-certified), source horizon 125 d"
+      }
+    },
+    {
+      "key": "reach#last_complete_week",
+      "certified_count": 8,
+      "derivation": "1 marketplace(s), every pack published on the base series; 0 sequential roster read(s) (channel, campaign), then measurement",
+      "phases": [
+        8
+      ],
+      "write_seconds": {
+        "value": 16.6,
+        "marker": "projection",
+        "source": "campaigns' 16.6 adopted as a conservative upper bound: no deployed write trace"
+      },
+      "certification_seconds": 76.6,
+      "budget_seconds": 90,
+      "budget_basis": "contract budget, re-certified",
+      "source_horizon_days": 261,
+      "source_horizon_terms": {
+        "window_days": 92,
+        "comparison_days": 92,
+        "lookback_days": 46,
+        "slack_days": 31,
+        "contributing_contracts": [
+          "amc-dsp-clicks",
+          "amc-dsp-impressions",
+          "amc-dsp-reach",
+          "amc-dsp-views",
+          "amc-exposure-frequency-channel",
+          "amc-exposure-frequency-platform",
+          "amc-exposure-groups",
+          "amc-reach-frequency"
+        ]
+      },
+      "counter": {
+        "builder": [
+          "adapters.jobs.preset_artifact_publisher.reach_source.ReachArtifactRenderer._plan_exposure",
+          "adapters.jobs.preset_artifact_publisher.reach_source.ReachArtifactRenderer._frequency",
+          "adapters.inbound.tool_handlers.measurement.prepare_batch"
+        ],
+        "fixture": {
+          "reference_instant": "2025-01-01T00:00:00+00:00",
+          "window": "2024-12-23..2024-12-29",
+          "prior_window": "2024-12-16..2024-12-22",
+          "marketplaces": "1",
+          "served": "every contract for the period and prior, base series version 16",
+          "overlap_declared": "true",
+          "frequency_declared": "false",
+          "roster_port": "counting port answering an empty roster",
+          "instances": "12 over the 12 2025 month starts; the largest"
+        },
+        "output": "  reach#last_complete_week: count 8, phases [8], write 16.6 s [projection], 76.6 s <= 90 s (contract budget, re-certified), source horizon 261 d"
+      }
+    },
+    {
+      "key": "reach#last_complete_month",
+      "certified_count": 16,
+      "derivation": "1 marketplace(s), every pack published on the base series; 2 sequential roster read(s) (channel, campaign), then measurement",
+      "phases": [
+        1,
+        1,
+        14
+      ],
+      "write_seconds": {
+        "value": 16.6,
+        "marker": "projection",
+        "source": "campaigns' 16.6 adopted as a conservative upper bound: no deployed write trace"
+      },
+      "certification_seconds": 166.6,
+      "budget_seconds": 180,
+      "budget_basis": "contract budget, re-certified",
+      "source_horizon_days": 261,
+      "source_horizon_terms": {
+        "window_days": 92,
+        "comparison_days": 92,
+        "lookback_days": 46,
+        "slack_days": 31,
+        "contributing_contracts": [
+          "amc-dsp-clicks",
+          "amc-dsp-impressions",
+          "amc-dsp-reach",
+          "amc-dsp-views",
+          "amc-exposure-frequency-channel",
+          "amc-exposure-frequency-platform",
+          "amc-exposure-groups",
+          "amc-reach-frequency"
+        ]
+      },
+      "counter": {
+        "builder": [
+          "adapters.jobs.preset_artifact_publisher.reach_source.ReachArtifactRenderer._plan_exposure",
+          "adapters.jobs.preset_artifact_publisher.reach_source.ReachArtifactRenderer._frequency",
+          "adapters.inbound.tool_handlers.measurement.prepare_batch"
+        ],
+        "fixture": {
+          "reference_instant": "2025-01-01T00:00:00+00:00",
+          "window": "2025-01-01..2025-01-31",
+          "prior_window": "2024-12-01..2024-12-31",
+          "marketplaces": "1",
+          "served": "every contract for the period and prior, base series version 16",
+          "overlap_declared": "true",
+          "frequency_declared": "true",
+          "roster_port": "counting port answering an empty roster",
+          "instances": "12 over the 12 2025 month starts; the largest"
+        },
+        "output": "  reach#last_complete_month: count 16, phases [1, 1, 14], write 16.6 s [projection], 166.6 s <= 180 s (contract budget, re-certified), source horizon 261 d"
+      }
+    },
+    {
+      "key": "reach#last_complete_quarter",
+      "certified_count": 8,
+      "derivation": "1 marketplace(s), every pack published on the base series; 2 sequential roster read(s) (channel, campaign), then measurement",
+      "phases": [
+        1,
+        1,
+        6
+      ],
+      "write_seconds": {
+        "value": 16.6,
+        "marker": "projection",
+        "source": "campaigns' 16.6 adopted as a conservative upper bound: no deployed write trace"
+      },
+      "certification_seconds": 136.6,
+      "budget_seconds": 150,
+      "budget_basis": "contract budget, re-certified",
+      "source_horizon_days": 261,
+      "source_horizon_terms": {
+        "window_days": 92,
+        "comparison_days": 92,
+        "lookback_days": 46,
+        "slack_days": 31,
+        "contributing_contracts": [
+          "amc-dsp-clicks",
+          "amc-dsp-impressions",
+          "amc-dsp-reach",
+          "amc-dsp-views",
+          "amc-exposure-frequency-channel",
+          "amc-exposure-frequency-platform",
+          "amc-exposure-groups",
+          "amc-reach-frequency"
+        ]
+      },
+      "counter": {
+        "builder": [
+          "adapters.jobs.preset_artifact_publisher.reach_source.ReachArtifactRenderer._plan_exposure",
+          "adapters.jobs.preset_artifact_publisher.reach_source.ReachArtifactRenderer._frequency",
+          "adapters.inbound.tool_handlers.measurement.prepare_batch"
+        ],
+        "fixture": {
+          "reference_instant": "2025-01-01T00:00:00+00:00",
+          "window": "2024-10-01..2024-12-31",
+          "prior_window": "2024-07-01..2024-09-30",
+          "marketplaces": "1",
+          "served": "every contract for the period and prior, base series version 16",
+          "overlap_declared": "false",
+          "frequency_declared": "true",
+          "roster_port": "counting port answering an empty roster",
+          "instances": "4 over the 12 2025 month starts; the largest"
+        },
+        "output": "  reach#last_complete_quarter: count 8, phases [1, 1, 6], write 16.6 s [projection], 136.6 s <= 150 s (contract budget, re-certified), source horizon 261 d"
+      }
+    },
+    {
+      "key": "retention#latest_with_current_publication",
+      "certified_count": 6,
+      "derivation": "M x (4 standard + 2 ARP), M = 1",
+      "phases": [
+        6
+      ],
+      "write_seconds": {
+        "value": 16.6,
+        "marker": "projection",
+        "source": "campaigns' 16.6 adopted as a conservative upper bound: no deployed write trace"
+      },
+      "certification_seconds": 76.6,
+      "budget_seconds": 90,
+      "budget_basis": "contract budget, re-certified",
+      "source_horizon_days": 832,
+      "source_horizon_terms": {
+        "window_days": 397,
+        "comparison_days": 0,
+        "lookback_days": 404,
+        "slack_days": 31,
+        "contributing_contracts": [
+          "amc-acquisition-cohorts",
+          "amc-acquisition-cohorts-arp"
+        ]
+      },
+      "counter": {
+        "builder": [
+          "adapters.jobs.preset_artifact_publisher.retention_source.RetentionArtifactRenderer._request",
+          "adapters.inbound.tool_handlers.measurement.prepare_batch"
+        ],
+        "fixture": {
+          "reference_instant": "2025-01-01T00:00:00+00:00",
+          "vintage": "2024-01-01..2025-01-31",
+          "marketplaces": "1",
+          "paths": "standard and ARP both served for every marketplace"
+        },
+        "output": "  retention#latest_with_current_publication: count 6, phases [6], write 16.6 s [projection], 76.6 s <= 90 s (contract budget, re-certified), source horizon 832 d"
+      }
+    },
+    {
+      "key": "audiences#last_complete_month",
+      "certified_count": 61,
+      "derivation": "19 + 6C at C = 7 (M = 1, P = 3): list, roster rounds of P + C, C and C, then P x 5 + 3C measurement",
+      "phases": [
+        1,
+        10,
+        7,
+        7,
+        36
+      ],
+      "write_seconds": {
+        "value": 16.6,
+        "marker": "projection",
+        "source": "campaigns' 16.6 adopted as a conservative upper bound: no deployed write trace"
+      },
+      "certification_seconds": 286.6,
+      "budget_seconds": 300,
+      "budget_basis": "contract budget, re-certified",
+      "source_horizon_days": 218,
+      "source_horizon_terms": {
+        "window_days": 31,
+        "comparison_days": 31,
+        "lookback_days": 125,
+        "slack_days": 31,
+        "contributing_contracts": [
+          "amc-audience-performance",
+          "amc-segment-buyer-profile-dsp-exposed",
+          "amc-segment-buyer-profile-inmarket",
+          "amc-segment-buyer-profile-lifestyle"
+        ]
+      },
+      "counter": {
+        "builder": [
+          "adapters.jobs.preset_artifact_publisher.audiences_source.AudiencesArtifactRenderer._request",
+          "adapters.jobs.preset_artifact_publisher.audiences_source.AudiencesArtifactRenderer._scopes",
+          "adapters.jobs.preset_artifact_publisher.audiences_source.AudiencesArtifactRenderer._roster",
+          "adapters.jobs.preset_artifact_publisher.audiences_source.AudiencesArtifactRenderer._plan",
+          "adapters.inbound.tool_handlers.measurement.prepare_batch"
+        ],
+        "fixture": {
+          "reference_instant": "2025-01-01T00:00:00+00:00",
+          "window": "2024-12-01..2024-12-31",
+          "marketplaces": "1",
+          "profile_scopes": "3",
+          "campaign_bound": "7",
+          "write_seconds": "16.6",
+          "served": "every profile and delivery contract for the period",
+          "roster_reads_per_scope": "profile 1, campaign 3",
+          "roster_port": "counting port answering an empty roster"
+        },
+        "output": "  audiences#last_complete_month: count 61, phases [1, 10, 7, 7, 36], write 16.6 s [projection], 286.6 s <= 300 s (contract budget, re-certified), source horizon 218 d"
+      }
+    }
+  ],
+  "totals": {
+    "n": 20,
+    "sum_budget_seconds": 4080,
+    "root_bound_seconds": 4140,
+    "winner_policy_seconds": 7200,
+    "audiences_roster_fan_out_width": 10
+  },
+  "lane_result": {
+    "n": 20,
+    "gray_code_steps": 524288,
+    "loads_seconds": [
+      1379.4,
+      1382.6
+    ],
+    "makespan_seconds": 1382.6
+  },
+  "o3_scope_families": [
+    {
+      "scope": "dim_audience_segment|amazon_retail_us|amazon_us|lens-3957043c3d757ec09641cf2c|periodic|iso_gregorian|0|UTC|source_business_date",
+      "family": "latest_only",
+      "grain": "month",
+      "count_at_measured_history": 1,
+      "pinned_width_saturated": 1,
+      "rows": 1,
+      "horizon_tokens": [
+        "newest=1"
+      ],
+      "growth": "one CURRENT bucket per month; the bounded read pins at most 1 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "dim_audience_segment|amazon_retail_us|amazon_us|lens-9bb2dac7f25b514d1afd4f8a|periodic|iso_gregorian|0|UTC|source_business_date",
+      "family": "latest_only",
+      "grain": "month",
+      "count_at_measured_history": 1,
+      "pinned_width_saturated": 1,
+      "rows": 1,
+      "horizon_tokens": [
+        "newest=1"
+      ],
+      "growth": "one CURRENT bucket per month; the bounded read pins at most 1 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "dim_audience_segment|amazon_retail_us|amazon_us|lens-9bb2dac7f25b514d1afd4f8a|periodic|iso_gregorian|0|UTC|source_business_date",
+      "family": "served_periods",
+      "grain": "month",
+      "count_at_measured_history": 4,
+      "pinned_width_saturated": 8,
+      "rows": 1,
+      "horizon_tokens": [
+        "from=2026-02-07"
+      ],
+      "growth": "one CURRENT bucket per month; the bounded read pins at most 8 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-44afe5f0db1ad0490dd9c9a7|snapshot|iso_gregorian|0|UTC|source_business_date",
+      "family": "latest_only",
+      "grain": "day",
+      "count_at_measured_history": 1,
+      "pinned_width_saturated": 1,
+      "rows": 20,
+      "horizon_tokens": [
+        "newest=1"
+      ],
+      "growth": "one CURRENT bucket per day; the bounded read pins at most 1 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-b0d9b5f465214e1238a727eb|snapshot|iso_gregorian|0|UTC|source_business_date",
+      "family": "latest_only",
+      "grain": "day",
+      "count_at_measured_history": 1,
+      "pinned_width_saturated": 1,
+      "rows": 20,
+      "horizon_tokens": [
+        "newest=1"
+      ],
+      "growth": "one CURRENT bucket per day; the bounded read pins at most 1 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "dim_product|amazon_retail_us|amazon_us|lens-4e75687f6ae98b8ab67ad9ce|snapshot|technical_utc|None|UTC|system_first_observed",
+      "family": "latest_only",
+      "grain": "day",
+      "count_at_measured_history": 1,
+      "pinned_width_saturated": 1,
+      "rows": 20,
+      "horizon_tokens": [
+        "newest=1"
+      ],
+      "growth": "one CURRENT bucket per day; the bounded read pins at most 1 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "fct_ad_exposure|amazon_retail_us|amazon_us|lens-05d358b939f1cef3bc57bdaa|daily_additive|iso_gregorian|0|UTC|source_business_date",
+      "family": "coverage",
+      "grain": "day",
+      "count_at_measured_history": 85,
+      "pinned_width_saturated": 141,
+      "rows": 12,
+      "horizon_tokens": [
+        "from=2026-05-26",
+        "from=2026-06-10",
+        "from=2026-06-12"
+      ],
+      "growth": "one CURRENT bucket per day; the bounded read pins at most 141 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "fct_ad_exposure|amazon_retail_us|amazon_us|lens-f4979ff324501568e1f9e461|daily_additive|iso_gregorian|0|UTC|source_business_date",
+      "family": "coverage",
+      "grain": "day",
+      "count_at_measured_history": 85,
+      "pinned_width_saturated": 141,
+      "rows": 12,
+      "horizon_tokens": [
+        "from=2026-05-26",
+        "from=2026-06-10",
+        "from=2026-06-12"
+      ],
+      "growth": "one CURRENT bucket per day; the bounded read pins at most 141 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "fct_attributed_conversion|amazon_retail_us|amazon_us|lens-6d08ddbe5fb27d75d8d47ff5|daily_additive|iso_gregorian|0|UTC|source_business_date",
+      "family": "coverage",
+      "grain": "day",
+      "count_at_measured_history": 85,
+      "pinned_width_saturated": 141,
+      "rows": 12,
+      "horizon_tokens": [
+        "from=2026-05-26",
+        "from=2026-06-10",
+        "from=2026-06-12"
+      ],
+      "growth": "one CURRENT bucket per day; the bounded read pins at most 141 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "fct_exposure_frequency|amazon_retail_us|amazon_us|lens-102b3d79c795b6386aa84038|periodic|iso_gregorian|0|UTC|source_business_date",
+      "family": "coverage",
+      "grain": "month",
+      "count_at_measured_history": 4,
+      "pinned_width_saturated": 8,
+      "rows": 12,
+      "horizon_tokens": [
+        "from=2026-02-24",
+        "from=2026-03-11",
+        "from=2026-03-13"
+      ],
+      "growth": "one CURRENT bucket per month; the bounded read pins at most 8 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "fct_exposure_frequency|amazon_retail_us|amazon_us|lens-102b3d79c795b6386aa84038|periodic|iso_gregorian|0|UTC|source_business_date",
+      "family": "served_periods",
+      "grain": "month",
+      "count_at_measured_history": 4,
+      "pinned_width_saturated": 12,
+      "rows": 3,
+      "horizon_tokens": [
+        "from=2025-10-26"
+      ],
+      "growth": "one CURRENT bucket per month; the bounded read pins at most 12 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "fct_exposure_frequency|amazon_retail_us|amazon_us|lens-18a550129048d0db9a3cc7eb|periodic|iso_gregorian|0|UTC|source_business_date",
+      "family": "served_periods",
+      "grain": "quarter",
+      "count_at_measured_history": 1,
+      "pinned_width_saturated": 3,
+      "rows": 3,
+      "horizon_tokens": [
+        "from=2025-10-26"
+      ],
+      "growth": "one CURRENT bucket per quarter; the bounded read pins at most 3 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "fct_exposure_frequency|amazon_retail_us|amazon_us|lens-40f5487292aac75deaa32c8a|periodic|iso_gregorian|0|UTC|source_business_date",
+      "family": "served_periods",
+      "grain": "month",
+      "count_at_measured_history": 4,
+      "pinned_width_saturated": 12,
+      "rows": 3,
+      "horizon_tokens": [
+        "from=2025-10-26"
+      ],
+      "growth": "one CURRENT bucket per month; the bounded read pins at most 12 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "fct_exposure_frequency|amazon_retail_us|amazon_us|lens-58e711219dc02f0a02a6b217|periodic|iso_gregorian|0|UTC|source_business_date",
+      "family": "coverage",
+      "grain": "month",
+      "count_at_measured_history": 4,
+      "pinned_width_saturated": 8,
+      "rows": 12,
+      "horizon_tokens": [
+        "from=2026-02-24",
+        "from=2026-03-11",
+        "from=2026-03-13"
+      ],
+      "growth": "one CURRENT bucket per month; the bounded read pins at most 8 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "fct_exposure_frequency|amazon_retail_us|amazon_us|lens-58e711219dc02f0a02a6b217|periodic|iso_gregorian|0|UTC|source_business_date",
+      "family": "served_periods",
+      "grain": "month",
+      "count_at_measured_history": 4,
+      "pinned_width_saturated": 12,
+      "rows": 3,
+      "horizon_tokens": [
+        "from=2025-10-26"
+      ],
+      "growth": "one CURRENT bucket per month; the bounded read pins at most 12 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "fct_exposure_frequency|amazon_retail_us|amazon_us|lens-92170b9d0c7284692f09137b|periodic|iso_gregorian|0|UTC|source_business_date",
+      "family": "served_periods",
+      "grain": "month",
+      "count_at_measured_history": 4,
+      "pinned_width_saturated": 12,
+      "rows": 3,
+      "horizon_tokens": [
+        "from=2025-10-26"
+      ],
+      "growth": "one CURRENT bucket per month; the bounded read pins at most 12 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "fct_exposure_frequency|amazon_retail_us|amazon_us|lens-9b14a38dc8ca939330a9520b|periodic|iso_gregorian|0|UTC|source_business_date",
+      "family": "served_periods",
+      "grain": "quarter",
+      "count_at_measured_history": 1,
+      "pinned_width_saturated": 3,
+      "rows": 3,
+      "horizon_tokens": [
+        "from=2025-10-26"
+      ],
+      "growth": "one CURRENT bucket per quarter; the bounded read pins at most 3 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "fct_exposure_frequency|amazon_retail_us|amazon_us|lens-b5e84221bfca95ba5c7bccfc|periodic|iso_gregorian|0|UTC|source_business_date",
+      "family": "coverage",
+      "grain": "quarter",
+      "count_at_measured_history": 1,
+      "pinned_width_saturated": 2,
+      "rows": 12,
+      "horizon_tokens": [
+        "from=2026-02-24",
+        "from=2026-03-11",
+        "from=2026-03-13"
+      ],
+      "growth": "one CURRENT bucket per quarter; the bounded read pins at most 2 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "fct_exposure_frequency|amazon_retail_us|amazon_us|lens-b5e84221bfca95ba5c7bccfc|periodic|iso_gregorian|0|UTC|source_business_date",
+      "family": "served_periods",
+      "grain": "quarter",
+      "count_at_measured_history": 1,
+      "pinned_width_saturated": 3,
+      "rows": 3,
+      "horizon_tokens": [
+        "from=2025-10-26"
+      ],
+      "growth": "one CURRENT bucket per quarter; the bounded read pins at most 3 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "fct_exposure_frequency|amazon_retail_us|amazon_us|lens-cfeab2fe1fb95ae6dbcc1119|periodic|iso_gregorian|0|UTC|source_business_date",
+      "family": "coverage",
+      "grain": "quarter",
+      "count_at_measured_history": 1,
+      "pinned_width_saturated": 2,
+      "rows": 12,
+      "horizon_tokens": [
+        "from=2026-02-24",
+        "from=2026-03-11",
+        "from=2026-03-13"
+      ],
+      "growth": "one CURRENT bucket per quarter; the bounded read pins at most 2 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "fct_exposure_frequency|amazon_retail_us|amazon_us|lens-cfeab2fe1fb95ae6dbcc1119|periodic|iso_gregorian|0|UTC|source_business_date",
+      "family": "served_periods",
+      "grain": "quarter",
+      "count_at_measured_history": 1,
+      "pinned_width_saturated": 3,
+      "rows": 3,
+      "horizon_tokens": [
+        "from=2025-10-26"
+      ],
+      "growth": "one CURRENT bucket per quarter; the bounded read pins at most 3 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "fct_exposure_group_outcome|amazon_retail_us|amazon_us|lens-0ba8782fce772b007839a0ce|periodic|iso_gregorian|0|UTC|source_business_date",
+      "family": "served_periods",
+      "grain": "week",
+      "count_at_measured_history": 13,
+      "pinned_width_saturated": 41,
+      "rows": 3,
+      "horizon_tokens": [
+        "from=2025-12-26"
+      ],
+      "growth": "one CURRENT bucket per week; the bounded read pins at most 41 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "fct_exposure_group_outcome|amazon_retail_us|amazon_us|lens-9921c66887d59dfe04f4c006|periodic|iso_gregorian|0|UTC|source_business_date",
+      "family": "served_periods",
+      "grain": "month",
+      "count_at_measured_history": 4,
+      "pinned_width_saturated": 10,
+      "rows": 3,
+      "horizon_tokens": [
+        "from=2025-12-26"
+      ],
+      "growth": "one CURRENT bucket per month; the bounded read pins at most 10 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "fct_exposure_group_outcome|amazon_retail_us|amazon_us|lens-9af007147b4dc3858232b699|periodic|iso_gregorian|0|UTC|source_business_date",
+      "family": "coverage",
+      "grain": "month",
+      "count_at_measured_history": 4,
+      "pinned_width_saturated": 6,
+      "rows": 12,
+      "horizon_tokens": [
+        "from=2026-04-26",
+        "from=2026-05-11",
+        "from=2026-05-13"
+      ],
+      "growth": "one CURRENT bucket per month; the bounded read pins at most 6 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "fct_exposure_group_outcome|amazon_retail_us|amazon_us|lens-9af007147b4dc3858232b699|periodic|iso_gregorian|0|UTC|source_business_date",
+      "family": "served_periods",
+      "grain": "month",
+      "count_at_measured_history": 4,
+      "pinned_width_saturated": 10,
+      "rows": 3,
+      "horizon_tokens": [
+        "from=2025-12-26"
+      ],
+      "growth": "one CURRENT bucket per month; the bounded read pins at most 10 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "fct_exposure_group_outcome|amazon_retail_us|amazon_us|lens-ffacc6a3416a55a8089eef94|periodic|iso_gregorian|0|UTC|source_business_date",
+      "family": "coverage",
+      "grain": "week",
+      "count_at_measured_history": 13,
+      "pinned_width_saturated": 24,
+      "rows": 12,
+      "horizon_tokens": [
+        "from=2026-04-26",
+        "from=2026-05-11",
+        "from=2026-05-13"
+      ],
+      "growth": "one CURRENT bucket per week; the bounded read pins at most 24 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "fct_exposure_group_outcome|amazon_retail_us|amazon_us|lens-ffacc6a3416a55a8089eef94|periodic|iso_gregorian|0|UTC|source_business_date",
+      "family": "served_periods",
+      "grain": "week",
+      "count_at_measured_history": 13,
+      "pinned_width_saturated": 41,
+      "rows": 3,
+      "horizon_tokens": [
+        "from=2025-12-26"
+      ],
+      "growth": "one CURRENT bucket per week; the bounded read pins at most 41 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "fct_new_to_brand_buyers|amazon_retail_us|amazon_us|lens-49bbf06ca3680b8147b447a4|periodic|iso_gregorian|0|UTC|source_business_date",
+      "family": "coverage",
+      "grain": "month",
+      "count_at_measured_history": 4,
+      "pinned_width_saturated": 6,
+      "rows": 12,
+      "horizon_tokens": [
+        "from=2026-04-26",
+        "from=2026-05-11",
+        "from=2026-05-13"
+      ],
+      "growth": "one CURRENT bucket per month; the bounded read pins at most 6 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "fct_new_to_brand_buyers|amazon_retail_us|amazon_us|lens-49bbf06ca3680b8147b447a4|periodic|iso_gregorian|0|UTC|source_business_date",
+      "family": "served_periods",
+      "grain": "month",
+      "count_at_measured_history": 4,
+      "pinned_width_saturated": 5,
+      "rows": 4,
+      "horizon_tokens": [
+        "from=2026-05-11"
+      ],
+      "growth": "one CURRENT bucket per month; the bounded read pins at most 5 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "fct_new_to_brand_buyers|amazon_retail_us|amazon_us|lens-4a47ca5ae185f49ce4d4efb9|periodic|iso_gregorian|0|UTC|source_business_date",
+      "family": "coverage",
+      "grain": "week",
+      "count_at_measured_history": 13,
+      "pinned_width_saturated": 24,
+      "rows": 12,
+      "horizon_tokens": [
+        "from=2026-04-26",
+        "from=2026-05-11",
+        "from=2026-05-13"
+      ],
+      "growth": "one CURRENT bucket per week; the bounded read pins at most 24 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "fct_new_to_brand_buyers|amazon_retail_us|amazon_us|lens-4a47ca5ae185f49ce4d4efb9|periodic|iso_gregorian|0|UTC|source_business_date",
+      "family": "served_periods",
+      "grain": "week",
+      "count_at_measured_history": 13,
+      "pinned_width_saturated": 22,
+      "rows": 4,
+      "horizon_tokens": [
+        "from=2026-05-11"
+      ],
+      "growth": "one CURRENT bucket per week; the bounded read pins at most 22 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "fct_new_to_brand_buyers|amazon_retail_us|amazon_us|lens-6182c1f4eff7a860ff3f2743|periodic|iso_gregorian|0|UTC|source_business_date",
+      "family": "coverage",
+      "grain": "month",
+      "count_at_measured_history": 4,
+      "pinned_width_saturated": 6,
+      "rows": 12,
+      "horizon_tokens": [
+        "from=2026-04-26",
+        "from=2026-05-11",
+        "from=2026-05-13"
+      ],
+      "growth": "one CURRENT bucket per month; the bounded read pins at most 6 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "fct_new_to_brand_buyers|amazon_retail_us|amazon_us|lens-6182c1f4eff7a860ff3f2743|periodic|iso_gregorian|0|UTC|source_business_date",
+      "family": "served_periods",
+      "grain": "month",
+      "count_at_measured_history": 4,
+      "pinned_width_saturated": 5,
+      "rows": 4,
+      "horizon_tokens": [
+        "from=2026-05-11"
+      ],
+      "growth": "one CURRENT bucket per month; the bounded read pins at most 5 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "fct_new_to_brand_buyers|amazon_retail_us|amazon_us|lens-715871c976096ebf91a8b8a6|periodic|iso_gregorian|0|UTC|source_business_date",
+      "family": "coverage",
+      "grain": "week",
+      "count_at_measured_history": 13,
+      "pinned_width_saturated": 24,
+      "rows": 12,
+      "horizon_tokens": [
+        "from=2026-04-26",
+        "from=2026-05-11",
+        "from=2026-05-13"
+      ],
+      "growth": "one CURRENT bucket per week; the bounded read pins at most 24 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "fct_new_to_brand_buyers|amazon_retail_us|amazon_us|lens-715871c976096ebf91a8b8a6|periodic|iso_gregorian|0|UTC|source_business_date",
+      "family": "served_periods",
+      "grain": "week",
+      "count_at_measured_history": 13,
+      "pinned_width_saturated": 22,
+      "rows": 4,
+      "horizon_tokens": [
+        "from=2026-05-11"
+      ],
+      "growth": "one CURRENT bucket per week; the bounded read pins at most 22 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "fct_new_to_brand_buyers|amazon_retail_us|amazon_us|lens-a96656e0e866a59373045a5f|periodic|iso_gregorian|0|UTC|source_business_date",
+      "family": "coverage",
+      "grain": "month",
+      "count_at_measured_history": 4,
+      "pinned_width_saturated": 6,
+      "rows": 12,
+      "horizon_tokens": [
+        "from=2026-04-26",
+        "from=2026-05-11",
+        "from=2026-05-13"
+      ],
+      "growth": "one CURRENT bucket per month; the bounded read pins at most 6 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "fct_product_page_views|amazon_retail_us|amazon_us|lens-25bf33587365da665eea002d|daily_additive|iso_gregorian|0|PST|source_business_date",
+      "family": "coverage",
+      "grain": "day",
+      "count_at_measured_history": 85,
+      "pinned_width_saturated": 107,
+      "rows": 3,
+      "horizon_tokens": [
+        "from=2026-06-29"
+      ],
+      "growth": "one CURRENT bucket per day; the bounded read pins at most 107 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "fct_retail_sales_reported_total|amazon_retail_us|amazon_us|lens-713a327ceef966626f80fb2d|daily_additive|iso_gregorian|0|PST|source_business_date",
+      "family": "reported_totals",
+      "grain": "day",
+      "count_at_measured_history": 2,
+      "pinned_width_saturated": 15,
+      "rows": 3,
+      "horizon_tokens": [
+        "from=2026-09-29",
+        "from=2026-10-06",
+        "from=2026-10-12"
+      ],
+      "growth": "one CURRENT bucket per day; the bounded read pins at most 15 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "fct_retail_sales|amazon_retail_us|amazon_us|lens-7795a360322cbf9c31ae52c5|daily_additive|iso_gregorian|0|PST|source_business_date",
+      "family": "coverage",
+      "grain": "day",
+      "count_at_measured_history": 85,
+      "pinned_width_saturated": 107,
+      "rows": 3,
+      "horizon_tokens": [
+        "from=2026-06-29"
+      ],
+      "growth": "one CURRENT bucket per day; the bounded read pins at most 107 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "fct_segment_delivery|amazon_retail_us|amazon_us|lens-3261a2f794f72af52e9afdc1|periodic|iso_gregorian|0|UTC|source_business_date",
+      "family": "served_periods",
+      "grain": "month",
+      "count_at_measured_history": 4,
+      "pinned_width_saturated": 8,
+      "rows": 1,
+      "horizon_tokens": [
+        "from=2026-02-07"
+      ],
+      "growth": "one CURRENT bucket per month; the bounded read pins at most 8 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "fct_segment_profile|amazon_retail_us|amazon_us|lens-1c3f55b65066a8a70f2a5831|periodic|iso_gregorian|0|UTC|source_business_date",
+      "family": "served_periods",
+      "grain": "month",
+      "count_at_measured_history": 4,
+      "pinned_width_saturated": 8,
+      "rows": 1,
+      "horizon_tokens": [
+        "from=2026-02-07"
+      ],
+      "growth": "one CURRENT bucket per month; the bounded read pins at most 8 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "fct_segment_profile|amazon_retail_us|amazon_us|lens-2a823356576913a5e0a545a1|periodic|iso_gregorian|0|UTC|source_business_date",
+      "family": "served_periods",
+      "grain": "month",
+      "count_at_measured_history": 4,
+      "pinned_width_saturated": 8,
+      "rows": 1,
+      "horizon_tokens": [
+        "from=2026-02-07"
+      ],
+      "growth": "one CURRENT bucket per month; the bounded read pins at most 8 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "fct_segment_profile|amazon_retail_us|amazon_us|lens-e98984a8cd084fe34d7634b7|periodic|iso_gregorian|0|UTC|source_business_date",
+      "family": "served_periods",
+      "grain": "month",
+      "count_at_measured_history": 4,
+      "pinned_width_saturated": 8,
+      "rows": 1,
+      "horizon_tokens": [
+        "from=2026-02-07"
+      ],
+      "growth": "one CURRENT bucket per month; the bounded read pins at most 8 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "fct_shopper_acquisition|amazon_retail_us|amazon_us|lens-60c6f52e3d8c2f982b7a4bf4|periodic|iso_gregorian|0|UTC|source_business_date",
+      "family": "coverage",
+      "grain": "custom",
+      "count_at_measured_history": 4,
+      "pinned_width_saturated": 6,
+      "rows": 12,
+      "horizon_tokens": [
+        "from=2025-04-25",
+        "from=2025-05-10",
+        "from=2025-05-12"
+      ],
+      "growth": "one CURRENT bucket per custom; the bounded read pins at most 6 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "fct_shopper_acquisition|amazon_retail_us|amazon_us|lens-60c6f52e3d8c2f982b7a4bf4|periodic|iso_gregorian|0|UTC|source_business_date",
+      "family": "served_periods",
+      "grain": "custom",
+      "count_at_measured_history": 4,
+      "pinned_width_saturated": 30,
+      "rows": 1,
+      "horizon_tokens": [
+        "from=2023-06-03"
+      ],
+      "growth": "one CURRENT bucket per custom; the bounded read pins at most 30 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "fct_shopper_acquisition|amazon_retail_us|amazon_us|lens-9f73ed9ca3b9638463779b3b|periodic|iso_gregorian|0|UTC|source_business_date",
+      "family": "served_periods",
+      "grain": "custom",
+      "count_at_measured_history": 4,
+      "pinned_width_saturated": 30,
+      "rows": 1,
+      "horizon_tokens": [
+        "from=2023-06-03"
+      ],
+      "growth": "one CURRENT bucket per custom; the bounded read pins at most 30 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "fct_shopper_acquisition|amazon_retail_us|amazon_us|lens-eafb7caa882920e0cd72e7a4|periodic|iso_gregorian|0|UTC|source_business_date",
+      "family": "served_periods",
+      "grain": "custom",
+      "count_at_measured_history": 4,
+      "pinned_width_saturated": 30,
+      "rows": 1,
+      "horizon_tokens": [
+        "from=2023-06-03"
+      ],
+      "growth": "one CURRENT bucket per custom; the bounded read pins at most 30 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "fct_shopper_acquisition|amazon_retail_us|amazon_us|lens-f6fd052c08e839d9c7a7e16a|periodic|iso_gregorian|0|UTC|source_business_date",
+      "family": "coverage",
+      "grain": "custom",
+      "count_at_measured_history": 4,
+      "pinned_width_saturated": 6,
+      "rows": 12,
+      "horizon_tokens": [
+        "from=2025-04-25",
+        "from=2025-05-10",
+        "from=2025-05-12"
+      ],
+      "growth": "one CURRENT bucket per custom; the bounded read pins at most 6 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    },
+    {
+      "scope": "fct_shopper_acquisition|amazon_retail_us|amazon_us|lens-f6fd052c08e839d9c7a7e16a|periodic|iso_gregorian|0|UTC|source_business_date",
+      "family": "served_periods",
+      "grain": "custom",
+      "count_at_measured_history": 4,
+      "pinned_width_saturated": 30,
+      "rows": 1,
+      "horizon_tokens": [
+        "from=2023-06-03"
+      ],
+      "growth": "one CURRENT bucket per custom; the bounded read pins at most 30 whatever the history",
+      "count_at_item_400000": null,
+      "count_at_aggregate_4000000": null,
+      "horizon_calendar_periods": null,
+      "horizon_note": "history-independent: no history depth reaches either ceiling (invariance, pin_size.invariance)"
+    }
+  ],
+  "pin_size": {
+    "basis": "horizon",
+    "anchor": "2026-10-14",
+    "saturation_history_days": 1257,
+    "rows": [
+      {
+        "key": "campaigns#1d",
+        "source_horizon_days": 123,
+        "reads": 14,
+        "blob_bytes": 27215,
+        "item_sk": "BAKE_SOURCE#campaigns#1d",
+        "item_bytes": 38643,
+        "scope_reads": [
+          {
+            "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-44afe5f0db1ad0490dd9c9a7|snapshot|iso_gregorian|0|UTC|source_business_date",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-b0d9b5f465214e1238a727eb|snapshot|iso_gregorian|0|UTC|source_business_date",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "dim_product|amazon_retail_us|amazon_us|lens-4e75687f6ae98b8ab67ad9ce|snapshot|technical_utc|None|UTC|system_first_observed",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "fct_ad_exposure|amazon_retail_us|amazon_us|lens-05d358b939f1cef3bc57bdaa|daily_additive|iso_gregorian|0|UTC|source_business_date",
+            "family": "coverage",
+            "grain": "day",
+            "horizon": "from=2026-06-12",
+            "pinned_width": 124
+          },
+          {
+            "scope": "fct_ad_exposure|amazon_retail_us|amazon_us|lens-f4979ff324501568e1f9e461|daily_additive|iso_gregorian|0|UTC|source_business_date",
+            "family": "coverage",
+            "grain": "day",
+            "horizon": "from=2026-06-12",
+            "pinned_width": 124
+          },
+          {
+            "scope": "fct_attributed_conversion|amazon_retail_us|amazon_us|lens-6d08ddbe5fb27d75d8d47ff5|daily_additive|iso_gregorian|0|UTC|source_business_date",
+            "family": "coverage",
+            "grain": "day",
+            "horizon": "from=2026-06-12",
+            "pinned_width": 124
+          }
+        ]
+      },
+      {
+        "key": "campaigns#7d",
+        "source_horizon_days": 123,
+        "reads": 14,
+        "blob_bytes": 31577,
+        "item_sk": "BAKE_SOURCE#campaigns#7d",
+        "item_bytes": 44459,
+        "scope_reads": [
+          {
+            "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-44afe5f0db1ad0490dd9c9a7|snapshot|iso_gregorian|0|UTC|source_business_date",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-b0d9b5f465214e1238a727eb|snapshot|iso_gregorian|0|UTC|source_business_date",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "dim_product|amazon_retail_us|amazon_us|lens-4e75687f6ae98b8ab67ad9ce|snapshot|technical_utc|None|UTC|system_first_observed",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "fct_ad_exposure|amazon_retail_us|amazon_us|lens-05d358b939f1cef3bc57bdaa|daily_additive|iso_gregorian|0|UTC|source_business_date",
+            "family": "coverage",
+            "grain": "day",
+            "horizon": "from=2026-06-12",
+            "pinned_width": 124
+          },
+          {
+            "scope": "fct_ad_exposure|amazon_retail_us|amazon_us|lens-f4979ff324501568e1f9e461|daily_additive|iso_gregorian|0|UTC|source_business_date",
+            "family": "coverage",
+            "grain": "day",
+            "horizon": "from=2026-06-12",
+            "pinned_width": 124
+          },
+          {
+            "scope": "fct_attributed_conversion|amazon_retail_us|amazon_us|lens-6d08ddbe5fb27d75d8d47ff5|daily_additive|iso_gregorian|0|UTC|source_business_date",
+            "family": "coverage",
+            "grain": "day",
+            "horizon": "from=2026-06-12",
+            "pinned_width": 124
+          }
+        ]
+      },
+      {
+        "key": "campaigns#14d",
+        "source_horizon_days": 123,
+        "reads": 14,
+        "blob_bytes": 36734,
+        "item_sk": "BAKE_SOURCE#campaigns#14d",
+        "item_bytes": 51629,
+        "scope_reads": [
+          {
+            "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-44afe5f0db1ad0490dd9c9a7|snapshot|iso_gregorian|0|UTC|source_business_date",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-b0d9b5f465214e1238a727eb|snapshot|iso_gregorian|0|UTC|source_business_date",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "dim_product|amazon_retail_us|amazon_us|lens-4e75687f6ae98b8ab67ad9ce|snapshot|technical_utc|None|UTC|system_first_observed",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "fct_ad_exposure|amazon_retail_us|amazon_us|lens-05d358b939f1cef3bc57bdaa|daily_additive|iso_gregorian|0|UTC|source_business_date",
+            "family": "coverage",
+            "grain": "day",
+            "horizon": "from=2026-06-12",
+            "pinned_width": 124
+          },
+          {
+            "scope": "fct_ad_exposure|amazon_retail_us|amazon_us|lens-f4979ff324501568e1f9e461|daily_additive|iso_gregorian|0|UTC|source_business_date",
+            "family": "coverage",
+            "grain": "day",
+            "horizon": "from=2026-06-12",
+            "pinned_width": 124
+          },
+          {
+            "scope": "fct_attributed_conversion|amazon_retail_us|amazon_us|lens-6d08ddbe5fb27d75d8d47ff5|daily_additive|iso_gregorian|0|UTC|source_business_date",
+            "family": "coverage",
+            "grain": "day",
+            "horizon": "from=2026-06-12",
+            "pinned_width": 124
+          }
+        ]
+      },
+      {
+        "key": "campaigns#30d",
+        "source_horizon_days": 123,
+        "reads": 14,
+        "blob_bytes": 48442,
+        "item_sk": "BAKE_SOURCE#campaigns#30d",
+        "item_bytes": 67533,
+        "scope_reads": [
+          {
+            "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-44afe5f0db1ad0490dd9c9a7|snapshot|iso_gregorian|0|UTC|source_business_date",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-b0d9b5f465214e1238a727eb|snapshot|iso_gregorian|0|UTC|source_business_date",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "dim_product|amazon_retail_us|amazon_us|lens-4e75687f6ae98b8ab67ad9ce|snapshot|technical_utc|None|UTC|system_first_observed",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "fct_ad_exposure|amazon_retail_us|amazon_us|lens-05d358b939f1cef3bc57bdaa|daily_additive|iso_gregorian|0|UTC|source_business_date",
+            "family": "coverage",
+            "grain": "day",
+            "horizon": "from=2026-06-12",
+            "pinned_width": 124
+          },
+          {
+            "scope": "fct_ad_exposure|amazon_retail_us|amazon_us|lens-f4979ff324501568e1f9e461|daily_additive|iso_gregorian|0|UTC|source_business_date",
+            "family": "coverage",
+            "grain": "day",
+            "horizon": "from=2026-06-12",
+            "pinned_width": 124
+          },
+          {
+            "scope": "fct_attributed_conversion|amazon_retail_us|amazon_us|lens-6d08ddbe5fb27d75d8d47ff5|daily_additive|iso_gregorian|0|UTC|source_business_date",
+            "family": "coverage",
+            "grain": "day",
+            "horizon": "from=2026-06-12",
+            "pinned_width": 124
+          }
+        ]
+      },
+      {
+        "key": "retail-health#1d",
+        "source_horizon_days": 106,
+        "reads": 11,
+        "blob_bytes": 15936,
+        "item_sk": "BAKE_SOURCE#retail-health#1d",
+        "item_bytes": 25071,
+        "scope_reads": [
+          {
+            "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-44afe5f0db1ad0490dd9c9a7|snapshot|iso_gregorian|0|UTC|source_business_date",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-b0d9b5f465214e1238a727eb|snapshot|iso_gregorian|0|UTC|source_business_date",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "dim_product|amazon_retail_us|amazon_us|lens-4e75687f6ae98b8ab67ad9ce|snapshot|technical_utc|None|UTC|system_first_observed",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "fct_product_page_views|amazon_retail_us|amazon_us|lens-25bf33587365da665eea002d|daily_additive|iso_gregorian|0|PST|source_business_date",
+            "family": "coverage",
+            "grain": "day",
+            "horizon": "from=2026-06-29",
+            "pinned_width": 107
+          },
+          {
+            "scope": "fct_retail_sales_reported_total|amazon_retail_us|amazon_us|lens-713a327ceef966626f80fb2d|daily_additive|iso_gregorian|0|PST|source_business_date",
+            "family": "reported_totals",
+            "grain": "day",
+            "horizon": "from=2026-10-12",
+            "pinned_width": 2
+          },
+          {
+            "scope": "fct_retail_sales|amazon_retail_us|amazon_us|lens-7795a360322cbf9c31ae52c5|daily_additive|iso_gregorian|0|PST|source_business_date",
+            "family": "coverage",
+            "grain": "day",
+            "horizon": "from=2026-06-29",
+            "pinned_width": 107
+          }
+        ]
+      },
+      {
+        "key": "retail-health#7d",
+        "source_horizon_days": 106,
+        "reads": 11,
+        "blob_bytes": 19122,
+        "item_sk": "BAKE_SOURCE#retail-health#7d",
+        "item_bytes": 31071,
+        "scope_reads": [
+          {
+            "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-44afe5f0db1ad0490dd9c9a7|snapshot|iso_gregorian|0|UTC|source_business_date",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-b0d9b5f465214e1238a727eb|snapshot|iso_gregorian|0|UTC|source_business_date",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "dim_product|amazon_retail_us|amazon_us|lens-4e75687f6ae98b8ab67ad9ce|snapshot|technical_utc|None|UTC|system_first_observed",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "fct_product_page_views|amazon_retail_us|amazon_us|lens-25bf33587365da665eea002d|daily_additive|iso_gregorian|0|PST|source_business_date",
+            "family": "coverage",
+            "grain": "day",
+            "horizon": "from=2026-06-29",
+            "pinned_width": 107
+          },
+          {
+            "scope": "fct_retail_sales_reported_total|amazon_retail_us|amazon_us|lens-713a327ceef966626f80fb2d|daily_additive|iso_gregorian|0|PST|source_business_date",
+            "family": "reported_totals",
+            "grain": "day",
+            "horizon": "from=2026-10-06",
+            "pinned_width": 8
+          },
+          {
+            "scope": "fct_retail_sales|amazon_retail_us|amazon_us|lens-7795a360322cbf9c31ae52c5|daily_additive|iso_gregorian|0|PST|source_business_date",
+            "family": "coverage",
+            "grain": "day",
+            "horizon": "from=2026-06-29",
+            "pinned_width": 107
+          }
+        ]
+      },
+      {
+        "key": "retail-health#14d",
+        "source_horizon_days": 106,
+        "reads": 11,
+        "blob_bytes": 22672,
+        "item_sk": "BAKE_SOURCE#retail-health#14d",
+        "item_bytes": 37853,
+        "scope_reads": [
+          {
+            "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-44afe5f0db1ad0490dd9c9a7|snapshot|iso_gregorian|0|UTC|source_business_date",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-b0d9b5f465214e1238a727eb|snapshot|iso_gregorian|0|UTC|source_business_date",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "dim_product|amazon_retail_us|amazon_us|lens-4e75687f6ae98b8ab67ad9ce|snapshot|technical_utc|None|UTC|system_first_observed",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "fct_product_page_views|amazon_retail_us|amazon_us|lens-25bf33587365da665eea002d|daily_additive|iso_gregorian|0|PST|source_business_date",
+            "family": "coverage",
+            "grain": "day",
+            "horizon": "from=2026-06-29",
+            "pinned_width": 107
+          },
+          {
+            "scope": "fct_retail_sales_reported_total|amazon_retail_us|amazon_us|lens-713a327ceef966626f80fb2d|daily_additive|iso_gregorian|0|PST|source_business_date",
+            "family": "reported_totals",
+            "grain": "day",
+            "horizon": "from=2026-09-29",
+            "pinned_width": 15
+          },
+          {
+            "scope": "fct_retail_sales|amazon_retail_us|amazon_us|lens-7795a360322cbf9c31ae52c5|daily_additive|iso_gregorian|0|PST|source_business_date",
+            "family": "coverage",
+            "grain": "day",
+            "horizon": "from=2026-06-29",
+            "pinned_width": 107
+          }
+        ]
+      },
+      {
+        "key": "scorecard#7d",
+        "source_horizon_days": 140,
+        "reads": 14,
+        "blob_bytes": 35131,
+        "item_sk": "BAKE_SOURCE#scorecard#7d",
+        "item_bytes": 48688,
+        "scope_reads": [
+          {
+            "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-44afe5f0db1ad0490dd9c9a7|snapshot|iso_gregorian|0|UTC|source_business_date",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-b0d9b5f465214e1238a727eb|snapshot|iso_gregorian|0|UTC|source_business_date",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "dim_product|amazon_retail_us|amazon_us|lens-4e75687f6ae98b8ab67ad9ce|snapshot|technical_utc|None|UTC|system_first_observed",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "fct_ad_exposure|amazon_retail_us|amazon_us|lens-05d358b939f1cef3bc57bdaa|daily_additive|iso_gregorian|0|UTC|source_business_date",
+            "family": "coverage",
+            "grain": "day",
+            "horizon": "from=2026-05-26",
+            "pinned_width": 141
+          },
+          {
+            "scope": "fct_ad_exposure|amazon_retail_us|amazon_us|lens-f4979ff324501568e1f9e461|daily_additive|iso_gregorian|0|UTC|source_business_date",
+            "family": "coverage",
+            "grain": "day",
+            "horizon": "from=2026-05-26",
+            "pinned_width": 141
+          },
+          {
+            "scope": "fct_attributed_conversion|amazon_retail_us|amazon_us|lens-6d08ddbe5fb27d75d8d47ff5|daily_additive|iso_gregorian|0|UTC|source_business_date",
+            "family": "coverage",
+            "grain": "day",
+            "horizon": "from=2026-05-26",
+            "pinned_width": 141
+          }
+        ]
+      },
+      {
+        "key": "scorecard#30d",
+        "source_horizon_days": 140,
+        "reads": 14,
+        "blob_bytes": 51910,
+        "item_sk": "BAKE_SOURCE#scorecard#30d",
+        "item_bytes": 71062,
+        "scope_reads": [
+          {
+            "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-44afe5f0db1ad0490dd9c9a7|snapshot|iso_gregorian|0|UTC|source_business_date",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-b0d9b5f465214e1238a727eb|snapshot|iso_gregorian|0|UTC|source_business_date",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "dim_product|amazon_retail_us|amazon_us|lens-4e75687f6ae98b8ab67ad9ce|snapshot|technical_utc|None|UTC|system_first_observed",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "fct_ad_exposure|amazon_retail_us|amazon_us|lens-05d358b939f1cef3bc57bdaa|daily_additive|iso_gregorian|0|UTC|source_business_date",
+            "family": "coverage",
+            "grain": "day",
+            "horizon": "from=2026-05-26",
+            "pinned_width": 141
+          },
+          {
+            "scope": "fct_ad_exposure|amazon_retail_us|amazon_us|lens-f4979ff324501568e1f9e461|daily_additive|iso_gregorian|0|UTC|source_business_date",
+            "family": "coverage",
+            "grain": "day",
+            "horizon": "from=2026-05-26",
+            "pinned_width": 141
+          },
+          {
+            "scope": "fct_attributed_conversion|amazon_retail_us|amazon_us|lens-6d08ddbe5fb27d75d8d47ff5|daily_additive|iso_gregorian|0|UTC|source_business_date",
+            "family": "coverage",
+            "grain": "day",
+            "horizon": "from=2026-05-26",
+            "pinned_width": 141
+          }
+        ]
+      },
+      {
+        "key": "scorecard#last_complete_week",
+        "source_horizon_days": 140,
+        "reads": 14,
+        "blob_bytes": 32566,
+        "item_sk": "BAKE_SOURCE#scorecard#last_complete_week",
+        "item_bytes": 44716,
+        "scope_reads": [
+          {
+            "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-44afe5f0db1ad0490dd9c9a7|snapshot|iso_gregorian|0|UTC|source_business_date",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-b0d9b5f465214e1238a727eb|snapshot|iso_gregorian|0|UTC|source_business_date",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "dim_product|amazon_retail_us|amazon_us|lens-4e75687f6ae98b8ab67ad9ce|snapshot|technical_utc|None|UTC|system_first_observed",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "fct_ad_exposure|amazon_retail_us|amazon_us|lens-05d358b939f1cef3bc57bdaa|daily_additive|iso_gregorian|0|UTC|source_business_date",
+            "family": "coverage",
+            "grain": "day",
+            "horizon": "from=2026-05-26",
+            "pinned_width": 141
+          },
+          {
+            "scope": "fct_ad_exposure|amazon_retail_us|amazon_us|lens-f4979ff324501568e1f9e461|daily_additive|iso_gregorian|0|UTC|source_business_date",
+            "family": "coverage",
+            "grain": "day",
+            "horizon": "from=2026-05-26",
+            "pinned_width": 141
+          },
+          {
+            "scope": "fct_attributed_conversion|amazon_retail_us|amazon_us|lens-6d08ddbe5fb27d75d8d47ff5|daily_additive|iso_gregorian|0|UTC|source_business_date",
+            "family": "coverage",
+            "grain": "day",
+            "horizon": "from=2026-05-26",
+            "pinned_width": 141
+          }
+        ]
+      },
+      {
+        "key": "scorecard#last_complete_month",
+        "source_horizon_days": 140,
+        "reads": 14,
+        "blob_bytes": 41342,
+        "item_sk": "BAKE_SOURCE#scorecard#last_complete_month",
+        "item_bytes": 56418,
+        "scope_reads": [
+          {
+            "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-44afe5f0db1ad0490dd9c9a7|snapshot|iso_gregorian|0|UTC|source_business_date",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-b0d9b5f465214e1238a727eb|snapshot|iso_gregorian|0|UTC|source_business_date",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "dim_product|amazon_retail_us|amazon_us|lens-4e75687f6ae98b8ab67ad9ce|snapshot|technical_utc|None|UTC|system_first_observed",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "fct_ad_exposure|amazon_retail_us|amazon_us|lens-05d358b939f1cef3bc57bdaa|daily_additive|iso_gregorian|0|UTC|source_business_date",
+            "family": "coverage",
+            "grain": "day",
+            "horizon": "from=2026-05-26",
+            "pinned_width": 141
+          },
+          {
+            "scope": "fct_ad_exposure|amazon_retail_us|amazon_us|lens-f4979ff324501568e1f9e461|daily_additive|iso_gregorian|0|UTC|source_business_date",
+            "family": "coverage",
+            "grain": "day",
+            "horizon": "from=2026-05-26",
+            "pinned_width": 141
+          },
+          {
+            "scope": "fct_attributed_conversion|amazon_retail_us|amazon_us|lens-6d08ddbe5fb27d75d8d47ff5|daily_additive|iso_gregorian|0|UTC|source_business_date",
+            "family": "coverage",
+            "grain": "day",
+            "horizon": "from=2026-05-26",
+            "pinned_width": 141
+          }
+        ]
+      },
+      {
+        "key": "new-customers#7d",
+        "source_horizon_days": 125,
+        "reads": 16,
+        "blob_bytes": 32735,
+        "item_sk": "BAKE_SOURCE#new-customers#7d",
+        "item_bytes": 44769,
+        "scope_reads": [
+          {
+            "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-44afe5f0db1ad0490dd9c9a7|snapshot|iso_gregorian|0|UTC|source_business_date",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-b0d9b5f465214e1238a727eb|snapshot|iso_gregorian|0|UTC|source_business_date",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "dim_product|amazon_retail_us|amazon_us|lens-4e75687f6ae98b8ab67ad9ce|snapshot|technical_utc|None|UTC|system_first_observed",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "fct_ad_exposure|amazon_retail_us|amazon_us|lens-05d358b939f1cef3bc57bdaa|daily_additive|iso_gregorian|0|UTC|source_business_date",
+            "family": "coverage",
+            "grain": "day",
+            "horizon": "from=2026-06-10",
+            "pinned_width": 126
+          },
+          {
+            "scope": "fct_ad_exposure|amazon_retail_us|amazon_us|lens-f4979ff324501568e1f9e461|daily_additive|iso_gregorian|0|UTC|source_business_date",
+            "family": "coverage",
+            "grain": "day",
+            "horizon": "from=2026-06-10",
+            "pinned_width": 126
+          },
+          {
+            "scope": "fct_attributed_conversion|amazon_retail_us|amazon_us|lens-6d08ddbe5fb27d75d8d47ff5|daily_additive|iso_gregorian|0|UTC|source_business_date",
+            "family": "coverage",
+            "grain": "day",
+            "horizon": "from=2026-06-10",
+            "pinned_width": 126
+          },
+          {
+            "scope": "fct_new_to_brand_buyers|amazon_retail_us|amazon_us|lens-49bbf06ca3680b8147b447a4|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "month",
+            "horizon": "from=2026-05-11",
+            "pinned_width": 5
+          },
+          {
+            "scope": "fct_new_to_brand_buyers|amazon_retail_us|amazon_us|lens-4a47ca5ae185f49ce4d4efb9|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "week",
+            "horizon": "from=2026-05-11",
+            "pinned_width": 22
+          },
+          {
+            "scope": "fct_new_to_brand_buyers|amazon_retail_us|amazon_us|lens-6182c1f4eff7a860ff3f2743|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "month",
+            "horizon": "from=2026-05-11",
+            "pinned_width": 5
+          },
+          {
+            "scope": "fct_new_to_brand_buyers|amazon_retail_us|amazon_us|lens-715871c976096ebf91a8b8a6|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "week",
+            "horizon": "from=2026-05-11",
+            "pinned_width": 22
+          }
+        ]
+      },
+      {
+        "key": "new-customers#30d",
+        "source_horizon_days": 125,
+        "reads": 16,
+        "blob_bytes": 39512,
+        "item_sk": "BAKE_SOURCE#new-customers#30d",
+        "item_bytes": 53807,
+        "scope_reads": [
+          {
+            "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-44afe5f0db1ad0490dd9c9a7|snapshot|iso_gregorian|0|UTC|source_business_date",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-b0d9b5f465214e1238a727eb|snapshot|iso_gregorian|0|UTC|source_business_date",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "dim_product|amazon_retail_us|amazon_us|lens-4e75687f6ae98b8ab67ad9ce|snapshot|technical_utc|None|UTC|system_first_observed",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "fct_ad_exposure|amazon_retail_us|amazon_us|lens-05d358b939f1cef3bc57bdaa|daily_additive|iso_gregorian|0|UTC|source_business_date",
+            "family": "coverage",
+            "grain": "day",
+            "horizon": "from=2026-06-10",
+            "pinned_width": 126
+          },
+          {
+            "scope": "fct_ad_exposure|amazon_retail_us|amazon_us|lens-f4979ff324501568e1f9e461|daily_additive|iso_gregorian|0|UTC|source_business_date",
+            "family": "coverage",
+            "grain": "day",
+            "horizon": "from=2026-06-10",
+            "pinned_width": 126
+          },
+          {
+            "scope": "fct_attributed_conversion|amazon_retail_us|amazon_us|lens-6d08ddbe5fb27d75d8d47ff5|daily_additive|iso_gregorian|0|UTC|source_business_date",
+            "family": "coverage",
+            "grain": "day",
+            "horizon": "from=2026-06-10",
+            "pinned_width": 126
+          },
+          {
+            "scope": "fct_new_to_brand_buyers|amazon_retail_us|amazon_us|lens-49bbf06ca3680b8147b447a4|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "month",
+            "horizon": "from=2026-05-11",
+            "pinned_width": 5
+          },
+          {
+            "scope": "fct_new_to_brand_buyers|amazon_retail_us|amazon_us|lens-4a47ca5ae185f49ce4d4efb9|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "week",
+            "horizon": "from=2026-05-11",
+            "pinned_width": 22
+          },
+          {
+            "scope": "fct_new_to_brand_buyers|amazon_retail_us|amazon_us|lens-6182c1f4eff7a860ff3f2743|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "month",
+            "horizon": "from=2026-05-11",
+            "pinned_width": 5
+          },
+          {
+            "scope": "fct_new_to_brand_buyers|amazon_retail_us|amazon_us|lens-715871c976096ebf91a8b8a6|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "week",
+            "horizon": "from=2026-05-11",
+            "pinned_width": 22
+          }
+        ]
+      },
+      {
+        "key": "new-customers#last_complete_week",
+        "source_horizon_days": 125,
+        "reads": 18,
+        "blob_bytes": 32376,
+        "item_sk": "BAKE_SOURCE#new-customers#last_complete_week",
+        "item_bytes": 44687,
+        "scope_reads": [
+          {
+            "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-44afe5f0db1ad0490dd9c9a7|snapshot|iso_gregorian|0|UTC|source_business_date",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-b0d9b5f465214e1238a727eb|snapshot|iso_gregorian|0|UTC|source_business_date",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "dim_product|amazon_retail_us|amazon_us|lens-4e75687f6ae98b8ab67ad9ce|snapshot|technical_utc|None|UTC|system_first_observed",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "fct_ad_exposure|amazon_retail_us|amazon_us|lens-05d358b939f1cef3bc57bdaa|daily_additive|iso_gregorian|0|UTC|source_business_date",
+            "family": "coverage",
+            "grain": "day",
+            "horizon": "from=2026-06-10",
+            "pinned_width": 126
+          },
+          {
+            "scope": "fct_ad_exposure|amazon_retail_us|amazon_us|lens-f4979ff324501568e1f9e461|daily_additive|iso_gregorian|0|UTC|source_business_date",
+            "family": "coverage",
+            "grain": "day",
+            "horizon": "from=2026-06-10",
+            "pinned_width": 126
+          },
+          {
+            "scope": "fct_attributed_conversion|amazon_retail_us|amazon_us|lens-6d08ddbe5fb27d75d8d47ff5|daily_additive|iso_gregorian|0|UTC|source_business_date",
+            "family": "coverage",
+            "grain": "day",
+            "horizon": "from=2026-06-10",
+            "pinned_width": 126
+          },
+          {
+            "scope": "fct_new_to_brand_buyers|amazon_retail_us|amazon_us|lens-49bbf06ca3680b8147b447a4|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "month",
+            "horizon": "from=2026-05-11",
+            "pinned_width": 5
+          },
+          {
+            "scope": "fct_new_to_brand_buyers|amazon_retail_us|amazon_us|lens-4a47ca5ae185f49ce4d4efb9|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "week",
+            "horizon": "from=2026-05-11",
+            "pinned_width": 22
+          },
+          {
+            "scope": "fct_new_to_brand_buyers|amazon_retail_us|amazon_us|lens-6182c1f4eff7a860ff3f2743|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "month",
+            "horizon": "from=2026-05-11",
+            "pinned_width": 5
+          },
+          {
+            "scope": "fct_new_to_brand_buyers|amazon_retail_us|amazon_us|lens-715871c976096ebf91a8b8a6|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "week",
+            "horizon": "from=2026-05-11",
+            "pinned_width": 22
+          }
+        ]
+      },
+      {
+        "key": "new-customers#last_complete_month",
+        "source_horizon_days": 125,
+        "reads": 18,
+        "blob_bytes": 37708,
+        "item_sk": "BAKE_SOURCE#new-customers#last_complete_month",
+        "item_bytes": 51801,
+        "scope_reads": [
+          {
+            "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-44afe5f0db1ad0490dd9c9a7|snapshot|iso_gregorian|0|UTC|source_business_date",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-b0d9b5f465214e1238a727eb|snapshot|iso_gregorian|0|UTC|source_business_date",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "dim_product|amazon_retail_us|amazon_us|lens-4e75687f6ae98b8ab67ad9ce|snapshot|technical_utc|None|UTC|system_first_observed",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "fct_ad_exposure|amazon_retail_us|amazon_us|lens-05d358b939f1cef3bc57bdaa|daily_additive|iso_gregorian|0|UTC|source_business_date",
+            "family": "coverage",
+            "grain": "day",
+            "horizon": "from=2026-06-10",
+            "pinned_width": 126
+          },
+          {
+            "scope": "fct_ad_exposure|amazon_retail_us|amazon_us|lens-f4979ff324501568e1f9e461|daily_additive|iso_gregorian|0|UTC|source_business_date",
+            "family": "coverage",
+            "grain": "day",
+            "horizon": "from=2026-06-10",
+            "pinned_width": 126
+          },
+          {
+            "scope": "fct_attributed_conversion|amazon_retail_us|amazon_us|lens-6d08ddbe5fb27d75d8d47ff5|daily_additive|iso_gregorian|0|UTC|source_business_date",
+            "family": "coverage",
+            "grain": "day",
+            "horizon": "from=2026-06-10",
+            "pinned_width": 126
+          },
+          {
+            "scope": "fct_new_to_brand_buyers|amazon_retail_us|amazon_us|lens-49bbf06ca3680b8147b447a4|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "month",
+            "horizon": "from=2026-05-11",
+            "pinned_width": 5
+          },
+          {
+            "scope": "fct_new_to_brand_buyers|amazon_retail_us|amazon_us|lens-4a47ca5ae185f49ce4d4efb9|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "week",
+            "horizon": "from=2026-05-11",
+            "pinned_width": 22
+          },
+          {
+            "scope": "fct_new_to_brand_buyers|amazon_retail_us|amazon_us|lens-6182c1f4eff7a860ff3f2743|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "month",
+            "horizon": "from=2026-05-11",
+            "pinned_width": 5
+          },
+          {
+            "scope": "fct_new_to_brand_buyers|amazon_retail_us|amazon_us|lens-715871c976096ebf91a8b8a6|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "week",
+            "horizon": "from=2026-05-11",
+            "pinned_width": 22
+          }
+        ]
+      },
+      {
+        "key": "reach#last_complete_week",
+        "source_horizon_days": 261,
+        "reads": 16,
+        "blob_bytes": 12099,
+        "item_sk": "BAKE_SOURCE#reach#last_complete_week",
+        "item_bytes": 17196,
+        "scope_reads": [
+          {
+            "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-44afe5f0db1ad0490dd9c9a7|snapshot|iso_gregorian|0|UTC|source_business_date",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-b0d9b5f465214e1238a727eb|snapshot|iso_gregorian|0|UTC|source_business_date",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "dim_product|amazon_retail_us|amazon_us|lens-4e75687f6ae98b8ab67ad9ce|snapshot|technical_utc|None|UTC|system_first_observed",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "fct_exposure_frequency|amazon_retail_us|amazon_us|lens-102b3d79c795b6386aa84038|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "month",
+            "horizon": "from=2025-10-26",
+            "pinned_width": 12
+          },
+          {
+            "scope": "fct_exposure_frequency|amazon_retail_us|amazon_us|lens-18a550129048d0db9a3cc7eb|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "quarter",
+            "horizon": "from=2025-10-26",
+            "pinned_width": 3
+          },
+          {
+            "scope": "fct_exposure_frequency|amazon_retail_us|amazon_us|lens-40f5487292aac75deaa32c8a|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "month",
+            "horizon": "from=2025-10-26",
+            "pinned_width": 12
+          },
+          {
+            "scope": "fct_exposure_frequency|amazon_retail_us|amazon_us|lens-58e711219dc02f0a02a6b217|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "month",
+            "horizon": "from=2025-10-26",
+            "pinned_width": 12
+          },
+          {
+            "scope": "fct_exposure_frequency|amazon_retail_us|amazon_us|lens-92170b9d0c7284692f09137b|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "month",
+            "horizon": "from=2025-10-26",
+            "pinned_width": 12
+          },
+          {
+            "scope": "fct_exposure_frequency|amazon_retail_us|amazon_us|lens-9b14a38dc8ca939330a9520b|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "quarter",
+            "horizon": "from=2025-10-26",
+            "pinned_width": 3
+          },
+          {
+            "scope": "fct_exposure_frequency|amazon_retail_us|amazon_us|lens-b5e84221bfca95ba5c7bccfc|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "quarter",
+            "horizon": "from=2025-10-26",
+            "pinned_width": 3
+          },
+          {
+            "scope": "fct_exposure_frequency|amazon_retail_us|amazon_us|lens-cfeab2fe1fb95ae6dbcc1119|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "quarter",
+            "horizon": "from=2025-10-26",
+            "pinned_width": 3
+          },
+          {
+            "scope": "fct_exposure_group_outcome|amazon_retail_us|amazon_us|lens-0ba8782fce772b007839a0ce|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "week",
+            "horizon": "from=2025-12-26",
+            "pinned_width": 41
+          },
+          {
+            "scope": "fct_exposure_group_outcome|amazon_retail_us|amazon_us|lens-9921c66887d59dfe04f4c006|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "month",
+            "horizon": "from=2025-12-26",
+            "pinned_width": 10
+          },
+          {
+            "scope": "fct_exposure_group_outcome|amazon_retail_us|amazon_us|lens-9af007147b4dc3858232b699|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "month",
+            "horizon": "from=2025-12-26",
+            "pinned_width": 10
+          },
+          {
+            "scope": "fct_exposure_group_outcome|amazon_retail_us|amazon_us|lens-ffacc6a3416a55a8089eef94|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "week",
+            "horizon": "from=2025-12-26",
+            "pinned_width": 41
+          }
+        ]
+      },
+      {
+        "key": "reach#last_complete_month",
+        "source_horizon_days": 261,
+        "reads": 20,
+        "blob_bytes": 16933,
+        "item_sk": "BAKE_SOURCE#reach#last_complete_month",
+        "item_bytes": 24231,
+        "scope_reads": [
+          {
+            "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-44afe5f0db1ad0490dd9c9a7|snapshot|iso_gregorian|0|UTC|source_business_date",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-b0d9b5f465214e1238a727eb|snapshot|iso_gregorian|0|UTC|source_business_date",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "dim_product|amazon_retail_us|amazon_us|lens-4e75687f6ae98b8ab67ad9ce|snapshot|technical_utc|None|UTC|system_first_observed",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "fct_exposure_frequency|amazon_retail_us|amazon_us|lens-102b3d79c795b6386aa84038|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "month",
+            "horizon": "from=2025-10-26",
+            "pinned_width": 12
+          },
+          {
+            "scope": "fct_exposure_frequency|amazon_retail_us|amazon_us|lens-18a550129048d0db9a3cc7eb|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "quarter",
+            "horizon": "from=2025-10-26",
+            "pinned_width": 3
+          },
+          {
+            "scope": "fct_exposure_frequency|amazon_retail_us|amazon_us|lens-40f5487292aac75deaa32c8a|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "month",
+            "horizon": "from=2025-10-26",
+            "pinned_width": 12
+          },
+          {
+            "scope": "fct_exposure_frequency|amazon_retail_us|amazon_us|lens-58e711219dc02f0a02a6b217|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "month",
+            "horizon": "from=2025-10-26",
+            "pinned_width": 12
+          },
+          {
+            "scope": "fct_exposure_frequency|amazon_retail_us|amazon_us|lens-92170b9d0c7284692f09137b|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "month",
+            "horizon": "from=2025-10-26",
+            "pinned_width": 12
+          },
+          {
+            "scope": "fct_exposure_frequency|amazon_retail_us|amazon_us|lens-9b14a38dc8ca939330a9520b|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "quarter",
+            "horizon": "from=2025-10-26",
+            "pinned_width": 3
+          },
+          {
+            "scope": "fct_exposure_frequency|amazon_retail_us|amazon_us|lens-b5e84221bfca95ba5c7bccfc|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "quarter",
+            "horizon": "from=2025-10-26",
+            "pinned_width": 3
+          },
+          {
+            "scope": "fct_exposure_frequency|amazon_retail_us|amazon_us|lens-cfeab2fe1fb95ae6dbcc1119|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "quarter",
+            "horizon": "from=2025-10-26",
+            "pinned_width": 3
+          },
+          {
+            "scope": "fct_exposure_group_outcome|amazon_retail_us|amazon_us|lens-0ba8782fce772b007839a0ce|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "week",
+            "horizon": "from=2025-12-26",
+            "pinned_width": 41
+          },
+          {
+            "scope": "fct_exposure_group_outcome|amazon_retail_us|amazon_us|lens-9921c66887d59dfe04f4c006|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "month",
+            "horizon": "from=2025-12-26",
+            "pinned_width": 10
+          },
+          {
+            "scope": "fct_exposure_group_outcome|amazon_retail_us|amazon_us|lens-9af007147b4dc3858232b699|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "month",
+            "horizon": "from=2025-12-26",
+            "pinned_width": 10
+          },
+          {
+            "scope": "fct_exposure_group_outcome|amazon_retail_us|amazon_us|lens-ffacc6a3416a55a8089eef94|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "week",
+            "horizon": "from=2025-12-26",
+            "pinned_width": 41
+          }
+        ]
+      },
+      {
+        "key": "reach#last_complete_quarter",
+        "source_horizon_days": 261,
+        "reads": 19,
+        "blob_bytes": 25980,
+        "item_sk": "BAKE_SOURCE#reach#last_complete_quarter",
+        "item_bytes": 35710,
+        "scope_reads": [
+          {
+            "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-44afe5f0db1ad0490dd9c9a7|snapshot|iso_gregorian|0|UTC|source_business_date",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-b0d9b5f465214e1238a727eb|snapshot|iso_gregorian|0|UTC|source_business_date",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "dim_product|amazon_retail_us|amazon_us|lens-4e75687f6ae98b8ab67ad9ce|snapshot|technical_utc|None|UTC|system_first_observed",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "fct_exposure_frequency|amazon_retail_us|amazon_us|lens-102b3d79c795b6386aa84038|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "month",
+            "horizon": "from=2025-10-26",
+            "pinned_width": 12
+          },
+          {
+            "scope": "fct_exposure_frequency|amazon_retail_us|amazon_us|lens-18a550129048d0db9a3cc7eb|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "quarter",
+            "horizon": "from=2025-10-26",
+            "pinned_width": 3
+          },
+          {
+            "scope": "fct_exposure_frequency|amazon_retail_us|amazon_us|lens-40f5487292aac75deaa32c8a|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "month",
+            "horizon": "from=2025-10-26",
+            "pinned_width": 12
+          },
+          {
+            "scope": "fct_exposure_frequency|amazon_retail_us|amazon_us|lens-58e711219dc02f0a02a6b217|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "month",
+            "horizon": "from=2025-10-26",
+            "pinned_width": 12
+          },
+          {
+            "scope": "fct_exposure_frequency|amazon_retail_us|amazon_us|lens-92170b9d0c7284692f09137b|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "month",
+            "horizon": "from=2025-10-26",
+            "pinned_width": 12
+          },
+          {
+            "scope": "fct_exposure_frequency|amazon_retail_us|amazon_us|lens-9b14a38dc8ca939330a9520b|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "quarter",
+            "horizon": "from=2025-10-26",
+            "pinned_width": 3
+          },
+          {
+            "scope": "fct_exposure_frequency|amazon_retail_us|amazon_us|lens-b5e84221bfca95ba5c7bccfc|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "quarter",
+            "horizon": "from=2025-10-26",
+            "pinned_width": 3
+          },
+          {
+            "scope": "fct_exposure_frequency|amazon_retail_us|amazon_us|lens-cfeab2fe1fb95ae6dbcc1119|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "quarter",
+            "horizon": "from=2025-10-26",
+            "pinned_width": 3
+          },
+          {
+            "scope": "fct_exposure_group_outcome|amazon_retail_us|amazon_us|lens-0ba8782fce772b007839a0ce|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "week",
+            "horizon": "from=2025-12-26",
+            "pinned_width": 41
+          },
+          {
+            "scope": "fct_exposure_group_outcome|amazon_retail_us|amazon_us|lens-9921c66887d59dfe04f4c006|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "month",
+            "horizon": "from=2025-12-26",
+            "pinned_width": 10
+          },
+          {
+            "scope": "fct_exposure_group_outcome|amazon_retail_us|amazon_us|lens-9af007147b4dc3858232b699|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "month",
+            "horizon": "from=2025-12-26",
+            "pinned_width": 10
+          },
+          {
+            "scope": "fct_exposure_group_outcome|amazon_retail_us|amazon_us|lens-ffacc6a3416a55a8089eef94|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "week",
+            "horizon": "from=2025-12-26",
+            "pinned_width": 41
+          }
+        ]
+      },
+      {
+        "key": "retention#latest_with_current_publication",
+        "source_horizon_days": 832,
+        "reads": 10,
+        "blob_bytes": 9103,
+        "item_sk": "BAKE_SOURCE#retention#latest_with_current_publication",
+        "item_bytes": 13092,
+        "scope_reads": [
+          {
+            "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-44afe5f0db1ad0490dd9c9a7|snapshot|iso_gregorian|0|UTC|source_business_date",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-b0d9b5f465214e1238a727eb|snapshot|iso_gregorian|0|UTC|source_business_date",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "dim_product|amazon_retail_us|amazon_us|lens-4e75687f6ae98b8ab67ad9ce|snapshot|technical_utc|None|UTC|system_first_observed",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "fct_shopper_acquisition|amazon_retail_us|amazon_us|lens-60c6f52e3d8c2f982b7a4bf4|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "custom",
+            "horizon": "from=2023-06-03",
+            "pinned_width": 30
+          },
+          {
+            "scope": "fct_shopper_acquisition|amazon_retail_us|amazon_us|lens-9f73ed9ca3b9638463779b3b|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "custom",
+            "horizon": "from=2023-06-03",
+            "pinned_width": 30
+          },
+          {
+            "scope": "fct_shopper_acquisition|amazon_retail_us|amazon_us|lens-eafb7caa882920e0cd72e7a4|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "custom",
+            "horizon": "from=2023-06-03",
+            "pinned_width": 30
+          },
+          {
+            "scope": "fct_shopper_acquisition|amazon_retail_us|amazon_us|lens-f6fd052c08e839d9c7a7e16a|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "custom",
+            "horizon": "from=2023-06-03",
+            "pinned_width": 30
+          }
+        ]
+      },
+      {
+        "key": "audiences#last_complete_month",
+        "source_horizon_days": 218,
+        "reads": 14,
+        "blob_bytes": 3787,
+        "item_sk": "BAKE_SOURCE#audiences#last_complete_month",
+        "item_bytes": 9996,
+        "scope_reads": [
+          {
+            "scope": "dim_audience_segment|amazon_retail_us|amazon_us|lens-3957043c3d757ec09641cf2c|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "latest_only",
+            "grain": "month",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "dim_audience_segment|amazon_retail_us|amazon_us|lens-9bb2dac7f25b514d1afd4f8a|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "latest_only",
+            "grain": "month",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "dim_audience_segment|amazon_retail_us|amazon_us|lens-9bb2dac7f25b514d1afd4f8a|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "month",
+            "horizon": "from=2026-02-07",
+            "pinned_width": 8
+          },
+          {
+            "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-44afe5f0db1ad0490dd9c9a7|snapshot|iso_gregorian|0|UTC|source_business_date",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-b0d9b5f465214e1238a727eb|snapshot|iso_gregorian|0|UTC|source_business_date",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "dim_product|amazon_retail_us|amazon_us|lens-4e75687f6ae98b8ab67ad9ce|snapshot|technical_utc|None|UTC|system_first_observed",
+            "family": "latest_only",
+            "grain": "day",
+            "horizon": "newest=1",
+            "pinned_width": 1
+          },
+          {
+            "scope": "fct_segment_delivery|amazon_retail_us|amazon_us|lens-3261a2f794f72af52e9afdc1|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "month",
+            "horizon": "from=2026-02-07",
+            "pinned_width": 8
+          },
+          {
+            "scope": "fct_segment_profile|amazon_retail_us|amazon_us|lens-1c3f55b65066a8a70f2a5831|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "month",
+            "horizon": "from=2026-02-07",
+            "pinned_width": 8
+          },
+          {
+            "scope": "fct_segment_profile|amazon_retail_us|amazon_us|lens-2a823356576913a5e0a545a1|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "month",
+            "horizon": "from=2026-02-07",
+            "pinned_width": 8
+          },
+          {
+            "scope": "fct_segment_profile|amazon_retail_us|amazon_us|lens-e98984a8cd084fe34d7634b7|periodic|iso_gregorian|0|UTC|source_business_date",
+            "family": "served_periods",
+            "grain": "month",
+            "horizon": "from=2026-02-07",
+            "pinned_width": 8
+          }
+        ]
+      }
+    ],
+    "pin_item_bytes": 1387,
+    "largest_item": {
+      "sk": "BAKE_SOURCE#scorecard#30d",
+      "bytes": 71062
+    },
+    "aggregate_bytes": 838395,
+    "oracle_aggregate_bytes": 813819,
+    "headroom": {
+      "item_bytes": 328938,
+      "aggregate_bytes": 3161605,
+      "vs_previous_aggregate_bytes": 376564,
+      "vs_previous_largest_item_bytes": 22471
+    },
+    "by_history_days": {
+      "85": {
+        "largest_item_bytes": 56317,
+        "aggregate_bytes": 623031
+      },
+      "463": {
+        "largest_item_bytes": 71062,
+        "aggregate_bytes": 833635
+      },
+      "731": {
+        "largest_item_bytes": 71062,
+        "aggregate_bytes": 837271
+      },
+      "1257": {
+        "largest_item_bytes": 71062,
+        "aggregate_bytes": 838395
+      }
+    },
+    "invariance": {
+      "history_days": [
+        1257,
+        2000,
+        3650,
+        7300
+      ],
+      "byte_identical": true
+    },
+    "negative_control_unbounded": {
+      "item_over_400000_at_history_days": 670,
+      "aggregate_over_4000000_at_history_days": 380,
+      "aggregate_bytes_at_measured_history": 1088191
+    },
+    "over_cap_plans": [
+      [
+        "reach#last_complete_quarter",
+        "ad_spend",
+        184
+      ],
+      [
+        "reach#last_complete_quarter",
+        "ad_spend",
+        184
+      ]
+    ]
+  }
+}

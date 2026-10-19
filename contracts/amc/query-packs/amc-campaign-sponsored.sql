@@ -1,0 +1,1 @@
+SELECT MIN(event_date_utc) AS source_observed_on, campaign_id_string, campaign, advertiser, marketplace_name, ad_product_type, BUILT_IN_PARAMETER('TIME_WINDOW_START') AS time_window_start, BUILT_IN_PARAMETER('TIME_WINDOW_END') AS time_window_end FROM sponsored_ads_traffic GROUP BY campaign_id_string, campaign, advertiser, marketplace_name, ad_product_type

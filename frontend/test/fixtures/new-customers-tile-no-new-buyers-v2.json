@@ -1,0 +1,788 @@
+{
+  "envelope_version": 2,
+  "kind": "page",
+  "page": {
+    "actions": [],
+    "artifact": {
+      "boundary": [
+        "Amazon flags a purchase as new to brand when the shopper hasn't bought from the brand in the previous 12 months.",
+        "New-to-brand revenue share divides a 12-month new-to-brand numerator by 14-day attributed revenue, so it uses two windows."
+      ],
+      "evidence_status": {
+        "entries": [
+          {
+            "absence_text": null,
+            "coverage_text": null,
+            "label": "New-to-brand purchases per channel",
+            "missing_dates": [],
+            "missing_text": "None",
+            "reason": "Every day of this window has arrived.",
+            "recovery": "No action needed.",
+            "role": "current",
+            "role_label": "This window",
+            "slot": "new-to-brand:amazon_us",
+            "state": "complete"
+          },
+          {
+            "absence_text": null,
+            "coverage_text": null,
+            "label": "New buyers",
+            "missing_dates": [],
+            "missing_text": "None",
+            "reason": "Every day of this window has arrived.",
+            "recovery": "No action needed.",
+            "role": "current",
+            "role_label": "This period",
+            "slot": "new-buyers:amazon_us",
+            "state": "complete"
+          },
+          {
+            "absence_text": null,
+            "coverage_text": null,
+            "label": "New buyers per channel",
+            "missing_dates": [],
+            "missing_text": "None",
+            "reason": "Every day of this window has arrived.",
+            "recovery": "No action needed.",
+            "role": "current",
+            "role_label": "This period",
+            "slot": "new-buyers-per-channel:amazon_us",
+            "state": "complete"
+          },
+          {
+            "absence_text": null,
+            "coverage_text": null,
+            "label": "Gateway products",
+            "missing_dates": [],
+            "missing_text": "None",
+            "reason": "Every day of this window has arrived.",
+            "recovery": "No action needed.",
+            "role": "current",
+            "role_label": "This window",
+            "slot": "gateway-products:amazon_us",
+            "state": "complete"
+          }
+        ],
+        "summary": "Every figure is complete for this window.",
+        "version": 2,
+        "window": {
+          "end": "2026-09-20",
+          "start": "2026-09-14"
+        }
+      },
+      "insight_cards": [],
+      "insights": [
+        {
+          "absence_class": "evaluated-quiet",
+          "absence_reason": "No comparison for calendar periods.",
+          "artifact_revision": "5d2109afad50efc701e6d3b90fd7832ee3fe58e1b46c302eb4473a483172f52e",
+          "evidence_line": null,
+          "id": "portfolio-acquisition",
+          "output_class": "perspective",
+          "prompt_version": "deterministic-v1",
+          "state": "silent",
+          "text": null
+        }
+      ],
+      "markets": [
+        {
+          "currency_code": "USD",
+          "gateway": [
+            {
+              "ad_product_key": "amazon_dsp",
+              "caption_title": "Products new-to-brand shoppers bought first, Amazon DSP",
+              "captions": [
+                "Includes products bought because of brand halo, not only the products you advertised.",
+                "Credited per channel. One purchase can be credited to more than one channel or campaign, so channels aren't added together."
+              ],
+              "channel_label": "Amazon DSP",
+              "column_header": "New-to-brand purchases, brand halo included",
+              "first_covered_date": null,
+              "more_count": null,
+              "more_text": null,
+              "rows": [
+                {
+                  "asin": "B0FICT0001",
+                  "ntb_purchases": 212,
+                  "share_of_channel": "0.3498349834983498349834983498",
+                  "share_text": "34.98%",
+                  "title": "Trail Bottle 750 ml"
+                },
+                {
+                  "asin": "B0FICT0002",
+                  "ntb_purchases": 148,
+                  "share_of_channel": "0.2442244224422442244224422442",
+                  "share_text": "24.42%",
+                  "title": "Summit Pack 28 L"
+                },
+                {
+                  "asin": "B0FICT0003",
+                  "ntb_purchases": 96,
+                  "share_of_channel": "0.1584158415841584158415841584",
+                  "share_text": "15.84%",
+                  "title": "Ridge Socks, 3 pairs"
+                },
+                {
+                  "asin": "B0FICT0004",
+                  "ntb_purchases": 60,
+                  "share_of_channel": "0.09900990099009900990099009901",
+                  "share_text": "9.90%",
+                  "title": "Camp Mug 350 ml"
+                },
+                {
+                  "asin": "B0FICT0006",
+                  "ntb_purchases": 50,
+                  "share_of_channel": "0.08250825082508250825082508251",
+                  "share_text": "8.25%",
+                  "title": "Trail Cap"
+                },
+                {
+                  "asin": "B0FICT0007",
+                  "ntb_purchases": 40,
+                  "share_of_channel": "0.06600660066006600660066006601",
+                  "share_text": "6.60%",
+                  "title": "Camp Towel"
+                }
+              ],
+              "state": "rows",
+              "text": null
+            },
+            {
+              "ad_product_key": "sponsored_products",
+              "caption_title": "Products new-to-brand shoppers bought first, Sponsored Products",
+              "captions": [
+                "Includes products bought because of brand halo, not only the products you advertised.",
+                "Credited per channel. One purchase can be credited to more than one channel or campaign, so channels aren't added together."
+              ],
+              "channel_label": "Sponsored Products",
+              "column_header": "New-to-brand purchases, brand halo included",
+              "first_covered_date": null,
+              "more_count": null,
+              "more_text": null,
+              "rows": [
+                {
+                  "asin": "B0FICT0001",
+                  "ntb_purchases": 640,
+                  "share_of_channel": "0.6095238095238095238095238095",
+                  "share_text": "60.95%",
+                  "title": "Trail Bottle 750 ml"
+                },
+                {
+                  "asin": "B0FICT0005",
+                  "ntb_purchases": 410,
+                  "share_of_channel": "0.3904761904761904761904761905",
+                  "share_text": "39.05%",
+                  "title": "Trail Bottle 1 L"
+                }
+              ],
+              "state": "rows",
+              "text": null
+            },
+            {
+              "ad_product_key": "sponsored_brands",
+              "caption_title": "Products new-to-brand shoppers bought first, Sponsored Brands",
+              "captions": [
+                "Includes products bought because of brand halo, not only the products you advertised.",
+                "Credited per channel. One purchase can be credited to more than one channel or campaign, so channels aren't added together."
+              ],
+              "channel_label": "Sponsored Brands",
+              "column_header": "New-to-brand purchases, brand halo included",
+              "first_covered_date": null,
+              "more_count": null,
+              "more_text": null,
+              "rows": [
+                {
+                  "asin": "B0FICT0002",
+                  "ntb_purchases": 120,
+                  "share_of_channel": "1",
+                  "share_text": "100.00%",
+                  "title": "Summit Pack 28 L"
+                }
+              ],
+              "state": "rows",
+              "text": null
+            },
+            {
+              "ad_product_key": "sponsored_display",
+              "caption_title": "Products new-to-brand shoppers bought first, Sponsored Display",
+              "captions": [
+                "Includes products bought because of brand halo, not only the products you advertised.",
+                "Credited per channel. One purchase can be credited to more than one channel or campaign, so channels aren't added together."
+              ],
+              "channel_label": "Sponsored Display",
+              "column_header": "New-to-brand purchases, brand halo included",
+              "first_covered_date": null,
+              "more_count": null,
+              "more_text": null,
+              "rows": [
+                {
+                  "asin": "B0FICT0003",
+                  "ntb_purchases": 40,
+                  "share_of_channel": "1",
+                  "share_text": "100.00%",
+                  "title": "Ridge Socks, 3 pairs"
+                }
+              ],
+              "state": "rows",
+              "text": null
+            }
+          ],
+          "marketplace": "amazon_us",
+          "marketplace_text": null,
+          "new_buyers": {
+            "action": null,
+            "cost_basis": "Ad spend \u00f7 new buyers \u00b7 Week of 14\u201320 Sep 2026",
+            "cost_per_new_buyer": {
+              "absence": {
+                "reason": "no_new_buyers",
+                "text": "No new buyers in Week of 14\u201320 Sep 2026."
+              },
+              "display_text": null,
+              "display_value": null,
+              "metric": "cost_per_new_to_brand_buyer_12mo",
+              "units": null,
+              "value": null
+            },
+            "expected_after": null,
+            "latest_available_period": null,
+            "new_buyers": {
+              "absence": null,
+              "display_text": null,
+              "display_value": null,
+              "metric": "buyers_new_to_brand_12mo",
+              "units": {
+                "currency_code": null,
+                "kind": "count"
+              },
+              "value": "0"
+            },
+            "new_buyers_basis": "Ad-attributed buyers \u00b7 14-day attribution \u00b7 conversion date \u00b7 advertised products \u00b7 Week of 14\u201320 Sep 2026. Counts Amazon shopper IDs. One person can appear under more than one ID, and counts may include conversions Amazon modelled. Measured for complete weeks and months only; a period with too few shoppers, or none, reads not available.",
+            "per_channel": {
+              "caption": "New buyers per channel",
+              "caption_detail": "Each row names its channel group. Ad-attributed buyers \u00b7 14-day attribution \u00b7 conversion date \u00b7 advertised products \u00b7 Week of 14\u201320 Sep 2026. Counts Amazon shopper IDs. One person can appear under more than one ID, and counts may include conversions Amazon modelled. Measured for complete weeks and months only; a period with too few shoppers, or none, reads not available.",
+              "cost_basis": "Ad spend \u00f7 new buyers \u00b7 Week of 14\u201320 Sep 2026",
+              "cost_header": "Cost per new buyer",
+              "expected_after": null,
+              "foot": "New buyers aren't added across channels, because one shopper can buy after ads on more than one channel.",
+              "latest_available_period": null,
+              "note": null,
+              "rows": [
+                {
+                  "ad_product_key": "amazon_dsp",
+                  "ad_product_label": "Amazon DSP",
+                  "channel_group_label": "Display",
+                  "cost_per_new_buyer": {
+                    "absence": {
+                      "reason": "no_new_buyers",
+                      "text": "No new buyers for Amazon DSP in Week of 14\u201320 Sep 2026."
+                    },
+                    "display_text": null,
+                    "display_value": null,
+                    "metric": "cost_per_new_to_brand_buyer_12mo",
+                    "units": null,
+                    "value": null
+                  },
+                  "new_buyers": {
+                    "absence": null,
+                    "display_text": null,
+                    "display_value": null,
+                    "metric": "buyers_new_to_brand_12mo",
+                    "units": {
+                      "currency_code": null,
+                      "kind": "count"
+                    },
+                    "value": "0"
+                  }
+                },
+                {
+                  "ad_product_key": "sponsored_products",
+                  "ad_product_label": "Sponsored Products",
+                  "channel_group_label": "Search",
+                  "cost_per_new_buyer": {
+                    "absence": {
+                      "reason": "no_new_buyers",
+                      "text": "No new buyers for Sponsored Products in Week of 14\u201320 Sep 2026."
+                    },
+                    "display_text": null,
+                    "display_value": null,
+                    "metric": "cost_per_new_to_brand_buyer_12mo",
+                    "units": null,
+                    "value": null
+                  },
+                  "new_buyers": {
+                    "absence": null,
+                    "display_text": null,
+                    "display_value": null,
+                    "metric": "buyers_new_to_brand_12mo",
+                    "units": {
+                      "currency_code": null,
+                      "kind": "count"
+                    },
+                    "value": "0"
+                  }
+                },
+                {
+                  "ad_product_key": "sponsored_brands",
+                  "ad_product_label": "Sponsored Brands",
+                  "channel_group_label": "Search",
+                  "cost_per_new_buyer": {
+                    "absence": {
+                      "reason": "no_new_buyers",
+                      "text": "No new buyers for Sponsored Brands in Week of 14\u201320 Sep 2026."
+                    },
+                    "display_text": null,
+                    "display_value": null,
+                    "metric": "cost_per_new_to_brand_buyer_12mo",
+                    "units": null,
+                    "value": null
+                  },
+                  "new_buyers": {
+                    "absence": null,
+                    "display_text": null,
+                    "display_value": null,
+                    "metric": "buyers_new_to_brand_12mo",
+                    "units": {
+                      "currency_code": null,
+                      "kind": "count"
+                    },
+                    "value": "0"
+                  }
+                },
+                {
+                  "ad_product_key": "sponsored_display",
+                  "ad_product_label": "Sponsored Display",
+                  "channel_group_label": "Display",
+                  "cost_per_new_buyer": {
+                    "absence": {
+                      "reason": "no_new_buyers",
+                      "text": "No new buyers for Sponsored Display in Week of 14\u201320 Sep 2026."
+                    },
+                    "display_text": null,
+                    "display_value": null,
+                    "metric": "cost_per_new_to_brand_buyer_12mo",
+                    "units": null,
+                    "value": null
+                  },
+                  "new_buyers": {
+                    "absence": null,
+                    "display_text": null,
+                    "display_value": null,
+                    "metric": "buyers_new_to_brand_12mo",
+                    "units": {
+                      "currency_code": null,
+                      "kind": "count"
+                    },
+                    "value": "0"
+                  }
+                }
+              ],
+              "state": "rows",
+              "text": null
+            },
+            "period": {
+              "end": "2026-09-20",
+              "start": "2026-09-14"
+            },
+            "period_label": "Week of 14\u201320 Sep 2026",
+            "state": "figures",
+            "text": null
+          },
+          "new_to_brand": {
+            "caption": "New-to-brand purchases per channel",
+            "caption_detail": "Each row names its channel group. Amazon-attributed \u00b7 14-day \u00b7 conversion date \u00b7 new to brand in the last 12 months \u00b7 excludes brand halo \u00b7 Week of 14\u201320 Sep 2026",
+            "columns": [
+              {
+                "column": "ntb_purchases",
+                "label": "New-to-brand purchases"
+              },
+              {
+                "column": "ntb_revenue",
+                "label": "New-to-brand revenue"
+              },
+              {
+                "column": "ntb_revenue_share",
+                "label": "New-to-brand revenue share"
+              },
+              {
+                "column": "ntb_revenue_share_change",
+                "label": "Change in share"
+              },
+              {
+                "column": "cost_per_ntb_purchase",
+                "label": "Cost per new-to-brand purchase"
+              }
+            ],
+            "foot": "Attributed sales aren't added across channels, because one purchase can be credited to more than one channel.",
+            "heading": "New-to-brand purchases",
+            "rows": [
+              {
+                "ad_product_key": "amazon_dsp",
+                "ad_product_label": "Amazon DSP",
+                "channel_group_label": "Display",
+                "cost_per_ntb_purchase": {
+                  "absence": null,
+                  "display_text": null,
+                  "display_value": "35.08",
+                  "metric": "cost_per_ntb",
+                  "units": {
+                    "currency_code": "USD",
+                    "kind": "currency"
+                  },
+                  "value": "35.0800"
+                },
+                "ntb_purchases": {
+                  "absence": null,
+                  "display_text": null,
+                  "display_value": null,
+                  "metric": "purchases_new_to_brand_12mo",
+                  "units": {
+                    "currency_code": null,
+                    "kind": "count"
+                  },
+                  "value": "610"
+                },
+                "ntb_revenue": {
+                  "absence": null,
+                  "display_text": null,
+                  "display_value": "25300.00",
+                  "metric": "revenue_new_to_brand_12mo",
+                  "units": {
+                    "currency_code": "USD",
+                    "kind": "currency"
+                  },
+                  "value": "25300"
+                },
+                "ntb_revenue_share": {
+                  "absence": null,
+                  "display_text": "41.00%",
+                  "display_value": null,
+                  "metric": "ntb_revenue_share",
+                  "units": {
+                    "currency_code": null,
+                    "kind": "ratio"
+                  },
+                  "value": "0.4100"
+                },
+                "ntb_revenue_share_change": {
+                  "absence": {
+                    "reason": "calendar_period_selected",
+                    "text": "No comparison for calendar periods."
+                  },
+                  "change": null
+                }
+              },
+              {
+                "ad_product_key": "sponsored_products",
+                "ad_product_label": "Sponsored Products",
+                "channel_group_label": "Search",
+                "cost_per_ntb_purchase": {
+                  "absence": null,
+                  "display_text": null,
+                  "display_value": "11.21",
+                  "metric": "cost_per_ntb",
+                  "units": {
+                    "currency_code": "USD",
+                    "kind": "currency"
+                  },
+                  "value": "11.2100"
+                },
+                "ntb_purchases": {
+                  "absence": null,
+                  "display_text": null,
+                  "display_value": null,
+                  "metric": "purchases_new_to_brand_12mo",
+                  "units": {
+                    "currency_code": null,
+                    "kind": "count"
+                  },
+                  "value": "1420"
+                },
+                "ntb_revenue": {
+                  "absence": null,
+                  "display_text": null,
+                  "display_value": "14300.00",
+                  "metric": "revenue_new_to_brand_12mo",
+                  "units": {
+                    "currency_code": "USD",
+                    "kind": "currency"
+                  },
+                  "value": "14300"
+                },
+                "ntb_revenue_share": {
+                  "absence": null,
+                  "display_text": "18.00%",
+                  "display_value": null,
+                  "metric": "ntb_revenue_share",
+                  "units": {
+                    "currency_code": null,
+                    "kind": "ratio"
+                  },
+                  "value": "0.1800"
+                },
+                "ntb_revenue_share_change": {
+                  "absence": {
+                    "reason": "calendar_period_selected",
+                    "text": "No comparison for calendar periods."
+                  },
+                  "change": null
+                }
+              },
+              {
+                "ad_product_key": "sponsored_brands",
+                "ad_product_label": "Sponsored Brands",
+                "channel_group_label": "Search",
+                "cost_per_ntb_purchase": {
+                  "absence": null,
+                  "display_text": null,
+                  "display_value": "18.74",
+                  "metric": "cost_per_ntb",
+                  "units": {
+                    "currency_code": "USD",
+                    "kind": "currency"
+                  },
+                  "value": "18.7400"
+                },
+                "ntb_purchases": {
+                  "absence": null,
+                  "display_text": null,
+                  "display_value": null,
+                  "metric": "purchases_new_to_brand_12mo",
+                  "units": {
+                    "currency_code": null,
+                    "kind": "count"
+                  },
+                  "value": "390"
+                },
+                "ntb_revenue": {
+                  "absence": null,
+                  "display_text": null,
+                  "display_value": "8800.00",
+                  "metric": "revenue_new_to_brand_12mo",
+                  "units": {
+                    "currency_code": "USD",
+                    "kind": "currency"
+                  },
+                  "value": "8800"
+                },
+                "ntb_revenue_share": {
+                  "absence": null,
+                  "display_text": "33.00%",
+                  "display_value": null,
+                  "metric": "ntb_revenue_share",
+                  "units": {
+                    "currency_code": null,
+                    "kind": "ratio"
+                  },
+                  "value": "0.3300"
+                },
+                "ntb_revenue_share_change": {
+                  "absence": {
+                    "reason": "calendar_period_selected",
+                    "text": "No comparison for calendar periods."
+                  },
+                  "change": null
+                }
+              },
+              {
+                "ad_product_key": "sponsored_display",
+                "ad_product_label": "Sponsored Display",
+                "channel_group_label": "Display",
+                "cost_per_ntb_purchase": {
+                  "absence": null,
+                  "display_text": null,
+                  "display_value": "37.68",
+                  "metric": "cost_per_ntb",
+                  "units": {
+                    "currency_code": "USD",
+                    "kind": "currency"
+                  },
+                  "value": "37.6800"
+                },
+                "ntb_purchases": {
+                  "absence": null,
+                  "display_text": null,
+                  "display_value": null,
+                  "metric": "purchases_new_to_brand_12mo",
+                  "units": {
+                    "currency_code": null,
+                    "kind": "count"
+                  },
+                  "value": "95"
+                },
+                "ntb_revenue": {
+                  "absence": null,
+                  "display_text": null,
+                  "display_value": "1900.00",
+                  "metric": "revenue_new_to_brand_12mo",
+                  "units": {
+                    "currency_code": "USD",
+                    "kind": "currency"
+                  },
+                  "value": "1900"
+                },
+                "ntb_revenue_share": {
+                  "absence": null,
+                  "display_text": "24.00%",
+                  "display_value": null,
+                  "metric": "ntb_revenue_share",
+                  "units": {
+                    "currency_code": null,
+                    "kind": "ratio"
+                  },
+                  "value": "0.2400"
+                },
+                "ntb_revenue_share_change": {
+                  "absence": {
+                    "reason": "calendar_period_selected",
+                    "text": "No comparison for calendar periods."
+                  },
+                  "change": null
+                }
+              }
+            ],
+            "share_basis": "New-to-brand revenue (12-month lookback) \u00f7 attributed revenue (14-day)"
+          }
+        }
+      ],
+      "outcome": "complete",
+      "outcome_text": null,
+      "page_context_expires_at": "2026-09-23T13:00:00+00:00",
+      "page_context_label": "New customers \u00b7 Week of 14\u201320 Sep 2026",
+      "page_text": {
+        "boundary_heading": "About these figures",
+        "channel_header": "Channel",
+        "cost_per_new_buyer_label": "Cost per new buyer",
+        "gateway_heading": "Gateway products",
+        "gateway_product_header": "Product",
+        "gateway_selector_label": "Channel",
+        "gateway_share_header": "Share of channel new-to-brand purchases",
+        "insights_heading": "Insights",
+        "new_buyers_heading": "New buyers",
+        "new_buyers_label": "New buyers",
+        "not_available_text": "Not available"
+      },
+      "period": {
+        "end": "2026-09-20",
+        "start": "2026-09-14"
+      },
+      "period_label": "Week of 14\u201320 Sep 2026",
+      "pointers": [
+        {
+          "href": "/audiences/",
+          "lead": "Which audience segments your buyers belong to is on",
+          "link_text": "Reach and audiences \u203a Audiences",
+          "order": 1,
+          "tab_id": "audiences",
+          "text": "Which audience segments your buyers belong to is on Reach and audiences \u203a Audiences."
+        },
+        {
+          "href": "/retention/",
+          "lead": "Whether new customers buy again is on",
+          "link_text": "Customers \u203a Retention",
+          "order": 2,
+          "tab_id": "retention",
+          "text": "Whether new customers buy again is on Customers \u203a Retention."
+        }
+      ],
+      "preset": "last_complete_week",
+      "prior_period": null,
+      "scope_text": "Showing Week of 14\u201320 Sep 2026 (Latest measured week). No comparison for calendar periods.",
+      "starter_questions": [
+        "Which channel had the highest new-to-brand share in Week of 14\u201320 Sep 2026?"
+      ],
+      "type": "NewCustomersArtifact",
+      "version": 2
+    },
+    "artifact_id": "new_customers",
+    "artifact_revision": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "artifact_type": "NewCustomersArtifact",
+    "artifact_version": 2,
+    "kind": "new_customers",
+    "page_context_expires_at": "2026-09-23T13:00:00+00:00",
+    "page_context_label": "New customers \u00b7 Week of 14\u201320 Sep 2026",
+    "page_id": "new-customers",
+    "route": "/new-customers/",
+    "starter_questions": [
+      "Which channel had the highest new-to-brand share in Week of 14\u201320 Sep 2026?"
+    ]
+  },
+  "session_id": "conversation-session",
+  "temporal": {
+    "comparison": {
+      "policy": "optional_equal_prior",
+      "reason_code": "calendar_period_selected",
+      "status": "not_applicable"
+    },
+    "custom": {
+      "availability": "unavailable",
+      "bounds": null,
+      "reason_code": "custom_disabled"
+    },
+    "mode": "selectable",
+    "presets": [
+      {
+        "availability": "available",
+        "id": "7d",
+        "label": "7 days",
+        "period_label": null,
+        "reason_code": null,
+        "reason_text": null,
+        "window": {
+          "end": "2026-09-20",
+          "start": "2026-09-14"
+        }
+      },
+      {
+        "availability": "available",
+        "id": "30d",
+        "label": "30 days",
+        "period_label": null,
+        "reason_code": null,
+        "reason_text": null,
+        "window": {
+          "end": "2026-09-20",
+          "start": "2026-08-22"
+        }
+      },
+      {
+        "availability": "available",
+        "id": "last_complete_week",
+        "label": "Latest measured week",
+        "period_label": "Week of 14\u201320 Sep 2026",
+        "reason_code": null,
+        "reason_text": null,
+        "window": {
+          "end": "2026-09-20",
+          "start": "2026-09-14"
+        }
+      },
+      {
+        "availability": "available",
+        "id": "last_complete_month",
+        "label": "Latest measured month",
+        "period_label": "August 2026",
+        "reason_code": null,
+        "reason_text": null,
+        "window": {
+          "end": "2026-08-31",
+          "start": "2026-08-01"
+        }
+      }
+    ],
+    "resolved": {
+      "as_of_month": null,
+      "display_grain": "week",
+      "period_label": "Week of 14\u201320 Sep 2026",
+      "reporting_window_status": "user_selected",
+      "selection": {
+        "kind": "preset",
+        "preset_id": "last_complete_week"
+      },
+      "window": {
+        "end": "2026-09-20",
+        "start": "2026-09-14"
+      }
+    },
+    "version": 2
+  }
+}

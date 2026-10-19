@@ -1,0 +1,729 @@
+{
+ "branch": "maximum",
+ "expected": {
+  "action_count": 4,
+  "aggregate_upper_bound": 3923,
+  "outcome": "accepted",
+  "wire_json_bytes": 6415
+ },
+ "expected_request": {
+  "TransactItems": [
+   {
+    "ConditionCheck": {
+     "ConditionExpression": "#x0 = :x0 AND #x1 = :x1 AND #x2 = :x2 AND #x3 = :x3 AND #x4 = :x4 AND #x5 = :x5 AND #x6 = :x6 AND #x7 = :x7 AND #x8 = :x8 AND #x9 = :x9 AND #x10 = :x10 AND #x11 = :x11 AND #x12 = :x12 AND #x13 = :x13 AND #x14 = :x14 AND #x15 = :x15",
+     "ExpressionAttributeNames": {
+      "#x0": "attempt_id",
+      "#x1": "client_request_token",
+      "#x10": "sanitized_start_evidence",
+      "#x11": "start_envelope",
+      "#x12": "state",
+      "#x13": "statement_kind",
+      "#x14": "submitted_at",
+      "#x15": "writer_execution_id",
+      "#x2": "envelope_digest",
+      "#x3": "fencing_token",
+      "#x4": "lease_holder",
+      "#x5": "ordinal",
+      "#x6": "physical_table_id",
+      "#x7": "plan_unit_owner_ref",
+      "#x8": "query_execution_id",
+      "#x9": "reservation_identity"
+     },
+     "ExpressionAttributeValues": {
+      ":x0": {
+       "S": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+      },
+      ":x1": {
+       "S": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+      },
+      ":x10": {
+       "M": {
+        "provider_error_class": {
+         "S": "none"
+        },
+        "provider_status_code": {
+         "N": "200"
+        }
+       }
+      },
+      ":x11": {
+       "S": "{\"WorkGroup\":\"fixture-workgroup\"}"
+      },
+      ":x12": {
+       "S": "submitted"
+      },
+      ":x13": {
+       "S": "merge"
+      },
+      ":x14": {
+       "S": "00001789821296789012"
+      },
+      ":x15": {
+       "S": "c936a80ee43b08fd57c58a1c4d1667e889b2020dfe2a982206da7df4d4d29bb3"
+      },
+      ":x2": {
+       "S": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      ":x3": {
+       "N": "7"
+      },
+      ":x4": {
+       "S": "0157e0e5ca3874d40e7b6ba709c469a607fd0164f285bf7994465fa76cede722"
+      },
+      ":x5": {
+       "N": "1"
+      },
+      ":x6": {
+       "S": "db.alpha"
+      },
+      ":x7": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+      },
+      ":x8": {
+       "S": "athena-query-fixture-0001"
+      },
+      ":x9": {
+       "S": "reservation-slot-fixture-0001"
+      }
+     },
+     "Key": {
+      "partition_key": {
+       "S": "TABLE_ATTEMPT#db.alpha"
+      },
+      "record_key": {
+       "S": "ATTEMPT#a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "ConditionCheck": {
+     "ConditionExpression": "#x0 = :x0 AND #x1 = :x1 AND #x2 = :x2 AND #x3 = :x3 AND #x4 = :x4 AND #x5 = :x5 AND #x6 = :x6 AND #x7 = :x7 AND #x8 = :x8 AND #x9 = :x9 AND #x10 = :x10 AND #x11 = :x11",
+     "ExpressionAttributeNames": {
+      "#x0": "admission",
+      "#x1": "created_at",
+      "#x10": "unit_reservation_count",
+      "#x11": "writer_execution_id",
+      "#x2": "current_attempt_id",
+      "#x3": "fencing_token",
+      "#x4": "flow_id",
+      "#x5": "lease_holder",
+      "#x6": "ordinal",
+      "#x7": "owner_generation",
+      "#x8": "reserved_slot_identity",
+      "#x9": "status"
+     },
+     "ExpressionAttributeValues": {
+      ":x0": {
+       "S": "admitted"
+      },
+      ":x1": {
+       "S": "00001789821296789012"
+      },
+      ":x10": {
+       "N": "1"
+      },
+      ":x11": {
+       "S": "c936a80ee43b08fd57c58a1c4d1667e889b2020dfe2a982206da7df4d4d29bb3"
+      },
+      ":x2": {
+       "S": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+      },
+      ":x3": {
+       "N": "7"
+      },
+      ":x4": {
+       "S": "10b8fe15-0aad-5add-b259-5da4c54d3028"
+      },
+      ":x5": {
+       "S": "0157e0e5ca3874d40e7b6ba709c469a607fd0164f285bf7994465fa76cede722"
+      },
+      ":x6": {
+       "N": "1"
+      },
+      ":x7": {
+       "N": "0"
+      },
+      ":x8": {
+       "S": "reservation-slot-fixture-0001"
+      },
+      ":x9": {
+       "S": "writing"
+      }
+     },
+     "Key": {
+      "partition_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+      },
+      "record_key": {
+       "S": "UNIT#db.alpha"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Update": {
+     "ConditionExpression": "#x0 = :x0 AND #x1 = :x1 AND #x2 = :x2 AND #x3 = :x3 AND #x4 = :x4 AND #x5 = :x5 AND #x6 = :x6 AND #x7 = :x7 AND #x8 = :x8 AND #x9 = :x9 AND #x10 = :x10 AND #x11 = :x11",
+     "ExpressionAttributeNames": {
+      "#x0": "attempt_id",
+      "#x1": "fencing_token",
+      "#x10": "reconcile_status",
+      "#x11": "state",
+      "#x2": "lease_holder",
+      "#x3": "physical_table_id",
+      "#x4": "reconcile_after_or_block",
+      "#x5": "reconcile_block_id",
+      "#x6": "reconcile_block_reason",
+      "#x7": "reconcile_blocked_at",
+      "#x8": "reconcile_observation_digest",
+      "#x9": "reconcile_recovery_ref"
+     },
+     "ExpressionAttributeValues": {
+      ":case_ref": {
+       "S": "cd3d9c96-d3e1-4399-86fe-20b18d80a77f"
+      },
+      ":pending_key": {
+       "S": "00001789821296789012#9455591a210a5618d20fdf4548da1cf493be57a6cc6b7b94069a0c186bbfc29a"
+      },
+      ":pending_status": {
+       "S": "pending"
+      },
+      ":requeued_at": {
+       "S": "00001789821296789012"
+      },
+      ":x0": {
+       "S": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+      },
+      ":x1": {
+       "N": "7"
+      },
+      ":x10": {
+       "S": "blocked"
+      },
+      ":x11": {
+       "S": "active"
+      },
+      ":x2": {
+       "S": "0157e0e5ca3874d40e7b6ba709c469a607fd0164f285bf7994465fa76cede722"
+      },
+      ":x3": {
+       "S": "db.alpha"
+      },
+      ":x4": {
+       "S": "BLOCK#cd3d9c96-d3e1-4399-86fe-20b18d80a77f"
+      },
+      ":x5": {
+       "S": "b697f1b8c74d5344fa66616ad7abf6d157a5f7f0ae8208b8515d78a811f361d3"
+      },
+      ":x6": {
+       "S": "MALFORMED_RECONCILIATION_METADATA"
+      },
+      ":x7": {
+       "S": "00001789821296789012"
+      },
+      ":x8": {
+       "S": "b71ab5252dbcd2356b747f98515ea0ec70fe55add80a9bce9e4f0a61d35a3fef"
+      },
+      ":x9": {
+       "S": "cd3d9c96-d3e1-4399-86fe-20b18d80a77f"
+      },
+      ":zero": {
+       "N": "0"
+      }
+     },
+     "Key": {
+      "partition_key": {
+       "S": "TABLE_ATTEMPT#db.alpha"
+      },
+      "record_key": {
+       "S": "FENCE"
+      }
+     },
+     "TableName": "publications-fixture",
+     "UpdateExpression": "SET reconcile_status = :pending_status, reconcile_attempt_count = :zero, reconcile_after_or_block = :pending_key, requeued_from_case_ref = :case_ref, requeued_at = :requeued_at REMOVE reconcile_block_id, reconcile_block_reason, reconcile_blocked_at, reconcile_observation_digest, reconcile_recovery_ref"
+    }
+   },
+   {
+    "Update": {
+     "ConditionExpression": "#x0 = :x0 AND #x1 = :x1 AND #x2 = :x2 AND #x3 = :x3 AND #x4 = :x4 AND #x5 = :x5 AND #x6 = :x6 AND #x7 = :x7",
+     "ExpressionAttributeNames": {
+      "#case_state": "state",
+      "#x0": "attempt_id",
+      "#x1": "binding_digest",
+      "#x2": "blocked_at",
+      "#x3": "observation_digest",
+      "#x4": "physical_table_id",
+      "#x5": "reason",
+      "#x6": "reconcile_block_id",
+      "#x7": "state"
+     },
+     "ExpressionAttributeValues": {
+      ":operation_id": {
+       "S": "recovery-op-0001"
+      },
+      ":requeue_id": {
+       "S": "3ae51209ef9d629e94602de030ff990d53fede95b327d3def7c60251451dd295"
+      },
+      ":requeued_at": {
+       "S": "00001789821296789012"
+      },
+      ":requeued_state": {
+       "S": "requeued"
+      },
+      ":resolution_reason": {
+       "S": "fixture resolution"
+      },
+      ":x0": {
+       "S": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+      },
+      ":x1": {
+       "S": "9455591a210a5618d20fdf4548da1cf493be57a6cc6b7b94069a0c186bbfc29a"
+      },
+      ":x2": {
+       "S": "00001789821296789012"
+      },
+      ":x3": {
+       "S": "b71ab5252dbcd2356b747f98515ea0ec70fe55add80a9bce9e4f0a61d35a3fef"
+      },
+      ":x4": {
+       "S": "db.alpha"
+      },
+      ":x5": {
+       "S": "MALFORMED_RECONCILIATION_METADATA"
+      },
+      ":x6": {
+       "S": "b697f1b8c74d5344fa66616ad7abf6d157a5f7f0ae8208b8515d78a811f361d3"
+      },
+      ":x7": {
+       "S": "blocked"
+      }
+     },
+     "Key": {
+      "partition_key": {
+       "S": "PROVIDER_RECONCILE_BLOCK#cd3d9c96-d3e1-4399-86fe-20b18d80a77f"
+      },
+      "record_key": {
+       "S": "CASE"
+      }
+     },
+     "TableName": "publications-fixture",
+     "UpdateExpression": "SET #case_state = :requeued_state, requeued_at = :requeued_at, requeue_id = :requeue_id, requeue_operation_id = :operation_id, resolution_reason = :resolution_reason"
+    }
+   }
+  ]
+ },
+ "fixture_version": "v1",
+ "table_name": "publications-fixture",
+ "targets": [
+  {
+   "expected_pre_state_map": {
+    "attempt_id": {
+     "S": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+    },
+    "client_request_token": {
+     "S": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+    },
+    "envelope_digest": {
+     "S": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    "fencing_token": {
+     "N": "7"
+    },
+    "lease_holder": {
+     "S": "0157e0e5ca3874d40e7b6ba709c469a607fd0164f285bf7994465fa76cede722"
+    },
+    "ordinal": {
+     "N": "1"
+    },
+    "partition_key": {
+     "S": "TABLE_ATTEMPT#db.alpha"
+    },
+    "physical_table_id": {
+     "S": "db.alpha"
+    },
+    "plan_unit_owner_ref": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "query_execution_id": {
+     "S": "athena-query-fixture-0001"
+    },
+    "record_key": {
+     "S": "ATTEMPT#a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+    },
+    "reservation_identity": {
+     "S": "reservation-slot-fixture-0001"
+    },
+    "sanitized_start_evidence": {
+     "M": {
+      "provider_error_class": {
+       "S": "none"
+      },
+      "provider_status_code": {
+       "N": "200"
+      }
+     }
+    },
+    "start_envelope": {
+     "S": "{\"WorkGroup\":\"fixture-workgroup\"}"
+    },
+    "state": {
+     "S": "submitted"
+    },
+    "statement_kind": {
+     "S": "merge"
+    },
+    "submitted_at": {
+     "S": "00001789821296789012"
+    },
+    "writer_execution_id": {
+     "S": "c936a80ee43b08fd57c58a1c4d1667e889b2020dfe2a982206da7df4d4d29bb3"
+    }
+   },
+   "expected_result_map": {
+    "attempt_id": {
+     "S": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+    },
+    "client_request_token": {
+     "S": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+    },
+    "envelope_digest": {
+     "S": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    "fencing_token": {
+     "N": "7"
+    },
+    "lease_holder": {
+     "S": "0157e0e5ca3874d40e7b6ba709c469a607fd0164f285bf7994465fa76cede722"
+    },
+    "ordinal": {
+     "N": "1"
+    },
+    "partition_key": {
+     "S": "TABLE_ATTEMPT#db.alpha"
+    },
+    "physical_table_id": {
+     "S": "db.alpha"
+    },
+    "plan_unit_owner_ref": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "query_execution_id": {
+     "S": "athena-query-fixture-0001"
+    },
+    "record_key": {
+     "S": "ATTEMPT#a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+    },
+    "reservation_identity": {
+     "S": "reservation-slot-fixture-0001"
+    },
+    "sanitized_start_evidence": {
+     "M": {
+      "provider_error_class": {
+       "S": "none"
+      },
+      "provider_status_code": {
+       "N": "200"
+      }
+     }
+    },
+    "start_envelope": {
+     "S": "{\"WorkGroup\":\"fixture-workgroup\"}"
+    },
+    "state": {
+     "S": "submitted"
+    },
+    "statement_kind": {
+     "S": "merge"
+    },
+    "submitted_at": {
+     "S": "00001789821296789012"
+    },
+    "writer_execution_id": {
+     "S": "c936a80ee43b08fd57c58a1c4d1667e889b2020dfe2a982206da7df4d4d29bb3"
+    }
+   },
+   "pre_state_conservative_bytes": 1238,
+   "result_conservative_bytes": 1238,
+   "target_upper_bound": 1238
+  },
+  {
+   "expected_pre_state_map": {
+    "admission": {
+     "S": "admitted"
+    },
+    "created_at": {
+     "S": "00001789821296789012"
+    },
+    "current_attempt_id": {
+     "S": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+    },
+    "fencing_token": {
+     "N": "7"
+    },
+    "flow_id": {
+     "S": "10b8fe15-0aad-5add-b259-5da4c54d3028"
+    },
+    "lease_holder": {
+     "S": "0157e0e5ca3874d40e7b6ba709c469a607fd0164f285bf7994465fa76cede722"
+    },
+    "ordinal": {
+     "N": "1"
+    },
+    "owner_generation": {
+     "N": "0"
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "record_key": {
+     "S": "UNIT#db.alpha"
+    },
+    "reserved_slot_identity": {
+     "S": "reservation-slot-fixture-0001"
+    },
+    "status": {
+     "S": "writing"
+    },
+    "unit_reservation_count": {
+     "N": "1"
+    },
+    "writer_execution_id": {
+     "S": "c936a80ee43b08fd57c58a1c4d1667e889b2020dfe2a982206da7df4d4d29bb3"
+    }
+   },
+   "expected_result_map": {
+    "admission": {
+     "S": "admitted"
+    },
+    "created_at": {
+     "S": "00001789821296789012"
+    },
+    "current_attempt_id": {
+     "S": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+    },
+    "fencing_token": {
+     "N": "7"
+    },
+    "flow_id": {
+     "S": "10b8fe15-0aad-5add-b259-5da4c54d3028"
+    },
+    "lease_holder": {
+     "S": "0157e0e5ca3874d40e7b6ba709c469a607fd0164f285bf7994465fa76cede722"
+    },
+    "ordinal": {
+     "N": "1"
+    },
+    "owner_generation": {
+     "N": "0"
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "record_key": {
+     "S": "UNIT#db.alpha"
+    },
+    "reserved_slot_identity": {
+     "S": "reservation-slot-fixture-0001"
+    },
+    "status": {
+     "S": "writing"
+    },
+    "unit_reservation_count": {
+     "N": "1"
+    },
+    "writer_execution_id": {
+     "S": "c936a80ee43b08fd57c58a1c4d1667e889b2020dfe2a982206da7df4d4d29bb3"
+    }
+   },
+   "pre_state_conservative_bytes": 802,
+   "result_conservative_bytes": 802,
+   "target_upper_bound": 802
+  },
+  {
+   "expected_pre_state_map": {
+    "attempt_id": {
+     "S": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+    },
+    "fencing_token": {
+     "N": "7"
+    },
+    "lease_holder": {
+     "S": "0157e0e5ca3874d40e7b6ba709c469a607fd0164f285bf7994465fa76cede722"
+    },
+    "partition_key": {
+     "S": "TABLE_ATTEMPT#db.alpha"
+    },
+    "physical_table_id": {
+     "S": "db.alpha"
+    },
+    "reconcile_after_or_block": {
+     "S": "BLOCK#cd3d9c96-d3e1-4399-86fe-20b18d80a77f"
+    },
+    "reconcile_block_id": {
+     "S": "b697f1b8c74d5344fa66616ad7abf6d157a5f7f0ae8208b8515d78a811f361d3"
+    },
+    "reconcile_block_reason": {
+     "S": "MALFORMED_RECONCILIATION_METADATA"
+    },
+    "reconcile_blocked_at": {
+     "S": "00001789821296789012"
+    },
+    "reconcile_observation_digest": {
+     "S": "b71ab5252dbcd2356b747f98515ea0ec70fe55add80a9bce9e4f0a61d35a3fef"
+    },
+    "reconcile_recovery_ref": {
+     "S": "cd3d9c96-d3e1-4399-86fe-20b18d80a77f"
+    },
+    "reconcile_status": {
+     "S": "blocked"
+    },
+    "record_key": {
+     "S": "FENCE"
+    },
+    "state": {
+     "S": "active"
+    }
+   },
+   "expected_result_map": {
+    "attempt_id": {
+     "S": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+    },
+    "fencing_token": {
+     "N": "7"
+    },
+    "lease_holder": {
+     "S": "0157e0e5ca3874d40e7b6ba709c469a607fd0164f285bf7994465fa76cede722"
+    },
+    "partition_key": {
+     "S": "TABLE_ATTEMPT#db.alpha"
+    },
+    "physical_table_id": {
+     "S": "db.alpha"
+    },
+    "reconcile_after_or_block": {
+     "S": "00001789821296789012#9455591a210a5618d20fdf4548da1cf493be57a6cc6b7b94069a0c186bbfc29a"
+    },
+    "reconcile_attempt_count": {
+     "N": "0"
+    },
+    "reconcile_block_id": {
+     "S": "b697f1b8c74d5344fa66616ad7abf6d157a5f7f0ae8208b8515d78a811f361d3"
+    },
+    "reconcile_block_reason": {
+     "S": "MALFORMED_RECONCILIATION_METADATA"
+    },
+    "reconcile_blocked_at": {
+     "S": "00001789821296789012"
+    },
+    "reconcile_observation_digest": {
+     "S": "b71ab5252dbcd2356b747f98515ea0ec70fe55add80a9bce9e4f0a61d35a3fef"
+    },
+    "reconcile_recovery_ref": {
+     "S": "cd3d9c96-d3e1-4399-86fe-20b18d80a77f"
+    },
+    "reconcile_status": {
+     "S": "pending"
+    },
+    "record_key": {
+     "S": "FENCE"
+    },
+    "requeued_at": {
+     "S": "00001789821296789012"
+    },
+    "requeued_from_case_ref": {
+     "S": "cd3d9c96-d3e1-4399-86fe-20b18d80a77f"
+    },
+    "state": {
+     "S": "active"
+    }
+   },
+   "pre_state_conservative_bytes": 835,
+   "result_conservative_bytes": 1027,
+   "target_upper_bound": 1027
+  },
+  {
+   "expected_pre_state_map": {
+    "attempt_id": {
+     "S": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+    },
+    "binding_digest": {
+     "S": "9455591a210a5618d20fdf4548da1cf493be57a6cc6b7b94069a0c186bbfc29a"
+    },
+    "blocked_at": {
+     "S": "00001789821296789012"
+    },
+    "observation_digest": {
+     "S": "b71ab5252dbcd2356b747f98515ea0ec70fe55add80a9bce9e4f0a61d35a3fef"
+    },
+    "partition_key": {
+     "S": "PROVIDER_RECONCILE_BLOCK#cd3d9c96-d3e1-4399-86fe-20b18d80a77f"
+    },
+    "physical_table_id": {
+     "S": "db.alpha"
+    },
+    "reason": {
+     "S": "MALFORMED_RECONCILIATION_METADATA"
+    },
+    "reconcile_block_id": {
+     "S": "b697f1b8c74d5344fa66616ad7abf6d157a5f7f0ae8208b8515d78a811f361d3"
+    },
+    "record_key": {
+     "S": "CASE"
+    },
+    "state": {
+     "S": "blocked"
+    }
+   },
+   "expected_result_map": {
+    "attempt_id": {
+     "S": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+    },
+    "binding_digest": {
+     "S": "9455591a210a5618d20fdf4548da1cf493be57a6cc6b7b94069a0c186bbfc29a"
+    },
+    "blocked_at": {
+     "S": "00001789821296789012"
+    },
+    "observation_digest": {
+     "S": "b71ab5252dbcd2356b747f98515ea0ec70fe55add80a9bce9e4f0a61d35a3fef"
+    },
+    "partition_key": {
+     "S": "PROVIDER_RECONCILE_BLOCK#cd3d9c96-d3e1-4399-86fe-20b18d80a77f"
+    },
+    "physical_table_id": {
+     "S": "db.alpha"
+    },
+    "reason": {
+     "S": "MALFORMED_RECONCILIATION_METADATA"
+    },
+    "reconcile_block_id": {
+     "S": "b697f1b8c74d5344fa66616ad7abf6d157a5f7f0ae8208b8515d78a811f361d3"
+    },
+    "record_key": {
+     "S": "CASE"
+    },
+    "requeue_id": {
+     "S": "3ae51209ef9d629e94602de030ff990d53fede95b327d3def7c60251451dd295"
+    },
+    "requeue_operation_id": {
+     "S": "recovery-op-0001"
+    },
+    "requeued_at": {
+     "S": "00001789821296789012"
+    },
+    "resolution_reason": {
+     "S": "fixture resolution"
+    },
+    "state": {
+     "S": "requeued"
+    }
+   },
+   "pre_state_conservative_bytes": 631,
+   "result_conservative_bytes": 856,
+   "target_upper_bound": 856
+  }
+ ],
+ "typed_operation": "RequeueBlockedTableAttemptReconcileRequest"
+}

@@ -1,0 +1,11 @@
+{
+  "source_system": "amc",
+  "source_scope": {"namespace": "amc.entity", "value": "fictional-trap-amc-entity"},
+  "source_dataset": "amazon_attributed_events_by_conversion_time",
+  "marketplace": "ATVPDKIKX0DER",
+  "option_set": {},
+  "period_start": "2026-08-10",
+  "period_end": "2026-08-15",
+  "source_watermark": "2026-08-15",
+  "retrieved_at": "2026-08-26T06:50:00Z"
+}

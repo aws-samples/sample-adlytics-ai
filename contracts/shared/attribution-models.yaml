@@ -1,0 +1,29 @@
+version: 1
+models:
+  - key: first_touch_v1
+    label: First touch
+    method: earliest_qualifying_touch
+    lookback_days: 14
+    time_basis: conversion_time
+    eligible_sources: [dsp_impressions, dsp_clicks, sponsored_ads_traffic]
+    tie_break: [touch_time_ascending, touch_type_ascending, campaign_id_ascending]
+    population: matched_identifiable_purchase_conversions
+    revenue_scope: total_product_sales_including_brand_halo
+  - key: last_touch_v1
+    label: Last touch
+    method: latest_qualifying_touch
+    lookback_days: 14
+    time_basis: conversion_time
+    eligible_sources: [dsp_impressions, dsp_clicks, sponsored_ads_traffic]
+    tie_break: [touch_time_descending, touch_type_ascending, campaign_id_ascending]
+    population: matched_identifiable_purchase_conversions
+    revenue_scope: total_product_sales_including_brand_halo
+  - key: linear_v1
+    label: Linear
+    method: equal_qualifying_touch_credit
+    lookback_days: 14
+    time_basis: conversion_time
+    eligible_sources: [dsp_impressions, dsp_clicks, sponsored_ads_traffic]
+    tie_break: [decimal_remainder_to_earliest_touch]
+    population: matched_identifiable_purchase_conversions
+    revenue_scope: total_product_sales_including_brand_halo

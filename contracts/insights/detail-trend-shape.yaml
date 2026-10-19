@@ -1,0 +1,115 @@
+id: trend-shape
+version: 11
+purpose: Describe a material supplied shape in the dated campaign purchase series.
+display_name: Trend shape (campaign detail)
+output_class: perspective
+allowed_inputs:
+  - reporting and comparison window display context
+  - selected campaign display identity
+  - full dated purchase series
+  - campaign purchase summary
+  - server-computed period changes
+  - typed window profile (window length, grain, aligned prior, horizon role)
+deterministic_findings:
+  - absolute-change
+  - percentage-change
+predicate:
+  required_evidence_inputs: [purchase-series]
+  required_finding_kinds: [absolute-change, percentage-change]
+  materiality:
+    bases:
+      campaign_day:
+        per_unit:
+          count: {operational-pulse: "8", tactical-review: "8", pattern-confirmation: "8"}
+          percent: {operational-pulse: "10", tactical-review: "5", pattern-confirmation: "5"}
+        per_metric: {}
+    near_zero_prior:
+      count: "5"
+  delivery_follow_up_evidence: []
+materiality_cases:
+  - {name: an endpoint gap of 8 is admitted at tactical-review, horizon: tactical-review, basis: campaign_day, kind: absolute-change, metric: purchases, current: "28", prior: "20", expect: admitted}
+  - {name: an endpoint gap of 8 is admitted at pattern-confirmation, horizon: pattern-confirmation, basis: campaign_day, kind: absolute-change, metric: purchases, current: "28", prior: "20", expect: admitted}
+  - {name: an endpoint gap of 7 is silent at tactical-review, horizon: tactical-review, basis: campaign_day, kind: absolute-change, metric: purchases, current: "27", prior: "20", expect: silent}
+  - {name: an endpoint gap of 7 is silent at pattern-confirmation, horizon: pattern-confirmation, basis: campaign_day, kind: absolute-change, metric: purchases, current: "27", prior: "20", expect: silent}
+  - {name: a first-day count of 4 is near zero, horizon: tactical-review, basis: campaign_day, kind: percentage-change, metric: purchases, current: "6", prior: "4", expect: suppressed}
+silence_condition: The supplied series has no material directional or concentration pattern.
+structured_output_schema:
+  id: insight-narration-v1
+  fields: [output_class, sentences]
+initial_fictional_prompt: Describe one material supplied series pattern without extrapolating beyond the resolved window.
+calibration_cases:
+  - kind: known-correct
+    input_summary: Fictional campaign purchases rise in the supplied final dates of the resolved window.
+    expected_outcome: Accept the bounded description of that supplied shape.
+    horizon: pattern-confirmation
+    findings:
+      - {name: Purchases change, value: "22"}
+      - {name: Largest single-day purchases move, value: "9"}
+  - kind: exploratory
+    input_summary: A fictional late-window purchase acceleration invites a hedged shape reading rather than a forecast.
+    expected_outcome: Accept the labeled reading of the supplied shape.
+    horizon: tactical-review
+    # Two separate stretches, not a whole-series change with a nested part: the case
+    # tests a hedged late-acceleration reading, not subtraction across nested bases.
+    findings:
+      - {name: Purchases percentage change across the first four days, value: "1.5"}
+      - {name: Purchases percentage change across the final three days, value: "5.1"}
+  - kind: contradiction
+    input_summary: Fictional series values decline but the draft calls the shape rising.
+    expected_outcome: Reject the contradiction.
+    horizon: operational-pulse
+    findings:
+      - {name: Purchases change, value: "-11"}
+    draft:
+      sentences:
+        - The shape is clearly rising, with purchases up 11 into the close.
+  - kind: fluent-unsupported
+    input_summary: A fluent draft extends the fictional series into next week and cites the projected value.
+    expected_outcome: Reject the figure that is neither supplied nor derived from the findings.
+    horizon: pattern-confirmation
+    findings:
+      - {name: Purchases change, value: "22"}
+    draft:
+      sentences:
+        - Purchases rose 22 and the trend implies about 340 next week.
+  - kind: derived-figure
+    input_summary: A fictional draft states the percentage change between the supplied halves of the purchase series.
+    expected_outcome: Accept the correctly derived percentage change.
+    horizon: pattern-confirmation
+    findings:
+      - {name: Purchases first half of window, value: "80"}
+      - {name: Purchases second half of window, value: "102"}
+    draft:
+      sentences:
+        - Purchases picked up from 80 in the first half of the window to 102 in the second, a rise of about 28 percent that may mean the growth came late in the window.
+  - kind: miscomputed-derivation
+    input_summary: A fictional draft divides the change between halves by the later half instead of the earlier one.
+    expected_outcome: Reject the miscomputed percentage change.
+    horizon: pattern-confirmation
+    findings:
+      - {name: Purchases first half of window, value: "80"}
+      - {name: Purchases second half of window, value: "102"}
+    draft:
+      sentences:
+        - Purchases picked up from 80 in the first half of the window to 102 in the second, a rise of about 22 percent that may mean the growth came late in the window.
+  - kind: incompatible-basis
+    input_summary: A fictional draft computes a purchases change between windows of different lengths.
+    expected_outcome: Reject the figure that combines findings of incompatible window.
+    horizon: tactical-review
+    findings:
+      - {name: Purchases this 14-day window, value: "182"}
+      - {name: Purchases prior 7-day window, value: "90"}
+    draft:
+      sentences:
+        - Purchases roughly doubled, up 102 percent on the prior window.
+deep:
+  allowed_inputs:
+    - complete daily series for every metric this surface serves
+    - every server-computed driver and cross-metric total for the window
+    - lag, estimate, and basis qualifications carried by the artifact
+  structured_output_schema:
+    id: insight-deep-dive-v1
+    fields: [what_stands_out, candidate_readings, discriminating_evidence, cited_figures]
+# FR-11 (design 4.12): no next step is offered until the gated card-next-step prompt ships.
+next_steps:
+  allowed_kinds: []

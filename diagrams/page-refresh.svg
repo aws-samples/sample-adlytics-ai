@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1460 590" role="img" focusable="false" aria-labelledby="page-refresh-title page-refresh-desc">
+  <title id="page-refresh-title">Call-flow diagram: how a page refreshes after new data is published, in a customer deployment</title>
+  <desc id="page-refresh-desc">A new published version in the data lake starts one bake per page and window, which computes that page from the version with the measurement layer. When that page builds, with data or a designed absence, its own pointer advances to the new immutable artifact and the Presentation API serves it to the browser; when it fails, that page keeps serving its last good version, and a bake that keeps failing raises a CloudWatch alarm. Insight narration from Amazon Bedrock is attached to a page by its revision. A box labelled dev environment only notes that the dev environment instead builds every affected page as one set, whose pointers advance together or not at all.</desc>
+  <defs>
+    <marker id="page-refresh-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#536275"/></marker>
+  </defs>
+  <rect x="0" y="0" width="1460" height="590" fill="#ffffff"/>
+  <g stroke-width="2">
+    <path d="M30 74 V136 A100 14 0 0 0 230 136 V74" fill="#f2f8fe" stroke="#2f6fb2"/>
+    <ellipse cx="130" cy="74" rx="100" ry="14" fill="#f2f8fe" stroke="#2f6fb2"/>
+    <rect x="400" y="60" width="220" height="90" rx="10" fill="#f3fbf6" stroke="#2e7d4f" stroke-width="3"/>
+    <polygon points="900,40 1010,105 900,170 790,105" fill="#fff4e0" stroke="#c77700"/>
+    <path d="M1200 74 V136 A110 14 0 0 0 1420 136 V74" fill="#f2f8fe" stroke="#2f6fb2"/>
+    <ellipse cx="1310" cy="74" rx="110" ry="14" fill="#f2f8fe" stroke="#2f6fb2"/>
+    <rect x="790" y="320" width="220" height="100" rx="10" fill="#ffffff" stroke="#9aa8bb"/>
+    <rect x="1200" y="320" width="220" height="100" rx="10" fill="#ffffff" stroke="#9aa8bb"/>
+    <rect x="400" y="320" width="220" height="100" rx="10" fill="#f8f5ff" stroke="#6b4fbb"/>
+    <rect x="30" y="510" width="1400" height="64" rx="10" fill="#f6f7f9" stroke="#9aa8bb" stroke-dasharray="8 5"/>
+  </g>
+  <g fill="none" stroke="#536275" stroke-width="2" marker-end="url(#page-refresh-arrow)">
+    <line x1="230" y1="105" x2="398" y2="105"/>
+    <line x1="620" y1="105" x2="788" y2="105"/>
+    <line x1="1010" y1="105" x2="1198" y2="105"/>
+    <line x1="900" y1="170" x2="900" y2="318"/>
+    <line x1="1310" y1="150" x2="1310" y2="318"/>
+  </g>
+  <g fill="none" stroke="#536275" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#page-refresh-arrow)">
+    <path d="M510 420 V465 H1250 V422"/>
+  </g>
+  <g font-family="Arial, sans-serif" fill="#172033" text-anchor="middle">
+    <g font-size="15" font-weight="bold">
+      <text x="130" y="108">Data lake</text>
+      <text x="510" y="92">Bake, one per</text>
+      <text x="510" y="109">page and window</text>
+      <text x="900" y="92">Page built,</text>
+      <text x="900" y="110">with data or a</text>
+      <text x="900" y="128">designed absence?</text>
+      <text x="1310" y="108">Page artifacts</text>
+      <text x="900" y="358">This page stays on</text>
+      <text x="900" y="376">its last good version</text>
+      <text x="1310" y="362">Presentation API</text>
+      <text x="510" y="362">Insight narration</text>
+      <text x="730" y="536">Dev environment only</text>
+    </g>
+    <g font-size="13" fill="#536275">
+      <text x="130" y="126">S3, Glue, DynamoDB</text>
+      <text x="510" y="127">Lambda + Athena,</text>
+      <text x="510" y="142">measurement layer</text>
+      <text x="1310" y="126">S3 bodies, DynamoDB pointers</text>
+      <text x="900" y="398">A bake that keeps failing</text>
+      <text x="900" y="413">raises a CloudWatch alarm</text>
+      <text x="1310" y="384">Lambda; serves the page</text>
+      <text x="1310" y="400">to the signed-in browser</text>
+      <text x="510" y="384">Amazon Bedrock models</text>
+      <text x="730" y="558">The dev environment instead builds every affected page as one set: their pointers advance together, or none advance and an alarm is raised.</text>
+    </g>
+    <g font-size="13">
+      <text x="314" y="80">new published</text>
+      <text x="314" y="94">version</text>
+      <text x="704" y="80">that page's result</text>
+      <text x="704" y="94">for the version</text>
+      <text x="1104" y="80">yes: its pointer advances</text>
+      <text x="1104" y="94">to the new immutable page</text>
+      <text x="890" y="240" text-anchor="end">no: its pointer</text>
+      <text x="890" y="255" text-anchor="end">doesn't move</text>
+      <text x="1320" y="240" text-anchor="start">current page</text>
+      <text x="1320" y="255" text-anchor="start">read by</text>
+      <text x="880" y="487">narration attached by page revision</text>
+    </g>
+  </g>
+</svg>

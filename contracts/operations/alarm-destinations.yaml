@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: MIT-0
+# The staffed alarm destination contract (traceability FR-10), revision 2.
+#
+# One generated AlarmStaffingPolicy names who is responsible for the traceability gate's alarms.
+# Revision 2 (owner-gate Item 20, 2026-10-08) retires the staffed-console challenge and its
+# acknowledgement: no coverage window, challenge TTL or acknowledgement group remains. The
+# destination itself is exactly one of two arms. The owner-supplied value (an email endpoint, or
+# an existing confirmed topic ARN) is a live input to the destination verifier and never part of
+# this file: evidence keeps only the endpoint's digest and the subscription ARN.
+#
+# Single source for the generated Python (`src/domain/operations/generated_alarm_destinations.py`)
+# and TypeScript (`infra/lib/generated/alarm-destinations.ts`) projections:
+#   make generate-alarm-destinations && make check-alarm-destinations
+# Generation fails when any policy field is blank or undeclared, or an environment selects an arm
+# the contract does not declare.
+contract: alarm-destinations
+contract_revision: 2
+staffing_policy:
+  policy_revision: 2
+  responsible_owner_id: adlytics-ingestion-environment-owner
+destination_arms:
+  # Subscribe the endpoint to the existing in-account ingestion alarm topic; a human confirms it.
+  ExistingInAccountTopicEmail:
+    input: email_endpoint
+    topic: ingestion_alarm_topic
+  # Use an existing SNS topic in the target account and region with a confirmed subscription.
+  ExistingConfirmedSnsTopic:
+    input: topic_arn
+    topic: imported_topic_arn
+
+# The arm each environment that runs the traceability gate selects. Every generated alarm in that
+# environment uses only the selected arm's topic.
+selected_arms:
+  dev: ExistingInAccountTopicEmail

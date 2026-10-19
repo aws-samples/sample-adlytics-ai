@@ -1,0 +1,122 @@
+id: divergence
+version: 8
+purpose: Identify a material campaign movement that differs from the portfolio direction.
+display_name: Divergence (Campaigns)
+output_class: perspective
+allowed_inputs:
+  - reporting and comparison window display context
+  - portfolio totals section (current and prior metrics)
+  - campaign display roster with channels
+  - campaign current and prior metrics
+  - server-computed directional divergence findings
+  - typed window profile (window length, grain, aligned prior, horizon role)
+deterministic_findings:
+  - absolute-change
+  - percentage-change
+predicate:
+  required_evidence_inputs: [portfolio-direction, campaign-comparisons]
+  required_finding_kinds: [absolute-change, percentage-change]
+  materiality:
+    bases:
+      portfolio_window:
+        per_unit:
+          multiplier: {operational-pulse: "0.03", tactical-review: "0.06", pattern-confirmation: "0.12"}
+          percent: {operational-pulse: "1.0", tactical-review: "1.8", pattern-confirmation: "3.8"}
+        per_metric: {}
+      campaign_window:
+        per_unit:
+          multiplier: {operational-pulse: "0.25", tactical-review: "0.15", pattern-confirmation: "0.10"}
+          percent: {operational-pulse: "10", tactical-review: "5", pattern-confirmation: "5"}
+        per_metric: {}
+    near_zero_prior:
+      multiplier: "0.1"
+  delivery_follow_up_evidence: []
+materiality_cases:
+  - {name: R-1 control - campaign ROAS up 8 percent off 3.00 is admitted, horizon: tactical-review, basis: campaign_window, kind: percentage-change, metric: attributed_roas, current: "3.24", prior: "3.00", expect: admitted}
+  - {name: portfolio ROAS change just above its row, horizon: tactical-review, basis: portfolio_window, kind: absolute-change, metric: portfolio_roas_attributed_14d, current: "3.07", prior: "3.00", expect: admitted}
+  - {name: portfolio ROAS change just below its row, horizon: tactical-review, basis: portfolio_window, kind: absolute-change, metric: portfolio_roas_attributed_14d, current: "3.05", prior: "3.00", expect: silent}
+  - {name: campaign ROAS change just above the campaign row, horizon: tactical-review, basis: campaign_window, kind: absolute-change, metric: attributed_roas, current: "2.84", prior: "3.00", expect: admitted}
+  - {name: a ROAS prior of 0.05 is near zero, horizon: tactical-review, basis: campaign_window, kind: percentage-change, metric: attributed_roas, current: "0.06", prior: "0.05", expect: suppressed}
+silence_condition: No campaign direction materially diverges from the portfolio direction.
+structured_output_schema:
+  id: insight-narration-v1
+  fields: [output_class, sentences]
+initial_fictional_prompt: State the most material supplied divergence and its practical comparison to the portfolio without inventing a cause.
+calibration_cases:
+  - kind: known-correct
+    input_summary: Fictional Campaign Birch has a supplied ROAS decrease while portfolio ROAS increases.
+    expected_outcome: Accept the supplied directional contrast.
+    horizon: tactical-review
+    findings:
+      - {name: Campaign Birch roas change, value: "-0.7"}
+      - {name: Portfolio roas change, value: "0.3"}
+  - kind: exploratory
+    input_summary: A fictional mild contrast across the long window invites a hedged reading about whether it is drift or noise.
+    expected_outcome: Accept the labeled divergence hypothesis.
+    horizon: pattern-confirmation
+    findings:
+      - {name: Campaign Cedar roas percentage change, value: "-4.2"}
+      - {name: Portfolio roas percentage change, value: "1.6"}
+  - kind: contradiction
+    input_summary: Fictional findings show matching directions but the draft claims divergence.
+    expected_outcome: Reject the contradiction.
+    horizon: operational-pulse
+    findings:
+      - {name: Campaign Birch roas change, value: "0.5"}
+      - {name: Portfolio roas change, value: "0.2"}
+    draft:
+      sentences:
+        - Campaign Birch diverged from the portfolio, falling 0.5 while the portfolio rose 0.2.
+  - kind: fluent-unsupported
+    input_summary: A fluent draft attributes the divergence to a bid change percentage absent from the findings.
+    expected_outcome: Reject the figure that is neither supplied nor derived from the findings.
+    horizon: tactical-review
+    findings:
+      - {name: Campaign Birch roas change, value: "-0.7"}
+    draft:
+      sentences:
+        - Campaign Birch fell 0.7 after bids were cut 15 percent midweek.
+  - kind: derived-figure
+    input_summary: A fictional draft states Campaign Birch's ROAS percentage change derived from its supplied values beside the supplied portfolio direction.
+    expected_outcome: Accept the correctly derived percentage change.
+    horizon: tactical-review
+    findings:
+      - {name: Campaign Birch roas this window, value: "2.1"}
+      - {name: Campaign Birch roas prior window, value: "2.8"}
+      - {name: Portfolio roas percentage change, value: "10"}
+    draft:
+      sentences:
+        - Campaign Birch's roas fell from 2.8 to 2.1, a 25 percent drop, while portfolio roas rose 10 percent, so Birch is moving against the portfolio.
+  - kind: miscomputed-derivation
+    input_summary: A fictional draft divides Campaign Birch's ROAS change by the current value instead of the prior one.
+    expected_outcome: Reject the miscomputed percentage change.
+    horizon: tactical-review
+    findings:
+      - {name: Campaign Birch roas this window, value: "2.1"}
+      - {name: Campaign Birch roas prior window, value: "2.8"}
+      - {name: Portfolio roas percentage change, value: "10"}
+    draft:
+      sentences:
+        - Campaign Birch's roas fell from 2.8 to 2.1, a 33 percent drop, while portfolio roas rose 10 percent, so Birch is moving against the portfolio.
+  - kind: incompatible-basis
+    input_summary: A fictional draft compares a single-day campaign ROAS with a seven-day portfolio ROAS.
+    expected_outcome: Reject the figure that combines findings of incompatible window.
+    horizon: operational-pulse
+    findings:
+      - {name: Campaign Birch roas yesterday, value: "1.9"}
+      - {name: Portfolio roas this 7-day window, value: "2.6"}
+    draft:
+      sentences:
+        - Campaign Birch ran 27 percent below the portfolio's roas, diverging sharply.
+deep:
+  allowed_inputs:
+    - sibling preset directions from the same current pointer roster, direction only with no second-window figures
+    - complete daily series for every metric this surface serves
+    - every server-computed driver and cross-metric total for the window
+    - lag, estimate, and basis qualifications carried by the artifact
+  structured_output_schema:
+    id: insight-deep-dive-v1
+    fields: [what_stands_out, candidate_readings, discriminating_evidence, cited_figures]
+# FR-11 (design 4.12): no next step is offered until the gated card-next-step prompt ships.
+next_steps:
+  allowed_kinds: []

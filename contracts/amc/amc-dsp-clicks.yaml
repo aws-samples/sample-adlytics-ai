@@ -1,0 +1,115 @@
+# amc-dsp-clicks — DSP clicks at campaign × day.
+#
+# A separate contract from amc-dsp-impressions because dsp_impressions HAS NO clicks COLUMN
+# [verified]. This is not a modelling preference; the measure does not exist on that table.
+# dsp_clicks is a row-subset of dsp_impressions restricted to clicked impressions, so it
+# shares 95 columns and adds a click_* time family.
+#
+# IT ALSO DROPS total_cost AND impression_cost [verified], so DSP media spend is NOT
+# reachable from here. Spend comes from amc-dsp-impressions and clicks come from here, and
+# the two are combined by UNION ALL with zero-filled columns at the shared grain. A
+# row-level join between them would double-count spend, because one impression row can have
+# a clicked counterpart.
+
+contract_id: amc-dsp-clicks
+contract_version: 1
+
+source_system: amc
+source_dataset: dsp_clicks
+source_format: csv
+
+target_table: fct_ad_exposure
+
+source_tables:
+  - dsp_clicks
+
+grain:
+  - date_key
+  - channel_key
+  - campaign_key
+  - ad_product_key
+  - marketplace_key
+  - rows_suppressed
+
+partition_keys:
+  - marketplace_key
+  - date_key
+
+measurement_basis: ad_attributed
+source_timezone: UTC
+ecosystem_key: amazon
+platform_key: amazon_ads
+restatement_window_days: 30
+staleness_threshold_hours: 72
+
+grain_feasibility_note: >
+  Every output column is NONE or LOW: clicks is NONE, and campaign_id_string,
+  campaign_country and impression_date_utc are LOW. click_cost is deliberately NOT
+  selected — it is MEDIUM, so including it would lift the whole query to 100 distinct
+  users per row for a measure this fact does not carry. user_id is VERY_HIGH and read only
+  inside a CTE, so it does not escalate.
+
+suppression:
+  discriminator_column: rows_suppressed
+  reason_column: suppression_reason
+  distinct_user_count_column: distinct_user_count
+
+fields:
+  # --- grain -----------------------------------------------------------------
+  - source_path: impression_date_utc
+    target_column: date_key
+    # DELIBERATELY the impression date, not click_date_utc. This table carries two parallel
+    # time families and the choice changes what a row means: keying on the impression date
+    # attributes a click back to the day the impression was served, which is the only way
+    # clicks and impressions line up in the UNION ALL with amc-dsp-impressions. Keying on
+    # click_date_utc would put a click on a later day than its own impression and make CTR
+    # exceed 1 on some days and fall short on others.
+
+  - target_column: channel_key
+    target_type: string
+    literal_value: amazon_dsp
+
+  - target_column: ad_product_key
+    target_type: string
+    literal_value: amazon_dsp
+
+  - target_column: channel_group_key
+    target_type: string
+    literal_value: display
+
+  - source_path: campaign_id_string
+    target_column: campaign_key
+
+  - source_path: campaign_country
+    target_column: marketplace_key
+    # Same resolution as amc-dsp-impressions, through dim_marketplace.country_code.
+
+  # --- the one measure this table adds ---------------------------------------
+  - source_path: clicks
+    target_column: clicks
+    # NONE. The reason this contract exists.
+
+  # --- suppression -----------------------------------------------------------
+  - source_path: values_removed
+    target_column: rows_suppressed
+    target_type: boolean
+    from_extraction_option: true
+
+  # filteredReasonColumn and distinctUserCountColumn are still REQUESTED — the suppression block
+  # above names them, the delivery carries them, and check_header proves they arrived. They are
+  # deliberately NOT mapped into fct_ad_exposure, which four contracts write.
+  #
+  # Neither has a single value at a conformed row. The reason names its own data source in its own
+  # format — `97 'dsp_impressions' users < 100 required` — so three deliveries assembling one row
+  # carry three different reasons. The count is capped per query by the strictest output column,
+  # and AMC blanks it on a row it merged. Mapping either produced erasure rather than
+  # supersession, because all three DSP contracts stamp the same channel literal and so withdraw
+  # over identical rows. See ADR-033 and G-28.
+  #
+  # The per-row, per-dataset detail stays in the retained raw delivery, already split by dataset.
+
+tags:
+  - phase-1
+  - amc
+  - dsp
+  - exposure

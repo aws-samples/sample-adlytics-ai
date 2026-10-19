@@ -1,0 +1,94 @@
+id: movers
+version: 5
+purpose: Render the server-ranked absolute campaign changes directly without model narration.
+display_name: Largest changes (Campaigns)
+output_class: observed
+allowed_inputs:
+  - campaign current and prior additive metrics
+  - server-ranked absolute changes
+deterministic_findings:
+  - ranked-absolute-change
+predicate:
+  required_evidence_inputs: [campaign-comparisons]
+  required_finding_kinds: [ranked-absolute-change]
+  materiality:
+    bases:
+      campaign_window:
+        per_unit:
+          currency: {operational-pulse: "20", tactical-review: "300", pattern-confirmation: "1500"}
+        per_metric: {}
+    near_zero_prior: {}
+  delivery_follow_up_evidence: []
+materiality_cases:
+  - {name: a spend move of 300 clears the tactical row, horizon: tactical-review, basis: campaign_window, kind: ranked-absolute-change, metric: spend, current: "1300", prior: "1000", expect: admitted}
+  - {name: a spend move of 299 is below the tactical row, horizon: tactical-review, basis: campaign_window, kind: ranked-absolute-change, metric: spend, current: "1299", prior: "1000", expect: silent}
+silence_condition: No server-ranked absolute change exceeds the declared materiality threshold.
+structured_output_schema:
+  id: insight-narration-v1
+  fields: [output_class, sentences]
+initial_fictional_prompt: null
+calibration_cases:
+  - kind: known-correct
+    input_summary: Fictional Campaign Dune has the largest supplied absolute spend change.
+    expected_outcome: Render the server-ranked observed change.
+    horizon: tactical-review
+    findings:
+      - {name: Campaign Dune spend change, value: "620"}
+      - {name: Campaign Ember spend change, value: "-380"}
+  - kind: exploratory
+    input_summary: Fictional ranked movers with close magnitudes would invite a reading, which this deterministic slot never generates.
+    expected_outcome: The slot renders ranked observations only; no prompt generates a reading.
+    horizon: pattern-confirmation
+    findings:
+      - {name: Campaign Dune spend change, value: "310"}
+      - {name: Campaign Ember spend change, value: "-295"}
+  - kind: contradiction
+    input_summary: Fictional ranking orders Dune before Ember but a renderer reverses them.
+    expected_outcome: Reject the contradicted order.
+    horizon: operational-pulse
+    findings:
+      - {name: Campaign Dune spend change, value: "620"}
+      - {name: Campaign Ember spend change, value: "-380"}
+    draft:
+      sentences:
+        - Campaign Ember led the movers at -380, ahead of Campaign Dune at 620.
+  - kind: fluent-unsupported
+    input_summary: A fluent sentence explains the move with a figure outside the ranked findings.
+    expected_outcome: Reject the figure that is neither supplied nor derived from the findings.
+    horizon: tactical-review
+    findings:
+      - {name: Campaign Dune spend change, value: "620"}
+    draft:
+      sentences:
+        - Campaign Dune moved 620 after its budget cap rose to 5000.
+  - kind: derived-figure
+    input_summary: A fictional renderer states Campaign Dune's spend percentage change derived from its supplied current and prior values.
+    expected_outcome: Accept the correctly derived percentage change; this deterministic slot never generates one.
+    horizon: tactical-review
+    findings:
+      - {name: Campaign Dune spend this window, value: "2170"}
+      - {name: Campaign Dune spend prior window, value: "1550"}
+    draft:
+      sentences:
+        - Campaign Dune moved from 1550 to 2170 in spend, up 40 percent.
+  - kind: miscomputed-derivation
+    input_summary: A fictional renderer divides Campaign Dune's spend change by the current value instead of the prior one.
+    expected_outcome: Reject the miscomputed percentage change.
+    horizon: tactical-review
+    findings:
+      - {name: Campaign Dune spend this window, value: "2170"}
+      - {name: Campaign Dune spend prior window, value: "1550"}
+    draft:
+      sentences:
+        - Campaign Dune moved from 1550 to 2170 in spend, up 29 percent.
+  - kind: incompatible-basis
+    input_summary: A fictional renderer nets spend changes reported in two currencies.
+    expected_outcome: Reject the figure that combines findings of incompatible currency.
+    horizon: operational-pulse
+    findings:
+      - {name: Campaign Dune spend change in US dollars, value: "620"}
+      - {name: Campaign Ember spend change in euros, value: "-380"}
+    draft:
+      sentences:
+        - Campaign Dune and Campaign Ember netted 240 in spend between them.
+deep: null

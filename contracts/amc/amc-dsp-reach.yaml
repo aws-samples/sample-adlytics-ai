@@ -1,0 +1,105 @@
+# amc-dsp-reach — distinct DSP shoppers per campaign per UTC day (pack 4, design §5.2 row 4, §6.3 D1a).
+#
+# The fifth writer of fct_ad_exposure, and it writes one measure: reach_users for the DSP rows. It's
+# its own contract, not a column on amc-dsp-impressions, so a suppressed reach delivery, which
+# reject_delivery refuses whole, can't block DSP spend (ADR-109 point 3). The same reasoning made
+# amc-reach-frequency carry sponsored reach: a distinct count has no residual and can't be folded.
+#
+# Disjoint from the four existing writers by construction. It stamps channel_key and ad_product_key
+# amazon_dsp, which amc-reach-frequency's value_domain excludes, and it writes no additive column,
+# so it shares only reach_users with amc-reach-frequency and nothing with the three DSP contracts
+# beyond the keys (check_shared_measures_are_separable).
+#
+# Chat only (owner S-4, plan D7). Served only for days with a current publication of this contract
+# (served_where_published below, plan D6), so a DSP campaign-day before pack 4 ran reads a typed
+# refusal naming the first covered day rather than an undefined row.
+contract_id: amc-dsp-reach
+contract_version: 1
+source_system: amc
+source_dataset: dsp_impressions
+source_format: csv
+target_table: fct_ad_exposure
+source_tables:
+  - dsp_impressions
+# The fact's grain, identical across its writers (FactShape.for_fact requires it). rows_suppressed
+# is in it as on every writer; under reject_delivery no published row is ever suppressed.
+grain:
+  - date_key
+  - channel_key
+  - campaign_key
+  - ad_product_key
+  - marketplace_key
+  - rows_suppressed
+partition_keys:
+  - marketplace_key
+  - date_key
+measurement_basis: ad_attributed
+source_timezone: UTC
+ecosystem_key: amazon
+platform_key: amazon_ads
+# Matched to the other exposure contracts, so a re-pull never pairs a restated table with a stale one.
+restatement_window_days: 30
+staleness_threshold_hours: 72
+# Every OUTPUT column is NONE or LOW, so the bar is 2 distinct users per row. impression_date_utc,
+# campaign_id_string and campaign_country are LOW; reach_users is COUNT(DISTINCT user_id) computed in
+# AMC. user_id (VERY_HIGH) is read only inside the count and its IS NOT NULL filter, and impressions
+# (NONE) only in the filter. impression_dt_utc (MEDIUM) is deliberately not selected.
+grain_feasibility_note: >
+  Every output column is NONE or LOW, so the bar is 2 distinct users per row. impression_date_utc,
+  campaign_id_string and campaign_country are LOW; reach_users is COUNT(DISTINCT user_id) computed
+  in AMC, and user_id (VERY_HIGH) never appears in output. impressions (NONE) is read only in the
+  filter. impression_dt_utc (MEDIUM) is deliberately not selected.
+suppression:
+  discriminator_column: rows_suppressed
+  reason_column: suppression_reason
+  distinct_user_count_column: distinct_user_count
+fields:
+  # --- grain -----------------------------------------------------------------
+  - source_path: impression_date_utc
+    target_column: date_key
+  - target_column: channel_key
+    target_type: string
+    literal_value: amazon_dsp
+    # DSP tables carry no ad_product_type, so the channel is a literal, as on amc-dsp-impressions.
+    # This literal is what bounds the rows the contract owns.
+  - target_column: ad_product_key
+    target_type: string
+    literal_value: amazon_dsp
+  - target_column: channel_group_key
+    target_type: string
+    literal_value: display
+  - source_path: campaign_id_string
+    target_column: campaign_key
+  - source_path: campaign_country
+    target_column: marketplace_key
+    # Resolved through the amc.campaign_country namespace, as on amc-dsp-impressions. The pack
+    # filters on it with the governed dsp_campaign_country parameter, so a delivery carries one
+    # marketplace.
+  # --- reach: the only measure ------------------------------------------------
+  # No impressions, spend or currency: those are amc-dsp-impressions' columns, and a reach writer
+  # supplying them would collide with it at an identical grain.
+  - source_path: COUNT(DISTINCT user_id)
+    target_column: reach_users
+    target_type: bigint
+    derived_from:
+      - user_id
+    non_additive: true
+    # Exact distinct DSP shoppers on one campaign on one UTC day, never summed across days or
+    # campaigns (D-2). Every writer of reach_users declares it non_additive, so the union fills
+    # NULL where a writer doesn't supply it, never 0 (ADR-109).
+    served_where_published: true
+    # Served only for days with a CURRENT publication of this contract, over the rows it owns
+    # (channel_key or ad_product_key amazon_dsp). DSP rows from before pack 4 carry no reach, and
+    # the gate refuses those days naming the first covered one (plan D6).
+  # --- suppression -----------------------------------------------------------
+  - source_path: values_removed
+    target_column: rows_suppressed
+    target_type: boolean
+    from_extraction_option: true
+  # filteredReasonColumn and distinctUserCountColumn are requested and checked by check_header, and
+  # not mapped into fct_ad_exposure, for the reasons amc-dsp-impressions gives (ADR-033, G-28).
+tags:
+  - amc
+  - dsp
+  - exposure
+  - reach

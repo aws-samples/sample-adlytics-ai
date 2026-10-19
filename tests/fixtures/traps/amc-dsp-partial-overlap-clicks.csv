@@ -1,0 +1,3 @@
+impression_date_utc,campaign_id_string,campaign_country,clicks,distinct_user_count,suppression_reason,rows_suppressed
+2026-08-20,TRAPDSP-SHARED,US,250,2,,false
+2026-08-20,TRAPDSP-CLICKONLY,US,7,2,,false

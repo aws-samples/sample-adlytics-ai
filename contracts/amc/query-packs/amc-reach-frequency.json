@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "packId": "amc-reach-frequency",
+  "packVersion": 1,
+  "contractId": "amc-reach-frequency",
+  "sourcePackId": "amc-reach-frequency",
+  "queryFile": "amc-reach-frequency.sql",
+  "accessTier": "standard",
+  "liveValidation": "required",
+  "maxResultBytes": 20000000,
+  "executionOptions": {
+    "timeWindowType": "EXPLICIT",
+    "timeWindowTimeZone": "UTC",
+    "filteredMetricsDiscriminatorColumn": "rows_suppressed",
+    "filteredReasonColumn": "suppression_reason",
+    "distinctUserCountColumn": "distinct_user_count"
+  },
+  "safetyBlockers": [],
+  "rejectSuppressedRows": true,
+  "outputColumns": [
+    "event_date_utc",
+    "ad_product_type",
+    "channel_group_key",
+    "campaign_id_string",
+    "marketplace_name",
+    "impressions",
+    "clicks",
+    "spend",
+    "currency_iso_code",
+    "reach_users",
+    "time_window_start",
+    "time_window_end",
+    "rows_suppressed",
+    "suppression_reason",
+    "distinct_user_count"
+  ]
+}

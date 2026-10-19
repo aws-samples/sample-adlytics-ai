@@ -1,0 +1,93 @@
+id: portfolio-acquisition
+version: 1
+purpose: Deterministically state one ad product's material new-to-brand revenue share move against its equal prior window, always inside one ad product of the Amazon Ads network in one marketplace.
+display_name: New-to-brand share mover (New customers)
+output_class: perspective
+allowed_inputs:
+  - server-computed new-to-brand revenue share per ad product inside one network, one marketplace and one currency
+  - the same ad product's new-to-brand revenue share in the equal prior window
+deterministic_findings: [absolute-change]
+predicate:
+  required_evidence_inputs: [network-channel-comparisons]
+  required_finding_kinds: [absolute-change]
+  materiality:
+    bases:
+      channel_window:
+        per_unit:
+          rate_pp: {operational-pulse: "5", tactical-review: "3", pattern-confirmation: "2"}
+        per_metric: {}
+    near_zero_prior: {}
+  delivery_follow_up_evidence: []
+materiality_cases:
+  - {name: a share up 5 points is admitted at operational-pulse, horizon: operational-pulse, basis: channel_window, kind: absolute-change, metric: ntb_revenue_share, current: "0.45", prior: "0.40", expect: admitted}
+  - {name: a share up 4 points is silent at operational-pulse, horizon: operational-pulse, basis: channel_window, kind: absolute-change, metric: ntb_revenue_share, current: "0.44", prior: "0.40", expect: silent}
+  - {name: a share down 3 points is admitted at tactical-review, horizon: tactical-review, basis: channel_window, kind: absolute-change, metric: ntb_revenue_share, current: "0.37", prior: "0.40", expect: admitted}
+  - {name: a share up 2 points is silent at tactical-review, horizon: tactical-review, basis: channel_window, kind: absolute-change, metric: ntb_revenue_share, current: "0.42", prior: "0.40", expect: silent}
+  - {name: a share up 2 points is admitted at pattern-confirmation, horizon: pattern-confirmation, basis: channel_window, kind: absolute-change, metric: ntb_revenue_share, current: "0.42", prior: "0.40", expect: admitted}
+  - {name: a share up 1 point is silent at pattern-confirmation, horizon: pattern-confirmation, basis: channel_window, kind: absolute-change, metric: ntb_revenue_share, current: "0.41", prior: "0.40", expect: silent}
+silence_condition: No ad product's new-to-brand revenue share moved by the declared threshold against the equal prior window.
+structured_output_schema: {id: insight-narration-v1, fields: [output_class, sentences]}
+initial_fictional_prompt: null
+calibration_cases:
+  - kind: known-correct
+    input_summary: Fictional Sponsored Products new-to-brand revenue share rises inside the Amazon Ads network in one marketplace.
+    expected_outcome: Accept the deterministic statement of that one ad product's share move.
+    horizon: tactical-review
+    findings:
+      - {name: Sponsored Products new-to-brand revenue share change, value: "0.06"}
+  - kind: exploratory
+    input_summary: Two fictional ad products' shares move in opposite directions, which would invite a portfolio reading this deterministic slot never generates.
+    expected_outcome: The slot states each ad product's move on its own; no prompt generates a reading.
+    horizon: pattern-confirmation
+    findings:
+      - {name: Sponsored Products new-to-brand revenue share change, value: "0.04"}
+      - {name: Sponsored Brands new-to-brand revenue share change, value: "-0.03"}
+  - kind: contradiction
+    input_summary: Fictional Sponsored Brands new-to-brand revenue share falls, but the statement calls it a rise.
+    expected_outcome: Reject the contradiction.
+    horizon: tactical-review
+    findings:
+      - {name: Sponsored Brands new-to-brand revenue share change, value: "-0.05"}
+    draft:
+      sentences:
+        - Sponsored Brands new-to-brand share rose 5 points.
+  - kind: fluent-unsupported
+    input_summary: A fluent draft adds an all-channel new-to-brand share that no finding supplies and the page never totals.
+    expected_outcome: Reject the figure that is neither supplied nor derived from the findings.
+    horizon: tactical-review
+    findings:
+      - {name: Sponsored Products new-to-brand revenue share change, value: "0.06"}
+    draft:
+      sentences:
+        - Sponsored Products new-to-brand share rose 6 points, and the all-channel new-to-brand share is 41 percent.
+  - kind: derived-figure
+    input_summary: A fictional renderer states the Sponsored Products share move derived from its supplied current and prior shares.
+    expected_outcome: Accept the correctly derived points change; this deterministic slot never generates one.
+    horizon: tactical-review
+    findings:
+      - {name: Sponsored Products new-to-brand revenue share this window, value: "0.46"}
+      - {name: Sponsored Products new-to-brand revenue share prior window, value: "0.40"}
+    draft:
+      sentences:
+        - Sponsored Products new-to-brand share moved from 40 to 46 percent, up 6 points.
+  - kind: miscomputed-derivation
+    input_summary: A fictional renderer adds two channels' new-to-brand revenue shares, each taken of its own channel's attributed revenue, and states the sum as one share.
+    expected_outcome: Reject the combined share, because the two shares divide by different channels' attributed revenue.
+    horizon: pattern-confirmation
+    findings:
+      - {name: Sponsored Products new-to-brand revenue share, value: "0.46"}
+      - {name: Sponsored Brands new-to-brand revenue share, value: "0.31"}
+    draft:
+      sentences:
+        - Sponsored Products and Sponsored Brands together hold a 77 percent new-to-brand revenue share.
+  - kind: incompatible-basis
+    input_summary: A fictional draft sums two channels' new-to-brand buyer counts, though one shopper can be credited to both channels.
+    expected_outcome: Reject the summed buyer count, because channel buyer counts are never added together.
+    horizon: tactical-review
+    findings:
+      - {name: Sponsored Products new-to-brand buyers, value: "1200"}
+      - {name: Sponsored Brands new-to-brand buyers, value: "800"}
+    draft:
+      sentences:
+        - Search channels won 2000 new-to-brand buyers in total.
+deep: null

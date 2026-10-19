@@ -1,0 +1,6349 @@
+{
+ "branch": "attempt-33",
+ "expected": {
+  "action_count": 42,
+  "aggregate_upper_bound": 43231,
+  "outcome": "accepted",
+  "wire_json_bytes": 56987
+ },
+ "expected_request": {
+  "TransactItems": [
+   {
+    "ConditionCheck": {
+     "ConditionExpression": "holder = :holder AND fencing_token = :token AND expires_at = :expires AND attribute_not_exists(parked_at)",
+     "ExpressionAttributeValues": {
+      ":expires": {
+       "S": "2026-09-19T13:00:00+00:00"
+      },
+      ":holder": {
+       "S": "0157e0e5ca3874d40e7b6ba709c469a607fd0164f285bf7994465fa76cede722"
+      },
+      ":token": {
+       "N": "7"
+      }
+     },
+     "Key": {
+      "partition_key": {
+       "S": "TABLE#db.alpha"
+      }
+     },
+     "TableName": "leases-fixture"
+    }
+   },
+   {
+    "ConditionCheck": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Key": {
+      "partition_key": {
+       "S": "TABLE_ATTEMPT#db.alpha"
+      },
+      "record_key": {
+       "S": "FENCE"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Update": {
+     "ConditionExpression": "#status = :planned AND generation = :generation AND unit_count = :unit_count AND admitted_count = :unit_count AND failed_count = :failed_count AND settled_attempt_count = :settled_count AND attribute_not_exists(settled_attempt_digest)",
+     "ExpressionAttributeNames": {
+      "#status": "status"
+     },
+     "ExpressionAttributeValues": {
+      ":failed_count": {
+       "N": "0"
+      },
+      ":generation": {
+       "N": "0"
+      },
+      ":new_digest": {
+       "S": "d4b235f212c1323c60450ab3b7f4ade2509398f5d30455210a42f0548b7e4a06"
+      },
+      ":new_failed_count": {
+       "N": "1"
+      },
+      ":new_settled_count": {
+       "N": "10"
+      },
+      ":planned": {
+       "S": "planned"
+      },
+      ":settled_count": {
+       "N": "0"
+      },
+      ":superseded": {
+       "S": "superseded"
+      },
+      ":terminal_at": {
+       "S": "00001789821296789012"
+      },
+      ":unit_count": {
+       "N": "15"
+      }
+     },
+     "Key": {
+      "partition_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+      },
+      "record_key": {
+       "S": "META"
+      }
+     },
+     "TableName": "publications-fixture",
+     "UpdateExpression": "SET failed_count = :new_failed_count, settled_attempt_count = :new_settled_count, settled_attempt_digest = :new_digest, #status = :superseded, terminal_at = :terminal_at"
+    }
+   },
+   {
+    "Update": {
+     "ConditionExpression": "revision = :revision AND active_plan_key = :plan_key AND active_intent_id = :intent_id AND latest_internal_execution_id = :internal_execution_id",
+     "ExpressionAttributeValues": {
+      ":intent_id": {
+       "S": "abababababababababababababababababababababababababababababababab"
+      },
+      ":internal_execution_id": {
+       "S": "1212121212121212121212121212121212121212121212121212121212121212"
+      },
+      ":new_revision": {
+       "N": "3"
+      },
+      ":plan_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+      },
+      ":revision": {
+       "N": "2"
+      }
+     },
+     "Key": {
+      "partition_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b"
+      },
+      "record_key": {
+       "S": "SUCCESSOR_OWNER"
+      }
+     },
+     "TableName": "publications-fixture",
+     "UpdateExpression": "SET revision = :new_revision REMOVE active_plan_key, active_intent_id"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Item": {
+      "created_at": {
+       "S": "00001789821296789012"
+      },
+      "due_at": {
+       "S": "00001789821296789012"
+      },
+      "intent_id": {
+       "S": "96a86c7f5a1eae32bf3c109b77908c0cd10377f470a1e62c9ae618fa324a8779"
+      },
+      "last_transition_at": {
+       "S": "00001789821296789012"
+      },
+      "origin_kind": {
+       "S": "plan_attempt_budget"
+      },
+      "origin_member": {
+       "S": "69d6ef2ecb6cd703327c3e8fe815b0a2f36a59674b6293354cbf49b879629d01"
+      },
+      "partition_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#INTENT#96a86c7f5a1eae32bf3c109b77908c0cd10377f470a1e62c9ae618fa324a8779"
+      },
+      "plan_digest": {
+       "S": "a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b"
+      },
+      "ready_order": {
+       "S": "00001789821296789012#96a86c7f5a1eae32bf3c109b77908c0cd10377f470a1e62c9ae618fa324a8779"
+      },
+      "ready_status": {
+       "S": "ready"
+      },
+      "record_key": {
+       "S": "META"
+      },
+      "retry_count": {
+       "N": "0"
+      },
+      "root_plan_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+      },
+      "roster_digest": {
+       "S": "703a11966b4ec9c419b91f863697cfabb95598016d6cc7834e647107fdf0a97c"
+      },
+      "source_plan_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+      },
+      "state": {
+       "S": "pending"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Item": {
+      "merge_count": {
+       "N": "1"
+      },
+      "objects": {
+       "L": [
+        {
+         "L": [
+          {
+           "S": "manifest"
+          },
+          {
+           "S": "s3://authority-fixture/db.t00"
+          },
+          {
+           "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          },
+          {
+           "S": "pub-0001"
+          },
+          {
+           "NULL": true
+          },
+          {
+           "N": "1"
+          }
+         ]
+        }
+       ]
+      },
+      "partition_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#INTENT#96a86c7f5a1eae32bf3c109b77908c0cd10377f470a1e62c9ae618fa324a8779"
+      },
+      "record_key": {
+       "S": "UNIT#db.t00"
+      },
+      "table_kind": {
+       "S": "current"
+      },
+      "unit_key": {
+       "S": "db.t00"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Item": {
+      "merge_count": {
+       "N": "1"
+      },
+      "objects": {
+       "L": [
+        {
+         "L": [
+          {
+           "S": "manifest"
+          },
+          {
+           "S": "s3://authority-fixture/db.t01"
+          },
+          {
+           "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          },
+          {
+           "S": "pub-0002"
+          },
+          {
+           "NULL": true
+          },
+          {
+           "N": "2"
+          }
+         ]
+        }
+       ]
+      },
+      "partition_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#INTENT#96a86c7f5a1eae32bf3c109b77908c0cd10377f470a1e62c9ae618fa324a8779"
+      },
+      "record_key": {
+       "S": "UNIT#db.t01"
+      },
+      "table_kind": {
+       "S": "current"
+      },
+      "unit_key": {
+       "S": "db.t01"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Item": {
+      "merge_count": {
+       "N": "1"
+      },
+      "objects": {
+       "L": [
+        {
+         "L": [
+          {
+           "S": "manifest"
+          },
+          {
+           "S": "s3://authority-fixture/db.t02"
+          },
+          {
+           "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          },
+          {
+           "S": "pub-0003"
+          },
+          {
+           "NULL": true
+          },
+          {
+           "N": "3"
+          }
+         ]
+        }
+       ]
+      },
+      "partition_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#INTENT#96a86c7f5a1eae32bf3c109b77908c0cd10377f470a1e62c9ae618fa324a8779"
+      },
+      "record_key": {
+       "S": "UNIT#db.t02"
+      },
+      "table_kind": {
+       "S": "current"
+      },
+      "unit_key": {
+       "S": "db.t02"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Item": {
+      "merge_count": {
+       "N": "1"
+      },
+      "objects": {
+       "L": [
+        {
+         "L": [
+          {
+           "S": "manifest"
+          },
+          {
+           "S": "s3://authority-fixture/db.t03"
+          },
+          {
+           "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          },
+          {
+           "S": "pub-0004"
+          },
+          {
+           "NULL": true
+          },
+          {
+           "N": "4"
+          }
+         ]
+        }
+       ]
+      },
+      "partition_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#INTENT#96a86c7f5a1eae32bf3c109b77908c0cd10377f470a1e62c9ae618fa324a8779"
+      },
+      "record_key": {
+       "S": "UNIT#db.t03"
+      },
+      "table_kind": {
+       "S": "current"
+      },
+      "unit_key": {
+       "S": "db.t03"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Item": {
+      "merge_count": {
+       "N": "1"
+      },
+      "objects": {
+       "L": [
+        {
+         "L": [
+          {
+           "S": "manifest"
+          },
+          {
+           "S": "s3://authority-fixture/db.t04"
+          },
+          {
+           "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          },
+          {
+           "S": "pub-0005"
+          },
+          {
+           "NULL": true
+          },
+          {
+           "N": "5"
+          }
+         ]
+        }
+       ]
+      },
+      "partition_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#INTENT#96a86c7f5a1eae32bf3c109b77908c0cd10377f470a1e62c9ae618fa324a8779"
+      },
+      "record_key": {
+       "S": "UNIT#db.t04"
+      },
+      "table_kind": {
+       "S": "current"
+      },
+      "unit_key": {
+       "S": "db.t04"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Item": {
+      "merge_count": {
+       "N": "1"
+      },
+      "objects": {
+       "L": [
+        {
+         "L": [
+          {
+           "S": "manifest"
+          },
+          {
+           "S": "s3://authority-fixture/db.t05"
+          },
+          {
+           "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          },
+          {
+           "S": "pub-0006"
+          },
+          {
+           "NULL": true
+          },
+          {
+           "N": "6"
+          }
+         ]
+        }
+       ]
+      },
+      "partition_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#INTENT#96a86c7f5a1eae32bf3c109b77908c0cd10377f470a1e62c9ae618fa324a8779"
+      },
+      "record_key": {
+       "S": "UNIT#db.t05"
+      },
+      "table_kind": {
+       "S": "current"
+      },
+      "unit_key": {
+       "S": "db.t05"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Item": {
+      "merge_count": {
+       "N": "1"
+      },
+      "objects": {
+       "L": [
+        {
+         "L": [
+          {
+           "S": "manifest"
+          },
+          {
+           "S": "s3://authority-fixture/db.t06"
+          },
+          {
+           "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          },
+          {
+           "S": "pub-0007"
+          },
+          {
+           "NULL": true
+          },
+          {
+           "N": "7"
+          }
+         ]
+        }
+       ]
+      },
+      "partition_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#INTENT#96a86c7f5a1eae32bf3c109b77908c0cd10377f470a1e62c9ae618fa324a8779"
+      },
+      "record_key": {
+       "S": "UNIT#db.t06"
+      },
+      "table_kind": {
+       "S": "current"
+      },
+      "unit_key": {
+       "S": "db.t06"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Item": {
+      "merge_count": {
+       "N": "1"
+      },
+      "objects": {
+       "L": [
+        {
+         "L": [
+          {
+           "S": "manifest"
+          },
+          {
+           "S": "s3://authority-fixture/db.t07"
+          },
+          {
+           "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          },
+          {
+           "S": "pub-0008"
+          },
+          {
+           "NULL": true
+          },
+          {
+           "N": "8"
+          }
+         ]
+        }
+       ]
+      },
+      "partition_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#INTENT#96a86c7f5a1eae32bf3c109b77908c0cd10377f470a1e62c9ae618fa324a8779"
+      },
+      "record_key": {
+       "S": "UNIT#db.t07"
+      },
+      "table_kind": {
+       "S": "current"
+      },
+      "unit_key": {
+       "S": "db.t07"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Item": {
+      "merge_count": {
+       "N": "1"
+      },
+      "objects": {
+       "L": [
+        {
+         "L": [
+          {
+           "S": "manifest"
+          },
+          {
+           "S": "s3://authority-fixture/db.t08"
+          },
+          {
+           "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          },
+          {
+           "S": "pub-0009"
+          },
+          {
+           "NULL": true
+          },
+          {
+           "N": "9"
+          }
+         ]
+        }
+       ]
+      },
+      "partition_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#INTENT#96a86c7f5a1eae32bf3c109b77908c0cd10377f470a1e62c9ae618fa324a8779"
+      },
+      "record_key": {
+       "S": "UNIT#db.t08"
+      },
+      "table_kind": {
+       "S": "current"
+      },
+      "unit_key": {
+       "S": "db.t08"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Item": {
+      "merge_count": {
+       "N": "1"
+      },
+      "objects": {
+       "L": [
+        {
+         "L": [
+          {
+           "S": "manifest"
+          },
+          {
+           "S": "s3://authority-fixture/db.t09"
+          },
+          {
+           "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          },
+          {
+           "S": "pub-0010"
+          },
+          {
+           "NULL": true
+          },
+          {
+           "N": "10"
+          }
+         ]
+        }
+       ]
+      },
+      "partition_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#INTENT#96a86c7f5a1eae32bf3c109b77908c0cd10377f470a1e62c9ae618fa324a8779"
+      },
+      "record_key": {
+       "S": "UNIT#db.t09"
+      },
+      "table_kind": {
+       "S": "current"
+      },
+      "unit_key": {
+       "S": "db.t09"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Item": {
+      "merge_count": {
+       "N": "1"
+      },
+      "objects": {
+       "L": [
+        {
+         "L": [
+          {
+           "S": "manifest"
+          },
+          {
+           "S": "s3://authority-fixture/db.t10"
+          },
+          {
+           "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          },
+          {
+           "S": "pub-0011"
+          },
+          {
+           "NULL": true
+          },
+          {
+           "N": "11"
+          }
+         ]
+        }
+       ]
+      },
+      "partition_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#INTENT#96a86c7f5a1eae32bf3c109b77908c0cd10377f470a1e62c9ae618fa324a8779"
+      },
+      "record_key": {
+       "S": "UNIT#db.t10"
+      },
+      "table_kind": {
+       "S": "current"
+      },
+      "unit_key": {
+       "S": "db.t10"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Item": {
+      "merge_count": {
+       "N": "1"
+      },
+      "objects": {
+       "L": [
+        {
+         "L": [
+          {
+           "S": "manifest"
+          },
+          {
+           "S": "s3://authority-fixture/db.t11"
+          },
+          {
+           "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          },
+          {
+           "S": "pub-0012"
+          },
+          {
+           "NULL": true
+          },
+          {
+           "N": "12"
+          }
+         ]
+        }
+       ]
+      },
+      "partition_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#INTENT#96a86c7f5a1eae32bf3c109b77908c0cd10377f470a1e62c9ae618fa324a8779"
+      },
+      "record_key": {
+       "S": "UNIT#db.t11"
+      },
+      "table_kind": {
+       "S": "current"
+      },
+      "unit_key": {
+       "S": "db.t11"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Item": {
+      "merge_count": {
+       "N": "1"
+      },
+      "objects": {
+       "L": [
+        {
+         "L": [
+          {
+           "S": "manifest"
+          },
+          {
+           "S": "s3://authority-fixture/db.t12"
+          },
+          {
+           "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          },
+          {
+           "S": "pub-0013"
+          },
+          {
+           "NULL": true
+          },
+          {
+           "N": "13"
+          }
+         ]
+        }
+       ]
+      },
+      "partition_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#INTENT#96a86c7f5a1eae32bf3c109b77908c0cd10377f470a1e62c9ae618fa324a8779"
+      },
+      "record_key": {
+       "S": "UNIT#db.t12"
+      },
+      "table_kind": {
+       "S": "current"
+      },
+      "unit_key": {
+       "S": "db.t12"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Item": {
+      "merge_count": {
+       "N": "1"
+      },
+      "objects": {
+       "L": [
+        {
+         "L": [
+          {
+           "S": "manifest"
+          },
+          {
+           "S": "s3://authority-fixture/db.t13"
+          },
+          {
+           "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          },
+          {
+           "S": "pub-0014"
+          },
+          {
+           "NULL": true
+          },
+          {
+           "N": "14"
+          }
+         ]
+        }
+       ]
+      },
+      "partition_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#INTENT#96a86c7f5a1eae32bf3c109b77908c0cd10377f470a1e62c9ae618fa324a8779"
+      },
+      "record_key": {
+       "S": "UNIT#db.t13"
+      },
+      "table_kind": {
+       "S": "current"
+      },
+      "unit_key": {
+       "S": "db.t13"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Item": {
+      "merge_count": {
+       "N": "1"
+      },
+      "objects": {
+       "L": [
+        {
+         "L": [
+          {
+           "S": "manifest"
+          },
+          {
+           "S": "s3://authority-fixture/db.t14"
+          },
+          {
+           "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          },
+          {
+           "S": "pub-0015"
+          },
+          {
+           "NULL": true
+          },
+          {
+           "N": "15"
+          }
+         ]
+        }
+       ]
+      },
+      "partition_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#INTENT#96a86c7f5a1eae32bf3c109b77908c0cd10377f470a1e62c9ae618fa324a8779"
+      },
+      "record_key": {
+       "S": "UNIT#db.t14"
+      },
+      "table_kind": {
+       "S": "current"
+      },
+      "unit_key": {
+       "S": "db.t14"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key) OR (payload = :expected_payload AND immutable_payload_digest = :expected_digest)",
+     "ExpressionAttributeValues": {
+      ":expected_digest": {
+       "S": "ef01026e98a3f4cde7edc1f49aed0f84a276e457be24ec67d12662f94b7f2b06"
+      },
+      ":expected_payload": {
+       "S": "{\"authority\":{\"kind\":\"write_plan_unit\",\"observed_at\":\"2026-09-19T12:34:56.789012+00:00\",\"opaque_digest\":\"a023f628d7b9803eb261525b41242f4afca70a84c695b2dac9690596eedb5636\"},\"causation_event_id\":\"720deceb-fc7f-52d8-809c-171366bb5fb0\",\"clock_started_at\":\"2026-09-19T12:34:56.789012+00:00\",\"evaluation_binding\":{\"measurement_refs\":[{\"measurement_ref\":\"stage1_unit_settlement_latency\",\"measurement_version\":\"1\"}],\"mode\":\"observation_only\"},\"event_id\":\"130c2481-219f-5ac8-8055-a6031d14f4c3\",\"execution_id\":\"ca96d44b-347c-5a3c-89d1-e4ff7c4fc64e\",\"flow_id\":\"84a63bdf-a5ce-5951-b5db-f1d77f21bffd\",\"occurred_at\":\"2026-09-19T12:34:56.789012+00:00\",\"optional_child_flow_ids\":[],\"outcome\":null,\"parent_flow_id\":\"acaa4ea4-b442-5024-a434-95febac5560a\",\"predecessor_event_id\":\"720deceb-fc7f-52d8-809c-171366bb5fb0\",\"predecessor_execution_id\":null,\"progress\":null,\"reason_code\":\"statement_retries_exhausted\",\"registry_version\":\"1\",\"required_child_flow_ids\":[],\"schema_version\":\"1\",\"stage\":\"projection_unit_disposition\",\"state\":\"retrying\",\"surface\":\"semantic_projection_unit\",\"transition_sequence\":2}"
+      }
+     },
+     "Item": {
+      "authority_kind": {
+       "S": "lifecycle_event"
+      },
+      "authority_time": {
+       "S": "00001789821296789012"
+      },
+      "causation_event_id": {
+       "S": "720deceb-fc7f-52d8-809c-171366bb5fb0"
+      },
+      "consecutive_failed_delivery_attempts": {
+       "N": "0"
+      },
+      "event_id": {
+       "S": "130c2481-219f-5ac8-8055-a6031d14f4c3"
+      },
+      "execution_id": {
+       "S": "ca96d44b-347c-5a3c-89d1-e4ff7c4fc64e"
+      },
+      "flow_id": {
+       "S": "84a63bdf-a5ce-5951-b5db-f1d77f21bffd"
+      },
+      "immutable_payload_digest": {
+       "S": "ef01026e98a3f4cde7edc1f49aed0f84a276e457be24ec67d12662f94b7f2b06"
+      },
+      "internal_execution_id": {
+       "S": "c936a80ee43b08fd57c58a1c4d1667e889b2020dfe2a982206da7df4d4d29bb3"
+      },
+      "internal_key": {
+       "L": [
+        {
+         "S": "a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b"
+        },
+        {
+         "S": "db.alpha"
+        }
+       ]
+      },
+      "lifecycle_state": {
+       "S": "retrying"
+      },
+      "outbox_order": {
+       "S": "00001789821296789012#854406d122423714fc575341d8b14eb0c9e9e9a497a7567289281e379353da5d"
+      },
+      "outbox_state": {
+       "S": "pending"
+      },
+      "outbox_status": {
+       "S": "pending"
+      },
+      "owner_generation": {
+       "N": "0"
+      },
+      "parent_flow_id": {
+       "S": "acaa4ea4-b442-5024-a434-95febac5560a"
+      },
+      "partition_key": {
+       "S": "STATUS_FLOW#84a63bdf-a5ce-5951-b5db-f1d77f21bffd"
+      },
+      "payload": {
+       "S": "{\"authority\":{\"kind\":\"write_plan_unit\",\"observed_at\":\"2026-09-19T12:34:56.789012+00:00\",\"opaque_digest\":\"a023f628d7b9803eb261525b41242f4afca70a84c695b2dac9690596eedb5636\"},\"causation_event_id\":\"720deceb-fc7f-52d8-809c-171366bb5fb0\",\"clock_started_at\":\"2026-09-19T12:34:56.789012+00:00\",\"evaluation_binding\":{\"measurement_refs\":[{\"measurement_ref\":\"stage1_unit_settlement_latency\",\"measurement_version\":\"1\"}],\"mode\":\"observation_only\"},\"event_id\":\"130c2481-219f-5ac8-8055-a6031d14f4c3\",\"execution_id\":\"ca96d44b-347c-5a3c-89d1-e4ff7c4fc64e\",\"flow_id\":\"84a63bdf-a5ce-5951-b5db-f1d77f21bffd\",\"occurred_at\":\"2026-09-19T12:34:56.789012+00:00\",\"optional_child_flow_ids\":[],\"outcome\":null,\"parent_flow_id\":\"acaa4ea4-b442-5024-a434-95febac5560a\",\"predecessor_event_id\":\"720deceb-fc7f-52d8-809c-171366bb5fb0\",\"predecessor_execution_id\":null,\"progress\":null,\"reason_code\":\"statement_retries_exhausted\",\"registry_version\":\"1\",\"required_child_flow_ids\":[],\"schema_version\":\"1\",\"stage\":\"projection_unit_disposition\",\"state\":\"retrying\",\"surface\":\"semantic_projection_unit\",\"transition_sequence\":2}"
+      },
+      "plan_digest": {
+       "S": "a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b"
+      },
+      "predecessor_event_id": {
+       "S": "720deceb-fc7f-52d8-809c-171366bb5fb0"
+      },
+      "record_key": {
+       "S": "EVENT#a023f628d7b9803eb261525b41242f4afca70a84c695b2dac9690596eedb5636"
+      },
+      "surface": {
+       "S": "semantic_projection_unit"
+      },
+      "transition_id": {
+       "S": "semantic_unit_failed"
+      },
+      "transition_sequence": {
+       "N": "2"
+      },
+      "typed_reason": {
+       "S": "statement_retries_exhausted"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "head_contract_version = :prior_head_contract_version AND latest_transition_sequence = :prior_latest_transition_sequence AND surface = :prior_surface AND flow_id = :prior_flow_id AND current_execution_id = :prior_current_execution_id AND current_internal_execution_id = :prior_current_internal_execution_id AND latest_event_id = :prior_latest_event_id AND latest_authority_digest = :prior_latest_authority_digest AND latest_state = :prior_latest_state AND attribute_not_exists(predecessor_execution_id) AND parent_flow_id = :prior_parent_flow_id AND causation_event_id = :prior_causation_event_id",
+     "ExpressionAttributeValues": {
+      ":prior_causation_event_id": {
+       "S": "b9030100-3047-5280-8ef1-190890aafe8e"
+      },
+      ":prior_current_execution_id": {
+       "S": "ca96d44b-347c-5a3c-89d1-e4ff7c4fc64e"
+      },
+      ":prior_current_internal_execution_id": {
+       "S": "c936a80ee43b08fd57c58a1c4d1667e889b2020dfe2a982206da7df4d4d29bb3"
+      },
+      ":prior_flow_id": {
+       "S": "84a63bdf-a5ce-5951-b5db-f1d77f21bffd"
+      },
+      ":prior_head_contract_version": {
+       "N": "1"
+      },
+      ":prior_latest_authority_digest": {
+       "S": "54e936f8ca9166193ea9714cb0d5233097ff89c104457938b4087299e2743281"
+      },
+      ":prior_latest_event_id": {
+       "S": "720deceb-fc7f-52d8-809c-171366bb5fb0"
+      },
+      ":prior_latest_state": {
+       "S": "running"
+      },
+      ":prior_latest_transition_sequence": {
+       "N": "1"
+      },
+      ":prior_parent_flow_id": {
+       "S": "acaa4ea4-b442-5024-a434-95febac5560a"
+      },
+      ":prior_surface": {
+       "S": "semantic_projection_unit"
+      }
+     },
+     "Item": {
+      "causation_event_id": {
+       "S": "b9030100-3047-5280-8ef1-190890aafe8e"
+      },
+      "current_execution_id": {
+       "S": "ca96d44b-347c-5a3c-89d1-e4ff7c4fc64e"
+      },
+      "current_internal_execution_id": {
+       "S": "c936a80ee43b08fd57c58a1c4d1667e889b2020dfe2a982206da7df4d4d29bb3"
+      },
+      "flow_id": {
+       "S": "84a63bdf-a5ce-5951-b5db-f1d77f21bffd"
+      },
+      "head_contract_version": {
+       "N": "1"
+      },
+      "latest_authority_digest": {
+       "S": "a023f628d7b9803eb261525b41242f4afca70a84c695b2dac9690596eedb5636"
+      },
+      "latest_event_id": {
+       "S": "130c2481-219f-5ac8-8055-a6031d14f4c3"
+      },
+      "latest_state": {
+       "S": "retrying"
+      },
+      "latest_transition_sequence": {
+       "N": "2"
+      },
+      "parent_flow_id": {
+       "S": "acaa4ea4-b442-5024-a434-95febac5560a"
+      },
+      "partition_key": {
+       "S": "STATUS_FLOW#84a63bdf-a5ce-5951-b5db-f1d77f21bffd"
+      },
+      "record_key": {
+       "S": "HEAD"
+      },
+      "surface": {
+       "S": "semantic_projection_unit"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Update": {
+     "ConditionExpression": "#x0 = :x0 AND #x1 = :x1 AND #x2 = :x2 AND #x3 = :x3 AND #x4 = :x4 AND #x5 = :x5 AND #x6 = :x6 AND #x7 = :x7 AND #x8 = :x8 AND #x9 = :x9 AND #x10 = :x10 AND #x11 = :x11 AND #x12 = :x12 AND #x13 = :x13 AND #x14 = :x14 AND #x15 = :x15 AND #x16 = :x16 AND #x17 = :x17 AND #x18 = :x18 AND #x19 = :x19 AND #x20 = :x20",
+     "ExpressionAttributeNames": {
+      "#x0": "athena_usage_state",
+      "#x1": "attempt_id",
+      "#x10": "query_count",
+      "#x11": "query_execution_id",
+      "#x12": "reservation_identity",
+      "#x13": "sanitized_start_evidence",
+      "#x14": "scanned_bytes",
+      "#x15": "start_envelope",
+      "#x16": "state",
+      "#x17": "statement_kind",
+      "#x18": "submitted_at",
+      "#x19": "terminal_at",
+      "#x2": "client_request_token",
+      "#x20": "writer_execution_id",
+      "#x3": "engine_ms",
+      "#x4": "envelope_digest",
+      "#x5": "fencing_token",
+      "#x6": "lease_holder",
+      "#x7": "ordinal",
+      "#x8": "physical_table_id",
+      "#x9": "plan_unit_owner_ref"
+     },
+     "ExpressionAttributeValues": {
+      ":authority_digest": {
+       "S": "6e7855b7e5d780dd5ba941cca7bf86bc1d03bbcf44ce18a731e1338eabe4c177"
+      },
+      ":category": {
+       "S": "unavailable"
+      },
+      ":disposition": {
+       "S": "exhausted_or_unavailable"
+      },
+      ":usage_state": {
+       "S": "settled"
+      },
+      ":x0": {
+       "S": "unsettled"
+      },
+      ":x1": {
+       "S": "0101010101010101010101010101010101010101010101010101010101010101"
+      },
+      ":x10": {
+       "N": "1"
+      },
+      ":x11": {
+       "S": "athena-query-fixture-0001"
+      },
+      ":x12": {
+       "S": "reservation-slot-fixture-0001"
+      },
+      ":x13": {
+       "M": {
+        "provider_error_class": {
+         "S": "none"
+        },
+        "provider_status_code": {
+         "N": "200"
+        }
+       }
+      },
+      ":x14": {
+       "N": "1024"
+      },
+      ":x15": {
+       "S": "{\"WorkGroup\":\"fixture-workgroup\"}"
+      },
+      ":x16": {
+       "S": "SUCCEEDED"
+      },
+      ":x17": {
+       "S": "merge"
+      },
+      ":x18": {
+       "S": "00001789821296789012"
+      },
+      ":x19": {
+       "S": "00001789821296789012"
+      },
+      ":x2": {
+       "S": "0101010101010101010101010101010101010101010101010101010101010101"
+      },
+      ":x20": {
+       "S": "c936a80ee43b08fd57c58a1c4d1667e889b2020dfe2a982206da7df4d4d29bb3"
+      },
+      ":x3": {
+       "N": "250"
+      },
+      ":x4": {
+       "S": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      ":x5": {
+       "N": "7"
+      },
+      ":x6": {
+       "S": "0157e0e5ca3874d40e7b6ba709c469a607fd0164f285bf7994465fa76cede722"
+      },
+      ":x7": {
+       "N": "1"
+      },
+      ":x8": {
+       "S": "db.alpha"
+      },
+      ":x9": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+      }
+     },
+     "Key": {
+      "partition_key": {
+       "S": "TABLE_ATTEMPT#db.alpha"
+      },
+      "record_key": {
+       "S": "ATTEMPT#0101010101010101010101010101010101010101010101010101010101010101"
+      }
+     },
+     "TableName": "publications-fixture",
+     "UpdateExpression": "SET athena_usage_state = :usage_state, owner_disposition = :disposition, usage_category = :category, usage_authority_digest = :authority_digest"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Item": {
+      "athena_usage_state": {
+       "S": "settled"
+      },
+      "authority_kind": {
+       "S": "usage_contribution"
+      },
+      "consecutive_failed_delivery_attempts": {
+       "N": "0"
+      },
+      "immutable_payload_digest": {
+       "S": "6e7855b7e5d780dd5ba941cca7bf86bc1d03bbcf44ce18a731e1338eabe4c177"
+      },
+      "is_delta": {
+       "BOOL": false
+      },
+      "outbox_order": {
+       "S": "00001789821296789012#01f068868a1ecd502b77cb5fb067ff34cae5b249b0a358d432b158c18878c072"
+      },
+      "outbox_state": {
+       "S": "pending"
+      },
+      "outbox_status": {
+       "S": "pending"
+      },
+      "partition_key": {
+       "S": "TABLE_ATTEMPT#db.alpha"
+      },
+      "payload": {
+       "S": "{\"contribution_id\":\"6b087717-3dcb-5c9f-b6ae-441f91e5e967\",\"evaluation_binding\":{\"measurement_refs\":[{\"measurement_ref\":\"stage1_unit_settlement_latency\",\"measurement_version\":\"1\"}],\"mode\":\"observation_only\"},\"execution_id\":\"a7dd4023-1948-5305-a5a6-51bd54c0f4bb\",\"flow_id\":\"10b8fe15-0aad-5add-b259-5da4c54d3028\",\"observed_at\":\"2026-09-19T12:34:56.789012+00:00\",\"reconciles_disposition_id\":null,\"registry_version\":\"1\",\"schema_version\":\"1\",\"usage\":{\"unavailable\":{\"athena\":{\"engine_ms\":250,\"query_count\":1,\"scanned_bytes\":1024}}}}"
+      },
+      "record_key": {
+       "S": "USAGE#0101010101010101010101010101010101010101010101010101010101010101"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Update": {
+     "ConditionExpression": "#x0 = :x0 AND #x1 = :x1 AND #x2 = :x2 AND #x3 = :x3 AND #x4 = :x4 AND #x5 = :x5 AND #x6 = :x6 AND #x7 = :x7 AND #x8 = :x8 AND #x9 = :x9 AND #x10 = :x10 AND #x11 = :x11 AND #x12 = :x12 AND #x13 = :x13 AND #x14 = :x14 AND #x15 = :x15 AND #x16 = :x16 AND #x17 = :x17 AND #x18 = :x18 AND #x19 = :x19 AND #x20 = :x20",
+     "ExpressionAttributeNames": {
+      "#x0": "athena_usage_state",
+      "#x1": "attempt_id",
+      "#x10": "query_count",
+      "#x11": "query_execution_id",
+      "#x12": "reservation_identity",
+      "#x13": "sanitized_start_evidence",
+      "#x14": "scanned_bytes",
+      "#x15": "start_envelope",
+      "#x16": "state",
+      "#x17": "statement_kind",
+      "#x18": "submitted_at",
+      "#x19": "terminal_at",
+      "#x2": "client_request_token",
+      "#x20": "writer_execution_id",
+      "#x3": "engine_ms",
+      "#x4": "envelope_digest",
+      "#x5": "fencing_token",
+      "#x6": "lease_holder",
+      "#x7": "ordinal",
+      "#x8": "physical_table_id",
+      "#x9": "plan_unit_owner_ref"
+     },
+     "ExpressionAttributeValues": {
+      ":authority_digest": {
+       "S": "042b9fb9a2621466906669de5db23c7b435c7361af5368862bde7eb3ea508c61"
+      },
+      ":category": {
+       "S": "unavailable"
+      },
+      ":disposition": {
+       "S": "exhausted_or_unavailable"
+      },
+      ":usage_state": {
+       "S": "settled"
+      },
+      ":x0": {
+       "S": "unsettled"
+      },
+      ":x1": {
+       "S": "0202020202020202020202020202020202020202020202020202020202020202"
+      },
+      ":x10": {
+       "N": "1"
+      },
+      ":x11": {
+       "S": "athena-query-fixture-0001"
+      },
+      ":x12": {
+       "S": "reservation-slot-fixture-0001"
+      },
+      ":x13": {
+       "M": {
+        "provider_error_class": {
+         "S": "none"
+        },
+        "provider_status_code": {
+         "N": "200"
+        }
+       }
+      },
+      ":x14": {
+       "N": "1024"
+      },
+      ":x15": {
+       "S": "{\"WorkGroup\":\"fixture-workgroup\"}"
+      },
+      ":x16": {
+       "S": "SUCCEEDED"
+      },
+      ":x17": {
+       "S": "merge"
+      },
+      ":x18": {
+       "S": "00001789821296789012"
+      },
+      ":x19": {
+       "S": "00001789821296789012"
+      },
+      ":x2": {
+       "S": "0202020202020202020202020202020202020202020202020202020202020202"
+      },
+      ":x20": {
+       "S": "c936a80ee43b08fd57c58a1c4d1667e889b2020dfe2a982206da7df4d4d29bb3"
+      },
+      ":x3": {
+       "N": "250"
+      },
+      ":x4": {
+       "S": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      ":x5": {
+       "N": "7"
+      },
+      ":x6": {
+       "S": "0157e0e5ca3874d40e7b6ba709c469a607fd0164f285bf7994465fa76cede722"
+      },
+      ":x7": {
+       "N": "1"
+      },
+      ":x8": {
+       "S": "db.alpha"
+      },
+      ":x9": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+      }
+     },
+     "Key": {
+      "partition_key": {
+       "S": "TABLE_ATTEMPT#db.alpha"
+      },
+      "record_key": {
+       "S": "ATTEMPT#0202020202020202020202020202020202020202020202020202020202020202"
+      }
+     },
+     "TableName": "publications-fixture",
+     "UpdateExpression": "SET athena_usage_state = :usage_state, owner_disposition = :disposition, usage_category = :category, usage_authority_digest = :authority_digest"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Item": {
+      "athena_usage_state": {
+       "S": "settled"
+      },
+      "authority_kind": {
+       "S": "usage_contribution"
+      },
+      "consecutive_failed_delivery_attempts": {
+       "N": "0"
+      },
+      "immutable_payload_digest": {
+       "S": "042b9fb9a2621466906669de5db23c7b435c7361af5368862bde7eb3ea508c61"
+      },
+      "is_delta": {
+       "BOOL": false
+      },
+      "outbox_order": {
+       "S": "00001789821296789012#a817208082d34d697e7618d35d6bb9876413475d57a6ba3290a257bd1989085a"
+      },
+      "outbox_state": {
+       "S": "pending"
+      },
+      "outbox_status": {
+       "S": "pending"
+      },
+      "partition_key": {
+       "S": "TABLE_ATTEMPT#db.alpha"
+      },
+      "payload": {
+       "S": "{\"contribution_id\":\"1795549f-b1bc-5ee5-bcc6-ff9048bf2c69\",\"evaluation_binding\":{\"measurement_refs\":[{\"measurement_ref\":\"stage1_unit_settlement_latency\",\"measurement_version\":\"1\"}],\"mode\":\"observation_only\"},\"execution_id\":\"a7dd4023-1948-5305-a5a6-51bd54c0f4bb\",\"flow_id\":\"10b8fe15-0aad-5add-b259-5da4c54d3028\",\"observed_at\":\"2026-09-19T12:34:56.789012+00:00\",\"reconciles_disposition_id\":null,\"registry_version\":\"1\",\"schema_version\":\"1\",\"usage\":{\"unavailable\":{\"athena\":{\"engine_ms\":250,\"query_count\":1,\"scanned_bytes\":1024}}}}"
+      },
+      "record_key": {
+       "S": "USAGE#0202020202020202020202020202020202020202020202020202020202020202"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Update": {
+     "ConditionExpression": "#x0 = :x0 AND #x1 = :x1 AND #x2 = :x2 AND #x3 = :x3 AND #x4 = :x4 AND #x5 = :x5 AND #x6 = :x6 AND #x7 = :x7 AND #x8 = :x8 AND #x9 = :x9 AND #x10 = :x10 AND #x11 = :x11 AND #x12 = :x12 AND #x13 = :x13 AND #x14 = :x14 AND #x15 = :x15 AND #x16 = :x16 AND #x17 = :x17 AND #x18 = :x18 AND #x19 = :x19 AND #x20 = :x20",
+     "ExpressionAttributeNames": {
+      "#x0": "athena_usage_state",
+      "#x1": "attempt_id",
+      "#x10": "query_count",
+      "#x11": "query_execution_id",
+      "#x12": "reservation_identity",
+      "#x13": "sanitized_start_evidence",
+      "#x14": "scanned_bytes",
+      "#x15": "start_envelope",
+      "#x16": "state",
+      "#x17": "statement_kind",
+      "#x18": "submitted_at",
+      "#x19": "terminal_at",
+      "#x2": "client_request_token",
+      "#x20": "writer_execution_id",
+      "#x3": "engine_ms",
+      "#x4": "envelope_digest",
+      "#x5": "fencing_token",
+      "#x6": "lease_holder",
+      "#x7": "ordinal",
+      "#x8": "physical_table_id",
+      "#x9": "plan_unit_owner_ref"
+     },
+     "ExpressionAttributeValues": {
+      ":authority_digest": {
+       "S": "94562929e48a36b224f2a54de3d1b6dc026a5ea786feb7cf1aa759eeb44e57cb"
+      },
+      ":category": {
+       "S": "unavailable"
+      },
+      ":disposition": {
+       "S": "exhausted_or_unavailable"
+      },
+      ":usage_state": {
+       "S": "settled"
+      },
+      ":x0": {
+       "S": "unsettled"
+      },
+      ":x1": {
+       "S": "0303030303030303030303030303030303030303030303030303030303030303"
+      },
+      ":x10": {
+       "N": "1"
+      },
+      ":x11": {
+       "S": "athena-query-fixture-0001"
+      },
+      ":x12": {
+       "S": "reservation-slot-fixture-0001"
+      },
+      ":x13": {
+       "M": {
+        "provider_error_class": {
+         "S": "none"
+        },
+        "provider_status_code": {
+         "N": "200"
+        }
+       }
+      },
+      ":x14": {
+       "N": "1024"
+      },
+      ":x15": {
+       "S": "{\"WorkGroup\":\"fixture-workgroup\"}"
+      },
+      ":x16": {
+       "S": "SUCCEEDED"
+      },
+      ":x17": {
+       "S": "merge"
+      },
+      ":x18": {
+       "S": "00001789821296789012"
+      },
+      ":x19": {
+       "S": "00001789821296789012"
+      },
+      ":x2": {
+       "S": "0303030303030303030303030303030303030303030303030303030303030303"
+      },
+      ":x20": {
+       "S": "c936a80ee43b08fd57c58a1c4d1667e889b2020dfe2a982206da7df4d4d29bb3"
+      },
+      ":x3": {
+       "N": "250"
+      },
+      ":x4": {
+       "S": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      ":x5": {
+       "N": "7"
+      },
+      ":x6": {
+       "S": "0157e0e5ca3874d40e7b6ba709c469a607fd0164f285bf7994465fa76cede722"
+      },
+      ":x7": {
+       "N": "1"
+      },
+      ":x8": {
+       "S": "db.alpha"
+      },
+      ":x9": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+      }
+     },
+     "Key": {
+      "partition_key": {
+       "S": "TABLE_ATTEMPT#db.alpha"
+      },
+      "record_key": {
+       "S": "ATTEMPT#0303030303030303030303030303030303030303030303030303030303030303"
+      }
+     },
+     "TableName": "publications-fixture",
+     "UpdateExpression": "SET athena_usage_state = :usage_state, owner_disposition = :disposition, usage_category = :category, usage_authority_digest = :authority_digest"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Item": {
+      "athena_usage_state": {
+       "S": "settled"
+      },
+      "authority_kind": {
+       "S": "usage_contribution"
+      },
+      "consecutive_failed_delivery_attempts": {
+       "N": "0"
+      },
+      "immutable_payload_digest": {
+       "S": "94562929e48a36b224f2a54de3d1b6dc026a5ea786feb7cf1aa759eeb44e57cb"
+      },
+      "is_delta": {
+       "BOOL": false
+      },
+      "outbox_order": {
+       "S": "00001789821296789012#abcde4a7917eed507ab4e8d870e24dc25ec67b340971b03069f03c3906db9683"
+      },
+      "outbox_state": {
+       "S": "pending"
+      },
+      "outbox_status": {
+       "S": "pending"
+      },
+      "partition_key": {
+       "S": "TABLE_ATTEMPT#db.alpha"
+      },
+      "payload": {
+       "S": "{\"contribution_id\":\"23dd8998-444d-5c4a-99a1-630195c9fb17\",\"evaluation_binding\":{\"measurement_refs\":[{\"measurement_ref\":\"stage1_unit_settlement_latency\",\"measurement_version\":\"1\"}],\"mode\":\"observation_only\"},\"execution_id\":\"a7dd4023-1948-5305-a5a6-51bd54c0f4bb\",\"flow_id\":\"10b8fe15-0aad-5add-b259-5da4c54d3028\",\"observed_at\":\"2026-09-19T12:34:56.789012+00:00\",\"reconciles_disposition_id\":null,\"registry_version\":\"1\",\"schema_version\":\"1\",\"usage\":{\"unavailable\":{\"athena\":{\"engine_ms\":250,\"query_count\":1,\"scanned_bytes\":1024}}}}"
+      },
+      "record_key": {
+       "S": "USAGE#0303030303030303030303030303030303030303030303030303030303030303"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Update": {
+     "ConditionExpression": "#x0 = :x0 AND #x1 = :x1 AND #x2 = :x2 AND #x3 = :x3 AND #x4 = :x4 AND #x5 = :x5 AND #x6 = :x6 AND #x7 = :x7 AND #x8 = :x8 AND #x9 = :x9 AND #x10 = :x10 AND #x11 = :x11 AND #x12 = :x12 AND #x13 = :x13 AND #x14 = :x14 AND #x15 = :x15 AND #x16 = :x16 AND #x17 = :x17 AND #x18 = :x18 AND #x19 = :x19 AND #x20 = :x20",
+     "ExpressionAttributeNames": {
+      "#x0": "athena_usage_state",
+      "#x1": "attempt_id",
+      "#x10": "query_count",
+      "#x11": "query_execution_id",
+      "#x12": "reservation_identity",
+      "#x13": "sanitized_start_evidence",
+      "#x14": "scanned_bytes",
+      "#x15": "start_envelope",
+      "#x16": "state",
+      "#x17": "statement_kind",
+      "#x18": "submitted_at",
+      "#x19": "terminal_at",
+      "#x2": "client_request_token",
+      "#x20": "writer_execution_id",
+      "#x3": "engine_ms",
+      "#x4": "envelope_digest",
+      "#x5": "fencing_token",
+      "#x6": "lease_holder",
+      "#x7": "ordinal",
+      "#x8": "physical_table_id",
+      "#x9": "plan_unit_owner_ref"
+     },
+     "ExpressionAttributeValues": {
+      ":authority_digest": {
+       "S": "dc4b2843b63c7d4b99cce9f1f9f2de8392e4844c0148378d87add64298f11425"
+      },
+      ":category": {
+       "S": "unavailable"
+      },
+      ":disposition": {
+       "S": "exhausted_or_unavailable"
+      },
+      ":usage_state": {
+       "S": "settled"
+      },
+      ":x0": {
+       "S": "unsettled"
+      },
+      ":x1": {
+       "S": "0404040404040404040404040404040404040404040404040404040404040404"
+      },
+      ":x10": {
+       "N": "1"
+      },
+      ":x11": {
+       "S": "athena-query-fixture-0001"
+      },
+      ":x12": {
+       "S": "reservation-slot-fixture-0001"
+      },
+      ":x13": {
+       "M": {
+        "provider_error_class": {
+         "S": "none"
+        },
+        "provider_status_code": {
+         "N": "200"
+        }
+       }
+      },
+      ":x14": {
+       "N": "1024"
+      },
+      ":x15": {
+       "S": "{\"WorkGroup\":\"fixture-workgroup\"}"
+      },
+      ":x16": {
+       "S": "SUCCEEDED"
+      },
+      ":x17": {
+       "S": "merge"
+      },
+      ":x18": {
+       "S": "00001789821296789012"
+      },
+      ":x19": {
+       "S": "00001789821296789012"
+      },
+      ":x2": {
+       "S": "0404040404040404040404040404040404040404040404040404040404040404"
+      },
+      ":x20": {
+       "S": "c936a80ee43b08fd57c58a1c4d1667e889b2020dfe2a982206da7df4d4d29bb3"
+      },
+      ":x3": {
+       "N": "250"
+      },
+      ":x4": {
+       "S": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      ":x5": {
+       "N": "7"
+      },
+      ":x6": {
+       "S": "0157e0e5ca3874d40e7b6ba709c469a607fd0164f285bf7994465fa76cede722"
+      },
+      ":x7": {
+       "N": "1"
+      },
+      ":x8": {
+       "S": "db.alpha"
+      },
+      ":x9": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+      }
+     },
+     "Key": {
+      "partition_key": {
+       "S": "TABLE_ATTEMPT#db.alpha"
+      },
+      "record_key": {
+       "S": "ATTEMPT#0404040404040404040404040404040404040404040404040404040404040404"
+      }
+     },
+     "TableName": "publications-fixture",
+     "UpdateExpression": "SET athena_usage_state = :usage_state, owner_disposition = :disposition, usage_category = :category, usage_authority_digest = :authority_digest"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Item": {
+      "athena_usage_state": {
+       "S": "settled"
+      },
+      "authority_kind": {
+       "S": "usage_contribution"
+      },
+      "consecutive_failed_delivery_attempts": {
+       "N": "0"
+      },
+      "immutable_payload_digest": {
+       "S": "dc4b2843b63c7d4b99cce9f1f9f2de8392e4844c0148378d87add64298f11425"
+      },
+      "is_delta": {
+       "BOOL": false
+      },
+      "outbox_order": {
+       "S": "00001789821296789012#c3cfe486c552d2519855cedc69c65253118caaeac35b635dabd2f4d1f1a950ef"
+      },
+      "outbox_state": {
+       "S": "pending"
+      },
+      "outbox_status": {
+       "S": "pending"
+      },
+      "partition_key": {
+       "S": "TABLE_ATTEMPT#db.alpha"
+      },
+      "payload": {
+       "S": "{\"contribution_id\":\"2151aa57-5637-52bc-b0bf-fd797e45331e\",\"evaluation_binding\":{\"measurement_refs\":[{\"measurement_ref\":\"stage1_unit_settlement_latency\",\"measurement_version\":\"1\"}],\"mode\":\"observation_only\"},\"execution_id\":\"a7dd4023-1948-5305-a5a6-51bd54c0f4bb\",\"flow_id\":\"10b8fe15-0aad-5add-b259-5da4c54d3028\",\"observed_at\":\"2026-09-19T12:34:56.789012+00:00\",\"reconciles_disposition_id\":null,\"registry_version\":\"1\",\"schema_version\":\"1\",\"usage\":{\"unavailable\":{\"athena\":{\"engine_ms\":250,\"query_count\":1,\"scanned_bytes\":1024}}}}"
+      },
+      "record_key": {
+       "S": "USAGE#0404040404040404040404040404040404040404040404040404040404040404"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Update": {
+     "ConditionExpression": "#x0 = :x0 AND #x1 = :x1 AND #x2 = :x2 AND #x3 = :x3 AND #x4 = :x4 AND #x5 = :x5 AND #x6 = :x6 AND #x7 = :x7 AND #x8 = :x8 AND #x9 = :x9 AND #x10 = :x10 AND #x11 = :x11 AND #x12 = :x12 AND #x13 = :x13 AND #x14 = :x14 AND #x15 = :x15 AND #x16 = :x16 AND #x17 = :x17 AND #x18 = :x18 AND #x19 = :x19 AND #x20 = :x20",
+     "ExpressionAttributeNames": {
+      "#x0": "athena_usage_state",
+      "#x1": "attempt_id",
+      "#x10": "query_count",
+      "#x11": "query_execution_id",
+      "#x12": "reservation_identity",
+      "#x13": "sanitized_start_evidence",
+      "#x14": "scanned_bytes",
+      "#x15": "start_envelope",
+      "#x16": "state",
+      "#x17": "statement_kind",
+      "#x18": "submitted_at",
+      "#x19": "terminal_at",
+      "#x2": "client_request_token",
+      "#x20": "writer_execution_id",
+      "#x3": "engine_ms",
+      "#x4": "envelope_digest",
+      "#x5": "fencing_token",
+      "#x6": "lease_holder",
+      "#x7": "ordinal",
+      "#x8": "physical_table_id",
+      "#x9": "plan_unit_owner_ref"
+     },
+     "ExpressionAttributeValues": {
+      ":authority_digest": {
+       "S": "2681e7d77e4494914d80c1a349050c5107bea7bf4bcf4be2415250c487c84ef7"
+      },
+      ":category": {
+       "S": "unavailable"
+      },
+      ":disposition": {
+       "S": "exhausted_or_unavailable"
+      },
+      ":usage_state": {
+       "S": "settled"
+      },
+      ":x0": {
+       "S": "unsettled"
+      },
+      ":x1": {
+       "S": "0505050505050505050505050505050505050505050505050505050505050505"
+      },
+      ":x10": {
+       "N": "1"
+      },
+      ":x11": {
+       "S": "athena-query-fixture-0001"
+      },
+      ":x12": {
+       "S": "reservation-slot-fixture-0001"
+      },
+      ":x13": {
+       "M": {
+        "provider_error_class": {
+         "S": "none"
+        },
+        "provider_status_code": {
+         "N": "200"
+        }
+       }
+      },
+      ":x14": {
+       "N": "1024"
+      },
+      ":x15": {
+       "S": "{\"WorkGroup\":\"fixture-workgroup\"}"
+      },
+      ":x16": {
+       "S": "SUCCEEDED"
+      },
+      ":x17": {
+       "S": "merge"
+      },
+      ":x18": {
+       "S": "00001789821296789012"
+      },
+      ":x19": {
+       "S": "00001789821296789012"
+      },
+      ":x2": {
+       "S": "0505050505050505050505050505050505050505050505050505050505050505"
+      },
+      ":x20": {
+       "S": "c936a80ee43b08fd57c58a1c4d1667e889b2020dfe2a982206da7df4d4d29bb3"
+      },
+      ":x3": {
+       "N": "250"
+      },
+      ":x4": {
+       "S": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      ":x5": {
+       "N": "7"
+      },
+      ":x6": {
+       "S": "0157e0e5ca3874d40e7b6ba709c469a607fd0164f285bf7994465fa76cede722"
+      },
+      ":x7": {
+       "N": "1"
+      },
+      ":x8": {
+       "S": "db.alpha"
+      },
+      ":x9": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+      }
+     },
+     "Key": {
+      "partition_key": {
+       "S": "TABLE_ATTEMPT#db.alpha"
+      },
+      "record_key": {
+       "S": "ATTEMPT#0505050505050505050505050505050505050505050505050505050505050505"
+      }
+     },
+     "TableName": "publications-fixture",
+     "UpdateExpression": "SET athena_usage_state = :usage_state, owner_disposition = :disposition, usage_category = :category, usage_authority_digest = :authority_digest"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Item": {
+      "athena_usage_state": {
+       "S": "settled"
+      },
+      "authority_kind": {
+       "S": "usage_contribution"
+      },
+      "consecutive_failed_delivery_attempts": {
+       "N": "0"
+      },
+      "immutable_payload_digest": {
+       "S": "2681e7d77e4494914d80c1a349050c5107bea7bf4bcf4be2415250c487c84ef7"
+      },
+      "is_delta": {
+       "BOOL": false
+      },
+      "outbox_order": {
+       "S": "00001789821296789012#7454a0be823fbfd8a417fe86dae98c404a11b238fd12949692a4bd1c539bd077"
+      },
+      "outbox_state": {
+       "S": "pending"
+      },
+      "outbox_status": {
+       "S": "pending"
+      },
+      "partition_key": {
+       "S": "TABLE_ATTEMPT#db.alpha"
+      },
+      "payload": {
+       "S": "{\"contribution_id\":\"0a8f712c-1372-5384-ac9e-dd171e0f0e92\",\"evaluation_binding\":{\"measurement_refs\":[{\"measurement_ref\":\"stage1_unit_settlement_latency\",\"measurement_version\":\"1\"}],\"mode\":\"observation_only\"},\"execution_id\":\"a7dd4023-1948-5305-a5a6-51bd54c0f4bb\",\"flow_id\":\"10b8fe15-0aad-5add-b259-5da4c54d3028\",\"observed_at\":\"2026-09-19T12:34:56.789012+00:00\",\"reconciles_disposition_id\":null,\"registry_version\":\"1\",\"schema_version\":\"1\",\"usage\":{\"unavailable\":{\"athena\":{\"engine_ms\":250,\"query_count\":1,\"scanned_bytes\":1024}}}}"
+      },
+      "record_key": {
+       "S": "USAGE#0505050505050505050505050505050505050505050505050505050505050505"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Update": {
+     "ConditionExpression": "#x0 = :x0 AND #x1 = :x1 AND #x2 = :x2 AND #x3 = :x3 AND #x4 = :x4 AND #x5 = :x5 AND #x6 = :x6 AND #x7 = :x7 AND #x8 = :x8 AND #x9 = :x9 AND #x10 = :x10 AND #x11 = :x11 AND #x12 = :x12 AND #x13 = :x13 AND #x14 = :x14 AND #x15 = :x15 AND #x16 = :x16 AND #x17 = :x17 AND #x18 = :x18 AND #x19 = :x19 AND #x20 = :x20",
+     "ExpressionAttributeNames": {
+      "#x0": "athena_usage_state",
+      "#x1": "attempt_id",
+      "#x10": "query_count",
+      "#x11": "query_execution_id",
+      "#x12": "reservation_identity",
+      "#x13": "sanitized_start_evidence",
+      "#x14": "scanned_bytes",
+      "#x15": "start_envelope",
+      "#x16": "state",
+      "#x17": "statement_kind",
+      "#x18": "submitted_at",
+      "#x19": "terminal_at",
+      "#x2": "client_request_token",
+      "#x20": "writer_execution_id",
+      "#x3": "engine_ms",
+      "#x4": "envelope_digest",
+      "#x5": "fencing_token",
+      "#x6": "lease_holder",
+      "#x7": "ordinal",
+      "#x8": "physical_table_id",
+      "#x9": "plan_unit_owner_ref"
+     },
+     "ExpressionAttributeValues": {
+      ":authority_digest": {
+       "S": "c1408383de9bdbc6e5234133e797976bc22967e6e0eb77dc797ab483a170c53d"
+      },
+      ":category": {
+       "S": "unavailable"
+      },
+      ":disposition": {
+       "S": "exhausted_or_unavailable"
+      },
+      ":usage_state": {
+       "S": "settled"
+      },
+      ":x0": {
+       "S": "unsettled"
+      },
+      ":x1": {
+       "S": "0606060606060606060606060606060606060606060606060606060606060606"
+      },
+      ":x10": {
+       "N": "1"
+      },
+      ":x11": {
+       "S": "athena-query-fixture-0001"
+      },
+      ":x12": {
+       "S": "reservation-slot-fixture-0001"
+      },
+      ":x13": {
+       "M": {
+        "provider_error_class": {
+         "S": "none"
+        },
+        "provider_status_code": {
+         "N": "200"
+        }
+       }
+      },
+      ":x14": {
+       "N": "1024"
+      },
+      ":x15": {
+       "S": "{\"WorkGroup\":\"fixture-workgroup\"}"
+      },
+      ":x16": {
+       "S": "SUCCEEDED"
+      },
+      ":x17": {
+       "S": "merge"
+      },
+      ":x18": {
+       "S": "00001789821296789012"
+      },
+      ":x19": {
+       "S": "00001789821296789012"
+      },
+      ":x2": {
+       "S": "0606060606060606060606060606060606060606060606060606060606060606"
+      },
+      ":x20": {
+       "S": "c936a80ee43b08fd57c58a1c4d1667e889b2020dfe2a982206da7df4d4d29bb3"
+      },
+      ":x3": {
+       "N": "250"
+      },
+      ":x4": {
+       "S": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      ":x5": {
+       "N": "7"
+      },
+      ":x6": {
+       "S": "0157e0e5ca3874d40e7b6ba709c469a607fd0164f285bf7994465fa76cede722"
+      },
+      ":x7": {
+       "N": "1"
+      },
+      ":x8": {
+       "S": "db.alpha"
+      },
+      ":x9": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+      }
+     },
+     "Key": {
+      "partition_key": {
+       "S": "TABLE_ATTEMPT#db.alpha"
+      },
+      "record_key": {
+       "S": "ATTEMPT#0606060606060606060606060606060606060606060606060606060606060606"
+      }
+     },
+     "TableName": "publications-fixture",
+     "UpdateExpression": "SET athena_usage_state = :usage_state, owner_disposition = :disposition, usage_category = :category, usage_authority_digest = :authority_digest"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Item": {
+      "athena_usage_state": {
+       "S": "settled"
+      },
+      "authority_kind": {
+       "S": "usage_contribution"
+      },
+      "consecutive_failed_delivery_attempts": {
+       "N": "0"
+      },
+      "immutable_payload_digest": {
+       "S": "c1408383de9bdbc6e5234133e797976bc22967e6e0eb77dc797ab483a170c53d"
+      },
+      "is_delta": {
+       "BOOL": false
+      },
+      "outbox_order": {
+       "S": "00001789821296789012#661c3ebf11404b066dc2c72a00f036c9501fbf58654e1715c5aa49d00aea9949"
+      },
+      "outbox_state": {
+       "S": "pending"
+      },
+      "outbox_status": {
+       "S": "pending"
+      },
+      "partition_key": {
+       "S": "TABLE_ATTEMPT#db.alpha"
+      },
+      "payload": {
+       "S": "{\"contribution_id\":\"d7c6b86e-a490-57e4-8416-2d662f39a6fa\",\"evaluation_binding\":{\"measurement_refs\":[{\"measurement_ref\":\"stage1_unit_settlement_latency\",\"measurement_version\":\"1\"}],\"mode\":\"observation_only\"},\"execution_id\":\"a7dd4023-1948-5305-a5a6-51bd54c0f4bb\",\"flow_id\":\"10b8fe15-0aad-5add-b259-5da4c54d3028\",\"observed_at\":\"2026-09-19T12:34:56.789012+00:00\",\"reconciles_disposition_id\":null,\"registry_version\":\"1\",\"schema_version\":\"1\",\"usage\":{\"unavailable\":{\"athena\":{\"engine_ms\":250,\"query_count\":1,\"scanned_bytes\":1024}}}}"
+      },
+      "record_key": {
+       "S": "USAGE#0606060606060606060606060606060606060606060606060606060606060606"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Update": {
+     "ConditionExpression": "#x0 = :x0 AND #x1 = :x1 AND #x2 = :x2 AND #x3 = :x3 AND #x4 = :x4 AND #x5 = :x5 AND #x6 = :x6 AND #x7 = :x7 AND #x8 = :x8 AND #x9 = :x9 AND #x10 = :x10 AND #x11 = :x11 AND #x12 = :x12 AND #x13 = :x13 AND #x14 = :x14 AND #x15 = :x15 AND #x16 = :x16 AND #x17 = :x17 AND #x18 = :x18 AND #x19 = :x19 AND #x20 = :x20",
+     "ExpressionAttributeNames": {
+      "#x0": "athena_usage_state",
+      "#x1": "attempt_id",
+      "#x10": "query_count",
+      "#x11": "query_execution_id",
+      "#x12": "reservation_identity",
+      "#x13": "sanitized_start_evidence",
+      "#x14": "scanned_bytes",
+      "#x15": "start_envelope",
+      "#x16": "state",
+      "#x17": "statement_kind",
+      "#x18": "submitted_at",
+      "#x19": "terminal_at",
+      "#x2": "client_request_token",
+      "#x20": "writer_execution_id",
+      "#x3": "engine_ms",
+      "#x4": "envelope_digest",
+      "#x5": "fencing_token",
+      "#x6": "lease_holder",
+      "#x7": "ordinal",
+      "#x8": "physical_table_id",
+      "#x9": "plan_unit_owner_ref"
+     },
+     "ExpressionAttributeValues": {
+      ":authority_digest": {
+       "S": "008aa5bfab5d3cc009ab1bb3d878e5236c7b6c03f73aafee031b83eb6702819b"
+      },
+      ":category": {
+       "S": "unavailable"
+      },
+      ":disposition": {
+       "S": "exhausted_or_unavailable"
+      },
+      ":usage_state": {
+       "S": "settled"
+      },
+      ":x0": {
+       "S": "unsettled"
+      },
+      ":x1": {
+       "S": "0707070707070707070707070707070707070707070707070707070707070707"
+      },
+      ":x10": {
+       "N": "1"
+      },
+      ":x11": {
+       "S": "athena-query-fixture-0001"
+      },
+      ":x12": {
+       "S": "reservation-slot-fixture-0001"
+      },
+      ":x13": {
+       "M": {
+        "provider_error_class": {
+         "S": "none"
+        },
+        "provider_status_code": {
+         "N": "200"
+        }
+       }
+      },
+      ":x14": {
+       "N": "1024"
+      },
+      ":x15": {
+       "S": "{\"WorkGroup\":\"fixture-workgroup\"}"
+      },
+      ":x16": {
+       "S": "SUCCEEDED"
+      },
+      ":x17": {
+       "S": "merge"
+      },
+      ":x18": {
+       "S": "00001789821296789012"
+      },
+      ":x19": {
+       "S": "00001789821296789012"
+      },
+      ":x2": {
+       "S": "0707070707070707070707070707070707070707070707070707070707070707"
+      },
+      ":x20": {
+       "S": "c936a80ee43b08fd57c58a1c4d1667e889b2020dfe2a982206da7df4d4d29bb3"
+      },
+      ":x3": {
+       "N": "250"
+      },
+      ":x4": {
+       "S": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      ":x5": {
+       "N": "7"
+      },
+      ":x6": {
+       "S": "0157e0e5ca3874d40e7b6ba709c469a607fd0164f285bf7994465fa76cede722"
+      },
+      ":x7": {
+       "N": "1"
+      },
+      ":x8": {
+       "S": "db.alpha"
+      },
+      ":x9": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+      }
+     },
+     "Key": {
+      "partition_key": {
+       "S": "TABLE_ATTEMPT#db.alpha"
+      },
+      "record_key": {
+       "S": "ATTEMPT#0707070707070707070707070707070707070707070707070707070707070707"
+      }
+     },
+     "TableName": "publications-fixture",
+     "UpdateExpression": "SET athena_usage_state = :usage_state, owner_disposition = :disposition, usage_category = :category, usage_authority_digest = :authority_digest"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Item": {
+      "athena_usage_state": {
+       "S": "settled"
+      },
+      "authority_kind": {
+       "S": "usage_contribution"
+      },
+      "consecutive_failed_delivery_attempts": {
+       "N": "0"
+      },
+      "immutable_payload_digest": {
+       "S": "008aa5bfab5d3cc009ab1bb3d878e5236c7b6c03f73aafee031b83eb6702819b"
+      },
+      "is_delta": {
+       "BOOL": false
+      },
+      "outbox_order": {
+       "S": "00001789821296789012#20e5832b9b6b894bc911264651f03250eeec076bf6a2ece94f285f302e4187a9"
+      },
+      "outbox_state": {
+       "S": "pending"
+      },
+      "outbox_status": {
+       "S": "pending"
+      },
+      "partition_key": {
+       "S": "TABLE_ATTEMPT#db.alpha"
+      },
+      "payload": {
+       "S": "{\"contribution_id\":\"a8df1a3b-4eac-5a58-a256-cd27b4869cac\",\"evaluation_binding\":{\"measurement_refs\":[{\"measurement_ref\":\"stage1_unit_settlement_latency\",\"measurement_version\":\"1\"}],\"mode\":\"observation_only\"},\"execution_id\":\"a7dd4023-1948-5305-a5a6-51bd54c0f4bb\",\"flow_id\":\"10b8fe15-0aad-5add-b259-5da4c54d3028\",\"observed_at\":\"2026-09-19T12:34:56.789012+00:00\",\"reconciles_disposition_id\":null,\"registry_version\":\"1\",\"schema_version\":\"1\",\"usage\":{\"unavailable\":{\"athena\":{\"engine_ms\":250,\"query_count\":1,\"scanned_bytes\":1024}}}}"
+      },
+      "record_key": {
+       "S": "USAGE#0707070707070707070707070707070707070707070707070707070707070707"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Update": {
+     "ConditionExpression": "#x0 = :x0 AND #x1 = :x1 AND #x2 = :x2 AND #x3 = :x3 AND #x4 = :x4 AND #x5 = :x5 AND #x6 = :x6 AND #x7 = :x7 AND #x8 = :x8 AND #x9 = :x9 AND #x10 = :x10 AND #x11 = :x11 AND #x12 = :x12 AND #x13 = :x13 AND #x14 = :x14 AND #x15 = :x15 AND #x16 = :x16 AND #x17 = :x17 AND #x18 = :x18 AND #x19 = :x19 AND #x20 = :x20",
+     "ExpressionAttributeNames": {
+      "#x0": "athena_usage_state",
+      "#x1": "attempt_id",
+      "#x10": "query_count",
+      "#x11": "query_execution_id",
+      "#x12": "reservation_identity",
+      "#x13": "sanitized_start_evidence",
+      "#x14": "scanned_bytes",
+      "#x15": "start_envelope",
+      "#x16": "state",
+      "#x17": "statement_kind",
+      "#x18": "submitted_at",
+      "#x19": "terminal_at",
+      "#x2": "client_request_token",
+      "#x20": "writer_execution_id",
+      "#x3": "engine_ms",
+      "#x4": "envelope_digest",
+      "#x5": "fencing_token",
+      "#x6": "lease_holder",
+      "#x7": "ordinal",
+      "#x8": "physical_table_id",
+      "#x9": "plan_unit_owner_ref"
+     },
+     "ExpressionAttributeValues": {
+      ":authority_digest": {
+       "S": "40783222c85d88fa70e8f6f9f19438e174aec83e5ae0ab18e87a2bf6ea30a4e2"
+      },
+      ":category": {
+       "S": "unavailable"
+      },
+      ":disposition": {
+       "S": "exhausted_or_unavailable"
+      },
+      ":usage_state": {
+       "S": "settled"
+      },
+      ":x0": {
+       "S": "unsettled"
+      },
+      ":x1": {
+       "S": "0808080808080808080808080808080808080808080808080808080808080808"
+      },
+      ":x10": {
+       "N": "1"
+      },
+      ":x11": {
+       "S": "athena-query-fixture-0001"
+      },
+      ":x12": {
+       "S": "reservation-slot-fixture-0001"
+      },
+      ":x13": {
+       "M": {
+        "provider_error_class": {
+         "S": "none"
+        },
+        "provider_status_code": {
+         "N": "200"
+        }
+       }
+      },
+      ":x14": {
+       "N": "1024"
+      },
+      ":x15": {
+       "S": "{\"WorkGroup\":\"fixture-workgroup\"}"
+      },
+      ":x16": {
+       "S": "SUCCEEDED"
+      },
+      ":x17": {
+       "S": "merge"
+      },
+      ":x18": {
+       "S": "00001789821296789012"
+      },
+      ":x19": {
+       "S": "00001789821296789012"
+      },
+      ":x2": {
+       "S": "0808080808080808080808080808080808080808080808080808080808080808"
+      },
+      ":x20": {
+       "S": "c936a80ee43b08fd57c58a1c4d1667e889b2020dfe2a982206da7df4d4d29bb3"
+      },
+      ":x3": {
+       "N": "250"
+      },
+      ":x4": {
+       "S": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      ":x5": {
+       "N": "7"
+      },
+      ":x6": {
+       "S": "0157e0e5ca3874d40e7b6ba709c469a607fd0164f285bf7994465fa76cede722"
+      },
+      ":x7": {
+       "N": "1"
+      },
+      ":x8": {
+       "S": "db.alpha"
+      },
+      ":x9": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+      }
+     },
+     "Key": {
+      "partition_key": {
+       "S": "TABLE_ATTEMPT#db.alpha"
+      },
+      "record_key": {
+       "S": "ATTEMPT#0808080808080808080808080808080808080808080808080808080808080808"
+      }
+     },
+     "TableName": "publications-fixture",
+     "UpdateExpression": "SET athena_usage_state = :usage_state, owner_disposition = :disposition, usage_category = :category, usage_authority_digest = :authority_digest"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Item": {
+      "athena_usage_state": {
+       "S": "settled"
+      },
+      "authority_kind": {
+       "S": "usage_contribution"
+      },
+      "consecutive_failed_delivery_attempts": {
+       "N": "0"
+      },
+      "immutable_payload_digest": {
+       "S": "40783222c85d88fa70e8f6f9f19438e174aec83e5ae0ab18e87a2bf6ea30a4e2"
+      },
+      "is_delta": {
+       "BOOL": false
+      },
+      "outbox_order": {
+       "S": "00001789821296789012#a7efb489fcca3bd553042bcbc26fd0eec495f9f2fb185e9cbde786ffed0e0b3c"
+      },
+      "outbox_state": {
+       "S": "pending"
+      },
+      "outbox_status": {
+       "S": "pending"
+      },
+      "partition_key": {
+       "S": "TABLE_ATTEMPT#db.alpha"
+      },
+      "payload": {
+       "S": "{\"contribution_id\":\"5afc2240-aa62-50ac-a416-c78532a80b02\",\"evaluation_binding\":{\"measurement_refs\":[{\"measurement_ref\":\"stage1_unit_settlement_latency\",\"measurement_version\":\"1\"}],\"mode\":\"observation_only\"},\"execution_id\":\"a7dd4023-1948-5305-a5a6-51bd54c0f4bb\",\"flow_id\":\"10b8fe15-0aad-5add-b259-5da4c54d3028\",\"observed_at\":\"2026-09-19T12:34:56.789012+00:00\",\"reconciles_disposition_id\":null,\"registry_version\":\"1\",\"schema_version\":\"1\",\"usage\":{\"unavailable\":{\"athena\":{\"engine_ms\":250,\"query_count\":1,\"scanned_bytes\":1024}}}}"
+      },
+      "record_key": {
+       "S": "USAGE#0808080808080808080808080808080808080808080808080808080808080808"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Update": {
+     "ConditionExpression": "#x0 = :x0 AND #x1 = :x1 AND #x2 = :x2 AND #x3 = :x3 AND #x4 = :x4 AND #x5 = :x5 AND #x6 = :x6 AND #x7 = :x7 AND #x8 = :x8 AND #x9 = :x9 AND #x10 = :x10 AND #x11 = :x11 AND #x12 = :x12 AND #x13 = :x13 AND #x14 = :x14 AND #x15 = :x15 AND #x16 = :x16 AND #x17 = :x17 AND #x18 = :x18 AND #x19 = :x19 AND #x20 = :x20",
+     "ExpressionAttributeNames": {
+      "#x0": "athena_usage_state",
+      "#x1": "attempt_id",
+      "#x10": "query_count",
+      "#x11": "query_execution_id",
+      "#x12": "reservation_identity",
+      "#x13": "sanitized_start_evidence",
+      "#x14": "scanned_bytes",
+      "#x15": "start_envelope",
+      "#x16": "state",
+      "#x17": "statement_kind",
+      "#x18": "submitted_at",
+      "#x19": "terminal_at",
+      "#x2": "client_request_token",
+      "#x20": "writer_execution_id",
+      "#x3": "engine_ms",
+      "#x4": "envelope_digest",
+      "#x5": "fencing_token",
+      "#x6": "lease_holder",
+      "#x7": "ordinal",
+      "#x8": "physical_table_id",
+      "#x9": "plan_unit_owner_ref"
+     },
+     "ExpressionAttributeValues": {
+      ":authority_digest": {
+       "S": "d1f4e216391419bbd471ffe4711b94980371da5bb633879b9bab25b492fbfa78"
+      },
+      ":category": {
+       "S": "unavailable"
+      },
+      ":disposition": {
+       "S": "exhausted_or_unavailable"
+      },
+      ":usage_state": {
+       "S": "settled"
+      },
+      ":x0": {
+       "S": "unsettled"
+      },
+      ":x1": {
+       "S": "0909090909090909090909090909090909090909090909090909090909090909"
+      },
+      ":x10": {
+       "N": "1"
+      },
+      ":x11": {
+       "S": "athena-query-fixture-0001"
+      },
+      ":x12": {
+       "S": "reservation-slot-fixture-0001"
+      },
+      ":x13": {
+       "M": {
+        "provider_error_class": {
+         "S": "none"
+        },
+        "provider_status_code": {
+         "N": "200"
+        }
+       }
+      },
+      ":x14": {
+       "N": "1024"
+      },
+      ":x15": {
+       "S": "{\"WorkGroup\":\"fixture-workgroup\"}"
+      },
+      ":x16": {
+       "S": "SUCCEEDED"
+      },
+      ":x17": {
+       "S": "merge"
+      },
+      ":x18": {
+       "S": "00001789821296789012"
+      },
+      ":x19": {
+       "S": "00001789821296789012"
+      },
+      ":x2": {
+       "S": "0909090909090909090909090909090909090909090909090909090909090909"
+      },
+      ":x20": {
+       "S": "c936a80ee43b08fd57c58a1c4d1667e889b2020dfe2a982206da7df4d4d29bb3"
+      },
+      ":x3": {
+       "N": "250"
+      },
+      ":x4": {
+       "S": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      ":x5": {
+       "N": "7"
+      },
+      ":x6": {
+       "S": "0157e0e5ca3874d40e7b6ba709c469a607fd0164f285bf7994465fa76cede722"
+      },
+      ":x7": {
+       "N": "1"
+      },
+      ":x8": {
+       "S": "db.alpha"
+      },
+      ":x9": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+      }
+     },
+     "Key": {
+      "partition_key": {
+       "S": "TABLE_ATTEMPT#db.alpha"
+      },
+      "record_key": {
+       "S": "ATTEMPT#0909090909090909090909090909090909090909090909090909090909090909"
+      }
+     },
+     "TableName": "publications-fixture",
+     "UpdateExpression": "SET athena_usage_state = :usage_state, owner_disposition = :disposition, usage_category = :category, usage_authority_digest = :authority_digest"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Item": {
+      "athena_usage_state": {
+       "S": "settled"
+      },
+      "authority_kind": {
+       "S": "usage_contribution"
+      },
+      "consecutive_failed_delivery_attempts": {
+       "N": "0"
+      },
+      "immutable_payload_digest": {
+       "S": "d1f4e216391419bbd471ffe4711b94980371da5bb633879b9bab25b492fbfa78"
+      },
+      "is_delta": {
+       "BOOL": false
+      },
+      "outbox_order": {
+       "S": "00001789821296789012#97161730b756926e02c4c360fe89358155eeb94b8861e4fcf1e15bd717f97678"
+      },
+      "outbox_state": {
+       "S": "pending"
+      },
+      "outbox_status": {
+       "S": "pending"
+      },
+      "partition_key": {
+       "S": "TABLE_ATTEMPT#db.alpha"
+      },
+      "payload": {
+       "S": "{\"contribution_id\":\"0b18fa0e-9de5-5f02-bf52-5e15f50765b8\",\"evaluation_binding\":{\"measurement_refs\":[{\"measurement_ref\":\"stage1_unit_settlement_latency\",\"measurement_version\":\"1\"}],\"mode\":\"observation_only\"},\"execution_id\":\"a7dd4023-1948-5305-a5a6-51bd54c0f4bb\",\"flow_id\":\"10b8fe15-0aad-5add-b259-5da4c54d3028\",\"observed_at\":\"2026-09-19T12:34:56.789012+00:00\",\"reconciles_disposition_id\":null,\"registry_version\":\"1\",\"schema_version\":\"1\",\"usage\":{\"unavailable\":{\"athena\":{\"engine_ms\":250,\"query_count\":1,\"scanned_bytes\":1024}}}}"
+      },
+      "record_key": {
+       "S": "USAGE#0909090909090909090909090909090909090909090909090909090909090909"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Update": {
+     "ConditionExpression": "#x0 = :x0 AND #x1 = :x1 AND #x2 = :x2 AND #x3 = :x3 AND #x4 = :x4 AND #x5 = :x5 AND #x6 = :x6 AND #x7 = :x7 AND #x8 = :x8 AND #x9 = :x9 AND #x10 = :x10 AND #x11 = :x11 AND #x12 = :x12 AND #x13 = :x13 AND #x14 = :x14 AND #x15 = :x15 AND #x16 = :x16 AND #x17 = :x17 AND #x18 = :x18 AND #x19 = :x19 AND #x20 = :x20",
+     "ExpressionAttributeNames": {
+      "#x0": "athena_usage_state",
+      "#x1": "attempt_id",
+      "#x10": "query_count",
+      "#x11": "query_execution_id",
+      "#x12": "reservation_identity",
+      "#x13": "sanitized_start_evidence",
+      "#x14": "scanned_bytes",
+      "#x15": "start_envelope",
+      "#x16": "state",
+      "#x17": "statement_kind",
+      "#x18": "submitted_at",
+      "#x19": "terminal_at",
+      "#x2": "client_request_token",
+      "#x20": "writer_execution_id",
+      "#x3": "engine_ms",
+      "#x4": "envelope_digest",
+      "#x5": "fencing_token",
+      "#x6": "lease_holder",
+      "#x7": "ordinal",
+      "#x8": "physical_table_id",
+      "#x9": "plan_unit_owner_ref"
+     },
+     "ExpressionAttributeValues": {
+      ":authority_digest": {
+       "S": "a8284a02a4959524e703a6057e2e4c128509b75bc66ee7120b44ecdcb2e092a2"
+      },
+      ":category": {
+       "S": "unavailable"
+      },
+      ":disposition": {
+       "S": "exhausted_or_unavailable"
+      },
+      ":usage_state": {
+       "S": "settled"
+      },
+      ":x0": {
+       "S": "unsettled"
+      },
+      ":x1": {
+       "S": "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"
+      },
+      ":x10": {
+       "N": "1"
+      },
+      ":x11": {
+       "S": "athena-query-fixture-0001"
+      },
+      ":x12": {
+       "S": "reservation-slot-fixture-0001"
+      },
+      ":x13": {
+       "M": {
+        "provider_error_class": {
+         "S": "none"
+        },
+        "provider_status_code": {
+         "N": "200"
+        }
+       }
+      },
+      ":x14": {
+       "N": "1024"
+      },
+      ":x15": {
+       "S": "{\"WorkGroup\":\"fixture-workgroup\"}"
+      },
+      ":x16": {
+       "S": "SUCCEEDED"
+      },
+      ":x17": {
+       "S": "merge"
+      },
+      ":x18": {
+       "S": "00001789821296789012"
+      },
+      ":x19": {
+       "S": "00001789821296789012"
+      },
+      ":x2": {
+       "S": "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"
+      },
+      ":x20": {
+       "S": "c936a80ee43b08fd57c58a1c4d1667e889b2020dfe2a982206da7df4d4d29bb3"
+      },
+      ":x3": {
+       "N": "250"
+      },
+      ":x4": {
+       "S": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      ":x5": {
+       "N": "7"
+      },
+      ":x6": {
+       "S": "0157e0e5ca3874d40e7b6ba709c469a607fd0164f285bf7994465fa76cede722"
+      },
+      ":x7": {
+       "N": "1"
+      },
+      ":x8": {
+       "S": "db.alpha"
+      },
+      ":x9": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+      }
+     },
+     "Key": {
+      "partition_key": {
+       "S": "TABLE_ATTEMPT#db.alpha"
+      },
+      "record_key": {
+       "S": "ATTEMPT#0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"
+      }
+     },
+     "TableName": "publications-fixture",
+     "UpdateExpression": "SET athena_usage_state = :usage_state, owner_disposition = :disposition, usage_category = :category, usage_authority_digest = :authority_digest"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Item": {
+      "athena_usage_state": {
+       "S": "settled"
+      },
+      "authority_kind": {
+       "S": "usage_contribution"
+      },
+      "consecutive_failed_delivery_attempts": {
+       "N": "0"
+      },
+      "immutable_payload_digest": {
+       "S": "a8284a02a4959524e703a6057e2e4c128509b75bc66ee7120b44ecdcb2e092a2"
+      },
+      "is_delta": {
+       "BOOL": false
+      },
+      "outbox_order": {
+       "S": "00001789821296789012#430edcd5e0f29619cc18f1c440dfecad38a307489ff3344c7334e2b91353435e"
+      },
+      "outbox_state": {
+       "S": "pending"
+      },
+      "outbox_status": {
+       "S": "pending"
+      },
+      "partition_key": {
+       "S": "TABLE_ATTEMPT#db.alpha"
+      },
+      "payload": {
+       "S": "{\"contribution_id\":\"95a26957-a4ce-52e0-8080-f15feefe75f6\",\"evaluation_binding\":{\"measurement_refs\":[{\"measurement_ref\":\"stage1_unit_settlement_latency\",\"measurement_version\":\"1\"}],\"mode\":\"observation_only\"},\"execution_id\":\"a7dd4023-1948-5305-a5a6-51bd54c0f4bb\",\"flow_id\":\"10b8fe15-0aad-5add-b259-5da4c54d3028\",\"observed_at\":\"2026-09-19T12:34:56.789012+00:00\",\"reconciles_disposition_id\":null,\"registry_version\":\"1\",\"schema_version\":\"1\",\"usage\":{\"unavailable\":{\"athena\":{\"engine_ms\":250,\"query_count\":1,\"scanned_bytes\":1024}}}}"
+      },
+      "record_key": {
+       "S": "USAGE#0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   }
+  ]
+ },
+ "fixture_version": "v1",
+ "table_name": "publications-fixture",
+ "targets": [
+  {
+   "expected_pre_state_map": {
+    "expires_at": {
+     "S": "2026-09-19T13:00:00+00:00"
+    },
+    "fencing_token": {
+     "N": "7"
+    },
+    "holder": {
+     "S": "0157e0e5ca3874d40e7b6ba709c469a607fd0164f285bf7994465fa76cede722"
+    },
+    "partition_key": {
+     "S": "TABLE#db.alpha"
+    }
+   },
+   "expected_result_map": {
+    "expires_at": {
+     "S": "2026-09-19T13:00:00+00:00"
+    },
+    "fencing_token": {
+     "N": "7"
+    },
+    "holder": {
+     "S": "0157e0e5ca3874d40e7b6ba709c469a607fd0164f285bf7994465fa76cede722"
+    },
+    "partition_key": {
+     "S": "TABLE#db.alpha"
+    }
+   },
+   "pre_state_conservative_bytes": 195,
+   "result_conservative_bytes": 195,
+   "target_upper_bound": 195
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": null,
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 0,
+   "target_upper_bound": 0
+  },
+  {
+   "expected_pre_state_map": {
+    "admitted_count": {
+     "N": "15"
+    },
+    "attested_count": {
+     "N": "0"
+    },
+    "child_outcome_reduction_version": {
+     "N": "2"
+    },
+    "created_at": {
+     "S": "00001789821296789012"
+    },
+    "failed_count": {
+     "N": "0"
+    },
+    "generation": {
+     "N": "0"
+    },
+    "internal_execution_id": {
+     "S": "1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "origin_intent_id": {
+     "S": "abababababababababababababababababababababababababababababababab"
+    },
+    "origin_kind": {
+     "S": "source_delivery"
+    },
+    "origin_member": {
+     "S": "652c43e1add22378c10deeb1e0957edf1817319415a9c371b19024271a45273f"
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "plan_digest": {
+     "S": "a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b"
+    },
+    "record_key": {
+     "S": "META"
+    },
+    "required_child_expectations": {
+     "L": [
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "019f6e7b-19a1-58a9-ac8f-c6c085a52f9e"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "1a0d113d-7608-5ce8-8111-9ed9bd7a883a"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "47636dc4-d919-5e27-a2a6-5c2d4e83d5f7"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "5ca7bff9-12c9-5085-ab74-63eb8b92d026"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "7d068b19-f4e8-53c8-8d80-1c5108383fdd"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "7f719553-1161-51f3-abea-4d6bff3a69b4"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "8c9b8c73-4068-5bd3-b3ea-914a9f93732c"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "a188a689-5127-599d-a8a7-59c79260a06c"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "c6c1301c-83c4-56d2-b5c5-f9a691f41c65"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "d6e3a816-80e9-56b5-9d6d-10009724461c"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "da55b309-c765-5e36-9032-992cf7918631"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "dde6ffee-ccea-5617-ab9f-cbe4bb67872c"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "e5642d4b-8a0c-5310-869a-f0fa1bb1a347"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "e5713846-7050-5854-81f3-b2802ead30b5"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "ea699b3e-9e64-5442-874b-32fc0d0fa5de"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      }
+     ]
+    },
+    "root_plan_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "roster_digest": {
+     "S": "703a11966b4ec9c419b91f863697cfabb95598016d6cc7834e647107fdf0a97c"
+    },
+    "settled_attempt_count": {
+     "N": "0"
+    },
+    "status": {
+     "S": "planned"
+    },
+    "unit_count": {
+     "N": "15"
+    }
+   },
+   "expected_result_map": {
+    "admitted_count": {
+     "N": "15"
+    },
+    "attested_count": {
+     "N": "0"
+    },
+    "child_outcome_reduction_version": {
+     "N": "2"
+    },
+    "created_at": {
+     "S": "00001789821296789012"
+    },
+    "failed_count": {
+     "N": "1"
+    },
+    "generation": {
+     "N": "0"
+    },
+    "internal_execution_id": {
+     "S": "1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "origin_intent_id": {
+     "S": "abababababababababababababababababababababababababababababababab"
+    },
+    "origin_kind": {
+     "S": "source_delivery"
+    },
+    "origin_member": {
+     "S": "652c43e1add22378c10deeb1e0957edf1817319415a9c371b19024271a45273f"
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "plan_digest": {
+     "S": "a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b"
+    },
+    "record_key": {
+     "S": "META"
+    },
+    "required_child_expectations": {
+     "L": [
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "019f6e7b-19a1-58a9-ac8f-c6c085a52f9e"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "1a0d113d-7608-5ce8-8111-9ed9bd7a883a"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "47636dc4-d919-5e27-a2a6-5c2d4e83d5f7"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "5ca7bff9-12c9-5085-ab74-63eb8b92d026"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "7d068b19-f4e8-53c8-8d80-1c5108383fdd"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "7f719553-1161-51f3-abea-4d6bff3a69b4"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "8c9b8c73-4068-5bd3-b3ea-914a9f93732c"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "a188a689-5127-599d-a8a7-59c79260a06c"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "c6c1301c-83c4-56d2-b5c5-f9a691f41c65"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "d6e3a816-80e9-56b5-9d6d-10009724461c"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "da55b309-c765-5e36-9032-992cf7918631"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "dde6ffee-ccea-5617-ab9f-cbe4bb67872c"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "e5642d4b-8a0c-5310-869a-f0fa1bb1a347"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "e5713846-7050-5854-81f3-b2802ead30b5"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "ea699b3e-9e64-5442-874b-32fc0d0fa5de"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      }
+     ]
+    },
+    "root_plan_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "roster_digest": {
+     "S": "703a11966b4ec9c419b91f863697cfabb95598016d6cc7834e647107fdf0a97c"
+    },
+    "settled_attempt_count": {
+     "N": "10"
+    },
+    "settled_attempt_digest": {
+     "S": "d4b235f212c1323c60450ab3b7f4ade2509398f5d30455210a42f0548b7e4a06"
+    },
+    "status": {
+     "S": "superseded"
+    },
+    "terminal_at": {
+     "S": "00001789821296789012"
+    },
+    "unit_count": {
+     "N": "15"
+    }
+   },
+   "pre_state_conservative_bytes": 2629,
+   "result_conservative_bytes": 2774,
+   "target_upper_bound": 2774
+  },
+  {
+   "expected_pre_state_map": {
+    "active_intent_id": {
+     "S": "abababababababababababababababababababababababababababababababab"
+    },
+    "active_plan_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "last_generation": {
+     "N": "0"
+    },
+    "last_plan_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "latest_internal_execution_id": {
+     "S": "1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b"
+    },
+    "record_key": {
+     "S": "SUCCESSOR_OWNER"
+    },
+    "revision": {
+     "N": "2"
+    },
+    "root_plan_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    }
+   },
+   "expected_result_map": {
+    "active_intent_id": {
+     "S": "abababababababababababababababababababababababababababababababab"
+    },
+    "active_plan_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "last_generation": {
+     "N": "0"
+    },
+    "last_plan_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "latest_internal_execution_id": {
+     "S": "1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b"
+    },
+    "record_key": {
+     "S": "SUCCESSOR_OWNER"
+    },
+    "revision": {
+     "N": "3"
+    },
+    "root_plan_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    }
+   },
+   "pre_state_conservative_bytes": 880,
+   "result_conservative_bytes": 880,
+   "target_upper_bound": 880
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "created_at": {
+     "S": "00001789821296789012"
+    },
+    "due_at": {
+     "S": "00001789821296789012"
+    },
+    "intent_id": {
+     "S": "96a86c7f5a1eae32bf3c109b77908c0cd10377f470a1e62c9ae618fa324a8779"
+    },
+    "last_transition_at": {
+     "S": "00001789821296789012"
+    },
+    "origin_kind": {
+     "S": "plan_attempt_budget"
+    },
+    "origin_member": {
+     "S": "69d6ef2ecb6cd703327c3e8fe815b0a2f36a59674b6293354cbf49b879629d01"
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#INTENT#96a86c7f5a1eae32bf3c109b77908c0cd10377f470a1e62c9ae618fa324a8779"
+    },
+    "plan_digest": {
+     "S": "a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b"
+    },
+    "ready_order": {
+     "S": "00001789821296789012#96a86c7f5a1eae32bf3c109b77908c0cd10377f470a1e62c9ae618fa324a8779"
+    },
+    "ready_status": {
+     "S": "ready"
+    },
+    "record_key": {
+     "S": "META"
+    },
+    "retry_count": {
+     "N": "0"
+    },
+    "root_plan_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "roster_digest": {
+     "S": "703a11966b4ec9c419b91f863697cfabb95598016d6cc7834e647107fdf0a97c"
+    },
+    "source_plan_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "state": {
+     "S": "pending"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 1238,
+   "target_upper_bound": 1238
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "merge_count": {
+     "N": "1"
+    },
+    "objects": {
+     "L": [
+      {
+       "L": [
+        {
+         "S": "manifest"
+        },
+        {
+         "S": "s3://authority-fixture/db.t00"
+        },
+        {
+         "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        },
+        {
+         "S": "pub-0001"
+        },
+        {
+         "NULL": true
+        },
+        {
+         "N": "1"
+        }
+       ]
+      }
+     ]
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#INTENT#96a86c7f5a1eae32bf3c109b77908c0cd10377f470a1e62c9ae618fa324a8779"
+    },
+    "record_key": {
+     "S": "UNIT#db.t00"
+    },
+    "table_kind": {
+     "S": "current"
+    },
+    "unit_key": {
+     "S": "db.t00"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 480,
+   "target_upper_bound": 480
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "merge_count": {
+     "N": "1"
+    },
+    "objects": {
+     "L": [
+      {
+       "L": [
+        {
+         "S": "manifest"
+        },
+        {
+         "S": "s3://authority-fixture/db.t01"
+        },
+        {
+         "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        },
+        {
+         "S": "pub-0002"
+        },
+        {
+         "NULL": true
+        },
+        {
+         "N": "2"
+        }
+       ]
+      }
+     ]
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#INTENT#96a86c7f5a1eae32bf3c109b77908c0cd10377f470a1e62c9ae618fa324a8779"
+    },
+    "record_key": {
+     "S": "UNIT#db.t01"
+    },
+    "table_kind": {
+     "S": "current"
+    },
+    "unit_key": {
+     "S": "db.t01"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 480,
+   "target_upper_bound": 480
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "merge_count": {
+     "N": "1"
+    },
+    "objects": {
+     "L": [
+      {
+       "L": [
+        {
+         "S": "manifest"
+        },
+        {
+         "S": "s3://authority-fixture/db.t02"
+        },
+        {
+         "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        },
+        {
+         "S": "pub-0003"
+        },
+        {
+         "NULL": true
+        },
+        {
+         "N": "3"
+        }
+       ]
+      }
+     ]
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#INTENT#96a86c7f5a1eae32bf3c109b77908c0cd10377f470a1e62c9ae618fa324a8779"
+    },
+    "record_key": {
+     "S": "UNIT#db.t02"
+    },
+    "table_kind": {
+     "S": "current"
+    },
+    "unit_key": {
+     "S": "db.t02"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 480,
+   "target_upper_bound": 480
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "merge_count": {
+     "N": "1"
+    },
+    "objects": {
+     "L": [
+      {
+       "L": [
+        {
+         "S": "manifest"
+        },
+        {
+         "S": "s3://authority-fixture/db.t03"
+        },
+        {
+         "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        },
+        {
+         "S": "pub-0004"
+        },
+        {
+         "NULL": true
+        },
+        {
+         "N": "4"
+        }
+       ]
+      }
+     ]
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#INTENT#96a86c7f5a1eae32bf3c109b77908c0cd10377f470a1e62c9ae618fa324a8779"
+    },
+    "record_key": {
+     "S": "UNIT#db.t03"
+    },
+    "table_kind": {
+     "S": "current"
+    },
+    "unit_key": {
+     "S": "db.t03"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 480,
+   "target_upper_bound": 480
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "merge_count": {
+     "N": "1"
+    },
+    "objects": {
+     "L": [
+      {
+       "L": [
+        {
+         "S": "manifest"
+        },
+        {
+         "S": "s3://authority-fixture/db.t04"
+        },
+        {
+         "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        },
+        {
+         "S": "pub-0005"
+        },
+        {
+         "NULL": true
+        },
+        {
+         "N": "5"
+        }
+       ]
+      }
+     ]
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#INTENT#96a86c7f5a1eae32bf3c109b77908c0cd10377f470a1e62c9ae618fa324a8779"
+    },
+    "record_key": {
+     "S": "UNIT#db.t04"
+    },
+    "table_kind": {
+     "S": "current"
+    },
+    "unit_key": {
+     "S": "db.t04"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 480,
+   "target_upper_bound": 480
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "merge_count": {
+     "N": "1"
+    },
+    "objects": {
+     "L": [
+      {
+       "L": [
+        {
+         "S": "manifest"
+        },
+        {
+         "S": "s3://authority-fixture/db.t05"
+        },
+        {
+         "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        },
+        {
+         "S": "pub-0006"
+        },
+        {
+         "NULL": true
+        },
+        {
+         "N": "6"
+        }
+       ]
+      }
+     ]
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#INTENT#96a86c7f5a1eae32bf3c109b77908c0cd10377f470a1e62c9ae618fa324a8779"
+    },
+    "record_key": {
+     "S": "UNIT#db.t05"
+    },
+    "table_kind": {
+     "S": "current"
+    },
+    "unit_key": {
+     "S": "db.t05"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 480,
+   "target_upper_bound": 480
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "merge_count": {
+     "N": "1"
+    },
+    "objects": {
+     "L": [
+      {
+       "L": [
+        {
+         "S": "manifest"
+        },
+        {
+         "S": "s3://authority-fixture/db.t06"
+        },
+        {
+         "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        },
+        {
+         "S": "pub-0007"
+        },
+        {
+         "NULL": true
+        },
+        {
+         "N": "7"
+        }
+       ]
+      }
+     ]
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#INTENT#96a86c7f5a1eae32bf3c109b77908c0cd10377f470a1e62c9ae618fa324a8779"
+    },
+    "record_key": {
+     "S": "UNIT#db.t06"
+    },
+    "table_kind": {
+     "S": "current"
+    },
+    "unit_key": {
+     "S": "db.t06"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 480,
+   "target_upper_bound": 480
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "merge_count": {
+     "N": "1"
+    },
+    "objects": {
+     "L": [
+      {
+       "L": [
+        {
+         "S": "manifest"
+        },
+        {
+         "S": "s3://authority-fixture/db.t07"
+        },
+        {
+         "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        },
+        {
+         "S": "pub-0008"
+        },
+        {
+         "NULL": true
+        },
+        {
+         "N": "8"
+        }
+       ]
+      }
+     ]
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#INTENT#96a86c7f5a1eae32bf3c109b77908c0cd10377f470a1e62c9ae618fa324a8779"
+    },
+    "record_key": {
+     "S": "UNIT#db.t07"
+    },
+    "table_kind": {
+     "S": "current"
+    },
+    "unit_key": {
+     "S": "db.t07"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 480,
+   "target_upper_bound": 480
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "merge_count": {
+     "N": "1"
+    },
+    "objects": {
+     "L": [
+      {
+       "L": [
+        {
+         "S": "manifest"
+        },
+        {
+         "S": "s3://authority-fixture/db.t08"
+        },
+        {
+         "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        },
+        {
+         "S": "pub-0009"
+        },
+        {
+         "NULL": true
+        },
+        {
+         "N": "9"
+        }
+       ]
+      }
+     ]
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#INTENT#96a86c7f5a1eae32bf3c109b77908c0cd10377f470a1e62c9ae618fa324a8779"
+    },
+    "record_key": {
+     "S": "UNIT#db.t08"
+    },
+    "table_kind": {
+     "S": "current"
+    },
+    "unit_key": {
+     "S": "db.t08"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 480,
+   "target_upper_bound": 480
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "merge_count": {
+     "N": "1"
+    },
+    "objects": {
+     "L": [
+      {
+       "L": [
+        {
+         "S": "manifest"
+        },
+        {
+         "S": "s3://authority-fixture/db.t09"
+        },
+        {
+         "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        },
+        {
+         "S": "pub-0010"
+        },
+        {
+         "NULL": true
+        },
+        {
+         "N": "10"
+        }
+       ]
+      }
+     ]
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#INTENT#96a86c7f5a1eae32bf3c109b77908c0cd10377f470a1e62c9ae618fa324a8779"
+    },
+    "record_key": {
+     "S": "UNIT#db.t09"
+    },
+    "table_kind": {
+     "S": "current"
+    },
+    "unit_key": {
+     "S": "db.t09"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 481,
+   "target_upper_bound": 481
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "merge_count": {
+     "N": "1"
+    },
+    "objects": {
+     "L": [
+      {
+       "L": [
+        {
+         "S": "manifest"
+        },
+        {
+         "S": "s3://authority-fixture/db.t10"
+        },
+        {
+         "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        },
+        {
+         "S": "pub-0011"
+        },
+        {
+         "NULL": true
+        },
+        {
+         "N": "11"
+        }
+       ]
+      }
+     ]
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#INTENT#96a86c7f5a1eae32bf3c109b77908c0cd10377f470a1e62c9ae618fa324a8779"
+    },
+    "record_key": {
+     "S": "UNIT#db.t10"
+    },
+    "table_kind": {
+     "S": "current"
+    },
+    "unit_key": {
+     "S": "db.t10"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 481,
+   "target_upper_bound": 481
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "merge_count": {
+     "N": "1"
+    },
+    "objects": {
+     "L": [
+      {
+       "L": [
+        {
+         "S": "manifest"
+        },
+        {
+         "S": "s3://authority-fixture/db.t11"
+        },
+        {
+         "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        },
+        {
+         "S": "pub-0012"
+        },
+        {
+         "NULL": true
+        },
+        {
+         "N": "12"
+        }
+       ]
+      }
+     ]
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#INTENT#96a86c7f5a1eae32bf3c109b77908c0cd10377f470a1e62c9ae618fa324a8779"
+    },
+    "record_key": {
+     "S": "UNIT#db.t11"
+    },
+    "table_kind": {
+     "S": "current"
+    },
+    "unit_key": {
+     "S": "db.t11"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 481,
+   "target_upper_bound": 481
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "merge_count": {
+     "N": "1"
+    },
+    "objects": {
+     "L": [
+      {
+       "L": [
+        {
+         "S": "manifest"
+        },
+        {
+         "S": "s3://authority-fixture/db.t12"
+        },
+        {
+         "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        },
+        {
+         "S": "pub-0013"
+        },
+        {
+         "NULL": true
+        },
+        {
+         "N": "13"
+        }
+       ]
+      }
+     ]
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#INTENT#96a86c7f5a1eae32bf3c109b77908c0cd10377f470a1e62c9ae618fa324a8779"
+    },
+    "record_key": {
+     "S": "UNIT#db.t12"
+    },
+    "table_kind": {
+     "S": "current"
+    },
+    "unit_key": {
+     "S": "db.t12"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 481,
+   "target_upper_bound": 481
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "merge_count": {
+     "N": "1"
+    },
+    "objects": {
+     "L": [
+      {
+       "L": [
+        {
+         "S": "manifest"
+        },
+        {
+         "S": "s3://authority-fixture/db.t13"
+        },
+        {
+         "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        },
+        {
+         "S": "pub-0014"
+        },
+        {
+         "NULL": true
+        },
+        {
+         "N": "14"
+        }
+       ]
+      }
+     ]
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#INTENT#96a86c7f5a1eae32bf3c109b77908c0cd10377f470a1e62c9ae618fa324a8779"
+    },
+    "record_key": {
+     "S": "UNIT#db.t13"
+    },
+    "table_kind": {
+     "S": "current"
+    },
+    "unit_key": {
+     "S": "db.t13"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 481,
+   "target_upper_bound": 481
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "merge_count": {
+     "N": "1"
+    },
+    "objects": {
+     "L": [
+      {
+       "L": [
+        {
+         "S": "manifest"
+        },
+        {
+         "S": "s3://authority-fixture/db.t14"
+        },
+        {
+         "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        },
+        {
+         "S": "pub-0015"
+        },
+        {
+         "NULL": true
+        },
+        {
+         "N": "15"
+        }
+       ]
+      }
+     ]
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#INTENT#96a86c7f5a1eae32bf3c109b77908c0cd10377f470a1e62c9ae618fa324a8779"
+    },
+    "record_key": {
+     "S": "UNIT#db.t14"
+    },
+    "table_kind": {
+     "S": "current"
+    },
+    "unit_key": {
+     "S": "db.t14"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 481,
+   "target_upper_bound": 481
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "authority_kind": {
+     "S": "lifecycle_event"
+    },
+    "authority_time": {
+     "S": "00001789821296789012"
+    },
+    "causation_event_id": {
+     "S": "720deceb-fc7f-52d8-809c-171366bb5fb0"
+    },
+    "consecutive_failed_delivery_attempts": {
+     "N": "0"
+    },
+    "event_id": {
+     "S": "130c2481-219f-5ac8-8055-a6031d14f4c3"
+    },
+    "execution_id": {
+     "S": "ca96d44b-347c-5a3c-89d1-e4ff7c4fc64e"
+    },
+    "flow_id": {
+     "S": "84a63bdf-a5ce-5951-b5db-f1d77f21bffd"
+    },
+    "immutable_payload_digest": {
+     "S": "ef01026e98a3f4cde7edc1f49aed0f84a276e457be24ec67d12662f94b7f2b06"
+    },
+    "internal_execution_id": {
+     "S": "c936a80ee43b08fd57c58a1c4d1667e889b2020dfe2a982206da7df4d4d29bb3"
+    },
+    "internal_key": {
+     "L": [
+      {
+       "S": "a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b"
+      },
+      {
+       "S": "db.alpha"
+      }
+     ]
+    },
+    "lifecycle_state": {
+     "S": "retrying"
+    },
+    "outbox_order": {
+     "S": "00001789821296789012#854406d122423714fc575341d8b14eb0c9e9e9a497a7567289281e379353da5d"
+    },
+    "outbox_state": {
+     "S": "pending"
+    },
+    "outbox_status": {
+     "S": "pending"
+    },
+    "owner_generation": {
+     "N": "0"
+    },
+    "parent_flow_id": {
+     "S": "acaa4ea4-b442-5024-a434-95febac5560a"
+    },
+    "partition_key": {
+     "S": "STATUS_FLOW#84a63bdf-a5ce-5951-b5db-f1d77f21bffd"
+    },
+    "payload": {
+     "S": "{\"authority\":{\"kind\":\"write_plan_unit\",\"observed_at\":\"2026-09-19T12:34:56.789012+00:00\",\"opaque_digest\":\"a023f628d7b9803eb261525b41242f4afca70a84c695b2dac9690596eedb5636\"},\"causation_event_id\":\"720deceb-fc7f-52d8-809c-171366bb5fb0\",\"clock_started_at\":\"2026-09-19T12:34:56.789012+00:00\",\"evaluation_binding\":{\"measurement_refs\":[{\"measurement_ref\":\"stage1_unit_settlement_latency\",\"measurement_version\":\"1\"}],\"mode\":\"observation_only\"},\"event_id\":\"130c2481-219f-5ac8-8055-a6031d14f4c3\",\"execution_id\":\"ca96d44b-347c-5a3c-89d1-e4ff7c4fc64e\",\"flow_id\":\"84a63bdf-a5ce-5951-b5db-f1d77f21bffd\",\"occurred_at\":\"2026-09-19T12:34:56.789012+00:00\",\"optional_child_flow_ids\":[],\"outcome\":null,\"parent_flow_id\":\"acaa4ea4-b442-5024-a434-95febac5560a\",\"predecessor_event_id\":\"720deceb-fc7f-52d8-809c-171366bb5fb0\",\"predecessor_execution_id\":null,\"progress\":null,\"reason_code\":\"statement_retries_exhausted\",\"registry_version\":\"1\",\"required_child_flow_ids\":[],\"schema_version\":\"1\",\"stage\":\"projection_unit_disposition\",\"state\":\"retrying\",\"surface\":\"semantic_projection_unit\",\"transition_sequence\":2}"
+    },
+    "plan_digest": {
+     "S": "a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b"
+    },
+    "predecessor_event_id": {
+     "S": "720deceb-fc7f-52d8-809c-171366bb5fb0"
+    },
+    "record_key": {
+     "S": "EVENT#a023f628d7b9803eb261525b41242f4afca70a84c695b2dac9690596eedb5636"
+    },
+    "surface": {
+     "S": "semantic_projection_unit"
+    },
+    "transition_id": {
+     "S": "semantic_unit_failed"
+    },
+    "transition_sequence": {
+     "N": "2"
+    },
+    "typed_reason": {
+     "S": "statement_retries_exhausted"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 2672,
+   "target_upper_bound": 2672
+  },
+  {
+   "expected_pre_state_map": {
+    "causation_event_id": {
+     "S": "b9030100-3047-5280-8ef1-190890aafe8e"
+    },
+    "current_execution_id": {
+     "S": "ca96d44b-347c-5a3c-89d1-e4ff7c4fc64e"
+    },
+    "current_internal_execution_id": {
+     "S": "c936a80ee43b08fd57c58a1c4d1667e889b2020dfe2a982206da7df4d4d29bb3"
+    },
+    "flow_id": {
+     "S": "84a63bdf-a5ce-5951-b5db-f1d77f21bffd"
+    },
+    "head_contract_version": {
+     "N": "1"
+    },
+    "latest_authority_digest": {
+     "S": "54e936f8ca9166193ea9714cb0d5233097ff89c104457938b4087299e2743281"
+    },
+    "latest_event_id": {
+     "S": "720deceb-fc7f-52d8-809c-171366bb5fb0"
+    },
+    "latest_state": {
+     "S": "running"
+    },
+    "latest_transition_sequence": {
+     "N": "1"
+    },
+    "parent_flow_id": {
+     "S": "acaa4ea4-b442-5024-a434-95febac5560a"
+    },
+    "partition_key": {
+     "S": "STATUS_FLOW#84a63bdf-a5ce-5951-b5db-f1d77f21bffd"
+    },
+    "record_key": {
+     "S": "HEAD"
+    },
+    "surface": {
+     "S": "semantic_projection_unit"
+    }
+   },
+   "expected_result_map": {
+    "causation_event_id": {
+     "S": "b9030100-3047-5280-8ef1-190890aafe8e"
+    },
+    "current_execution_id": {
+     "S": "ca96d44b-347c-5a3c-89d1-e4ff7c4fc64e"
+    },
+    "current_internal_execution_id": {
+     "S": "c936a80ee43b08fd57c58a1c4d1667e889b2020dfe2a982206da7df4d4d29bb3"
+    },
+    "flow_id": {
+     "S": "84a63bdf-a5ce-5951-b5db-f1d77f21bffd"
+    },
+    "head_contract_version": {
+     "N": "1"
+    },
+    "latest_authority_digest": {
+     "S": "a023f628d7b9803eb261525b41242f4afca70a84c695b2dac9690596eedb5636"
+    },
+    "latest_event_id": {
+     "S": "130c2481-219f-5ac8-8055-a6031d14f4c3"
+    },
+    "latest_state": {
+     "S": "retrying"
+    },
+    "latest_transition_sequence": {
+     "N": "2"
+    },
+    "parent_flow_id": {
+     "S": "acaa4ea4-b442-5024-a434-95febac5560a"
+    },
+    "partition_key": {
+     "S": "STATUS_FLOW#84a63bdf-a5ce-5951-b5db-f1d77f21bffd"
+    },
+    "record_key": {
+     "S": "HEAD"
+    },
+    "surface": {
+     "S": "semantic_projection_unit"
+    }
+   },
+   "pre_state_conservative_bytes": 765,
+   "result_conservative_bytes": 766,
+   "target_upper_bound": 766
+  },
+  {
+   "expected_pre_state_map": {
+    "athena_usage_state": {
+     "S": "unsettled"
+    },
+    "attempt_id": {
+     "S": "0101010101010101010101010101010101010101010101010101010101010101"
+    },
+    "client_request_token": {
+     "S": "0101010101010101010101010101010101010101010101010101010101010101"
+    },
+    "engine_ms": {
+     "N": "250"
+    },
+    "envelope_digest": {
+     "S": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    "fencing_token": {
+     "N": "7"
+    },
+    "lease_holder": {
+     "S": "0157e0e5ca3874d40e7b6ba709c469a607fd0164f285bf7994465fa76cede722"
+    },
+    "ordinal": {
+     "N": "1"
+    },
+    "partition_key": {
+     "S": "TABLE_ATTEMPT#db.alpha"
+    },
+    "physical_table_id": {
+     "S": "db.alpha"
+    },
+    "plan_unit_owner_ref": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "query_count": {
+     "N": "1"
+    },
+    "query_execution_id": {
+     "S": "athena-query-fixture-0001"
+    },
+    "record_key": {
+     "S": "ATTEMPT#0101010101010101010101010101010101010101010101010101010101010101"
+    },
+    "reservation_identity": {
+     "S": "reservation-slot-fixture-0001"
+    },
+    "sanitized_start_evidence": {
+     "M": {
+      "provider_error_class": {
+       "S": "none"
+      },
+      "provider_status_code": {
+       "N": "200"
+      }
+     }
+    },
+    "scanned_bytes": {
+     "N": "1024"
+    },
+    "start_envelope": {
+     "S": "{\"WorkGroup\":\"fixture-workgroup\"}"
+    },
+    "state": {
+     "S": "SUCCEEDED"
+    },
+    "statement_kind": {
+     "S": "merge"
+    },
+    "submitted_at": {
+     "S": "00001789821296789012"
+    },
+    "terminal_at": {
+     "S": "00001789821296789012"
+    },
+    "writer_execution_id": {
+     "S": "c936a80ee43b08fd57c58a1c4d1667e889b2020dfe2a982206da7df4d4d29bb3"
+    }
+   },
+   "expected_result_map": {
+    "athena_usage_state": {
+     "S": "settled"
+    },
+    "attempt_id": {
+     "S": "0101010101010101010101010101010101010101010101010101010101010101"
+    },
+    "client_request_token": {
+     "S": "0101010101010101010101010101010101010101010101010101010101010101"
+    },
+    "engine_ms": {
+     "N": "250"
+    },
+    "envelope_digest": {
+     "S": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    "fencing_token": {
+     "N": "7"
+    },
+    "lease_holder": {
+     "S": "0157e0e5ca3874d40e7b6ba709c469a607fd0164f285bf7994465fa76cede722"
+    },
+    "ordinal": {
+     "N": "1"
+    },
+    "owner_disposition": {
+     "S": "exhausted_or_unavailable"
+    },
+    "partition_key": {
+     "S": "TABLE_ATTEMPT#db.alpha"
+    },
+    "physical_table_id": {
+     "S": "db.alpha"
+    },
+    "plan_unit_owner_ref": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "query_count": {
+     "N": "1"
+    },
+    "query_execution_id": {
+     "S": "athena-query-fixture-0001"
+    },
+    "record_key": {
+     "S": "ATTEMPT#0101010101010101010101010101010101010101010101010101010101010101"
+    },
+    "reservation_identity": {
+     "S": "reservation-slot-fixture-0001"
+    },
+    "sanitized_start_evidence": {
+     "M": {
+      "provider_error_class": {
+       "S": "none"
+      },
+      "provider_status_code": {
+       "N": "200"
+      }
+     }
+    },
+    "scanned_bytes": {
+     "N": "1024"
+    },
+    "start_envelope": {
+     "S": "{\"WorkGroup\":\"fixture-workgroup\"}"
+    },
+    "state": {
+     "S": "SUCCEEDED"
+    },
+    "statement_kind": {
+     "S": "merge"
+    },
+    "submitted_at": {
+     "S": "00001789821296789012"
+    },
+    "terminal_at": {
+     "S": "00001789821296789012"
+    },
+    "usage_authority_digest": {
+     "S": "6e7855b7e5d780dd5ba941cca7bf86bc1d03bbcf44ce18a731e1338eabe4c177"
+    },
+    "usage_category": {
+     "S": "unavailable"
+    },
+    "writer_execution_id": {
+     "S": "c936a80ee43b08fd57c58a1c4d1667e889b2020dfe2a982206da7df4d4d29bb3"
+    }
+   },
+   "pre_state_conservative_bytes": 1397,
+   "result_conservative_bytes": 1583,
+   "target_upper_bound": 1583
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "athena_usage_state": {
+     "S": "settled"
+    },
+    "authority_kind": {
+     "S": "usage_contribution"
+    },
+    "consecutive_failed_delivery_attempts": {
+     "N": "0"
+    },
+    "immutable_payload_digest": {
+     "S": "6e7855b7e5d780dd5ba941cca7bf86bc1d03bbcf44ce18a731e1338eabe4c177"
+    },
+    "is_delta": {
+     "BOOL": false
+    },
+    "outbox_order": {
+     "S": "00001789821296789012#01f068868a1ecd502b77cb5fb067ff34cae5b249b0a358d432b158c18878c072"
+    },
+    "outbox_state": {
+     "S": "pending"
+    },
+    "outbox_status": {
+     "S": "pending"
+    },
+    "partition_key": {
+     "S": "TABLE_ATTEMPT#db.alpha"
+    },
+    "payload": {
+     "S": "{\"contribution_id\":\"6b087717-3dcb-5c9f-b6ae-441f91e5e967\",\"evaluation_binding\":{\"measurement_refs\":[{\"measurement_ref\":\"stage1_unit_settlement_latency\",\"measurement_version\":\"1\"}],\"mode\":\"observation_only\"},\"execution_id\":\"a7dd4023-1948-5305-a5a6-51bd54c0f4bb\",\"flow_id\":\"10b8fe15-0aad-5add-b259-5da4c54d3028\",\"observed_at\":\"2026-09-19T12:34:56.789012+00:00\",\"reconciles_disposition_id\":null,\"registry_version\":\"1\",\"schema_version\":\"1\",\"usage\":{\"unavailable\":{\"athena\":{\"engine_ms\":250,\"query_count\":1,\"scanned_bytes\":1024}}}}"
+    },
+    "record_key": {
+     "S": "USAGE#0101010101010101010101010101010101010101010101010101010101010101"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 1167,
+   "target_upper_bound": 1167
+  },
+  {
+   "expected_pre_state_map": {
+    "athena_usage_state": {
+     "S": "unsettled"
+    },
+    "attempt_id": {
+     "S": "0202020202020202020202020202020202020202020202020202020202020202"
+    },
+    "client_request_token": {
+     "S": "0202020202020202020202020202020202020202020202020202020202020202"
+    },
+    "engine_ms": {
+     "N": "250"
+    },
+    "envelope_digest": {
+     "S": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    "fencing_token": {
+     "N": "7"
+    },
+    "lease_holder": {
+     "S": "0157e0e5ca3874d40e7b6ba709c469a607fd0164f285bf7994465fa76cede722"
+    },
+    "ordinal": {
+     "N": "1"
+    },
+    "partition_key": {
+     "S": "TABLE_ATTEMPT#db.alpha"
+    },
+    "physical_table_id": {
+     "S": "db.alpha"
+    },
+    "plan_unit_owner_ref": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "query_count": {
+     "N": "1"
+    },
+    "query_execution_id": {
+     "S": "athena-query-fixture-0001"
+    },
+    "record_key": {
+     "S": "ATTEMPT#0202020202020202020202020202020202020202020202020202020202020202"
+    },
+    "reservation_identity": {
+     "S": "reservation-slot-fixture-0001"
+    },
+    "sanitized_start_evidence": {
+     "M": {
+      "provider_error_class": {
+       "S": "none"
+      },
+      "provider_status_code": {
+       "N": "200"
+      }
+     }
+    },
+    "scanned_bytes": {
+     "N": "1024"
+    },
+    "start_envelope": {
+     "S": "{\"WorkGroup\":\"fixture-workgroup\"}"
+    },
+    "state": {
+     "S": "SUCCEEDED"
+    },
+    "statement_kind": {
+     "S": "merge"
+    },
+    "submitted_at": {
+     "S": "00001789821296789012"
+    },
+    "terminal_at": {
+     "S": "00001789821296789012"
+    },
+    "writer_execution_id": {
+     "S": "c936a80ee43b08fd57c58a1c4d1667e889b2020dfe2a982206da7df4d4d29bb3"
+    }
+   },
+   "expected_result_map": {
+    "athena_usage_state": {
+     "S": "settled"
+    },
+    "attempt_id": {
+     "S": "0202020202020202020202020202020202020202020202020202020202020202"
+    },
+    "client_request_token": {
+     "S": "0202020202020202020202020202020202020202020202020202020202020202"
+    },
+    "engine_ms": {
+     "N": "250"
+    },
+    "envelope_digest": {
+     "S": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    "fencing_token": {
+     "N": "7"
+    },
+    "lease_holder": {
+     "S": "0157e0e5ca3874d40e7b6ba709c469a607fd0164f285bf7994465fa76cede722"
+    },
+    "ordinal": {
+     "N": "1"
+    },
+    "owner_disposition": {
+     "S": "exhausted_or_unavailable"
+    },
+    "partition_key": {
+     "S": "TABLE_ATTEMPT#db.alpha"
+    },
+    "physical_table_id": {
+     "S": "db.alpha"
+    },
+    "plan_unit_owner_ref": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "query_count": {
+     "N": "1"
+    },
+    "query_execution_id": {
+     "S": "athena-query-fixture-0001"
+    },
+    "record_key": {
+     "S": "ATTEMPT#0202020202020202020202020202020202020202020202020202020202020202"
+    },
+    "reservation_identity": {
+     "S": "reservation-slot-fixture-0001"
+    },
+    "sanitized_start_evidence": {
+     "M": {
+      "provider_error_class": {
+       "S": "none"
+      },
+      "provider_status_code": {
+       "N": "200"
+      }
+     }
+    },
+    "scanned_bytes": {
+     "N": "1024"
+    },
+    "start_envelope": {
+     "S": "{\"WorkGroup\":\"fixture-workgroup\"}"
+    },
+    "state": {
+     "S": "SUCCEEDED"
+    },
+    "statement_kind": {
+     "S": "merge"
+    },
+    "submitted_at": {
+     "S": "00001789821296789012"
+    },
+    "terminal_at": {
+     "S": "00001789821296789012"
+    },
+    "usage_authority_digest": {
+     "S": "042b9fb9a2621466906669de5db23c7b435c7361af5368862bde7eb3ea508c61"
+    },
+    "usage_category": {
+     "S": "unavailable"
+    },
+    "writer_execution_id": {
+     "S": "c936a80ee43b08fd57c58a1c4d1667e889b2020dfe2a982206da7df4d4d29bb3"
+    }
+   },
+   "pre_state_conservative_bytes": 1397,
+   "result_conservative_bytes": 1583,
+   "target_upper_bound": 1583
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "athena_usage_state": {
+     "S": "settled"
+    },
+    "authority_kind": {
+     "S": "usage_contribution"
+    },
+    "consecutive_failed_delivery_attempts": {
+     "N": "0"
+    },
+    "immutable_payload_digest": {
+     "S": "042b9fb9a2621466906669de5db23c7b435c7361af5368862bde7eb3ea508c61"
+    },
+    "is_delta": {
+     "BOOL": false
+    },
+    "outbox_order": {
+     "S": "00001789821296789012#a817208082d34d697e7618d35d6bb9876413475d57a6ba3290a257bd1989085a"
+    },
+    "outbox_state": {
+     "S": "pending"
+    },
+    "outbox_status": {
+     "S": "pending"
+    },
+    "partition_key": {
+     "S": "TABLE_ATTEMPT#db.alpha"
+    },
+    "payload": {
+     "S": "{\"contribution_id\":\"1795549f-b1bc-5ee5-bcc6-ff9048bf2c69\",\"evaluation_binding\":{\"measurement_refs\":[{\"measurement_ref\":\"stage1_unit_settlement_latency\",\"measurement_version\":\"1\"}],\"mode\":\"observation_only\"},\"execution_id\":\"a7dd4023-1948-5305-a5a6-51bd54c0f4bb\",\"flow_id\":\"10b8fe15-0aad-5add-b259-5da4c54d3028\",\"observed_at\":\"2026-09-19T12:34:56.789012+00:00\",\"reconciles_disposition_id\":null,\"registry_version\":\"1\",\"schema_version\":\"1\",\"usage\":{\"unavailable\":{\"athena\":{\"engine_ms\":250,\"query_count\":1,\"scanned_bytes\":1024}}}}"
+    },
+    "record_key": {
+     "S": "USAGE#0202020202020202020202020202020202020202020202020202020202020202"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 1167,
+   "target_upper_bound": 1167
+  },
+  {
+   "expected_pre_state_map": {
+    "athena_usage_state": {
+     "S": "unsettled"
+    },
+    "attempt_id": {
+     "S": "0303030303030303030303030303030303030303030303030303030303030303"
+    },
+    "client_request_token": {
+     "S": "0303030303030303030303030303030303030303030303030303030303030303"
+    },
+    "engine_ms": {
+     "N": "250"
+    },
+    "envelope_digest": {
+     "S": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    "fencing_token": {
+     "N": "7"
+    },
+    "lease_holder": {
+     "S": "0157e0e5ca3874d40e7b6ba709c469a607fd0164f285bf7994465fa76cede722"
+    },
+    "ordinal": {
+     "N": "1"
+    },
+    "partition_key": {
+     "S": "TABLE_ATTEMPT#db.alpha"
+    },
+    "physical_table_id": {
+     "S": "db.alpha"
+    },
+    "plan_unit_owner_ref": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "query_count": {
+     "N": "1"
+    },
+    "query_execution_id": {
+     "S": "athena-query-fixture-0001"
+    },
+    "record_key": {
+     "S": "ATTEMPT#0303030303030303030303030303030303030303030303030303030303030303"
+    },
+    "reservation_identity": {
+     "S": "reservation-slot-fixture-0001"
+    },
+    "sanitized_start_evidence": {
+     "M": {
+      "provider_error_class": {
+       "S": "none"
+      },
+      "provider_status_code": {
+       "N": "200"
+      }
+     }
+    },
+    "scanned_bytes": {
+     "N": "1024"
+    },
+    "start_envelope": {
+     "S": "{\"WorkGroup\":\"fixture-workgroup\"}"
+    },
+    "state": {
+     "S": "SUCCEEDED"
+    },
+    "statement_kind": {
+     "S": "merge"
+    },
+    "submitted_at": {
+     "S": "00001789821296789012"
+    },
+    "terminal_at": {
+     "S": "00001789821296789012"
+    },
+    "writer_execution_id": {
+     "S": "c936a80ee43b08fd57c58a1c4d1667e889b2020dfe2a982206da7df4d4d29bb3"
+    }
+   },
+   "expected_result_map": {
+    "athena_usage_state": {
+     "S": "settled"
+    },
+    "attempt_id": {
+     "S": "0303030303030303030303030303030303030303030303030303030303030303"
+    },
+    "client_request_token": {
+     "S": "0303030303030303030303030303030303030303030303030303030303030303"
+    },
+    "engine_ms": {
+     "N": "250"
+    },
+    "envelope_digest": {
+     "S": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    "fencing_token": {
+     "N": "7"
+    },
+    "lease_holder": {
+     "S": "0157e0e5ca3874d40e7b6ba709c469a607fd0164f285bf7994465fa76cede722"
+    },
+    "ordinal": {
+     "N": "1"
+    },
+    "owner_disposition": {
+     "S": "exhausted_or_unavailable"
+    },
+    "partition_key": {
+     "S": "TABLE_ATTEMPT#db.alpha"
+    },
+    "physical_table_id": {
+     "S": "db.alpha"
+    },
+    "plan_unit_owner_ref": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "query_count": {
+     "N": "1"
+    },
+    "query_execution_id": {
+     "S": "athena-query-fixture-0001"
+    },
+    "record_key": {
+     "S": "ATTEMPT#0303030303030303030303030303030303030303030303030303030303030303"
+    },
+    "reservation_identity": {
+     "S": "reservation-slot-fixture-0001"
+    },
+    "sanitized_start_evidence": {
+     "M": {
+      "provider_error_class": {
+       "S": "none"
+      },
+      "provider_status_code": {
+       "N": "200"
+      }
+     }
+    },
+    "scanned_bytes": {
+     "N": "1024"
+    },
+    "start_envelope": {
+     "S": "{\"WorkGroup\":\"fixture-workgroup\"}"
+    },
+    "state": {
+     "S": "SUCCEEDED"
+    },
+    "statement_kind": {
+     "S": "merge"
+    },
+    "submitted_at": {
+     "S": "00001789821296789012"
+    },
+    "terminal_at": {
+     "S": "00001789821296789012"
+    },
+    "usage_authority_digest": {
+     "S": "94562929e48a36b224f2a54de3d1b6dc026a5ea786feb7cf1aa759eeb44e57cb"
+    },
+    "usage_category": {
+     "S": "unavailable"
+    },
+    "writer_execution_id": {
+     "S": "c936a80ee43b08fd57c58a1c4d1667e889b2020dfe2a982206da7df4d4d29bb3"
+    }
+   },
+   "pre_state_conservative_bytes": 1397,
+   "result_conservative_bytes": 1583,
+   "target_upper_bound": 1583
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "athena_usage_state": {
+     "S": "settled"
+    },
+    "authority_kind": {
+     "S": "usage_contribution"
+    },
+    "consecutive_failed_delivery_attempts": {
+     "N": "0"
+    },
+    "immutable_payload_digest": {
+     "S": "94562929e48a36b224f2a54de3d1b6dc026a5ea786feb7cf1aa759eeb44e57cb"
+    },
+    "is_delta": {
+     "BOOL": false
+    },
+    "outbox_order": {
+     "S": "00001789821296789012#abcde4a7917eed507ab4e8d870e24dc25ec67b340971b03069f03c3906db9683"
+    },
+    "outbox_state": {
+     "S": "pending"
+    },
+    "outbox_status": {
+     "S": "pending"
+    },
+    "partition_key": {
+     "S": "TABLE_ATTEMPT#db.alpha"
+    },
+    "payload": {
+     "S": "{\"contribution_id\":\"23dd8998-444d-5c4a-99a1-630195c9fb17\",\"evaluation_binding\":{\"measurement_refs\":[{\"measurement_ref\":\"stage1_unit_settlement_latency\",\"measurement_version\":\"1\"}],\"mode\":\"observation_only\"},\"execution_id\":\"a7dd4023-1948-5305-a5a6-51bd54c0f4bb\",\"flow_id\":\"10b8fe15-0aad-5add-b259-5da4c54d3028\",\"observed_at\":\"2026-09-19T12:34:56.789012+00:00\",\"reconciles_disposition_id\":null,\"registry_version\":\"1\",\"schema_version\":\"1\",\"usage\":{\"unavailable\":{\"athena\":{\"engine_ms\":250,\"query_count\":1,\"scanned_bytes\":1024}}}}"
+    },
+    "record_key": {
+     "S": "USAGE#0303030303030303030303030303030303030303030303030303030303030303"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 1167,
+   "target_upper_bound": 1167
+  },
+  {
+   "expected_pre_state_map": {
+    "athena_usage_state": {
+     "S": "unsettled"
+    },
+    "attempt_id": {
+     "S": "0404040404040404040404040404040404040404040404040404040404040404"
+    },
+    "client_request_token": {
+     "S": "0404040404040404040404040404040404040404040404040404040404040404"
+    },
+    "engine_ms": {
+     "N": "250"
+    },
+    "envelope_digest": {
+     "S": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    "fencing_token": {
+     "N": "7"
+    },
+    "lease_holder": {
+     "S": "0157e0e5ca3874d40e7b6ba709c469a607fd0164f285bf7994465fa76cede722"
+    },
+    "ordinal": {
+     "N": "1"
+    },
+    "partition_key": {
+     "S": "TABLE_ATTEMPT#db.alpha"
+    },
+    "physical_table_id": {
+     "S": "db.alpha"
+    },
+    "plan_unit_owner_ref": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "query_count": {
+     "N": "1"
+    },
+    "query_execution_id": {
+     "S": "athena-query-fixture-0001"
+    },
+    "record_key": {
+     "S": "ATTEMPT#0404040404040404040404040404040404040404040404040404040404040404"
+    },
+    "reservation_identity": {
+     "S": "reservation-slot-fixture-0001"
+    },
+    "sanitized_start_evidence": {
+     "M": {
+      "provider_error_class": {
+       "S": "none"
+      },
+      "provider_status_code": {
+       "N": "200"
+      }
+     }
+    },
+    "scanned_bytes": {
+     "N": "1024"
+    },
+    "start_envelope": {
+     "S": "{\"WorkGroup\":\"fixture-workgroup\"}"
+    },
+    "state": {
+     "S": "SUCCEEDED"
+    },
+    "statement_kind": {
+     "S": "merge"
+    },
+    "submitted_at": {
+     "S": "00001789821296789012"
+    },
+    "terminal_at": {
+     "S": "00001789821296789012"
+    },
+    "writer_execution_id": {
+     "S": "c936a80ee43b08fd57c58a1c4d1667e889b2020dfe2a982206da7df4d4d29bb3"
+    }
+   },
+   "expected_result_map": {
+    "athena_usage_state": {
+     "S": "settled"
+    },
+    "attempt_id": {
+     "S": "0404040404040404040404040404040404040404040404040404040404040404"
+    },
+    "client_request_token": {
+     "S": "0404040404040404040404040404040404040404040404040404040404040404"
+    },
+    "engine_ms": {
+     "N": "250"
+    },
+    "envelope_digest": {
+     "S": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    "fencing_token": {
+     "N": "7"
+    },
+    "lease_holder": {
+     "S": "0157e0e5ca3874d40e7b6ba709c469a607fd0164f285bf7994465fa76cede722"
+    },
+    "ordinal": {
+     "N": "1"
+    },
+    "owner_disposition": {
+     "S": "exhausted_or_unavailable"
+    },
+    "partition_key": {
+     "S": "TABLE_ATTEMPT#db.alpha"
+    },
+    "physical_table_id": {
+     "S": "db.alpha"
+    },
+    "plan_unit_owner_ref": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "query_count": {
+     "N": "1"
+    },
+    "query_execution_id": {
+     "S": "athena-query-fixture-0001"
+    },
+    "record_key": {
+     "S": "ATTEMPT#0404040404040404040404040404040404040404040404040404040404040404"
+    },
+    "reservation_identity": {
+     "S": "reservation-slot-fixture-0001"
+    },
+    "sanitized_start_evidence": {
+     "M": {
+      "provider_error_class": {
+       "S": "none"
+      },
+      "provider_status_code": {
+       "N": "200"
+      }
+     }
+    },
+    "scanned_bytes": {
+     "N": "1024"
+    },
+    "start_envelope": {
+     "S": "{\"WorkGroup\":\"fixture-workgroup\"}"
+    },
+    "state": {
+     "S": "SUCCEEDED"
+    },
+    "statement_kind": {
+     "S": "merge"
+    },
+    "submitted_at": {
+     "S": "00001789821296789012"
+    },
+    "terminal_at": {
+     "S": "00001789821296789012"
+    },
+    "usage_authority_digest": {
+     "S": "dc4b2843b63c7d4b99cce9f1f9f2de8392e4844c0148378d87add64298f11425"
+    },
+    "usage_category": {
+     "S": "unavailable"
+    },
+    "writer_execution_id": {
+     "S": "c936a80ee43b08fd57c58a1c4d1667e889b2020dfe2a982206da7df4d4d29bb3"
+    }
+   },
+   "pre_state_conservative_bytes": 1397,
+   "result_conservative_bytes": 1583,
+   "target_upper_bound": 1583
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "athena_usage_state": {
+     "S": "settled"
+    },
+    "authority_kind": {
+     "S": "usage_contribution"
+    },
+    "consecutive_failed_delivery_attempts": {
+     "N": "0"
+    },
+    "immutable_payload_digest": {
+     "S": "dc4b2843b63c7d4b99cce9f1f9f2de8392e4844c0148378d87add64298f11425"
+    },
+    "is_delta": {
+     "BOOL": false
+    },
+    "outbox_order": {
+     "S": "00001789821296789012#c3cfe486c552d2519855cedc69c65253118caaeac35b635dabd2f4d1f1a950ef"
+    },
+    "outbox_state": {
+     "S": "pending"
+    },
+    "outbox_status": {
+     "S": "pending"
+    },
+    "partition_key": {
+     "S": "TABLE_ATTEMPT#db.alpha"
+    },
+    "payload": {
+     "S": "{\"contribution_id\":\"2151aa57-5637-52bc-b0bf-fd797e45331e\",\"evaluation_binding\":{\"measurement_refs\":[{\"measurement_ref\":\"stage1_unit_settlement_latency\",\"measurement_version\":\"1\"}],\"mode\":\"observation_only\"},\"execution_id\":\"a7dd4023-1948-5305-a5a6-51bd54c0f4bb\",\"flow_id\":\"10b8fe15-0aad-5add-b259-5da4c54d3028\",\"observed_at\":\"2026-09-19T12:34:56.789012+00:00\",\"reconciles_disposition_id\":null,\"registry_version\":\"1\",\"schema_version\":\"1\",\"usage\":{\"unavailable\":{\"athena\":{\"engine_ms\":250,\"query_count\":1,\"scanned_bytes\":1024}}}}"
+    },
+    "record_key": {
+     "S": "USAGE#0404040404040404040404040404040404040404040404040404040404040404"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 1167,
+   "target_upper_bound": 1167
+  },
+  {
+   "expected_pre_state_map": {
+    "athena_usage_state": {
+     "S": "unsettled"
+    },
+    "attempt_id": {
+     "S": "0505050505050505050505050505050505050505050505050505050505050505"
+    },
+    "client_request_token": {
+     "S": "0505050505050505050505050505050505050505050505050505050505050505"
+    },
+    "engine_ms": {
+     "N": "250"
+    },
+    "envelope_digest": {
+     "S": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    "fencing_token": {
+     "N": "7"
+    },
+    "lease_holder": {
+     "S": "0157e0e5ca3874d40e7b6ba709c469a607fd0164f285bf7994465fa76cede722"
+    },
+    "ordinal": {
+     "N": "1"
+    },
+    "partition_key": {
+     "S": "TABLE_ATTEMPT#db.alpha"
+    },
+    "physical_table_id": {
+     "S": "db.alpha"
+    },
+    "plan_unit_owner_ref": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "query_count": {
+     "N": "1"
+    },
+    "query_execution_id": {
+     "S": "athena-query-fixture-0001"
+    },
+    "record_key": {
+     "S": "ATTEMPT#0505050505050505050505050505050505050505050505050505050505050505"
+    },
+    "reservation_identity": {
+     "S": "reservation-slot-fixture-0001"
+    },
+    "sanitized_start_evidence": {
+     "M": {
+      "provider_error_class": {
+       "S": "none"
+      },
+      "provider_status_code": {
+       "N": "200"
+      }
+     }
+    },
+    "scanned_bytes": {
+     "N": "1024"
+    },
+    "start_envelope": {
+     "S": "{\"WorkGroup\":\"fixture-workgroup\"}"
+    },
+    "state": {
+     "S": "SUCCEEDED"
+    },
+    "statement_kind": {
+     "S": "merge"
+    },
+    "submitted_at": {
+     "S": "00001789821296789012"
+    },
+    "terminal_at": {
+     "S": "00001789821296789012"
+    },
+    "writer_execution_id": {
+     "S": "c936a80ee43b08fd57c58a1c4d1667e889b2020dfe2a982206da7df4d4d29bb3"
+    }
+   },
+   "expected_result_map": {
+    "athena_usage_state": {
+     "S": "settled"
+    },
+    "attempt_id": {
+     "S": "0505050505050505050505050505050505050505050505050505050505050505"
+    },
+    "client_request_token": {
+     "S": "0505050505050505050505050505050505050505050505050505050505050505"
+    },
+    "engine_ms": {
+     "N": "250"
+    },
+    "envelope_digest": {
+     "S": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    "fencing_token": {
+     "N": "7"
+    },
+    "lease_holder": {
+     "S": "0157e0e5ca3874d40e7b6ba709c469a607fd0164f285bf7994465fa76cede722"
+    },
+    "ordinal": {
+     "N": "1"
+    },
+    "owner_disposition": {
+     "S": "exhausted_or_unavailable"
+    },
+    "partition_key": {
+     "S": "TABLE_ATTEMPT#db.alpha"
+    },
+    "physical_table_id": {
+     "S": "db.alpha"
+    },
+    "plan_unit_owner_ref": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "query_count": {
+     "N": "1"
+    },
+    "query_execution_id": {
+     "S": "athena-query-fixture-0001"
+    },
+    "record_key": {
+     "S": "ATTEMPT#0505050505050505050505050505050505050505050505050505050505050505"
+    },
+    "reservation_identity": {
+     "S": "reservation-slot-fixture-0001"
+    },
+    "sanitized_start_evidence": {
+     "M": {
+      "provider_error_class": {
+       "S": "none"
+      },
+      "provider_status_code": {
+       "N": "200"
+      }
+     }
+    },
+    "scanned_bytes": {
+     "N": "1024"
+    },
+    "start_envelope": {
+     "S": "{\"WorkGroup\":\"fixture-workgroup\"}"
+    },
+    "state": {
+     "S": "SUCCEEDED"
+    },
+    "statement_kind": {
+     "S": "merge"
+    },
+    "submitted_at": {
+     "S": "00001789821296789012"
+    },
+    "terminal_at": {
+     "S": "00001789821296789012"
+    },
+    "usage_authority_digest": {
+     "S": "2681e7d77e4494914d80c1a349050c5107bea7bf4bcf4be2415250c487c84ef7"
+    },
+    "usage_category": {
+     "S": "unavailable"
+    },
+    "writer_execution_id": {
+     "S": "c936a80ee43b08fd57c58a1c4d1667e889b2020dfe2a982206da7df4d4d29bb3"
+    }
+   },
+   "pre_state_conservative_bytes": 1397,
+   "result_conservative_bytes": 1583,
+   "target_upper_bound": 1583
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "athena_usage_state": {
+     "S": "settled"
+    },
+    "authority_kind": {
+     "S": "usage_contribution"
+    },
+    "consecutive_failed_delivery_attempts": {
+     "N": "0"
+    },
+    "immutable_payload_digest": {
+     "S": "2681e7d77e4494914d80c1a349050c5107bea7bf4bcf4be2415250c487c84ef7"
+    },
+    "is_delta": {
+     "BOOL": false
+    },
+    "outbox_order": {
+     "S": "00001789821296789012#7454a0be823fbfd8a417fe86dae98c404a11b238fd12949692a4bd1c539bd077"
+    },
+    "outbox_state": {
+     "S": "pending"
+    },
+    "outbox_status": {
+     "S": "pending"
+    },
+    "partition_key": {
+     "S": "TABLE_ATTEMPT#db.alpha"
+    },
+    "payload": {
+     "S": "{\"contribution_id\":\"0a8f712c-1372-5384-ac9e-dd171e0f0e92\",\"evaluation_binding\":{\"measurement_refs\":[{\"measurement_ref\":\"stage1_unit_settlement_latency\",\"measurement_version\":\"1\"}],\"mode\":\"observation_only\"},\"execution_id\":\"a7dd4023-1948-5305-a5a6-51bd54c0f4bb\",\"flow_id\":\"10b8fe15-0aad-5add-b259-5da4c54d3028\",\"observed_at\":\"2026-09-19T12:34:56.789012+00:00\",\"reconciles_disposition_id\":null,\"registry_version\":\"1\",\"schema_version\":\"1\",\"usage\":{\"unavailable\":{\"athena\":{\"engine_ms\":250,\"query_count\":1,\"scanned_bytes\":1024}}}}"
+    },
+    "record_key": {
+     "S": "USAGE#0505050505050505050505050505050505050505050505050505050505050505"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 1167,
+   "target_upper_bound": 1167
+  },
+  {
+   "expected_pre_state_map": {
+    "athena_usage_state": {
+     "S": "unsettled"
+    },
+    "attempt_id": {
+     "S": "0606060606060606060606060606060606060606060606060606060606060606"
+    },
+    "client_request_token": {
+     "S": "0606060606060606060606060606060606060606060606060606060606060606"
+    },
+    "engine_ms": {
+     "N": "250"
+    },
+    "envelope_digest": {
+     "S": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    "fencing_token": {
+     "N": "7"
+    },
+    "lease_holder": {
+     "S": "0157e0e5ca3874d40e7b6ba709c469a607fd0164f285bf7994465fa76cede722"
+    },
+    "ordinal": {
+     "N": "1"
+    },
+    "partition_key": {
+     "S": "TABLE_ATTEMPT#db.alpha"
+    },
+    "physical_table_id": {
+     "S": "db.alpha"
+    },
+    "plan_unit_owner_ref": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "query_count": {
+     "N": "1"
+    },
+    "query_execution_id": {
+     "S": "athena-query-fixture-0001"
+    },
+    "record_key": {
+     "S": "ATTEMPT#0606060606060606060606060606060606060606060606060606060606060606"
+    },
+    "reservation_identity": {
+     "S": "reservation-slot-fixture-0001"
+    },
+    "sanitized_start_evidence": {
+     "M": {
+      "provider_error_class": {
+       "S": "none"
+      },
+      "provider_status_code": {
+       "N": "200"
+      }
+     }
+    },
+    "scanned_bytes": {
+     "N": "1024"
+    },
+    "start_envelope": {
+     "S": "{\"WorkGroup\":\"fixture-workgroup\"}"
+    },
+    "state": {
+     "S": "SUCCEEDED"
+    },
+    "statement_kind": {
+     "S": "merge"
+    },
+    "submitted_at": {
+     "S": "00001789821296789012"
+    },
+    "terminal_at": {
+     "S": "00001789821296789012"
+    },
+    "writer_execution_id": {
+     "S": "c936a80ee43b08fd57c58a1c4d1667e889b2020dfe2a982206da7df4d4d29bb3"
+    }
+   },
+   "expected_result_map": {
+    "athena_usage_state": {
+     "S": "settled"
+    },
+    "attempt_id": {
+     "S": "0606060606060606060606060606060606060606060606060606060606060606"
+    },
+    "client_request_token": {
+     "S": "0606060606060606060606060606060606060606060606060606060606060606"
+    },
+    "engine_ms": {
+     "N": "250"
+    },
+    "envelope_digest": {
+     "S": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    "fencing_token": {
+     "N": "7"
+    },
+    "lease_holder": {
+     "S": "0157e0e5ca3874d40e7b6ba709c469a607fd0164f285bf7994465fa76cede722"
+    },
+    "ordinal": {
+     "N": "1"
+    },
+    "owner_disposition": {
+     "S": "exhausted_or_unavailable"
+    },
+    "partition_key": {
+     "S": "TABLE_ATTEMPT#db.alpha"
+    },
+    "physical_table_id": {
+     "S": "db.alpha"
+    },
+    "plan_unit_owner_ref": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "query_count": {
+     "N": "1"
+    },
+    "query_execution_id": {
+     "S": "athena-query-fixture-0001"
+    },
+    "record_key": {
+     "S": "ATTEMPT#0606060606060606060606060606060606060606060606060606060606060606"
+    },
+    "reservation_identity": {
+     "S": "reservation-slot-fixture-0001"
+    },
+    "sanitized_start_evidence": {
+     "M": {
+      "provider_error_class": {
+       "S": "none"
+      },
+      "provider_status_code": {
+       "N": "200"
+      }
+     }
+    },
+    "scanned_bytes": {
+     "N": "1024"
+    },
+    "start_envelope": {
+     "S": "{\"WorkGroup\":\"fixture-workgroup\"}"
+    },
+    "state": {
+     "S": "SUCCEEDED"
+    },
+    "statement_kind": {
+     "S": "merge"
+    },
+    "submitted_at": {
+     "S": "00001789821296789012"
+    },
+    "terminal_at": {
+     "S": "00001789821296789012"
+    },
+    "usage_authority_digest": {
+     "S": "c1408383de9bdbc6e5234133e797976bc22967e6e0eb77dc797ab483a170c53d"
+    },
+    "usage_category": {
+     "S": "unavailable"
+    },
+    "writer_execution_id": {
+     "S": "c936a80ee43b08fd57c58a1c4d1667e889b2020dfe2a982206da7df4d4d29bb3"
+    }
+   },
+   "pre_state_conservative_bytes": 1397,
+   "result_conservative_bytes": 1583,
+   "target_upper_bound": 1583
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "athena_usage_state": {
+     "S": "settled"
+    },
+    "authority_kind": {
+     "S": "usage_contribution"
+    },
+    "consecutive_failed_delivery_attempts": {
+     "N": "0"
+    },
+    "immutable_payload_digest": {
+     "S": "c1408383de9bdbc6e5234133e797976bc22967e6e0eb77dc797ab483a170c53d"
+    },
+    "is_delta": {
+     "BOOL": false
+    },
+    "outbox_order": {
+     "S": "00001789821296789012#661c3ebf11404b066dc2c72a00f036c9501fbf58654e1715c5aa49d00aea9949"
+    },
+    "outbox_state": {
+     "S": "pending"
+    },
+    "outbox_status": {
+     "S": "pending"
+    },
+    "partition_key": {
+     "S": "TABLE_ATTEMPT#db.alpha"
+    },
+    "payload": {
+     "S": "{\"contribution_id\":\"d7c6b86e-a490-57e4-8416-2d662f39a6fa\",\"evaluation_binding\":{\"measurement_refs\":[{\"measurement_ref\":\"stage1_unit_settlement_latency\",\"measurement_version\":\"1\"}],\"mode\":\"observation_only\"},\"execution_id\":\"a7dd4023-1948-5305-a5a6-51bd54c0f4bb\",\"flow_id\":\"10b8fe15-0aad-5add-b259-5da4c54d3028\",\"observed_at\":\"2026-09-19T12:34:56.789012+00:00\",\"reconciles_disposition_id\":null,\"registry_version\":\"1\",\"schema_version\":\"1\",\"usage\":{\"unavailable\":{\"athena\":{\"engine_ms\":250,\"query_count\":1,\"scanned_bytes\":1024}}}}"
+    },
+    "record_key": {
+     "S": "USAGE#0606060606060606060606060606060606060606060606060606060606060606"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 1167,
+   "target_upper_bound": 1167
+  },
+  {
+   "expected_pre_state_map": {
+    "athena_usage_state": {
+     "S": "unsettled"
+    },
+    "attempt_id": {
+     "S": "0707070707070707070707070707070707070707070707070707070707070707"
+    },
+    "client_request_token": {
+     "S": "0707070707070707070707070707070707070707070707070707070707070707"
+    },
+    "engine_ms": {
+     "N": "250"
+    },
+    "envelope_digest": {
+     "S": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    "fencing_token": {
+     "N": "7"
+    },
+    "lease_holder": {
+     "S": "0157e0e5ca3874d40e7b6ba709c469a607fd0164f285bf7994465fa76cede722"
+    },
+    "ordinal": {
+     "N": "1"
+    },
+    "partition_key": {
+     "S": "TABLE_ATTEMPT#db.alpha"
+    },
+    "physical_table_id": {
+     "S": "db.alpha"
+    },
+    "plan_unit_owner_ref": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "query_count": {
+     "N": "1"
+    },
+    "query_execution_id": {
+     "S": "athena-query-fixture-0001"
+    },
+    "record_key": {
+     "S": "ATTEMPT#0707070707070707070707070707070707070707070707070707070707070707"
+    },
+    "reservation_identity": {
+     "S": "reservation-slot-fixture-0001"
+    },
+    "sanitized_start_evidence": {
+     "M": {
+      "provider_error_class": {
+       "S": "none"
+      },
+      "provider_status_code": {
+       "N": "200"
+      }
+     }
+    },
+    "scanned_bytes": {
+     "N": "1024"
+    },
+    "start_envelope": {
+     "S": "{\"WorkGroup\":\"fixture-workgroup\"}"
+    },
+    "state": {
+     "S": "SUCCEEDED"
+    },
+    "statement_kind": {
+     "S": "merge"
+    },
+    "submitted_at": {
+     "S": "00001789821296789012"
+    },
+    "terminal_at": {
+     "S": "00001789821296789012"
+    },
+    "writer_execution_id": {
+     "S": "c936a80ee43b08fd57c58a1c4d1667e889b2020dfe2a982206da7df4d4d29bb3"
+    }
+   },
+   "expected_result_map": {
+    "athena_usage_state": {
+     "S": "settled"
+    },
+    "attempt_id": {
+     "S": "0707070707070707070707070707070707070707070707070707070707070707"
+    },
+    "client_request_token": {
+     "S": "0707070707070707070707070707070707070707070707070707070707070707"
+    },
+    "engine_ms": {
+     "N": "250"
+    },
+    "envelope_digest": {
+     "S": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    "fencing_token": {
+     "N": "7"
+    },
+    "lease_holder": {
+     "S": "0157e0e5ca3874d40e7b6ba709c469a607fd0164f285bf7994465fa76cede722"
+    },
+    "ordinal": {
+     "N": "1"
+    },
+    "owner_disposition": {
+     "S": "exhausted_or_unavailable"
+    },
+    "partition_key": {
+     "S": "TABLE_ATTEMPT#db.alpha"
+    },
+    "physical_table_id": {
+     "S": "db.alpha"
+    },
+    "plan_unit_owner_ref": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "query_count": {
+     "N": "1"
+    },
+    "query_execution_id": {
+     "S": "athena-query-fixture-0001"
+    },
+    "record_key": {
+     "S": "ATTEMPT#0707070707070707070707070707070707070707070707070707070707070707"
+    },
+    "reservation_identity": {
+     "S": "reservation-slot-fixture-0001"
+    },
+    "sanitized_start_evidence": {
+     "M": {
+      "provider_error_class": {
+       "S": "none"
+      },
+      "provider_status_code": {
+       "N": "200"
+      }
+     }
+    },
+    "scanned_bytes": {
+     "N": "1024"
+    },
+    "start_envelope": {
+     "S": "{\"WorkGroup\":\"fixture-workgroup\"}"
+    },
+    "state": {
+     "S": "SUCCEEDED"
+    },
+    "statement_kind": {
+     "S": "merge"
+    },
+    "submitted_at": {
+     "S": "00001789821296789012"
+    },
+    "terminal_at": {
+     "S": "00001789821296789012"
+    },
+    "usage_authority_digest": {
+     "S": "008aa5bfab5d3cc009ab1bb3d878e5236c7b6c03f73aafee031b83eb6702819b"
+    },
+    "usage_category": {
+     "S": "unavailable"
+    },
+    "writer_execution_id": {
+     "S": "c936a80ee43b08fd57c58a1c4d1667e889b2020dfe2a982206da7df4d4d29bb3"
+    }
+   },
+   "pre_state_conservative_bytes": 1397,
+   "result_conservative_bytes": 1583,
+   "target_upper_bound": 1583
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "athena_usage_state": {
+     "S": "settled"
+    },
+    "authority_kind": {
+     "S": "usage_contribution"
+    },
+    "consecutive_failed_delivery_attempts": {
+     "N": "0"
+    },
+    "immutable_payload_digest": {
+     "S": "008aa5bfab5d3cc009ab1bb3d878e5236c7b6c03f73aafee031b83eb6702819b"
+    },
+    "is_delta": {
+     "BOOL": false
+    },
+    "outbox_order": {
+     "S": "00001789821296789012#20e5832b9b6b894bc911264651f03250eeec076bf6a2ece94f285f302e4187a9"
+    },
+    "outbox_state": {
+     "S": "pending"
+    },
+    "outbox_status": {
+     "S": "pending"
+    },
+    "partition_key": {
+     "S": "TABLE_ATTEMPT#db.alpha"
+    },
+    "payload": {
+     "S": "{\"contribution_id\":\"a8df1a3b-4eac-5a58-a256-cd27b4869cac\",\"evaluation_binding\":{\"measurement_refs\":[{\"measurement_ref\":\"stage1_unit_settlement_latency\",\"measurement_version\":\"1\"}],\"mode\":\"observation_only\"},\"execution_id\":\"a7dd4023-1948-5305-a5a6-51bd54c0f4bb\",\"flow_id\":\"10b8fe15-0aad-5add-b259-5da4c54d3028\",\"observed_at\":\"2026-09-19T12:34:56.789012+00:00\",\"reconciles_disposition_id\":null,\"registry_version\":\"1\",\"schema_version\":\"1\",\"usage\":{\"unavailable\":{\"athena\":{\"engine_ms\":250,\"query_count\":1,\"scanned_bytes\":1024}}}}"
+    },
+    "record_key": {
+     "S": "USAGE#0707070707070707070707070707070707070707070707070707070707070707"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 1167,
+   "target_upper_bound": 1167
+  },
+  {
+   "expected_pre_state_map": {
+    "athena_usage_state": {
+     "S": "unsettled"
+    },
+    "attempt_id": {
+     "S": "0808080808080808080808080808080808080808080808080808080808080808"
+    },
+    "client_request_token": {
+     "S": "0808080808080808080808080808080808080808080808080808080808080808"
+    },
+    "engine_ms": {
+     "N": "250"
+    },
+    "envelope_digest": {
+     "S": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    "fencing_token": {
+     "N": "7"
+    },
+    "lease_holder": {
+     "S": "0157e0e5ca3874d40e7b6ba709c469a607fd0164f285bf7994465fa76cede722"
+    },
+    "ordinal": {
+     "N": "1"
+    },
+    "partition_key": {
+     "S": "TABLE_ATTEMPT#db.alpha"
+    },
+    "physical_table_id": {
+     "S": "db.alpha"
+    },
+    "plan_unit_owner_ref": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "query_count": {
+     "N": "1"
+    },
+    "query_execution_id": {
+     "S": "athena-query-fixture-0001"
+    },
+    "record_key": {
+     "S": "ATTEMPT#0808080808080808080808080808080808080808080808080808080808080808"
+    },
+    "reservation_identity": {
+     "S": "reservation-slot-fixture-0001"
+    },
+    "sanitized_start_evidence": {
+     "M": {
+      "provider_error_class": {
+       "S": "none"
+      },
+      "provider_status_code": {
+       "N": "200"
+      }
+     }
+    },
+    "scanned_bytes": {
+     "N": "1024"
+    },
+    "start_envelope": {
+     "S": "{\"WorkGroup\":\"fixture-workgroup\"}"
+    },
+    "state": {
+     "S": "SUCCEEDED"
+    },
+    "statement_kind": {
+     "S": "merge"
+    },
+    "submitted_at": {
+     "S": "00001789821296789012"
+    },
+    "terminal_at": {
+     "S": "00001789821296789012"
+    },
+    "writer_execution_id": {
+     "S": "c936a80ee43b08fd57c58a1c4d1667e889b2020dfe2a982206da7df4d4d29bb3"
+    }
+   },
+   "expected_result_map": {
+    "athena_usage_state": {
+     "S": "settled"
+    },
+    "attempt_id": {
+     "S": "0808080808080808080808080808080808080808080808080808080808080808"
+    },
+    "client_request_token": {
+     "S": "0808080808080808080808080808080808080808080808080808080808080808"
+    },
+    "engine_ms": {
+     "N": "250"
+    },
+    "envelope_digest": {
+     "S": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    "fencing_token": {
+     "N": "7"
+    },
+    "lease_holder": {
+     "S": "0157e0e5ca3874d40e7b6ba709c469a607fd0164f285bf7994465fa76cede722"
+    },
+    "ordinal": {
+     "N": "1"
+    },
+    "owner_disposition": {
+     "S": "exhausted_or_unavailable"
+    },
+    "partition_key": {
+     "S": "TABLE_ATTEMPT#db.alpha"
+    },
+    "physical_table_id": {
+     "S": "db.alpha"
+    },
+    "plan_unit_owner_ref": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "query_count": {
+     "N": "1"
+    },
+    "query_execution_id": {
+     "S": "athena-query-fixture-0001"
+    },
+    "record_key": {
+     "S": "ATTEMPT#0808080808080808080808080808080808080808080808080808080808080808"
+    },
+    "reservation_identity": {
+     "S": "reservation-slot-fixture-0001"
+    },
+    "sanitized_start_evidence": {
+     "M": {
+      "provider_error_class": {
+       "S": "none"
+      },
+      "provider_status_code": {
+       "N": "200"
+      }
+     }
+    },
+    "scanned_bytes": {
+     "N": "1024"
+    },
+    "start_envelope": {
+     "S": "{\"WorkGroup\":\"fixture-workgroup\"}"
+    },
+    "state": {
+     "S": "SUCCEEDED"
+    },
+    "statement_kind": {
+     "S": "merge"
+    },
+    "submitted_at": {
+     "S": "00001789821296789012"
+    },
+    "terminal_at": {
+     "S": "00001789821296789012"
+    },
+    "usage_authority_digest": {
+     "S": "40783222c85d88fa70e8f6f9f19438e174aec83e5ae0ab18e87a2bf6ea30a4e2"
+    },
+    "usage_category": {
+     "S": "unavailable"
+    },
+    "writer_execution_id": {
+     "S": "c936a80ee43b08fd57c58a1c4d1667e889b2020dfe2a982206da7df4d4d29bb3"
+    }
+   },
+   "pre_state_conservative_bytes": 1397,
+   "result_conservative_bytes": 1583,
+   "target_upper_bound": 1583
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "athena_usage_state": {
+     "S": "settled"
+    },
+    "authority_kind": {
+     "S": "usage_contribution"
+    },
+    "consecutive_failed_delivery_attempts": {
+     "N": "0"
+    },
+    "immutable_payload_digest": {
+     "S": "40783222c85d88fa70e8f6f9f19438e174aec83e5ae0ab18e87a2bf6ea30a4e2"
+    },
+    "is_delta": {
+     "BOOL": false
+    },
+    "outbox_order": {
+     "S": "00001789821296789012#a7efb489fcca3bd553042bcbc26fd0eec495f9f2fb185e9cbde786ffed0e0b3c"
+    },
+    "outbox_state": {
+     "S": "pending"
+    },
+    "outbox_status": {
+     "S": "pending"
+    },
+    "partition_key": {
+     "S": "TABLE_ATTEMPT#db.alpha"
+    },
+    "payload": {
+     "S": "{\"contribution_id\":\"5afc2240-aa62-50ac-a416-c78532a80b02\",\"evaluation_binding\":{\"measurement_refs\":[{\"measurement_ref\":\"stage1_unit_settlement_latency\",\"measurement_version\":\"1\"}],\"mode\":\"observation_only\"},\"execution_id\":\"a7dd4023-1948-5305-a5a6-51bd54c0f4bb\",\"flow_id\":\"10b8fe15-0aad-5add-b259-5da4c54d3028\",\"observed_at\":\"2026-09-19T12:34:56.789012+00:00\",\"reconciles_disposition_id\":null,\"registry_version\":\"1\",\"schema_version\":\"1\",\"usage\":{\"unavailable\":{\"athena\":{\"engine_ms\":250,\"query_count\":1,\"scanned_bytes\":1024}}}}"
+    },
+    "record_key": {
+     "S": "USAGE#0808080808080808080808080808080808080808080808080808080808080808"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 1167,
+   "target_upper_bound": 1167
+  },
+  {
+   "expected_pre_state_map": {
+    "athena_usage_state": {
+     "S": "unsettled"
+    },
+    "attempt_id": {
+     "S": "0909090909090909090909090909090909090909090909090909090909090909"
+    },
+    "client_request_token": {
+     "S": "0909090909090909090909090909090909090909090909090909090909090909"
+    },
+    "engine_ms": {
+     "N": "250"
+    },
+    "envelope_digest": {
+     "S": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    "fencing_token": {
+     "N": "7"
+    },
+    "lease_holder": {
+     "S": "0157e0e5ca3874d40e7b6ba709c469a607fd0164f285bf7994465fa76cede722"
+    },
+    "ordinal": {
+     "N": "1"
+    },
+    "partition_key": {
+     "S": "TABLE_ATTEMPT#db.alpha"
+    },
+    "physical_table_id": {
+     "S": "db.alpha"
+    },
+    "plan_unit_owner_ref": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "query_count": {
+     "N": "1"
+    },
+    "query_execution_id": {
+     "S": "athena-query-fixture-0001"
+    },
+    "record_key": {
+     "S": "ATTEMPT#0909090909090909090909090909090909090909090909090909090909090909"
+    },
+    "reservation_identity": {
+     "S": "reservation-slot-fixture-0001"
+    },
+    "sanitized_start_evidence": {
+     "M": {
+      "provider_error_class": {
+       "S": "none"
+      },
+      "provider_status_code": {
+       "N": "200"
+      }
+     }
+    },
+    "scanned_bytes": {
+     "N": "1024"
+    },
+    "start_envelope": {
+     "S": "{\"WorkGroup\":\"fixture-workgroup\"}"
+    },
+    "state": {
+     "S": "SUCCEEDED"
+    },
+    "statement_kind": {
+     "S": "merge"
+    },
+    "submitted_at": {
+     "S": "00001789821296789012"
+    },
+    "terminal_at": {
+     "S": "00001789821296789012"
+    },
+    "writer_execution_id": {
+     "S": "c936a80ee43b08fd57c58a1c4d1667e889b2020dfe2a982206da7df4d4d29bb3"
+    }
+   },
+   "expected_result_map": {
+    "athena_usage_state": {
+     "S": "settled"
+    },
+    "attempt_id": {
+     "S": "0909090909090909090909090909090909090909090909090909090909090909"
+    },
+    "client_request_token": {
+     "S": "0909090909090909090909090909090909090909090909090909090909090909"
+    },
+    "engine_ms": {
+     "N": "250"
+    },
+    "envelope_digest": {
+     "S": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    "fencing_token": {
+     "N": "7"
+    },
+    "lease_holder": {
+     "S": "0157e0e5ca3874d40e7b6ba709c469a607fd0164f285bf7994465fa76cede722"
+    },
+    "ordinal": {
+     "N": "1"
+    },
+    "owner_disposition": {
+     "S": "exhausted_or_unavailable"
+    },
+    "partition_key": {
+     "S": "TABLE_ATTEMPT#db.alpha"
+    },
+    "physical_table_id": {
+     "S": "db.alpha"
+    },
+    "plan_unit_owner_ref": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "query_count": {
+     "N": "1"
+    },
+    "query_execution_id": {
+     "S": "athena-query-fixture-0001"
+    },
+    "record_key": {
+     "S": "ATTEMPT#0909090909090909090909090909090909090909090909090909090909090909"
+    },
+    "reservation_identity": {
+     "S": "reservation-slot-fixture-0001"
+    },
+    "sanitized_start_evidence": {
+     "M": {
+      "provider_error_class": {
+       "S": "none"
+      },
+      "provider_status_code": {
+       "N": "200"
+      }
+     }
+    },
+    "scanned_bytes": {
+     "N": "1024"
+    },
+    "start_envelope": {
+     "S": "{\"WorkGroup\":\"fixture-workgroup\"}"
+    },
+    "state": {
+     "S": "SUCCEEDED"
+    },
+    "statement_kind": {
+     "S": "merge"
+    },
+    "submitted_at": {
+     "S": "00001789821296789012"
+    },
+    "terminal_at": {
+     "S": "00001789821296789012"
+    },
+    "usage_authority_digest": {
+     "S": "d1f4e216391419bbd471ffe4711b94980371da5bb633879b9bab25b492fbfa78"
+    },
+    "usage_category": {
+     "S": "unavailable"
+    },
+    "writer_execution_id": {
+     "S": "c936a80ee43b08fd57c58a1c4d1667e889b2020dfe2a982206da7df4d4d29bb3"
+    }
+   },
+   "pre_state_conservative_bytes": 1397,
+   "result_conservative_bytes": 1583,
+   "target_upper_bound": 1583
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "athena_usage_state": {
+     "S": "settled"
+    },
+    "authority_kind": {
+     "S": "usage_contribution"
+    },
+    "consecutive_failed_delivery_attempts": {
+     "N": "0"
+    },
+    "immutable_payload_digest": {
+     "S": "d1f4e216391419bbd471ffe4711b94980371da5bb633879b9bab25b492fbfa78"
+    },
+    "is_delta": {
+     "BOOL": false
+    },
+    "outbox_order": {
+     "S": "00001789821296789012#97161730b756926e02c4c360fe89358155eeb94b8861e4fcf1e15bd717f97678"
+    },
+    "outbox_state": {
+     "S": "pending"
+    },
+    "outbox_status": {
+     "S": "pending"
+    },
+    "partition_key": {
+     "S": "TABLE_ATTEMPT#db.alpha"
+    },
+    "payload": {
+     "S": "{\"contribution_id\":\"0b18fa0e-9de5-5f02-bf52-5e15f50765b8\",\"evaluation_binding\":{\"measurement_refs\":[{\"measurement_ref\":\"stage1_unit_settlement_latency\",\"measurement_version\":\"1\"}],\"mode\":\"observation_only\"},\"execution_id\":\"a7dd4023-1948-5305-a5a6-51bd54c0f4bb\",\"flow_id\":\"10b8fe15-0aad-5add-b259-5da4c54d3028\",\"observed_at\":\"2026-09-19T12:34:56.789012+00:00\",\"reconciles_disposition_id\":null,\"registry_version\":\"1\",\"schema_version\":\"1\",\"usage\":{\"unavailable\":{\"athena\":{\"engine_ms\":250,\"query_count\":1,\"scanned_bytes\":1024}}}}"
+    },
+    "record_key": {
+     "S": "USAGE#0909090909090909090909090909090909090909090909090909090909090909"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 1167,
+   "target_upper_bound": 1167
+  },
+  {
+   "expected_pre_state_map": {
+    "athena_usage_state": {
+     "S": "unsettled"
+    },
+    "attempt_id": {
+     "S": "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"
+    },
+    "client_request_token": {
+     "S": "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"
+    },
+    "engine_ms": {
+     "N": "250"
+    },
+    "envelope_digest": {
+     "S": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    "fencing_token": {
+     "N": "7"
+    },
+    "lease_holder": {
+     "S": "0157e0e5ca3874d40e7b6ba709c469a607fd0164f285bf7994465fa76cede722"
+    },
+    "ordinal": {
+     "N": "1"
+    },
+    "partition_key": {
+     "S": "TABLE_ATTEMPT#db.alpha"
+    },
+    "physical_table_id": {
+     "S": "db.alpha"
+    },
+    "plan_unit_owner_ref": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "query_count": {
+     "N": "1"
+    },
+    "query_execution_id": {
+     "S": "athena-query-fixture-0001"
+    },
+    "record_key": {
+     "S": "ATTEMPT#0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"
+    },
+    "reservation_identity": {
+     "S": "reservation-slot-fixture-0001"
+    },
+    "sanitized_start_evidence": {
+     "M": {
+      "provider_error_class": {
+       "S": "none"
+      },
+      "provider_status_code": {
+       "N": "200"
+      }
+     }
+    },
+    "scanned_bytes": {
+     "N": "1024"
+    },
+    "start_envelope": {
+     "S": "{\"WorkGroup\":\"fixture-workgroup\"}"
+    },
+    "state": {
+     "S": "SUCCEEDED"
+    },
+    "statement_kind": {
+     "S": "merge"
+    },
+    "submitted_at": {
+     "S": "00001789821296789012"
+    },
+    "terminal_at": {
+     "S": "00001789821296789012"
+    },
+    "writer_execution_id": {
+     "S": "c936a80ee43b08fd57c58a1c4d1667e889b2020dfe2a982206da7df4d4d29bb3"
+    }
+   },
+   "expected_result_map": {
+    "athena_usage_state": {
+     "S": "settled"
+    },
+    "attempt_id": {
+     "S": "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"
+    },
+    "client_request_token": {
+     "S": "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"
+    },
+    "engine_ms": {
+     "N": "250"
+    },
+    "envelope_digest": {
+     "S": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    "fencing_token": {
+     "N": "7"
+    },
+    "lease_holder": {
+     "S": "0157e0e5ca3874d40e7b6ba709c469a607fd0164f285bf7994465fa76cede722"
+    },
+    "ordinal": {
+     "N": "1"
+    },
+    "owner_disposition": {
+     "S": "exhausted_or_unavailable"
+    },
+    "partition_key": {
+     "S": "TABLE_ATTEMPT#db.alpha"
+    },
+    "physical_table_id": {
+     "S": "db.alpha"
+    },
+    "plan_unit_owner_ref": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "query_count": {
+     "N": "1"
+    },
+    "query_execution_id": {
+     "S": "athena-query-fixture-0001"
+    },
+    "record_key": {
+     "S": "ATTEMPT#0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"
+    },
+    "reservation_identity": {
+     "S": "reservation-slot-fixture-0001"
+    },
+    "sanitized_start_evidence": {
+     "M": {
+      "provider_error_class": {
+       "S": "none"
+      },
+      "provider_status_code": {
+       "N": "200"
+      }
+     }
+    },
+    "scanned_bytes": {
+     "N": "1024"
+    },
+    "start_envelope": {
+     "S": "{\"WorkGroup\":\"fixture-workgroup\"}"
+    },
+    "state": {
+     "S": "SUCCEEDED"
+    },
+    "statement_kind": {
+     "S": "merge"
+    },
+    "submitted_at": {
+     "S": "00001789821296789012"
+    },
+    "terminal_at": {
+     "S": "00001789821296789012"
+    },
+    "usage_authority_digest": {
+     "S": "a8284a02a4959524e703a6057e2e4c128509b75bc66ee7120b44ecdcb2e092a2"
+    },
+    "usage_category": {
+     "S": "unavailable"
+    },
+    "writer_execution_id": {
+     "S": "c936a80ee43b08fd57c58a1c4d1667e889b2020dfe2a982206da7df4d4d29bb3"
+    }
+   },
+   "pre_state_conservative_bytes": 1397,
+   "result_conservative_bytes": 1583,
+   "target_upper_bound": 1583
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "athena_usage_state": {
+     "S": "settled"
+    },
+    "authority_kind": {
+     "S": "usage_contribution"
+    },
+    "consecutive_failed_delivery_attempts": {
+     "N": "0"
+    },
+    "immutable_payload_digest": {
+     "S": "a8284a02a4959524e703a6057e2e4c128509b75bc66ee7120b44ecdcb2e092a2"
+    },
+    "is_delta": {
+     "BOOL": false
+    },
+    "outbox_order": {
+     "S": "00001789821296789012#430edcd5e0f29619cc18f1c440dfecad38a307489ff3344c7334e2b91353435e"
+    },
+    "outbox_state": {
+     "S": "pending"
+    },
+    "outbox_status": {
+     "S": "pending"
+    },
+    "partition_key": {
+     "S": "TABLE_ATTEMPT#db.alpha"
+    },
+    "payload": {
+     "S": "{\"contribution_id\":\"95a26957-a4ce-52e0-8080-f15feefe75f6\",\"evaluation_binding\":{\"measurement_refs\":[{\"measurement_ref\":\"stage1_unit_settlement_latency\",\"measurement_version\":\"1\"}],\"mode\":\"observation_only\"},\"execution_id\":\"a7dd4023-1948-5305-a5a6-51bd54c0f4bb\",\"flow_id\":\"10b8fe15-0aad-5add-b259-5da4c54d3028\",\"observed_at\":\"2026-09-19T12:34:56.789012+00:00\",\"reconciles_disposition_id\":null,\"registry_version\":\"1\",\"schema_version\":\"1\",\"usage\":{\"unavailable\":{\"athena\":{\"engine_ms\":250,\"query_count\":1,\"scanned_bytes\":1024}}}}"
+    },
+    "record_key": {
+     "S": "USAGE#0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 1167,
+   "target_upper_bound": 1167
+  }
+ ],
+ "typed_operation": "FailUnitRequest"
+}

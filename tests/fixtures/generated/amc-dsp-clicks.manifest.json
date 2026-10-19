@@ -1,0 +1,15 @@
+{
+  "$comment": "GENERATED landing declaration. Provenance only \u2014 the manifest that reaches the raw zone is built from the bytes at landing time. See docs/concepts/provenance-chain.md section 2.5 and ADR-030.",
+  "source_system": "amc",
+  "source_dataset": "dsp_clicks",
+  "source_scope": {
+    "namespace": "amc.entity",
+    "value": "fictional-fixture-amc-entity"
+  },
+  "marketplace": "ATVPDKIKX0DER",
+  "option_set": {},
+  "period_start": "2025-07-01",
+  "period_end": "2026-10-06",
+  "source_watermark": "2026-10-06",
+  "retrieved_at": "2026-10-06T00:00:00Z"
+}

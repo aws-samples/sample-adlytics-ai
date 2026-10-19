@@ -1,0 +1,83 @@
+# vendor-traffic-reported-total — Amazon's own catalogue-wide glance-view total.
+#
+# The adapter from GET_VENDOR_TRAFFIC_REPORT's `trafficAggregate[]` array. Same role as
+# vendor-sales-reported-total: a reconciliation control total, not an analytical fact.
+# Comparing it against the sum of trafficByAsin[] is how an incomplete by-ASIN array is
+# detected, and there is no other way to detect one.
+#
+# Never a drill-across target and never a row header.
+
+contract_id: vendor-traffic-reported-total
+contract_version: 1
+
+source_system: vendor_central
+source_dataset: GET_VENDOR_TRAFFIC_REPORT
+source_format: json_dual_array
+
+target_table: fct_product_page_views_reported_total
+
+# No amazon_asin, and no option columns beyond the period: this report has neither
+# distributorView nor sellingProgram.
+grain:
+  - date_key
+  - marketplace_key
+
+partition_keys:
+  - marketplace_key
+  - date_key
+  - report_options_hash
+
+measurement_basis: retail_actual
+source_timezone: PST
+ecosystem_key: amazon
+platform_key: amazon_retail
+restatement_window_days: 45
+staleness_threshold_hours: 96
+source_tables: []
+
+fields:
+  - source_path: trafficAggregate[].startDate
+    target_column: date_key
+    target_type: date
+
+  - source_path: reportSpecification.marketplaceIds[0]
+    target_column: marketplace_key
+    target_type: string
+
+  - source_path: reportSpecification.reportType
+    target_column: report_type
+    target_type: string
+
+  - source_path: reportSpecification.reportOptions.reportPeriod
+    target_column: report_period
+    target_type: string
+
+  - source_path: reportSpecification.dataStartTime
+    target_column: period_start
+    target_type: date
+
+  - source_path: reportSpecification.dataEndTime
+    target_column: period_end
+    target_type: date
+
+  - source_path: reportSpecification.reportOptions
+    target_column: report_options_hash
+    target_type: string
+
+  - source_path: reportSpecification.lastUpdatedDate
+    target_column: source_watermark
+    target_type: date
+
+  - source_path: manifest.retrieved_at
+    target_column: retrieved_at
+    target_type: timestamp
+
+  - source_path: trafficAggregate[].glanceViews
+    target_column: glance_views
+    target_type: bigint
+    # The report's only metric, at the only other grain it publishes.
+
+tags:
+  - phase-1
+  - vendor-central
+  - reconciliation

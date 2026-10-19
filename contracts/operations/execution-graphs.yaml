@@ -1,0 +1,436 @@
+# SPDX-License-Identifier: MIT-0
+# The execution-graph protocol contract, v1 (control-plane authority Option B, S2 minimal v1 core).
+#
+# One retained execution-graph store owns run-request admission, graph identity and release
+# permission. Operational Data-Flow Status stays a rebuildable projection of it. This file is the
+# single source for the generated Python (`src/domain/operations/generated_execution_graphs.py`)
+# and TypeScript (`infra/lib/generated/execution-graph-protocol.ts`) projections:
+#   make generate-execution-graph-protocol && make check-execution-graph-protocol
+#
+# A changed bound or ceiling is a new protocol version, refused before mutation with
+# PROTOCOL_MIGRATION_UNSUPPORTED; v1 has exactly one active version.
+contract: execution-graphs
+contract_revision: 2
+protocol_version: v1
+authority_epochs:
+  shadow: 0
+  graph: 1
+
+modes:
+  - LEGACY
+  - SHADOW
+  - LEGACY_DRAINING
+  - GRAPH
+default_mode: LEGACY
+# Compare-and-swap, human-only; every transition writes one immutable command receipt. S1 enabled
+# the two SHADOW transitions; S6 ships the ingress gate and enables the drain, the abort and the
+# GRAPH transition. The GRAPH transition is reachable only through the cutover command
+# (`cutover.py`), which carries the DRAIN_SEQ ConditionCheck, the hold and graph_entered_at.
+mode_transitions:
+  - {from: LEGACY, to: SHADOW, enabled: true}
+  - {from: SHADOW, to: LEGACY, enabled: true}
+  - {from: LEGACY, to: LEGACY_DRAINING, enabled: true}
+  - {from: SHADOW, to: LEGACY_DRAINING, enabled: true}
+  - {from: LEGACY_DRAINING, to: LEGACY, enabled: true}
+  - {from: LEGACY_DRAINING, to: GRAPH, enabled: true}
+# S6 drain-to-zero cutover (design.md, "Legacy cutover", steps 3-6, and "Drain-wait visibility").
+# T_max is the largest configured timeout among the inventoried legacy writers; the CDK test
+# asserts every listed function's rendered timeout equals its value here, so the two cannot drift.
+cutover:
+  # One item in the coordinator (publications) table; every family-changing transaction of a
+  # writer whose per-invocation mode read returned LEGACY_DRAINING adds 1 (V-17b).
+  drain_seq_key: {partition_key: "CUTOVER#ingestion", record_key: DRAIN_SEQ}
+  legacy_writers:
+    - {writer: ingestion_handler, function: IngestionFunction, timeout_seconds: 900}
+    - {writer: plan_intent_reconciler, function: PlanIntentReconciler, timeout_seconds: 120}
+    - {writer: table_writer, function: TableWriter, timeout_seconds: 900}
+    - {writer: provider_attempt_reconciler, function: ProviderAttemptReconciler, timeout_seconds: 120}
+    - {writer: provider_fence_recovery, function: ProviderFenceRecoveryFunction, timeout_seconds: 60}
+  drain_fence_margin_seconds: 60
+  # SQS caps one message's visibility at 12 h from its receive; the delivery queue's own
+  # visibility is TIMEOUT_SECONDS + VISIBILITY_MARGIN_SECONDS (ingestion-stack.ts).
+  sqs_visibility_cap_seconds: 43200
+  delivery_queue_timeout_seconds: 900
+  delivery_queue_visibility_margin_seconds: 60
+
+# Revision 2 (S6 part 2, design §2.1, D4): a pre-cutover edit, because GRAPH was never entered.
+# `route` names the graph queue a node is dispatched to; a node without one (`grant_apply`) is
+# never armed or dispatched, because apply settles it. `dynamic: true` means instantiation never
+# puts the node: the `materialize_raw` settlement puts one `write_unit:<unit_key>` per roster unit,
+# and `after: [write_unit]` matches every node of that group.
+templates:
+  ingestion_manifest_to_served.v1:
+    workload: ingestion
+    nodes:
+      - {node: materialize_raw, after: [], route: delivery}
+      - {node: write_unit, after: [materialize_raw], route: semantic_write, dynamic: true}
+      - {node: grant_apply, after: [write_unit]}
+      - {node: publish, after: [grant_apply], phase: POST_GRANT, route: semantic_write}
+      # DB25: publish wakes bake first. Precompute remains WAITING_INPUT until the exact
+      # roster effect join writes its immutable artifact input and existing-route outbox.
+      - {node: bake, after: [publish], phase: POST_GRANT, route: bake}
+      - {node: precompute, after: [bake_task], phase: POST_GRANT, route: precompute}
+      # GRAPH bake V3 (plan 4.6): the `bake` node is the fan-out control; it puts one
+      # `bake_task:<page>#<variant>` per roster row, armed on its lane, and `bake_finalize`.
+      - {node: bake_task, after: [bake], phase: POST_GRANT, route: bake, dynamic: true}
+      - {node: bake_finalize, after: [bake_task], phase: POST_GRANT, route: bake, dynamic: true}
+
+# The one source of each graph queue's maxReceiveCount (the CDK queues read the generated module)
+# and of every claimer's final-receive test, so a queue and its claimer cannot drift (AGG3-16).
+routes:
+  delivery: {max_receive_count: 3}
+  semantic_write: {max_receive_count: 3}
+  bake: {max_receive_count: 3}
+  precompute: {max_receive_count: 3}
+# Slice 7 (1b, D40, D42, D43): the scheduling allowance per composed statement for a write_unit
+# execution set in a batch of more than one member. 45,000 ms is 2 x probe 2's largest in-bound
+# client wall (22,193 ms), rounded up to the next 1,000 ms (design §2.5 step 4). Null is accepted
+# here so the slice builds, but `make check-execution-graph-deployable` refuses it before deploy.
+# It sits outside `bounds`, so the bounds digest does not move.
+write_unit_batching:
+  statement_allowance_ms: 45000
+
+# GRAPH serving coalescing (design §§2-3): closed pure protocol vocabulary. These controls sit
+# outside `bounds`, so the pre-cutover v1 bounds digest and its route/ceiling controls do not move.
+serving_coalescing:
+  serving_candidate_roster_max: 512
+  serving_frontier_shards: 32
+  # Measured by FreshElectionTimingV1: ceil(2 * max(total_ms)) over every attempt of
+  # every sample. Evidence: .agents/tasks/ingestion-traceability/evidence/graph-bake-delivery/fresh-election-timing-v1.json
+  # SHA-256 3527fa724e03e32dad8f9a20a09ecf4207bf5a6732a45ba0ca908ea9cbb02e9a.
+  next_election_min_remaining_ms: 10493
+  binding_kinds: [direct, alias]
+
+# GRAPH bake stage 1 (plan 3.1, A1.1): the roster is data and every consumer reads it as N rows.
+# Each roster row has exactly one budget (keyed `<page>#<variant>`) and its page one write-seconds
+# entry; values carry at most one decimal place, because scheduling sums integer tenths.
+# Budgets, write seconds and certified plan counts are the D2 spike S0 certificate's values
+# (tests/fixtures/bake-certification/d2-certificate.json, plan A5.3); a test refuses drift.
+# The V3 final transaction is what the store's finalize_bake builds: final_authority_members, then
+# final_task_condition_members per roster effect and at most final_written_pointer_members per
+# written effect, so its bound is 10 + (1 + 3) x max_tasks = 94 <= bounds.max_transaction_items
+# at 21. `max_tasks` 21 is a policy ceiling, not a derived maximum. Outside `bounds`, so v1's
+# digest is unchanged.
+bake_tasks:
+  roster:
+    - {page: campaigns, variant: 1d}
+    - {page: campaigns, variant: 7d}
+    - {page: campaigns, variant: 14d}
+    - {page: campaigns, variant: 30d}
+    - {page: retail-health, variant: 1d}
+    - {page: retail-health, variant: 7d}
+    - {page: retail-health, variant: 14d}
+    - {page: scorecard, variant: 7d}
+    - {page: scorecard, variant: 30d}
+    - {page: scorecard, variant: last_complete_week}
+    - {page: scorecard, variant: last_complete_month}
+    - {page: new-customers, variant: 7d}
+    - {page: new-customers, variant: 30d}
+    - {page: new-customers, variant: last_complete_week}
+    - {page: new-customers, variant: last_complete_month}
+    - {page: reach, variant: last_complete_week}
+    - {page: reach, variant: last_complete_month}
+    - {page: reach, variant: last_complete_quarter}
+    - {page: retention, variant: latest_with_current_publication}
+    - {page: audiences, variant: last_complete_month}
+  budget_seconds:
+    "campaigns#1d": 240
+    "campaigns#7d": 240
+    "campaigns#14d": 270
+    "campaigns#30d": 300
+    "retail-health#1d": 420
+    "retail-health#7d": 420
+    "retail-health#14d": 420
+    "scorecard#7d": 120
+    "scorecard#30d": 120
+    "scorecard#last_complete_week": 120
+    "scorecard#last_complete_month": 120
+    "new-customers#7d": 90
+    "new-customers#30d": 90
+    "new-customers#last_complete_week": 150
+    "new-customers#last_complete_month": 150
+    "reach#last_complete_week": 90
+    "reach#last_complete_month": 180
+    "reach#last_complete_quarter": 150
+    "retention#latest_with_current_publication": 90
+    "audiences#last_complete_month": 300
+  write_seconds:
+    campaigns: 16.6
+    retail-health: 16.6
+    scorecard: 16.6
+    new-customers: 16.6
+    reach: 16.6
+    retention: 16.6
+    audiences: 16.6
+  # The certified upper bound on the distinct requests one task's render executes (plan A5.1 I5):
+  # the (bound+1)-th distinct request is refused before it starts. One entry per roster row.
+  certified_plan_counts:
+    "campaigns#1d": 26
+    "campaigns#7d": 26
+    "campaigns#14d": 30
+    "campaigns#30d": 34
+    "retail-health#1d": 46
+    "retail-health#7d": 70
+    "retail-health#14d": 98
+    "scorecard#7d": 19
+    "scorecard#30d": 19
+    "scorecard#last_complete_week": 11
+    "scorecard#last_complete_month": 11
+    "new-customers#7d": 9
+    "new-customers#30d": 9
+    "new-customers#last_complete_week": 14
+    "new-customers#last_complete_month": 14
+    "reach#last_complete_week": 8
+    "reach#last_complete_month": 16
+    "reach#last_complete_quarter": 8
+    "retention#latest_with_current_publication": 6
+    "audiences#last_complete_month": 61
+  final_authority_members: 10
+  final_task_condition_members: 1
+  final_written_pointer_members: 3
+  # Each row's declared source horizon in days (plan A5.1 I9): every whole-scope CURRENT read a
+  # bake pins is bounded by it, so pin bytes never grow with retained history. One entry per
+  # roster row; `make check-bakeability` refuses a value its page's policy doesn't derive.
+  source_horizon_days:
+    "campaigns#1d": 123
+    "campaigns#7d": 123
+    "campaigns#14d": 123
+    "campaigns#30d": 123
+    "retail-health#1d": 106
+    "retail-health#7d": 106
+    "retail-health#14d": 106
+    "scorecard#7d": 140
+    "scorecard#30d": 140
+    "scorecard#last_complete_week": 140
+    "scorecard#last_complete_month": 140
+    "new-customers#7d": 125
+    "new-customers#30d": 125
+    "new-customers#last_complete_week": 125
+    "new-customers#last_complete_month": 125
+    "reach#last_complete_week": 261
+    "reach#last_complete_month": 261
+    "reach#last_complete_quarter": 261
+    "retention#latest_with_current_publication": 832
+    "audiences#last_complete_month": 218
+  per_query_seconds: 30
+  tail_seconds: 30
+  certified_query_cap: 10
+  control_claim_seconds: 30
+  lambda_timeout_seconds: 900
+  visibility_seconds: 960
+  lanes: 2
+  lane_groups: [preset-bake-lane-0, preset-bake-lane-1]
+  s3_chains_per_baker: 8
+  s3_chains_aggregate: 16
+  max_tasks: 21
+  # The precompute readiness timeline (DB26, TD-279), the one home of the armed finalizer's
+  # redelivery and of the detector's precompute- and finalizer-blocked thresholds: the graph
+  # workers' and the stuck-flow detector's one-minute schedule (also each bake alarm's period),
+  # one graph-worker pass (its Lambda timeout) and one precompute claim lease (30 s timeout +
+  # 30 s FIFO visibility margin). Infra tests pin the deployed schedule, period, timeout and
+  # visibility to these values.
+  worker_schedule_seconds: 60
+  worker_pass_seconds: 60
+  precompute_claim_lease_seconds: 60
+
+# GRAPH bake V3 (plan 4.1, design DB20-DB23): the closed task, effect and recovery vocabulary.
+# Unavailable reasons are not listed: each roster page's reason is generated as
+# `<normalized page id><unavailable_reason_suffix>` (`-` read as `_`), so no literal lives in src/.
+# Outside `bounds`, so v1's digest is unchanged.
+bake_v3:
+  schema_version: 3
+  task_message_kind: graph_bake_task_v3
+  control_kinds: [bake_fan_out, bake_finalize]
+  waiting_input_state: WAITING_INPUT
+  effect_kinds: [written, unchanged, unavailable]
+  unchanged_reason: revision_current
+  recovery_reasons: [fatal, retry_exhausted]
+  unavailable_reason_suffix: _materialization_unavailable
+  identifier_max_length: 80
+
+# The static Athena start budget (plan S1). The one home of both limits: the CDK synth wrapper
+# and the deployed readback refuse any configured or supplied value that differs from these.
+# `active_dml_quota` is this account's 2026-10-13 Active DML readback; a customer with another
+# quota changes it here. `chat_reserve_active_dml` is design-proposed headroom for CHAT.
+athena_start_budget:
+  active_dml_quota: 200
+  batch_athena_budget: 41
+  chat_reserve_active_dml: 20
+
+caller_kinds:
+  schedule: [scheduled_cadence]
+  delivery_event: [delivery_arrived]
+  on_demand: [operator_rerun, bounded_validation, data_correction]
+# data_correction is accepted only from on-demand API callers in the requester group.
+api_only_reasons: [data_correction]
+requester_group: operations-run-requesters
+# Owner-gate item 5: the two run-request routes, behind the existing session authorizer.
+api_routes:
+  - POST /api/operations/run-requests
+  - GET /api/operations/run-requests/{request_id}
+admission_classes: [cadence, bounded_validation, historical]
+caller_labels_refused: [full_history]
+
+run_request_schema:
+  RunRequest.v1:
+    required: [request_id, protocol_version, caller_kind, reason, manifest_key, version_id]
+    optional: [label]
+  RunRequestReceipt.v1:
+    fields:
+      [request_id, request_digest, decision, reason, row, authority_epoch, mode, conflict_unit,
+       input_revision, fingerprint, run_id, graph_id, root_flow_id, retry_generation,
+       superseded_request_id, legacy_plan_key, joined_request_id, retried_run_id, recorded_at,
+       protocol_version, contract_revision, manifest_key, version_id]
+    # S6 §2.4 (revision 2): an epoch-1 receipt records the admitted manifest_key and version_id,
+    # the inputs its run's materialize_raw node reads; epoch-0 (SHADOW) receipts omit both.
+    # Row 2's receipt lives beside the original at RECEIPT#<request_id>/CONFLICT#<request_digest>.
+    # Row 8 names the waiter it joined in joined_request_id; row 11 names the failed run in
+    # retried_run_id (V-22).
+
+refusal_classes:
+  pre_domain:
+    - SCHEMA_INVALID
+    - MANIFEST_KEY_BODY_MISMATCH
+    - PROTOCOL_MIGRATION_UNSUPPORTED
+    - FULL_HISTORY_NOT_ENABLED
+    - RUN_REQUEST_REASON_NOT_PERMITTED
+    - AGENT_MUTATION_NOT_ENABLED
+    - LEGACY_ADOPTION_UNSUPPORTED
+    - RUN_REQUEST_RECEIPT_REQUIRED
+  domain_guard:
+    - RUN_REQUEST_WAIT_SLOT_CONFLICT
+    - ACTIVE_COMPUTE_NOT_REPLACEABLE
+    - ACTIVE_RUN_GRANTED
+    - SLOT_REVISION_CHANGED
+  domain_decision_reasons:
+    - request_id_conflict
+    - RUN_ADMISSION_NOT_ACTIVE
+    - FULL_HISTORY_NOT_ENABLED
+    - manifest_key_rewritten
+    - conflict_unit_blocked
+    - conflict_unit_history_over_bound
+    - correction_requires_new_input
+    - fingerprint_terminal
+    - older_than_current
+    - older_than_waiting
+    - older_than_active
+    - automatic_admission_held
+  transaction:
+    - RUN_REQUEST_NOT_RECORDED
+
+# Owner-gate item 10 (2026-10-07): yes. Row 11 sets retry identity only and continues to row 13.
+retry_row_approved: true
+
+# First matching row wins. The generator proves the table total over its closed inputs, that
+# every row is reachable, that rows 16-19 match only in epoch 1, and that row 11 decides nothing.
+decision_table:
+  - {row: 1, when: receipt_same_digest, decision: RETURN_RECEIPT}
+  - {row: 2, when: receipt_other_digest, decision: REFUSED, reason: request_id_conflict}
+  - {row: 3, when: mode_not_admitting, decision: REFUSED, reason: RUN_ADMISSION_NOT_ACTIVE}
+  - {row: 4, when: class_historical, decision: REFUSED, reason: FULL_HISTORY_NOT_ENABLED}
+  - {row: 5, when: key_rewritten, decision: REFUSED, reason: manifest_key_rewritten}
+  - {row: 6, when: unit_blocked, decision: REFUSED, reason: conflict_unit_blocked}
+  - {row: 7, when: fingerprint_is_active, decision: JOINED}
+  - {row: 8, when: fingerprint_is_waiter, decision: JOINED}
+  - {row: 9, when: fingerprint_completed, decision: JOINED}
+  - {row: 10, when: correction_of_existing, decision: REFUSED, reason: correction_requires_new_input}
+  - {row: 11, when: pre_grant_failure_rerun, decision: RETRY_IDENTITY, continue_to: 13}
+  - {row: 12, when: fingerprint_terminal, decision: REFUSED, reason: fingerprint_terminal}
+  - {row: 13, when: older_than_current, decision: REFUSED, reason: older_than_current}
+  - {row: 14, when: older_than_waiting, decision: REFUSED, reason: older_than_waiting}
+  - {row: 15, when: older_than_active, decision: REFUSED, reason: older_than_active}
+  - {row: 16, when: automatic_held, decision: QUEUED_LATEST, reason: automatic_admission_held, epoch1_only: true}
+  - {row: 17, when: active_before_compute, decision: REPLACED_BEFORE_COMPUTE, epoch1_only: true}
+  - {row: 18, when: correction_of_computing, decision: REPLACED_ON_INVALIDATION, epoch1_only: true}
+  - {row: 19, when: active_exists, decision: QUEUED_LATEST, epoch1_only: true}
+  - {row: 20, when: otherwise, decision: ADMITTED}
+
+conflict_unit:
+  derivation: the manifest key without its last retrieved=<instant>/ segment and file name
+  input_revision: the retrieval instant of the key's retrieved= segment
+  retrieved_format: "%Y%m%dT%H%M%SZ"
+compute_start_boundary: the first graph execution claim of any unit sets compute_started_at
+
+bounds:
+  max_graph_nodes: 16
+  max_transaction_items: 100
+  max_window_retrievals: 512
+  max_redecide: 8
+  due_shards: 16
+  protocol_ceiling_seconds: 7200
+  cursor_max_bytes: 2048
+
+operator_commands:
+  set_mode: {fields: [command_id, protocol_version, from_mode, to_mode, expected_revision]}
+
+cursor:
+  stateless: true
+  fields: [route, filter, revision, last_key]
+
+managed_job_executors: [SQS_LAMBDA]
+timing_manifest:
+  InJobTimingManifest.v1:
+    required: [manifest_version, provider_job_id, executor, clock_source, stages]
+    stage_fields: [stage, started_at, ended_at]
+    # Explicit clock provenance (BF-11): which clock produced every stage instant.
+    clock_sources: [monotonic, wall_clock]
+
+# FR-1/FR-2 root and activity vocabulary, held here as the projection contract until slice S2
+# mirrors it into contracts/operations/data-flows.yaml and contracts/observability/spans.yaml.
+root_vocabulary:
+  root_events: [received, admitted, dispatched, claimed, terminal]
+  clocks: [flow_root, activity, fifo_queue]
+  root_clock_source: raw manifest version LastModified
+
+# The historical predicate's replay band (V-8), computed by the fixture planner from its own
+# output and pinned here so admission reads it from the contract. A unit test proves equality.
+historical_policy:
+  replay_base: "2026-10-06T00:00:00Z"
+  first_day: "2025-07-01"
+  cut: "2026-08-11"
+  stride_seconds: 64
+  seal_slot_base: 463
+  backfill_slot_base: 527
+  probe_slot_base: 530
+  probe_slot_count: 64
+  encodings:
+    - {source_system: amc, source_dataset: dsp_impressions, encoding: strided}
+    - {source_system: amc, source_dataset: sponsored_ads_traffic, encoding: strided}
+    - {source_system: amc, source_dataset: dsp_clicks, encoding: strided}
+    - {source_system: amc, source_dataset: dsp_views, encoding: strided}
+    - {source_system: amc, source_dataset: amazon_attributed_events_by_conversion_time, encoding: strided}
+    - {source_system: amc, source_dataset: deduplicated_temporal_attribution, encoding: strided}
+    - {source_system: amc, source_dataset: amazon_retail_purchases, encoding: strided}
+    - {source_system: vendor_central, source_dataset: GET_VENDOR_SALES_REPORT, encoding: paired}
+    - {source_system: vendor_central, source_dataset: GET_VENDOR_TRAFFIC_REPORT, encoding: paired}
+
+store:
+  live_table_suffix: execution-graph
+  probe_table_suffixes: [execution-graph-probe, execution-graph-probe-legacy]
+  partition_key: pk
+  sort_key: sk
+  mode_key: {pk: "MODE#ingestion", sk: MODE}
+  # The admission writer's item actions on the live table (a transaction needs each member's
+  # own action). The probe role gets exactly this set on the probe tables and nothing on the
+  # live table; no worker role gets any action on a probe table (V-15).
+  # Partition prefixes only the bound operator profile writes (owner-gate item 6): the admission
+  # writer's role carries an explicit Deny of every item write under them. It keeps GetItem on
+  # the mode item.
+  operator_only_prefixes: ["MODE#", "COMMAND#"]
+  operator_only_denied_actions:
+    - dynamodb:PutItem
+    - dynamodb:UpdateItem
+    - dynamodb:DeleteItem
+  writer_actions:
+    - dynamodb:GetItem
+    - dynamodb:PutItem
+    - dynamodb:UpdateItem
+    - dynamodb:DeleteItem
+    - dynamodb:ConditionCheckItem
+  probe_role_actions:
+    - dynamodb:GetItem
+    - dynamodb:Query
+    - dynamodb:PutItem
+    - dynamodb:UpdateItem
+    - dynamodb:DeleteItem
+    - dynamodb:ConditionCheckItem

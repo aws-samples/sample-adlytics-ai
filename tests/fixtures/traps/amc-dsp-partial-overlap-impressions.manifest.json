@@ -1,0 +1,12 @@
+{
+  "$comment": "HAND-BUILT landing declaration. Three DSP deliveries covering DIFFERENT grains in one partition, which is the case a partition-scoped withdraw erased. See ADR-033 and G-28.",
+  "source_system": "amc",
+  "source_scope": {"namespace": "amc.entity", "value": "fictional-trap-amc-entity"},
+  "source_dataset": "dsp_impressions",
+  "marketplace": "ATVPDKIKX0DER",
+  "option_set": {},
+  "period_start": "2026-08-20",
+  "period_end": "2026-08-20",
+  "source_watermark": "2026-08-20",
+  "retrieved_at": "2026-08-27T07:00:00Z"
+}

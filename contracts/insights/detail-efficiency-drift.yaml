@@ -1,0 +1,110 @@
+id: efficiency-drift
+version: 9
+purpose: Explain a material supplied change between campaign efficiency measures and their comparator.
+display_name: Efficiency drift (campaign detail)
+output_class: perspective
+allowed_inputs:
+  - reporting and comparison window display context
+  - selected campaign display identity
+  - full summary comparison section (current and prior metrics)
+  - server-computed absolute and percentage changes
+  - typed window profile (window length, grain, aligned prior, horizon role)
+deterministic_findings:
+  - absolute-change
+  - percentage-change
+predicate:
+  required_evidence_inputs: [detail-comparisons]
+  required_finding_kinds: [absolute-change, percentage-change]
+  materiality:
+    bases:
+      campaign_window:
+        per_unit:
+          multiplier: {operational-pulse: "0.25", tactical-review: "0.15", pattern-confirmation: "0.10"}
+          percent: {operational-pulse: "10", tactical-review: "5", pattern-confirmation: "5"}
+        per_metric: {}
+    near_zero_prior:
+      multiplier: "0.1"
+  delivery_follow_up_evidence: []
+materiality_cases:
+  - {name: R-1 control - ROAS up 8 percent off 3.00 is admitted, horizon: tactical-review, basis: campaign_window, kind: percentage-change, metric: attributed_roas, current: "3.24", prior: "3.00", expect: admitted}
+  - {name: ROAS change of 0.15 clears the tactical row, horizon: tactical-review, basis: campaign_window, kind: absolute-change, metric: attributed_roas, current: "3.15", prior: "3.00", expect: admitted}
+  - {name: ROAS change of 0.14 is below the tactical row, horizon: tactical-review, basis: campaign_window, kind: absolute-change, metric: attributed_roas, current: "3.14", prior: "3.00", expect: silent}
+  - {name: a ROAS prior of 0.05 is near zero, horizon: tactical-review, basis: campaign_window, kind: percentage-change, metric: attributed_roas, current: "0.06", prior: "0.05", expect: suppressed}
+silence_condition: No supplied efficiency metric changes beyond the declared materiality threshold.
+structured_output_schema:
+  id: insight-narration-v1
+  fields: [output_class, sentences]
+initial_fictional_prompt: Select one material supplied efficiency movement and state its monitoring implication without inventing a cause.
+calibration_cases:
+  - kind: known-correct
+    input_summary: Fictional campaign ROAS declines by the supplied comparator amount while spend holds.
+    expected_outcome: Accept a perspective limited to the supplied decline.
+    horizon: tactical-review
+    findings:
+      - {name: Roas change, value: "-0.6"}
+      - {name: Ad spend change, value: "12"}
+  - kind: exploratory
+    input_summary: A fictional efficiency dip across the full window invites a hedged drift reading rather than a verdict.
+    expected_outcome: Accept the labeled drift hypothesis over the supplied change.
+    horizon: pattern-confirmation
+    findings:
+      - {name: Roas percentage change, value: "-7.8"}
+  - kind: contradiction
+    input_summary: Fictional ROAS improves but the draft says efficiency declined.
+    expected_outcome: Reject the contradiction.
+    horizon: operational-pulse
+    findings:
+      - {name: Roas change, value: "0.4"}
+    draft:
+      sentences:
+        - Efficiency slipped again, with roas falling 0.4 on the day.
+  - kind: fluent-unsupported
+    input_summary: A fluent draft attributes the drift to a creative-fatigue rate it cites from outside the findings.
+    expected_outcome: Reject the figure that is neither supplied nor derived from the findings.
+    horizon: tactical-review
+    findings:
+      - {name: Roas change, value: "-0.6"}
+    draft:
+      sentences:
+        - Roas fell 0.6 because creative fatigue reached 31.5 percent across the account.
+  - kind: derived-figure
+    input_summary: A fictional draft states the ROAS percentage change it derives from the supplied current and prior values.
+    expected_outcome: Accept the correctly derived percentage change.
+    horizon: tactical-review
+    findings:
+      - {name: Roas this window, value: "3.0"}
+      - {name: Roas prior window, value: "3.6"}
+    draft:
+      sentences:
+        - Roas eased from 3.6 to 3.0, a decline of 17 percent against the prior window; one reading is an efficiency slip worth watching.
+  - kind: miscomputed-derivation
+    input_summary: A fictional draft divides the ROAS change by the current value instead of the prior one.
+    expected_outcome: Reject the miscomputed percentage change.
+    horizon: tactical-review
+    findings:
+      - {name: Roas this window, value: "3.0"}
+      - {name: Roas prior window, value: "3.6"}
+    draft:
+      sentences:
+        - Roas eased from 3.6 to 3.0, a decline of 20 percent against the prior window; one reading is an efficiency slip worth watching.
+  - kind: incompatible-basis
+    input_summary: A fictional draft computes a ROAS change across two different attribution bases.
+    expected_outcome: Reject the figure that combines findings of incompatible attribution basis.
+    horizon: pattern-confirmation
+    findings:
+      - {name: Roas this window on 14-day attribution, value: "3.0"}
+      - {name: Roas prior window on 7-day attribution, value: "3.6"}
+    draft:
+      sentences:
+        - Roas fell about 17 percent from 3.6 to 3.0, so efficiency is drifting down.
+deep:
+  allowed_inputs:
+    - complete daily series for every metric this surface serves
+    - every server-computed driver and cross-metric total for the window
+    - lag, estimate, and basis qualifications carried by the artifact
+  structured_output_schema:
+    id: insight-deep-dive-v1
+    fields: [what_stands_out, candidate_readings, discriminating_evidence, cited_figures]
+# FR-11 (design 4.12): no next step is offered until the gated card-next-step prompt ships.
+next_steps:
+  allowed_kinds: []

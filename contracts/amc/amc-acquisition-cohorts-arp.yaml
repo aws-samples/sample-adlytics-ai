@@ -1,0 +1,253 @@
+# amc-acquisition-cohorts-arp — the same cohorts' repeats from all Amazon purchases (paid ARP).
+#
+# Pack 15 of the shopper-aggregate family (ADR-099, ADR-104, ADR-107; design §5.2 row 15, §6.6
+# B3), the paid path that follows pack 14. Its cohort set is pack 14's, byte for byte between the
+# cohort-set markers (a contract test compares them), restricted after the set to Amazon account
+# IDs (`user_id_type = 'adUserId'`), because Amazon Retail Purchases holds adUserId only (finding
+# BO-10). Repeats come from `amazon_retail_purchases`: orders are COUNT(DISTINCT purchase_id),
+# revenue is unit_price x purchase_units_sold in currency_code, both inside the same 13-month
+# window as the ad data. Rows carry basis retail_actual and hold only ARP repeat measures.
+#
+# The ARP cohort size isn't served from here: the ARP rates divide these repeat buyers by pack
+# 14's cohort_buyers_account_ids for the same vintage, cohort and group (mixes_basis, D-8 (b)).
+# cohort_buyers_account_ids_check is the same cohort-set count on this delivery, an integrity
+# column with no dictionary metric: a rate is withheld with "cohort sizes changed between runs"
+# when it differs from pack 14's, or when the numerator exceeds the denominator (design §6.6,
+# review DS-13).
+#
+# The ARP marketplace is pack 15's own arp_marketplace_name parameter, resolved from the
+# amc.arp_marketplace_name namespace pinned from the registry's AMAZON.COM form (plan D15); the
+# cohort set keeps sponsored_marketplace_name. Pack 15's cohort grain follows pack 14's for the
+# same marketplace (variant_follows): its own loss never switches it, so both rate operands share
+# one grain (Retention LLD, "One grain for both paths").
+contract_id: amc-acquisition-cohorts-arp
+contract_version: 1
+source_system: amc
+source_dataset: amazon_attributed_events_by_conversion_time
+source_format: csv
+target_table: fct_shopper_acquisition
+source_tables:
+  - amazon_attributed_events_by_conversion_time
+  - amazon_retail_purchases
+grain:
+  - period_start
+  - period_end
+  - time_grain
+  - as_of_month
+  - grain_set
+  - marketplace_key
+  - cohort_path
+  - cohort_grain
+  - cohort_month
+  - months_since_acquisition
+  - acquisition_channel_group
+key_unique_among_unsuppressed_only: true
+partition_keys:
+  - marketplace_key
+  - period_start
+measurement_basis: retail_actual
+source_timezone: UTC
+ecosystem_key: amazon
+platform_key: amazon_ads
+restatement_window_days: 30
+staleness_threshold_hours: 816
+grain_feasibility_note: >
+  Every output column is NONE or LOW or derived in a CTE, so the bar is 2 distinct users per row.
+  The cohort month, follow-up month and acquisition source set are derived from
+  conversion_event_date_utc, purchase_date_utc and ad_product_type (LOW); the counts are
+  COUNT(DISTINCT user_id) and user_id (VERY_HIGH) never appears in output; purchase_id
+  (VERY_HIGH) is only a COUNT(DISTINCT) input inside the repeats CTE; the sums read unit_price and
+  purchase_units_sold (NONE). The bar applies per data-source path, so a withheld row can hold two
+  or more shoppers; it is discarded like any withheld row (plan D19).
+# The same triangle as pack 14 (design §6.6), graded per acquisition source set and never
+# withdrawn; absent cohorts are out of the loss denominator. Pack 15's grade is recorded but never
+# switches the cohort grain: pack 14's evidence does (variant_follows).
+expected_cells:
+  slices:
+    - column: acquisition_source_set
+      values: [dsp, sponsored, dsp+sponsored]
+  cohorts:
+    column: cohort_month
+    offset: months_since_acquisition
+    grain: month
+    follow_ups: 12
+  cells:
+    - column: cohort_grain
+      values: [month]
+  variants:
+    quarterly:
+      - slices:
+          - column: acquisition_source_set
+            values: [dsp, sponsored, dsp+sponsored]
+        cohorts:
+          column: cohort_month
+          offset: months_since_acquisition
+          grain: quarter
+          follow_ups: 3
+        cells:
+          - column: cohort_grain
+            values: [quarter]
+variant_follows: amc-acquisition-cohorts
+currency_minimums:
+  currency_code: currency_code_min
+repeated_totals:
+  - column: cohort_buyers_account_ids_check
+    keyed_by: [cohort_month, acquisition_source_set]
+suppression:
+  discriminator_column: rows_suppressed
+  reason_column: suppression_reason
+  distinct_user_count_column: distinct_user_count
+fields:
+  # --- grain -----------------------------------------------------------------
+  - target_column: period_start
+    assigned_by_load: true
+    target_type: date
+  - target_column: period_end
+    assigned_by_load: true
+    target_type: date
+  - target_column: time_grain
+    assigned_by_load: true
+    target_type: string
+    value_domain: [custom]
+  - target_column: as_of_month
+    assigned_by_load: true
+    target_type: date
+  - target_column: grain_set
+    literal_value: platform
+    target_type: string
+    value_domain: [platform]
+  - source_path: marketplace_name
+    target_column: marketplace_key
+    # The pack echoes its sponsored_marketplace_name parameter, the cohort set's marketplace.
+  - target_column: cohort_path
+    literal_value: arp
+    target_type: string
+    value_domain: [standard, arp]
+  - source_path: the cohort grain literal of the pack version that emitted the row
+    target_column: cohort_grain
+    target_type: string
+    derived_from:
+      - conversion_event_date_utc
+    value_domain: [month, quarter]
+  - source_path: DATE_TRUNC('MONTH', acquisition date), or the cohort quarter's first day
+    target_column: cohort_month
+    target_type: date
+    derived_from:
+      - conversion_event_date_utc
+  - source_path: MONTH_INDEX(cohort start, the ARP purchase's month or quarter start)
+    target_column: months_since_acquisition
+    target_type: bigint
+    derived_from:
+      - conversion_event_date_utc
+      - purchase_date_utc
+  - source_path: CASE over the credit sources of the shopper's acquisition-day NTB purchase rows
+    target_column: acquisition_source_set
+    target_type: string
+    derived_from:
+      - ad_product_type
+    value_domain: [dsp, sponsored, dsp+sponsored]
+  - target_column: acquisition_channel_group
+    assigned_by_load: true
+    target_type: string
+    value_domain: [dsp_only, sponsored_only, dsp_and_sponsored]
+  # --- media, NULL at the platform grain set (ADR-099 point 2) -----------------
+  - target_column: channel_group_key
+    assigned_by_load: true
+    target_type: string
+    nullable: true
+    null_meaning: not_applicable_under_options
+  - target_column: channel_key
+    assigned_by_load: true
+    target_type: string
+    nullable: true
+    null_meaning: not_applicable_under_options
+  - target_column: ad_product_key
+    assigned_by_load: true
+    target_type: string
+    nullable: true
+    null_meaning: not_applicable_under_options
+  - target_column: campaign_key
+    assigned_by_load: true
+    target_type: string
+    nullable: true
+    null_meaning: not_applicable_under_options
+  # --- shopper-aggregate shape (design §4.2) ----------------------------------
+  - target_column: identity_unit
+    literal_value: amazon_user_id
+    target_type: string
+  - target_column: cell_state
+    assigned_by_load: true
+    target_type: string
+    value_domain: [returned, not_returned]
+  # --- integrity column (design §6.6, review DS-13) ---------------------------
+  # The adUserId cohort size counted on this delivery, compared at serve with pack 14's
+  # cohort_buyers_account_ids. No dictionary metric reads it, so it's never served as a figure.
+  - source_path: COUNT(DISTINCT user_id) over the adUserId cohort and group
+    target_column: cohort_buyers_account_ids_check
+    target_type: bigint
+    derived_from:
+      - user_id
+      - user_id_type
+      - new_to_brand
+    non_additive: true
+    nullable: true
+    null_meaning: not_returned
+  # --- measures: exact distinct counts, all Amazon account IDs ----------------
+  - source_path: COUNT(DISTINCT cohort shoppers with an Amazon purchase in follow-up month k)
+    target_column: repeat_buyers
+    target_type: bigint
+    derived_from:
+      - user_id
+      - purchase_id
+    non_additive: true
+    nullable: true
+    null_meaning: not_returned
+  - source_path: COUNT(DISTINCT cohort shoppers whose first Amazon repeat month is k)
+    target_column: first_repeat_buyers
+    target_type: bigint
+    derived_from:
+      - user_id
+      - purchase_id
+    non_additive: true
+    nullable: true
+    null_meaning: not_returned
+  - source_path: COUNT(DISTINCT cohort shoppers whose first Amazon repeat month is k or earlier)
+    target_column: cumulative_repeat_buyers
+    target_type: bigint
+    derived_from:
+      - user_id
+      - purchase_id
+    non_additive: true
+    nullable: true
+    null_meaning: not_returned
+  # --- measures: additive within one delivery (D-9) ---------------------------
+  - source_path: SUM of COUNT(DISTINCT purchase_id) per shopper and follow-up month
+    target_column: repeat_purchases
+    target_type: bigint
+    derived_from:
+      - purchase_id
+    nullable: true
+    null_meaning: not_returned
+    # Orders, a different unit from pack 14's conversion events; never shown as one series.
+  - source_path: SUM(unit_price * purchase_units_sold)
+    target_column: repeat_revenue
+    derived_from:
+      - unit_price
+      - purchase_units_sold
+    scale_divisor: 1
+    currency_column: currency_code
+    nullable: true
+    null_meaning: not_returned
+  - source_path: MAX(currency_code) over the row's ARP repeat purchases
+    target_column: currency_code
+    target_type: string
+    derived_from:
+      - currency_code
+    nullable: true
+    null_meaning: not_returned
+tags:
+  - amc
+  - shopper-aggregate
+  - retention
+  - cohorts
+  - paid-feature

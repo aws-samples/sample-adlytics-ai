@@ -1,0 +1,158 @@
+{
+  "envelope_version": 2,
+  "kind": "page",
+  "page": {
+    "actions": [],
+    "artifact": {
+      "boundary": [
+        "Amazon flags a purchase as new to brand when the shopper hasn't bought from the brand in the previous 12 months.",
+        "New-to-brand revenue share divides a 12-month new-to-brand numerator by 14-day attributed revenue, so it uses two windows."
+      ],
+      "evidence_status": null,
+      "insight_cards": [],
+      "insights": [
+        {
+          "absence_class": "evaluated-quiet",
+          "absence_reason": "No ad product's new-to-brand revenue share moved by the declared threshold against the equal prior window.",
+          "artifact_revision": "5eb3aace4e256e3bf8ec64b16b1b1a62b40dcf5df4fbf508c9e1190aa4f1ba8d",
+          "evidence_line": null,
+          "id": "portfolio-acquisition",
+          "output_class": "perspective",
+          "prompt_version": "deterministic-v1",
+          "state": "silent",
+          "text": null
+        }
+      ],
+      "markets": [],
+      "outcome": "empty",
+      "outcome_text": "No ad spend was delivered in this window. Choose another window to see New customers.",
+      "page_context_expires_at": "2026-09-23T13:00:00+00:00",
+      "page_context_label": "New customers \u00b7 Sep 14\u201320, 2026",
+      "page_text": {
+        "boundary_heading": "About these figures",
+        "channel_header": "Channel",
+        "cost_per_new_buyer_label": "Cost per new buyer",
+        "gateway_heading": "Gateway products",
+        "gateway_product_header": "Product",
+        "gateway_selector_label": "Channel",
+        "gateway_share_header": "Share of channel new-to-brand purchases",
+        "insights_heading": "Insights",
+        "new_buyers_heading": "New buyers",
+        "new_buyers_label": "New buyers",
+        "not_available_text": "Not available"
+      },
+      "period": {
+        "end": "2026-09-20",
+        "start": "2026-09-14"
+      },
+      "period_label": "Sep 14\u201320, 2026",
+      "pointers": [
+        {
+          "href": "/audiences/",
+          "lead": "Which audience segments your buyers belong to is on",
+          "link_text": "Reach and audiences \u203a Audiences",
+          "order": 1,
+          "tab_id": "audiences",
+          "text": "Which audience segments your buyers belong to is on Reach and audiences \u203a Audiences."
+        },
+        {
+          "href": "/retention/",
+          "lead": "Whether new customers buy again is on",
+          "link_text": "Customers \u203a Retention",
+          "order": 2,
+          "tab_id": "retention",
+          "text": "Whether new customers buy again is on Customers \u203a Retention."
+        }
+      ],
+      "preset": "7d",
+      "prior_period": {
+        "end": "2026-09-13",
+        "start": "2026-09-07"
+      },
+      "scope_text": "Showing Sep 14\u201320, 2026 (7 days) compared with Sep 7\u201313. Data through Sep 20, 2026.",
+      "starter_questions": [],
+      "type": "NewCustomersArtifact",
+      "version": 2
+    },
+    "artifact_id": "new_customers",
+    "artifact_revision": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "artifact_type": "NewCustomersArtifact",
+    "artifact_version": 2,
+    "kind": "new_customers",
+    "page_context_expires_at": "2026-09-23T13:00:00+00:00",
+    "page_context_label": "New customers \u00b7 Sep 14\u201320, 2026",
+    "page_id": "new-customers",
+    "route": "/new-customers/",
+    "starter_questions": []
+  },
+  "session_id": "conversation-session",
+  "temporal": {
+    "comparison": {
+      "policy": "optional_equal_prior",
+      "reason_code": null,
+      "status": "available"
+    },
+    "custom": {
+      "availability": "unavailable",
+      "bounds": null,
+      "reason_code": "custom_disabled"
+    },
+    "mode": "selectable",
+    "presets": [
+      {
+        "availability": "available",
+        "id": "7d",
+        "label": "7 days",
+        "period_label": null,
+        "reason_code": null,
+        "reason_text": null,
+        "window": {
+          "end": "2026-09-20",
+          "start": "2026-09-14"
+        }
+      },
+      {
+        "availability": "unavailable",
+        "id": "30d",
+        "label": "30 days",
+        "period_label": null,
+        "reason_code": "preset_unavailable",
+        "reason_text": "Not available yet",
+        "window": null
+      },
+      {
+        "availability": "unavailable",
+        "id": "last_complete_week",
+        "label": "Latest measured week",
+        "period_label": null,
+        "reason_code": "preset_unavailable",
+        "reason_text": "Not available yet",
+        "window": null
+      },
+      {
+        "availability": "unavailable",
+        "id": "last_complete_month",
+        "label": "Latest measured month",
+        "period_label": null,
+        "reason_code": "preset_unavailable",
+        "reason_text": "Not available yet",
+        "window": null
+      }
+    ],
+    "resolved": {
+      "as_of_month": null,
+      "display_grain": "period",
+      "period_label": null,
+      "reporting_window_status": "preferred_default",
+      "selection": {
+        "kind": "default",
+        "preset_id": null
+      },
+      "window": {
+        "end": "2026-09-20",
+        "start": "2026-09-14"
+      }
+    },
+    "version": 2
+  }
+}

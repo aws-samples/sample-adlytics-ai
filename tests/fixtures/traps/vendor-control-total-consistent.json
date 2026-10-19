@@ -1,0 +1,95 @@
+{
+  "reportSpecification": {
+    "reportType": "GET_VENDOR_SALES_REPORT",
+    "marketplaceIds": [
+      "ATVPDKIKX0DER"
+    ],
+    "dataStartTime": "2025-06-16",
+    "dataEndTime": "2025-06-16",
+    "lastUpdatedDate": "2025-06-18T00:00:00Z",
+    "reportOptions": {
+      "reportPeriod": "DAY",
+      "distributorView": "MANUFACTURING",
+      "sellingProgram": "RETAIL"
+    }
+  },
+  "salesByAsin": [
+    {
+      "asin": "B0TRAP0007",
+      "startDate": "2025-06-16",
+      "shippedRevenue": {
+        "amount": 40.0,
+        "currencyCode": "USD"
+      },
+      "shippedCogs": {
+        "amount": 24.0,
+        "currencyCode": "USD"
+      },
+      "orderedRevenue": {
+        "amount": 44.0,
+        "currencyCode": "USD"
+      },
+      "shippedUnits": 4,
+      "orderedUnits": 5,
+      "customerReturns": 1
+    },
+    {
+      "asin": "B0TRAP0008",
+      "startDate": "2025-06-16",
+      "shippedRevenue": {
+        "amount": 35.0,
+        "currencyCode": "USD"
+      },
+      "shippedCogs": {
+        "amount": 21.0,
+        "currencyCode": "USD"
+      },
+      "orderedRevenue": {
+        "amount": 38.0,
+        "currencyCode": "USD"
+      },
+      "shippedUnits": 3,
+      "orderedUnits": 4,
+      "customerReturns": 0
+    },
+    {
+      "asin": "B0TRAP0009",
+      "startDate": "2025-06-16",
+      "shippedRevenue": {
+        "amount": 25.0,
+        "currencyCode": "USD"
+      },
+      "shippedCogs": {
+        "amount": 15.0,
+        "currencyCode": "USD"
+      },
+      "orderedRevenue": {
+        "amount": 28.0,
+        "currencyCode": "USD"
+      },
+      "shippedUnits": 2,
+      "orderedUnits": 2,
+      "customerReturns": 1
+    }
+  ],
+  "salesAggregate": [
+    {
+      "startDate": "2025-06-16",
+      "shippedRevenue": {
+        "amount": 100.0,
+        "currencyCode": "USD"
+      },
+      "shippedCogs": {
+        "amount": 60.0,
+        "currencyCode": "USD"
+      },
+      "orderedRevenue": {
+        "amount": 110.0,
+        "currencyCode": "USD"
+      },
+      "shippedUnits": 9,
+      "orderedUnits": 11,
+      "customerReturns": 2
+    }
+  ]
+}

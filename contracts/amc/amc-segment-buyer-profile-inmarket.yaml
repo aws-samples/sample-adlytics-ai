@@ -1,0 +1,229 @@
+# amc-segment-buyer-profile-inmarket — which in-market Amazon audience segments the month's
+# ad-touched buyers belong to, beside the shoppers the ads reached (C2, the paid path).
+#
+# Pack 10 of the audience family (ADR-103, ADR-107; design §5.2 row 10, §5.5 "Buyer profile",
+# §6.5 C2). Audience Segment Insights (ASI) is a paid feature: the pack is accessTier
+# paid_feature, and a workspace with no delivery reads the ADR-107 state, never "not
+# subscribed"; without it the Audiences page defaults to the DSP-exposed path (pack 12).
+#
+# One row per in-market ASI segment of the month's snapshot, and one profiled_total row. The
+# shoppers are the exposure fence's (byte-identical to pack 5's, plan D16; a contract test
+# compares them), restricted after the fence to Amazon account IDs (user_id_type 'adUserId')
+# with an impression in the period: the ASI membership ID space is [unverified] until P-BO-4
+# step 2, so both bases share one ID space. The snapshot is the one Amazon takes on the month's
+# first Thursday, read through the 2-day UTC range snapshot_start to snapshot_end, which the
+# producer planner derives from the period and the Finalizer re-derives (design §5.5, DS-15).
+# One region (amer) and one category table per query, filtered on the pinned US
+# segment_marketplace_id (the ASI page's rules).
+#
+# Bases (design §5.5, BO-11): profiled_exposed_total counts the fenced exposed shoppers present
+# in the snapshot; profiled_buyers_total those of them with a purchase in conversions in the
+# month (an inner join, so buyers are a subset). A segment row counts the same two sets inside
+# the segment. Buyers are any ad-touched purchasers in the month and may have bought before
+# their first ad (basis label, design §3b). Shares and the index are computed inside one
+# delivery, on read; no figure is summed across segments or compared across profile paths.
+#
+# Follows pack 5 (owner decision 3, 2026-10-09; plan D14): discard_suppressed_rows, AC-E1.5
+# "pending Step B", pack 5's alternative only. cadenceLagDays is AMC's 2-day default (design
+# §4.6): the fence's 14-day extension isn't read past the period here; if live runs show AMC
+# needs the extension's data, the recorded fallback is pack 5's 16 days.
+contract_id: amc-segment-buyer-profile-inmarket
+contract_version: 1
+source_system: amc
+source_dataset: audience_segments_amer_inmarket_snapshot
+source_format: csv
+target_table: fct_segment_profile
+source_tables:
+  - dsp_impressions
+  - sponsored_ads_traffic
+  - audience_segments_amer_inmarket_snapshot
+  - conversions
+# One row per month, grain set, marketplace, profile path, namespace, segment and row kind
+# (design §6.5). profile_path names the profiled base the delivery measures, so each delivery's
+# own profiled_total has its own key: packs 10 and 11 profile the in-market and the lifestyle
+# category table, each with its own total, so the paid path "Amazon audience segments (paid)"
+# is two values, asi_in_market and asi_lifestyle (a deviation from design §6.5's one
+# asi_all_exposed value, recorded in FEAT-009's findings; the Audiences page shows both under the
+# one paid option). segment_id is NULL on the total row.
+grain:
+  - period_start
+  - period_end
+  - time_grain
+  - grain_set
+  - marketplace_key
+  - profile_path
+  - segment_namespace
+  - segment_id
+  - row_kind
+key_unique_among_unsuppressed_only: true
+partition_keys:
+  - marketplace_key
+  - period_start
+measurement_basis: ad_attributed
+source_timezone: UTC
+ecosystem_key: amazon
+platform_key: amazon_ads
+restatement_window_days: 30
+staleness_threshold_hours: 840
+grain_feasibility_note: >
+  Every output column is NONE or LOW or derived in a CTE, so the bar is 2 distinct users per row.
+  segment_id is LOW on the snapshot table; marketplace_name echoes the governed parameter; the
+  row kind is a literal; the counts are COUNT(DISTINCT user_id) and user_id (VERY_HIGH) never
+  appears in output. The bar applies per data-source path (touches, the snapshot, conversions),
+  so a segment row can be withheld with two or more shoppers when one path has fewer; it is
+  discarded like any withheld row (plan D19). The total row counts every profiled shopper, so it
+  shouldn't be withheld if the bar counts the row's whole population [unverified, P-BO-1
+  criterion 7]; if it is, every share and index of the delivery reads not available.
+# The cells a delivery must return: its marketplace's one profiled_total row, required, and one
+# row per returned segment. Segments are an open domain graded at serve against the previous
+# month's segments of the same path (the segment roster, design §6.5), so they are an open
+# slice and the load writes no not_returned cell for them. A missing total row is written
+# not_returned. `serves` names the measures each row kind carries, so serving reads a figure
+# from the rows that hold it.
+expected_cells:
+  sets:
+    - cells:
+        - column: marketplace_key
+          from: delivery
+        - column: row_kind
+          values: [profiled_total]
+      measures: [profiled_exposed_total, profiled_buyers_total]
+      serves: [profiled_exposed_total, profiled_buyers_total]
+    - cells:
+        - column: marketplace_key
+          from: delivery
+        - column: row_kind
+          values: [segment]
+      open_slices: [segment_id]
+      measures: [segment_exposed_shoppers, segment_buyers, segment_buyers_new_to_brand]
+      serves: [segment_exposed_shoppers, segment_buyers, segment_buyers_new_to_brand]
+suppression:
+  discriminator_column: rows_suppressed
+  reason_column: suppression_reason
+  distinct_user_count_column: distinct_user_count
+fields:
+  # --- grain -----------------------------------------------------------------
+  - target_column: period_start
+    assigned_by_load: true
+    target_type: date
+  - target_column: period_end
+    assigned_by_load: true
+    target_type: date
+  - target_column: time_grain
+    assigned_by_load: true
+    target_type: string
+    value_domain: [month]
+  - target_column: grain_set
+    literal_value: platform
+    target_type: string
+    value_domain: [platform]
+  - source_path: marketplace_name
+    target_column: marketplace_key
+    # LOW. The pack echoes its governed sponsored_marketplace_name parameter, so a delivery
+    # carries one marketplace.
+  - target_column: profile_path
+    target_type: string
+    literal_value: asi_in_market
+    value_domain: [asi_in_market, asi_lifestyle, dsp_exposed_only]
+    # An exact selector: "Amazon audience segments (paid)", in-market category. Never compared
+    # with another profile path as one series: each has its own base.
+  - target_column: segment_namespace
+    target_type: string
+    literal_value: amc_asi
+    value_domain: [amc_asi, amc_dsp_behavior]
+    # The ASI namespace of dim_audience_segment; never compared with amc_dsp_behavior.
+  - source_path: segment_id
+    target_column: segment_id
+    target_type: string
+    nullable: true
+    null_meaning: not_applicable_under_options
+    # LOW. INTEGER in AMC, unique only within segment_marketplace_id; stored as decimal text,
+    # the key dim_audience_segment carries. NULL on the profiled_total row.
+  - source_path: row_kind
+    target_column: row_kind
+    target_type: string
+    derived_from:
+      - user_id
+    value_domain: [segment, profiled_total]
+    # The branch of the pack's UNION ALL that emitted the row.
+  # --- media, NULL at the platform grain set (ADR-099 point 2) -----------------
+  - target_column: channel_group_key
+    assigned_by_load: true
+    target_type: string
+    nullable: true
+    null_meaning: not_applicable_under_options
+  - target_column: channel_key
+    assigned_by_load: true
+    target_type: string
+    nullable: true
+    null_meaning: not_applicable_under_options
+  - target_column: ad_product_key
+    assigned_by_load: true
+    target_type: string
+    nullable: true
+    null_meaning: not_applicable_under_options
+  - target_column: campaign_key
+    assigned_by_load: true
+    target_type: string
+    nullable: true
+    null_meaning: not_applicable_under_options
+  # --- shopper-aggregate shape (design §4.2) ----------------------------------
+  - target_column: identity_unit
+    literal_value: amazon_user_id
+    target_type: string
+  - target_column: cell_state
+    assigned_by_load: true
+    target_type: string
+    value_domain: [returned, not_returned]
+  # --- measures: exact distinct counts, never summed ---------------------------
+  # Each row kind carries its own counts and NULL in the other kind's (`serves` says which
+  # rows hold a figure); a not_returned total row has NULL totals, read as not available.
+  - source_path: COUNT(DISTINCT s.user_id)
+    target_column: segment_exposed_shoppers
+    target_type: bigint
+    derived_from:
+      - user_id
+      - segment_id
+    non_additive: true
+    nullable: true
+    null_meaning: not_returned
+  - source_path: COUNT(DISTINCT b.user_id)
+    target_column: segment_buyers
+    target_type: bigint
+    derived_from:
+      - user_id
+      - event_category
+    non_additive: true
+    nullable: true
+    null_meaning: not_returned
+  - source_path: COUNT(DISTINCT CASE WHEN b.ntb = 1 THEN b.user_id END)
+    target_column: segment_buyers_new_to_brand
+    target_type: bigint
+    derived_from:
+      - user_id
+      - new_to_brand
+    non_additive: true
+    nullable: true
+    null_meaning: not_returned
+  - source_path: COUNT(DISTINCT p.user_id)
+    target_column: profiled_exposed_total
+    target_type: bigint
+    derived_from:
+      - user_id
+    non_additive: true
+    nullable: true
+    null_meaning: not_returned
+  - source_path: COUNT(DISTINCT b.user_id) over the profiled shoppers
+    target_column: profiled_buyers_total
+    target_type: bigint
+    derived_from:
+      - user_id
+      - event_category
+    non_additive: true
+    nullable: true
+    null_meaning: not_returned
+tags:
+  - amc
+  - shopper-aggregate
+  - audience-segment
+  - paid-feature

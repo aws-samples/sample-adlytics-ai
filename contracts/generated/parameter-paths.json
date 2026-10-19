@@ -1,0 +1,525 @@
+{
+  "version": 1,
+  "environmentName": {
+    "pattern": "^[a-z][a-z0-9-]*$",
+    "maxLength": 24
+  },
+  "pathSegments": [
+    "adlytics",
+    "{environment}",
+    "{area}",
+    "{name}"
+  ],
+  "parameters": {
+    "apiBaseUrl": {
+      "area": "api",
+      "name": "base-url",
+      "producedBy": "ApiStack"
+    },
+    "publicBaseUrl": {
+      "area": "frontend",
+      "name": "public-base-url",
+      "producedBy": "FrontendStack"
+    },
+    "apiId": {
+      "area": "api",
+      "name": "id",
+      "producedBy": "ApiStack"
+    },
+    "userPoolId": {
+      "area": "auth",
+      "name": "user-pool-id",
+      "producedBy": "AuthStack"
+    },
+    "userPoolClientId": {
+      "area": "auth",
+      "name": "user-pool-client-id",
+      "producedBy": "AuthStack"
+    },
+    "userPoolPublicClientId": {
+      "area": "auth",
+      "name": "public-client-id",
+      "producedBy": "AuthStack"
+    },
+    "userPoolClientSecretName": {
+      "area": "auth",
+      "name": "user-pool-client-secret-name",
+      "producedBy": "AuthStack"
+    },
+    "authDomain": {
+      "area": "auth",
+      "name": "domain",
+      "producedBy": "AuthStack"
+    },
+    "tokenIssuerUrl": {
+      "area": "identity",
+      "name": "token-issuer-url",
+      "producedBy": "TokenServiceStack"
+    },
+    "tokenRouteExchangeFunctionArn": {
+      "area": "identity",
+      "name": "token-route-exchange-function-arn",
+      "producedBy": "TokenServiceStack"
+    },
+    "tokenCredentialProviderArn": {
+      "area": "identity",
+      "name": "token-credential-provider-arn",
+      "producedBy": "TokenServiceStack"
+    },
+    "agentClientSecretArn": {
+      "area": "identity",
+      "name": "agent-client-secret-arn",
+      "producedBy": "TokenServiceStack"
+    },
+    "tokenSigningKeyArn": {
+      "area": "identity",
+      "name": "token-signing-key-arn",
+      "producedBy": "TokenServiceStack"
+    },
+    "frontendBucketName": {
+      "area": "frontend",
+      "name": "bucket-name",
+      "producedBy": "FrontendStack"
+    },
+    "distributionId": {
+      "area": "frontend",
+      "name": "distribution-id",
+      "producedBy": "FrontendStack"
+    },
+    "edgeWebAclArn": {
+      "area": "edge",
+      "name": "web-acl-arn",
+      "producedBy": "EdgeSecurityStack"
+    },
+    "semanticV2RawBucketName": {
+      "area": "data",
+      "name": "v2/raw-bucket",
+      "producedBy": "DataV2Stack"
+    },
+    "semanticV2BucketName": {
+      "area": "data",
+      "name": "v2/bucket",
+      "producedBy": "DataV2Stack"
+    },
+    "semanticV2AthenaResultsBucketName": {
+      "area": "data",
+      "name": "v2/athena-results-bucket",
+      "producedBy": "DataV2Stack"
+    },
+    "semanticV2AthenaWorkgroupInteractive": {
+      "area": "data",
+      "name": "v2/athena-workgroup-interactive",
+      "producedBy": "DataV2Stack"
+    },
+    "semanticV2AthenaWorkgroupBatch": {
+      "area": "data",
+      "name": "v2/athena-workgroup-batch",
+      "producedBy": "DataV2Stack"
+    },
+    "semanticV2AthenaWorkgroupBake": {
+      "area": "data",
+      "name": "v2/athena-workgroup-bake",
+      "producedBy": "DataV2Stack"
+    },
+    "semanticV2AthenaWorkgroupInsightPrecompute": {
+      "area": "data",
+      "name": "v2/athena-workgroup-insight-precompute",
+      "producedBy": "DataV2Stack"
+    },
+    "semanticV2AttemptsTableName": {
+      "area": "data",
+      "name": "v2/semantic-attempts-table",
+      "producedBy": "DataV2Stack"
+    },
+    "semanticV2AttemptsStreamArn": {
+      "area": "data",
+      "name": "v2/semantic-attempts-stream-arn",
+      "producedBy": "DataV2Stack"
+    },
+    "semanticV2LeasesTableName": {
+      "area": "data",
+      "name": "v2/semantic-leases-table",
+      "producedBy": "DataV2Stack"
+    },
+    "semanticV2PublicationsTableName": {
+      "area": "data",
+      "name": "v2/semantic-publications-table",
+      "producedBy": "DataV2Stack"
+    },
+    "semanticV2PublicationsStreamArn": {
+      "area": "data",
+      "name": "v2/semantic-publications-stream-arn",
+      "producedBy": "DataV2Stack"
+    },
+    "semanticV2SourceDatabase": {
+      "area": "data",
+      "name": "v2/source-aligned-glue-database",
+      "producedBy": "DataV2Stack"
+    },
+    "semanticV2CandidateDatabase": {
+      "area": "data",
+      "name": "v2/canonical-candidate-glue-database",
+      "producedBy": "DataV2Stack"
+    },
+    "semanticV2CurrentDatabase": {
+      "area": "data",
+      "name": "v2/canonical-current-glue-database",
+      "producedBy": "DataV2Stack"
+    },
+    "publisherArtifactBucketName": {
+      "area": "publisher",
+      "name": "artifact-bucket-name",
+      "producedBy": "PublisherArtifactStoreStack"
+    },
+    "publisherArtifactPointerTableName": {
+      "area": "publisher",
+      "name": "artifact-pointer-table-name",
+      "producedBy": "PublisherArtifactStoreStack"
+    },
+    "publisherArtifactPointerTableArn": {
+      "area": "publisher",
+      "name": "artifact-pointer-table-arn",
+      "producedBy": "PublisherArtifactStoreStack"
+    },
+    "publisherBakeQueueUrl": {
+      "area": "publisher",
+      "name": "bake-queue-url",
+      "producedBy": "PublisherStack"
+    },
+    "publisherBakeQueueArn": {
+      "area": "publisher",
+      "name": "bake-queue-arn",
+      "producedBy": "PublisherStack"
+    },
+    "ingestionAlarmTopicArn": {
+      "area": "ingestion",
+      "name": "alarm-topic-arn",
+      "producedBy": "IngestionStack"
+    },
+    "landingRoleArn": {
+      "area": "ingestion",
+      "name": "landing-role-arn",
+      "producedBy": "IngestionStack"
+    },
+    "landingIncomingPrefix": {
+      "area": "ingestion",
+      "name": "incoming-prefix",
+      "producedBy": "IngestionStack"
+    },
+    "registrationStatusTableName": {
+      "area": "ingestion",
+      "name": "registration-status-table",
+      "producedBy": "IngestionStack"
+    },
+    "providerFenceRecoveryOperatorRoleArn": {
+      "area": "ingestion",
+      "name": "provider-fence-recovery-operator-role-arn",
+      "producedBy": "IngestionStack"
+    },
+    "providerFenceRecoveryFunctionArn": {
+      "area": "ingestion",
+      "name": "provider-fence-recovery-function-arn",
+      "producedBy": "IngestionStack"
+    },
+    "semanticProjectionOperatorRoleArn": {
+      "area": "ingestion",
+      "name": "semantic-projection-operator-role-arn",
+      "producedBy": "IngestionStack"
+    },
+    "stage1PreswitchVerificationRoleArn": {
+      "area": "ingestion",
+      "name": "stage1-preswitch-verification-role-arn",
+      "producedBy": "IngestionStack"
+    },
+    "semanticWriteQueueArn": {
+      "area": "ingestion",
+      "name": "semantic-write-queue-arn",
+      "producedBy": "IngestionStack"
+    },
+    "semanticWriteDlqArn": {
+      "area": "ingestion",
+      "name": "semantic-write-dlq-arn",
+      "producedBy": "IngestionStack"
+    },
+    "deliveryFunctionArn": {
+      "area": "ingestion",
+      "name": "delivery-function-arn",
+      "producedBy": "IngestionStack"
+    },
+    "operationalStatusProjectionTableName": {
+      "area": "operations",
+      "name": "status-projection-table-name",
+      "producedBy": "OperationalStatusStoreStack"
+    },
+    "executionGraphTableName": {
+      "area": "operations",
+      "name": "execution-graph-table-name",
+      "producedBy": "ControlPlaneAuthorityStoreStack"
+    },
+    "executionGraphTableArn": {
+      "area": "operations",
+      "name": "execution-graph-table-arn",
+      "producedBy": "ControlPlaneAuthorityStoreStack"
+    },
+    "executionGraphTableStreamArn": {
+      "area": "operations",
+      "name": "execution-graph-table-stream-arn",
+      "producedBy": "ControlPlaneAuthorityStoreStack"
+    },
+    "operationalStatusProjectionTableArn": {
+      "area": "operations",
+      "name": "status-projection-table-arn",
+      "producedBy": "OperationalStatusStoreStack"
+    },
+    "operationalStatusQueueUrl": {
+      "area": "operations",
+      "name": "status-queue-url",
+      "producedBy": "OperationalStatusProcessorStack"
+    },
+    "operationalStatusQueueArn": {
+      "area": "operations",
+      "name": "status-queue-arn",
+      "producedBy": "OperationalStatusProcessorStack"
+    },
+    "stage1OutboxRecoveryOperatorRoleArn": {
+      "area": "operations",
+      "name": "stage1-outbox-recovery-operator-role-arn",
+      "producedBy": "OperationalStatusProcessorStack"
+    },
+    "stage1OutboxRecoveryFunctionArn": {
+      "area": "operations",
+      "name": "stage1-outbox-recovery-function-arn",
+      "producedBy": "OperationalStatusProcessorStack"
+    },
+    "pageContextTableName": {
+      "area": "agent",
+      "name": "page-context-table",
+      "producedBy": "AgentStack"
+    },
+    "measurementFunctionArn": {
+      "area": "agent",
+      "name": "measurement-function-arn",
+      "producedBy": "AgentStack"
+    },
+    "guardrailId": {
+      "area": "agent",
+      "name": "guardrail-id",
+      "producedBy": "AgentStack"
+    },
+    "guardrailArn": {
+      "area": "agent",
+      "name": "guardrail-arn",
+      "producedBy": "AgentStack"
+    },
+    "guardrailVersion": {
+      "area": "agent",
+      "name": "guardrail-version",
+      "producedBy": "AgentStack"
+    },
+    "harnessArn": {
+      "area": "agent",
+      "name": "harness-arn",
+      "producedBy": "HarnessStack"
+    },
+    "harnessPromptDigest": {
+      "area": "agent",
+      "name": "harness-prompt-digest",
+      "producedBy": "HarnessStack"
+    },
+    "agentQualityAuditTableName": {
+      "area": "agent_quality",
+      "name": "audit-table",
+      "producedBy": "AgentQualityStack"
+    },
+    "insightPromptRegistryTableName": {
+      "area": "insight",
+      "name": "prompt-registry-table",
+      "producedBy": "InsightPromptRegistryStack"
+    },
+    "insightPromptRegistryTableArn": {
+      "area": "insight",
+      "name": "prompt-registry-table-arn",
+      "producedBy": "InsightPromptRegistryStack"
+    },
+    "insightCacheTableName": {
+      "area": "insight",
+      "name": "cache-table",
+      "producedBy": "InsightCacheStack"
+    },
+    "insightCacheTableArn": {
+      "area": "insight",
+      "name": "cache-table-arn",
+      "producedBy": "InsightCacheStack"
+    },
+    "insightPromptCalibrationQueueUrl": {
+      "area": "insight",
+      "name": "prompt-calibration-queue-url",
+      "producedBy": "InsightPromptCalibrationStack"
+    },
+    "insightPromptCalibrationQueueArn": {
+      "area": "insight",
+      "name": "prompt-calibration-queue-arn",
+      "producedBy": "InsightPromptCalibrationStack"
+    },
+    "insightContinuationQueueUrl": {
+      "area": "insight",
+      "name": "continuation-queue-url",
+      "producedBy": "InsightContinuationStack"
+    },
+    "insightContinuationQueueArn": {
+      "area": "insight",
+      "name": "continuation-queue-arn",
+      "producedBy": "InsightContinuationStack"
+    },
+    "agentQualityAuditTableArn": {
+      "area": "agent_quality",
+      "name": "audit-table-arn",
+      "producedBy": "AgentQualityStack"
+    },
+    "agentQualityAuditStreamArn": {
+      "area": "agent_quality",
+      "name": "audit-stream-arn",
+      "producedBy": "AgentQualityStack"
+    },
+    "agentQualityAggregateTableName": {
+      "area": "agent_quality",
+      "name": "aggregate-table",
+      "producedBy": "AgentQualityStack"
+    },
+    "agentQualityAggregateTableArn": {
+      "area": "agent_quality",
+      "name": "aggregate-table-arn",
+      "producedBy": "AgentQualityStack"
+    },
+    "agentQualityFindingsTableName": {
+      "area": "agent_quality",
+      "name": "findings-table",
+      "producedBy": "AgentQualityStack"
+    },
+    "agentQualityFindingsTableArn": {
+      "area": "agent_quality",
+      "name": "findings-table-arn",
+      "producedBy": "AgentQualityStack"
+    },
+    "agentQualityFindingsStreamArn": {
+      "area": "agent_quality",
+      "name": "findings-stream-arn",
+      "producedBy": "AgentQualityStack"
+    },
+    "agentQualityReviewerAccessLogGroupArn": {
+      "area": "agent_quality",
+      "name": "reviewer-access-log-group-arn",
+      "producedBy": "AgentQualityStack"
+    },
+    "gatewayId": {
+      "area": "agent",
+      "name": "gateway-id",
+      "producedBy": "AgentStack"
+    },
+    "gatewayUrl": {
+      "area": "agent",
+      "name": "gateway-url",
+      "producedBy": "AgentStack"
+    },
+    "evaluationInputQueueUrl": {
+      "area": "evaluation",
+      "name": "input-queue-url",
+      "producedBy": "EvaluationInputStack"
+    },
+    "evaluationInputQueueArn": {
+      "area": "evaluation",
+      "name": "input-queue-arn",
+      "producedBy": "EvaluationInputStack"
+    },
+    "evaluationInputLogGroupName": {
+      "area": "evaluation",
+      "name": "input-log-group",
+      "producedBy": "EvaluationEvidenceStack"
+    },
+    "evaluationOutboxTableName": {
+      "area": "evaluation",
+      "name": "outbox-table",
+      "producedBy": "EvaluationEvidenceStack"
+    },
+    "evaluationOutboxTableArn": {
+      "area": "evaluation",
+      "name": "outbox-table-arn",
+      "producedBy": "EvaluationEvidenceStack"
+    },
+    "evaluationDeliveriesTableName": {
+      "area": "evaluation",
+      "name": "deliveries-table",
+      "producedBy": "EvaluationEvidenceStack"
+    },
+    "evaluationDeliveriesTableArn": {
+      "area": "evaluation",
+      "name": "deliveries-table-arn",
+      "producedBy": "EvaluationEvidenceStack"
+    },
+    "evaluationWriterReceiptsTableName": {
+      "area": "evaluation",
+      "name": "writer-receipts-table",
+      "producedBy": "EvaluationEvidenceStack"
+    },
+    "evaluationWriterReceiptsTableArn": {
+      "area": "evaluation",
+      "name": "writer-receipts-table-arn",
+      "producedBy": "EvaluationEvidenceStack"
+    },
+    "evaluationVerdictsTableName": {
+      "area": "evaluation",
+      "name": "verdicts-table",
+      "producedBy": "EvaluationEvidenceStack"
+    },
+    "evaluationVerdictsTableArn": {
+      "area": "evaluation",
+      "name": "verdicts-table-arn",
+      "producedBy": "EvaluationEvidenceStack"
+    },
+    "evaluationDeliveriesStreamArn": {
+      "area": "evaluation",
+      "name": "deliveries-stream-arn",
+      "producedBy": "EvaluationEvidenceStack"
+    },
+    "evaluationWriterReceiptsStreamArn": {
+      "area": "evaluation",
+      "name": "writer-receipts-stream-arn",
+      "producedBy": "EvaluationEvidenceStack"
+    },
+    "evaluationVerdictsStreamArn": {
+      "area": "evaluation",
+      "name": "verdicts-stream-arn",
+      "producedBy": "EvaluationEvidenceStack"
+    },
+    "evaluationInputServiceName": {
+      "area": "evaluation",
+      "name": "input-service-name",
+      "producedBy": "EvaluationInputStack"
+    },
+    "evaluationV4ResultLogGroupName": {
+      "area": "evaluation",
+      "name": "result-log-group-v4",
+      "producedBy": "EvaluationEvidenceStack"
+    },
+    "memoryArn": {
+      "area": "agent",
+      "name": "memory-arn",
+      "producedBy": "MemoryStack"
+    },
+    "memoryStrategyRevision": {
+      "area": "agent",
+      "name": "memory-strategy-revision",
+      "producedBy": "MemoryStack"
+    },
+    "dependenciesLayerArn": {
+      "area": "api",
+      "name": "dependencies-layer-arn",
+      "producedBy": "DependenciesStack"
+    },
+    "conversationFunctionUrl": {
+      "area": "api",
+      "name": "conversation-function-url",
+      "producedBy": "ApiStack"
+    }
+  }
+}

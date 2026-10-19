@@ -1,0 +1,184 @@
+{
+  "schema_version": "graph-hold-clear-migration-v1",
+  "source": ".agents/tasks/ingestion-traceability/evidence/graph-bake-delivery/acceptance.md, Closed historical hold-clear migration matrix",
+  "rows": [
+    {
+      "criterion_id": "HIST-1",
+      "current_owner": "criteria 3 and 5",
+      "status": "replaced",
+      "command": "observed_cohort_verdict",
+      "required_evidence": "all named runs terminal with serving outcomes",
+      "failure_disposition": "hold set"
+    },
+    {
+      "criterion_id": "HIST-2",
+      "current_owner": "criterion 5",
+      "status": "replaced",
+      "command": "observed_cohort_verdict",
+      "required_evidence": "every root deadline result",
+      "failure_disposition": "hold set"
+    },
+    {
+      "criterion_id": "HIST-3",
+      "current_owner": "criteria 3 and 5",
+      "status": "replaced",
+      "command": "observed_cohort_verdict",
+      "required_evidence": "exact single-root cycle plus mandatory A/B cycle, not a serial estimate or synthetic 98-root blocker",
+      "failure_disposition": "hold set"
+    },
+    {
+      "criterion_id": "HIST-4",
+      "current_owner": "criterion 6",
+      "status": "replaced",
+      "command": "trace_completeness_verdict",
+      "required_evidence": "complete generated span cardinality",
+      "failure_disposition": "hold set"
+    },
+    {
+      "criterion_id": "HIST-5",
+      "current_owner": "P6(e) lifecycle",
+      "status": "retained",
+      "command": "validation/probe_ingestion_traceability_gate.py --probe P6 --p6-step e",
+      "required_evidence": "transition/admission metrics for every armed node/claim",
+      "failure_disposition": "hold set"
+    },
+    {
+      "criterion_id": "HIST-6",
+      "current_owner": "P6(e) explanation",
+      "status": "retained",
+      "command": "validation/probe_ingestion_traceability_gate.py --probe P6 --p6-step e",
+      "required_evidence": "explanation status `APPLIED` with no missing row",
+      "failure_disposition": "hold set"
+    },
+    {
+      "criterion_id": "HIST-7",
+      "current_owner": "bake acceptance",
+      "status": "retained",
+      "command": "validation/probe_ingestion_traceability_gate.py --probe P6 --p6-step e",
+      "required_evidence": "per-intent durations and terminal bake/finalize",
+      "failure_disposition": "hold set"
+    },
+    {
+      "criterion_id": "HIST-8",
+      "current_owner": "presentation readback",
+      "status": "retained",
+      "command": "validation/probe_footnote_readback.py",
+      "required_evidence": "persona readback of as-of window and generation build time",
+      "failure_disposition": "hold set"
+    },
+    {
+      "criterion_id": "HIST-9",
+      "current_owner": "queue safety",
+      "status": "retained",
+      "command": "validation/probe_ingestion_traceability_gate.py --probe P6 --p6-step e",
+      "required_evidence": "every governed DLQ count and no active move",
+      "failure_disposition": "hold set"
+    },
+    {
+      "criterion_id": "HIST-10a",
+      "current_owner": "criteria 4 and 5",
+      "status": "replaced",
+      "command": "observed_cohort_verdict",
+      "required_evidence": "flip no later than settlement for every run",
+      "failure_disposition": "hold set"
+    },
+    {
+      "criterion_id": "HIST-10b",
+      "current_owner": "reader consistency",
+      "status": "retained",
+      "command": "P6(e) `_graph_acceptance` reader phase",
+      "required_evidence": "before/after flip resolution and head-vector-change count",
+      "failure_disposition": "hold set"
+    },
+    {
+      "criterion_id": "HIST-11",
+      "current_owner": "criteria 4 and 5",
+      "status": "replaced",
+      "command": "observed_cohort_verdict",
+      "required_evidence": "publication and binding chronology",
+      "failure_disposition": "hold set"
+    },
+    {
+      "criterion_id": "HIST-12",
+      "current_owner": "batching acceptance",
+      "status": "retained",
+      "command": "validation/probe_ingestion_traceability_gate.py --probe P6 --p6-step e",
+      "required_evidence": "batch spans/metrics, zero open lock members, explanation batch IDs",
+      "failure_disposition": "hold set"
+    },
+    {
+      "criterion_id": "HIST-12b",
+      "current_owner": "cross-run batching",
+      "status": "retained",
+      "command": "validation/probe_ingestion_traceability_gate.py --probe P6 --p6-step e",
+      "required_evidence": "at least one accepted batch with members from two runs",
+      "failure_disposition": "hold set"
+    },
+    {
+      "criterion_id": "HIST-13",
+      "current_owner": "D7 rolling deadline",
+      "status": "retired",
+      "command": null,
+      "required_evidence": null,
+      "failure_disposition": "invalid retirement reason fails matrix",
+      "reason": "reason: old inferred scheduler baseline is replaced by criterion 5 terminal deadlines"
+    },
+    {
+      "criterion_id": "HIST-14",
+      "current_owner": "criterion 8",
+      "status": "replaced",
+      "command": "paired_bake_chat_verdict",
+      "required_evidence": "matched baseline/load artifacts; receipt-backed outside-list presence (the bounded-list absence leg moved to D2 live acceptance, owner 2026-10-15)",
+      "failure_disposition": "hold set"
+    },
+    {
+      "criterion_id": "HIST-15",
+      "current_owner": "criterion 6",
+      "status": "retained",
+      "command": "`uv run pytest -q tests/unit/test_execution_graph_promoter.py tests/unit/test_probe_ingestion_traceability_gate.py` plus `trace_completeness_verdict`",
+      "required_evidence": "exact caller-visible failure, errored span, metric, and log",
+      "failure_disposition": "hold set"
+    },
+    {
+      "criterion_id": "HIST-16",
+      "current_owner": "publication integrity",
+      "status": "retained",
+      "command": "validation/probe_ingestion_traceability_gate.py --probe P6 --p6-step e",
+      "required_evidence": "one atomic finalize and no partial publication",
+      "failure_disposition": "hold set"
+    },
+    {
+      "criterion_id": "HIST-17",
+      "current_owner": "operational safety",
+      "status": "retained",
+      "command": "validation/probe_ingestion_traceability_gate.py --probe P6 --p6-step e",
+      "required_evidence": "acceptance-window alarm transitions and terminal alarm states clean",
+      "failure_disposition": "hold set"
+    },
+    {
+      "criterion_id": "HIST-18",
+      "current_owner": "criterion 6",
+      "status": "replaced",
+      "command": "trace_completeness_verdict",
+      "required_evidence": "complete spans and all paired negative controls",
+      "failure_disposition": "hold set"
+    },
+    {
+      "criterion_id": "HIST-19",
+      "current_owner": "queue safety",
+      "status": "retained",
+      "command": "validation/probe_ingestion_traceability_gate.py --probe P6 --p6-step e",
+      "required_evidence": "in-run maximum delivery `NotVisible` plus terminal queue read",
+      "failure_disposition": "hold set"
+    },
+    {
+      "criterion_id": "HIST-20",
+      "current_owner": "D7 migration",
+      "status": "retired",
+      "command": null,
+      "required_evidence": null,
+      "failure_disposition": "invalid retirement reason fails matrix",
+      "reason": "reason: day/drain-wait admission no longer exists; criteria 1–2 own migration safety"
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "week": {
+    "grain": "week",
+    "tile_changes": [
+      {"absence": {"reason": "prior_unavailable", "text": "The previous week isn't available."}},
+      {"absence": {"reason": "prior_unavailable", "text": "The previous week isn't available."}},
+      {"absence": {"reason": "prior_unavailable", "text": "The previous week isn't available."}}
+    ],
+    "group_changes": [
+      {"absence": {"reason": "prior_unavailable", "text": "The previous week isn't available."}},
+      {"absence": {"reason": "prior_unavailable", "text": "The previous week isn't available."}},
+      {"absence": {"reason": "prior_unavailable", "text": "The previous week isn't available."}}
+    ]
+  },
+  "month": {
+    "grain": "month",
+    "tile_changes": [
+      {"absence": {"reason": "prior_unavailable", "text": "The previous month isn't available."}},
+      {"absence": {"reason": "prior_unavailable", "text": "The previous month isn't available."}},
+      {"absence": {"reason": "prior_unavailable", "text": "The previous month isn't available."}}
+    ],
+    "group_changes": [
+      {"absence": {"reason": "prior_unavailable", "text": "The previous month isn't available."}},
+      {"absence": {"reason": "prior_unavailable", "text": "The previous month isn't available."}},
+      {"absence": {"reason": "prior_unavailable", "text": "The previous month isn't available."}}
+    ]
+  }
+}

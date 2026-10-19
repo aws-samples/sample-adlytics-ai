@@ -1,0 +1,568 @@
+{
+  "gallery": {
+    "path": "docs/ui/mockups/index.html",
+    "sha256": "34fed780a047af62109d24f42496203bded55432b8b22ad54448fa7fa77075a2"
+  },
+  "pages": [
+    {
+      "id": "campaign-portfolio",
+      "members": [
+        {
+          "path": "docs/ui/campaign-portfolio/README.md",
+          "sha256": "0398faff4e21f440cc40766dc873b23c193dab68df30f1f12ac0a0d9c067181d"
+        },
+        {
+          "path": "docs/ui/campaign-portfolio/high-level-design.md",
+          "sha256": "94678c2cb088350ddff9dba968b027141aae079bbb33ac2c444c090fb9e9cf94"
+        },
+        {
+          "path": "docs/ui/campaign-portfolio/operational-design.md",
+          "sha256": "28ea98af697843ad5810034468082395917c1e11c4c69ef653bb4a50b53753e8"
+        },
+        {
+          "path": "docs/ui/campaign-portfolio/low-level-design.md",
+          "sha256": "5183fe4de278e1e2e69f304f35c40f789053341577ed5f13c4a0743c37a6b64b"
+        },
+        {
+          "path": "docs/ui/campaign-portfolio/mockup.html",
+          "sha256": "74d84e1f53090ee9d7f4dc0433a63742dadfaeb5aa1bffe5abdacb72ee149f02"
+        },
+        {
+          "path": "docs/ui/campaign-portfolio/command-center-draft.css",
+          "sha256": "b89cb4ab6a728314cfffa077abf3f302b3355a1f8b849529efac8af67d410b2c"
+        },
+        {
+          "path": "docs/ui/campaign-portfolio/diagrams/campaign-journey.svg",
+          "sha256": "a0b154a318bbc97a3c176af6ef1a3ce07e9bf9ac7ef0cb876283f431561614f7"
+        },
+        {
+          "path": "docs/ui/campaign-portfolio/diagrams/campaign-topology.svg",
+          "sha256": "76f1849e1047990fff50c427611a05188b7b584382063a6853683d18babc2383"
+        },
+        {
+          "path": "docs/ui/campaign-portfolio/diagrams/campaign-flow.svg",
+          "sha256": "613eb1071000afc84e4c66fa77d0e6bdf7f5f9cde4ceb1dbae887fd6ee178835"
+        },
+        {
+          "path": "docs/ui/campaign-portfolio/diagrams/campaign-custody.svg",
+          "sha256": "5a2ac5f8af011fabb936f0cb8eff7cedb184f13941793ad9f842d4b2b5055907"
+        },
+        {
+          "path": "docs/ui/campaign-portfolio/diagrams/campaign-state.svg",
+          "sha256": "ff0323a972a4374e71c44a2f4561750edc25ed4225565986bae41c3dab4bf920"
+        }
+      ],
+      "shared_owners": [
+        "temporal-control",
+        "metric-focus",
+        "theme-preference",
+        "visual-narration",
+        "workspace-assistant",
+        "cutover",
+        "readiness-review"
+      ]
+    },
+    {
+      "id": "retail-health",
+      "members": [
+        {
+          "path": "docs/ui/retail-health/README.md",
+          "sha256": "f4d1d590d3a24f3938a1f1a49249d474ddcf0cfb2f4abf0c5eeef51095506d4e"
+        },
+        {
+          "path": "docs/ui/retail-health/high-level-design.md",
+          "sha256": "7450376648f07a7fc4104ae5a8f8a492781a996024dfea81eb738d3fc9426a2f"
+        },
+        {
+          "path": "docs/ui/retail-health/operational-design.md",
+          "sha256": "5d8cce101170a53ee2aafbdbfd840f757a22476913698984fe3547957536b52d"
+        },
+        {
+          "path": "docs/ui/retail-health/low-level-design.md",
+          "sha256": "a951b8c3b703ad81ccbd9e7228e216f6197dcdf2021830fea17927669d330988"
+        },
+        {
+          "path": "docs/ui/retail-health/mockup.html",
+          "sha256": "8a2a8fb6d25ac7959ee201ecbfb846226403e5f1662bc65eb59ade393aeac902"
+        }
+      ],
+      "shared_owners": [
+        "temporal-control",
+        "metric-focus",
+        "theme-preference",
+        "workspace-assistant"
+      ]
+    },
+    {
+      "id": "prompt-administration",
+      "members": [
+        {
+          "path": "docs/ui/prompt-administration/README.md",
+          "sha256": "cd0302fdd34013e70bfbb28fb14ed57eca4619f7ba5b663f3894f1c75b92740f"
+        },
+        {
+          "path": "docs/ui/prompt-administration/high-level-design.md",
+          "sha256": "a87f35a8a74c730ce9f22bbf70bf9887103bac0dcfb5f5ce773f83917c0d8fb4"
+        },
+        {
+          "path": "docs/ui/prompt-administration/operational-design.md",
+          "sha256": "7741a4cebbdbb31eb69a6a8b40e855f9471aa860717e3ddc4c49ccb91834c02d"
+        },
+        {
+          "path": "docs/ui/prompt-administration/low-level-design.md",
+          "sha256": "b3cb76311ce7d11aa976409285bd8ed20e57749bb74e687c7fb8c9e88ceb51bb"
+        },
+        {
+          "path": "docs/ui/prompt-administration/mockup.html",
+          "sha256": "e0a8799fb45c4e21f64bb26ff3cc8845bed5bdb3e56f80a0f76f4bc7076a4a6d"
+        }
+      ],
+      "shared_owners": [
+        "theme-preference",
+        "cutover"
+      ]
+    },
+    {
+      "id": "scorecard",
+      "members": [
+        {
+          "path": "docs/ui/scorecard/README.md",
+          "sha256": "ef4bc6e4a702e95732ce9da529652e87027d915ccbe23276d29ea818dc065263"
+        },
+        {
+          "path": "docs/ui/scorecard/high-level-design.md",
+          "sha256": "326ceea4955a7c3db441f7419a06f62ed90a5a755b1e7c71065a23c4ea07503c"
+        },
+        {
+          "path": "docs/ui/scorecard/low-level-design.md",
+          "sha256": "6d001feac8cfbed55de62fc7dca7bd249420097b4eba8df4fa9d596d27b7f786"
+        },
+        {
+          "path": "docs/ui/scorecard/mockup.html",
+          "sha256": "1445753c5b049ad52b5a564c4ea552b55ed0532f76fe414d6ffdc99ed519bca1"
+        },
+        {
+          "path": "docs/ui/scorecard/mockup-dialog-insight.html",
+          "sha256": "f6776ee88d2c99796ab576becc4ee8455dc0624d722462267b1f18b1f2d8aaba"
+        },
+        {
+          "path": "docs/ui/scorecard/mockup-dialog-metric.html",
+          "sha256": "e9f2d5c16bc23f49b6504efd256d5cf32a3c7f9b65639baf94b552a04c2fdd20"
+        },
+        {
+          "path": "docs/ui/scorecard/mockup-dialog-rk-wk-sp.html",
+          "sha256": "5d59acfc4d4f394e832e52a5122de68536aa0bc9edb571a41adc305ac0e3bd89"
+        },
+        {
+          "path": "docs/ui/scorecard/mockup-highlight.html",
+          "sha256": "32f57ca8c0564005aa6394343dde2889b9843dbd2a7f24b9e6c116ede08dabc8"
+        },
+        {
+          "path": "docs/ui/scorecard/mockup-last-complete-month.html",
+          "sha256": "5d14072ceac274221bb9214ccd1a7bce6378d2538ab30479c92d548619be95e2"
+        },
+        {
+          "path": "docs/ui/scorecard/mockup-light.html",
+          "sha256": "c8a997ac57cad1d567abb1c26f53102ebd8197cd1c27e3df504ee7380a7705bc"
+        },
+        {
+          "path": "docs/ui/scorecard/mockup-loading.html",
+          "sha256": "3f5ff02229d99ad21661709218258838470b82aa5217de9e94bbd0ab0603145d"
+        },
+        {
+          "path": "docs/ui/scorecard/mockup-suppressed.html",
+          "sha256": "c5cbfabb6f5865529a56146e491439a7946170f2de8668bd4099dc644e07f92b"
+        }
+      ],
+      "shared_owners": [
+        "temporal-control",
+        "metric-focus",
+        "insight-presentation",
+        "theme-preference",
+        "workspace-assistant",
+        "information-architecture",
+        "hub-mockup-style"
+      ]
+    },
+    {
+      "id": "new-customers",
+      "members": [
+        {
+          "path": "docs/ui/new-customers/README.md",
+          "sha256": "66c7091a0d1537cd1a464df17a4c2bdfedcdac237574279fdc34de63c2fbd53b"
+        },
+        {
+          "path": "docs/ui/new-customers/high-level-design.md",
+          "sha256": "736c9bfee5d6be6185bf8f1f8e9e0c20994d5a66af73b029b99bc4824e405bbb"
+        },
+        {
+          "path": "docs/ui/new-customers/low-level-design.md",
+          "sha256": "4f472fef85497d95c6ff035bd0440cdd2b156a511c1a917a08dc822ed18dee7c"
+        },
+        {
+          "path": "docs/ui/new-customers/mockup.html",
+          "sha256": "1bcf06b8e1c35c8b22e58a6459c8d47047da8b66a1dcbdcd782656818d4784c2"
+        },
+        {
+          "path": "docs/ui/new-customers/mockup-30d.html",
+          "sha256": "539d3318afbe9d1d1deaabc81d81d84d1fa5a21ac59f4ef7f67f87eb83402fd4"
+        },
+        {
+          "path": "docs/ui/new-customers/mockup-dialog-insight.html",
+          "sha256": "2f9368522db1723d0f67f9309378f370ed1f597e79572a954f11b7ce8b5f5e61"
+        },
+        {
+          "path": "docs/ui/new-customers/mockup-last-complete-month.html",
+          "sha256": "99803f4c39d8150974aec197eea9425962b1b50f4de5bb52227babbcd1729e76"
+        },
+        {
+          "path": "docs/ui/new-customers/mockup-last-complete-week.html",
+          "sha256": "45440fc800e4e6eb2bef5c82b44db01d492242a3dc8b51145321fcb6771cc63f"
+        },
+        {
+          "path": "docs/ui/new-customers/mockup-light.html",
+          "sha256": "c1063b02fb41df77ed438e0f155f966efdb136185b9e97b903b11c7e45a98631"
+        },
+        {
+          "path": "docs/ui/new-customers/mockup-loading.html",
+          "sha256": "582eb830501f2190a265eb5db405ec15654f16e218f2b8a90016417acf359a61"
+        }
+      ],
+      "shared_owners": [
+        "temporal-control",
+        "insight-presentation",
+        "theme-preference",
+        "workspace-assistant",
+        "information-architecture",
+        "hub-mockup-style"
+      ]
+    },
+    {
+      "id": "reach-and-funnel",
+      "members": [
+        {
+          "path": "docs/ui/reach-and-funnel/README.md",
+          "sha256": "7ac7a9dfcb568f2c1e8118e89cecf6ec519a8b667eb50f2b2b6087eecbda770f"
+        },
+        {
+          "path": "docs/ui/reach-and-funnel/high-level-design.md",
+          "sha256": "2ee0464be4cfe67946f3234878fa2ef2e973d42188e03932447bf652bbdff1b0"
+        },
+        {
+          "path": "docs/ui/reach-and-funnel/low-level-design.md",
+          "sha256": "98a4096d5b0a5598362c61bd1988cb0fb6bb9407028f75065e2576e4160a3297"
+        },
+        {
+          "path": "docs/ui/reach-and-funnel/mockup.html",
+          "sha256": "fa1d929ebb7d6d33748c057f78aa12ebca89026ae214805ef5a1d2b1b3e7125f"
+        },
+        {
+          "path": "docs/ui/reach-and-funnel/mockup-dialog-insight.html",
+          "sha256": "0543a0d9e1795c3090961eb5f4d03ee5bc77668c85da3f3921e4db0661936d4a"
+        },
+        {
+          "path": "docs/ui/reach-and-funnel/mockup-dialog-ov-mo.html",
+          "sha256": "6bc1a8139058927c41802ff3f9525d1d0030174d923c0ea1e5afab157fb8368a"
+        },
+        {
+          "path": "docs/ui/reach-and-funnel/mockup-instant.html",
+          "sha256": "fe137e19c4b5ee1ac4fb3b5ae35e729caefa2a8205c314a70a518923a5ad1a95"
+        },
+        {
+          "path": "docs/ui/reach-and-funnel/mockup-last-complete-week.html",
+          "sha256": "e0834f43232cd3de711d57301b6b72520215cbe2e8a8586c69b2ba0b64bf38b1"
+        },
+        {
+          "path": "docs/ui/reach-and-funnel/mockup-light.html",
+          "sha256": "3b586e653fc902e69ccb57d739e0f23b9d34ae585e522b5711cb3c8269190b87"
+        },
+        {
+          "path": "docs/ui/reach-and-funnel/mockup-loading.html",
+          "sha256": "24fc1bc1d69a89e18f9e7a4e6dbe100b5351c6764b98a815ca3672182d23f1d9"
+        },
+        {
+          "path": "docs/ui/reach-and-funnel/mockup-missing.html",
+          "sha256": "5b2c470ca484d1fe5e5d29414708742c8e70554aad818b53d1d5ffd9bb27a3ba"
+        },
+        {
+          "path": "docs/ui/reach-and-funnel/mockup-nocredit.html",
+          "sha256": "651d0b08261a286968d1e91446ad6593572ceba69f1b09a8dc436c6c9097090b"
+        },
+        {
+          "path": "docs/ui/reach-and-funnel/mockup-pending.html",
+          "sha256": "21ae333c32618be4890a5678133948bdcb33ce7838d15ac8308268336f606fd3"
+        }
+      ],
+      "shared_owners": [
+        "temporal-control",
+        "metric-focus",
+        "insight-presentation",
+        "theme-preference",
+        "workspace-assistant",
+        "information-architecture",
+        "hub-mockup-style"
+      ]
+    },
+    {
+      "id": "audiences",
+      "members": [
+        {
+          "path": "docs/ui/audiences/README.md",
+          "sha256": "e0a89085368f9ab26c7f76ec05802f5815639b226ebf9100e2fc13d01cdb382a"
+        },
+        {
+          "path": "docs/ui/audiences/high-level-design.md",
+          "sha256": "925932c93bb16903ea52edf4e313a96e54046a620cdabade8f4307b94facee23"
+        },
+        {
+          "path": "docs/ui/audiences/low-level-design.md",
+          "sha256": "9603444fdb8c8b2b770b6e80727cf3b2c23c6c7983c546de45159619b09cb2ae"
+        },
+        {
+          "path": "docs/ui/audiences/mockup.html",
+          "sha256": "a055879c16b7dc26dea251cf9c5ad2145287a146da163f82bf2b0134068e4c8e"
+        },
+        {
+          "path": "docs/ui/audiences/mockup-dialog-insight.html",
+          "sha256": "3cd092682393a1ca273fedc72dbe168c928520d1570fb17934020882e2dd2355"
+        },
+        {
+          "path": "docs/ui/audiences/mockup-dsp-paid.html",
+          "sha256": "34ef5c28a4e44186332e210d4d95a7e0afdc62a6296e971cc6b62fb1d8e157cb"
+        },
+        {
+          "path": "docs/ui/audiences/mockup-light.html",
+          "sha256": "443ee0fbe38277c1ee49ab9a325139fdf6ed1a25fc2bb70106356cfd45af80f9"
+        },
+        {
+          "path": "docs/ui/audiences/mockup-loading.html",
+          "sha256": "ff207ca9469fd29d6f9a2d88df61ad41a27db6d69aab6c9c181243f61588742d"
+        },
+        {
+          "path": "docs/ui/audiences/mockup-paid.html",
+          "sha256": "e4ce682c5978929efcb98686c0e9d90389c576eaac251b5eace817147c9797da"
+        }
+      ],
+      "shared_owners": [
+        "temporal-control",
+        "metric-focus",
+        "insight-presentation",
+        "theme-preference",
+        "workspace-assistant",
+        "information-architecture",
+        "hub-mockup-style"
+      ]
+    },
+    {
+      "id": "retention",
+      "members": [
+        {
+          "path": "docs/ui/retention/README.md",
+          "sha256": "c5eb586d7be5f3788fe029b5f0dab2cc96457f3048fb290b79247e6919bf8cd7"
+        },
+        {
+          "path": "docs/ui/retention/high-level-design.md",
+          "sha256": "1a7ef76f0c62c5cd57b080ef008e6c18bd4c837ecc0dfa587dabd0a0f7ba65ee"
+        },
+        {
+          "path": "docs/ui/retention/low-level-design.md",
+          "sha256": "4bf8734bc98b5494c3c99cadd21731cde43a6ee700919f28a9d9a2856b7c5138"
+        },
+        {
+          "path": "docs/ui/retention/mockup.html",
+          "sha256": "ff23c3ba92d1f43d6e89f08917cf8cee84857cd7f01c02d518542f32a7260240"
+        },
+        {
+          "path": "docs/ui/retention/mockup-dialog-insight.html",
+          "sha256": "972c8df42222dc6e116291d46d03d22b559e36677e1f43f72b010fc02700bdae"
+        },
+        {
+          "path": "docs/ui/retention/mockup-light.html",
+          "sha256": "f12bfee39008b679ac546a1a142c9783da53216c9aa7664b8e40ed984aa165d5"
+        },
+        {
+          "path": "docs/ui/retention/mockup-loading.html",
+          "sha256": "4c2c8ae9420879c5883c7b02be951d77e2f528ca1c73c8c18f7206d5509b99e2"
+        }
+      ],
+      "shared_owners": [
+        "temporal-control",
+        "metric-focus",
+        "insight-presentation",
+        "theme-preference",
+        "workspace-assistant",
+        "information-architecture",
+        "hub-mockup-style"
+      ]
+    },
+    {
+      "id": "repeat-purchase-by-product",
+      "members": [
+        {
+          "path": "docs/ui/repeat-purchase-by-product/README.md",
+          "sha256": "1ee63f44827d1b689b4d53022a91f387735ab0ebe5eed1b550e1cbaa4faf985c"
+        },
+        {
+          "path": "docs/ui/repeat-purchase-by-product/high-level-design.md",
+          "sha256": "d55222b0e1af079a8f81978135e3206a73759ae081e503ccf77bbd72626d2330"
+        },
+        {
+          "path": "docs/ui/repeat-purchase-by-product/low-level-design.md",
+          "sha256": "c4f165dce6c0f4e705c99343fada63f078d9c0223741f5ac60db4df9c900d675"
+        },
+        {
+          "path": "docs/ui/repeat-purchase-by-product/mockup.html",
+          "sha256": "df19e2a14b9f7b621aa4aa23b0d4027cc7944f6e3acf9f71f2b0eb7558c11247"
+        },
+        {
+          "path": "docs/ui/repeat-purchase-by-product/mockup-light.html",
+          "sha256": "5de9f0aaeb092dc1155faf7390749382b89f5fcc3295f5373842e5f5db2318ec"
+        },
+        {
+          "path": "docs/ui/repeat-purchase-by-product/mockup-loading.html",
+          "sha256": "9690b8cf5acae94d63e7058638993b54bcf7c2482792afdf59620affe9375aab"
+        },
+        {
+          "path": "docs/ui/repeat-purchase-by-product/mockup-noaccess.html",
+          "sha256": "59265cb3d8e3c8e41c869732d4edd135ae2e660768710091aa3cad412b1c8fd0"
+        }
+      ],
+      "shared_owners": [
+        "temporal-control",
+        "insight-presentation",
+        "theme-preference",
+        "workspace-assistant",
+        "information-architecture",
+        "hub-mockup-style"
+      ]
+    }
+  ],
+  "parent": {
+    "approval_scope": "The workspace declared in `docs/ui/design-manifest.yaml`. Campaign Portfolio (portfolio and campaign detail), Retail health, and Prompt Administration carry the command-center visual language. From revision `2026-10-08.1`, the Scorecard, Reach and funnel, Audiences, Retention, and Repeat purchase by product packages, and from revision `2026-10-09.1` the New customers package, carry the information-architecture visual language; each is implemented only in its own build slice, once that slice's prerequisites and route approval are met. The channel, product, marketplace, evidence-health, and media-efficiency pages are retired from the frontend; their presentation APIs remain deployed for reuse",
+    "implementation_decision_date": "2026-10-07",
+    "implementation_disposition": "approved_for_implementation",
+    "path": "docs/ui/README.md",
+    "sha256": "f2b73807b6ed80ba1989a67cb8864e85ad2754d64f7366db106208bba24d1ee8",
+    "status": "Approved for implementation — manifest revision `2026-10-09.2` (revised 2026-10-09 — business outcomes wave 2b revises four page packages: New customers adds new buyers and cost per new buyer per channel under the platform tiles, with `NewCustomersArtifact` v2; Audiences labels each segment by its provider, Amazon or third party, and states that DSP behaviour segments and Amazon audience segments use different IDs and are never linked; Retention adds the designed state for a vintage built on calendar-quarter cohorts, and its scope band names the cohort grain; Reach and funnel relabels the funnel's branded-search rate as search rate, because AMC's documentation doesn't say searchConversion is a branded search; approved under the owner's UI/IA approval of 2026-10-07 (owner-decisions-ui.md) with owner ratification of the revision pending; the Scorecard's open item for New customers names the v2 artifact, with no change to the Scorecard's design; every other package is carried forward unchanged. Prior revision `2026-10-09.1` (2026-10-09) — adds the New customers page package, built from the information-architecture New customers mockup and the business outcomes design, approved under the owner's UI/IA approval of 2026-10-07 (owner-decisions-ui.md) with owner ratification of the package pending; the Scorecard's open item for New customers now points to that package, with no change to the Scorecard's design; every other package is carried forward unchanged. Prior revision `2026-10-08.1` (2026-10-08) — adds the Scorecard, Reach and funnel, Audiences, Retention and Repeat purchase by product page packages, built from the UI and information-architecture mockups and design, and one Retail health page action that links to Repeat purchase by product, with no change to its time model; approved under the owner's UI/IA approval of 2026-10-07 (owner-decisions-ui.md); the campaign-portfolio and prompt-administration packages are carried forward unchanged. Prior revision `2026-10-01.1` (2026-10-01) — monetary values display at two decimal places from a server-derived display value on the campaign portfolio, campaign detail, retail health, and the metric-focus dialog, which moves to `MetricFocus.v3` (ADR-084), and prompt versions state who created them, by email resolved at read time (ADR-069 amendment); the campaign-portfolio mockup is carried forward unchanged. Prior revision `2026-09-25.1` (2026-09-25) — the insight and metric-focus dialogs rebalance — the deep analysis renders as a full-width band beneath the dialog's evidence with readings three-up wide, the insight dialog goes single-column, provenance collapses to one customer-word strip, and no citations or internal vocabulary render anywhere customer-facing — grounding verification stays server-side. Prior revision `2026-09-24.1` (2026-09-24) — the campaign detail summary metrics render as a uniform two-row × four-column grid of equal tiles, superseding the labeled section grouping and, for that strip only, the single-row card-group rule; also carries the ADR-076 slice D prompt-administration wire-contract amendment, tier dimension and fragment digests. Prior revision `2026-09-23.4` carried insight absence states per the [insight-presentation contract](insight-presentation-contract.md) and the 2026-09-23 UX revisions — single-row equal-height card groups, raised type-tier contrast with full-strength card body text, full-width retail insight rows, 10-row display paging, and the in-detail campaign switcher; accepted 2026-09-23; frontend implementation delivered and live-verified 2026-09-24)"
+  },
+  "revision": "2026-10-09.2",
+  "shared_owners": [
+    {
+      "id": "temporal-control",
+      "members": [
+        {
+          "path": "docs/ui/temporal-control-contract.md",
+          "sha256": "6cbbedb9488bc8e661c5ac869cc22c0d39f6bb6b5f373d999f1ce9769b482d4d"
+        }
+      ],
+      "revision": "2026-10-09.2"
+    },
+    {
+      "id": "metric-focus",
+      "members": [
+        {
+          "path": "docs/ui/metric-focus-contract.md",
+          "sha256": "a3c9a78d4fda72e19b82ea133f9f4ac12c5c68f5fa7303910f420f4656370d8c"
+        }
+      ],
+      "revision": "2026-10-09.2"
+    },
+    {
+      "id": "insight-presentation",
+      "members": [
+        {
+          "path": "docs/ui/insight-presentation-contract.md",
+          "sha256": "08a8514d29cb95d3fa8406523416737bc5e118429872159189764683fe1a5bc2"
+        }
+      ],
+      "revision": "2026-10-09.2"
+    },
+    {
+      "id": "theme-preference",
+      "members": [
+        {
+          "path": "docs/ui/theme-preference-contract.md",
+          "sha256": "8f7563c04335a3b1c1590b85b5e6c5552a10c23b16ee68f97714957d9500c5ff"
+        }
+      ],
+      "revision": "2026-10-09.2"
+    },
+    {
+      "id": "visual-narration",
+      "members": [
+        {
+          "path": "docs/ui/visual-narration-harness.md",
+          "sha256": "296c92f4075c4dc6f54e92ba661bc8799aa8db96eea362d31a75e58bd01f2ff1"
+        },
+        {
+          "path": "docs/ui/diagrams/narration-prompt.svg",
+          "sha256": "3051360023c4a145ba4b49f1b7c5e6c8771fd6a947f6be698831229fac4f9b7b"
+        },
+        {
+          "path": "docs/ui/diagrams/narration-flow.svg",
+          "sha256": "8f6e7a742feacd387b6d4a9473842f87d4b5eb3afb89aa0cca738be307b4028e"
+        }
+      ],
+      "revision": "2026-10-09.2"
+    },
+    {
+      "id": "workspace-assistant",
+      "members": [
+        {
+          "path": "docs/ui/workspace-assistant.md",
+          "sha256": "cf90e31d9f5decc8fd364bb720867f6f66592d17f949bd6a09b93c0f7f86c9f6"
+        }
+      ],
+      "revision": "2026-10-09.2"
+    },
+    {
+      "id": "cutover",
+      "members": [
+        {
+          "path": "docs/ui/implementation-cutover.md",
+          "sha256": "056591c308f9c1a30190f802ed9577ac2658b5d1aa13c19c2631725af865cdb8"
+        }
+      ],
+      "revision": "2026-10-09.2"
+    },
+    {
+      "id": "readiness-review",
+      "members": [
+        {
+          "path": "docs/ui/design-readiness-review.md",
+          "sha256": "be49aea8be59489aef5ace0f0fed4d7ea52c58ede147e684471f66bd455f4f48"
+        }
+      ],
+      "revision": "2026-10-09.2"
+    },
+    {
+      "id": "information-architecture",
+      "members": [
+        {
+          "path": "docs/ui/information-architecture/README.md",
+          "sha256": "80b1c8eb78fbd4aba3ce5dae6989bb2a82dfd588d6c5188a4bb41dd8a78bd67a"
+        },
+        {
+          "path": "docs/ui/information-architecture/delivery-slices.md",
+          "sha256": "8227723d6351a45822752509e6e1ff19eaa6e12681f891b9a158372541480c33"
+        },
+        {
+          "path": "docs/ui/information-architecture/diagrams/site-map.svg",
+          "sha256": "bc6a8fb8793dd8b890f534ee6786ef185f8874d7339a9a750a971e97806c12f9"
+        }
+      ],
+      "revision": "2026-10-09.2"
+    },
+    {
+      "id": "hub-mockup-style",
+      "members": [
+        {
+          "path": "docs/ui/mockups/hub-workspace.css",
+          "sha256": "6ec5a197c036e66d1c517ed6233dee14be2153a59b246f0665bfa3f0cc38a02c"
+        }
+      ],
+      "revision": "2026-10-09.2"
+    }
+  ],
+  "version": 1
+}

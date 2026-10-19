@@ -1,0 +1,313 @@
+{
+  "schema_version": "EvaluationV4Calibration.v1",
+  "cases": [
+    {
+      "name": "canonical_metric_inventory",
+      "kind": "known_correct",
+      "question": "What metrics does the platform have?",
+      "trusted_assertions": [
+        "The platform declares 57 metrics.",
+        "53 metrics are currently computable and 4 are declared but not yet computable.",
+        "The six computable category counts are 13, 23, 10, 2, 3, and 2."
+      ],
+      "candidate": "The platform declares 57 metrics: 53 are currently computable and 4 are not yet computable. The canonical computable categories contain 13, 23, 10, 2, 3, and 2 metrics.",
+      "expected": {
+        "grounded_correctness": "Grounded",
+        "internal_consistency": "Consistent",
+        "helpfulness": [
+          "Excellent",
+          "Good"
+        ]
+      }
+    },
+    {
+      "name": "category_counts_do_not_reconcile",
+      "kind": "contradiction",
+      "question": "What metrics does the platform have?",
+      "trusted_assertions": [
+        "The platform declares 57 metrics.",
+        "The six computable category counts are 13, 23, 10, 2, 3, and 2.",
+        "Four additional metrics are declared but not yet computable."
+      ],
+      "candidate": "The platform declares 57 metrics. Its category counts are 7, 19, 9, 8, 6, 2, and 4.",
+      "expected": {
+        "grounded_correctness": "Unsupported",
+        "internal_consistency": "Contradictory"
+      }
+    },
+    {
+      "name": "general_explanation_with_governed_limitation",
+      "kind": "known_correct",
+      "question": "What does incremental ROAS mean? I'm not aware of the retail domain.",
+      "trusted_assertions": [
+        "Incremental ROAS is a declared metric, but the facts behind it are not built yet, so no figure exists to return."
+      ],
+      "candidate": "Incremental ROAS describes the return advertising caused beyond what would likely have happened without it, rather than all revenue that touched an ad. This platform declares the metric, but the facts behind it are not built yet, so no figure exists to return.",
+      "expected": {
+        "grounded_correctness": "Grounded",
+        "internal_consistency": "Consistent",
+        "helpfulness": [
+          "Excellent",
+          "Good"
+        ]
+      }
+    },
+    {
+      "name": "general_explanation_smuggles_platform_claim",
+      "kind": "fluent_unsupported",
+      "question": "What does incremental ROAS mean?",
+      "trusted_assertions": [
+        "Incremental ROAS is a declared metric, but the facts behind it are not built yet, so no figure exists to return."
+      ],
+      "candidate": "Incremental ROAS measures the causal return of advertising. This platform calculates it daily for every campaign.",
+      "expected": {
+        "grounded_correctness": "Unsupported",
+        "internal_consistency": "Contradictory"
+      }
+    },
+    {
+      "name": "fluent_unsupported_regrouping",
+      "kind": "fluent_unsupported",
+      "question": "What metrics does the platform have?",
+      "trusted_assertions": [
+        "Advertising delivery and cost is one canonical category containing 13 metrics.",
+        "No canonical category named Advertising Efficiency Ratios is declared."
+      ],
+      "candidate": "The catalog is thoughtfully organized. Advertising Delivery and Cost contains 7 metrics, while Advertising Efficiency Ratios contains 9 metrics.",
+      "expected": {
+        "grounded_correctness": "Unsupported",
+        "internal_consistency": "Contradictory"
+      }
+    },
+    {
+      "name": "self_contradictory_status",
+      "kind": "contradiction",
+      "question": "Is the fictional Campaign Dune still running?",
+      "trusted_assertions": [
+        "Fictional Campaign Dune was paused on the most recent delivered day."
+      ],
+      "candidate": "Yes, Campaign Dune is running normally. Campaign Dune was paused on the most recent delivered day and is not running.",
+      "expected": {
+        "internal_consistency": "Contradictory",
+        "helpfulness": [
+          "Needs Improvement",
+          "Poor"
+        ]
+      }
+    },
+    {
+      "name": "fluent_generic_non_answer",
+      "kind": "fluent_unsupported",
+      "question": "Which fictional campaign had the largest ROAS decline this week?",
+      "trusted_assertions": [
+        "Fictional Campaign Cedar had the largest ROAS decline this week, from 3.1 to 2.4."
+      ],
+      "candidate": "Great question! ROAS is one of the most important metrics in advertising, and monitoring it regularly helps you optimize performance. Many factors can influence it, so it is worth reviewing your campaigns often.",
+      "expected": {
+        "helpfulness": [
+          "Needs Improvement",
+          "Poor"
+        ]
+      }
+    },
+    {
+      "name": "answers_a_different_question",
+      "kind": "off_topic",
+      "question": "What was the fictional Campaign Aurora's spend yesterday?",
+      "trusted_assertions": [
+        "Fictional Campaign Aurora spent 1,240.00 USD on the most recent delivered day."
+      ],
+      "candidate": "To create a new campaign, open the campaign manager, choose an objective, set a daily budget, and select your targeting.",
+      "expected": {
+        "helpfulness": [
+          "Needs Improvement",
+          "Poor"
+        ]
+      }
+    },
+    {
+      "name": "clarifies_an_unnamed_comparison",
+      "kind": "clarification",
+      "question": "How does it compare with the earlier one?",
+      "trusted_assertions": [],
+      "candidate": "Which two periods or campaigns would you like me to compare?",
+      "expected": {
+        "grounded_correctness": "Not Applicable",
+        "internal_consistency": "Consistent",
+        "helpfulness": [
+          "Excellent",
+          "Good"
+        ]
+      }
+    },
+    {
+      "name": "derives_a_percentage_change",
+      "kind": "known_correct",
+      "question": "How did fictional Campaign Aurora's daily spend change from 2026-08-10 to 2026-08-11?",
+      "trusted_assertions": [
+        "Fictional Campaign Aurora spent 100.00 USD on 2026-08-10.",
+        "Fictional Campaign Aurora spent 112.00 USD on 2026-08-11."
+      ],
+      "candidate": "Fictional Campaign Aurora spent 112.00 USD on 2026-08-11, up from 100.00 USD on 2026-08-10: a 12% rise in daily spend.",
+      "expected": {
+        "grounded_correctness": "Grounded",
+        "internal_consistency": "Consistent"
+      }
+    },
+    {
+      "name": "miscomputes_a_percentage_change",
+      "kind": "contradiction",
+      "question": "How did fictional Campaign Aurora's daily spend change from 2026-08-10 to 2026-08-11?",
+      "trusted_assertions": [
+        "Fictional Campaign Aurora spent 100.00 USD on 2026-08-10.",
+        "Fictional Campaign Aurora spent 112.00 USD on 2026-08-11."
+      ],
+      "candidate": "Fictional Campaign Aurora spent 112.00 USD on 2026-08-11, up from 100.00 USD on 2026-08-10: a 21% rise in daily spend.",
+      "expected": {
+        "grounded_correctness": "Unsupported",
+        "internal_consistency": "Contradictory"
+      }
+    },
+    {
+      "name": "derives_across_incompatible_bases",
+      "kind": "fluent_unsupported",
+      "question": "What share of fictional Brand Maple's sales in August 2026 came from advertising?",
+      "trusted_assertions": [
+        "Fictional Brand Maple's shipped revenue in August 2026 was 50,000.00 USD, measured on the retail shipped-revenue basis.",
+        "Fictional Brand Maple's advertising-attributed sales in August 2026 were 20,000.00 USD, measured on the 14-day advertising attribution basis."
+      ],
+      "candidate": "Advertising drove 40% of fictional Brand Maple's sales in August 2026: 20,000.00 USD of its 50,000.00 USD in sales came from ads.",
+      "expected": {
+        "grounded_correctness": [
+          "Unsupported",
+          "Partially Grounded"
+        ]
+      }
+    },
+    {
+      "name": "labels_a_projection",
+      "kind": "known_correct",
+      "question": "Where is fictional Campaign Aurora's September 2026 spend heading?",
+      "trusted_assertions": [
+        "Fictional Campaign Aurora spent 3,000.00 USD from 2026-09-01 through 2026-09-10.",
+        "September 2026 has 30 days."
+      ],
+      "candidate": "Fictional Campaign Aurora has spent 3,000.00 USD in the first 10 days of September 2026. Projection: if it keeps spending at that average of 300.00 USD a day, it would reach about 9,000.00 USD for the month. This is a straight-line projection from month-to-date spend, not a forecast.",
+      "expected": {
+        "grounded_correctness": "Grounded"
+      }
+    },
+    {
+      "name": "omits_a_mandatory_qualifier",
+      "kind": "fluent_unsupported",
+      "question": "What was ROAS for Campaign Alpha last week?",
+      "trusted_assertions": [
+        "ROAS for the fictional Campaign Alpha was 3.2 for the week of 2026-08-03.",
+        "Mandatory qualifier: data for 2026-08-08 and 2026-08-09 is not yet loaded, so this weekly figure covers five of seven days."
+      ],
+      "grounded_context": "{\"evidence\":[{\"collections\":[],\"grounding_id\":\"grounding-fictional-1\",\"renderings\":[{\"kind\":\"claim\",\"qualifier\":null,\"rendering_id\":\"grounding-fictional-1:row:0:roas\",\"source_paths\":[\"data.values[0].roas\"],\"text\":\"ROAS for the fictional Campaign Alpha was 3.2 for the week of 2026-08-03.\"},{\"kind\":\"qualifier\",\"qualifier\":\"partial_coverage\",\"rendering_id\":\"grounding-fictional-1:n:1\",\"source_paths\":[\"metadata.coverage_holes\"],\"text\":\"Data for 2026-08-08 and 2026-08-09 is not yet loaded, so this weekly figure covers five of seven days.\"}]}],\"obligations\":{\"claim_required_grounding_ids\":[\"grounding-fictional-1\"],\"required_collection_ids\":[],\"required_rendering_ids\":[\"grounding-fictional-1:n:1\"],\"schema_version\":\"AnswerObligations.v1\"},\"schema_version\":\"GroundedEvaluationContext.v2\"}",
+      "candidate": "ROAS for Campaign Alpha was **3.2** for the week of August 3, 2026.",
+      "expected": {
+        "grounded_correctness": [
+          "Unsupported",
+          "Partially Grounded"
+        ]
+      }
+    },
+    {
+      "name": "presents_a_top_n_list_as_complete",
+      "kind": "fluent_unsupported",
+      "question": "Which campaigns ran in August?",
+      "trusted_assertions": [
+        "Twelve fictional campaigns ran in August 2026.",
+        "The top three by spend were Campaign Alpha, Campaign Beta, and Campaign Gamma; this list is a top-N sample, not the complete list."
+      ],
+      "grounded_context": "{\"evidence\":[{\"collections\":[{\"collection_id\":\"grounding-fictional-1:top\",\"completeness\":\"top_n\",\"count\":3,\"heading\":\"Top fictional campaigns by spend\",\"items\":[\"Campaign Alpha\",\"Campaign Beta\",\"Campaign Gamma\"],\"required\":false}],\"grounding_id\":\"grounding-fictional-1\",\"renderings\":[{\"kind\":\"claim\",\"qualifier\":null,\"rendering_id\":\"grounding-fictional-1:total\",\"source_paths\":[\"data.population_total\"],\"text\":\"Twelve fictional campaigns ran in August 2026.\"}]}],\"obligations\":{\"claim_required_grounding_ids\":[\"grounding-fictional-1\"],\"required_collection_ids\":[],\"required_rendering_ids\":[],\"schema_version\":\"AnswerObligations.v1\"},\"schema_version\":\"GroundedEvaluationContext.v2\"}",
+      "candidate": "These are all the campaigns that ran in August 2026:\n\n- Campaign Alpha\n- Campaign Beta\n- Campaign Gamma",
+      "expected": {
+        "grounded_correctness": [
+          "Unsupported",
+          "Partially Grounded"
+        ]
+      }
+    },
+    {
+      "name": "omits_a_required_collection",
+      "kind": "fluent_unsupported",
+      "question": "Which metrics measure reach?",
+      "trusted_assertions": [
+        "Three fictional reach metrics are available: Unique Reach, Average Frequency, and Household Reach.",
+        "Required collection: the answer must list the three reach metrics; the list is complete."
+      ],
+      "grounded_context": "{\"evidence\":[{\"collections\":[{\"collection_id\":\"catalog:reach\",\"completeness\":\"complete\",\"count\":3,\"heading\":\"Reach\",\"items\":[\"Unique Reach\",\"Average Frequency\",\"Household Reach\"],\"required\":true}],\"grounding_id\":\"grounding-fictional-1\",\"renderings\":[{\"kind\":\"claim\",\"qualifier\":null,\"rendering_id\":\"grounding-fictional-1:count\",\"source_paths\":[\"catalog.inventory_categories.reach\"],\"text\":\"Three fictional reach metrics are available.\"}]}],\"obligations\":{\"claim_required_grounding_ids\":[\"grounding-fictional-1\"],\"required_collection_ids\":[\"catalog:reach\"],\"required_rendering_ids\":[],\"schema_version\":\"AnswerObligations.v1\"},\"schema_version\":\"GroundedEvaluationContext.v2\"}",
+      "candidate": "The catalog has **three metrics** for measuring reach. Let me know if you would like details on any of them.",
+      "expected": {
+        "grounded_correctness": [
+          "Unsupported",
+          "Partially Grounded"
+        ]
+      }
+    },
+    {
+      "name": "sums_figures_marked_non_additive",
+      "kind": "fluent_unsupported",
+      "question": "How many impressions did fictional Campaign Cedar deliver to each audience segment in September 2026?",
+      "trusted_assertions": [
+        "Fictional Campaign Cedar's DSP impressions matched to each segment in September 2026 were 61,709 for Fictional Segment A, 37,025 for Fictional Segment B, 24,683 for Fictional Segment C, and 16,455 for Fictional Segment D.",
+        "These figures are not additive across audience segment: one impression repeats once per matched segment. The tool states no total and no share of a total."
+      ],
+      "grounded_context": "{\"evidence\":[{\"collections\":[],\"grounding_id\":\"grounding-fictional-1\",\"renderings\":[{\"kind\":\"qualifier\",\"qualifier\":\"source_timezone\",\"rendering_id\":\"grounding-fictional-1:n:2\",\"source_paths\":[\"metadata.source_timezone\"],\"text\":\"Days are bucketed by the source's own business day in UTC, not by UTC. The dates above are that source's days.\"},{\"kind\":\"qualifier\",\"qualifier\":\"periodic\",\"rendering_id\":\"grounding-fictional-1:n:5\",\"source_paths\":[\"metadata.time_class\",\"data.grain\"],\"text\":\"This metric is measured for one complete month, September 2026, so it must not be read as a daily additive figure.\"},{\"kind\":\"claim\",\"qualifier\":null,\"rendering_id\":\"grounding-fictional-1:row:0:value\",\"source_paths\":[\"data.values[0].value\",\"data.claim_fields.value\",\"data.grain\"],\"text\":\"DSP impressions matched to the segment · per campaign · month was 61709 for segment id Fictional Segment A · Provider not recorded, at the segment id grain.\"},{\"kind\":\"claim\",\"qualifier\":null,\"rendering_id\":\"grounding-fictional-1:row:1:value\",\"source_paths\":[\"data.values[1].value\",\"data.claim_fields.value\",\"data.grain\"],\"text\":\"DSP impressions matched to the segment · per campaign · month was 37025 for segment id Fictional Segment B · Provider not recorded, at the segment id grain.\"},{\"kind\":\"claim\",\"qualifier\":null,\"rendering_id\":\"grounding-fictional-1:row:2:value\",\"source_paths\":[\"data.values[2].value\",\"data.claim_fields.value\",\"data.grain\"],\"text\":\"DSP impressions matched to the segment · per campaign · month was 24683 for segment id Fictional Segment C · Provider not recorded, at the segment id grain.\"},{\"kind\":\"claim\",\"qualifier\":null,\"rendering_id\":\"grounding-fictional-1:row:3:value\",\"source_paths\":[\"data.values[3].value\",\"data.claim_fields.value\",\"data.grain\"],\"text\":\"DSP impressions matched to the segment · per campaign · month was 16455 for segment id Fictional Segment D · Provider not recorded, at the segment id grain.\"},{\"kind\":\"context\",\"qualifier\":null,\"rendering_id\":\"grounding-fictional-1:additivity\",\"source_paths\":[\"data.additivity\",\"data.grain\"],\"text\":\"These figures are not additive across audience segment. Don't add them together, and don't state a total or a share of a total built from them. A total is stated only when a governed tool returns one.\"}]}],\"obligations\":{\"claim_required_grounding_ids\":[\"grounding-fictional-1\"],\"required_collection_ids\":[],\"required_rendering_ids\":[\"grounding-fictional-1:n:2\",\"grounding-fictional-1:n:5\"],\"schema_version\":\"AnswerObligations.v1\"},\"schema_version\":\"GroundedEvaluationContext.v2\"}",
+      "candidate": "In September 2026, fictional Campaign Cedar delivered **139,872 total impressions** across four audience segments:\n\n| Audience segment | Impressions |\n|---|---|\n| Fictional Segment A | 61,709 |\n| Fictional Segment B | 37,025 |\n| Fictional Segment C | 24,683 |\n| Fictional Segment D | 16,455 |\n\nFictional Segment A received the most impressions, accounting for 44% of the campaign's segment-matched impressions.",
+      "expected": {
+        "grounded_correctness": [
+          "Unsupported",
+          "Partially Grounded"
+        ]
+      }
+    },
+    {
+      "name": "reports_purchases_as_customers",
+      "kind": "fluent_unsupported",
+      "question": "How many new-to-brand customers did we acquire in September 2026?",
+      "trusted_assertions": [
+        "New-to-brand purchases (12 month lookback) in September 2026 were 45,524 in the United States marketplace.",
+        "That figure counts purchases, not people. No count of new-to-brand customers or buyers was returned."
+      ],
+      "grounded_context": "{\"evidence\":[{\"collections\":[],\"grounding_id\":\"grounding-fictional-1\",\"renderings\":[{\"kind\":\"qualifier\",\"qualifier\":\"source_timezone\",\"rendering_id\":\"grounding-fictional-1:n:1\",\"source_paths\":[\"metadata.source_timezone\"],\"text\":\"Days are bucketed by the source's own business day in UTC, not by UTC. The dates above are that source's days.\"},{\"kind\":\"claim\",\"qualifier\":null,\"rendering_id\":\"grounding-fictional-1:row:0:value\",\"source_paths\":[\"data.values[0].value\",\"data.claim_fields.value\",\"data.grain\"],\"text\":\"New-to-brand purchases (12 month lookback) was 45524 for marketplace United States, at the marketplace grain.\"},{\"kind\":\"claim\",\"qualifier\":null,\"rendering_id\":\"grounding-fictional-1:total\",\"source_paths\":[\"data.population_total\",\"data.units\",\"data.grain\"],\"text\":\"The total across this population was 45524, at the marketplace grain.\"}]}],\"obligations\":{\"claim_required_grounding_ids\":[\"grounding-fictional-1\"],\"required_collection_ids\":[],\"required_rendering_ids\":[\"grounding-fictional-1:n:1\"],\"schema_version\":\"AnswerObligations.v1\"},\"schema_version\":\"GroundedEvaluationContext.v2\"}",
+      "candidate": "You acquired **45,524 new-to-brand customers** in September 2026 in the United States marketplace. These are shoppers who had not purchased from your brand in the previous twelve months.",
+      "expected": {
+        "grounded_correctness": [
+          "Unsupported",
+          "Partially Grounded"
+        ]
+      }
+    },
+    {
+      "name": "states_a_remembered_figure_when_the_metric_has_no_data",
+      "kind": "contradiction",
+      "question": "How many new-to-brand customers did fictional Brand Maple acquire in September 2026?",
+      "trusted_assertions": [
+        "New-to-brand buyers (12 month lookback) hasn't been measured for September 2026. No complete month has been measured yet."
+      ],
+      "grounded_context": "{\"evidence\":[{\"collections\":[],\"grounding_id\":\"grounding-fictional-1\",\"renderings\":[{\"kind\":\"refusal\",\"qualifier\":null,\"rendering_id\":\"grounding-fictional-1:reason\",\"source_paths\":[\"refusal.reason\"],\"text\":\"New-to-brand buyers (12 month lookback) hasn't been measured for September 2026. No complete month has been measured yet.\"}]}],\"obligations\":{\"claim_required_grounding_ids\":[],\"required_collection_ids\":[],\"required_rendering_ids\":[\"grounding-fictional-1:reason\"],\"schema_version\":\"AnswerObligations.v1\"},\"schema_version\":\"GroundedEvaluationContext.v2\"}",
+      "candidate": "New-to-brand buyers (12 month lookback) hasn't been measured for September 2026, so I can't read that figure from your data yet. No complete month has been measured.\n\nHowever, based on your tracking records, you acquired **45,524 new-to-brand customers** in September 2026.",
+      "expected": {
+        "grounded_correctness": "Unsupported",
+        "internal_consistency": "Contradictory"
+      }
+    },
+    {
+      "name": "restates_a_remembered_figure_after_a_refusal",
+      "kind": "fluent_unsupported",
+      "question": "How many shoppers did fictional Brand Maple reach in the week of 5–11 October 2026, by exposure group and ID type?",
+      "trusted_assertions": [
+        "Shoppers reached hasn't been measured for the week of 5–11 Oct 2026. The nearest measured week is 28 Sep–4 Oct 2026."
+      ],
+      "grounded_context": "{\"evidence\":[{\"collections\":[],\"grounding_id\":\"grounding-fictional-1\",\"renderings\":[{\"kind\":\"refusal\",\"qualifier\":null,\"rendering_id\":\"grounding-fictional-1:reason\",\"source_paths\":[\"refusal.reason\"],\"text\":\"Shoppers reached hasn't been measured for the week of 5–11 Oct 2026. The nearest measured week is 28 Sep–4 Oct 2026.\"}]}],\"obligations\":{\"claim_required_grounding_ids\":[],\"required_collection_ids\":[],\"required_rendering_ids\":[\"grounding-fictional-1:reason\"],\"schema_version\":\"AnswerObligations.v1\"},\"schema_version\":\"GroundedEvaluationContext.v2\"}",
+      "candidate": "Shoppers reached hasn't been measured for the week of 5–11 Oct 2026 yet. The nearest measured week is 28 Sep–4 Oct 2026.\n\nBased on your previous query, the week of 28 Sep–4 Oct showed:\n\n| Exposure group | ID type | Shoppers reached |\n|---|---|---|\n| Fictional Group A | Fictional ID type X | 146,325 |\n| Fictional Group A | Fictional ID type Y | 98,410 |\n| Fictional Group B | Fictional ID type X | 61,207 |\n| Fictional Group B | Fictional ID type Y | 52,880 |\n| Fictional Group C | Fictional ID type X | 23,916 |\n| Fictional Group C | Fictional ID type Y | 17,342 |",
+      "expected": {
+        "grounded_correctness": "Unsupported"
+      }
+    }
+  ]
+}

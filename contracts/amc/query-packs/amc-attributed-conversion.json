@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "packId": "amc-attributed-conversion",
+  "packVersion": 2,
+  "contractId": "amc-attributed-conversion",
+  "sourcePackId": "amc-attributed-conversion",
+  "queryFile": "amc-attributed-conversion.sql",
+  "accessTier": "standard",
+  "liveValidation": "required",
+  "maxResultBytes": 20000000,
+  "executionOptions": {
+    "timeWindowType": "EXPLICIT",
+    "timeWindowTimeZone": "UTC",
+    "filteredMetricsDiscriminatorColumn": "rows_suppressed",
+    "filteredReasonColumn": "suppression_reason",
+    "distinctUserCountColumn": "distinct_user_count"
+  },
+  "safetyBlockers": [],
+  "outputColumns": [
+    "conversion_event_date_utc",
+    "ad_product_type",
+    "channel_group_key",
+    "campaign_id_string",
+    "tracked_asin",
+    "conversion_event_marketplace_name",
+    "conversions",
+    "purchases",
+    "total_purchases",
+    "product_sales",
+    "total_product_sales",
+    "new_to_brand_product_sales",
+    "purchase_currency",
+    "units_sold",
+    "total_units_sold",
+    "new_to_brand_purchases",
+    "new_to_brand_total_purchases",
+    "time_window_start",
+    "time_window_end",
+    "rows_suppressed",
+    "suppression_reason",
+    "distinct_user_count"
+  ],
+  "retainedVersions": [
+    {
+      "packVersion": 1,
+      "packDigest": "sha256:96097d501dd02cdd6f0dbba0675f0c0d2debfa5d4fb7bfd5bc396b193580d0a3",
+      "queryDigest": "sha256:6ca5453d9371377016352d6e0003046525ed20debece6937fba89c0889ea54b9",
+      "contractDigest": "sha256:5ae9db31286085e0a49fcb71c13b88a3a7e4612435249d8d5d0906bf83589486",
+      "sourcePackDigest": "sha256:a567202154db952359866b98c39c35276be4bcea9b28d12bde82a5e744749219"
+    }
+  ]
+}

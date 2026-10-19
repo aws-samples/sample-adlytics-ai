@@ -1,0 +1,103 @@
+id: network-scorecard
+version: 1
+purpose: Deterministically state each channel's share of its own network's ad spend and each channel's material attributed ROAS move, always inside one network and one marketplace. Each channel's spend move is baked for the governed alert rules and never narrated.
+display_name: What changed (Scorecard)
+output_class: observed
+allowed_inputs:
+  - server-computed channel shares of one network's ad spend in one marketplace and currency
+  - server-computed channel attributed ROAS comparisons against the equal prior window
+  - server-computed channel ad spend comparisons against the equal prior window
+deterministic_findings: [share-of-total, percentage-change]
+predicate:
+  required_evidence_inputs: [network-channel-comparisons]
+  required_finding_kinds: [share-of-total, percentage-change]
+  materiality:
+    bases:
+      channel_window:
+        per_unit:
+          share: {operational-pulse: "1", tactical-review: "1", pattern-confirmation: "1"}
+          percent: {operational-pulse: "10", tactical-review: "5", pattern-confirmation: "5"}
+        per_metric: {}
+    near_zero_prior:
+      multiplier: "0.1"
+      currency: "5"
+  delivery_follow_up_evidence: []
+materiality_cases:
+  - {name: a channel share of 1.00 is admitted at operational-pulse, horizon: operational-pulse, basis: channel_window, kind: share-of-total, metric: ad_spend, current: "1", prior: "100", expect: admitted}
+  - {name: a channel share of 1.00 is admitted at tactical-review, horizon: tactical-review, basis: channel_window, kind: share-of-total, metric: ad_spend, current: "1", prior: "100", expect: admitted}
+  - {name: a channel share of 1.00 is admitted at pattern-confirmation, horizon: pattern-confirmation, basis: channel_window, kind: share-of-total, metric: ad_spend, current: "1", prior: "100", expect: admitted}
+  - {name: a channel share of 0.99 is silent at tactical-review, horizon: tactical-review, basis: channel_window, kind: share-of-total, metric: ad_spend, current: "0.99", prior: "100", expect: silent}
+  - {name: a channel ROAS up 8 percent off 3.00 is admitted at tactical-review, horizon: tactical-review, basis: channel_window, kind: percentage-change, metric: roas_attributed_14d, current: "3.24", prior: "3.00", expect: admitted}
+  - {name: a channel ROAS up 4 percent off 3.00 is silent at tactical-review, horizon: tactical-review, basis: channel_window, kind: percentage-change, metric: roas_attributed_14d, current: "3.12", prior: "3.00", expect: silent}
+  - {name: a channel ROAS up 8 percent is silent at operational-pulse, horizon: operational-pulse, basis: channel_window, kind: percentage-change, metric: roas_attributed_14d, current: "3.24", prior: "3.00", expect: silent}
+  - {name: a channel ROAS prior of 0.05 is near zero, horizon: tactical-review, basis: channel_window, kind: percentage-change, metric: roas_attributed_14d, current: "0.06", prior: "0.05", expect: suppressed}
+  - {name: a channel spend up 6 percent is admitted at tactical-review, horizon: tactical-review, basis: channel_window, kind: percentage-change, metric: ad_spend, current: "1060", prior: "1000", expect: admitted}
+  - {name: a channel spend up 4 percent is silent at tactical-review, horizon: tactical-review, basis: channel_window, kind: percentage-change, metric: ad_spend, current: "1040", prior: "1000", expect: silent}
+  - {name: a channel spend prior of 4 is near zero, horizon: tactical-review, basis: channel_window, kind: percentage-change, metric: ad_spend, current: "40", prior: "4", expect: suppressed}
+silence_condition: No channel's share of its network's spend and no channel's attributed ROAS move reaches the declared threshold.
+structured_output_schema: {id: insight-narration-v1, fields: [output_class, sentences]}
+initial_fictional_prompt: null
+calibration_cases:
+  - kind: known-correct
+    input_summary: Fictional DSP holds a supplied share of the Amazon network's ad spend in one marketplace.
+    expected_outcome: Accept the deterministic observation of the DSP share inside the Amazon network.
+    horizon: tactical-review
+    findings:
+      - {name: DSP share of Amazon network spend, value: "38.80"}
+      - {name: Sponsored Products share of Amazon network spend, value: "61.20"}
+  - kind: exploratory
+    input_summary: Two fictional channels hold close shares of one network's spend, which would invite a reading this deterministic slot never generates.
+    expected_outcome: The slot renders the two shares only; no prompt generates a reading.
+    horizon: pattern-confirmation
+    findings:
+      - {name: Sponsored Products share of Amazon network spend, value: "50.40"}
+      - {name: DSP share of Amazon network spend, value: "49.60"}
+  - kind: contradiction
+    input_summary: Fictional Sponsored Products attributed ROAS falls, but the observation calls it a rise.
+    expected_outcome: Reject the contradiction.
+    horizon: tactical-review
+    findings:
+      - {name: Sponsored Products attributed ROAS change, value: "-12.50"}
+    draft:
+      sentences:
+        - Sponsored Products attributed ROAS rose 12.5 percent against the prior window.
+  - kind: fluent-unsupported
+    input_summary: A fluent draft adds a network-wide attributed ROAS that no finding supplies and that the scorecard never totals.
+    expected_outcome: Reject the figure that is neither supplied nor derived from the findings.
+    horizon: tactical-review
+    findings:
+      - {name: DSP share of Amazon network spend, value: "38.80"}
+    draft:
+      sentences:
+        - DSP holds 38.8 percent of Amazon network spend, and the network's attributed ROAS across all channels is 4.1.
+  - kind: derived-figure
+    input_summary: A fictional renderer states the DSP attributed ROAS percentage change derived from its supplied current and prior values.
+    expected_outcome: Accept the correctly derived percentage change; this deterministic slot never generates one.
+    horizon: tactical-review
+    findings:
+      - {name: DSP attributed ROAS this window, value: "2.70"}
+      - {name: DSP attributed ROAS prior window, value: "3.00"}
+    draft:
+      sentences:
+        - DSP attributed ROAS moved from 3.00 to 2.70, down 10 percent, inside the Amazon network.
+  - kind: miscomputed-derivation
+    input_summary: A fictional renderer adds two channel shares taken of two different network totals and states the sum as one share.
+    expected_outcome: Reject the combined share, because the two shares divide by different totals.
+    horizon: pattern-confirmation
+    findings:
+      - {name: DSP share of Amazon network spend in the US, value: "38.80"}
+      - {name: DSP share of Amazon network spend in the UK, value: "22.10"}
+    draft:
+      sentences:
+        - DSP holds 60.9 percent of Amazon network spend across the US and the UK.
+  - kind: incompatible-basis
+    input_summary: A fictional draft sums attributed revenue across two advertising networks, which carry different attribution bases and windows.
+    expected_outcome: Reject the figure that combines findings of incompatible attribution basis.
+    horizon: tactical-review
+    findings:
+      - {name: Amazon network Sponsored Products attributed revenue, value: "1200"}
+      - {name: Fictional Network B search attributed revenue, value: "800"}
+    draft:
+      sentences:
+        - Search earned 2000 in attributed revenue across both networks.
+deep: null

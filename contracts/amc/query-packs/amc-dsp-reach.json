@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "packId": "amc-dsp-reach",
+  "packVersion": 1,
+  "contractId": "amc-dsp-reach",
+  "sourcePackId": "amc-dsp-reach",
+  "queryFile": "amc-dsp-reach.sql",
+  "accessTier": "standard",
+  "liveValidation": "required",
+  "maxResultBytes": 20000000,
+  "executionOptions": {
+    "timeWindowType": "EXPLICIT",
+    "timeWindowTimeZone": "UTC",
+    "filteredMetricsDiscriminatorColumn": "rows_suppressed",
+    "filteredReasonColumn": "suppression_reason",
+    "distinctUserCountColumn": "distinct_user_count"
+  },
+  "safetyBlockers": [],
+  "suppressionPolicy": "reject_delivery",
+  "inputParameters": {
+    "dsp_campaign_country": {"commerceIdentity": "amc.campaign_country", "dataType": "STRING"}
+  },
+  "cadenceLagDays": 2,
+  "expectedBar": 2,
+  "outputColumns": [
+    "impression_date_utc",
+    "campaign_id_string",
+    "campaign_country",
+    "reach_users",
+    "time_window_start",
+    "time_window_end",
+    "rows_suppressed",
+    "suppression_reason",
+    "distinct_user_count"
+  ]
+}

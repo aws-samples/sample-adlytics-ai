@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: MIT-0 -->
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="design-revision" content="2026-10-09.2">
+  <title>Retail health — command-center draft (all values fictional)</title>
+  <link rel="stylesheet" href="../campaign-portfolio/command-center-draft.css">
+  <style>
+    /* Page-specific chart strokes and focus/section additions; every shared token and class comes from the draft stylesheet. */
+    .chart .grid{stroke:var(--line)}
+    .chart .axis-label{fill:var(--text-faint);font-size:10px;font-variant-numeric:tabular-nums}
+    .chart .series{fill:none;stroke:var(--accent);stroke-width:2.25;stroke-linejoin:round;stroke-linecap:round}
+    .chart .series.prior{stroke:var(--chart-prior);stroke-dasharray:6 5}
+    .spark{display:block;width:120px;height:30px}
+    .spark .series{fill:none;stroke:var(--accent);stroke-width:1.75}
+    .state-note.good .badge{color:var(--good);background:var(--good-soft)}
+    .tile .row{flex-wrap:wrap}
+    .facts{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0 2px}
+    .fact{border:1px solid var(--line);border-radius:10px;padding:7px 11px;background:var(--card)}
+    .fact .f-k{display:block;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-faint)}
+    .fact .f-v{font-size:13px;font-weight:650;font-variant-numeric:tabular-nums}
+    .fact .f-v .sub-note{font-weight:400;color:var(--text-faint);font-size:11px}
+    .drivers h5{font-size:10.5px;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-faint);margin:10px 0 6px}
+    .share{color:var(--text-faint);font-size:11px;font-variant-numeric:tabular-nums}
+    .defline{color:var(--text-dim);font-size:12px;margin-top:2px}
+    /* Metric sections: the page reads as a narrative — demand, sales, returns, profitability. */
+    .metric-section{margin-top:20px}
+    .sec-head{display:flex;align-items:baseline;gap:10px;margin:0 0 2px;border-bottom:1px solid var(--line);padding-bottom:6px}
+    .sec-head h2{font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:var(--text);margin:0}
+    .sec-head .sec-cap{font-size:12px;color:var(--text-faint)}
+    /* One row per section, never wrapped (mandated 2026-09-23): however many cards a
+       section holds, they split the full width evenly and stretch to equal height — no
+       holes from short rows, no orphan wrapping from long ones. Compact padding and type. */
+    .metric-section .tiles{margin-top:10px;align-items:stretch;gap:8px;grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr)}
+    /* A dense row stacks no later than any less-dense row: every section stacks at the
+       same 1100px the four-card insight rows use, so the five-tile row never squeezes
+       below a readable tile. */
+    @media (max-width: 1100px){ .metric-section .tiles{grid-auto-flow:row;grid-auto-columns:unset;grid-template-columns:repeat(2,1fr)} }
+    .metric-section .tile{padding:9px 12px 8px}
+    .metric-section .tile .k{font-size:10px}
+    .metric-section .tile .v{font-size:17px;margin:2px 0 0}
+    .metric-section .tile .prior{font-size:10.5px;line-height:1.35}
+    .metric-section .tile .row{align-items:center}
+    .metric-section .narr-card{padding:10px 12px;font-size:12.5px}
+    .metric-section .narr-card p{margin:6px 0}
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <a class="brand" href="../campaign-portfolio/mockup.html" aria-label="Adlytics AI home">
+        <svg class="logo" viewBox="0 0 34 34" role="img" aria-hidden="true">
+          <defs><linearGradient id="lg" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs>
+          <rect x="1" y="1" width="32" height="32" rx="9" fill="url(#lg)"/>
+          <path d="M19.5 6 10 19h5.4l-1.6 9L24 15h-5.6l1.1-9z" fill="#fff" opacity="0.96"/>
+          <circle cx="25.5" cy="9" r="2" fill="#fff" opacity="0.85"/>
+        </svg>
+        <span class="word">Adlytics AI<span>Retail media intelligence</span></span>
+      </a>
+      <nav class="nav" aria-label="Workspace pages">
+        <p class="nav-label">Workspace</p>
+        <a href="../campaign-portfolio/mockup.html"><span class="glyph">▮</span>Campaign Portfolio</a>
+        <a href="mockup.html" aria-current="page"><span class="glyph">▦</span>Retail health</a>
+        <p class="nav-label" style="margin-top:14px;">Admin · operators only</p>
+        <a href="../prompt-administration/mockup.html"><span class="glyph">⌘</span>Prompt administration</a>
+      </nav>
+      <p class="sidebar-foot">All values fictional and server-declared. Design revision <span style="color:var(--accent)">2026-09-24.1</span>; this mockup is the mandated implementation target for the Retail health page: narrative metric sections, returns-and-margin derivations, and the hardened metric-focus dialog (<a href="../metric-focus-contract.md" style="color:var(--accent)">shared contract</a>).</p>
+    </aside>
+
+    <div class="main">
+      <header class="topbar">
+        <span>Retail health</span>
+        <div class="actions">
+          <button type="button">Theme: Dark</button>
+          <button type="button">Assistant</button>
+          <button type="button">Sign out</button>
+        </div>
+      </header>
+
+      <main id="main" class="page">
+        <!-- 1 · title band with preset windows (no Custom: ADR-070) -->
+        <div class="band">
+          <div class="band-title">
+            <p class="eyebrow">Retail health · 1P vendor</p>
+            <h1>Retail health</h1>
+            <div class="scopes">
+              <span class="pill">7 authorized products</span>
+              <span class="pill">Retail actuals · shipped basis</span>
+              <span class="pill">Manufacturing view</span>
+              <span class="pill good">Reconciled to reported totals · loaded Sep 15</span>
+            </div>
+          </div>
+          <div class="windows" role="group" aria-label="Server-declared reporting windows">
+            <button class="win-card" type="button" aria-pressed="false"><span class="w">1D</span><span class="s">Sep 15</span></button>
+            <button class="win-card" type="button" aria-pressed="true"><span class="w">7D</span><span class="s">Sep 9–15</span></button>
+            <button class="win-card" type="button" aria-pressed="false"><span class="w">14D</span><span class="s">Sep 2–15</span></button>
+            <button class="win-card" type="button" disabled aria-describedby="win-note"><span class="w">30D</span><span class="s">needs Aug 17+ prior</span></button>
+          </div>
+        </div>
+        <p id="win-note" class="footnote">Windows anchor to the latest published vendor coverage, never to today. Retail actuals
+        are a different measurement basis from ad-attributed outcomes: this page never assigns retail revenue to a campaign.
+        Every window variant is served from a publish-time artifact; changing the window re-resolves every card, table, chart,
+        and insight on this page. The page reads top to bottom as one narrative: demand, sales, returns, profitability —
+        each section pairs its figures with its own interpretation.</p>
+
+        <!-- 2 · DEMAND & CONVERSION -->
+        <section class="metric-section" aria-labelledby="sec-demand">
+          <div class="sec-head"><h2 id="sec-demand">Demand &amp; conversion</h2><span class="sec-cap">did the traffic show up, and did it convert</span></div>
+          <div class="tiles">
+            <article class="tile">
+              <p class="k">Glance views</p>
+              <div class="row"><div><p class="v">18,402</p><p class="prior">Prior: 18,377</p></div><span class="delta up">▲ +0.14%</span></div>
+              <button class="ask" type="button">Open the focus view for glance views</button>
+            </article>
+            <article class="tile">
+              <p class="k">Units per 1K glance views</p>
+              <div class="row"><div><p class="v">69.78</p><p class="prior">Prior: 64.75</p></div><span class="delta up">▲ +7.77%</span></div>
+              <p class="prior">Coherent under the Manufacturing view only.</p>
+              <button class="ask" type="button">Open the focus view for units per 1K glance views</button>
+            </article>
+          </div>
+          <div class="narr-card section-insight">
+            <div class="purpose"><h4>Demand shape</h4><span class="tag perspective">Perspective</span></div>
+            <p>Shipped revenue grew while glance views stayed flat, so the week's gain came from conversion of existing traffic rather than new discovery.</p>
+            <span class="ev">Evidence: server-computed revenue and glance-view deltas over the resolved window.</span>
+            <button class="open-insight" type="button">Open the insight view for Demand shape</button>
+          </div>
+        </section>
+
+        <!-- 3 · SALES & FULFILLMENT -->
+        <section class="metric-section" aria-labelledby="sec-sales">
+          <div class="sec-head"><h2 id="sec-sales">Sales &amp; fulfillment</h2><span class="sec-cap">what moved, and whether supply kept up with orders</span></div>
+          <div class="tiles">
+            <article class="tile">
+              <p class="k">Shipped revenue</p>
+              <div class="row"><div><p class="v">4,812.40 USD</p><p class="prior">Prior: 4,309.10 USD</p></div><span class="delta up">▲ +11.68%</span></div>
+              <button class="ask" type="button">Open the focus view for shipped revenue</button>
+            </article>
+            <article class="tile">
+              <p class="k">Shipped units</p>
+              <div class="row"><div><p class="v">1,284</p><p class="prior">Prior: 1,190</p></div><span class="delta up">▲ +7.90%</span></div>
+              <button class="ask" type="button">Open the focus view for shipped units</button>
+            </article>
+            <article class="tile">
+              <p class="k">Ordered revenue</p>
+              <div class="row"><div><p class="v">5,120.90 USD</p><p class="prior">Prior: 4,671.00 USD</p></div><span class="delta up">▲ +9.63%</span></div>
+              <button class="ask" type="button">Open the focus view for ordered revenue</button>
+            </article>
+            <article class="tile">
+              <p class="k">Fulfilment rate</p>
+              <div class="row"><div><p class="v">95.0%</p><p class="prior">Prior: 96.0%</p></div><span class="delta down">▼ −1.0pp</span></div>
+              <p class="prior">Units shipped against units ordered in this window. Withheld under the Sourcing distributor view.</p>
+              <button class="ask" type="button">Open the focus view for fulfilment rate</button>
+            </article>
+            <article class="tile empty">
+              <p class="k">Sourcing-view ordered revenue</p>
+              <p class="v">Not measured under this view</p>
+              <p class="prior">The source withholds ordered figures under the Sourcing distributor view.</p>
+            </article>
+          </div>
+          <div class="narr-card section-insight">
+            <div class="purpose"><h4>Ordered vs shipped</h4><span class="tag perspective">Perspective</span></div>
+            <p>Orders ran 308.50 USD ahead of shipments this window while the fulfilment rate slipped a point — worth watching as a supply signal, not yet a revenue problem.</p>
+            <span class="ev">Evidence: server-computed ordered-versus-shipped revenue difference in this window.</span>
+            <button class="open-insight" type="button">Open the insight view for Ordered vs shipped</button>
+          </div>
+          <p class="footnote" style="margin-top:8px;">Every insight card opens its insight view; a card with nothing to say
+          states its served reason — under the Sourcing view this slot calls out its missing reconciliation evidence instead
+          of narrating (<a href="../insight-presentation-contract.md" style="color:var(--ai)">insight-presentation contract</a>).</p>
+        </section>
+
+        <!-- 4 · RETURNS DRAG -->
+        <section class="metric-section" aria-labelledby="sec-returns">
+          <div class="sec-head"><h2 id="sec-returns">Returns drag</h2><span class="sec-cap">what came back, and what it cost</span></div>
+          <div class="tiles">
+            <article class="tile">
+              <p class="k">Customer returns</p>
+              <div class="row"><div><p class="v">86</p><p class="prior">Prior: 61</p></div><span class="delta down">▲ +40.98%</span></div>
+              <button class="ask" type="button">Open the focus view for customer returns</button>
+            </article>
+            <article class="tile">
+              <p class="k">Return rate</p>
+              <div class="row"><div><p class="v">6.70%</p><p class="prior">Prior: 5.13%</p></div><span class="delta down">▲ +1.57pp</span></div>
+              <p class="prior">Returned units against shipped units, both observed in this window. Returns lag sales; an operational drag indicator, not a cohort rate.</p>
+              <button class="ask" type="button">Open the focus view for return rate</button>
+            </article>
+            <article class="tile">
+              <p class="k">Est. revenue withheld by returns</p>
+              <div class="row"><div><p class="v">322.33 USD</p><p class="prior">Prior: 220.89 USD</p></div><span class="delta down">▲ +45.92%</span></div>
+              <p class="prior">Estimate: returned units × this window's average selling price. Revenue on this page is already net of returns; this sizes the deduction, it is never subtracted again.</p>
+              <button class="ask" type="button">Open the focus view for estimated revenue withheld by returns</button>
+            </article>
+          </div>
+          <div class="narr-card section-insight">
+            <div class="purpose"><h4>Returns pressure</h4><span class="tag perspective">Perspective</span></div>
+            <p>Customer returns rose faster than shipped units on Northstar Home Product 3, which offsets roughly a fifth of its revenue gain this window.</p>
+            <span class="ev">Evidence: returns-to-shipped ratio per product, server-computed.</span>
+            <button class="open-insight" type="button">Open the insight view for Returns pressure</button>
+          </div>
+        </section>
+
+        <!-- 4b · HARDENED METRIC FOCUS (state illustration: customer returns focus, per-product drivers) -->
+        <div class="scrim-demo" aria-label="State illustration: metric-focus dialog opened from the Customer returns tile, page dimmed and inert behind it">
+        <div class="focus-dialog" role="dialog" aria-modal="true" aria-label="Customer returns focus view">
+          <div class="focus-head">
+            <div>
+              <p class="eyebrow">Metric focus · Retail actuals · Sep 9–15 · Manufacturing view</p>
+              <h2 style="font-size:17px;">Customer returns</h2>
+              <p class="defline">Units returned by customers in the window, as the vendor reports them. Revenue figures on this page are already net of returns.</p>
+              <div style="display:flex; gap:10px; align-items:baseline; margin-top:6px;">
+                <span class="big">86</span>
+                <span class="delta down">▲ +40.98%</span>
+                <span class="prior" style="font-size:12px; color:var(--text-faint);">prior 61</span>
+              </div>
+            </div>
+            <div style="display:flex; gap:10px; align-items:center;">
+              <span class="metric-switch" aria-label="Switch focused metric">
+                <button type="button" aria-label="Previous metric: shipped units">‹</button>
+                <span>Shipped units · <span class="current">Returns</span> · Return rate</span>
+                <button type="button" aria-label="Next metric: return rate">›</button>
+              </span>
+              <button class="close" type="button" aria-label="Close focus view">✕</button>
+            </div>
+          </div>
+          <div class="focus-grid">
+            <div>
+              <svg class="chart" width="100%" height="150" viewBox="0 0 620 150" preserveAspectRatio="none" role="img"
+                   aria-label="Daily customer returns, Sep 9 to 15, rising from 9 to 16 units; prior week held between 8 and 10.">
+                <g stroke="var(--line)" stroke-width="1">
+                  <line x1="40" y1="20" x2="600" y2="20"/><line x1="40" y1="65" x2="600" y2="65"/><line x1="40" y1="110" x2="600" y2="110"/>
+                </g>
+                <g fill="var(--text-faint)" font-size="10">
+                  <text x="10" y="24">16</text><text x="10" y="69">12</text><text x="10" y="114">8</text>
+                  <text x="62" y="140">Sep 9</text><text x="300" y="140">12</text><text x="560" y="140">15</text>
+                </g>
+                <polyline points="70,104 155,100 240,106 325,102 410,98 495,104 580,100"
+                          fill="none" stroke="var(--chart-prior)" stroke-width="2" stroke-dasharray="6 5"/>
+                <polyline points="70,98 155,90 240,86 325,72 410,60 495,42 580,24"
+                          fill="none" stroke="var(--accent)" stroke-width="2.5"/>
+              </svg>
+              <div class="legend">
+                <span><i></i>Current</span>
+                <span><i class="prior"></i>Aligned prior window</span>
+              </div>
+              <div class="facts" aria-label="Server-computed facts about this metric in this window">
+                <span class="fact"><span class="f-k">Peak day</span><span class="f-v">Sep 15 · 16 units</span></span>
+                <span class="fact"><span class="f-k">Return rate</span><span class="f-v">6.70% <span class="sub-note">of shipped units</span></span></span>
+                <span class="fact"><span class="f-k">Est. revenue withheld</span><span class="f-v">322.33 USD <span class="sub-note">estimate</span></span></span>
+                <span class="fact"><span class="f-k">Largest day move</span><span class="f-v">+4 <span class="sub-note">Sep 13→14</span></span></span>
+              </div>
+            </div>
+            <div class="related drivers" aria-label="What drove the change, and the metric's own interpretation">
+              <h5>Drivers · per product, server-computed</h5>
+              <div class="movers-stack" aria-label="Top contributors to the window-over-window returns change">
+                <div class="mover"><span><span class="who">Northstar Home Product 3</span><span class="what">+18 units · <span class="share">72% of the move</span></span></span><span class="delta down">▲ +78%</span></div>
+                <div class="mover"><span><span class="who">Northstar Home Product 1</span><span class="what">+5 units · <span class="share">20%</span></span></span><span class="delta down">▲ +56%</span></div>
+                <div class="mover"><span><span class="who">Northstar Home Product 6</span><span class="what">+2 units · <span class="share">8%</span></span></span><span class="delta down">▲ +50%</span></div>
+              </div>
+              <div class="narr-card" style="margin-top:10px;">
+                <div class="purpose"><h4>Interpretation</h4><span class="tag perspective">Perspective</span></div>
+                <p>The returns rise is concentrated in one product: Product 3 alone explains most of the move and its return rate is roughly double the page's. If its listing or fit guidance changed recently, that is the first place to look.</p>
+                <span class="ev">retail-metric-focus v1 · registry-active · cached against this artifact revision</span>
+              </div>
+              <div class="ask-row" style="margin-top:8px;">
+                <button class="ask-chip" type="button">Open the focus view for return rate</button>
+                <button class="ask-chip" type="button">Ask the assistant about returns this window</button>
+              </div>
+            </div>
+          </div>
+          <p class="footnote" style="padding-top:10px;">Retail decomposes per product; the campaign surfaces decompose per
+          campaign or by ratio components. Same dialog, same behavior — the shared metric-focus contract owns the composition.
+          All facts and drivers are server-computed from the baked artifact; the interpretation is one versioned,
+          calibration-gated prompt cached per metric per window.</p>
+        </div>
+        </div>
+
+        <!-- 5 · PROFITABILITY -->
+        <section class="metric-section" aria-labelledby="sec-profit">
+          <div class="sec-head"><h2 id="sec-profit">Profitability</h2><span class="sec-cap">what is left after cost of goods</span></div>
+          <div class="tiles">
+            <article class="tile">
+              <p class="k">COGS shipped</p>
+              <div class="row"><div><p class="v">2,977.20 USD</p><p class="prior">Prior: 2,742.50 USD</p></div><span class="delta up">▲ +8.56%</span></div>
+              <button class="ask" type="button">Open the focus view for COGS shipped</button>
+            </article>
+            <article class="tile">
+              <p class="k">Amazon margin proxy</p>
+              <div class="row"><div><p class="v">1,835.20 USD</p><p class="prior">Prior: 1,566.60 USD</p></div><span class="delta up">▲ +17.15%</span></div>
+              <p class="prior">What Amazon retains on your shipped units before its own costs — Amazon's margin on these products, not yours. A proxy, and a read on how profitable Amazon finds this catalog.</p>
+              <button class="ask" type="button">Open the focus view for the Amazon margin proxy</button>
+            </article>
+          </div>
+        </section>
+
+        <!-- 6 · full-width trend panel -->
+        <section class="panel" aria-label="Retail trend" style="margin-top:20px;">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Visual evidence</p>
+              <h2>Shipped revenue</h2>
+              <p class="footnote">Sep 9–15, 2026 · daily</p>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <div class="seg"><button type="button" aria-pressed="true">Shipped revenue</button><button type="button">Shipped units</button><button type="button">Glance views</button><button type="button">Returns</button></div>
+              <div class="seg"><button type="button" aria-pressed="true">day</button></div>
+            </div>
+          </div>
+          <svg class="chart" viewBox="0 0 1000 260" role="img" aria-label="Shipped revenue across the returned daily reporting values">
+            <line class="grid" x1="74" x2="986" y1="22" y2="22"/><line class="grid" x1="74" x2="986" y1="120" y2="120"/><line class="grid" x1="74" x2="986" y1="218" y2="218"/>
+            <text class="axis-label" x="66" y="26" text-anchor="end">820.00 USD</text>
+            <text class="axis-label" x="66" y="124" text-anchor="end">640.00 USD</text>
+            <text class="axis-label" x="66" y="222" text-anchor="end">460.00 USD</text>
+            <text class="axis-label" x="74" y="244">Sep 9, 2026</text>
+            <text class="axis-label" x="986" y="244" text-anchor="end">Sep 15, 2026</text>
+            <polyline class="series prior" points="74,180 226,168 378,190 530,150 682,172 834,160 986,148"/>
+            <polyline class="series" points="74,150 226,132 378,158 530,96 682,118 834,72 986,60"/>
+          </svg>
+          <p class="legend"><span><i></i>Current window</span><span><i class="prior"></i>Aligned prior window</span></p>
+        </section>
+
+        <!-- 7 · reconciliation state -->
+        <div class="state-note good">
+          <span class="badge">Reconciled</span>
+          <strong>By-product rows reconcile to the vendor's reported totals for this window.</strong>
+          <span>Shipped revenue and units sum exactly to the separately delivered control totals; a mismatch renders here as a dated discrepancy, never a silent blend.</span>
+        </div>
+
+        <!-- 8 · product table with its product-grain insight -->
+        <section class="panel" aria-label="Products">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Server ordering</p>
+              <h2>Products</h2>
+              <p class="footnote">Order and changes are returned by the server. Child ASINs roll up to their parent per the governed hierarchy.</p>
+            </div>
+          </div>
+          <div class="narr-card" style="margin:0 0 12px;">
+            <div class="purpose"><h4>Largest movers</h4><span class="tag observed">Observed</span></div>
+            <p>Northstar Home Product 1 shipped revenue changed by 412.80; Product 4 changed by −188.20; Product 6 changed by 95.10.</p>
+            <span class="ev">Evidence: server-ranked absolute changes.</span>
+            <button class="open-insight" type="button">Open the insight view for Largest movers</button>
+          </div>
+          <table class="camp-table">
+            <thead><tr>
+              <th scope="col">Product</th><th scope="col" class="num">Shipped revenue</th><th scope="col" class="num">Δ</th>
+              <th scope="col" class="num">Units</th><th scope="col" class="num">Returns</th>
+              <th scope="col" class="num">Return rate</th><th scope="col" class="num">Amazon margin</th>
+              <th scope="col" class="num">Glance views</th>
+              <th scope="col">Trend</th><th scope="col">Coverage</th>
+            </tr></thead>
+            <tbody>
+              <tr>
+                <td class="name"><strong>Northstar Home Product 1</strong><span class="sub">B0FIXTUR01 · parent B0PARENT00</span></td>
+                <td class="num"><strong>1,412.30 USD</strong></td><td class="num"><span class="delta up">▲ +41.3%</span></td>
+                <td class="num">388</td><td class="num">14</td>
+                <td class="num">3.6%</td><td class="num">41.2%</td>
+                <td class="num">5,204</td>
+                <td class="spark-cell"><svg class="spark" viewBox="0 0 1000 260" preserveAspectRatio="none" role="img" aria-label="Returned shipped-revenue trend for Northstar Home Product 1"><polyline class="series" points="20,200 180,180 340,190 500,120 660,140 820,70 980,50"/></svg></td>
+                <td><span class="pill good">Current</span></td>
+              </tr>
+              <tr>
+                <td class="name"><strong>Northstar Home Product 3</strong><span class="sub">B0FIXTUR03 · parent B0PARENT01</span></td>
+                <td class="num"><strong>986.10 USD</strong></td><td class="num"><span class="delta up">▲ +12.1%</span></td>
+                <td class="num">305</td><td class="num">41</td>
+                <td class="num"><span class="delta down">13.4%</span></td><td class="num">33.8%</td>
+                <td class="num">4,118</td>
+                <td class="spark-cell"><svg class="spark" viewBox="0 0 1000 260" preserveAspectRatio="none" role="img" aria-label="Returned shipped-revenue trend for Northstar Home Product 3"><polyline class="series" points="20,150 180,140 340,120 500,150 660,110 820,120 980,100"/></svg></td>
+                <td><span class="pill warn">Returns rising</span></td>
+              </tr>
+              <tr>
+                <td class="name"><strong>Northstar Home Product 4</strong><span class="sub">B0FIXTUR04 · parent B0PARENT01</span></td>
+                <td class="num"><strong>744.80 USD</strong></td><td class="num"><span class="delta down">▼ −20.2%</span></td>
+                <td class="num">201</td><td class="num">9</td>
+                <td class="num">4.5%</td><td class="num">37.9%</td>
+                <td class="num">3,466</td>
+                <td class="spark-cell"><svg class="spark" viewBox="0 0 1000 260" preserveAspectRatio="none" role="img" aria-label="Returned shipped-revenue trend for Northstar Home Product 4"><polyline class="series" points="20,90 180,110 340,100 500,140 660,150 820,180 980,190"/></svg></td>
+                <td><span class="pill good">Current</span></td>
+              </tr>
+              <tr>
+                <td class="name"><strong>Northstar Home Product 6</strong><span class="sub">B0FIXTUR06 · parent B0PARENT02</span></td>
+                <td class="num"><strong>512.60 USD</strong></td><td class="num"><span class="delta up">▲ +22.8%</span></td>
+                <td class="num">143</td><td class="num">6</td>
+                <td class="num">4.2%</td><td class="num">39.4%</td>
+                <td class="num">2,910</td>
+                <td class="spark-cell"><svg class="spark" viewBox="0 0 1000 260" preserveAspectRatio="none" role="img" aria-label="Returned shipped-revenue trend for Northstar Home Product 6"><polyline class="series" points="20,190 180,170 340,180 500,150 660,130 820,110 980,90"/></svg></td>
+                <td><span class="pill good">Current</span></td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="footnote">Return rate and Amazon margin are server-derived per product from declared metrics (returned
+          units ÷ shipped units; shipped revenue − COGS shipped — Amazon's margin on these products, not the vendor's). A
+          product whose return rate materially exceeds the page rate renders its value in the adverse color. Revenue per
+          glance view per product is served inside the glance-views and revenue focus dialogs.</p>
+        </section>
+
+        <!-- 8a · page action open-repeat-purchase-by-product (revision 2026-10-08.1) -->
+        <p class="footnote" style="margin-top:16px;">Repeat purchases per product, from Amazon Brand Analytics: <a href="../repeat-purchase-by-product/mockup.html" style="color:var(--accent)">Repeat purchase by product</a></p>
+
+        <!-- 9 · basis boundary -->
+        <div class="state-note">
+          <span class="badge">Basis boundary</span>
+          <strong>Retail actuals are not campaign outcomes.</strong>
+          <span>Shipped revenue on this page is what Amazon retail actually moved, on the vendor's reporting basis. Ad-attributed purchases on the Campaign Portfolio use a different measurement basis; the two are context for each other, never a causal funnel.</span>
+        </div>
+      </main>
+    </div>
+  </div>
+</body>
+</html>

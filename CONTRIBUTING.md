@@ -1,0 +1,154 @@
+# Contributing Guidelines
+
+Thank you for your interest in contributing to our project. Whether it's a bug report, new feature, correction, or additional 
+documentation, we greatly value feedback and contributions from our community.
+
+Please read through this document before submitting any issues or pull requests to ensure we have all the necessary 
+information to effectively respond to your bug report or contribution.
+
+
+## Reporting Bugs/Feature Requests
+
+We welcome you to use the GitHub issue tracker to report bugs or suggest features.
+
+When filing an issue, please check [existing open](https://github.com/aws-samples/adlytics-ai/issues), or [recently closed](https://github.com/aws-samples/adlytics-ai/issues?utf8=%E2%9C%93&q=is%3Aissue%20is%3Aclosed%20), issues to make sure somebody else hasn't already 
+reported the issue. Please try to include as much information as you can. Details like these are incredibly useful:
+
+* A reproducible test case or series of steps
+* The version of our code being used
+* Any modifications you've made relevant to the bug
+* Anything unusual about your environment or deployment
+
+
+## Contributing via Pull Requests
+Contributions via pull requests are much appreciated. Before sending us a pull request, please ensure that:
+
+1. You are working against the latest source on the *main* branch.
+2. You check existing open, and recently merged, pull requests to make sure someone else hasn't addressed the problem already.
+3. You open an issue to discuss any significant work - we would hate for your time to be wasted.
+
+To send us a pull request, please:
+
+1. Fork the repository.
+2. Modify the source; please focus on the specific change you are contributing. If you also reformat all the code, it will be hard for us to focus on your change.
+3. Run the gates and say in the pull request which ones you ran. See [What a change carries](#what-a-change-carries).
+4. Commit to your fork using clear commit messages.
+5. Send us a pull request, answering any default questions in the pull request interface.
+6. Stay involved in the conversation.
+
+GitHub provides additional document on [forking a repository](https://help.github.com/articles/fork-a-repo/) and 
+[creating a pull request](https://help.github.com/articles/creating-a-pull-request/).
+
+## What a change carries
+
+**There is no remote CI and none is planned** ([ADR-015](docs/decisions/adr-015-no-remote-ci.md)). Nothing re-runs these after you push, so a pull request that has not been through them locally has not been through them at all. That is also why this list is short: everything on it is either checkable by a command or reviewable by a person, and nothing is here as an aspiration.
+
+### Run the gates
+
+```bash
+make verify          # lint, typecheck, boundaries, contracts, unit tests
+make check           # every documentation and model gate
+make lint-boundaries # the hexagonal dependency rule
+```
+
+Changes under `infra/` also need `make infra-typecheck` and `make infra-test`. Changes under
+`frontend/` also need `make frontend-typecheck`, then `npm run lint`, `npm test` and
+`npm run build` from `frontend/`.
+
+Maintainers publishing upstream also run these before every publication push:
+
+```bash
+make verify-clean    # make verify and the frontend gates in a clean export of HEAD
+make check-publication BASE=<rev>  # publication boundary, links, license headers and a proven gitleaks scan of the export and of unpushed commits since <rev>
+```
+
+### Deployed checks (maintainer-run)
+
+The checks below need a deployed environment. A maintainer runs them against a development account before merging; you do not need an AWS account to open a pull request.
+
+Changes that touch an AWS adapter need `make test-integration PROFILE=<PROFILE> ENV=<ENV>`, which runs against real resources rather than mocks ([ADR-014](docs/decisions/adr-014-aws-testing-seam.md)) — and an adapter covered only by unit tests is not covered.
+
+**Changes to a data contract, the load path, or the ingestion trigger also need deployed V2
+acceptance after the affected stacks are deployed:**
+
+```bash
+make accept-ingestion-v2 \
+  PROFILE=<PROFILE> ENV=<ENV> DAY=<YYYY-MM-DD> GLANCE_VIEWS=<NONNEGATIVE_INTEGER>
+```
+
+This probe uses synthetic Vendor Central traffic, writes immutable version-bound evidence, and
+requires exact successful attempts, `CURRENT` advancement, and unchanged dead-letter queue depth. It
+is not an AMC source probe. A change to a claim about AMC itself must additionally run the narrow
+owning probe under `validation/`. Only the non-identifying conclusion is recorded in
+`validation/RESULTS.md` and its owning source document; exact execution and resource identifiers and
+raw output are never committed. Source-validation credentials remain local and are never arguments or
+committed configuration.
+
+Every gate runs under the interpreter `.python-version` pins. If a gate fails for a reason the error does not explain, check you are not on a system Python.
+
+### Record a decision as an ADR
+
+A change that makes a decision adds an ADR under [docs/decisions/](docs/decisions/), numbered sequentially. A change that reverses one amends the ADR it reverses rather than leaving two documents disagreeing.
+
+An ADR states what was decided, what was rejected, and why — that is its job, and no design doc should restate it. If your change only follows an existing decision, cite it and add nothing.
+
+Designs, plans and ADRs weigh their options by the rubric in [delivery practice](docs/delivery-practice.md#5-the-decision-weighting-rubric) and name the items that decided them.
+
+### Tag tests with the decision they verify
+
+```python
+@pytest.mark.covers("ADR-007", "G-14")
+def test_something(): ...
+```
+
+`ADR-NNN` comes from `docs/decisions/`, and `G-NN` and `F-NN` from the [decision coverage registry](docs/decision-coverage-registry.md). `make check-coverage-matrix` fails on an ID declared nowhere, so a typo is caught; it cannot catch a test tagged with a decision it does not actually exercise, and an inflated matrix is worse than an empty one because it reports confidence that is not there.
+
+### Review mutants when you change the domain
+
+`src/domain/` holds the code where a surviving mutant is a wrong number rather than a wrong redirect. A change there is expected to include a mutation review of the lines it touched, recorded under [test-mutations/](test-mutations/) ([ADR-013](docs/decisions/adr-013-mutation-testing.md)):
+
+```bash
+make mutate MODULE=src/domain/<module>.py TESTS=tests/unit/test_<module>.py
+```
+
+This is the gate that has repeatedly caught what the others could not: a caveat that was never emitted, a frozen dataclass with no test asserting it was frozen, a total that was a sum of averages. It mutates source in place, so run it on a clean tree.
+
+### Working with data and figures
+
+Two rules that are specific to this product and are the reason it exists:
+
+- **No figure in an answer may originate from the model.** Every number comes from a tool result. A change that lets a model-authored figure reach a user is the one defect class this codebase is built to prevent.
+- **Never assert on a bare number in a test.** Assert its units and its grain too. A correct figure at the wrong grain is the failure mode a reader cannot detect.
+
+### Getting a development environment
+
+You do not need a deployment to contribute. `make verify` and `make check` run with no AWS profile and no network, and that is deliberate — keep it that way.
+
+`.kiro/steering/` holds optional rules for contributors using the Kiro IDE and is not needed to build or deploy.
+
+For operational deployment and getting-data instructions, see [Getting data in](README.md#load-your-data). The only fixture jobs are the V2-only `adapters.jobs.land_fixtures` and `adapters.jobs.ingest_delivery`. Both are dev-only and operate on immutable, version-bound deliveries. There is no supported V1 path and no reset, truncate, or raw-deletion job.
+
+The fixture bundle is worth understanding before you change anything in the load path. **The fixtures are chosen, not generated.** The traps are the point: suppressed nulls, a restatement pair sharing one window deliberately, option-dependent absences, negative units, mixed currency. Generated volume cannot express any of those, so a path exercised only against clean generated rows would never meet the cases this platform exists to handle. Two fixtures are deliberately never landed, because they exist to be *rejected* and a bundle whose purpose is a working environment should not contain a poisoned delivery.
+
+Each landed fixture uses an immutable delivery path. Editing a fixture creates different content; it does not mutate or reset an existing delivery. Preserve the deliberate restatement and rejection cases when changing fixtures or ingestion behavior.
+
+
+## Finding contributions to work on
+Looking at the existing issues is a great way to find something to contribute on. As our projects, by default, use the default GitHub issue labels ((enhancement/bug/duplicate/help wanted/invalid/question/wontfix), looking at any ['help wanted'](https://github.com/aws-samples/adlytics-ai/labels/help%20wanted) issues is a great place to start. 
+
+
+## Code of Conduct
+This project has adopted the [Amazon Open Source Code of Conduct](https://aws.github.io/code-of-conduct). 
+For more information see the [Code of Conduct FAQ](https://aws.github.io/code-of-conduct-faq) or contact 
+opensource-codeofconduct@amazon.com with any additional questions or comments.
+
+
+## Security issue notifications
+If you discover a potential security issue in this project we ask that you notify AWS/Amazon Security via our [vulnerability reporting page](https://aws.amazon.com/security/vulnerability-reporting/). Please do **not** create a public github issue.
+
+
+## Licensing
+
+See the [LICENSE](LICENSE) file for our project's licensing. We will ask you to confirm the licensing of your contribution.
+
+We may ask you to sign a [Contributor License Agreement (CLA)](https://en.wikipedia.org/wiki/Contributor_License_Agreement) for larger changes.

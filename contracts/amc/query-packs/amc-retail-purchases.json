@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "packId": "amc-retail-purchases",
+  "packVersion": 1,
+  "contractId": "amc-retail-purchases",
+  "sourcePackId": "amc-retail-purchases",
+  "queryFile": "amc-retail-purchases.sql",
+  "accessTier": "paid_feature",
+  "liveValidation": "capability_conditional",
+  "maxResultBytes": 20000000,
+  "cadenceLagDays": 2,
+  "executionOptions": {
+    "timeWindowType": "EXPLICIT",
+    "timeWindowTimeZone": "UTC",
+    "filteredMetricsDiscriminatorColumn": "rows_suppressed",
+    "filteredReasonColumn": "suppression_reason",
+    "distinctUserCountColumn": "distinct_user_count"
+  },
+  "safetyBlockers": [],
+  "outputColumns": [
+    "purchase_date_utc",
+    "asin",
+    "marketplace_name",
+    "purchase_units_sold",
+    "currency_code",
+    "revenue_purchased",
+    "time_window_start",
+    "time_window_end",
+    "rows_suppressed",
+    "suppression_reason",
+    "distinct_user_count"
+  ]
+}

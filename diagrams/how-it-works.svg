@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1460 490" role="img" focusable="false" aria-labelledby="how-it-works-title how-it-works-desc">
+  <title id="how-it-works-title">Call-flow diagram: from your data delivery to an answer in the browser</title>
+  <desc id="how-it-works-desc">Your extraction pipeline lands each result in an S3 landing bucket; ingestion validates it against the data contracts and publishes an immutable version to the data lake, which the measurement tools read. A browser question reaches the Conversation API, which checks it with Amazon Bedrock Guardrails and invokes the AgentCore agent as the signed-in user; the agent calls the tools through AgentCore Gateway, and its answer streams back to the browser with an audit record written before the stream ends.</desc>
+  <defs>
+    <marker id="how-it-works-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#536275"/></marker>
+  </defs>
+  <rect x="0" y="0" width="1460" height="490" fill="#ffffff"/>
+  <g stroke-width="2">
+    <rect x="30" y="60" width="200" height="90" rx="10" fill="#ffffff" stroke="#9aa8bb"/>
+    <rect x="430" y="60" width="200" height="90" rx="10" fill="#f2f8fe" stroke="#2f6fb2"/>
+    <path d="M830 74 V136 A100 14 0 0 0 1030 136 V74" fill="#f2f8fe" stroke="#2f6fb2"/>
+    <ellipse cx="930" cy="74" rx="100" ry="14" fill="#f2f8fe" stroke="#2f6fb2"/>
+    <rect x="30" y="350" width="200" height="100" rx="10" fill="#ffffff" stroke="#9aa8bb"/>
+    <rect x="430" y="350" width="200" height="100" rx="10" fill="#ffffff" stroke="#9aa8bb"/>
+    <rect x="830" y="350" width="200" height="100" rx="10" fill="#f8f5ff" stroke="#6b4fbb"/>
+    <rect x="1230" y="350" width="200" height="100" rx="10" fill="#f3fbf6" stroke="#2e7d4f"/>
+  </g>
+  <g fill="none" stroke="#536275" stroke-width="2" marker-end="url(#how-it-works-arrow)">
+    <line x1="230" y1="105" x2="428" y2="105"/>
+    <line x1="630" y1="105" x2="828" y2="105"/>
+    <path d="M1030 105 H1330 V348"/>
+    <line x1="230" y1="375" x2="428" y2="375"/>
+    <line x1="430" y1="425" x2="232" y2="425"/>
+    <path d="M500 350 V300 H560 V348"/>
+    <line x1="630" y1="375" x2="828" y2="375"/>
+    <line x1="830" y1="425" x2="632" y2="425"/>
+    <line x1="1030" y1="375" x2="1228" y2="375"/>
+    <line x1="1230" y1="425" x2="1032" y2="425"/>
+  </g>
+  <g font-family="Arial, sans-serif" fill="#172033" text-anchor="middle">
+    <g font-size="15" font-weight="bold">
+      <text x="130" y="96">Your extraction pipeline</text>
+      <text x="530" y="98">Ingestion</text>
+      <text x="930" y="108">Data lake</text>
+      <text x="130" y="393">Browser</text>
+      <text x="530" y="393">Conversation API</text>
+      <text x="930" y="393">Agent</text>
+      <text x="1330" y="393">Measurement tools</text>
+    </g>
+    <g font-size="13" fill="#536275">
+      <text x="130" y="117">AMC SQL,</text>
+      <text x="130" y="133">Vendor Central reports</text>
+      <text x="530" y="122">Lambda, Glue, Athena</text>
+      <text x="930" y="126">S3, Glue Data Catalog,</text>
+      <text x="930" y="142">DynamoDB</text>
+      <text x="130" y="417">CloudFront, Cognito sign-in</text>
+      <text x="530" y="417">Lambda</text>
+      <text x="930" y="417">Amazon Bedrock AgentCore</text>
+      <text x="1330" y="417">Lambda + Athena</text>
+    </g>
+    <g font-size="13">
+      <text x="330" y="66">lands one result +</text>
+      <text x="330" y="80">registration in an</text>
+      <text x="330" y="94">S3 landing bucket</text>
+      <text x="730" y="66">validates against the</text>
+      <text x="730" y="80">data contracts, publishes</text>
+      <text x="730" y="94">an immutable version</text>
+      <text x="1320" y="225" text-anchor="end">published version</text>
+      <text x="1320" y="240" text-anchor="end">read by</text>
+      <text x="330" y="365">question</text>
+      <text x="330" y="443">text stream; audit record</text>
+      <text x="330" y="457">written before it ends</text>
+      <text x="530" y="272">checks the question with</text>
+      <text x="530" y="287">Amazon Bedrock Guardrails</text>
+      <text x="730" y="351">invokes, as the</text>
+      <text x="730" y="365">signed-in user</text>
+      <text x="730" y="443">answer streamed</text>
+      <text x="730" y="457">as it is written</text>
+      <text x="1130" y="351">calls tools through</text>
+      <text x="1130" y="365">AgentCore Gateway</text>
+      <text x="1130" y="443">computed figures, or a</text>
+      <text x="1130" y="457">reason it cannot answer</text>
+    </g>
+  </g>
+</svg>

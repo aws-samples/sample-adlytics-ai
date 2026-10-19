@@ -1,0 +1,12 @@
+# The kind of Amazon Marketing Cloud instance this deployment reads (docs/sources/amc.md,
+# "Instance types"). Declared, never inferred: nothing in a delivery says which kind ran it.
+#
+#   standard        DSP and sponsored ads entities on one instance
+#   instant_access  one sponsored ads account, no DSP: Reach and funnel's overlap and funnel
+#                   read "Needs DSP and sponsored ads on one AMC instance"
+#
+# A missing or unknown kind keeps the Reach and funnel materializer closed with a named reason
+# (amc_instance_kind_missing, amc_instance_kind_unknown). This deployment reads the STANDARD
+# instance every live acceptance row names.
+version: 1
+kind: standard

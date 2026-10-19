@@ -1,0 +1,44 @@
+{
+  "name": "adlytics-infra",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CDK v2 infrastructure. Verified against npm 2026-08-18.",
+  "engines": {
+    "node": ">=24.0.0 <25.0.0",
+    "npm": ">=11.10.0"
+  },
+  "scripts": {
+    "build": "tsc && node scripts/postbuild-license-headers.cjs",
+    "typecheck": "tsc --noEmit",
+    "test": "jest",
+    "//cdk": "Driven from the root Makefile, which requires PROFILE explicitly. No profile is baked in here: a hardcoded one would target our account from a customer's checkout."
+  },
+  "dependencies": {
+    "aws-cdk-lib": "2.273.0",
+    "constructs": "10.8.1"
+  },
+  "devDependencies": {
+    "@types/jest": "30.0.0",
+    "@types/node": "24.13.3",
+    "aws-cdk": "2.1145.0",
+    "jest": "30.4.2",
+    "ts-jest": "29.4.12",
+    "ts-node": "10.9.2",
+    "typescript": "5.9.3"
+  },
+  "overrides": {
+    "handlebars": "4.7.10",
+    "@istanbuljs/load-nyc-config": {
+      "js-yaml": "4.3.2"
+    }
+  },
+  "//pins": {
+    "aws-cdk-lib vs aws-cdk": "Different version lines by design \u2014 the library is 2.273.x and the CLI is 2.1145.x. Never pin them to the same string (ADR-005).",
+    "constructs": "aws-cdk-lib 2.273.0 declares a peer of ^10.5.0, so anything below 10.5 fails to install.",
+    "typescript": "Held at 5.9.3 deliberately. TypeScript 7.0 is released, but ts-jest declares a peer of >=4.3 <7, so 7.x breaks the test toolchain today.",
+    "@types/node": "24.x to match the Node 24 LTS runtime target, not the newest 26.x line.",
+    "aws-cdk-lib 2.273.0": "First release checked that bundles brace-expansion 5.0.12, the first patched version for GHSA-qhr7-859c-m2p7, GHSA-6j4f-fj2g-mc7p and GHSA-q2hr-2g5m-vwhr (A-CVE-CDK-BUNDLED-001). A bundled dependency cannot be overridden, so the library version is the fix.",
+    "overrides": "handlebars 4.7.10 is the first patched version for GHSA-8r5x-fm3f-whwj, GHSA-p8wg-vrv2-v86f and GHSA-xw65-4hp5-5hc7 (O-ASH-CVE-HANDLEBARS-001). It reaches the tree only through ts-jest (handlebars@^4.7.9), so this is test-time only. @istanbuljs/load-nyc-config's js-yaml 3 is lifted to 4.3.2, whose argparse 2 has no dependencies, so sprintf-js 1.0.3 (GHSA-hp3w-g68c-fv3c, no patched release) leaves the lockfile (O-ASH-SPRINTF-JS-001). The package calls only js-yaml's load(), which 4.x keeps with the safe schema as its default.",
+    "node": "Engine pinned to the Node 24 LTS line, enforced by engine-strict in .npmrc so a wrong runtime fails the install rather than warning. 26.x is Current, not LTS, and infra-style-cdk bans targeting it. 20.x is end-of-life."
+  }
+}

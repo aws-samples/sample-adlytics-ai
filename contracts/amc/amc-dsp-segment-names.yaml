@@ -1,0 +1,135 @@
+# amc-dsp-segment-names — the names of DSP behaviour segments, for dim_audience_segment.
+#
+# Pack 9 of the audience family (ADR-103; design §5.2 row 9, §6.5). One row per DSP behaviour
+# segment that matched at least one targeted impression in the month, with its name and
+# description, read from dsp_impressions_by_matched_segments (transcribed 2026-10-08). The rows
+# land in dim_audience_segment under the namespace amc_dsp_behavior. That namespace is never
+# joined to amc_asi (pack 13): P-BO-4 step 1 failed on the validation instance on 2026-10-09, so
+# a DSP behavior_segment_id is not an ASI segment_id (ADR-103 point 6). Nothing in this
+# dimension links the two: no shared key and no cross-namespace column.
+#
+# These are the first free-text columns this load reads. AMC's result CSV escapes a quote inside
+# a name or description with a backslash, not RFC 4180's doubled quote [verified, STANDARD,
+# 2026-10-09; docs/sources/amc.md], so the delivery is read through the shared AMC CSV dialect
+# (adapters.amc_csv): a backslash-escaped value is stored exactly, and an RFC-doubled one refuses
+# the delivery with CSV_ESCAPE_AMBIGUOUS.
+#
+# discard_suppressed_rows (owner decision 3, 2026-10-09): a segment whose month had too few
+# shoppers comes back withheld and is dropped, and its name arrives in a later month (design
+# §5.4). The dimension keeps every earlier version (SCD2 preserves omissions), so a dropped row
+# never closes a name. The table has no category columns; those are ASI-only.
+contract_id: amc-dsp-segment-names
+contract_version: 1
+source_system: amc
+source_dataset: dsp_impressions_by_matched_segments
+source_format: csv
+target_table: dim_audience_segment
+source_tables:
+  - dsp_impressions_by_matched_segments
+# SCD2 grain as dim_product: one row per segment per validity window. The business key is the
+# platform, the namespace, the segment ID and the segment marketplace (ADR-103 point 1);
+# valid_from is part of the key because two versions of one segment coexist when its name
+# changed.
+grain:
+  - platform_key
+  - segment_namespace
+  - segment_id
+  - segment_marketplace_key
+  - valid_from
+key_unique_among_unsuppressed_only: true
+partition_keys:
+  - segment_marketplace_key
+measurement_basis: ad_attributed
+source_timezone: UTC
+ecosystem_key: amazon
+platform_key: amazon_ads
+restatement_window_days: 30
+# One monthly delivery lands cadenceLagDays (2) after each month ends: 840 hours (35 days)
+# allows one late day, as pack 3.
+staleness_threshold_hours: 840
+grain_feasibility_note: >
+  Every output column is LOW: campaign_country, behavior_segment_id, behavior_segment_name and
+  behavior_segment_description, so the bar is 2 distinct users per row. user_id is never read.
+suppression:
+  discriminator_column: rows_suppressed
+  reason_column: suppression_reason
+  distinct_user_count_column: distinct_user_count
+fields:
+  # --- business key ----------------------------------------------------------
+  - target_column: platform_key
+    target_type: string
+    assigned_by_load: true
+  - target_column: ecosystem_key
+    target_type: string
+    assigned_by_load: true
+  - target_column: segment_namespace
+    target_type: string
+    literal_value: amc_dsp_behavior
+    value_domain: [amc_dsp_behavior]
+  - source_path: behavior_segment_id
+    target_column: segment_id
+    target_type: string
+    # LOW. AMC types it INTEGER; stored as its decimal text, the key form of every namespace.
+  - source_path: campaign_country
+    target_column: segment_marketplace_key
+    # LOW. The pack filters on the governed dsp_campaign_country parameter, so a delivery
+    # carries one marketplace, resolved through amc.campaign_country. The DSP table's own
+    # segment_marketplace_id is not read: its meaning there is [unverified].
+  # --- attributes ------------------------------------------------------------
+  - source_path: MAX(behavior_segment_name)
+    target_column: segment_name
+    target_type: string
+    derived_from:
+      - behavior_segment_name
+    nullable: true
+    null_meaning: not_yet_available
+    # Free text, read through the AMC CSV dialect. MAX keeps one row per segment ID if AMC
+    # ever returned two names for one ID in a month.
+  - source_path: MAX(behavior_segment_description)
+    target_column: segment_description
+    target_type: string
+    derived_from:
+      - behavior_segment_description
+    nullable: true
+    null_meaning: not_yet_available
+  - target_column: category_level_1
+    target_type: string
+    assigned_by_load: true
+    nullable: true
+    null_meaning: unsupported_by_channel
+    # The DSP segment tables carry no category columns (amc-columns.yaml); ASI only.
+  - target_column: category_level_2
+    target_type: string
+    assigned_by_load: true
+    nullable: true
+    null_meaning: unsupported_by_channel
+  - target_column: category_path
+    target_type: string
+    assigned_by_load: true
+    nullable: true
+    null_meaning: unsupported_by_channel
+  # Who provides the segment, Amazon or a third party, from the governed classification
+  # contracts/shared/audience-segment-providers.yaml applied at load (owner decision 2,
+  # 2026-10-09). NULL where no rule covers the segment: it reads "Provider not recorded",
+  # never "Amazon".
+  - target_column: provider
+    target_type: string
+    assigned_by_load: true
+    nullable: true
+    null_meaning: not_yet_available
+    value_domain: [amazon, third_party]
+  # --- SCD2 bookkeeping, as dim_product ----------------------------------------
+  # The month's first day is the boundary: a name first returned in month M is valid from M.
+  - target_column: valid_from
+    target_type: timestamp
+    assigned_by_load: true
+  - target_column: valid_to
+    target_type: timestamp
+    assigned_by_load: true
+  - target_column: is_current
+    target_type: boolean
+    literal_value: "true"
+tags:
+  - amc
+  - dimension
+  - audience-segment

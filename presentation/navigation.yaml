@@ -1,0 +1,33 @@
+# The one governed source of hubs, tabs and routes (ADR-115). Presentation tabs are the v2 page
+# entries that carry a `navigation` block in presentation/pages/v2/pages.yaml; operator surfaces
+# that aren't presentation pages are listed under `static_routes`. A hub is listed in navigation
+# only when it has a shipped tab, so Plan keeps its place here before the simulator ships.
+# `make validate-page-schemas` rejects a stale frontend/generated/route-manifest.json or
+# contracts/generated/route-allowlist.json; regenerate both with
+# `uv run python -m adapters.jobs.presentation_validation.navigation`.
+version: 1
+hubs:
+  - { hub_id: overview, label: Overview, short_label: Overview, audience: customer }
+  - { hub_id: performance, label: Performance, short_label: Performance, audience: customer }
+  - { hub_id: reach, label: Reach and audiences, short_label: Reach, audience: customer }
+  - { hub_id: customers, label: Customers, short_label: Customers, audience: customer }
+  - { hub_id: retail, label: Retail health, short_label: Retail, audience: customer }
+  - { hub_id: plan, label: Plan, short_label: Plan, audience: customer }
+  - { hub_id: operations, label: Operations, short_label: Operations, audience: operator }
+static_routes:
+  # /admin/status/ (Data pipeline status, order 2, entitlement operations-status-read) is added in
+  # the slice that ships that page, so the export check never sees a route without a page.
+  - route: /admin/prompts/
+    hub_id: operations
+    tab_id: prompt-admin
+    tab_label: Prompt administration
+    tab_description: Version, check and activate the prompts that write insights
+    order: 1
+    entitlement: prompt-admin
+# Exported HTML that is the not-found response rather than a route (ADR-115 decision 6), listed
+# from the first real static export with app/not-found.tsx (2026-10-07). CloudFront serves
+# 404.html to every path outside the manifest (ADR-123). The export check requires 404.html.
+not_found_outputs:
+  - 404.html
+  - 404/index.html
+  - _not-found/index.html

@@ -1,0 +1,95 @@
+contract_id: amc-campaign-sponsored
+contract_version: 1
+source_system: amc
+source_dataset: sponsored_ads_traffic
+source_format: csv
+target_table: dim_campaign
+source_tables: [sponsored_ads_traffic]
+grain: [campaign_key, valid_from]
+key_unique_among_unsuppressed_only: true
+partition_keys: [marketplace_key]
+measurement_basis: ad_attributed
+source_timezone: UTC
+ecosystem_key: amazon
+platform_key: amazon_ads
+restatement_window_days: 30
+staleness_threshold_hours: 72
+grain_feasibility_note: >-
+  Every selected identity and name is LOW; MIN over the LOW date provides one observed boundary.
+suppression:
+  discriminator_column: rows_suppressed
+  reason_column: suppression_reason
+  distinct_user_count_column: distinct_user_count
+fields:
+  - source_path: MIN(event_date_utc)
+    target_column: source_observed_on
+    target_type: date
+    derived_from: [event_date_utc]
+  - source_path: campaign_id_string
+    target_column: source_campaign_id
+  - source_path: campaign
+    target_column: campaign_name
+    nullable: true
+    null_meaning: not_yet_available
+  - source_path: advertiser
+    target_column: advertiser_name
+  - source_path: marketplace_name
+    target_column: marketplace_key
+  - source_path: ad_product_type
+    target_column: source_ad_product_type
+    null_meaning: unsupported_by_channel
+  - target_column: source_campaign_namespace
+    target_type: string
+    literal_value: amc.sponsored.campaign_id_string
+  - target_column: source_campaign_identifier_kind
+    target_type: string
+    literal_value: campaign_id_string
+  - target_column: campaign_key
+    target_type: string
+    assigned_by_load: true
+  - target_column: advertiser_key
+    target_type: string
+    assigned_by_load: true
+    nullable: true
+    null_meaning: not_yet_available
+  - target_column: commerce_scope_key
+    target_type: string
+    assigned_by_load: true
+  - target_column: source_system_key
+    target_type: string
+    assigned_by_load: true
+  - target_column: source_scope_namespace
+    target_type: string
+    assigned_by_load: true
+  - target_column: source_scope_value
+    target_type: string
+    assigned_by_load: true
+  - target_column: ecosystem_key
+    target_type: string
+    assigned_by_load: true
+  - target_column: platform_key
+    target_type: string
+    assigned_by_load: true
+  - target_column: channel_group_key
+    target_type: string
+    assigned_by_load: true
+  - target_column: channel_key
+    target_type: string
+    assigned_by_load: true
+  - target_column: ad_product_key
+    target_type: string
+    assigned_by_load: true
+  - target_column: valid_from
+    target_type: timestamp
+    assigned_by_load: true
+  - target_column: valid_to
+    target_type: timestamp
+    assigned_by_load: true
+  - target_column: is_current
+    target_type: boolean
+    literal_value: "true"
+  - source_path: rows_suppressed
+    target_column: rows_suppressed
+    target_type: boolean
+    from_extraction_option: true
+tags: [phase-1, amc, sponsored, dimension, campaign]

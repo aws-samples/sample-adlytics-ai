@@ -1,0 +1,804 @@
+{
+  "envelope_version": 2,
+  "kind": "page",
+  "page": {
+    "actions": [],
+    "artifact": {
+      "also_changed": null,
+      "boundary": [
+        "Channel rows are Amazon-attributed: Amazon credits a purchase to each channel the shopper saw within 14 days, so one purchase can count in two rows.",
+        "Deduplicated ROAS credits each purchase once, so it is the only return figure across channels.",
+        "TACoS divides ad spend by Vendor Central shipped revenue, two measurement systems. When Vendor Central is late, TACoS shows when its data last arrived and the rest of the page keeps its window."
+      ],
+      "boundary_heading": "About these figures",
+      "cards": [
+        {
+          "card_id": "amazon-amazon_ads-amazon_us",
+          "channel_table": {
+            "absent_lines": [
+              "No Sponsored Brands delivery in this window.",
+              "No Sponsored Display delivery in this window.",
+              "No Sponsored Television delivery in this window."
+            ],
+            "caption": "Spend and attributed return per channel",
+            "caption_detail": "Amazon \u00b7 US \u00b7 Sep 9\u201315, 2026",
+            "columns": [
+              {
+                "basis": null,
+                "column": "ad_spend",
+                "label": "Ad spend"
+              },
+              {
+                "basis": "Amazon-attributed \u00b7 14-day \u00b7 conversion date \u00b7 excludes brand halo",
+                "column": "attributed_revenue_14d",
+                "label": "Attributed revenue"
+              },
+              {
+                "basis": "Amazon-attributed \u00b7 14-day \u00b7 conversion date \u00b7 excludes brand halo",
+                "column": "roas_attributed_14d",
+                "label": "ROAS"
+              },
+              {
+                "basis": "Amazon-attributed \u00b7 14-day \u00b7 includes brand halo",
+                "column": "roas_attributed_incl_halo_14d",
+                "label": "ROAS with brand halo"
+              }
+            ],
+            "foot": "Attributed sales aren't added across channels, because one purchase can be credited to more than one channel.",
+            "fresh_text": "Amazon Ads data through Sep 15, 2026.",
+            "heading": "By channel",
+            "highlight_tag": "This campaign's channel",
+            "link_column": "Campaigns",
+            "marketplace_text": null,
+            "row_header_label": "Channel",
+            "rows": [
+              {
+                "channel": "amazon_dsp",
+                "channel_label": "Amazon DSP",
+                "figures": [
+                  {
+                    "absence_text": null,
+                    "basis": "Amazon ad spend",
+                    "change": {
+                      "direction": "flat",
+                      "display_text": "No change",
+                      "not_meaningful": null,
+                      "sentiment": "neutral",
+                      "unit": "percent"
+                    },
+                    "display_value": "400.00",
+                    "format": "currency",
+                    "label": "Ad spend",
+                    "metric": "ad_spend",
+                    "prior_display_value": "400.00",
+                    "prior_label": "Sep 2\u20138",
+                    "prior_value": "400",
+                    "units": {
+                      "currency_code": "USD",
+                      "kind": "currency"
+                    },
+                    "value": "400"
+                  },
+                  {
+                    "absence_text": null,
+                    "basis": "Amazon-attributed \u00b7 14-day \u00b7 conversion date \u00b7 excludes brand halo",
+                    "change": null,
+                    "display_value": "1200.00",
+                    "format": "currency",
+                    "label": "Attributed revenue",
+                    "metric": "attributed_revenue_14d",
+                    "prior_display_value": "1200.00",
+                    "prior_label": "Sep 2\u20138",
+                    "prior_value": "1200",
+                    "units": {
+                      "currency_code": "USD",
+                      "kind": "currency"
+                    },
+                    "value": "1200"
+                  },
+                  {
+                    "absence_text": null,
+                    "basis": "Amazon-attributed \u00b7 14-day \u00b7 conversion date \u00b7 excludes brand halo",
+                    "change": {
+                      "direction": "flat",
+                      "display_text": "No change",
+                      "not_meaningful": null,
+                      "sentiment": "neutral",
+                      "unit": "absolute"
+                    },
+                    "display_value": "3.00",
+                    "format": "multiplier",
+                    "label": "ROAS",
+                    "metric": "roas_attributed_14d",
+                    "prior_display_value": "3.00",
+                    "prior_label": "Sep 2\u20138",
+                    "prior_value": "3.0000",
+                    "units": {
+                      "currency_code": null,
+                      "kind": "ratio"
+                    },
+                    "value": "3.0000"
+                  },
+                  {
+                    "absence_text": null,
+                    "basis": "Amazon-attributed \u00b7 14-day \u00b7 includes brand halo",
+                    "change": null,
+                    "display_value": "3.30",
+                    "format": "multiplier",
+                    "label": "ROAS with brand halo",
+                    "metric": "roas_attributed_incl_halo_14d",
+                    "prior_display_value": "3.30",
+                    "prior_label": "Sep 2\u20138",
+                    "prior_value": "3.3000",
+                    "units": {
+                      "currency_code": null,
+                      "kind": "ratio"
+                    },
+                    "value": "3.3000"
+                  }
+                ],
+                "link": {
+                  "href": "/campaigns/?channel=amazon_dsp",
+                  "label": "Open Campaigns for Amazon DSP \u00b7 Sep 9\u201315",
+                  "text": "Open \u00b7 Sep 9\u201315"
+                }
+              },
+              {
+                "channel": "amazon_sponsored_products",
+                "channel_label": "Sponsored Products",
+                "figures": [
+                  {
+                    "absence_text": null,
+                    "basis": "Amazon ad spend",
+                    "change": {
+                      "direction": "up",
+                      "display_text": "+20.0%",
+                      "not_meaningful": null,
+                      "sentiment": "neutral",
+                      "unit": "percent"
+                    },
+                    "display_value": "600.00",
+                    "format": "currency",
+                    "label": "Ad spend",
+                    "metric": "ad_spend",
+                    "prior_display_value": "500.00",
+                    "prior_label": "Sep 2\u20138",
+                    "prior_value": "500",
+                    "units": {
+                      "currency_code": "USD",
+                      "kind": "currency"
+                    },
+                    "value": "600"
+                  },
+                  {
+                    "absence_text": null,
+                    "basis": "Amazon-attributed \u00b7 14-day \u00b7 conversion date \u00b7 excludes brand halo",
+                    "change": null,
+                    "display_value": "2700.00",
+                    "format": "currency",
+                    "label": "Attributed revenue",
+                    "metric": "attributed_revenue_14d",
+                    "prior_display_value": "2000.00",
+                    "prior_label": "Sep 2\u20138",
+                    "prior_value": "2000",
+                    "units": {
+                      "currency_code": "USD",
+                      "kind": "currency"
+                    },
+                    "value": "2700"
+                  },
+                  {
+                    "absence_text": null,
+                    "basis": "Amazon-attributed \u00b7 14-day \u00b7 conversion date \u00b7 excludes brand halo",
+                    "change": {
+                      "direction": "up",
+                      "display_text": "+0.50\u00d7",
+                      "not_meaningful": null,
+                      "sentiment": "favourable",
+                      "unit": "absolute"
+                    },
+                    "display_value": "4.50",
+                    "format": "multiplier",
+                    "label": "ROAS",
+                    "metric": "roas_attributed_14d",
+                    "prior_display_value": "4.00",
+                    "prior_label": "Sep 2\u20138",
+                    "prior_value": "4.0000",
+                    "units": {
+                      "currency_code": null,
+                      "kind": "ratio"
+                    },
+                    "value": "4.5000"
+                  },
+                  {
+                    "absence_text": null,
+                    "basis": "Amazon-attributed \u00b7 14-day \u00b7 includes brand halo",
+                    "change": null,
+                    "display_value": "4.95",
+                    "format": "multiplier",
+                    "label": "ROAS with brand halo",
+                    "metric": "roas_attributed_incl_halo_14d",
+                    "prior_display_value": "4.40",
+                    "prior_label": "Sep 2\u20138",
+                    "prior_value": "4.4000",
+                    "units": {
+                      "currency_code": null,
+                      "kind": "ratio"
+                    },
+                    "value": "4.9500"
+                  }
+                ],
+                "link": {
+                  "href": "/campaigns/?channel=amazon_sponsored_products",
+                  "label": "Open Campaigns for Sponsored Products \u00b7 Sep 9\u201315",
+                  "text": "Open \u00b7 Sep 9\u201315"
+                }
+              }
+            ]
+          },
+          "currency_code": "USD",
+          "dsp_absence_text": null,
+          "headline": {
+            "absence_text": null,
+            "default_model": "first_touch_v1",
+            "label": "Deduplicated ROAS",
+            "model_note": "Every model credits each deduplicated purchase once, so the headline is the same under each. The model changes how that revenue splits across channels: the ranking below shows all three. Channel rows are attributed by Amazon and don't depend on a model.",
+            "models": [
+              {
+                "figure": {
+                  "absence_text": null,
+                  "basis": "Deduplicated across DSP and sponsored \u00b7 First touch \u00b7 14-day \u00b7 includes brand halo",
+                  "change": {
+                    "direction": "down",
+                    "display_text": "\u22120.44\u00d7",
+                    "not_meaningful": null,
+                    "sentiment": "unfavourable",
+                    "unit": "absolute"
+                  },
+                  "display_value": "3.96",
+                  "format": "multiplier",
+                  "label": "Deduplicated ROAS",
+                  "metric": "roas_deduplicated_incl_halo_14d",
+                  "prior_display_value": "4.40",
+                  "prior_label": "Sep 2\u20138",
+                  "prior_value": "4.4000",
+                  "units": {
+                    "currency_code": null,
+                    "kind": "ratio"
+                  },
+                  "value": "3.9600"
+                },
+                "label": "First touch",
+                "model": "first_touch_v1",
+                "option_label": "First touch (default)"
+              },
+              {
+                "figure": {
+                  "absence_text": null,
+                  "basis": "Deduplicated across DSP and sponsored \u00b7 Last touch \u00b7 14-day \u00b7 includes brand halo",
+                  "change": {
+                    "direction": "down",
+                    "display_text": "\u22120.44\u00d7",
+                    "not_meaningful": null,
+                    "sentiment": "unfavourable",
+                    "unit": "absolute"
+                  },
+                  "display_value": "3.96",
+                  "format": "multiplier",
+                  "label": "Deduplicated ROAS",
+                  "metric": "roas_deduplicated_incl_halo_14d",
+                  "prior_display_value": "4.40",
+                  "prior_label": "Sep 2\u20138",
+                  "prior_value": "4.4000",
+                  "units": {
+                    "currency_code": null,
+                    "kind": "ratio"
+                  },
+                  "value": "3.9600"
+                },
+                "label": "Last touch",
+                "model": "last_touch_v1",
+                "option_label": "Last touch"
+              },
+              {
+                "figure": {
+                  "absence_text": null,
+                  "basis": "Deduplicated across DSP and sponsored \u00b7 Linear \u00b7 14-day \u00b7 includes brand halo",
+                  "change": {
+                    "direction": "down",
+                    "display_text": "\u22120.44\u00d7",
+                    "not_meaningful": null,
+                    "sentiment": "unfavourable",
+                    "unit": "absolute"
+                  },
+                  "display_value": "3.96",
+                  "format": "multiplier",
+                  "label": "Deduplicated ROAS",
+                  "metric": "roas_deduplicated_incl_halo_14d",
+                  "prior_display_value": "4.40",
+                  "prior_label": "Sep 2\u20138",
+                  "prior_value": "4.4000",
+                  "units": {
+                    "currency_code": null,
+                    "kind": "ratio"
+                  },
+                  "value": "3.9600"
+                },
+                "label": "Linear",
+                "model": "linear_v1",
+                "option_label": "Linear"
+              }
+            ],
+            "selector_label": "Attribution model for deduplicated ROAS"
+          },
+          "networks_text": "Networks loaded: Amazon",
+          "ranking": {
+            "by_day_label": "By day",
+            "caption": "Deduplicated ROAS and its rank per channel, under each attribution model",
+            "caption_detail": "Deduplicated across DSP and sponsored \u00b7 14-day \u00b7 includes brand halo \u00b7 Sep 9\u201315, 2026",
+            "foot": "Each model credits each deduplicated purchase once, across the ads the shopper saw. Ranks compare channels inside the Amazon network. This shows how much the ranking depends on the model, not which channel caused sales.",
+            "heading": "Does the ranking hold under every model?",
+            "models": [
+              {
+                "label": "First touch (default)",
+                "model": "first_touch_v1"
+              },
+              {
+                "label": "Last touch",
+                "model": "last_touch_v1"
+              },
+              {
+                "label": "Linear",
+                "model": "linear_v1"
+              }
+            ],
+            "outcome": "robust_leader",
+            "outcome_text": "Sponsored Products leads under all three models.",
+            "row_header_label": "Channel",
+            "rows": [
+              {
+                "channel": "amazon_dsp",
+                "channel_label": "Amazon DSP",
+                "spend_display_value": "400.00",
+                "values": [
+                  {
+                    "display_value": "3.75",
+                    "model": "first_touch_v1",
+                    "rank": 2,
+                    "rank_text": "2nd",
+                    "value": "3.7500"
+                  },
+                  {
+                    "display_value": "3.25",
+                    "model": "last_touch_v1",
+                    "rank": 2,
+                    "rank_text": "2nd",
+                    "value": "3.2500"
+                  },
+                  {
+                    "display_value": "3.50",
+                    "model": "linear_v1",
+                    "rank": 2,
+                    "rank_text": "2nd",
+                    "value": "3.5000"
+                  }
+                ]
+              },
+              {
+                "channel": "amazon_sponsored_products",
+                "channel_label": "Sponsored Products",
+                "spend_display_value": "600.00",
+                "values": [
+                  {
+                    "display_value": "4.10",
+                    "model": "first_touch_v1",
+                    "rank": 1,
+                    "rank_text": "1st",
+                    "value": "4.1000"
+                  },
+                  {
+                    "display_value": "4.43",
+                    "model": "last_touch_v1",
+                    "rank": 1,
+                    "rank_text": "1st",
+                    "value": "4.4333"
+                  },
+                  {
+                    "display_value": "4.27",
+                    "model": "linear_v1",
+                    "rank": 1,
+                    "rank_text": "1st",
+                    "value": "4.2667"
+                  }
+                ]
+              }
+            ]
+          },
+          "spend": {
+            "absence_text": null,
+            "basis": "Amazon Ads \u00b7 spend across DSP and sponsored",
+            "change": {
+              "direction": "up",
+              "display_text": "+11.1%",
+              "not_meaningful": null,
+              "sentiment": "neutral",
+              "unit": "percent"
+            },
+            "display_value": "1000.00",
+            "format": "currency",
+            "label": "Ad spend, all channels",
+            "metric": "ad_spend",
+            "prior_display_value": "900.00",
+            "prior_label": "Sep 2\u20138",
+            "prior_value": "900",
+            "units": {
+              "currency_code": "USD",
+              "kind": "currency"
+            },
+            "value": "1000"
+          },
+          "title": "Amazon \u00b7 US marketplace \u00b7 USD"
+        }
+      ],
+      "cross_network_spend": [
+        {
+          "currency_code": "USD",
+          "figure": null,
+          "label": "Spend across networks",
+          "marketplace_text": null,
+          "networks_loaded": [
+            "Amazon"
+          ],
+          "reason": "A total across networks appears when a second advertising network is loaded in this marketplace.",
+          "row_id": "amazon_us-USD",
+          "text": "Networks loaded: Amazon"
+        }
+      ],
+      "evidence_status": {
+        "entries": [
+          {
+            "absence_text": null,
+            "coverage_text": null,
+            "label": "Ad spend, all channels",
+            "missing_dates": [],
+            "missing_text": "None",
+            "reason": "Every day of this window has arrived.",
+            "recovery": "No action needed.",
+            "role": "current",
+            "role_label": "Network card",
+            "slot": "spend:amazon-amazon_ads-amazon_us",
+            "state": "complete"
+          },
+          {
+            "absence_text": null,
+            "coverage_text": null,
+            "label": "Ad spend, all channels",
+            "missing_dates": [],
+            "missing_text": "None",
+            "reason": "Every day of the prior window has arrived.",
+            "recovery": "No action needed.",
+            "role": "prior",
+            "role_label": "Network card",
+            "slot": "spend:amazon-amazon_ads-amazon_us",
+            "state": "complete"
+          },
+          {
+            "absence_text": null,
+            "coverage_text": null,
+            "label": "Deduplicated ROAS",
+            "missing_dates": [],
+            "missing_text": "None",
+            "reason": "Every day of this window has arrived.",
+            "recovery": "No action needed.",
+            "role": "current",
+            "role_label": "Network card",
+            "slot": "headline:amazon-amazon_ads-amazon_us",
+            "state": "complete"
+          },
+          {
+            "absence_text": null,
+            "coverage_text": null,
+            "label": "Channel spend and ROAS",
+            "missing_dates": [],
+            "missing_text": "None",
+            "reason": "Every day of this window has arrived.",
+            "recovery": "No action needed.",
+            "role": "current",
+            "role_label": "By channel",
+            "slot": "channels:amazon-amazon_ads-amazon_us",
+            "state": "complete"
+          },
+          {
+            "absence_text": null,
+            "coverage_text": null,
+            "label": "Channel spend and ROAS",
+            "missing_dates": [],
+            "missing_text": "None",
+            "reason": "Every day of the prior window has arrived.",
+            "recovery": "No action needed.",
+            "role": "prior",
+            "role_label": "By channel",
+            "slot": "channels:amazon-amazon_ads-amazon_us",
+            "state": "complete"
+          },
+          {
+            "absence_text": null,
+            "coverage_text": null,
+            "label": "TACoS",
+            "missing_dates": [],
+            "missing_text": "None",
+            "reason": "Every day of this window has arrived.",
+            "recovery": "No action needed.",
+            "role": "current",
+            "role_label": "Ad spend and retail sales",
+            "slot": "tacos:amazon:amazon_us",
+            "state": "complete"
+          }
+        ],
+        "summary": "Every figure is complete for this window.",
+        "version": 2,
+        "window": {
+          "end": "2026-09-15",
+          "start": "2026-09-09"
+        }
+      },
+      "findings": [
+        {
+          "card_id": "amazon-amazon_ads-amazon_us",
+          "channel": "amazon_dsp",
+          "finding_id": "channel-share-of-network-spend",
+          "material": true,
+          "value": "40.00"
+        },
+        {
+          "card_id": "amazon-amazon_ads-amazon_us",
+          "channel": "amazon_sponsored_products",
+          "finding_id": "channel-share-of-network-spend",
+          "material": true,
+          "value": "60.00"
+        },
+        {
+          "card_id": "amazon-amazon_ads-amazon_us",
+          "channel": "amazon_dsp",
+          "finding_id": "channel-spend-mover",
+          "material": false,
+          "value": "0.00"
+        },
+        {
+          "card_id": "amazon-amazon_ads-amazon_us",
+          "channel": "amazon_dsp",
+          "finding_id": "channel-roas-mover",
+          "material": false,
+          "value": "0.00"
+        },
+        {
+          "card_id": "amazon-amazon_ads-amazon_us",
+          "channel": "amazon_sponsored_products",
+          "finding_id": "channel-spend-mover",
+          "material": true,
+          "value": "20.00"
+        },
+        {
+          "card_id": "amazon-amazon_ads-amazon_us",
+          "channel": "amazon_sponsored_products",
+          "finding_id": "channel-roas-mover",
+          "material": true,
+          "value": "12.50"
+        }
+      ],
+      "insight_cards": [
+        {
+          "body": "Spend rose 20.0% while attributed revenue rose, inside Sponsored Products only.",
+          "card_id": "amazon-amazon_ads-amazon_us",
+          "channel": "amazon_sponsored_products",
+          "finding_id": "channel-roas-mover",
+          "headline": "Sponsored Products ROAS rose 0.50\u00d7",
+          "kind_label": "Channel mover",
+          "marketplace_text": null,
+          "next_step": {
+            "kind": "open_page",
+            "label": "Open Campaigns \u00b7 Sponsored Products \u00b7 Sep 9\u201315",
+            "reason": "The campaigns behind this channel's move are on Campaigns.",
+            "target": {
+              "filter_id": "amazon_sponsored_products",
+              "page_id": "campaigns"
+            }
+          },
+          "title": "Sponsored Products ROAS rose 0.50\u00d7"
+        },
+        {
+          "body": "Up from 56% in Sep 2\u20138, inside the Amazon network.",
+          "card_id": "amazon-amazon_ads-amazon_us",
+          "channel": "amazon_sponsored_products",
+          "finding_id": "channel-share-of-network-spend",
+          "headline": "Sponsored Products took 60% of Amazon spend",
+          "kind_label": "Spend share",
+          "marketplace_text": null,
+          "next_step": null,
+          "title": "Sponsored Products took 60% of Amazon spend"
+        },
+        {
+          "body": "Down from 44% in Sep 2\u20138, inside the Amazon network.",
+          "card_id": "amazon-amazon_ads-amazon_us",
+          "channel": "amazon_dsp",
+          "finding_id": "channel-share-of-network-spend",
+          "headline": "Amazon DSP took 40% of Amazon spend",
+          "kind_label": "Spend share",
+          "marketplace_text": null,
+          "next_step": null,
+          "title": "Amazon DSP took 40% of Amazon spend"
+        }
+      ],
+      "insights": [
+        {
+          "artifact_revision": "fa90856e06a61844ffb76a82f53245d0437d2592b2b6c07489a69ae51fb3ae05",
+          "evidence_line": "Server-computed channel shares of network spend and channel ROAS moves.",
+          "id": "network-scorecard",
+          "output_class": "observed",
+          "prompt_version": "deterministic-v1",
+          "state": "filled",
+          "text": "Sponsored Products attributed ROAS rose 12.50% against the prior window, inside the Amazon network in amazon_us. Sponsored Products holds 60.00% of ad spend inside the Amazon network in amazon_us. Amazon DSP holds 40.00% of ad spend inside the Amazon network in amazon_us."
+        }
+      ],
+      "insights_heading": "Insights",
+      "not_available_text": "Not available",
+      "outcome": "complete",
+      "outcome_text": null,
+      "period": {
+        "end": "2026-09-15",
+        "start": "2026-09-09"
+      },
+      "period_label": null,
+      "pointers": [
+        {
+          "href": "/new-customers/",
+          "lead": "New-to-brand customers and gateway products are on",
+          "link_text": "Customers \u203a New customers",
+          "tab_id": "new-customers"
+        },
+        {
+          "href": "/simulator/",
+          "lead": "Try a budget move in",
+          "link_text": "Budget simulator",
+          "tab_id": "simulator"
+        }
+      ],
+      "preset_label": "7 days",
+      "prior_period": {
+        "end": "2026-09-08",
+        "start": "2026-09-02"
+      },
+      "retail_sales_heading": "Ad spend and retail sales",
+      "scope_text": "Showing Sep 9\u201315, 2026 (7 days) compared with Sep 2\u20138. Data through Sep 15, 2026.",
+      "tacos": [
+        {
+          "card_id": "amazon-amazon_ads-amazon_us",
+          "coverage_slot": "tacos:amazon:amazon_us",
+          "figure": {
+            "absence_text": null,
+            "basis": "Mixed basis: ad spend \u00f7 Vendor shipped revenue",
+            "change": {
+              "direction": "up",
+              "display_text": "+0.5 pts",
+              "not_meaningful": null,
+              "sentiment": "unfavourable",
+              "unit": "percentage_points"
+            },
+            "display_value": null,
+            "format": "percent",
+            "label": "TACoS",
+            "metric": "tacos",
+            "prior_display_value": null,
+            "prior_label": "Sep 2\u20138",
+            "prior_value": "0.0450",
+            "units": {
+              "currency_code": null,
+              "kind": "ratio"
+            },
+            "value": "0.0500"
+          },
+          "link": {
+            "href": "/retail-health/",
+            "label": "Open Retail health \u00b7 Sep 5\u201311",
+            "text": "Open Retail health \u00b7 Sep 5\u201311"
+          },
+          "marketplace_text": null
+        }
+      ],
+      "type": "NetworkScorecardArtifact",
+      "version": 1
+    },
+    "artifact_id": "network_scorecard",
+    "artifact_revision": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "artifact_type": "NetworkScorecardArtifact",
+    "artifact_version": 1,
+    "kind": "network_scorecard",
+    "page_context_expires_at": "2026-08-19T13:00:00+00:00",
+    "page_context_label": "Scorecard \u00b7 Sep 9\u201315, 2026",
+    "page_id": "scorecard",
+    "route": "/scorecard/",
+    "starter_questions": [
+      "Which channel had the highest ROAS in Sep 9\u201315, 2026?",
+      "How did Amazon DSP spend change from Sep 2\u20138, 2026 to Sep 9\u201315, 2026?"
+    ]
+  },
+  "session_id": "conversation-session",
+  "temporal": {
+    "comparison": {
+      "policy": "optional_equal_prior",
+      "reason_code": null,
+      "status": "available"
+    },
+    "custom": {
+      "availability": "unavailable",
+      "bounds": null,
+      "reason_code": "custom_disabled"
+    },
+    "mode": "selectable",
+    "presets": [
+      {
+        "availability": "available",
+        "id": "7d",
+        "label": "7 days",
+        "period_label": null,
+        "reason_code": null,
+        "reason_text": null,
+        "window": {
+          "end": "2026-09-15",
+          "start": "2026-09-09"
+        }
+      },
+      {
+        "availability": "available",
+        "id": "30d",
+        "label": "30 days",
+        "period_label": null,
+        "reason_code": null,
+        "reason_text": null,
+        "window": {
+          "end": "2026-09-15",
+          "start": "2026-08-17"
+        }
+      },
+      {
+        "availability": "available",
+        "id": "last_complete_week",
+        "label": "Latest measured week",
+        "period_label": "Week of 7\u201313 Sep 2026",
+        "reason_code": null,
+        "reason_text": null,
+        "window": {
+          "end": "2026-09-13",
+          "start": "2026-09-07"
+        }
+      },
+      {
+        "availability": "available",
+        "id": "last_complete_month",
+        "label": "Latest measured month",
+        "period_label": "August 2026",
+        "reason_code": null,
+        "reason_text": null,
+        "window": {
+          "end": "2026-08-31",
+          "start": "2026-08-01"
+        }
+      }
+    ],
+    "resolved": {
+      "as_of_month": null,
+      "display_grain": "period",
+      "period_label": null,
+      "reporting_window_status": "preferred_default",
+      "selection": {
+        "kind": "default",
+        "preset_id": null
+      },
+      "window": {
+        "end": "2026-09-15",
+        "start": "2026-09-09"
+      }
+    },
+    "version": 2
+  }
+}

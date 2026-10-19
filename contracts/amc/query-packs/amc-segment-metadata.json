@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "packId": "amc-segment-metadata",
+  "packVersion": 1,
+  "contractId": "amc-segment-metadata",
+  "sourcePackId": "amc-segment-metadata",
+  "queryFile": "amc-segment-metadata.sql",
+  "accessTier": "paid_feature",
+  "liveValidation": "capability_conditional",
+  "maxResultBytes": 20000000,
+  "executionOptions": {
+    "timeWindowType": "EXPLICIT",
+    "timeWindowTimeZone": "UTC",
+    "filteredMetricsDiscriminatorColumn": "rows_suppressed",
+    "filteredReasonColumn": "suppression_reason",
+    "distinctUserCountColumn": "distinct_user_count"
+  },
+  "safetyBlockers": [],
+  "suppressionPolicy": "discard_suppressed_rows",
+  "periodPolicy": {"grains": ["month"]},
+  "inputParameters": {
+    "segment_marketplace_id": {"commerceIdentity": "amc.segment_marketplace_id", "dataType": "LONG"}
+  },
+  "cadenceLagDays": 2,
+  "expectedBar": 2,
+  "outputColumns": [
+    "segment_marketplace_id",
+    "segment_id",
+    "segment_name",
+    "segment_description",
+    "category_level_1",
+    "category_level_2",
+    "category_path",
+    "time_window_start",
+    "time_window_end",
+    "rows_suppressed",
+    "suppression_reason",
+    "distinct_user_count"
+  ]
+}

@@ -1,0 +1,172 @@
+version: 1
+managed_roots:
+  - frontend/generated
+  - tests/fixtures/generated
+  - tests/fixtures/traps
+entries:
+  - id: generated-contract-fixtures
+    class: schema_derived
+    patterns: [tests/fixtures/generated/*]
+    owner: contracts
+  - id: amc-source-invariants
+    class: source_invariant_synthetic
+    patterns:
+      - tests/fixtures/traps/amc-suppression-merged.*
+      - tests/fixtures/traps/amc-withheld-residual.*
+      - tests/fixtures/traps/amc-attributed-conversion-governed.*
+    evidence: docs/sources/amc.md#5-constraints--the-aggregation-thresholds
+  - id: vendor-source-invariants
+    class: source_invariant_synthetic
+    patterns:
+      - tests/fixtures/traps/vendor-restatement-*.*
+      - tests/fixtures/traps/vendor-sourcing-nulls.*
+      - tests/fixtures/traps/vendor-fresh-nulls.*
+      - tests/fixtures/traps/vendor-negative-units.*
+      - tests/fixtures/traps/vendor-mixed-currency.*
+    evidence: docs/sources/vendor-central.md
+  - id: cross-contract-consistency
+    class: consistency_scenario
+    patterns:
+      - tests/fixtures/traps/amc-dsp-partial-overlap-*.*
+      - tests/fixtures/traps/vendor-control-total-*.*
+      - tests/fixtures/traps/vendor-traffic-control-total-consistent.*
+      - tests/fixtures/traps/vendor-hierarchy-matching-control-total.*
+    scenario_rule: docs/decision-coverage-registry.md#g-24--generated-fixtures-are-not-mutually-consistent
+  - id: trap-documentation
+    class: consistency_scenario
+    patterns: [tests/fixtures/traps/README.md]
+    scenario_rule: tests/fixtures/traps/README.md
+  - id: frontend-page-bindings
+    class: presentation_synthetic
+    patterns: [frontend/generated/page-bindings.json]
+    presentation_owner: presentation/pages/v1/pages.yaml
+  - id: frontend-route-manifest
+    class: presentation_synthetic
+    patterns: [frontend/generated/route-manifest.json]
+    presentation_owner: presentation/navigation.yaml
+  - id: live-source-validation
+    class: live_integration
+    patterns: []
+    validation_result: docs/sources/amc.md
+# Conformance exceptions, read by src/adapters/jobs/fixture_generation/conformance.py
+# (make check-fixtures and tests/unit/test_fixture_conformance.py).
+#
+# Every committed AMC fixture is held to its governed query pack, to the column registry
+# (contracts/shared/amc-columns.yaml) and to the registry's live suppression_output shape.
+# These are the only two kinds of exception, and each is reported on every run:
+#
+#   marked_columns: a registry column whose status is pending or disputed that one contract's
+#     generated fixture may still carry, and why. Any other pending or disputed column is
+#     refused, and so is a marker the registry or the fixture no longer matches.
+#   trap_deviations: the exact set of suppression-shape finding codes one hand-built AMC
+#     trap differs from the live shape by, and the evidence that behaviour rests on. Every
+#     tests/fixtures/traps/amc-*.csv needs an entry, and a different set fails.
+conformance:
+  marked_columns:
+    - contract: amc-dsp-impressions
+      column: campaign_country
+      status: pending
+      reason: >
+        Docs-verified STRING, DIMENSION, LOW (datasources/dsp_impressions, read 2026-10-08).
+        Resolves on the STANDARD demo instance and is absent on the Sandbox (2026-10-08). Only
+        its observed representation is pending; the fixture value 'US' is the page's example.
+    - contract: amc-campaign-dsp
+      column: campaign_country
+      status: pending
+      reason: >
+        The same dsp_impressions column as amc-dsp-impressions, with the same evidence.
+    - contract: amc-dsp-reach
+      column: campaign_country
+      status: pending
+      reason: >
+        The same dsp_impressions column as amc-dsp-impressions, with the same evidence. Pack 4
+        filters on it with CUSTOM_PARAMETER('dsp_campaign_country'), the form the 2026-10-08
+        pack 5 candidate ran with on STANDARD.
+    - contract: amc-dsp-segment-names
+      column: campaign_country
+      status: pending
+      reason: >
+        The dsp_impressions column dsp_impressions_by_matched_segments inherits (amc-columns.yaml
+        inherits_columns_from), with amc-dsp-impressions' evidence; its presence on the segment
+        table itself is [unverified] until pack 9's first live run. Pack 9 filters on it with
+        CUSTOM_PARAMETER('dsp_campaign_country'), pack 4's form.
+    - contract: amc-audience-performance
+      column: campaign_country
+      status: pending
+      reason: >
+        The dsp_impressions column dsp_impressions_by_matched_segments inherits, with
+        amc-dsp-impressions' evidence; its presence on the segment table is [unverified] until
+        pack 8's first live run. Pack 8 filters on it with CUSTOM_PARAMETER('dsp_campaign_country')
+        and carries it as the delivery's marketplace.
+    - contract: amc-dsp-clicks
+      column: campaign_country
+      status: pending
+      reason: >
+        Docs-verified STRING, DIMENSION, LOW (datasources/dsp_clicks, read 2026-10-08). No
+        accepted live presence result on dsp_clicks; the fixture value 'US' is the page's example.
+    - contract: amc-dsp-views
+      column: campaign_country
+      status: pending
+      reason: >
+        Docs-verified STRING, DIMENSION, LOW (datasources/dsp_views, read 2026-10-08). No
+        accepted live presence result on dsp_views; the fixture value 'US' is the page's example.
+  # Every AMC trap is in the live single-source shape the 2026-10-08 forced-suppression runs
+  # returned and the 2026-10-09 multi-source runs scoped (docs/sources/amc.md section 5): option
+  # columns last as distinct_user_count, suppression_reason, rows_suppressed; the bar, 2, on an
+  # unsuppressed row; a suppressed row's count equal to its reason's, the unprefixed STANDARD
+  # reason form, and every LOW source column NULL, currency included, with measures kept. Each
+  # trap reads one source table once, so none takes the multi-source "(path i of n)" form. Only
+  # what a trap's purpose needs still differs, named below with its basis; [unverified] marks a
+  # difference no live result supports.
+  trap_deviations:
+    - fixture: traps/amc-suppression-merged.csv
+      contract: amc-dsp-impressions
+      codes:
+        - FIXTURE_SUPPRESSED_KEY_PRESENT
+        - FIXTURE_SUPPRESSED_USER_COUNT
+      basis: >
+        Traps the merged row a fact keeps flagged beside its attributable rows (ADR-035): the
+        create-workflow page's re-aggregation, which the 2026-08-21 probe 6 showed on attributed
+        events with a HIGH key, where the merged rows kept their LOW keys (docs/sources/amc.md
+        section 5). So its withheld row keeps its keys and currency, and its count is blank, as
+        tests/fixtures/traps/README.md records. On a LOW-only dsp_impressions grouping live, a
+        suppressed row's keys were NULL and its count matched its reason (2026-10-08), so both
+        are [unverified] here. Whether merging happens on dsp_impressions is open (section 10).
+    - fixture: traps/amc-withheld-residual.csv
+      contract: amc-dsp-impressions
+      codes: []
+      basis: >
+        Traps the delivery-keyed residual of a fully nulled row (G-31) in the live shape: its
+        currency is NULL beside surviving exposure-side measures, so its spend is withheld rather
+        than summed (AMC-V decision 5). Every LOW source column was NULL on the 2026-10-08
+        dsp_impressions rows, which selected no currency, and every currency column was NULL on
+        the 2026-10-09 multi-source rows; the single-source currency NULL is [inference].
+    - fixture: traps/amc-dsp-partial-overlap-impressions.csv
+      contract: amc-dsp-impressions
+      codes: []
+      basis: >
+        Traps three DSP deliveries covering different grains in one partition (G-24). No row is
+        suppressed: the impressions-only campaign is kept at the bar, because a suppressed row
+        nulls its campaign live and would no longer cover a grain of its own.
+    - fixture: traps/amc-dsp-partial-overlap-clicks.csv
+      contract: amc-dsp-clicks
+      codes: []
+      basis: >
+        Traps three DSP deliveries covering different grains in one partition (G-24). No row is
+        suppressed.
+    - fixture: traps/amc-dsp-partial-overlap-views.csv
+      contract: amc-dsp-views
+      codes: []
+      basis: >
+        Traps three DSP deliveries covering different grains in one partition (G-24). No row is
+        suppressed.
+    - fixture: traps/amc-attributed-conversion-governed.csv
+      contract: amc-attributed-conversion
+      codes: []
+      basis: >
+        Never landed. A governed attributed-conversion result with three withheld rows: every LOW
+        key and the purchase currency NULL, measures kept, bar 2 with an unprefixed reason. That
+        is the live shape observed on dsp_impressions only (2026-10-08); on
+        amazon_attributed_events_by_conversion_time it is [unverified], where the only probe
+        (2026-08-21, Sandbox) read a sandbox-prefixed reason at bar 100 and merged rows that kept
+        their keys.

@@ -1,0 +1,486 @@
+version: 1
+context_fields:
+  - response-identity
+  - visible-window
+  - reporting-window-status
+  - comparison-window
+  - entity
+  - metric
+  - grain
+  - marketplace
+  - objective
+  - boundary
+pages:
+  - id: decision-overview
+    display_name: Marketplace evidence snapshot
+    route: home
+    purpose: Surface one objective-relevant decision that requires investigation before action.
+    primary_job: Decide which supported change needs validation next.
+    mode: parallel
+    boundary_required: true
+    preferred_window_duration_days: 7
+    grain:
+      time: period
+      dimensions: [marketplace]
+    metrics:
+      - name: purchases
+        roles: [headline]
+      - name: retail_revenue_shipped
+        roles: [headline]
+    sections:
+      - id: decision
+        cardinality: exactly_one
+      - id: reviewed-evidence
+        cardinality: exactly_one
+      - id: boundary
+        cardinality: exactly_one
+    actions:
+      - id: campaign-attribution
+        target: campaign-attribution-detail
+      - id: amazon-channel-performance
+        target: amazon-channel-performance
+      - id: shared-grain-comparison
+        target: marketplace-comparison
+      - id: data-health
+        target: data-health-detail
+
+  - id: amazon-channel-performance
+    display_name: Amazon channel performance
+    route: channel-performance
+    purpose: Assess deduplicated Amazon Ads channel ROAS-ranking robustness across first-touch, last-touch, and linear interpretations.
+    primary_job: Identify whether channel ROAS rankings remain robust across attribution models before campaign investigation.
+    mode: single_basis
+    boundary_required: true
+    preferred_window_duration_days: 7
+    artifact:
+      type: ChannelAttributionRobustness
+      version: 2
+      outcomes: [robust_leader, model_sensitive, insufficient]
+    grain:
+      time: period
+      dimensions: [channel, marketplace]
+    metrics:
+      - name: ad_spend
+        roles: [summary, table]
+      - name: roas_deduplicated_incl_halo_14d
+        roles: [summary, table]
+        variants:
+          - id: first_touch_v1
+            selectors: {attribution_model_key: first_touch_v1}
+          - id: last_touch_v1
+            selectors: {attribution_model_key: last_touch_v1}
+          - id: linear_v1
+            selectors: {attribution_model_key: linear_v1}
+    sections:
+      - id: summary
+        cardinality: exactly_one
+      - id: channel-table
+        cardinality: exactly_one
+      - id: boundary
+        cardinality: exactly_one
+    actions:
+      - id: shared-grain-comparison
+        target: marketplace-comparison
+
+  - id: campaign-attribution-detail
+    display_name: Campaign attribution detail
+    route: campaign-detail
+    purpose: Validate one campaign's Amazon-attributed performance without claiming retail impact.
+    primary_job: Confirm the campaign-side evidence behind a prioritized decision.
+    mode: single_basis
+    boundary_required: true
+    preferred_window_duration_days: 7
+    artifact:
+      type: CampaignAttribution
+      version: 1
+      outcomes: [choices, empty, ambiguous, selected, insufficient]
+    grain:
+      time: period
+      dimensions: [campaign, marketplace]
+    metrics:
+      - name: purchases
+        roles: [summary, trend]
+      - name: roas_attributed_14d
+        roles: [summary]
+      - name: ad_spend
+        roles: [summary]
+    sections:
+      - id: selected-summary
+        cardinality: exactly_one
+      - id: purchase-series
+        cardinality: exactly_one
+      - id: evidence-trace
+        cardinality: exactly_one
+      - id: boundary
+        cardinality: exactly_one
+    actions:
+      - id: inspect-channel-context
+        target: amazon-channel-performance
+
+  - id: marketplace-comparison
+    display_name: Marketplace comparison
+    route: workspace
+    purpose: Compare advertising and retail actuals at their compatible shared grain.
+    primary_job: Validate whether marketplace-level trends moved together without implying attribution.
+    mode: parallel
+    boundary_required: true
+    preferred_window_duration_days: 7
+    artifact:
+      type: MarketplaceComparisonArtifact
+      version: 1
+      outcomes: [comparable, one_marketplace, insufficient, no_coverage]
+    grain:
+      time: period
+      dimensions: [marketplace]
+    metrics:
+      - name: ad_spend
+        roles: [table]
+      - name: retail_revenue_shipped
+        roles: [table]
+    sections:
+      - id: scope
+        cardinality: exactly_one
+      - id: comparison-table
+        cardinality: exactly_one
+      - id: boundary
+        cardinality: exactly_one
+    actions: []
+
+  - id: data-health-detail
+    display_name: Data health
+    route: data-health
+    purpose: Explain why evidence is unavailable without substituting a different grain.
+    primary_job: Determine which source condition blocks a conclusion and the next safe action.
+    mode: status
+    boundary_required: true
+    preferred_window_duration_days: 7
+    artifact:
+      type: DataHealthDetail
+      version: 1
+      outcomes: [healthy, qualified, insufficient, no_coverage]
+    grain:
+      time: exact_source
+      dimensions: []
+    metrics:
+      - name: reach_users
+        roles: [status]
+      - name: avg_frequency
+        roles: [status]
+    sections:
+      - id: health-summary
+        cardinality: exactly_one
+      - id: condition-evidence
+        cardinality: exactly_one
+      - id: boundary
+        cardinality: exactly_one
+    actions: []
+  - id: scorecard
+    display_name: Scorecard
+    route: scorecard
+    purpose: Compare return on ad spend inside each network and channel, never added across networks or channels.
+    primary_job: See which channels return most inside each network, whether the ranking holds under every attribution model, and where ad spend stands against retail sales.
+    mode: parallel
+    boundary_required: true
+    preferred_window_duration_days: 7
+    artifact:
+      type: NetworkScorecardArtifact
+      version: 1
+      outcomes: [complete, empty]
+    grain:
+      time: period
+      dimensions: [marketplace]
+    metrics:
+      - name: ad_spend
+        roles: [summary, table]
+      - name: roas_deduplicated_incl_halo_14d
+        roles: [summary, table]
+        variants:
+          - id: first_touch_v1
+            selectors: {attribution_model_key: first_touch_v1}
+          - id: last_touch_v1
+            selectors: {attribution_model_key: last_touch_v1}
+          - id: linear_v1
+            selectors: {attribution_model_key: linear_v1}
+      - name: attributed_revenue_14d
+        roles: [table]
+      - name: roas_attributed_14d
+        roles: [table]
+      - name: roas_attributed_incl_halo_14d
+        roles: [table]
+      - name: tacos
+        roles: [summary]
+    sections:
+      - id: network-card
+        cardinality: exactly_one
+      - id: channel-table
+        cardinality: exactly_one
+      - id: boundary
+        cardinality: exactly_one
+    actions: []
+
+  - id: new-customers
+    display_name: New customers
+    route: new-customers
+    purpose: Show new-to-brand purchases and new buyers inside each channel of the Amazon Ads network, never added across channels.
+    primary_job: See which channels bring shoppers new to the brand, how many new buyers a complete week or month brought and at what cost, and which products they bought first.
+    mode: single_basis
+    boundary_required: true
+    preferred_window_duration_days: 7
+    artifact:
+      type: NewCustomersArtifact
+      version: 2
+      outcomes: [complete, empty, insufficient]
+    grain:
+      time: period
+      dimensions: [marketplace]
+    metrics:
+      - name: purchases_new_to_brand_12mo
+        roles: [table]
+      - name: revenue_new_to_brand_12mo
+        roles: [table]
+      - name: ntb_revenue_share
+        roles: [table]
+      - name: cost_per_ntb
+        roles: [table]
+      - name: purchases_new_to_brand_incl_halo_12mo
+        roles: [table]
+      - name: buyers_new_to_brand_12mo
+        roles: [summary, table]
+        declared_periods: [last_complete_week, last_complete_month]
+        variants:
+          - id: week
+            selectors: {time_grain: week}
+          - id: month
+            selectors: {time_grain: month}
+      - name: cost_per_new_to_brand_buyer_12mo
+        roles: [summary, table]
+        declared_periods: [last_complete_week, last_complete_month]
+        variants:
+          - id: week
+            selectors: {time_grain: week}
+          - id: month
+            selectors: {time_grain: month}
+    sections:
+      - id: new-to-brand
+        cardinality: exactly_one
+      - id: new-to-brand-step-2
+        cardinality: exactly_one
+      - id: gateway-products
+        cardinality: exactly_one
+      - id: boundary
+        cardinality: exactly_one
+    actions: []
+
+  - id: reach
+    display_name: Reach and funnel
+    route: reach
+    purpose: Show how many shoppers the ads reached in one complete period, how the DSP and sponsored audiences overlap, what each exposure group did next, and how purchase rates move with the number of ads seen.
+    primary_job: How many shoppers your ads reached, how often, and what they did next.
+    mode: single_basis
+    boundary_required: true
+    preferred_window_duration_days: 30
+    artifact:
+      type: ReachAndFunnelArtifact
+      version: 1
+      outcomes: [complete, empty, insufficient]
+    grain:
+      time: declared_period
+      dimensions: [marketplace]
+    metrics:
+      - name: shoppers_reached
+        roles: [summary, table]
+        declared_periods: [last_complete_week, last_complete_month]
+        variants:
+          - id: week
+            selectors: {time_grain: week}
+          - id: month
+            selectors: {time_grain: month}
+      - name: search_shoppers_in_window
+        roles: [table]
+        declared_periods: [last_complete_week, last_complete_month]
+        variants:
+          - id: week
+            selectors: {time_grain: week}
+          - id: month
+            selectors: {time_grain: month}
+      - name: purchasers_in_window
+        roles: [table]
+        declared_periods: [last_complete_week, last_complete_month]
+        variants:
+          - id: week
+            selectors: {time_grain: week}
+          - id: month
+            selectors: {time_grain: month}
+      - name: revenue_incl_halo_in_window
+        roles: [table]
+        declared_periods: [last_complete_week, last_complete_month]
+        variants:
+          - id: week
+            selectors: {time_grain: week}
+          - id: month
+            selectors: {time_grain: month}
+      - name: shoppers_in_frequency_bucket
+        roles: [table]
+        declared_periods: [last_complete_month, last_complete_quarter]
+        variants:
+          - id: month
+            selectors: {time_grain: month}
+          - id: quarter
+            selectors: {time_grain: quarter}
+      - name: purchasers_in_frequency_bucket
+        roles: [table]
+        declared_periods: [last_complete_month, last_complete_quarter]
+        variants:
+          - id: month
+            selectors: {time_grain: month}
+          - id: quarter
+            selectors: {time_grain: quarter}
+      - name: revenue_incl_halo_in_frequency_bucket
+        roles: [table]
+        declared_periods: [last_complete_month, last_complete_quarter]
+        variants:
+          - id: month
+            selectors: {time_grain: month}
+          - id: quarter
+            selectors: {time_grain: quarter}
+      - name: dsp_window_spend_in_frequency_bucket
+        roles: [table]
+        declared_periods: [last_complete_month, last_complete_quarter]
+        variants:
+          - id: month
+            selectors: {time_grain: month}
+          - id: quarter
+            selectors: {time_grain: quarter}
+      - name: sponsored_window_spend_in_frequency_bucket
+        roles: [table]
+        declared_periods: [last_complete_month, last_complete_quarter]
+        variants:
+          - id: month
+            selectors: {time_grain: month}
+          - id: quarter
+            selectors: {time_grain: quarter}
+    sections:
+      - id: overlap
+        cardinality: exactly_one
+      - id: funnel
+        cardinality: exactly_one
+      - id: frequency
+        cardinality: exactly_one
+      - id: boundary
+        cardinality: exactly_one
+    actions: []
+
+  - id: retention
+    display_name: Retention
+    route: retention
+    purpose: Show cohorts of new customers your ads brought in, and when they buy again.
+    primary_job: Compare repeat purchase by acquisition group and month since acquisition for one cohort vintage.
+    mode: parallel
+    boundary_required: true
+    preferred_window_duration_days: 30
+    artifact:
+      type: RetentionCohortArtifact
+      version: 1
+      outcomes: [complete, empty, insufficient]
+    grain:
+      time: as_of_vintage
+      dimensions: [marketplace]
+    metrics:
+      - name: repeat_buyer_rate
+        roles: [table]
+        variants:
+          - id: cohort-vintage
+            selectors: {time_grain: custom}
+      - name: repeat_buyer_rate_arp
+        roles: [table]
+        variants:
+          - id: cohort-vintage
+            selectors: {time_grain: custom}
+      - name: cumulative_repeat_rate_account_ids
+        roles: [trend]
+        variants:
+          - id: cohort-vintage
+            selectors: {time_grain: custom}
+    sections:
+      - id: path
+        cardinality: exactly_one
+      - id: triangle
+        cardinality: exactly_one
+      - id: retention-curve
+        cardinality: exactly_one
+      - id: boundary
+        cardinality: exactly_one
+    actions: []
+
+  - id: audiences
+    display_name: Audiences
+    route: audiences
+    purpose: Show which Amazon audience segments your buyers belong to, compared with the shoppers your ads reached, and how DSP campaigns did per segment.
+    primary_job: Compare buyer and reached-shopper segment shares, inspect over-indexing, and review DSP campaign performance by segment for one complete month.
+    mode: single_basis
+    boundary_required: true
+    preferred_window_duration_days: 30
+    artifact:
+      type: AudienceProfileArtifact
+      version: 1
+      outcomes: [complete, empty, insufficient]
+    grain:
+      time: declared_period
+      dimensions: [marketplace]
+    metrics:
+      - name: segment_buyers
+        roles: [table]
+        declared_periods: [last_complete_month]
+        variants: &audience_profile_variants
+          - {id: asi-in-market, selectors: {time_grain: month, profile_path: asi_in_market}}
+          - {id: asi-lifestyle, selectors: {time_grain: month, profile_path: asi_lifestyle}}
+          - {id: dsp-exposed-only, selectors: {time_grain: month, profile_path: dsp_exposed_only}}
+      - name: segment_exposed_shoppers
+        roles: [table]
+        declared_periods: [last_complete_month]
+        variants: *audience_profile_variants
+      - name: segment_buyers_new_to_brand
+        roles: [table]
+        declared_periods: [last_complete_month]
+        variants: *audience_profile_variants
+      - name: profiled_buyers_total
+        roles: [table]
+        declared_periods: [last_complete_month]
+        variants: *audience_profile_variants
+      - name: profiled_exposed_total
+        roles: [table]
+        declared_periods: [last_complete_month]
+        variants: *audience_profile_variants
+      - name: segment_buyer_share
+        roles: [table]
+        declared_periods: [last_complete_month]
+        variants: *audience_profile_variants
+      - name: segment_exposed_share
+        roles: [table]
+        declared_periods: [last_complete_month]
+        variants: *audience_profile_variants
+      - name: segment_index
+        roles: [table]
+        declared_periods: [last_complete_month]
+        variants: *audience_profile_variants
+      - name: segment_impressions
+        roles: [table]
+        declared_periods: [last_complete_month]
+        variants:
+          - {id: month, selectors: {time_grain: month}}
+      - name: segment_spend
+        roles: [table]
+        declared_periods: [last_complete_month]
+        variants:
+          - {id: month, selectors: {time_grain: month}}
+      - name: segment_attributed_revenue
+        roles: [table]
+        declared_periods: [last_complete_month]
+        variants:
+          - {id: month, selectors: {time_grain: month}}
+    sections:
+      - {id: profile-path, cardinality: exactly_one}
+      - {id: segment-ranking, cardinality: exactly_one}
+      - {id: campaign-audiences, cardinality: exactly_one}
+      - {id: boundary, cardinality: exactly_one}
+    actions: []

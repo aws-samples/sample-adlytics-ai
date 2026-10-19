@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "packId": "amc-acquisition-cohorts-arp",
+  "packVersion": 1,
+  "contractId": "amc-acquisition-cohorts-arp",
+  "sourcePackId": "amc-acquisition-cohorts-arp",
+  "queryFile": "amc-acquisition-cohorts-arp.sql",
+  "accessTier": "paid_feature",
+  "liveValidation": "capability_conditional",
+  "maxResultBytes": 20000000,
+  "executionOptions": {
+    "timeWindowType": "EXPLICIT",
+    "timeWindowTimeZone": "UTC",
+    "filteredMetricsDiscriminatorColumn": "rows_suppressed",
+    "filteredReasonColumn": "suppression_reason",
+    "distinctUserCountColumn": "distinct_user_count"
+  },
+  "safetyBlockers": [],
+  "suppressionPolicy": "discard_suppressed_rows",
+  "periodPolicy": {
+    "grains": [
+      "custom"
+    ]
+  },
+  "inputParameters": {
+    "arp_marketplace_name": {
+      "commerceIdentity": "amc.arp_marketplace_name",
+      "dataType": "STRING"
+    },
+    "as_of_month": {
+      "dataType": "STRING",
+      "periodValue": "as_of_month"
+    },
+    "sponsored_marketplace_name": {
+      "commerceIdentity": "amc.marketplace_name",
+      "dataType": "STRING"
+    }
+  },
+  "cadenceLagDays": 2,
+  "expectedBar": 2,
+  "outputColumns": [
+    "cohort_month",
+    "months_since_acquisition",
+    "acquisition_source_set",
+    "cohort_buyers_account_ids_check",
+    "repeat_buyers",
+    "first_repeat_buyers",
+    "cumulative_repeat_buyers",
+    "repeat_purchases",
+    "repeat_revenue",
+    "currency_code",
+    "currency_code_min",
+    "cohort_grain",
+    "marketplace_name",
+    "time_window_start",
+    "time_window_end",
+    "rows_suppressed",
+    "suppression_reason",
+    "distinct_user_count"
+  ],
+  "variants": [
+    {
+      "variant": "quarterly",
+      "packVersion": 2,
+      "queryFile": "amc-acquisition-cohorts-arp-quarterly.sql",
+      "trigger": "degrade_next_period",
+      "outputColumns": [
+        "cohort_month",
+        "months_since_acquisition",
+        "acquisition_source_set",
+        "cohort_buyers_account_ids_check",
+        "repeat_buyers",
+        "first_repeat_buyers",
+        "cumulative_repeat_buyers",
+        "repeat_purchases",
+        "repeat_revenue",
+        "currency_code",
+        "currency_code_min",
+        "cohort_grain",
+        "marketplace_name",
+        "time_window_start",
+        "time_window_end",
+        "rows_suppressed",
+        "suppression_reason",
+        "distinct_user_count"
+      ]
+    }
+  ]
+}

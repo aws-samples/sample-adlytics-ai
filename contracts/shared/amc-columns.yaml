@@ -1,0 +1,4212 @@
+# AMC column registry — the machine-readable form of the column facts owned by
+# docs/sources/amc.md.
+#
+# Same relationship metric-dictionary.yaml has with canonical-model.md section 5:
+# the prose doc owns the facts and the reasoning, this file is what a program reads.
+# Never let the two disagree.
+#
+# WHY THIS EXISTS
+#
+# A column's aggregation threshold cannot be inferred from its name. event_hour_utc
+# is LOW while event_dt_utc is MEDIUM; event_dt_hour is LOW while event_dt is
+# MEDIUM. AMC assigns these per column and the naming follows no convention, so
+# every one must be looked up. Without this file, "does this contract's grain force
+# a 100-distinct-user threshold?" is a question only a human who has read the
+# datasources pages can answer — which means it eventually gets answered wrong, and
+# the failure mode is silent row-dropping rather than an error.
+#
+# HOW THE GATE USES IT
+#
+# make validate-contracts treats this as an ALLOWLIST:
+#   - a contract naming a column absent from here FAILS. An unverified column may
+#     not be used, and adding one here is a deliberate act requiring a citation.
+#   - a contract whose output includes any MEDIUM or HIGH column and does not
+#     declare filtered_metrics_discriminator_column FAILS.
+#   - a contract naming a column with `status: disputed` FAILS until the dispute is
+#     resolved against a live instance.
+#   - a monetary column mapped without its scale_divisor FAILS.
+#
+# Partial coverage is therefore safe. It is not silently permissive.
+#
+# EVIDENCE STATUS
+#
+# Each fact carries the evidence that supports it, and nothing stronger:
+#   - verified (table): the date the transcription was made from source_page.
+#   - columns_rechecked (table): the date source_page was fetched again and every
+#     column here matched it on name, type, kind and threshold. Notes paraphrasing
+#     the page are as of the date they were written.
+#   - live (column or table): a presence result from a governed probe, per instance
+#     type and date, published in validation/RESULTS.md. Recorded only where presence
+#     was in question; it is not a list of every live read.
+#   - pending (column): a live claim that has no accepted result yet. Not evidence.
+#   - status: disputed (column): the docs and live evidence disagree, or the docs
+#     contradict themselves. The gate refuses a contract that uses it.
+# The reasoning behind each of these is owned by docs/sources/amc.md.
+#
+# NOT A DESCRIPTION OF AMC. Amazon's own column descriptions are not reproduced
+# here; see source_page for each table. Only the facts that change what code must do
+# are recorded: type, kind, threshold, scale, and behaviour notes.
+
+version: 1
+
+provenance:
+  # The docs site is a client-rendered SPA; a plain fetch of the human URL returns a
+  # JS shell. The authoritative Markdown is on the content CDN, and the en-us/
+  # prefix is required — omitting it 404s. See docs/sources/amc.md section 2.
+  cdn_base: https://d3a0d0y2hgofx6.cloudfront.net/en-us/guides/amazon-marketing-cloud
+  threshold_reference: https://advertising.amazon.com/API/docs/en-us/guides/amazon-marketing-cloud/aggregation-threshold
+  # No changelog, no per-page dates and no feed exist for these pages, so drift is
+  # undetectable without hashing them ourselves. Re-verify on a schedule.
+  drift_detection: none available upstream
+
+# The bar a row must clear to be released, set by the STRICTEST column in the query
+# output. Facts owned by docs/sources/amc.md section 5.
+threshold_classes:
+  NONE:
+    min_distinct_users: 1
+    literal_filter_allowed: true
+    outputtable: true
+  LOW:
+    min_distinct_users: 2
+    literal_filter_allowed: true
+    outputtable: true
+  MEDIUM:
+    min_distinct_users: 100
+    literal_filter_allowed: true
+    outputtable: true
+  HIGH:
+    min_distinct_users: 100
+    literal_filter_allowed: false
+    outputtable: true
+  VERY_HIGH:
+    min_distinct_users: null
+    literal_filter_allowed: false
+    outputtable: false
+    note: Usable only inside a CTE, e.g. COUNT(DISTINCT user_id).
+  INTERNAL:
+    min_distinct_users: null
+    literal_filter_allowed: false
+    outputtable: false
+
+# Any output column at MEDIUM or HIGH lifts the whole query's bar from 2 users to
+# 100. That is the single check a contract's grain must pass.
+threshold_escalates_at: [MEDIUM, HIGH]
+# How the three suppression option columns arrived in four controls-on results on
+# 2026-10-08, and nothing wider: dsp_impressions on the Sandbox and the STANDARD demo
+# instance, one day, every grouped source column LOW so the bar was 2, the table read once
+# per query, and the option names rows_suppressed, suppression_reason and
+# distinct_user_count, which every governed pack also sets. Facts and scope owned by
+# docs/sources/amc.md section 5. The fixture generator writes this shape and its conformance
+# check refuses any other; that holds our fixtures to what was observed, and says nothing
+# about what AMC delivers outside this scope.
+#   - trailing_order: observed for these option names; the create-workflow page states no
+#     order, and other names are unverified.
+#   - unsuppressed rows: the reason was blank and the user count was the query's bar.
+#   - suppressed rows: the reason read "<users> <table> users < <bar> required", the user
+#     count equalled <users>, and every source column whose threshold bar exceeds <users> was
+#     NULL. Measures and CTE-derived labels survived.
+#   - suppressed_reason_format: a docs-vs-live disagreement, not a settled format. The docs
+#     quote the source, add "(path i of n)" for a source used more than once and name a count
+#     type; 2026-08-21 saw an empty and a truncated reason on attributed events with a HIGH
+#     key (docs/sources/amc.md sections 5 and 10). No production or runtime code may parse it.
+#   - timestamp_format: every time_window_start and time_window_end cell in those results.
+# Outside that scope, 2026-10-09 (two multi-source Sandbox queries, LOW; validation/RESULTS.md
+# "Fence structural check, pack 14 at acquisition-date grain, P-BO-3 and P-BO-4"):
+#   - the reason read "<users> '<table>' (path <i> of <n>) users < <bar> required";
+#   - on both texts, the bar applied per data-source path, so a row with two or more users
+#     could be withheld: through conversions on pack 14, and through a touch table,
+#     sponsored_ads_traffic, on the fence structural check (structural check, not the exact
+#     pack text; outside criterion 7's band; doesn't settle packs 5-7, AC-E1.5 pending Step B);
+#   - labels derived from dimension columns, purchase-side sums and currency columns were NULL.
+# The values below stay the single-source form. No fixture of a multi-source pack carries a
+# suppressed row today; one that does must model the 2026-10-09 form instead.
+# A Sandbox prefixes the table with "sandbox."; a fixture models an advertiser instance, so
+# it doesn't.
+suppression_output:
+  observed: 2026-10-08
+  source: validation/RESULTS.md#paid-feature-presence-and-forced-suppression--2026-10-08
+  trailing_order: [distinct_user_count, suppression_reason, rows_suppressed]
+  discriminator_values: ["true", "false"]   # suppressed, then kept
+  suppressed_reason_format: "{users} {table} users < {bar} required"
+  timestamp_format: "%Y-%m-%dT%H:%M:%S.000Z"
+
+# Divide by these. The divisor is a property of the COLUMN, never the table or the
+# platform: dsp_impressions mixes both scales, so a per-table divisor makes every
+# DSP fee figure wrong by exactly 1000x while fee-inclusive ROAS still reconciles
+# and the headline looks correct.
+scale_units:
+  millicents: 100000
+  microcents: 100000000
+  # Attributed sales are already DECIMAL in local currency. Applying a cost divisor
+  # to revenue is a 5-to-8 order-of-magnitude error in the numerator of every ROAS.
+  local_currency: 1
+
+tables:
+  sponsored_ads_traffic:
+    source_page: datasources/sponsored_ads_traffic.md
+    verified: 2026-08-19
+    columns_rechecked: 2026-10-08
+    grain: one row per sponsored ads impression event, one row per click event
+    audience_twin: sponsored_ads_traffic_for_audiences
+    notes: >
+      Filter on ad_product_type or Sponsored Display and Sponsored TV mix into
+      numbers reported as Sponsored Products. spend is the only monetary column.
+      Join to the attributed-events tables on event_id -> traffic_event_id.
+    columns:
+      ad_group: { type: STRING, kind: DIMENSION, threshold: LOW }
+      ad_group_end_dt: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      ad_group_end_dt_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      ad_group_start_dt: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      ad_group_start_dt_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      ad_group_status: { type: STRING, kind: DIMENSION, threshold: LOW }
+      ad_group_type: { type: STRING, kind: DIMENSION, threshold: LOW }
+      ad_product_type:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          NULL means DSP in the attributed-events tables. On this table the values
+          are sponsored_products, sponsored_brands, sponsored_display and
+          sponsored_television.
+      advertiser:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Outputtable. VERIFIED 2026-08-19 by live query against AMC sandbox
+          instance SANDBOX_INSTANCE with aggregation controls ON: a final SELECT of
+          campaign_id_string, campaign and advertiser with GROUP BY returned real
+          names. docs/sources/amc.md section 4 previously recorded these as INTERNAL
+          and never outputtable; that was wrong. An INTERNAL column cannot appear in
+          a GROUP BY, so the query would have been rejected.
+      advertiser_timezone:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: Carry onto every fact as source_timezone. ADR-004.
+      campaign:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Outputtable. VERIFIED 2026-08-19 by live query against AMC sandbox
+          instance SANDBOX_INSTANCE with aggregation controls ON: a final SELECT of
+          campaign_id_string, campaign and advertiser with GROUP BY returned real
+          names. docs/sources/amc.md section 4 previously recorded these as INTERNAL
+          and never outputtable; that was wrong. An INTERNAL column cannot appear in
+          a GROUP BY, so the query would have been rejected.
+      campaign_budget_type: { type: STRING, kind: DIMENSION, threshold: LOW }
+      campaign_end_date: { type: DATE, kind: DIMENSION, threshold: LOW }
+      campaign_end_date_utc: { type: DATE, kind: DIMENSION, threshold: LOW }
+      campaign_end_dt: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      campaign_end_dt_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      campaign_id:
+        type: LONG
+        kind: DIMENSION
+        threshold: LOW
+        deprecated_for_use: true
+        note: >
+          Do NOT use. On this table campaign_id and campaign_id_string are different
+          identifiers from different systems, both populated, so joining on the
+          wrong one drops rows silently instead of erroring. This is the Ads API ID.
+      campaign_id_string:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        preferred: true
+        note: >
+          The ads-console ID, and NOT numeric on this table. Use this one. An
+          18-digit numeric ID also does not survive JSON integer precision.
+      campaign_start_date: { type: DATE, kind: DIMENSION, threshold: LOW }
+      campaign_start_date_utc: { type: DATE, kind: DIMENSION, threshold: LOW }
+      campaign_start_dt: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      campaign_start_dt_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      creative: { type: STRING, kind: DIMENSION, threshold: LOW }
+      creative_asin:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          The ADVERTISED ASIN, distinct from tracked_asin on the conversion side.
+          Populated only for a subset of Sponsored Products and Sponsored Display
+          events; NULL for other ad products, which is not zero.
+      creative_type: { type: STRING, kind: DIMENSION, threshold: LOW }
+      currency_iso_code:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: Required alongside spend. Never store a bare monetary amount.
+      currency_name: { type: STRING, kind: DIMENSION, threshold: LOW }
+      customer_search_term: { type: STRING, kind: DIMENSION, threshold: LOW }
+      entity_id: { type: STRING, kind: DIMENSION, threshold: LOW }
+      event_date: { type: DATE, kind: DIMENSION, threshold: LOW }
+      event_date_utc:
+        type: DATE
+        kind: DIMENSION
+        threshold: LOW
+        preferred: true
+        note: Prefer over event_dt_utc. Same day grain, bar of 2 users instead of 100.
+      event_day: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      event_day_utc: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      event_dt:
+        type: TIMESTAMP
+        kind: DIMENSION
+        threshold: MEDIUM
+        note: Escalates the whole query to 100 distinct users per row.
+      event_dt_hour: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      event_dt_hour_utc:
+        type: TIMESTAMP
+        kind: DIMENSION
+        threshold: LOW
+        preferred: true
+        note: The hourly grain that does not escalate. Never truncate event_dt_utc instead.
+      event_dt_utc:
+        type: TIMESTAMP
+        kind: DIMENSION
+        threshold: MEDIUM
+        note: Escalates the whole query to 100 distinct users per row.
+      event_hour: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      event_hour_utc: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      event_id:
+        type: STRING
+        kind: DIMENSION
+        threshold: VERY_HIGH
+        note: >
+          Join key to traffic_event_id in the amazon_attributed_* tables. Not
+          outputtable, so the join happens inside a CTE.
+      five_sec_views: { type: LONG, kind: METRIC, threshold: NONE }
+      household_id:
+        type: STRING
+        kind: DIMENSION
+        threshold: VERY_HIGH
+        available_from: 2026-04-10
+        note: >
+          CTE use only. Coverage varies by region, so a household-level grain is not
+          uniformly populated and an absent household is not a household of one.
+      household_size: { type: STRING, kind: DIMENSION, threshold: HIGH }
+      impressions: { type: LONG, kind: METRIC, threshold: NONE }
+      ip_address: { type: STRING, kind: DIMENSION, threshold: VERY_HIGH }
+      is_amazon_business: { type: BOOLEAN, kind: DIMENSION, threshold: LOW }
+      line_item:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: Mirrors ad_group with identical values. DSP's equivalent name for the same thing.
+      line_item_end_date: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      line_item_end_date_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      line_item_id: { type: LONG, kind: DIMENSION, threshold: LOW }
+      line_item_price_type: { type: STRING, kind: DIMENSION, threshold: LOW }
+      line_item_start_date: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      line_item_start_date_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      line_item_status: { type: STRING, kind: DIMENSION, threshold: LOW }
+      line_item_type: { type: STRING, kind: DIMENSION, threshold: LOW }
+      marketplace_name:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: The usable marketplace column. marketplace_id is INTERNAL elsewhere in AMC.
+      match_type: { type: STRING, kind: DIMENSION, threshold: LOW }
+      matched_behavior_segment_ids: { type: STRING, kind: DIMENSION, threshold: LOW }
+      no_3p_trackers: { type: BOOLEAN, kind: DIMENSION, threshold: NONE }
+      operating_system: { type: STRING, kind: DIMENSION, threshold: LOW }
+      os_version: { type: STRING, kind: DIMENSION, threshold: LOW }
+      placement_type: { type: STRING, kind: DIMENSION, threshold: LOW }
+      portfolio_id: { type: LONG, kind: DIMENSION, threshold: LOW }
+      portfolio_name: { type: STRING, kind: DIMENSION, threshold: LOW }
+      spend:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: microcents
+        scale_divisor: 100000000
+        fee_inclusive: true
+        note: >
+          The only monetary column on this table, and the sponsored-ads half of
+          ad_spend per ADR-017. Some ad products including Sponsored Products incur
+          cost only on click events, so a spend of 0 on an impression row is
+          expected and is not missing data. There is no media-only equivalent here,
+          which is why the fee-inclusive default is the only one computable across
+          both channels.
+      targeting: { type: STRING, kind: DIMENSION, threshold: LOW }
+      unmeasurable_viewable_impressions: { type: LONG, kind: METRIC, threshold: NONE }
+      user_id:
+        type: STRING
+        kind: DIMENSION
+        threshold: VERY_HIGH
+        note: >
+          CTE use only, never in output. NULL when Amazon cannot resolve an
+          identifier, which is not the same as a distinct user. Reach is an exact
+          COUNT(DISTINCT user_id) computed inside AMC at every grain wanted, and is
+          non-additive downstream.
+      user_id_type:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          adUserId, sisDeviceId, adBrowserId or NULL. Mixes ID spaces, so a distinct
+          count spans accounts, devices and browsers rather than people.
+      video_complete_views: { type: LONG, kind: METRIC, threshold: NONE }
+      video_first_quartile_views: { type: LONG, kind: METRIC, threshold: NONE }
+      video_midpoint_views: { type: LONG, kind: METRIC, threshold: NONE }
+      video_third_quartile_views: { type: LONG, kind: METRIC, threshold: NONE }
+      video_unmutes: { type: LONG, kind: METRIC, threshold: NONE }
+      view_definition: { type: STRING, kind: DIMENSION, threshold: LOW }
+      viewable_impressions: { type: LONG, kind: METRIC, threshold: NONE }
+
+# Tables whose pages have not been transcribed yet. Listed so the gap is visible and
+# so nobody assumes an absent table means an absent source. A contract naming any of
+# these fails until its page is fetched and its columns recorded here.
+  dsp_impressions:
+    source_page: datasources/dsp_impressions.md
+    verified: 2026-08-19
+    columns_rechecked: 2026-10-08
+    grain: One row per Amazon DSP impression delivered to a viewer.
+    audience_twin: dsp_impressions_for_audiences
+    notes: >
+      Two money scales coexist here, so read scale_divisor per column and never
+      key a divisor on the table.
+      This page lists 108 columns.
+      winning_bid_cost does not appear anywhere on this page.
+    columns:
+      ad_slot_size:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Size of the inventory slot that was filled, not of the asset served.
+          creative_size is the asset. Easy to confuse.
+      advertiser:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Outputtable. VERIFIED 2026-08-19 by live query against AMC sandbox
+          instance SANDBOX_INSTANCE with aggregation controls ON: a final SELECT of
+          campaign_id_string, campaign and advertiser with GROUP BY returned real
+          names. docs/sources/amc.md section 4 previously recorded these as INTERNAL
+          and never outputtable; that was wrong. An INTERNAL column cannot appear in
+          a GROUP BY, so the query would have been rejected.
+      advertiser_account_frequency_group_ids:
+        type: "Array[LONG]"
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Advertiser-account scope. Sibling of
+          manager_account_frequency_group_ids, which is a wider scope. One
+          impression can carry several IDs, so unnesting multiplies rows.
+      advertiser_id: { type: LONG, kind: DIMENSION, threshold: LOW }
+      advertiser_timezone: { type: STRING, kind: DIMENSION, threshold: LOW }
+      app_bundle: { type: STRING, kind: DIMENSION, threshold: LOW }
+      audience_fee:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: microcents
+        scale_divisor: 100000000
+        note: Charge for using Amazon audience segments, billed per thousand impressions.
+      bid_price:
+        type: LONG
+        kind: METRIC
+        threshold: MEDIUM
+        monetary: true
+        scale: microcents
+        scale_divisor: 100000000
+        note: >
+          The only monetary column above NONE. Selecting it needs 100 distinct
+          users per row, so it silently costs rows the other cost columns keep.
+      browser_family: { type: STRING, kind: DIMENSION, threshold: LOW }
+      campaign:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Outputtable. VERIFIED 2026-08-19 by live query against AMC sandbox
+          instance SANDBOX_INSTANCE with aggregation controls ON: a final SELECT of
+          campaign_id_string, campaign and advertiser with GROUP BY returned real
+          names. docs/sources/amc.md section 4 previously recorded these as INTERNAL
+          and never outputtable; that was wrong. An INTERNAL column cannot appear in
+          a GROUP BY, so the query would have been rejected.
+      campaign_budget_amount:
+        type: LONG
+        kind: DIMENSION
+        threshold: LOW
+        monetary: true
+        scale: millicents
+        scale_divisor: 100000
+        note: >
+          Whole-campaign budget, so it repeats on every impression row. Summing
+          it across rows is meaningless.
+      campaign_country:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        live:
+          - instance: STANDARD
+            date: 2026-10-08
+            outcome: resolves
+            scope: >
+              The pack 5 candidate text (Q3), which filters this column against
+              CUSTOM_PARAMETER('dsp_campaign_country') through EXTEND_TIME_WINDOW, ran with
+              controls on.
+            source: validation/RESULTS.md#business-outcome-probes-p-bo-1-step-a-and-p-bo-2--2026-10-08
+          - instance: SANDBOX
+            date: 2026-10-08
+            outcome: absent
+            scope: >
+              A one-column read from plain dsp_impressions, controls on, was REJECTED with
+              "Column 'campaign_country' not found in any table".
+            source: validation/RESULTS.md#business-outcome-probes-p-bo-1-step-a-and-p-bo-2--2026-10-08
+        pending: >
+          Observed representation and population (run 2026-08-26, window 2026-08-10 to
+          2026-08-23). validation/RESULTS.md publishes no accepted conclusion for it, so no
+          observed value is recorded here. The page's example value is 'US'.
+        note: >
+          The page sets the value from the campaign-level country setting. Only US is governed
+          by the current US commerce scope; any other value fails closed. A query that filters
+          this column can't be validated on a Sandbox (docs/sources/amc.md section 10).
+      campaign_end_date: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      campaign_end_date_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      campaign_flight_budget_amount:
+        type: LONG
+        kind: METRIC
+        threshold: LOW
+        monetary: true
+        scale: millicents
+        scale_divisor: 100000
+        note: >
+          Per-flight budget, and the only budget column the page types as a
+          METRIC rather than a DIMENSION. It still repeats per row, so do not sum it.
+      campaign_flight_end_date_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      campaign_flight_id: { type: LONG, kind: DIMENSION, threshold: LOW }
+      campaign_flight_name: { type: STRING, kind: DIMENSION, threshold: LOW }
+      campaign_flight_start_date_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      campaign_id:
+        type: LONG
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          The page states this and campaign_id_string carry the same value on
+          this table. Prefer the string form; the 18-digit value does not survive
+          JSON integer precision.
+      campaign_id_string:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Same value as campaign_id on this table per the page. Use this one, and
+          note the pair is NOT interchangeable on sponsored_ads_traffic.
+      campaign_insertion_order_id: { type: STRING, kind: DIMENSION, threshold: LOW }
+      campaign_primary_goal: { type: STRING, kind: DIMENSION, threshold: LOW }
+      campaign_sales_type:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Splits billable from bonus delivery. Bonus impressions carry no charge,
+          so leaving them in deflates any CPM or ROAS.
+      campaign_source:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: The page gives no semantics beyond the name. Probe before relying on it.
+      campaign_start_date: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      campaign_start_date_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      campaign_status: { type: STRING, kind: DIMENSION, threshold: LOW }
+      city_name:
+        type: STRING
+        kind: DIMENSION
+        threshold: HIGH
+        status: disputed
+        live:
+          - instance: SANDBOX
+            date: 2026-08-21
+            outcome: absent
+            scope: >
+              A probe selecting it from this table was REJECTED with "Column 'city_name' not
+              found in any table".
+            source: validation/RESULTS.md#probe-6--suppression_nulls--2026-08-21
+        dispute: >
+          The dsp_impressions page, re-read 2026-10-08, lists this column on this table (STRING,
+          DIMENSION, HIGH), so the transcription is right and the Sandbox schema is narrower
+          than the page. No advertiser instance has been probed. No contract uses this column,
+          so nothing is blocked; settle it on a STANDARD instance before one does
+          (docs/sources/amc.md section 10).
+        note: >
+          HIGH, so it cannot be compared to a literal anywhere in the query,
+          including joins and filters. Output only.
+      creative: { type: STRING, kind: DIMENSION, threshold: LOW }
+      creative_category: { type: STRING, kind: DIMENSION, threshold: LOW }
+      creative_duration:
+        type: LONG
+        kind: DIMENSION
+        threshold: LOW
+        note: Seconds, and NULL for non-video formats rather than zero.
+      creative_id: { type: LONG, kind: DIMENSION, threshold: LOW }
+      creative_is_link_in:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          A flag carried as STRING 'Y' or 'N', not a BOOLEAN. Do not cast it
+          alongside the real boolean columns.
+      creative_size:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Asset dimensions, and it can read 'Responsive' rather than a pixel
+          pair. Distinct from ad_slot_size.
+      creative_type: { type: STRING, kind: DIMENSION, threshold: LOW }
+      currency_iso_code: { type: STRING, kind: DIMENSION, threshold: LOW }
+      currency_name:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          The page points every monetary column at this field for its currency.
+          No FX is provided, so carry it alongside any amount.
+      deal_id:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: NULL for open-auction inventory, so it is populated only on private deals.
+      deal_name:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: NULL for open-auction inventory, same condition as deal_id.
+      demand_channel:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: The page gives no semantics beyond the name. Probe before relying on it.
+      demand_channel_owner:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: The page gives no semantics beyond the name. Probe before relying on it.
+      device_id:
+        type: STRING
+        kind: DIMENSION
+        threshold: VERY_HIGH
+        note: >
+          Pseudonymous device identifier. Never outputtable; usable only inside a
+          CTE. Not recorded in amc.md §4.
+      device_make:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Device manufacturer, never a merchant brand. The page warns the same
+          maker appears in mixed casing, so grouping needs normalisation first.
+      device_model:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: Mixed casing for the same model, same normalisation caveat as device_make.
+      device_type: { type: STRING, kind: DIMENSION, threshold: LOW }
+      dma_code:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          US broadcast markets only, formatted with a US-DMA prefix. LOW, so it
+          is the one geo grain finer than country that survives a literal filter.
+      entity_id: { type: STRING, kind: DIMENSION, threshold: LOW }
+      environment_type:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: NULL means undeterminable, not a third environment.
+      household_id:
+        type: STRING
+        kind: DIMENSION
+        threshold: VERY_HIGH
+        note: >
+          Never outputtable; CTE-only. NULL when Amazon cannot resolve the user
+          or household, and it changes if a user moves household. Available from
+          2026-04-10 onward, with coverage varying by region.
+      household_size:
+        type: STRING
+        kind: DIMENSION
+        threshold: HIGH
+        note: >
+          HIGH, so no literal comparison. Carried as STRING with a '4+' bucket
+          and NULL, so it will not cast to a number.
+      impression_cost:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: millicents
+        scale_divisor: 100000
+        note: >
+          Millicents like total_cost, unlike every fee column here. This page
+          does not state whether fees are included, so amc.md's media-cost-only
+          reading is not confirmable from it.
+      impression_date: { type: DATE, kind: DIMENSION, threshold: LOW }
+      impression_date_utc: { type: DATE, kind: DIMENSION, threshold: LOW }
+      impression_day: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      impression_day_utc: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      impression_dt:
+        type: TIMESTAMP
+        kind: DIMENSION
+        threshold: MEDIUM
+        note: >
+          Full timestamp at MEDIUM against LOW for every date, hour and day
+          variant. Selecting it in final output drops far more rows.
+      impression_dt_hour: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      impression_dt_hour_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      impression_dt_utc:
+        type: TIMESTAMP
+        kind: DIMENSION
+        threshold: MEDIUM
+        note: >
+          UTC full timestamp, MEDIUM for the same reason as impression_dt. Never
+          mix UTC and advertiser-timezone columns in one query.
+      impression_hour: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      impression_hour_utc: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      impressions:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        note: Always 1 on this table, since every row is one impression.
+      ip_address:
+        type: STRING
+        kind: DIMENSION
+        threshold: VERY_HIGH
+        note: >
+          Pseudonymised, IPv4 or IPv6, NULL when not received. Never outputtable;
+          CTE-only. Not recorded in amc.md §4.
+      is_amazon_owned: { type: BOOLEAN, kind: DIMENSION, threshold: LOW }
+      iso_country_code: { type: STRING, kind: DIMENSION, threshold: LOW }
+      iso_state_province_code:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          ISO 3166-2, so it already carries the country prefix. LOW, unlike
+          city_name and postal_code.
+      line_item: { type: STRING, kind: DIMENSION, threshold: LOW }
+      line_item_budget_amount:
+        type: LONG
+        kind: DIMENSION
+        threshold: LOW
+        monetary: true
+        scale: millicents
+        scale_divisor: 100000
+        note: Line-item budget, repeated on every row. Do not sum across rows.
+      line_item_end_date: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      line_item_end_date_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      line_item_id: { type: LONG, kind: DIMENSION, threshold: LOW }
+      line_item_price_type: { type: STRING, kind: DIMENSION, threshold: LOW }
+      line_item_start_date: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      line_item_start_date_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      line_item_status: { type: STRING, kind: DIMENSION, threshold: LOW }
+      line_item_type: { type: STRING, kind: DIMENSION, threshold: LOW }
+      managed_service_fee:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: microcents
+        scale_divisor: 100000000
+        note: A percentage of supply_cost, charged for Amazon-managed campaign service.
+      manager_account_frequency_group_ids:
+        type: "Array[LONG]"
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Manager-account scope, so it spans advertisers. Wider than
+          advertiser_account_frequency_group_ids and easy to confuse with it.
+      matched_behavior_segment_ids:
+        type: "Array[INTEGER]"
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Only segments both targeted by the line item and matched to the user.
+          A strict subset of user_behavior_segment_ids.
+      merchant_id:
+        type: LONG
+        kind: DIMENSION
+        threshold: LOW
+        note: The page gives no semantics beyond the name. Probe before relying on it.
+      no_3p_trackers: { type: BOOLEAN, kind: DIMENSION, threshold: NONE }
+      ocm_fee:
+        type: LONG
+        kind: METRIC
+        threshold: LOW
+        monetary: true
+        scale: microcents
+        scale_divisor: 100000000
+        note: >
+          Omnichannel-measurement fee, a percentage of supply_cost. The only fee
+          column at LOW rather than NONE, so it needs 2 distinct users per row.
+      operating_system: { type: STRING, kind: DIMENSION, threshold: LOW }
+      os_version: { type: STRING, kind: DIMENSION, threshold: LOW }
+      page_type:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: Meaningful mainly for Amazon-site placements.
+      placement_is_view_aware:
+        type: BOOLEAN
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Placement-level viewability capability. Distinct from
+          supply_source_is_view_aware, which is the wider supply-side flag.
+      placement_view_rate:
+        type: DECIMAL
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          A 0.0-1.0 rate, so it is already a ratio and must not be summed.
+          Placement-level twin of supply_source_view_rate.
+      platform_fee:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: microcents
+        scale_divisor: 100000000
+        note: >
+          A percentage of supply_cost, charged for DSP access. Also called the
+          technology or console fee elsewhere.
+      postal_code:
+        type: STRING
+        kind: DIMENSION
+        threshold: HIGH
+        note: >
+          HIGH, so no literal comparison anywhere. Prefixed with the country
+          code, and holds the country alone when the postal part is unknown, so
+          length varies.
+      product_line:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Amazon's campaign categorisation, not a merchant brand. The page gives
+          no further semantics.
+      publisher_name: { type: STRING, kind: DIMENSION, threshold: LOW }
+      request_tag:
+        type: STRING
+        kind: DIMENSION
+        threshold: VERY_HIGH
+        note: >
+          Links an impression to related view, click and conversion rows, where
+          it lands in impression_id. Duplicates occur, so the page advises
+          against joining on it without grouping first; prefer UNION ALL. Never
+          outputtable.
+      segment_marketplace_id: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      seller_id:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Maps to OpenRTB publisher.id. Format is not fixed, so do not assume it
+          is numeric.
+      seller_name: { type: STRING, kind: DIMENSION, threshold: LOW }
+      site: { type: STRING, kind: DIMENSION, threshold: LOW }
+      slot_position: { type: STRING, kind: DIMENSION, threshold: LOW }
+      supply_cost:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: microcents
+        scale_divisor: 100000000
+        note: >
+          What DSP pays the publisher side. The base that platform_fee,
+          managed_service_fee and ocm_fee are percentages of.
+      supply_source: { type: STRING, kind: DIMENSION, threshold: LOW }
+      supply_source_id: { type: LONG, kind: DIMENSION, threshold: LOW }
+      supply_source_is_view_aware:
+        type: BOOLEAN
+        kind: DIMENSION
+        threshold: LOW
+        note: Supply-side viewability capability, wider than placement_is_view_aware.
+      supply_source_view_rate:
+        type: DECIMAL
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          A 0.0-1.0 rate, not summable. Supply-source twin of
+          placement_view_rate.
+      third_party_fees:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: microcents
+        scale_divisor: 100000000
+        note: Already a sum of external data and technology charges for the impression.
+      total_cost:
+        type: DOUBLE
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: millicents
+        scale_divisor: 100000
+        fee_inclusive: true
+        note: >
+          The spend column for this table, and the only monetary column typed
+          DOUBLE rather than LONG. Millicents, so its divisor differs from every
+          fee column here by 1000x.
+      user_behavior_segment_ids:
+        type: "Array[INTEGER]"
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Every segment the user belonged to at impression time, targeted or not.
+          Superset of matched_behavior_segment_ids.
+      user_id:
+        type: STRING
+        kind: DIMENSION
+        threshold: VERY_HIGH
+        note: >
+          Never outputtable; CTE-only, for exact distinct counts. Mixes account,
+          device and browser identifier spaces, so read user_id_type with it.
+          NULL when Amazon cannot resolve an identifier.
+      user_id_type:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          NULL exactly when user_id is NULL. The safe LOW proxy for reasoning
+          about identifier coverage.
+  dsp_clicks:
+    source_page: datasources/dsp_clicks.md
+    verified: 2026-08-19
+    columns_rechecked: 2026-10-08
+    grain: One row per Amazon DSP impression that was clicked, carrying the click detail.
+    audience_twin: dsp_clicks_for_audiences
+    notes: >
+      Page describes this as a subset of dsp_impressions restricted to clicked impressions.
+      Two parallel time families are present, click_* and impression_*; pick one deliberately.
+      No total_cost and no impression_cost here, so DSP media spend cannot be sourced from this table.
+    columns:
+      ad_slot_size: { type: STRING, kind: DIMENSION, threshold: LOW }
+      advertiser:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Outputtable. VERIFIED 2026-08-19 by live query against AMC sandbox
+          instance SANDBOX_INSTANCE with aggregation controls ON: a final SELECT of
+          campaign_id_string, campaign and advertiser with GROUP BY returned real
+          names. docs/sources/amc.md section 4 previously recorded these as INTERNAL
+          and never outputtable; that was wrong. An INTERNAL column cannot appear in
+          a GROUP BY, so the query would have been rejected.
+      advertiser_account_frequency_group_ids:
+        type: "Array[LONG]"
+        kind: DIMENSION
+        threshold: LOW
+        note: Array valued; one impression can sit in several frequency groups, so unnest before counting.
+      advertiser_id: { type: LONG, kind: DIMENSION, threshold: LOW }
+      advertiser_timezone: { type: STRING, kind: DIMENSION, threshold: LOW }
+      app_bundle: { type: STRING, kind: DIMENSION, threshold: LOW }
+      audience_fee:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: microcents
+        scale_divisor: 100000000
+        note: Page states microcents and gives the 100,000,000 divisor explicitly.
+      bid_price:
+        type: LONG
+        kind: METRIC
+        threshold: MEDIUM
+        monetary: true
+        scale: microcents
+        scale_divisor: 100000000
+        note: Page states microcents and gives the 100,000,000 divisor explicitly.
+      browser_family: { type: STRING, kind: DIMENSION, threshold: LOW }
+      campaign:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Outputtable. VERIFIED 2026-08-19 by live query against AMC sandbox
+          instance SANDBOX_INSTANCE with aggregation controls ON: a final SELECT of
+          campaign_id_string, campaign and advertiser with GROUP BY returned real
+          names. docs/sources/amc.md section 4 previously recorded these as INTERNAL
+          and never outputtable; that was wrong. An INTERNAL column cannot appear in
+          a GROUP BY, so the query would have been rejected.
+      campaign_budget_amount:
+        type: LONG
+        kind: DIMENSION
+        threshold: LOW
+        monetary: true
+        scale: millicents
+        scale_divisor: 100000
+        note: Page states millicents and gives the 100,000 divisor explicitly.
+      campaign_country:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        pending: >
+          Observed representation and population (run 2026-08-26, window 2026-08-10 to
+          2026-08-23). validation/RESULTS.md publishes no accepted conclusion for it, so no
+          observed value is recorded here. The page's example value is 'US'.
+        note: >
+          The page sets the value from the campaign-level country setting. Only US is governed
+          by the current US commerce scope; any other value fails closed. No accepted live
+          presence result on this table; the pending run above is its only live read.
+      campaign_end_date: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      campaign_end_date_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      campaign_flight_budget_amount:
+        type: LONG
+        kind: METRIC
+        threshold: LOW
+        monetary: true
+        scale: millicents
+        scale_divisor: 100000
+        note: Page states millicents and gives the 100,000 divisor explicitly.
+      campaign_flight_end_date_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      campaign_flight_id: { type: LONG, kind: DIMENSION, threshold: LOW }
+      campaign_flight_name: { type: STRING, kind: DIMENSION, threshold: LOW }
+      campaign_flight_start_date_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      campaign_id:
+        type: LONG
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Page states this holds the same value as campaign_id_string on this table. The two are
+          different identifiers on sponsored_ads_traffic, so do not carry that assumption across.
+      campaign_id_string:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: Prefer this form; 18-digit IDs do not survive JSON integer precision.
+      campaign_insertion_order_id: { type: STRING, kind: DIMENSION, threshold: LOW }
+      campaign_primary_goal:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Closed value set the page enumerates: ROAS, TOTAL_ROAS, REACH, CPVC, COMPLETION_RATE,
+          CTR, CPC, DPVR, PAGE_VISIT, CPDPV, CPA, OTHER, NONE.
+      campaign_sales_type:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: Values are BILLABLE and BONUS; BONUS rows are non-billable and skew any cost ratio.
+      campaign_source: { type: STRING, kind: DIMENSION, threshold: LOW }
+      campaign_start_date: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      campaign_start_date_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      campaign_status:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: Values are ENDED, RUNNING, ENABLED, PAUSED, ADS_NOT_RUNNING.
+      city_name: { type: STRING, kind: DIMENSION, threshold: HIGH }
+      click_cost:
+        type: LONG
+        kind: METRIC
+        threshold: MEDIUM
+        monetary: true
+        scale: millicents
+        scale_divisor: 100000
+        note: >
+          Page gives only the label Click Cost (Millicents) with no divisor sentence, unlike every
+          other monetary column here. Unit is stated, divisor inferred from the millicent unit.
+      click_date: { type: DATE, kind: DIMENSION, threshold: LOW }
+      click_date_utc: { type: DATE, kind: DIMENSION, threshold: LOW }
+      click_day: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      click_day_utc: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      click_dt: { type: TIMESTAMP, kind: DIMENSION, threshold: MEDIUM }
+      click_dt_hour: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      click_dt_hour_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      click_dt_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: MEDIUM }
+      click_hour: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      click_hour_utc: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      clicks:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        note: Always 1 on this table, since every row is a click.
+      creative: { type: STRING, kind: DIMENSION, threshold: LOW }
+      creative_category:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: Values are Display, Video, and NULL; NULL is documented, not missing data.
+      creative_duration:
+        type: LONG
+        kind: DIMENSION
+        threshold: LOW
+        note: NULL on non-video creative formats.
+      creative_id: { type: LONG, kind: DIMENSION, threshold: LOW }
+      creative_is_link_in:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: A STRING holding Y or N, not a BOOLEAN, despite the page calling it a boolean field.
+      creative_size: { type: STRING, kind: DIMENSION, threshold: LOW }
+      creative_type: { type: STRING, kind: DIMENSION, threshold: LOW }
+      currency_iso_code: { type: STRING, kind: DIMENSION, threshold: LOW }
+      currency_name: { type: STRING, kind: DIMENSION, threshold: LOW }
+      deal_id:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: NULL on open-auction traffic; only private deals populate it.
+      deal_name:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: NULL on open-auction traffic; only private deals populate it.
+      demand_channel: { type: STRING, kind: DIMENSION, threshold: LOW }
+      demand_channel_owner: { type: STRING, kind: DIMENSION, threshold: LOW }
+      device_id: { type: STRING, kind: DIMENSION, threshold: VERY_HIGH }
+      device_make:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: Page warns capitalisation varies for one manufacturer, so normalise before grouping.
+      device_model:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: Page warns capitalisation varies for one manufacturer, so normalise before grouping.
+      device_type:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: Values are Tablet, Phone, TV, PC, ConnectedDevice, Unknown, and NULL.
+      dma_code: { type: STRING, kind: DIMENSION, threshold: LOW }
+      entity_id: { type: STRING, kind: DIMENSION, threshold: LOW }
+      environment_type:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: Values are Web, App, and NULL; NULL means the environment could not be determined.
+      household_id:
+        type: STRING
+        kind: DIMENSION
+        threshold: VERY_HIGH
+        note: >
+          Page states coverage begins 2026-04-10 and varies by region, so earlier windows have none.
+          A user moving household gets a different ID.
+      household_size:
+        type: STRING
+        kind: DIMENSION
+        threshold: HIGH
+        note: A STRING with buckets 1, 2, 3, 4+ and NULL, so it will not cast to a number.
+      impression_date: { type: DATE, kind: DIMENSION, threshold: LOW }
+      impression_date_utc: { type: DATE, kind: DIMENSION, threshold: LOW }
+      impression_day: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      impression_day_utc: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      impression_dt: { type: TIMESTAMP, kind: DIMENSION, threshold: MEDIUM }
+      impression_dt_hour: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      impression_dt_hour_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      impression_dt_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: MEDIUM }
+      impression_hour: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      impression_hour_utc: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      ip_address: { type: STRING, kind: DIMENSION, threshold: VERY_HIGH }
+      is_amazon_owned: { type: BOOLEAN, kind: DIMENSION, threshold: LOW }
+      iso_country_code: { type: STRING, kind: DIMENSION, threshold: LOW }
+      iso_state_province_code: { type: STRING, kind: DIMENSION, threshold: LOW }
+      line_item:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Line-item name, the DSP counterpart of ad_group on sponsored_ads_traffic; align the two
+          when unioning platforms.
+      line_item_budget_amount:
+        type: LONG
+        kind: DIMENSION
+        threshold: LOW
+        monetary: true
+        scale: millicents
+        scale_divisor: 100000
+        note: Page states millicents and gives the 100,000 divisor explicitly.
+      line_item_end_date: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      line_item_end_date_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      line_item_id: { type: LONG, kind: DIMENSION, threshold: LOW }
+      line_item_price_type: { type: STRING, kind: DIMENSION, threshold: LOW }
+      line_item_start_date: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      line_item_start_date_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      line_item_status:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: Values are ENDED, ENABLED, RUNNING, PAUSED_BY_USER, SUSPENDED.
+      line_item_type: { type: STRING, kind: DIMENSION, threshold: LOW }
+      manager_account_frequency_group_ids:
+        type: "Array[LONG]"
+        kind: DIMENSION
+        threshold: LOW
+        note: Array valued; one impression can sit in several frequency groups, so unnest before counting.
+      merchant_id: { type: LONG, kind: DIMENSION, threshold: LOW }
+      no_3p_trackers: { type: BOOLEAN, kind: DIMENSION, threshold: NONE }
+      operating_system: { type: STRING, kind: DIMENSION, threshold: LOW }
+      os_version: { type: STRING, kind: DIMENSION, threshold: LOW }
+      page_type: { type: STRING, kind: DIMENSION, threshold: LOW }
+      platform_fee:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: microcents
+        scale_divisor: 100000000
+        note: Page states microcents and gives the 100,000,000 divisor explicitly.
+      postal_code:
+        type: STRING
+        kind: DIMENSION
+        threshold: HIGH
+        note: >
+          Prefixed with the country code, and holds the country code alone when the postal code is
+          unknown, so a two-character value is not a malformed row.
+      product_line: { type: STRING, kind: DIMENSION, threshold: LOW }
+      publisher_name: { type: STRING, kind: DIMENSION, threshold: LOW }
+      request_tag:
+        type: STRING
+        kind: DIMENSION
+        threshold: VERY_HIGH
+        note: >
+          Links this click to the matching impression, view and conversion rows, appearing as
+          impression_id on those tables. Page warns duplicates occur, so prefer UNION ALL or
+          user_id over joining on it.
+      seller_id: { type: STRING, kind: DIMENSION, threshold: LOW }
+      seller_name: { type: STRING, kind: DIMENSION, threshold: LOW }
+      site: { type: STRING, kind: DIMENSION, threshold: LOW }
+      slot_position:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: Values are ATF, BTF, UNKNOWN.
+      supply_cost:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: microcents
+        scale_divisor: 100000000
+        note: Page states microcents and gives the 100,000,000 divisor explicitly.
+      supply_source: { type: STRING, kind: DIMENSION, threshold: LOW }
+      supply_source_id: { type: LONG, kind: DIMENSION, threshold: LOW }
+      user_id: { type: STRING, kind: DIMENSION, threshold: VERY_HIGH }
+      user_id_type:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Values are adUserId, sisDeviceId, adBrowserId and NULL; NULL here pairs with a NULL
+          user_id on the same row.
+  dsp_views:
+    source_page: datasources/dsp_views.md
+    verified: 2026-08-19
+    columns_rechecked: 2026-10-08
+    grain: One row per Amazon DSP view event, covering measurable, viewable and estimated-viewable events.
+    audience_twin: dsp_views_for_audiences
+    notes: >
+      One impression that is both measurable and viewable produces two rows, so impression counts
+      taken from this table double-count; use the per-kind metric columns instead.
+      Every view event here also exists in dsp_impressions, but not every impression reaches this table.
+      Time columns use the event_* prefix here, not the impression_* prefix used by dsp_impressions
+      and dsp_clicks.
+      There is no currency column on this table even though a millicent budget column is present.
+    columns:
+      ad_slot_size: { type: STRING, kind: DIMENSION, threshold: LOW }
+      advertiser:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Outputtable. VERIFIED 2026-08-19 by live query against AMC sandbox
+          instance SANDBOX_INSTANCE with aggregation controls ON: a final SELECT of
+          campaign_id_string, campaign and advertiser with GROUP BY returned real
+          names. docs/sources/amc.md section 4 previously recorded these as INTERNAL
+          and never outputtable; that was wrong. An INTERNAL column cannot appear in
+          a GROUP BY, so the query would have been rejected.
+      advertiser_account_frequency_group_ids:
+        type: "Array[LONG]"
+        kind: DIMENSION
+        threshold: LOW
+        note: Array valued; one impression can sit in several frequency groups, so unnest before counting.
+      advertiser_id: { type: LONG, kind: DIMENSION, threshold: LOW }
+      advertiser_timezone: { type: STRING, kind: DIMENSION, threshold: LOW }
+      app_bundle: { type: STRING, kind: DIMENSION, threshold: LOW }
+      campaign:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Outputtable. VERIFIED 2026-08-19 by live query against AMC sandbox
+          instance SANDBOX_INSTANCE with aggregation controls ON: a final SELECT of
+          campaign_id_string, campaign and advertiser with GROUP BY returned real
+          names. docs/sources/amc.md section 4 previously recorded these as INTERNAL
+          and never outputtable; that was wrong. An INTERNAL column cannot appear in
+          a GROUP BY, so the query would have been rejected.
+      campaign_country:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        pending: >
+          Observed representation and population (run 2026-08-26, window 2026-08-10 to
+          2026-08-23). validation/RESULTS.md publishes no accepted conclusion for it, so no
+          observed value is recorded here. The page's example value is 'US'.
+        note: >
+          The page sets the value from the campaign-level country setting. Only US is governed
+          by the current US commerce scope; any other value fails closed. No accepted live
+          presence result on this table; the pending run above is its only live read.
+      campaign_end_dt:
+        type: TIMESTAMP
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Named campaign_end_dt here but campaign_end_date on dsp_clicks and dsp_impressions; the
+          same applies to the start and line-item pairs on this table.
+      campaign_end_dt_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      campaign_flight_budget_amount:
+        type: LONG
+        kind: METRIC
+        threshold: LOW
+        monetary: true
+        scale: millicents
+        scale_divisor: 100000
+        note: >
+          Page states millicents and gives the 100,000 divisor explicitly. It points at currency_name
+          for the currency, but that column does not exist on this table.
+      campaign_flight_end_date_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      campaign_flight_id: { type: LONG, kind: DIMENSION, threshold: LOW }
+      campaign_flight_name: { type: STRING, kind: DIMENSION, threshold: LOW }
+      campaign_flight_start_date_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      campaign_id:
+        type: LONG
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Page states this holds the same value as campaign_id_string on this table. The two are
+          different identifiers on sponsored_ads_traffic, so do not carry that assumption across.
+      campaign_id_string:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: Prefer this form; 18-digit IDs do not survive JSON integer precision.
+      campaign_insertion_order_id: { type: STRING, kind: DIMENSION, threshold: LOW }
+      campaign_primary_goal:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Closed value set the page enumerates: ROAS, TOTAL_ROAS, REACH, CPVC, COMPLETION_RATE,
+          CTR, CPC, DPVR, PAGE_VISIT, CPDPV, CPA, OTHER, NONE.
+      campaign_sales_type:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: Values are BILLABLE and BONUS; BONUS rows are non-billable and skew any cost ratio.
+      campaign_source: { type: STRING, kind: DIMENSION, threshold: LOW }
+      campaign_start_dt: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      campaign_start_dt_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      campaign_status:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: Values are ENDED, RUNNING, ENABLED, PAUSED, ADS_NOT_RUNNING.
+      city_name: { type: STRING, kind: DIMENSION, threshold: HIGH }
+      creative: { type: STRING, kind: DIMENSION, threshold: LOW }
+      creative_category:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: Values are Display, Video, and NULL; NULL is documented, not missing data.
+      creative_duration:
+        type: LONG
+        kind: DIMENSION
+        threshold: LOW
+        note: NULL on non-video creative formats.
+      creative_id: { type: LONG, kind: DIMENSION, threshold: LOW }
+      creative_is_link_in:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: A STRING holding Y or N, not a BOOLEAN, despite the page calling it a boolean field.
+      creative_size: { type: STRING, kind: DIMENSION, threshold: LOW }
+      creative_type: { type: STRING, kind: DIMENSION, threshold: LOW }
+      demand_channel_owner:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: Present without the companion demand_channel column that dsp_clicks and dsp_impressions carry.
+      device_make:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: Page warns capitalisation varies for one manufacturer, so normalise before grouping.
+      device_model:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: Page warns capitalisation varies for one manufacturer, so normalise before grouping.
+      entity_id: { type: STRING, kind: DIMENSION, threshold: LOW }
+      environment_type:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: Values are Web, App, and NULL; NULL means the environment could not be determined.
+      household_id:
+        type: STRING
+        kind: DIMENSION
+        threshold: VERY_HIGH
+        note: >
+          Page states coverage begins 2026-04-10 and varies by region, so earlier windows have none.
+          A user moving household gets a different ID.
+      household_size:
+        type: STRING
+        kind: DIMENSION
+        threshold: HIGH
+        note: A STRING with buckets 1, 2, 3, 4+ and NULL, so it will not cast to a number.
+      event_date:
+        type: DATE
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Page says this and the rest of the event_* family populate for conversion events attributed
+          to an ad view, wording that does not fit a view-event table; population semantics unconfirmed.
+      event_date_utc: { type: DATE, kind: DIMENSION, threshold: LOW }
+      event_dt: { type: TIMESTAMP, kind: DIMENSION, threshold: MEDIUM }
+      event_dt_hour: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      event_dt_hour_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      event_dt_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: MEDIUM }
+      event_type:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Values observed on a live instance 2026-08-21: MEASURABLE_IMP, VIEW, SYNTHETIC_VIEW.
+          VIEWABLE_IMP does NOT exist — amc.md section 3 recorded it and was wrong, so a filter
+          on that literal matches nothing and returns zero rows rather than erroring. The page's
+          fourth value, UNMEASURABLE_IMP, did not appear in this data; absent here is not proof it
+          does not exist, so do not filter on its absence either.
+          Read viewability from the viewable_impressions column, never by filtering this one.
+          Only a live-instance probe settles it.
+        note: >
+          Sum measurable_impressions for MEASURABLE_IMP, viewable_impressions for the viewable value,
+          and unmeasurable_viewable_impressions for the two estimated kinds.
+      events:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        note: Always 1, and one impression can contribute several rows, so this is not an impression count.
+      impression_id:
+        type: STRING
+        kind: DIMENSION
+        threshold: VERY_HIGH
+        note: >
+          Carries the value that dsp_impressions and dsp_clicks expose as request_tag, and all view
+          rows for one impression share it. Page warns duplicates occur, so prefer UNION ALL or
+          user_id over joining on it.
+      ip_address: { type: STRING, kind: DIMENSION, threshold: VERY_HIGH }
+      line_item:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Line-item name, the DSP counterpart of ad_group on sponsored_ads_traffic; align the two
+          when unioning platforms.
+      line_item_end_dt: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      line_item_end_dt_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      line_item_id: { type: LONG, kind: DIMENSION, threshold: LOW }
+      line_item_price_type: { type: STRING, kind: DIMENSION, threshold: LOW }
+      line_item_start_dt: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      line_item_start_dt_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      line_item_status:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: Values are ENDED, ENABLED, RUNNING, PAUSED_BY_USER, SUSPENDED.
+      line_item_type: { type: STRING, kind: DIMENSION, threshold: LOW }
+      manager_account_frequency_group_ids:
+        type: "Array[LONG]"
+        kind: DIMENSION
+        threshold: LOW
+        note: Array valued; one impression can sit in several frequency groups, so unnest before counting.
+      measurable_impressions:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        note: A 1 or 0 flag on the row, set when the row is the measurable event for an impression.
+      merchant_id: { type: LONG, kind: DIMENSION, threshold: LOW }
+      no_3p_trackers: { type: BOOLEAN, kind: DIMENSION, threshold: NONE }
+      operating_system: { type: STRING, kind: DIMENSION, threshold: LOW }
+      os_version: { type: STRING, kind: DIMENSION, threshold: LOW }
+      page_type: { type: STRING, kind: DIMENSION, threshold: LOW }
+      publisher_name: { type: STRING, kind: DIMENSION, threshold: LOW }
+      seller_id: { type: STRING, kind: DIMENSION, threshold: LOW }
+      seller_name: { type: STRING, kind: DIMENSION, threshold: LOW }
+      site: { type: STRING, kind: DIMENSION, threshold: LOW }
+      slot_position:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: Values are ATF, BTF, UNKNOWN.
+      supply_source_id:
+        type: LONG
+        kind: DIMENSION
+        threshold: LOW
+        note: Present without the companion supply_source name column that dsp_clicks and dsp_impressions carry.
+      unmeasurable_viewable_impressions:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        note: A 1 or 0 flag covering both the unmeasurable-viewable and synthetic-view kinds, which are estimated.
+      user_id: { type: STRING, kind: DIMENSION, threshold: VERY_HIGH }
+      user_id_type:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Values are adUserId, sisDeviceId, adBrowserId and NULL; NULL here pairs with a NULL
+          user_id on the same row.
+      view_definition:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: Populated only on viewable rows; NULL on measurable, unmeasurable and synthetic rows.
+      viewable_impressions:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        note: >
+          A 1 or 0 flag on the row. Page states a viewable impression also has a measurable row, so
+          this and measurable_impressions never both apply to the same row.
+  dsp_video_events_feed:
+    source_page: datasources/dsp_video_events_feed.md
+    verified: 2026-08-19
+    grain: One row per Amazon DSP impression, carrying the video-player events triggered for that impression.
+    audience_twin: dsp_video_events_feed_for_audiences
+    # The page documents ONLY the video columns added on top of dsp_impressions, so the
+    # `columns` block below is a delta, not the table's full surface. A gate resolving a
+    # contract column against this table must union in dsp_impressions or it rejects
+    # user_id, impression_dt_utc, total_cost and 105 other legitimate columns. The
+    # inherited set brings both money scales with it.
+    inherits_columns_from: dsp_impressions
+    notes: >
+      The page lists only the columns added on top of dsp_impressions, so the whole dsp_impressions
+      column set also resolves against this table; an allowlist built from this page alone rejects
+      every base column.
+      Docs carry an explicit warning that workflows on this table time out over extended periods,
+      so date windows must be chunked.
+      Every column here is a per-impression 1 or 0 flag typed LONG, and all are 0 on non-video
+      impressions.
+      The page writes the column type as Metric rather than METRIC; normalised to METRIC here to
+      match the other DSP tables.
+    columns:
+      video_click:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        note: >
+          Page labels this video clicks but then describes the 1 case as the video being viewed to
+          completion, which is the video_complete wording; the trigger is unconfirmed.
+      video_complete: { type: LONG, kind: METRIC, threshold: NONE }
+      video_creative_view:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        note: Counts an extra ad element such as a companion ad or VPAID overlay, not the video itself.
+      video_first_quartile: { type: LONG, kind: METRIC, threshold: NONE }
+      video_impression:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        note: First frame shown, so it is narrower than the impressions column on dsp_impressions.
+      video_midpoint: { type: LONG, kind: METRIC, threshold: NONE }
+      video_mute: { type: LONG, kind: METRIC, threshold: NONE }
+      video_pause: { type: LONG, kind: METRIC, threshold: NONE }
+      video_replay: { type: LONG, kind: METRIC, threshold: NONE }
+      video_resume: { type: LONG, kind: METRIC, threshold: NONE }
+      video_skip_backward: { type: LONG, kind: METRIC, threshold: NONE }
+      video_skip_forward: { type: LONG, kind: METRIC, threshold: NONE }
+      video_start: { type: LONG, kind: METRIC, threshold: NONE }
+      video_third_quartile: { type: LONG, kind: METRIC, threshold: NONE }
+      video_unmute: { type: LONG, kind: METRIC, threshold: NONE }
+  conversions:
+    source_page: datasources/conversions.md
+    verified: 2026-08-19
+    columns_rechecked: 2026-10-08
+    grain: One row per ad-attributed or pixel conversion event; conversion_id is unique per row.
+    audience_twin: conversions_for_audiences
+    notes: >
+      Ad-attributed means a traffic event served to the same user in the 28 days
+      before the conversion; the table holds only ad-attributed and pixel events,
+      so it cannot separate organic. It carries no campaign or advertiser column
+      at all, so per-campaign attribution needs conversions_with_relevance. Time
+      columns are UTC-only here, with no advertiser-timezone variants and no
+      advertiser_timezone column.
+    columns:
+      combined_sales:
+        type: DECIMAL(38,4)
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+        note: On-Amazon plus off-Amazon sales already in local currency; never apply a cost divisor.
+      conversion_event_name: { type: STRING, kind: DIMENSION, threshold: LOW }
+      conversion_event_source_name: { type: STRING, kind: DIMENSION, threshold: LOW }
+      conversion_id:
+        type: STRING
+        kind: DIMENSION
+        threshold: VERY_HIGH
+        note: >
+          Unique per row on this table but repeats on conversions_with_relevance; never output.
+          VERIFIED 2026-08-29 on Sandbox and Standard with aggregation controls on: it can group
+          inside a CTE and support privacy-safe aggregate temporal attribution without appearing
+          in final output. Evidence: docs/sources/amc.md deduplicated temporal attribution.
+      conversions:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        note: Always holds 1, so a conversion total is a SUM of this column or a row count.
+      event_category:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        values: [purchase, website, off-Amazon]
+        note: Must be filtered to purchase before tracked_asin is treated as an ASIN.
+      event_date_utc: { type: DATE, kind: DIMENSION, threshold: LOW }
+      event_day_utc: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      event_dt_hour_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      event_dt_utc:
+        type: TIMESTAMP
+        kind: DIMENSION
+        threshold: MEDIUM
+        note: The only MEDIUM column on the table; selecting it needs 100 distinct users where the date and hour variants need 2.
+      event_hour_utc: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      event_subtype:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        values: [detailPageView, shoppingCart, order, searchConversion, brandStorePageView, wishList, babyRegistry, weddingRegistry, customerReview]
+        note: On-Amazon events use the words listed; off-Amazon events instead carry numeric identifiers such as 134, 140, 141.
+      event_type:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: Constant CONVERSION on this table, so it carries no information and cannot discriminate anything.
+      event_type_class:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        values: [consideration, conversion, "NULL"]
+        note: Documented as nullable, so treat a missing value as unclassified rather than as an error.
+      event_type_description: { type: STRING, kind: DIMENSION, threshold: LOW }
+      ip_address:
+        type: STRING
+        kind: DIMENSION
+        threshold: VERY_HIGH
+        note: NULL when no address was received; usable only inside a CTE, never in a final SELECT.
+      marketplace_name: { type: STRING, kind: DIMENSION, threshold: LOW }
+      new_to_brand:
+        type: BOOLEAN
+        kind: DIMENSION
+        threshold: LOW
+        note: Applies to purchase events only and uses a 12-month no-prior-purchase lookback.
+      no_3p_trackers: { type: BOOLEAN, kind: DIMENSION, threshold: NONE }
+      off_amazon_conversion_value:
+        type: DECIMAL(38,4)
+        kind: METRIC
+        threshold: NONE
+        note: Explicitly a non-monetary value for non-purchase events, so it must never be added to revenue.
+      off_amazon_product_sales:
+        type: DECIMAL(38,4)
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+        note: Advertiser-supplied purchase value from Conversion Builder, already in local currency.
+      purchase_currency:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: The currency for every monetary column here; AMC provides no FX, so no amount may be stored bare.
+      purchase_retail_program:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        values: [Amazon.com, Amazon Fresh, Whole Foods Market]
+        note: Present on this table but absent from conversions_with_relevance, so it cannot be carried across a union of the two.
+      purchase_unit_price:
+        type: DECIMAL(38,4)
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+        note: Price of one unit, not the line total, so it must not be summed as revenue.
+      total_product_sales:
+        type: DECIMAL(38,4)
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+        note: >
+          On-Amazon purchase revenue in local currency; no divisor applies. VERIFIED 2026-08-29
+          on Sandbox and Standard: currency-scoped first-touch, last-touch, and equal-linear
+          allocation each reconciled to the unique portfolio amount. This column is halo-inclusive
+          and cannot stand in for advertised-product-only product_sales.
+      total_units_sold: { type: LONG, kind: METRIC, threshold: NONE }
+      tracked_asin:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: NULL unless event_category is purchase, and it includes same-brand halo ASINs rather than only promoted ones.
+      tracked_item:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: Polymorphic across ASIN, brand store ID, branded search keyword and off-Amazon conversion-definition ID; matches tracked_asin only on purchase events.
+      user_id:
+        type: STRING
+        kind: DIMENSION
+        threshold: VERY_HIGH
+        note: NULL when Amazon cannot resolve an identifier; usable only inside a CTE, never in a final SELECT.
+      user_id_type:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        values: [adUserId, sisDeviceId, adBrowserId, "NULL"]
+        note: Goes NULL on exactly the rows where user_id is NULL, so it identifies which ID space a row belongs to.
+  conversions_with_relevance:
+    source_page: datasources/conversions_with_relevance.md
+    verified: 2026-08-19
+    grain: One row per conversion event per relevant campaign, engagement scope and brand halo type, so a single conversion fans out across rows.
+    audience_twin: conversions_with_relevance_for_audiences
+    notes: >
+      This is the multi-touch table and the only one of the conversion family
+      carrying campaign columns. Because a conversion repeats per relevant
+      campaign, summing conversions or total_product_sales across campaigns
+      double-counts; dedupe on conversion_id inside a CTE first. Only
+      ad-attributed and pixel events are present, so organic is not separable
+      here. Unlike conversions, this table carries both UTC and
+      advertiser-timezone time columns; never mix the two in one query.
+    columns:
+      advertiser:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Outputtable. VERIFIED 2026-08-19 by live query against AMC sandbox
+          instance SANDBOX_INSTANCE with aggregation controls ON: a final SELECT of
+          campaign_id_string, campaign and advertiser with GROUP BY returned real
+          names. docs/sources/amc.md section 4 previously recorded these as INTERNAL
+          and never outputtable; that was wrong. An INTERNAL column cannot appear in
+          a GROUP BY, so the query would have been rejected.
+      advertiser_id: { type: LONG, kind: DIMENSION, threshold: LOW }
+      advertiser_timezone:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: Names the zone the non-UTC time columns are expressed in, so it must travel with them.
+      campaign:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Outputtable. VERIFIED 2026-08-19 by live query against AMC sandbox
+          instance SANDBOX_INSTANCE with aggregation controls ON: a final SELECT of
+          campaign_id_string, campaign and advertiser with GROUP BY returned real
+          names. docs/sources/amc.md section 4 previously recorded these as INTERNAL
+          and never outputtable; that was wrong. An INTERNAL column cannot appear in
+          a GROUP BY, so the query would have been rejected.
+      campaign_budget_amount:
+        type: LONG
+        kind: DIMENSION
+        threshold: LOW
+        monetary: true
+        scale: millicents
+        scale_divisor: 100000
+        note: Stated as millicents on the page and typed as a dimension rather than a metric, so it needs dividing before display and must not be aggregated as a measure.
+      campaign_end_date: { type: DATE, kind: DIMENSION, threshold: LOW }
+      campaign_end_date_utc: { type: DATE, kind: DIMENSION, threshold: LOW }
+      campaign_end_dt: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      campaign_end_dt_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      campaign_id:
+        type: LONG
+        kind: DIMENSION
+        threshold: LOW
+        note: Holds DSP campaign IDs only; the page directs sponsored-ads IDs to campaign_id_string, so joining on this drops sponsored-ads rows silently.
+      campaign_id_string:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: The page explicitly recommends this over campaign_id because it covers both DSP and sponsored ads; use it as the join key to campaign metadata.
+      campaign_sales_type: { type: STRING, kind: DIMENSION, threshold: LOW }
+      campaign_source: { type: STRING, kind: DIMENSION, threshold: LOW }
+      campaign_start_date: { type: DATE, kind: DIMENSION, threshold: LOW }
+      campaign_start_date_utc: { type: DATE, kind: DIMENSION, threshold: LOW }
+      campaign_start_dt: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      campaign_start_dt_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      combined_sales:
+        type: DECIMAL(38,4)
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+        note: On-Amazon plus off-Amazon sales already in local currency; never apply a cost divisor.
+      conversion_event_name: { type: STRING, kind: DIMENSION, threshold: LOW }
+      conversion_event_source_name: { type: STRING, kind: DIMENSION, threshold: LOW }
+      conversion_id:
+        type: STRING
+        kind: DIMENSION
+        threshold: VERY_HIGH
+        note: >
+          Repeats on this table once per relevant campaign, engagement scope or halo type, unlike
+          conversions where it is unique; never output. VERIFIED 2026-08-29 on Sandbox and
+          Standard: conversion_id can group inside a CTE and collapse the relevance fan-out to
+          aggregate counts. This proves structural deduplication, not temporal touch order.
+      conversions:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        note: Described here only as a conversion count, without the always-1 wording the conversions page carries; because rows fan out, summing it across campaigns overstates conversions.
+      engagement_scope:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        values: [PROMOTED, BRAND_HALO, "NULL"]
+        note: Separates promoted from brand-halo relevance and is the switch for halo-inclusive versus promoted-only measurement; always PROMOTED on pixel events.
+      event_category:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        values: [purchase, website, pixel]
+        note: Must be filtered to purchase before tracked_asin is treated as an ASIN; search conversions land under website, and off-Amazon events read pixel here where the conversions page reads off-Amazon.
+      event_date: { type: DATE, kind: DIMENSION, threshold: LOW }
+      event_date_utc: { type: DATE, kind: DIMENSION, threshold: LOW }
+      event_day: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      event_day_utc: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      event_dt:
+        type: TIMESTAMP
+        kind: DIMENSION
+        threshold: MEDIUM
+        note: Needs 100 distinct users where the date and hour variants need 2; prefer event_date to avoid dropped rows.
+      event_dt_hour: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      event_dt_hour_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      event_dt_utc:
+        type: TIMESTAMP
+        kind: DIMENSION
+        threshold: MEDIUM
+        note: Needs 100 distinct users where the date and hour variants need 2; prefer event_date_utc to avoid dropped rows.
+      event_hour: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      event_hour_utc: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      event_subtype:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        values: [detailPageView, shoppingCart, order, searchConversion, brandStorePageView, wishList, babyRegistry, weddingRegistry, customerReview]
+        note: On-Amazon events use the words listed; off-Amazon events instead carry numeric identifiers such as 134, 140, 141.
+      event_type:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: Constant CONVERSION on this table, so it carries no information and cannot discriminate anything.
+      event_type_class:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: Blank on pixel conversions and on search conversions, so absence is expected rather than a data fault.
+      event_type_description:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: Blank on search conversions, and on pixel conversions carries advertiser-defined setup text whose meaning must be confirmed with whoever configured the campaign.
+      halo_code:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        values: [TRACKED_ASIN, VARIATIONAL_ASIN, BRAND_KEYWORD, CATEGORY_KEYWORD, BRAND_MARKETPLACE, BRAND_GL_PRODUCT, BRAND_CATEGORY, BRAND_SUBCATEGORY, "NULL"]
+        note: Classifies how a conversion relates to the campaign, so VARIATIONAL_ASIN marks a variation relationship and is not a parent ASIN or any product identifier; NULL on pixel conversions.
+      ip_address:
+        type: STRING
+        kind: DIMENSION
+        threshold: VERY_HIGH
+        note: NULL when no address was received; usable only inside a CTE, never in a final SELECT.
+      marketplace_name: { type: STRING, kind: DIMENSION, threshold: LOW }
+      new_to_brand: { type: BOOLEAN, kind: DIMENSION, threshold: LOW }
+      no_3p_trackers: { type: BOOLEAN, kind: DIMENSION, threshold: NONE }
+      off_amazon_conversion_value:
+        type: DECIMAL(38,4)
+        kind: METRIC
+        threshold: NONE
+        note: Explicitly a non-monetary value for non-purchase events, so it must never be added to revenue.
+      off_amazon_product_sales:
+        type: DECIMAL(38,4)
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+        note: Advertiser-supplied purchase value from Conversion Builder, already in local currency.
+      purchase_currency:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: The currency for every monetary column here; AMC provides no FX, so no amount may be stored bare.
+      purchase_unit_price:
+        type: DECIMAL(38,4)
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+        note: Price of one unit, not the line total, so it must not be summed as revenue.
+      total_product_sales:
+        type: DECIMAL(38,4)
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+        note: Covers promoted and same-brand halo ASINs together, so it is halo-inclusive revenue unless engagement_scope is filtered.
+      total_units_sold:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        note: Halo-inclusive like total_product_sales, and a single purchase event can carry several units.
+      tracked_asin:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: Populated only when event_category is purchase, and it includes same-brand halo ASINs rather than only promoted ones.
+      tracked_item:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: Polymorphic across ASIN, brand store ID, branded search keyword and off-Amazon conversion-definition ID; matches tracked_asin only on purchase events.
+      user_id:
+        type: STRING
+        kind: DIMENSION
+        threshold: VERY_HIGH
+        note: Usable only inside a CTE, never in a final SELECT.
+      user_id_type: { type: STRING, kind: DIMENSION, threshold: LOW }
+  conversions_all:
+    source_page: datasources/conversions_all_paid.md
+    verified: 2026-08-19
+    columns_rechecked: 2026-10-08
+    grain: One row per conversion event for tracked ASINs, covering both ad-exposed and non-ad-exposed events.
+    audience_twin: conversions_all_for_audiences
+    paid_feature: true
+    notes: >
+      The page slug is conversions_all_paid, not conversions_all; the table-named
+      URL 404s. Measurement queries need a paid subscription but the audience twin
+      does not. This is the only conversion table containing non-ad-exposed events,
+      so exposure_type is the sole route to organic versus ad-attributed. It has no
+      campaign or advertiser column, no advertiser-timezone time columns, no
+      user_id_type and no no_3p_trackers, so it cannot be unioned column-for-column
+      with the other two conversion tables. The page writes some kind values as
+      Dimension rather than DIMENSION; recorded verbatim, and a consumer comparing
+      kind strings must fold case.
+    columns:
+      conversion_id:
+        type: STRING
+        kind: DIMENSION
+        threshold: VERY_HIGH
+        note: Usable only inside a CTE, never in a final SELECT.
+      conversions:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        note: Described only as a conversion count here, without the always-1 wording the conversions page carries.
+      event_category:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        values: [purchase, website, pixel]
+        note: Must be filtered to purchase before tracked_asin is treated as an ASIN; search conversions land under website.
+      event_date_utc: { type: DATE, kind: DIMENSION, threshold: LOW }
+      event_day_utc: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      event_dt_hour_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      event_dt_utc:
+        type: TIMESTAMP
+        kind: DIMENSION
+        threshold: MEDIUM
+        note: The only MEDIUM column on the table; selecting it needs 100 distinct users where the date and hour variants need 2.
+      event_hour_utc: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      event_subtype:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        values: [alexaSkillEnable, babyRegistry, customerReview, detailPageView, order, shoppingCart, snsSubscription, weddingRegistry, wishList, searchConversion]
+        note: Lists alexaSkillEnable and snsSubscription which the other two conversion pages omit; pixel events carry a numeric identifier instead.
+      event_type: { type: STRING, kind: DIMENSION, threshold: LOW }
+      event_type_class:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: Blank on pixel conversions and on search conversions, so absence is expected rather than a data fault.
+      event_type_description:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: Blank on search conversions, and on pixel conversions carries advertiser-defined setup text whose meaning must be confirmed with whoever configured the campaign.
+      exposure_type:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        values: [ad-exposed, non-ad-exposed, pixel]
+        live:
+          - instance: STANDARD
+            date: 2026-10-08
+            outcome: resolves
+            scope: >
+              Read alone with controls on, populated. The table's other columns were not read.
+            source: validation/RESULTS.md#paid-feature-presence-and-forced-suppression--2026-10-08
+        note: The organic split. A purchase or website event is ad-exposed when a traffic event preceded it within 28 days, otherwise non-ad-exposed; pixel events always read pixel, so they are neither and must be excluded from an organic-versus-ad comparison.
+      ip_address:
+        type: STRING
+        kind: DIMENSION
+        threshold: VERY_HIGH
+        note: NULL when no address was received; usable only inside a CTE, never in a final SELECT.
+      marketplace_id:
+        type: INTEGER
+        kind: Dimension
+        threshold: INTERNAL
+        note: INTERNAL, so it can never be selected or filtered; use marketplace_name instead.
+      marketplace_name: { type: STRING, kind: Dimension, threshold: LOW }
+      new_to_brand: { type: BOOLEAN, kind: DIMENSION, threshold: LOW }
+      purchase_currency:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: The currency for every monetary column here; AMC provides no FX, so no amount may be stored bare.
+      purchase_unit_price:
+        type: DecimalDataType
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+        note: Type is written DecimalDataType on this page where the sibling pages write DECIMAL(38,4); read as a local-currency decimal with no divisor. Price of one unit, not the line total.
+      sns_subscription_id:
+        type: STRING
+        kind: DIMENSION
+        threshold: INTERNAL
+        note: INTERNAL, so subscribe-and-save cohorts cannot be built from it even inside a CTE.
+      total_product_sales:
+        type: DecimalDataType
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+        note: Type is written DecimalDataType on this page where the sibling pages write DECIMAL(38,4); read as a local-currency decimal with no divisor. Halo-inclusive, covering promoted and same-brand ASINs.
+      total_units_sold:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        note: Halo-inclusive like total_product_sales, and a single purchase event can carry several units.
+      tracked_asin:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: Populated only when event_category is purchase, and it includes same-brand halo ASINs rather than only promoted ones.
+      tracked_item:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: Polymorphic across ASIN, pixel ID, branded search keyword and app; matches tracked_asin only on purchase events.
+      user_id:
+        type: STRING
+        kind: DIMENSION
+        threshold: VERY_HIGH
+        note: Usable only inside a CTE, never in a final SELECT. This table has no user_id_type, so the ID space of a row cannot be identified here.
+      conversion_event_source:
+        type: STRING
+        kind: Dimension
+        threshold: LOW
+        note: Named conversion_event_source here but conversion_event_source_name on the other two conversion tables; easily confused across a union.
+      conversion_event_name: { type: STRING, kind: Dimension, threshold: LOW }
+      off_amazon_product_sales:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: unresolved
+        scale_divisor: null
+        status: disputed
+        dispute: >
+          This page types the column LONG, while the conversions and
+          conversions_with_relevance pages type the same column DECIMAL(38,4) and
+          amc.md section 6 lists it as needing no divisor. An integer monetary
+          column in AMC usually means a scaled integer, so applying no divisor
+          could be wrong by five orders of magnitude. Only a probe against a live
+          instance settles the scale.
+      off_amazon_conversion_value:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        status: disputed
+        dispute: >
+          This page types the column LONG and calls its value unitless and
+          advertiser-defined, while the sibling pages type it DECIMAL(38,4). It is
+          not currency either way and must never be added to revenue, but the type
+          disagreement is unresolved and only a live-instance probe settles it.
+      combined_sales:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: unresolved
+        scale_divisor: null
+        status: disputed
+        dispute: >
+          This page types the column LONG, yet defines it as the sum of
+          total_product_sales, which the same page types as a decimal. The sibling
+          pages type combined_sales DECIMAL(38,4) and amc.md section 6 lists it as
+          needing no divisor. The page contradicts itself, so the scale is
+          unresolved and only a live-instance probe settles it.
+  amazon_attributed_events_by_conversion_time:
+    source_page: datasources/amazon_attributed_events_by_conversion_time.md
+    verified: 2026-08-19
+    columns_rechecked: 2026-10-08
+    grain: one row per attributed conversion event paired with the single traffic event it is credited to
+    audience_twin: amazon_attributed_events_by_conversion_time_for_audiences
+    notes: >
+      No spend column exists here: click_cost, supply_cost, audience_fee,
+      platform_fee and bid_price are the only cost columns, so ROAS must be
+      assembled by UNION ALL against a traffic table at a shared aggregate grain.
+      Conversions fall inside the query window while the traffic they are
+      attributed to may sit up to 14 days earlier, so impression_* and click_*
+      dates can precede the window.
+      ad_product_type NULL means Amazon DSP, so an unfiltered query mixes display
+      into sponsored-ads numbers.
+      Modeled conversions are present and every grain below ad line is NULL for
+      them; user_id IS NULL does not identify them.
+    columns:
+      ad_product_type:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          NULL means Amazon DSP on this table, not unknown. Filtering on it is
+          mandatory before any sponsored-ads figure is reported.
+      ad_slot_size:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          The ad slot on the page, populated for Amazon DSP. Easily confused with
+          creative_size, which describes the ad itself rather than the slot.
+      add_to_cart: { type: LONG, kind: METRIC, threshold: NONE }
+      add_to_cart_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      add_to_cart_views: { type: LONG, kind: METRIC, threshold: NONE }
+      advertiser:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Outputtable. VERIFIED 2026-08-19 by live query against AMC sandbox
+          instance SANDBOX_INSTANCE with aggregation controls ON: a final SELECT of
+          campaign_id_string, campaign and advertiser with GROUP BY returned real
+          names. docs/sources/amc.md section 4 previously recorded these as INTERNAL
+          and never outputtable; that was wrong. An INTERNAL column cannot appear in
+          a GROUP BY, so the query would have been rejected.
+      advertiser_id:
+        type: LONG
+        kind: DIMENSION
+        threshold: LOW
+        note: Populated for Amazon DSP events only; NULL for sponsored ads is not unknown.
+      advertiser_timezone:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Required to interpret every non-_utc time column on this table. Carry it
+          onto every fact as source_timezone.
+      appstore_first_opens: { type: INTEGER, kind: METRIC, threshold: NONE }
+      appstore_first_opens_clicks: { type: INTEGER, kind: METRIC, threshold: NONE }
+      appstore_first_opens_views: { type: INTEGER, kind: METRIC, threshold: NONE }
+      appstore_first_session_hours: { type: "DECIMAL(38,2)", kind: METRIC, threshold: NONE }
+      appstore_first_session_hours_clicks: { type: "DECIMAL(38,2)", kind: METRIC, threshold: NONE }
+      appstore_first_session_hours_views: { type: "DECIMAL(38,2)", kind: METRIC, threshold: NONE }
+      appstore_opens: { type: INTEGER, kind: METRIC, threshold: NONE }
+      appstore_opens_clicks: { type: INTEGER, kind: METRIC, threshold: NONE }
+      appstore_opens_views: { type: INTEGER, kind: METRIC, threshold: NONE }
+      appstore_repeat_opens: { type: INTEGER, kind: METRIC, threshold: NONE }
+      appstore_repeat_opens_clicks: { type: INTEGER, kind: METRIC, threshold: NONE }
+      appstore_repeat_opens_views: { type: INTEGER, kind: METRIC, threshold: NONE }
+      appstore_repeat_session_hours: { type: "DECIMAL(38,2)", kind: METRIC, threshold: NONE }
+      appstore_repeat_session_hours_clicks: { type: "DECIMAL(38,2)", kind: METRIC, threshold: NONE }
+      appstore_repeat_session_hours_views: { type: "DECIMAL(38,2)", kind: METRIC, threshold: NONE }
+      appstore_usage_hours:
+        type: "DECIMAL(38,2)"
+        kind: METRIC
+        threshold: NONE
+        note: Hours, not money. Equals the first-session plus repeat-session hours.
+      appstore_usage_hours_clicks: { type: "DECIMAL(38,2)", kind: METRIC, threshold: NONE }
+      appstore_usage_hours_views: { type: "DECIMAL(38,2)", kind: METRIC, threshold: NONE }
+      audience_fee:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: microcents
+        scale_divisor: 100000000
+        note: >
+          Amazon DSP audience-targeting fee. Microcents, so 1000x finer than the
+          millicent columns in this same table. currency_name is not on this table;
+          pair with purchase_currency or the traffic-side currency.
+      bid_price:
+        type: LONG
+        kind: METRIC
+        threshold: MEDIUM
+        monetary: true
+        scale: microcents
+        scale_divisor: 100000000
+        note: >
+          MEDIUM, so selecting it lifts the whole query to 100 distinct users per
+          row. The only cost column here that escalates alongside click_cost.
+      brand_halo_add_to_cart: { type: LONG, kind: METRIC, threshold: NONE }
+      brand_halo_add_to_cart_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      brand_halo_add_to_cart_views: { type: LONG, kind: METRIC, threshold: NONE }
+      brand_halo_detail_page_view: { type: LONG, kind: METRIC, threshold: NONE }
+      brand_halo_detail_page_view_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      brand_halo_detail_page_view_views: { type: LONG, kind: METRIC, threshold: NONE }
+      brand_halo_product_sales:
+        type: "DECIMAL(38,4)"
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+        note: >
+          Already in local currency. NEVER divide. Covers same-brand products the
+          campaign did not promote, so adding it to product_sales counts revenue the
+          campaign did not advertise.
+      brand_halo_product_sales_clicks:
+        type: "DECIMAL(38,4)"
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+      brand_halo_product_sales_views:
+        type: "DECIMAL(38,4)"
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+      brand_halo_purchases: { type: LONG, kind: METRIC, threshold: NONE }
+      brand_halo_purchases_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      brand_halo_purchases_views: { type: LONG, kind: METRIC, threshold: NONE }
+      brand_halo_units_sold: { type: LONG, kind: METRIC, threshold: NONE }
+      brand_halo_units_sold_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      brand_halo_units_sold_views: { type: LONG, kind: METRIC, threshold: NONE }
+      browser_family:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: Describes the impression event, not the conversion event.
+      campaign:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Outputtable. VERIFIED 2026-08-19 by live query against AMC sandbox
+          instance SANDBOX_INSTANCE with aggregation controls ON: a final SELECT of
+          campaign_id_string, campaign and advertiser with GROUP BY returned real
+          names. docs/sources/amc.md section 4 previously recorded these as INTERNAL
+          and never outputtable; that was wrong. An INTERNAL column cannot appear in
+          a GROUP BY, so the query would have been rejected.
+      campaign_budget_amount:
+        type: LONG
+        kind: DIMENSION
+        threshold: LOW
+        monetary: true
+        scale: millicents
+        scale_divisor: 100000
+        note: >
+          Millicents, unlike the microcent fee columns on this same table. A budget,
+          not delivered spend, so it can never substitute for cost.
+      campaign_end_date:
+        type: TIMESTAMP
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          TIMESTAMP despite the _date name, and documented identically to
+          campaign_end_dt. Four near-duplicate variants exist; pick one and pin it.
+      campaign_end_date_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      campaign_end_dt: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      campaign_end_dt_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      campaign_flight_budget_amount:
+        type: LONG
+        kind: METRIC
+        threshold: LOW
+        monetary: true
+        scale: millicents
+        scale_divisor: 100000
+        note: >
+          The page types this METRIC while the sibling budget columns are DIMENSION;
+          recorded verbatim. LOW, so it does not escalate despite being a METRIC.
+      campaign_flight_end_date_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      campaign_flight_id: { type: LONG, kind: DIMENSION, threshold: LOW }
+      campaign_flight_name: { type: STRING, kind: DIMENSION, threshold: LOW }
+      campaign_flight_start_date_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      campaign_id:
+        type: LONG
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          On Amazon DSP rows this matches campaign_id_string exactly. On sponsored
+          ads rows it is the Ads API ID, a different identifier from the console ID
+          in campaign_id_string, so joining on the wrong one drops rows silently.
+      campaign_id_string:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        preferred: true
+        note: >
+          Use this one. It is the ads-console ID for sponsored ads, and an 18-digit
+          numeric campaign ID does not survive JSON integer precision.
+      campaign_insertion_order_id: { type: STRING, kind: DIMENSION, threshold: LOW }
+      campaign_primary_goal: { type: STRING, kind: DIMENSION, threshold: LOW }
+      campaign_start_date: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      campaign_start_date_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      campaign_status: { type: STRING, kind: DIMENSION, threshold: LOW }
+      city_name:
+        type: STRING
+        kind: DIMENSION
+        threshold: HIGH
+        note: >
+          HIGH, so literal filters on it are rejected outright and it still needs
+          100 distinct users per row. Amazon DSP events only.
+      click_cost:
+        type: LONG
+        kind: METRIC
+        threshold: MEDIUM
+        monetary: true
+        scale: millicents
+        scale_divisor: 100000
+        note: >
+          Millicents, unlike the microcent fee columns here. MEDIUM, so selecting it
+          lifts the whole query to 100 distinct users per row. Not total spend.
+      click_date:
+        type: DATE
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Populated only for click-attributed conversions; NULL on view-attributed
+          rows means not-applicable, not missing. Whole click_* family behaves so.
+      click_date_utc: { type: DATE, kind: DIMENSION, threshold: LOW }
+      click_day: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      click_day_utc: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      click_dt:
+        type: TIMESTAMP
+        kind: DIMENSION
+        threshold: MEDIUM
+        note: Escalates the whole query to 100 distinct users per row.
+      click_dt_hour:
+        type: TIMESTAMP
+        kind: DIMENSION
+        threshold: LOW
+        preferred: true
+        note: The hourly grain that does not escalate. Never truncate click_dt instead.
+      click_dt_hour_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      click_dt_utc:
+        type: TIMESTAMP
+        kind: DIMENSION
+        threshold: MEDIUM
+        note: Escalates the whole query to 100 distinct users per row.
+      click_hour: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      click_hour_utc: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      clicks:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        note: >
+          1 or 0 per conversion row, flagging click attribution. It is NOT the
+          campaign's click count; summing it counts attributed conversions.
+      combined_sales:
+        type: "DECIMAL(38,4)"
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+        note: >
+          Already in local currency. NEVER divide. Equals total_product_sales plus
+          off_amazon_product_sales, so it double-counts if added to either.
+      conversion_event_category:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          This is the column to filter on for purchase events. The page's
+          tracked_asin description calls it event_category, which does not exist here.
+      conversion_event_date: { type: DATE, kind: DIMENSION, threshold: LOW }
+      conversion_event_date_utc:
+        type: DATE
+        kind: DIMENSION
+        threshold: LOW
+        preferred: true
+        note: >
+          The window column for this table and the day grain that does not escalate.
+          Prefer over conversion_event_dt_utc.
+      conversion_event_dt:
+        type: TIMESTAMP
+        kind: DIMENSION
+        threshold: MEDIUM
+        note: Escalates the whole query to 100 distinct users per row.
+      conversion_event_dt_hour: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      conversion_event_dt_hour_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      conversion_event_dt_utc:
+        type: TIMESTAMP
+        kind: DIMENSION
+        threshold: MEDIUM
+        note: Escalates the whole query to 100 distinct users per row.
+      conversion_event_hour: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      conversion_event_hour_utc: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      conversion_event_marketplace_name:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Where the conversion happened, and can differ from
+          traffic_event_marketplace_name on the same row. Includes physical retail
+          values, so it is not a pure online-storefront dimension.
+      conversion_event_name: { type: STRING, kind: DIMENSION, threshold: LOW }
+      conversion_event_source_name:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          NULL means the conversion happened on Amazon, not that the source is
+          unknown. Filtering NULL out silently drops all on-Amazon conversions.
+      conversion_event_subtype:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Mixed value space: human-readable strings for on-Amazon events, bare
+          numeric codes for off-Amazon ones. Never pattern-match it as one domain.
+      conversion_event_type: { type: STRING, kind: DIMENSION, threshold: LOW }
+      conversion_event_type_class: { type: STRING, kind: DIMENSION, threshold: LOW }
+      conversion_event_type_description: { type: STRING, kind: DIMENSION, threshold: LOW }
+      conversions:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        note: Always 1, so summing it counts rows selected rather than measuring anything.
+      creative: { type: STRING, kind: DIMENSION, threshold: LOW }
+      creative_category: { type: STRING, kind: DIMENSION, threshold: LOW }
+      creative_duration:
+        type: LONG
+        kind: DIMENSION
+        threshold: LOW
+        note: Seconds, and NULL for non-video formats rather than 0.
+      creative_id: { type: LONG, kind: DIMENSION, threshold: LOW }
+      creative_is_link_in:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          STRING carrying Y or N, not a BOOLEAN despite the description calling it
+          one. Do not cast it like new_to_brand or is_amazon_business.
+      creative_size:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: Describes the ad; ad_slot_size describes the slot it landed in.
+      creative_type: { type: STRING, kind: DIMENSION, threshold: LOW }
+      customer_search_term:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          The shopper's typed text, distinct from the advertiser keyword in
+          targeting. Sponsored Brands terms only exist from 2022-12-02.
+      deal_id:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: NULL for open-auction traffic, meaning no private deal rather than unknown.
+      deal_name:
+        type: STRING
+        kind: METRIC
+        threshold: LOW
+        note: >
+          The page types this METRIC although it is a name; recorded verbatim. NULL
+          for open-auction traffic.
+      detail_page_view:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        note: >
+          Singular name while purchases and units_sold are plural, and the
+          view-attributed sibling stacks to detail_page_view_views. Pin as a literal.
+      detail_page_view_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      detail_page_view_views: { type: LONG, kind: METRIC, threshold: NONE }
+      device_make:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Device manufacturer, never a merchant brand. Capitalisation varies for the
+          same maker, so it needs normalising before grouping.
+      device_model: { type: STRING, kind: DIMENSION, threshold: LOW }
+      device_type: { type: STRING, kind: DIMENSION, threshold: LOW }
+      digital_app_subscription_signup_purchases: { type: LONG, kind: METRIC, threshold: NONE }
+      digital_app_subscription_signup_purchases_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      digital_app_subscription_signup_purchases_views: { type: LONG, kind: METRIC, threshold: NONE }
+      digital_free_trial_app_subscription_signup_purchases: { type: LONG, kind: METRIC, threshold: NONE }
+      digital_free_trial_app_subscription_signup_purchases_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      digital_free_trial_app_subscription_signup_purchases_views: { type: LONG, kind: METRIC, threshold: NONE }
+      digital_free_trial_subscription_signup_purchases: { type: LONG, kind: METRIC, threshold: NONE }
+      digital_free_trial_subscription_signup_purchases_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      digital_free_trial_subscription_signup_purchases_views: { type: LONG, kind: METRIC, threshold: NONE }
+      digital_paid_app_subscription_signup_purchases: { type: LONG, kind: METRIC, threshold: NONE }
+      digital_paid_app_subscription_signup_purchases_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      digital_paid_app_subscription_signup_purchases_views: { type: LONG, kind: METRIC, threshold: NONE }
+      digital_paid_subscription_signup_purchases: { type: LONG, kind: METRIC, threshold: NONE }
+      digital_paid_subscription_signup_purchases_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      digital_paid_subscription_signup_purchases_views: { type: LONG, kind: METRIC, threshold: NONE }
+      digital_subscription_signup_purchases:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        note: >
+          Free trial plus paid, so it overlaps the _free_trial_ and _paid_ variants.
+          The app-scoped family is a separate overlapping set again.
+      digital_subscription_signup_purchases_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      digital_subscription_signup_purchases_views: { type: LONG, kind: METRIC, threshold: NONE }
+      dma_code: { type: STRING, kind: DIMENSION, threshold: LOW }
+      entity_id: { type: STRING, kind: DIMENSION, threshold: LOW }
+      environment_type:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: NULL means the environment could not be determined, not a third category.
+      impression_date:
+        type: DATE
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Populated only for view-attributed conversions; NULL on click-attributed
+          rows means not-applicable. Can precede the query window by up to 14 days.
+      impression_date_utc: { type: DATE, kind: DIMENSION, threshold: LOW }
+      impression_day: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      impression_day_utc: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      impression_dt:
+        type: TIMESTAMP
+        kind: DIMENSION
+        threshold: MEDIUM
+        note: Escalates the whole query to 100 distinct users per row.
+      impression_dt_hour:
+        type: TIMESTAMP
+        kind: DIMENSION
+        threshold: LOW
+        preferred: true
+        note: The hourly grain that does not escalate. Never truncate impression_dt instead.
+      impression_dt_hour_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      impression_dt_utc:
+        type: TIMESTAMP
+        kind: DIMENSION
+        threshold: MEDIUM
+        note: Escalates the whole query to 100 distinct users per row.
+      impression_hour: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      impression_hour_utc: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      impressions:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        note: >
+          1 or 0 per conversion row, flagging view attribution. It is NOT the
+          campaign's impression count and must never feed a reach or CPM figure.
+      is_amazon_business:
+        type: BOOLEAN
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Three-valued: true, false, and NULL for every ad product other than
+          Sponsored Products and Sponsored Brands. NULL is unsupported-by-channel.
+      iso_country_code: { type: STRING, kind: DIMENSION, threshold: LOW }
+      iso_state_province_code: { type: STRING, kind: DIMENSION, threshold: LOW }
+      line_item:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Carries the ad group name on sponsored ads rows, so it is the same concept
+          under a DSP name. Modeled conversions are NULL below ad line level.
+      line_item_budget_amount:
+        type: LONG
+        kind: DIMENSION
+        threshold: LOW
+        monetary: true
+        scale: millicents
+        scale_divisor: 100000
+        note: Millicents, unlike the microcent fee columns on this table. A budget, not spend.
+      line_item_end_date: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      line_item_end_date_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      line_item_id:
+        type: LONG
+        kind: DIMENSION
+        threshold: LOW
+        note: NULL for sponsored ads events, meaning not-applicable rather than missing.
+      line_item_start_date: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      line_item_start_date_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      line_item_status: { type: STRING, kind: DIMENSION, threshold: LOW }
+      line_item_type: { type: STRING, kind: DIMENSION, threshold: LOW }
+      match_type:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: NULL for media that is not keyword-targeted, which is not an unknown match type.
+      new_to_brand:
+        type: BOOLEAN
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          A dimension, separate from the new_to_brand_* metric family. Applies only
+          to purchase events, and rests on a 12-month no-prior-purchase lookback.
+      new_to_brand_brand_halo_product_sales:
+        type: "DECIMAL(38,4)"
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+        note: >
+          Already in local currency. NEVER divide. 12-month NTB lookback, and halo
+          scope, so it is a subset of brand_halo_product_sales.
+      new_to_brand_brand_halo_product_sales_clicks:
+        type: "DECIMAL(38,4)"
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+      new_to_brand_brand_halo_product_sales_views:
+        type: "DECIMAL(38,4)"
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+      new_to_brand_brand_halo_purchases: { type: LONG, kind: METRIC, threshold: NONE }
+      new_to_brand_brand_halo_purchases_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      new_to_brand_brand_halo_purchases_views: { type: LONG, kind: METRIC, threshold: NONE }
+      new_to_brand_brand_halo_units_sold: { type: LONG, kind: METRIC, threshold: NONE }
+      new_to_brand_brand_halo_units_sold_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      new_to_brand_brand_halo_units_sold_views: { type: LONG, kind: METRIC, threshold: NONE }
+      new_to_brand_product_sales:
+        type: "DECIMAL(38,4)"
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+        note: >
+          Already in local currency. NEVER divide. 12-month NTB lookback; a subset of
+          product_sales, so it must not be added to it.
+      new_to_brand_product_sales_clicks:
+        type: "DECIMAL(38,4)"
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+      new_to_brand_product_sales_views:
+        type: "DECIMAL(38,4)"
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+      new_to_brand_purchases: { type: LONG, kind: METRIC, threshold: NONE }
+      new_to_brand_purchases_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      new_to_brand_purchases_views: { type: LONG, kind: METRIC, threshold: NONE }
+      new_to_brand_total_product_sales:
+        type: "DECIMAL(38,4)"
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+        note: >
+          Already in local currency. NEVER divide. Promoted plus halo for NTB
+          customers on a 12-month lookback.
+      new_to_brand_total_product_sales_clicks:
+        type: "DECIMAL(38,4)"
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+      new_to_brand_total_product_sales_views:
+        type: "DECIMAL(38,4)"
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+      new_to_brand_total_purchases: { type: LONG, kind: METRIC, threshold: NONE }
+      new_to_brand_total_purchases_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      new_to_brand_total_purchases_views: { type: LONG, kind: METRIC, threshold: NONE }
+      new_to_brand_total_units_sold: { type: LONG, kind: METRIC, threshold: NONE }
+      new_to_brand_total_units_sold_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      new_to_brand_total_units_sold_views: { type: LONG, kind: METRIC, threshold: NONE }
+      new_to_brand_units_sold: { type: LONG, kind: METRIC, threshold: NONE }
+      new_to_brand_units_sold_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      new_to_brand_units_sold_views: { type: LONG, kind: METRIC, threshold: NONE }
+      no_3p_trackers: { type: BOOLEAN, kind: DIMENSION, threshold: NONE }
+      off_amazon_conversion_value:
+        type: "DECIMAL(38,4)"
+        kind: METRIC
+        threshold: NONE
+        note: >
+          NOT money. An advertiser-assigned weight for non-purchase off-Amazon
+          events, so it must never be summed into revenue or divided by a scale.
+      off_amazon_product_sales:
+        type: "DECIMAL(38,4)"
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+        note: >
+          Already in local currency. NEVER divide. Populated only where an Events
+          Manager solution passes a sales value, so 0 and absent are not distinguishable.
+      operating_system: { type: STRING, kind: DIMENSION, threshold: LOW }
+      os_version: { type: STRING, kind: DIMENSION, threshold: LOW }
+      page_type: { type: STRING, kind: DIMENSION, threshold: LOW }
+      placement_type: { type: STRING, kind: DIMENSION, threshold: LOW }
+      platform_fee:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: microcents
+        scale_divisor: 100000000
+        note: >
+          Microcents, 1000x finer than the millicent columns here. Derived as a
+          percentage of supply_cost, so it is not independent of it.
+      postal_code:
+        type: STRING
+        kind: DIMENSION
+        threshold: HIGH
+        note: >
+          HIGH, so literal filters on it are rejected and it needs 100 distinct users
+          per row. Prefixed with the country code, and country-only when the postal
+          code is unknown, so length varies.
+      product_line:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Amazon's campaign categorisation, NOT a merchant brand. AMC never names the
+          brand anywhere on this table.
+      product_sales:
+        type: "DECIMAL(38,4)"
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+        note: >
+          Already in local currency. NEVER divide. Applying a cost divisor here is a
+          5-to-8 order-of-magnitude error in every ROAS numerator. Promoted ASINs only.
+      product_sales_clicks:
+        type: "DECIMAL(38,4)"
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+      product_sales_views:
+        type: "DECIMAL(38,4)"
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+      purchase_currency:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          The currency of every sales column here. AMC provides no FX, so never store
+          a sales amount without it.
+      purchase_retail_program: { type: STRING, kind: DIMENSION, threshold: LOW }
+      purchase_unit_price:
+        type: DECIMAL
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+        note: >
+          Already in local currency. NEVER divide. Typed as bare DECIMAL with no
+          declared precision, unlike the DECIMAL(38,4) sales columns. Per unit, not
+          per order, so it is not product_sales divided by units_sold.
+      purchases: { type: LONG, kind: METRIC, threshold: NONE }
+      purchases_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      purchases_views: { type: LONG, kind: METRIC, threshold: NONE }
+      request_tag:
+        type: STRING
+        kind: DIMENSION
+        threshold: VERY_HIGH
+        note: >
+          Never outputtable, and the page warns duplicates occur so it is not a safe
+          JOIN key. Prefer UNION ALL, or user_id inside a CTE.
+      site: { type: STRING, kind: DIMENSION, threshold: LOW }
+      supply_cost:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: microcents
+        scale_divisor: 100000000
+        note: >
+          Microcents, 1000x finer than the millicent columns here. What Amazon DSP
+          pays a publisher, so it excludes the fee columns and is not total spend.
+      supply_source: { type: STRING, kind: DIMENSION, threshold: LOW }
+      targeting:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: The advertiser's keyword, distinct from the shopper text in customer_search_term.
+      total_add_to_cart: { type: LONG, kind: METRIC, threshold: NONE }
+      total_add_to_cart_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      total_add_to_cart_views: { type: LONG, kind: METRIC, threshold: NONE }
+      total_detail_page_view: { type: LONG, kind: METRIC, threshold: NONE }
+      total_detail_page_view_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      total_detail_page_view_views: { type: LONG, kind: METRIC, threshold: NONE }
+      total_product_sales:
+        type: "DECIMAL(38,4)"
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+        note: >
+          Already in local currency. NEVER divide. Equals product_sales plus
+          brand_halo_product_sales, so adding any of the three together double-counts.
+      total_product_sales_clicks:
+        type: "DECIMAL(38,4)"
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+      total_product_sales_views:
+        type: "DECIMAL(38,4)"
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+      total_purchases: { type: LONG, kind: METRIC, threshold: NONE }
+      total_purchases_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      total_purchases_views: { type: LONG, kind: METRIC, threshold: NONE }
+      total_units_sold: { type: LONG, kind: METRIC, threshold: NONE }
+      total_units_sold_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      total_units_sold_views: { type: LONG, kind: METRIC, threshold: NONE }
+      tracked_asin:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Populated only for on-Amazon purchase events; NULL elsewhere is
+          not-applicable. Includes same-brand halo products, so it is not a list of
+          advertised ASINs. It is a child ASIN; AMC has no parent ASIN here.
+      tracked_item:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        do_not_model: true
+        note: >
+          Polymorphic: an ASIN, a brand store ID, a branded-search keyword, or an
+          off-Amazon conversion-definition ID depending on event subtype. Never join
+          it to an ASIN without first filtering to purchase events.
+      traffic_event_date: { type: DATE, kind: DIMENSION, threshold: LOW }
+      traffic_event_date_utc:
+        type: DATE
+        kind: DIMENSION
+        threshold: LOW
+        preferred: true
+        note: >
+          On this table the traffic side is the lagging side and may fall up to 14
+          days before the query window.
+      traffic_event_dt:
+        type: TIMESTAMP
+        kind: DIMENSION
+        threshold: MEDIUM
+        note: Escalates the whole query to 100 distinct users per row.
+      traffic_event_dt_hour:
+        type: TIMESTAMP
+        kind: DIMENSION
+        threshold: LOW
+        preferred: true
+        note: The hourly grain that does not escalate. Never truncate traffic_event_dt instead.
+      traffic_event_dt_hour_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      traffic_event_dt_utc:
+        type: TIMESTAMP
+        kind: DIMENSION
+        threshold: MEDIUM
+        note: Escalates the whole query to 100 distinct users per row.
+      traffic_event_hour: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      traffic_event_hour_utc: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      traffic_event_id:
+        type: STRING
+        kind: DIMENSION
+        threshold: VERY_HIGH
+        note: >
+          Join key to sponsored_ads_traffic.event_id, and the documented route from
+          attributed conversions back to traffic. VERY_HIGH, so the join must happen
+          inside a CTE and the key can never reach output. Sponsored ads only.
+      traffic_event_marketplace_name:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Where the traffic happened, and can differ from
+          conversion_event_marketplace_name on the same row, so one row can span two
+          marketplaces and neither column alone is a row-level marketplace.
+      traffic_event_subtype:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: AD_IMP or AD_CLICK. The dimension form of the clicks and impressions flags.
+      traffic_event_type: { type: STRING, kind: DIMENSION, threshold: LOW }
+      units_sold:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        note: >
+          Can exceed 1 on a single purchase row, unlike purchases, so the two are not
+          interchangeable counts.
+      units_sold_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      units_sold_views: { type: LONG, kind: METRIC, threshold: NONE }
+      user_id:
+        type: STRING
+        kind: DIMENSION
+        threshold: VERY_HIGH
+        note: >
+          CTE use only, never in output. NULL when Amazon cannot resolve an
+          identifier, which is neither a distinct user nor a modeled conversion.
+      user_id_type:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          adUserId, sisDeviceId, adBrowserId or NULL. Mixes ID spaces, so a distinct
+          count spans accounts, devices and browsers rather than people.
+  amazon_attributed_events_by_traffic_time:
+    source_page: datasources/amazon_attributed_events_by_conversion_time.md
+    verified: 2026-08-19
+    columns_rechecked: 2026-10-08
+    grain: one row per attributed conversion event paired with the single traffic event it is credited to
+    audience_twin: amazon_attributed_events_by_traffic_time_for_audiences
+    shares_schema_with: amazon_attributed_events_by_conversion_time
+    notes: >
+      This table has no page of its own; the conversion-time page documents both and
+      states they carry the same metrics and dimensions, differing only in which
+      events are selected.
+      Traffic events fall inside the query window while conversions may occur up to
+      30 days after it, and AMC automatically extends the conversion range 30 days
+      past the window end, so THE SAME WORKFLOW OVER THE SAME WINDOW RETURNS
+      DIFFERENT NUMBERS BETWEEN RUNS. Never treat its output as a stable snapshot,
+      never diff two runs as if change meant real-world change, and stamp the
+      execution time on every load.
+      No spend column exists here either, so ROAS must be assembled by UNION ALL
+      against a traffic table at a shared aggregate grain.
+      ad_product_type NULL means Amazon DSP, and modeled conversions null out every
+      grain below ad line.
+    columns:
+      ad_product_type:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          NULL means Amazon DSP on this table, not unknown. Filtering on it is
+          mandatory before any sponsored-ads figure is reported.
+      ad_slot_size:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          The ad slot on the page, populated for Amazon DSP. Easily confused with
+          creative_size, which describes the ad itself rather than the slot.
+      add_to_cart: { type: LONG, kind: METRIC, threshold: NONE }
+      add_to_cart_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      add_to_cart_views: { type: LONG, kind: METRIC, threshold: NONE }
+      advertiser:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Outputtable. VERIFIED 2026-08-19 by live query against AMC sandbox
+          instance SANDBOX_INSTANCE with aggregation controls ON: a final SELECT of
+          campaign_id_string, campaign and advertiser with GROUP BY returned real
+          names. docs/sources/amc.md section 4 previously recorded these as INTERNAL
+          and never outputtable; that was wrong. An INTERNAL column cannot appear in
+          a GROUP BY, so the query would have been rejected.
+      advertiser_id:
+        type: LONG
+        kind: DIMENSION
+        threshold: LOW
+        note: Populated for Amazon DSP events only; NULL for sponsored ads is not unknown.
+      advertiser_timezone:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Required to interpret every non-_utc time column on this table. Carry it
+          onto every fact as source_timezone.
+      appstore_first_opens: { type: INTEGER, kind: METRIC, threshold: NONE }
+      appstore_first_opens_clicks: { type: INTEGER, kind: METRIC, threshold: NONE }
+      appstore_first_opens_views: { type: INTEGER, kind: METRIC, threshold: NONE }
+      appstore_first_session_hours: { type: "DECIMAL(38,2)", kind: METRIC, threshold: NONE }
+      appstore_first_session_hours_clicks: { type: "DECIMAL(38,2)", kind: METRIC, threshold: NONE }
+      appstore_first_session_hours_views: { type: "DECIMAL(38,2)", kind: METRIC, threshold: NONE }
+      appstore_opens: { type: INTEGER, kind: METRIC, threshold: NONE }
+      appstore_opens_clicks: { type: INTEGER, kind: METRIC, threshold: NONE }
+      appstore_opens_views: { type: INTEGER, kind: METRIC, threshold: NONE }
+      appstore_repeat_opens: { type: INTEGER, kind: METRIC, threshold: NONE }
+      appstore_repeat_opens_clicks: { type: INTEGER, kind: METRIC, threshold: NONE }
+      appstore_repeat_opens_views: { type: INTEGER, kind: METRIC, threshold: NONE }
+      appstore_repeat_session_hours: { type: "DECIMAL(38,2)", kind: METRIC, threshold: NONE }
+      appstore_repeat_session_hours_clicks: { type: "DECIMAL(38,2)", kind: METRIC, threshold: NONE }
+      appstore_repeat_session_hours_views: { type: "DECIMAL(38,2)", kind: METRIC, threshold: NONE }
+      appstore_usage_hours:
+        type: "DECIMAL(38,2)"
+        kind: METRIC
+        threshold: NONE
+        note: Hours, not money. Equals the first-session plus repeat-session hours.
+      appstore_usage_hours_clicks: { type: "DECIMAL(38,2)", kind: METRIC, threshold: NONE }
+      appstore_usage_hours_views: { type: "DECIMAL(38,2)", kind: METRIC, threshold: NONE }
+      audience_fee:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: microcents
+        scale_divisor: 100000000
+        note: >
+          Amazon DSP audience-targeting fee. Microcents, so 1000x finer than the
+          millicent columns in this same table. currency_name is not on this table;
+          pair with purchase_currency or the traffic-side currency.
+      bid_price:
+        type: LONG
+        kind: METRIC
+        threshold: MEDIUM
+        monetary: true
+        scale: microcents
+        scale_divisor: 100000000
+        note: >
+          MEDIUM, so selecting it lifts the whole query to 100 distinct users per
+          row. The only cost column here that escalates alongside click_cost.
+      brand_halo_add_to_cart: { type: LONG, kind: METRIC, threshold: NONE }
+      brand_halo_add_to_cart_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      brand_halo_add_to_cart_views: { type: LONG, kind: METRIC, threshold: NONE }
+      brand_halo_detail_page_view: { type: LONG, kind: METRIC, threshold: NONE }
+      brand_halo_detail_page_view_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      brand_halo_detail_page_view_views: { type: LONG, kind: METRIC, threshold: NONE }
+      brand_halo_product_sales:
+        type: "DECIMAL(38,4)"
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+        note: >
+          Already in local currency. NEVER divide. Covers same-brand products the
+          campaign did not promote, so adding it to product_sales counts revenue the
+          campaign did not advertise.
+      brand_halo_product_sales_clicks:
+        type: "DECIMAL(38,4)"
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+      brand_halo_product_sales_views:
+        type: "DECIMAL(38,4)"
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+      brand_halo_purchases: { type: LONG, kind: METRIC, threshold: NONE }
+      brand_halo_purchases_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      brand_halo_purchases_views: { type: LONG, kind: METRIC, threshold: NONE }
+      brand_halo_units_sold: { type: LONG, kind: METRIC, threshold: NONE }
+      brand_halo_units_sold_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      brand_halo_units_sold_views: { type: LONG, kind: METRIC, threshold: NONE }
+      browser_family:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: Describes the impression event, not the conversion event.
+      campaign:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Outputtable. VERIFIED 2026-08-19 by live query against AMC sandbox
+          instance SANDBOX_INSTANCE with aggregation controls ON: a final SELECT of
+          campaign_id_string, campaign and advertiser with GROUP BY returned real
+          names. docs/sources/amc.md section 4 previously recorded these as INTERNAL
+          and never outputtable; that was wrong. An INTERNAL column cannot appear in
+          a GROUP BY, so the query would have been rejected.
+      campaign_budget_amount:
+        type: LONG
+        kind: DIMENSION
+        threshold: LOW
+        monetary: true
+        scale: millicents
+        scale_divisor: 100000
+        note: >
+          Millicents, unlike the microcent fee columns on this same table. A budget,
+          not delivered spend, so it can never substitute for cost.
+      campaign_end_date:
+        type: TIMESTAMP
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          TIMESTAMP despite the _date name, and documented identically to
+          campaign_end_dt. Four near-duplicate variants exist; pick one and pin it.
+      campaign_end_date_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      campaign_end_dt: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      campaign_end_dt_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      campaign_flight_budget_amount:
+        type: LONG
+        kind: METRIC
+        threshold: LOW
+        monetary: true
+        scale: millicents
+        scale_divisor: 100000
+        note: >
+          The page types this METRIC while the sibling budget columns are DIMENSION;
+          recorded verbatim. LOW, so it does not escalate despite being a METRIC.
+      campaign_flight_end_date_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      campaign_flight_id: { type: LONG, kind: DIMENSION, threshold: LOW }
+      campaign_flight_name: { type: STRING, kind: DIMENSION, threshold: LOW }
+      campaign_flight_start_date_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      campaign_id:
+        type: LONG
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          On Amazon DSP rows this matches campaign_id_string exactly. On sponsored
+          ads rows it is the Ads API ID, a different identifier from the console ID
+          in campaign_id_string, so joining on the wrong one drops rows silently.
+      campaign_id_string:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        preferred: true
+        note: >
+          Use this one. It is the ads-console ID for sponsored ads, and an 18-digit
+          numeric campaign ID does not survive JSON integer precision.
+      campaign_insertion_order_id: { type: STRING, kind: DIMENSION, threshold: LOW }
+      campaign_primary_goal: { type: STRING, kind: DIMENSION, threshold: LOW }
+      campaign_start_date: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      campaign_start_date_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      campaign_status: { type: STRING, kind: DIMENSION, threshold: LOW }
+      city_name:
+        type: STRING
+        kind: DIMENSION
+        threshold: HIGH
+        note: >
+          HIGH, so literal filters on it are rejected outright and it still needs
+          100 distinct users per row. Amazon DSP events only.
+      click_cost:
+        type: LONG
+        kind: METRIC
+        threshold: MEDIUM
+        monetary: true
+        scale: millicents
+        scale_divisor: 100000
+        note: >
+          Millicents, unlike the microcent fee columns here. MEDIUM, so selecting it
+          lifts the whole query to 100 distinct users per row. Not total spend.
+      click_date:
+        type: DATE
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Populated only for click-attributed conversions; NULL on view-attributed
+          rows means not-applicable, not missing. Whole click_* family behaves so.
+      click_date_utc: { type: DATE, kind: DIMENSION, threshold: LOW }
+      click_day: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      click_day_utc: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      click_dt:
+        type: TIMESTAMP
+        kind: DIMENSION
+        threshold: MEDIUM
+        note: Escalates the whole query to 100 distinct users per row.
+      click_dt_hour:
+        type: TIMESTAMP
+        kind: DIMENSION
+        threshold: LOW
+        preferred: true
+        note: The hourly grain that does not escalate. Never truncate click_dt instead.
+      click_dt_hour_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      click_dt_utc:
+        type: TIMESTAMP
+        kind: DIMENSION
+        threshold: MEDIUM
+        note: Escalates the whole query to 100 distinct users per row.
+      click_hour: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      click_hour_utc: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      clicks:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        note: >
+          1 or 0 per conversion row, flagging click attribution. It is NOT the
+          campaign's click count; summing it counts attributed conversions.
+      combined_sales:
+        type: "DECIMAL(38,4)"
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+        note: >
+          Already in local currency. NEVER divide. Equals total_product_sales plus
+          off_amazon_product_sales, so it double-counts if added to either.
+      conversion_event_category:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          This is the column to filter on for purchase events. The page's
+          tracked_asin description calls it event_category, which does not exist here.
+      conversion_event_date: { type: DATE, kind: DIMENSION, threshold: LOW }
+      conversion_event_date_utc:
+        type: DATE
+        kind: DIMENSION
+        threshold: LOW
+        preferred: true
+        note: >
+          The window column for this table and the day grain that does not escalate.
+          Prefer over conversion_event_dt_utc.
+      conversion_event_dt:
+        type: TIMESTAMP
+        kind: DIMENSION
+        threshold: MEDIUM
+        note: Escalates the whole query to 100 distinct users per row.
+      conversion_event_dt_hour: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      conversion_event_dt_hour_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      conversion_event_dt_utc:
+        type: TIMESTAMP
+        kind: DIMENSION
+        threshold: MEDIUM
+        note: Escalates the whole query to 100 distinct users per row.
+      conversion_event_hour: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      conversion_event_hour_utc: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      conversion_event_marketplace_name:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Where the conversion happened, and can differ from
+          traffic_event_marketplace_name on the same row. Includes physical retail
+          values, so it is not a pure online-storefront dimension.
+      conversion_event_name: { type: STRING, kind: DIMENSION, threshold: LOW }
+      conversion_event_source_name:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          NULL means the conversion happened on Amazon, not that the source is
+          unknown. Filtering NULL out silently drops all on-Amazon conversions.
+      conversion_event_subtype:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Mixed value space: human-readable strings for on-Amazon events, bare
+          numeric codes for off-Amazon ones. Never pattern-match it as one domain.
+      conversion_event_type: { type: STRING, kind: DIMENSION, threshold: LOW }
+      conversion_event_type_class: { type: STRING, kind: DIMENSION, threshold: LOW }
+      conversion_event_type_description: { type: STRING, kind: DIMENSION, threshold: LOW }
+      conversions:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        note: Always 1, so summing it counts rows selected rather than measuring anything.
+      creative: { type: STRING, kind: DIMENSION, threshold: LOW }
+      creative_category: { type: STRING, kind: DIMENSION, threshold: LOW }
+      creative_duration:
+        type: LONG
+        kind: DIMENSION
+        threshold: LOW
+        note: Seconds, and NULL for non-video formats rather than 0.
+      creative_id: { type: LONG, kind: DIMENSION, threshold: LOW }
+      creative_is_link_in:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          STRING carrying Y or N, not a BOOLEAN despite the description calling it
+          one. Do not cast it like new_to_brand or is_amazon_business.
+      creative_size:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: Describes the ad; ad_slot_size describes the slot it landed in.
+      creative_type: { type: STRING, kind: DIMENSION, threshold: LOW }
+      customer_search_term:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          The shopper's typed text, distinct from the advertiser keyword in
+          targeting. Sponsored Brands terms only exist from 2022-12-02.
+      deal_id:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: NULL for open-auction traffic, meaning no private deal rather than unknown.
+      deal_name:
+        type: STRING
+        kind: METRIC
+        threshold: LOW
+        note: >
+          The page types this METRIC although it is a name; recorded verbatim. NULL
+          for open-auction traffic.
+      detail_page_view:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        note: >
+          Singular name while purchases and units_sold are plural, and the
+          view-attributed sibling stacks to detail_page_view_views. Pin as a literal.
+      detail_page_view_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      detail_page_view_views: { type: LONG, kind: METRIC, threshold: NONE }
+      device_make:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Device manufacturer, never a merchant brand. Capitalisation varies for the
+          same maker, so it needs normalising before grouping.
+      device_model: { type: STRING, kind: DIMENSION, threshold: LOW }
+      device_type: { type: STRING, kind: DIMENSION, threshold: LOW }
+      digital_app_subscription_signup_purchases: { type: LONG, kind: METRIC, threshold: NONE }
+      digital_app_subscription_signup_purchases_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      digital_app_subscription_signup_purchases_views: { type: LONG, kind: METRIC, threshold: NONE }
+      digital_free_trial_app_subscription_signup_purchases: { type: LONG, kind: METRIC, threshold: NONE }
+      digital_free_trial_app_subscription_signup_purchases_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      digital_free_trial_app_subscription_signup_purchases_views: { type: LONG, kind: METRIC, threshold: NONE }
+      digital_free_trial_subscription_signup_purchases: { type: LONG, kind: METRIC, threshold: NONE }
+      digital_free_trial_subscription_signup_purchases_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      digital_free_trial_subscription_signup_purchases_views: { type: LONG, kind: METRIC, threshold: NONE }
+      digital_paid_app_subscription_signup_purchases: { type: LONG, kind: METRIC, threshold: NONE }
+      digital_paid_app_subscription_signup_purchases_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      digital_paid_app_subscription_signup_purchases_views: { type: LONG, kind: METRIC, threshold: NONE }
+      digital_paid_subscription_signup_purchases: { type: LONG, kind: METRIC, threshold: NONE }
+      digital_paid_subscription_signup_purchases_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      digital_paid_subscription_signup_purchases_views: { type: LONG, kind: METRIC, threshold: NONE }
+      digital_subscription_signup_purchases:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        note: >
+          Free trial plus paid, so it overlaps the _free_trial_ and _paid_ variants.
+          The app-scoped family is a separate overlapping set again.
+      digital_subscription_signup_purchases_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      digital_subscription_signup_purchases_views: { type: LONG, kind: METRIC, threshold: NONE }
+      dma_code: { type: STRING, kind: DIMENSION, threshold: LOW }
+      entity_id: { type: STRING, kind: DIMENSION, threshold: LOW }
+      environment_type:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: NULL means the environment could not be determined, not a third category.
+      impression_date:
+        type: DATE
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Populated only for view-attributed conversions; NULL on click-attributed
+          rows means not-applicable. Can precede the query window by up to 14 days.
+      impression_date_utc: { type: DATE, kind: DIMENSION, threshold: LOW }
+      impression_day: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      impression_day_utc: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      impression_dt:
+        type: TIMESTAMP
+        kind: DIMENSION
+        threshold: MEDIUM
+        note: Escalates the whole query to 100 distinct users per row.
+      impression_dt_hour:
+        type: TIMESTAMP
+        kind: DIMENSION
+        threshold: LOW
+        preferred: true
+        note: The hourly grain that does not escalate. Never truncate impression_dt instead.
+      impression_dt_hour_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      impression_dt_utc:
+        type: TIMESTAMP
+        kind: DIMENSION
+        threshold: MEDIUM
+        note: Escalates the whole query to 100 distinct users per row.
+      impression_hour: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      impression_hour_utc: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      impressions:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        note: >
+          1 or 0 per conversion row, flagging view attribution. It is NOT the
+          campaign's impression count and must never feed a reach or CPM figure.
+      is_amazon_business:
+        type: BOOLEAN
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Three-valued: true, false, and NULL for every ad product other than
+          Sponsored Products and Sponsored Brands. NULL is unsupported-by-channel.
+      iso_country_code: { type: STRING, kind: DIMENSION, threshold: LOW }
+      iso_state_province_code: { type: STRING, kind: DIMENSION, threshold: LOW }
+      line_item:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Carries the ad group name on sponsored ads rows, so it is the same concept
+          under a DSP name. Modeled conversions are NULL below ad line level.
+      line_item_budget_amount:
+        type: LONG
+        kind: DIMENSION
+        threshold: LOW
+        monetary: true
+        scale: millicents
+        scale_divisor: 100000
+        note: Millicents, unlike the microcent fee columns on this table. A budget, not spend.
+      line_item_end_date: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      line_item_end_date_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      line_item_id:
+        type: LONG
+        kind: DIMENSION
+        threshold: LOW
+        note: NULL for sponsored ads events, meaning not-applicable rather than missing.
+      line_item_start_date: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      line_item_start_date_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      line_item_status: { type: STRING, kind: DIMENSION, threshold: LOW }
+      line_item_type: { type: STRING, kind: DIMENSION, threshold: LOW }
+      match_type:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: NULL for media that is not keyword-targeted, which is not an unknown match type.
+      new_to_brand:
+        type: BOOLEAN
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          A dimension, separate from the new_to_brand_* metric family. Applies only
+          to purchase events, and rests on a 12-month no-prior-purchase lookback.
+      new_to_brand_brand_halo_product_sales:
+        type: "DECIMAL(38,4)"
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+        note: >
+          Already in local currency. NEVER divide. 12-month NTB lookback, and halo
+          scope, so it is a subset of brand_halo_product_sales.
+      new_to_brand_brand_halo_product_sales_clicks:
+        type: "DECIMAL(38,4)"
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+      new_to_brand_brand_halo_product_sales_views:
+        type: "DECIMAL(38,4)"
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+      new_to_brand_brand_halo_purchases: { type: LONG, kind: METRIC, threshold: NONE }
+      new_to_brand_brand_halo_purchases_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      new_to_brand_brand_halo_purchases_views: { type: LONG, kind: METRIC, threshold: NONE }
+      new_to_brand_brand_halo_units_sold: { type: LONG, kind: METRIC, threshold: NONE }
+      new_to_brand_brand_halo_units_sold_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      new_to_brand_brand_halo_units_sold_views: { type: LONG, kind: METRIC, threshold: NONE }
+      new_to_brand_product_sales:
+        type: "DECIMAL(38,4)"
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+        note: >
+          Already in local currency. NEVER divide. 12-month NTB lookback; a subset of
+          product_sales, so it must not be added to it.
+      new_to_brand_product_sales_clicks:
+        type: "DECIMAL(38,4)"
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+      new_to_brand_product_sales_views:
+        type: "DECIMAL(38,4)"
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+      new_to_brand_purchases: { type: LONG, kind: METRIC, threshold: NONE }
+      new_to_brand_purchases_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      new_to_brand_purchases_views: { type: LONG, kind: METRIC, threshold: NONE }
+      new_to_brand_total_product_sales:
+        type: "DECIMAL(38,4)"
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+        note: >
+          Already in local currency. NEVER divide. Promoted plus halo for NTB
+          customers on a 12-month lookback.
+      new_to_brand_total_product_sales_clicks:
+        type: "DECIMAL(38,4)"
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+      new_to_brand_total_product_sales_views:
+        type: "DECIMAL(38,4)"
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+      new_to_brand_total_purchases: { type: LONG, kind: METRIC, threshold: NONE }
+      new_to_brand_total_purchases_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      new_to_brand_total_purchases_views: { type: LONG, kind: METRIC, threshold: NONE }
+      new_to_brand_total_units_sold: { type: LONG, kind: METRIC, threshold: NONE }
+      new_to_brand_total_units_sold_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      new_to_brand_total_units_sold_views: { type: LONG, kind: METRIC, threshold: NONE }
+      new_to_brand_units_sold: { type: LONG, kind: METRIC, threshold: NONE }
+      new_to_brand_units_sold_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      new_to_brand_units_sold_views: { type: LONG, kind: METRIC, threshold: NONE }
+      no_3p_trackers: { type: BOOLEAN, kind: DIMENSION, threshold: NONE }
+      off_amazon_conversion_value:
+        type: "DECIMAL(38,4)"
+        kind: METRIC
+        threshold: NONE
+        note: >
+          NOT money. An advertiser-assigned weight for non-purchase off-Amazon
+          events, so it must never be summed into revenue or divided by a scale.
+      off_amazon_product_sales:
+        type: "DECIMAL(38,4)"
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+        note: >
+          Already in local currency. NEVER divide. Populated only where an Events
+          Manager solution passes a sales value, so 0 and absent are not distinguishable.
+      operating_system: { type: STRING, kind: DIMENSION, threshold: LOW }
+      os_version: { type: STRING, kind: DIMENSION, threshold: LOW }
+      page_type: { type: STRING, kind: DIMENSION, threshold: LOW }
+      placement_type: { type: STRING, kind: DIMENSION, threshold: LOW }
+      platform_fee:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: microcents
+        scale_divisor: 100000000
+        note: >
+          Microcents, 1000x finer than the millicent columns here. Derived as a
+          percentage of supply_cost, so it is not independent of it.
+      postal_code:
+        type: STRING
+        kind: DIMENSION
+        threshold: HIGH
+        note: >
+          HIGH, so literal filters on it are rejected and it needs 100 distinct users
+          per row. Prefixed with the country code, and country-only when the postal
+          code is unknown, so length varies.
+      product_line:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Amazon's campaign categorisation, NOT a merchant brand. AMC never names the
+          brand anywhere on this table.
+      product_sales:
+        type: "DECIMAL(38,4)"
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+        note: >
+          Already in local currency. NEVER divide. Applying a cost divisor here is a
+          5-to-8 order-of-magnitude error in every ROAS numerator. Promoted ASINs only.
+      product_sales_clicks:
+        type: "DECIMAL(38,4)"
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+      product_sales_views:
+        type: "DECIMAL(38,4)"
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+      purchase_currency:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          The currency of every sales column here. AMC provides no FX, so never store
+          a sales amount without it.
+      purchase_retail_program: { type: STRING, kind: DIMENSION, threshold: LOW }
+      purchase_unit_price:
+        type: DECIMAL
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+        note: >
+          Already in local currency. NEVER divide. Typed as bare DECIMAL with no
+          declared precision, unlike the DECIMAL(38,4) sales columns. Per unit, not
+          per order, so it is not product_sales divided by units_sold.
+      purchases: { type: LONG, kind: METRIC, threshold: NONE }
+      purchases_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      purchases_views: { type: LONG, kind: METRIC, threshold: NONE }
+      request_tag:
+        type: STRING
+        kind: DIMENSION
+        threshold: VERY_HIGH
+        note: >
+          Never outputtable, and the page warns duplicates occur so it is not a safe
+          JOIN key. Prefer UNION ALL, or user_id inside a CTE.
+      site: { type: STRING, kind: DIMENSION, threshold: LOW }
+      supply_cost:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: microcents
+        scale_divisor: 100000000
+        note: >
+          Microcents, 1000x finer than the millicent columns here. What Amazon DSP
+          pays a publisher, so it excludes the fee columns and is not total spend.
+      supply_source: { type: STRING, kind: DIMENSION, threshold: LOW }
+      targeting:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: The advertiser's keyword, distinct from the shopper text in customer_search_term.
+      total_add_to_cart: { type: LONG, kind: METRIC, threshold: NONE }
+      total_add_to_cart_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      total_add_to_cart_views: { type: LONG, kind: METRIC, threshold: NONE }
+      total_detail_page_view: { type: LONG, kind: METRIC, threshold: NONE }
+      total_detail_page_view_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      total_detail_page_view_views: { type: LONG, kind: METRIC, threshold: NONE }
+      total_product_sales:
+        type: "DECIMAL(38,4)"
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+        note: >
+          Already in local currency. NEVER divide. Equals product_sales plus
+          brand_halo_product_sales, so adding any of the three together double-counts.
+      total_product_sales_clicks:
+        type: "DECIMAL(38,4)"
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+      total_product_sales_views:
+        type: "DECIMAL(38,4)"
+        kind: METRIC
+        threshold: NONE
+        monetary: true
+        scale: local_currency
+        scale_divisor: 1
+      total_purchases: { type: LONG, kind: METRIC, threshold: NONE }
+      total_purchases_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      total_purchases_views: { type: LONG, kind: METRIC, threshold: NONE }
+      total_units_sold: { type: LONG, kind: METRIC, threshold: NONE }
+      total_units_sold_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      total_units_sold_views: { type: LONG, kind: METRIC, threshold: NONE }
+      tracked_asin:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Populated only for on-Amazon purchase events; NULL elsewhere is
+          not-applicable. Includes same-brand halo products, so it is not a list of
+          advertised ASINs. It is a child ASIN; AMC has no parent ASIN here.
+      tracked_item:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        do_not_model: true
+        note: >
+          Polymorphic: an ASIN, a brand store ID, a branded-search keyword, or an
+          off-Amazon conversion-definition ID depending on event subtype. Never join
+          it to an ASIN without first filtering to purchase events.
+      traffic_event_date: { type: DATE, kind: DIMENSION, threshold: LOW }
+      traffic_event_date_utc:
+        type: DATE
+        kind: DIMENSION
+        threshold: LOW
+        preferred: true
+        note: >
+          On this table the traffic side is the lagging side and may fall up to 14
+          days before the query window.
+      traffic_event_dt:
+        type: TIMESTAMP
+        kind: DIMENSION
+        threshold: MEDIUM
+        note: Escalates the whole query to 100 distinct users per row.
+      traffic_event_dt_hour:
+        type: TIMESTAMP
+        kind: DIMENSION
+        threshold: LOW
+        preferred: true
+        note: The hourly grain that does not escalate. Never truncate traffic_event_dt instead.
+      traffic_event_dt_hour_utc: { type: TIMESTAMP, kind: DIMENSION, threshold: LOW }
+      traffic_event_dt_utc:
+        type: TIMESTAMP
+        kind: DIMENSION
+        threshold: MEDIUM
+        note: Escalates the whole query to 100 distinct users per row.
+      traffic_event_hour: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      traffic_event_hour_utc: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      traffic_event_id:
+        type: STRING
+        kind: DIMENSION
+        threshold: VERY_HIGH
+        note: >
+          Join key to sponsored_ads_traffic.event_id, and the documented route from
+          attributed conversions back to traffic. VERY_HIGH, so the join must happen
+          inside a CTE and the key can never reach output. Sponsored ads only.
+      traffic_event_marketplace_name:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Where the traffic happened, and can differ from
+          conversion_event_marketplace_name on the same row, so one row can span two
+          marketplaces and neither column alone is a row-level marketplace.
+      traffic_event_subtype:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: AD_IMP or AD_CLICK. The dimension form of the clicks and impressions flags.
+      traffic_event_type: { type: STRING, kind: DIMENSION, threshold: LOW }
+      units_sold:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        note: >
+          Can exceed 1 on a single purchase row, unlike purchases, so the two are not
+          interchangeable counts.
+      units_sold_clicks: { type: LONG, kind: METRIC, threshold: NONE }
+      units_sold_views: { type: LONG, kind: METRIC, threshold: NONE }
+      user_id:
+        type: STRING
+        kind: DIMENSION
+        threshold: VERY_HIGH
+        note: >
+          CTE use only, never in output. NULL when Amazon cannot resolve an
+          identifier, which is neither a distinct user nor a modeled conversion.
+      user_id_type:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          adUserId, sisDeviceId, adBrowserId or NULL. Mixes ID spaces, so a distinct
+          count spans accounts, devices and browsers rather than people.
+  amazon_retail_purchases:
+    source_page: datasources/amazon_retail_purchase_paid.md
+    verified: 2026-08-19
+    columns_rechecked: 2026-10-08
+    paid_feature: true
+    grain: One row per retail purchase item event; event_id is unique per row.
+    audience_twin: amazon_retail_purchase_for_audiences
+    live:
+      - instance: STANDARD
+        date: 2026-10-08
+        outcome: resolves
+        scope: >
+          purchase_date_utc, asin, marketplace_name, purchase_units_sold, currency_code,
+          unit_price, purchase_id, user_id and user_id_type read with controls on; the
+          September 2026 month held no purchase rows. The other columns were not read.
+        source: validation/RESULTS.md#paid-feature-presence-and-forced-suppression--2026-10-08
+    notes: >
+      The page's schema table has no Metric/Dimension column, so kind is left
+      unset here rather than guessed for any column.
+      Page lists 26 columns.
+      Time columns are UTC-only: no advertiser-timezone twins and no
+      advertiser_timezone column, unlike the traffic tables.
+      No revenue or order-total column, so any sales figure must be derived
+      from unit_price times purchase_units_sold.
+    columns:
+      asin:
+        type: STRING
+        threshold: LOW
+        note: "Child ASIN of the retail event; asin_parent carries the rollup key."
+      asin_brand:
+        type: STRING
+        threshold: LOW
+        note: "Merchant brand name of the item; amc.md records this as the only AMC source of one."
+      asin_name: { type: STRING, threshold: LOW }
+      asin_parent:
+        type: STRING
+        threshold: LOW
+        note: "Parent ASIN for variation rollups; amc.md records ARP as the only AMC table carrying it."
+      currency_code:
+        type: STRING
+        threshold: LOW
+        note: "ISO code governing unit_price; AMC supplies no FX, so never store the amount without it."
+      event_id:
+        type: STRING
+        threshold: VERY_HIGH
+        note: "Row key; many event_id values map to one purchase_id. VERY_HIGH, so usable only inside a CTE."
+      is_business_flag: { type: BOOLEAN, threshold: LOW }
+      is_gift_flag: { type: BOOLEAN, threshold: LOW }
+      marketplace_id:
+        type: INTEGER
+        threshold: INTERNAL
+        note: "INTERNAL: unusable anywhere in a query. Use marketplace_name instead."
+      marketplace_name:
+        type: STRING
+        threshold: LOW
+        note: "Usable marketplace dimension; values take the AMAZON.COM form, not the amazon.us form used by amazon_live_traffic.site."
+      no_3p_trackers: { type: BOOLEAN, threshold: NONE }
+      origin_session_id:
+        type: STRING
+        threshold: VERY_HIGH
+        note: "Session in which the item was added to cart, not the one it was bought in; do not confuse with purchase_session_id."
+      purchase_date_utc:
+        type: DATE
+        threshold: LOW
+        note: "The only date-typed column; purchase_day_utc, purchase_hour_utc and purchase_month_utc are calendar-part integers, not dates."
+      purchase_day_utc: { type: INTEGER, threshold: LOW }
+      purchase_dt_hour_utc:
+        type: TIMESTAMP
+        threshold: LOW
+        note: "Hour-truncated timestamp at LOW, unlike full-precision purchase_dt_utc at MEDIUM; prefer this one in output."
+      purchase_dt_utc:
+        type: TIMESTAMP
+        threshold: MEDIUM
+        note: "MEDIUM requires 100 distinct users, so selecting it in final output drops far more rows than the date or hour variants."
+      purchase_hour_utc: { type: INTEGER, threshold: LOW }
+      purchase_id:
+        type: STRING
+        threshold: VERY_HIGH
+        note: "Order-level key, one-to-many against event_id; VERY_HIGH, so usable only inside a CTE."
+      purchase_month_utc: { type: INTEGER, threshold: LOW }
+      purchase_order_method:
+        type: STRING
+        threshold: LOW
+        note: "Single-character coded enum (S, B, 1); code must map it before anything is displayed."
+      purchase_program_name: { type: STRING, threshold: LOW }
+      purchase_session_id:
+        type: STRING
+        threshold: VERY_HIGH
+        note: "Session in which the item was bought; do not confuse with origin_session_id."
+      purchase_units_sold:
+        type: LONG
+        threshold: NONE
+        note: "One row can carry several units, so unit totals need SUM rather than a row count."
+      unit_price:
+        type: DECIMAL
+        threshold: NONE
+        monetary: true
+        scale: none
+        scale_divisor: 1
+        note: "Per-unit price. The page states no scale factor and the type is DECIMAL rather than a scaled integer; amc.md files this concept under the name purchase_unit_price."
+      user_id:
+        type: STRING
+        threshold: VERY_HIGH
+        note: "VERY_HIGH: usable inside a CTE for distinct counts, never in final output."
+      user_id_type:
+        type: STRING
+        threshold: LOW
+        note: "Page states adUserId is the only value on this table, so there is no device or browser ID space to filter out here."
+  amazon_live_traffic:
+    source_page: datasources/amazon_live_traffic.md
+    verified: 2026-08-19
+    grain: One row per Amazon Live product carousel ad event, being a single impression, click or view.
+    audience_twin: amazon_live_traffic_for_audiences
+    notes: >
+      Managed-service Amazon Live media in the US market only, from
+      2025-05-01; the signal connection must be arranged with an Amazon Ads
+      representative.
+      Three columns begin later than the table itself does; see their notes.
+      No monetary column of any kind, so spend and ROAS must be sourced from
+      the dsp_* or attributed-events tables.
+    columns:
+      ad_product_type:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        status: disputed
+        dispute: >
+          The page states this column always holds amazon_live here, and tells
+          you to filter amazon_attributed_events_* on
+          ad_product_type = amazon_live. amc.md section 4 gives a closed set of
+          four values (sponsored_products, sponsored_brands, sponsored_display,
+          sponsored_television) plus NULL for DSP, which omits amazon_live
+          entirely; a gate built on that set would reject every Amazon Live
+          row. Only a live-instance probe settles the full enumeration.
+      advertiser:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          Outputtable. VERIFIED 2026-08-19 by live query against AMC sandbox
+          instance SANDBOX_INSTANCE with aggregation controls ON: a final SELECT of
+          campaign_id_string, campaign and advertiser with GROUP BY returned real
+          names. docs/sources/amc.md section 4 previously recorded these as INTERNAL
+          and never outputtable; that was wrong. An INTERNAL column cannot appear in
+          a GROUP BY, so the query would have been rejected.
+      broadcast_date_utc:
+        type: DATE
+        kind: DIMENSION
+        threshold: LOW
+        note: "Date the broadcast first aired, which is not the event date: playback and on-demand events carry a later event_date_utc."
+      broadcast_id:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: "Populated only for broadcasts dated 2025-05-09 or later; stable across the livestream and its playback events, so it is the key for grouping a video."
+      broadcast_name:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: "Populated only for broadcasts dated after 2025-05-01, so expect NULL on the earliest rows."
+      clicks:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        note: "Per-row flag of 1 or 0, not a count, because each row is exactly one event type; SUM it."
+      creative_asin:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: "Populated only for broadcasts dated 2025-07-15 or later; this is the promoted ASIN inside the carousel."
+      creative_id: { type: LONG, kind: DIMENSION, threshold: LOW }
+      event_date_utc: { type: DATE, kind: DIMENSION, threshold: LOW }
+      event_day_utc: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      event_dt_hour_utc:
+        type: TIMESTAMP
+        kind: DIMENSION
+        threshold: LOW
+        note: "Hour-truncated timestamp at LOW, unlike full-precision event_dt_utc at MEDIUM; prefer this one in output."
+      event_dt_utc:
+        type: TIMESTAMP
+        kind: DIMENSION
+        threshold: MEDIUM
+        note: "MEDIUM requires 100 distinct users, so selecting it in final output drops far more rows than the date or hour variants."
+      event_hour_utc: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      event_id:
+        type: STRING
+        kind: DIMENSION
+        threshold: VERY_HIGH
+        note: "Join key to traffic_event_id on the amazon_attributed_* tables; VERY_HIGH, so it can only be used inside a CTE."
+      household_id:
+        type: STRING
+        kind: DIMENSION
+        threshold: VERY_HIGH
+        note: "Available only from 2026-04-10 onward with coverage varying by region; NULL when unresolvable, and CTE-only."
+      household_size:
+        type: STRING
+        kind: DIMENSION
+        threshold: HIGH
+        note: "HIGH threshold, so it nulls rows below 1000 distinct users; typed STRING with NULL a documented value and the top bucket written 4+."
+      impressions:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        note: "Per-row flag of 1 or 0, not a count, because each row is exactly one event type; SUM it."
+      site:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: "Retail domain in amazon.us form, which is the marketplace proxy on this table and does not match ARP's AMAZON.COM form."
+      slot_name:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: "Device environment rather than an on-page position; values cover desktop web, mobile web, mobile app and Shop TV app."
+      user_id:
+        type: STRING
+        kind: DIMENSION
+        threshold: VERY_HIGH
+        note: "Mixes account, device and browser ID spaces; NULL when unresolvable, and CTE-only."
+      user_id_type:
+        type: STRING
+        kind: DIMENSION
+        threshold: LOW
+        note: "Discriminator for the user_id space; NULL on both columns together when no ID could be resolved."
+      views:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        note: "Per-row flag of 1 or 0 for a carousel ad at least half in view for at least a second; SUM it."
+  # Segment tables, transcribed 2026-10-08 (business-outcomes slice S0.6). Two pages cover
+  # all of them: datasources/dsp_impressions_by_segments.md for the two DSP tables, and
+  # datasources/audience_segment_membership_paid.md for the Audience Segment Insights (ASI)
+  # tables and segment_metadata.
+  dsp_impressions_by_matched_segments:
+    source_page: datasources/dsp_impressions_by_segments.md
+    verified: 2026-10-08
+    grain: One row per DSP impression per segment that both included the user and was targeted by the line item.
+    audience_twin: dsp_impressions_by_matched_segments_for_audiences
+    # The page documents only the four segment columns added on top of dsp_impressions, the
+    # same delta shape as dsp_video_events_feed, so the base surface resolves by inheritance.
+    inherits_columns_from: dsp_impressions
+    notes: >
+      Each impression appears once per matching segment, so a SUM of impressions or of any
+      inherited cost column over this table counts an impression once per segment; only a
+      per-segment figure, or a distinct count, is meaningful here.
+      The page warns that workflows on this table time out over extended periods.
+    columns:
+      behavior_segment_description: { type: STRING, kind: DIMENSION, threshold: LOW }
+      behavior_segment_id:
+        type: INTEGER
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          DSP behaviour segment ID. Not the ASI segment_id: P-BO-4 step 1 failed on both amer
+          snapshot tables on the STANDARD demo instance, 2026-10-09 (validation/RESULTS.md), so
+          the two namespaces stay separate.
+      behavior_segment_matched:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        note: "Always 1 on this table, because it holds only targeted-and-matched segments."
+      behavior_segment_name: { type: STRING, kind: DIMENSION, threshold: LOW }
+  dsp_impressions_by_user_segments:
+    source_page: datasources/dsp_impressions_by_segments.md
+    verified: 2026-10-08
+    grain: One row per DSP impression per segment the user belonged to at impression time, targeted or not.
+    audience_twin: dsp_impressions_by_user_segments_for_audiences
+    inherits_columns_from: dsp_impressions
+    notes: >
+      Same delta shape and the same once-per-segment repetition as
+      dsp_impressions_by_matched_segments, over a wider segment set.
+      The page warns that workflows on this table time out over extended periods.
+    columns:
+      behavior_segment_description: { type: STRING, kind: DIMENSION, threshold: LOW }
+      behavior_segment_id: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      behavior_segment_matched:
+        type: LONG
+        kind: METRIC
+        threshold: NONE
+        note: "1 when the line item targeted the segment, 0 when the user was only a member."
+      behavior_segment_name: { type: STRING, kind: DIMENSION, threshold: LOW }
+  # ASI membership: one region (amer, apac, eu) and one category (inmarket, lifestyle) per
+  # table, each with a monthly _snapshot view. The page gives one schema for the whole
+  # family, so the twelve entries share one column block through a YAML anchor rather than
+  # twelve copies that could drift. The page says every table has an audience twin but
+  # doesn't name them, so no audience_twin is recorded for these.
+  audience_segments_amer_inmarket:
+    source_page: datasources/audience_segment_membership_paid.md
+    verified: 2026-10-08
+    paid_feature: true
+    grain: &asi_current_grain One row per current user-to-segment association, refreshed daily (a DIMENSION dataset).
+    notes: &asi_membership_notes >
+      Query one region and one category table per SQL query, and always filter on
+      segment_marketplace_id; the page sets both as rules. segment_id is unique only within
+      segment_marketplace_id, so every join to segment_metadata matches on both columns.
+      The page warns that workflows on these tables time out over extended periods.
+    columns: &asi_membership_columns
+      no_3p_trackers: { type: BOOLEAN, kind: DIMENSION, threshold: NONE }
+      segment_id:
+        type: INTEGER
+        kind: DIMENSION
+        threshold: LOW
+        note: "Unique only within segment_marketplace_id, never on its own."
+      segment_marketplace_id:
+        type: LONG
+        kind: DIMENSION
+        threshold: LOW
+        note: >
+          LONG here, while dsp_impressions types its segment_marketplace_id INTEGER. The
+          governed value comes from the amc.segment_marketplace_id namespace in
+          contracts/shared/commerce-identities.yaml, never a literal in a pack.
+      segment_name: { type: STRING, kind: DIMENSION, threshold: LOW }
+      snapshot_datetime:
+        type: DATE
+        kind: DIMENSION
+        threshold: LOW
+        note: "Typed DATE despite the name; the date the snapshot was taken."
+      user_id:
+        type: STRING
+        kind: DIMENSION
+        threshold: VERY_HIGH
+        note: "CTE-only, for distinct counts and the exposure fence; never in final output."
+      user_id_type: { type: STRING, kind: DIMENSION, threshold: LOW }
+  audience_segments_amer_lifestyle:
+    source_page: datasources/audience_segment_membership_paid.md
+    verified: 2026-10-08
+    paid_feature: true
+    grain: *asi_current_grain
+    notes: *asi_membership_notes
+    columns: *asi_membership_columns
+  audience_segments_apac_inmarket:
+    source_page: datasources/audience_segment_membership_paid.md
+    verified: 2026-10-08
+    paid_feature: true
+    grain: *asi_current_grain
+    notes: *asi_membership_notes
+    columns: *asi_membership_columns
+  audience_segments_apac_lifestyle:
+    source_page: datasources/audience_segment_membership_paid.md
+    verified: 2026-10-08
+    paid_feature: true
+    grain: *asi_current_grain
+    notes: *asi_membership_notes
+    columns: *asi_membership_columns
+  audience_segments_eu_inmarket:
+    source_page: datasources/audience_segment_membership_paid.md
+    verified: 2026-10-08
+    paid_feature: true
+    grain: *asi_current_grain
+    notes: *asi_membership_notes
+    columns: *asi_membership_columns
+  audience_segments_eu_lifestyle:
+    source_page: datasources/audience_segment_membership_paid.md
+    verified: 2026-10-08
+    paid_feature: true
+    grain: *asi_current_grain
+    notes: *asi_membership_notes
+    columns: *asi_membership_columns
+  audience_segments_amer_inmarket_snapshot:
+    source_page: datasources/audience_segment_membership_paid.md
+    verified: 2026-10-08
+    paid_feature: true
+    live: &asi_snapshot_live
+      - instance: STANDARD
+        date: 2026-10-08
+        outcome: resolves
+        scope: >
+          All seven columns read with controls on, populated, with no subscription signal in
+          account discovery. Presence on a customer instance follows its enrolment.
+        source: validation/RESULTS.md#paid-feature-presence-and-forced-suppression--2026-10-08
+    grain: &asi_snapshot_grain One row per user-to-segment association recorded on a monthly snapshot, taken the first Thursday of each calendar month (a FACT dataset).
+    notes: &asi_snapshot_notes >
+      Same rules as the default view. The page also asks for a date range that includes the
+      first Thursday of the analysed month, and one snapshot per analysis when joining to
+      traffic or conversion tables.
+    columns: *asi_membership_columns
+  audience_segments_amer_lifestyle_snapshot:
+    source_page: datasources/audience_segment_membership_paid.md
+    verified: 2026-10-08
+    paid_feature: true
+    live: *asi_snapshot_live
+    grain: *asi_snapshot_grain
+    notes: *asi_snapshot_notes
+    columns: *asi_membership_columns
+  audience_segments_apac_inmarket_snapshot:
+    source_page: datasources/audience_segment_membership_paid.md
+    verified: 2026-10-08
+    paid_feature: true
+    grain: *asi_snapshot_grain
+    notes: *asi_snapshot_notes
+    columns: *asi_membership_columns
+  audience_segments_apac_lifestyle_snapshot:
+    source_page: datasources/audience_segment_membership_paid.md
+    verified: 2026-10-08
+    paid_feature: true
+    grain: *asi_snapshot_grain
+    notes: *asi_snapshot_notes
+    columns: *asi_membership_columns
+  audience_segments_eu_inmarket_snapshot:
+    source_page: datasources/audience_segment_membership_paid.md
+    verified: 2026-10-08
+    paid_feature: true
+    grain: *asi_snapshot_grain
+    notes: *asi_snapshot_notes
+    columns: *asi_membership_columns
+  audience_segments_eu_lifestyle_snapshot:
+    source_page: datasources/audience_segment_membership_paid.md
+    verified: 2026-10-08
+    paid_feature: true
+    grain: *asi_snapshot_grain
+    notes: *asi_snapshot_notes
+    columns: *asi_membership_columns
+  segment_metadata:
+    source_page: datasources/audience_segment_membership_paid.md
+    verified: 2026-10-08
+    paid_feature: true
+    live:
+      - instance: STANDARD
+        date: 2026-10-08
+        outcome: resolves
+        scope: >
+          All eight columns read with controls on, populated, with no subscription signal in
+          account discovery. Presence on a customer instance follows its enrolment.
+        source: validation/RESULTS.md#paid-feature-presence-and-forced-suppression--2026-10-08
+    grain: Describes each segment_id within its segment_marketplace_id; the page states no finer row grain.
+    notes: >
+      Join to the membership tables on both segment_id and segment_marketplace_id, as the
+      page recommends.
+    columns:
+      category_level_1: { type: STRING, kind: DIMENSION, threshold: LOW }
+      category_level_2: { type: STRING, kind: DIMENSION, threshold: LOW }
+      category_path: { type: STRING, kind: DIMENSION, threshold: LOW }
+      no_3p_trackers: { type: BOOLEAN, kind: DIMENSION, threshold: NONE }
+      segment_description: { type: STRING, kind: DIMENSION, threshold: LOW }
+      segment_id: { type: INTEGER, kind: DIMENSION, threshold: LOW }
+      segment_marketplace_id: { type: LONG, kind: DIMENSION, threshold: LOW }
+      segment_name: { type: STRING, kind: DIMENSION, threshold: LOW }
+
+not_yet_transcribed:
+  - amazon_brand_store_page_views
+  - amazon_brand_store_engagement_events
+
+# Out of scope, recorded so nobody transcribes them by accident: amazon_pvc_*,
+# amazon_your_garage_all, experian_vehicle_purchases. ncs_cpg_insights_stream is
+# discontinued. Every *_for_audiences twin is a distinct namespace used only for
+# audience creation and is never queried for measurement.
+
+# Columns that must never be modelled, recorded here so the reason is not
+# rediscovered. These are facts about AMC and are owned by docs/sources/amc.md.
+do_not_model:
+  winning_bid_cost:
+    reason: >
+      Absent from the dsp_impressions and attributed-events schema pages (re-read
+      2026-10-08), yet the media-performance playbook selects it from dsp_impressions
+      and amazon_attributed_events_by_traffic_time. AMC's own docs contradict each
+      other and no page is dated. Only a live-instance probe settles it.
+  tracked_item:
+    reason: >
+      Polymorphic — an ASIN, a brand store ID, a search keyword or an off-Amazon
+      conversion-definition ID depending on event type. Never join it to an ASIN
+      without filtering to purchase events first.

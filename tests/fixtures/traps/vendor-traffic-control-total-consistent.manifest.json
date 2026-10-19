@@ -1,0 +1,13 @@
+{
+  "marketplace": "ATVPDKIKX0DER",
+  "option_set": {
+    "reportPeriod": "DAY"
+  },
+  "period_end": "2025-06-21",
+  "period_start": "2025-06-16",
+  "retrieved_at": "2026-08-26T07:05:00+00:00",
+  "source_dataset": "GET_VENDOR_TRAFFIC_REPORT",
+  "source_system": "vendor_central",
+  "source_scope": {"namespace": "vendor_central.vendor_group", "value": "fictional-trap-vendor-group"},
+  "source_watermark": "2025-06-22"
+}

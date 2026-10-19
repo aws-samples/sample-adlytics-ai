@@ -1,0 +1,129 @@
+{
+  "hubs": [
+    {
+      "audience": "customer",
+      "hub_id": "performance",
+      "label": "Performance",
+      "short_label": "Performance",
+      "tabs": [
+        {
+          "description": "Return on ad spend per network and channel",
+          "entitlement": null,
+          "kind": "page",
+          "label": "Scorecard",
+          "order": 1,
+          "route": "/scorecard/",
+          "tab_id": "scorecard"
+        },
+        {
+          "description": "Every campaign, for all channels, sponsored ads only or one channel",
+          "entitlement": null,
+          "kind": "page",
+          "label": "Campaigns",
+          "order": 2,
+          "route": "/campaigns/",
+          "tab_id": "campaigns"
+        }
+      ]
+    },
+    {
+      "audience": "customer",
+      "hub_id": "reach",
+      "label": "Reach and audiences",
+      "short_label": "Reach",
+      "tabs": [
+        {
+          "description": "How many shoppers your ads reached, how often, and what they did next",
+          "entitlement": null,
+          "kind": "page",
+          "label": "Reach and funnel",
+          "order": 1,
+          "route": "/reach/",
+          "tab_id": "reach"
+        },
+        {
+          "description": "Which Amazon audience segments your buyers belong to, compared with the shoppers your ads reached, and how DSP campaigns did per segment",
+          "entitlement": null,
+          "kind": "page",
+          "label": "Audiences",
+          "order": 2,
+          "route": "/audiences/",
+          "tab_id": "audiences"
+        }
+      ]
+    },
+    {
+      "audience": "customer",
+      "hub_id": "customers",
+      "label": "Customers",
+      "short_label": "Customers",
+      "tabs": [
+        {
+          "description": "Shoppers buying from your brand for the first time in 12 months",
+          "entitlement": null,
+          "kind": "page",
+          "label": "New customers",
+          "order": 1,
+          "route": "/new-customers/",
+          "tab_id": "new-customers"
+        },
+        {
+          "description": "Cohorts of new customers your ads brought in, and when they buy again",
+          "entitlement": null,
+          "kind": "page",
+          "label": "Retention",
+          "order": 2,
+          "route": "/retention/",
+          "tab_id": "retention"
+        }
+      ]
+    },
+    {
+      "audience": "customer",
+      "hub_id": "retail",
+      "label": "Retail health",
+      "short_label": "Retail",
+      "tabs": [
+        {
+          "description": "Sales, traffic, conversion and returns from Vendor Central, per product",
+          "entitlement": null,
+          "kind": "page",
+          "label": "Retail health",
+          "order": 1,
+          "route": "/retail-health/",
+          "tab_id": "retail-health"
+        }
+      ]
+    },
+    {
+      "audience": "operator",
+      "hub_id": "operations",
+      "label": "Operations",
+      "short_label": "Operations",
+      "tabs": [
+        {
+          "description": "Version, check and activate the prompts that write insights",
+          "entitlement": {
+            "group": "prompt-admin",
+            "session_field": "can_manage_prompts"
+          },
+          "kind": "static",
+          "label": "Prompt administration",
+          "order": 1,
+          "route": "/admin/prompts/",
+          "tab_id": "prompt-admin"
+        }
+      ]
+    }
+  ],
+  "not_found_outputs": [
+    "404.html",
+    "404/index.html",
+    "_not-found/index.html"
+  ],
+  "root": {
+    "route": "/",
+    "tab_id": "campaigns"
+  },
+  "version": 1
+}

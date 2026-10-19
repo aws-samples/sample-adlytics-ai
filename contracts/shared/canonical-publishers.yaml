@@ -1,0 +1,52 @@
+version: 1
+publishers:
+  - dataset: dim_audience_segment
+    publisher: canonical-curation
+  - dataset: dim_campaign
+    publisher: canonical-curation
+  - dataset: dim_product
+    publisher: canonical-curation
+  - dataset: fct_ad_exposure
+    publisher: canonical-curation
+  - dataset: fct_ad_exposure_withheld
+    publisher: canonical-curation
+  - dataset: fct_attributed_conversion
+    publisher: canonical-curation
+  - dataset: fct_attributed_conversion_withheld
+    publisher: canonical-curation
+  - dataset: fct_deduplicated_temporal_attribution
+    publisher: canonical-curation
+  - dataset: fct_deduplicated_temporal_attribution_withheld
+    publisher: canonical-curation
+  - dataset: fct_exposure_group_outcome
+    publisher: canonical-curation
+  - dataset: fct_exposure_group_outcome_withheld
+    publisher: canonical-curation
+  - dataset: fct_exposure_frequency
+    publisher: canonical-curation
+  - dataset: fct_exposure_frequency_withheld
+    publisher: canonical-curation
+  - dataset: fct_new_to_brand_buyers
+    publisher: canonical-curation
+  - dataset: fct_product_page_views
+    publisher: canonical-curation
+  - dataset: fct_product_page_views_reported_total
+    publisher: canonical-curation
+  - dataset: fct_retail_purchase_amc
+    publisher: canonical-curation
+  - dataset: fct_retail_purchase_amc_withheld
+    publisher: canonical-curation
+  - dataset: fct_retail_sales
+    publisher: canonical-curation
+  - dataset: fct_retail_sales_reported_total
+    publisher: canonical-curation
+  - dataset: fct_segment_delivery
+    publisher: canonical-curation
+  - dataset: fct_segment_delivery_withheld
+    publisher: canonical-curation
+  - dataset: fct_segment_profile
+    publisher: canonical-curation
+  - dataset: fct_shopper_acquisition
+    publisher: canonical-curation
+  - dataset: fct_shopper_acquisition_withheld
+    publisher: canonical-curation

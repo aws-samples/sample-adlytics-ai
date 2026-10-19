@@ -1,0 +1,111 @@
+id: funnel
+version: 9
+purpose: Describe a material supplied relationship between declared campaign funnel stages.
+display_name: Delivery and outcome (campaign detail)
+output_class: perspective
+allowed_inputs:
+  - reporting and comparison window display context
+  - selected campaign display identity
+  - full delivery summary section
+  - campaign attributed purchases
+  - server-computed stage ratios and changes
+  - typed window profile (window length, grain, aligned prior, horizon role)
+deterministic_findings:
+  - absolute-change
+  - percentage-change
+  - share-of-total
+predicate:
+  required_evidence_inputs: [delivery-metrics]
+  required_finding_kinds: [share-of-total]
+  materiality:
+    bases:
+      campaign_window:
+        per_unit:
+          share: {operational-pulse: "0.01", tactical-review: "0.01", pattern-confirmation: "0.01"}
+        per_metric: {}
+    near_zero_prior: {}
+  delivery_follow_up_evidence: []
+materiality_cases:
+  - {name: a share of 0.01 is admitted at operational-pulse, horizon: operational-pulse, basis: campaign_window, kind: share-of-total, metric: purchases, current: "1", prior: "10000", expect: admitted}
+  - {name: a share of 0.01 is admitted at tactical-review, horizon: tactical-review, basis: campaign_window, kind: share-of-total, metric: purchases, current: "1", prior: "10000", expect: admitted}
+  - {name: a share of 0.01 is admitted at pattern-confirmation, horizon: pattern-confirmation, basis: campaign_window, kind: share-of-total, metric: purchases, current: "1", prior: "10000", expect: admitted}
+  - {name: a share that rounds to 0.00 is silent, horizon: tactical-review, basis: campaign_window, kind: share-of-total, metric: purchases, current: "0.4", prior: "10000", expect: silent}
+silence_condition: A required funnel stage is unavailable or no supplied stage relationship is material.
+structured_output_schema:
+  id: insight-narration-v1
+  fields: [output_class, sentences]
+initial_fictional_prompt: Explain one material supplied funnel relationship without calculating or inferring an unavailable stage.
+calibration_cases:
+  - kind: known-correct
+    input_summary: Fictional delivery and purchase findings contain one supplied material stage-ratio change.
+    expected_outcome: Accept a perspective using only that supplied ratio.
+    horizon: tactical-review
+    findings:
+      - {name: Clicks change, value: "410"}
+      - {name: Purchases change, value: "-6"}
+  - kind: exploratory
+    input_summary: Fictional clicks rise while purchases hold, inviting a hedged reading about where the funnel narrows.
+    expected_outcome: Accept the labeled funnel reading of the supplied stages.
+    horizon: pattern-confirmation
+    findings:
+      - {name: Clicks percentage change, value: "14.3"}
+      - {name: Purchases percentage change, value: "0.8"}
+  - kind: contradiction
+    input_summary: A fictional funnel stage rises but the draft calls it a decline.
+    expected_outcome: Reject the contradiction.
+    horizon: operational-pulse
+    findings:
+      - {name: Clicks change, value: "95"}
+    draft:
+      sentences:
+        - Clicks dropped by 95, thinning the top of the funnel.
+  - kind: fluent-unsupported
+    input_summary: A fluent draft cites a checkout-abandonment figure that no fictional input supplies.
+    expected_outcome: Reject the figure that is neither supplied nor derived from the findings.
+    horizon: tactical-review
+    findings:
+      - {name: Purchases change, value: "-6"}
+    draft:
+      sentences:
+        - Purchases fell 6 as checkout abandonment climbed to 22.7 percent.
+  - kind: derived-figure
+    input_summary: A fictional draft states the clicks percentage change it derives from the supplied current and prior values.
+    expected_outcome: Accept the correctly derived percentage change.
+    horizon: tactical-review
+    findings:
+      - {name: Clicks this window, value: "2460"}
+      - {name: Clicks prior window, value: "2050"}
+    draft:
+      sentences:
+        - Clicks rose from 2050 to 2460, about 20 percent more traffic entering the funnel than in the prior window.
+  - kind: miscomputed-derivation
+    input_summary: A fictional draft divides the clicks change by the current value instead of the prior one.
+    expected_outcome: Reject the miscomputed percentage change.
+    horizon: tactical-review
+    findings:
+      - {name: Clicks this window, value: "2460"}
+      - {name: Clicks prior window, value: "2050"}
+    draft:
+      sentences:
+        - Clicks rose from 2050 to 2460, about 17 percent more traffic entering the funnel than in the prior window.
+  - kind: incompatible-basis
+    input_summary: A fictional draft computes a purchase rate from a daily average and a window total.
+    expected_outcome: Reject the figure that combines findings of incompatible grain.
+    horizon: pattern-confirmation
+    findings:
+      - {name: Clicks this window total, value: "2460"}
+      - {name: Purchases this window daily average, value: "5"}
+    draft:
+      sentences:
+        - Only 5 of 2460 clicks turned into purchases, a purchase rate of about 0.2 percent.
+deep:
+  allowed_inputs:
+    - complete daily series for every metric this surface serves
+    - every server-computed driver and cross-metric total for the window
+    - lag, estimate, and basis qualifications carried by the artifact
+  structured_output_schema:
+    id: insight-deep-dive-v1
+    fields: [what_stands_out, candidate_readings, discriminating_evidence, cited_figures]
+# FR-11 (design 4.12): no next step is offered until the gated card-next-step prompt ships.
+next_steps:
+  allowed_kinds: []

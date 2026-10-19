@@ -1,0 +1,259 @@
+[
+  {
+    "id": "defaults-active",
+    "rows": [
+      {"row_id": "baker", "reserved_concurrency": 2, "start_cap": 10},
+      {"row_id": "table_writer", "reserved_concurrency": 8, "start_cap": 1},
+      {"row_id": "inline_ingestion", "reserved_concurrency": 2, "start_cap": 1},
+      {"row_id": "provider_attempt_reconciler", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "ingest_operator", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "reprocess_operator", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "insight_precompute", "reserved_concurrency": 2, "start_cap": 4}
+    ],
+    "batch_athena_budget": 41, "chat_reserve_active_dml": 20, "active_dml_quota": 200, "certified_query_cap": 10,
+    "expect": {"verdict": "accepted", "total": 41},
+    "control": "baker-drift-3"
+  },
+  {
+    "id": "baker-drift-3",
+    "rows": [
+      {"row_id": "baker", "reserved_concurrency": 3, "start_cap": 10},
+      {"row_id": "table_writer", "reserved_concurrency": 8, "start_cap": 1},
+      {"row_id": "inline_ingestion", "reserved_concurrency": 2, "start_cap": 1},
+      {"row_id": "provider_attempt_reconciler", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "ingest_operator", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "reprocess_operator", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "insight_precompute", "reserved_concurrency": 2, "start_cap": 4}
+    ],
+    "batch_athena_budget": 41, "chat_reserve_active_dml": 20, "active_dml_quota": 200, "certified_query_cap": 10,
+    "expect": {"verdict": "refused", "reason": "SUM_OVER_BUDGET"}
+  },
+  {
+    "id": "defaults-quiesced",
+    "rows": [
+      {"row_id": "baker", "reserved_concurrency": 2, "start_cap": 10},
+      {"row_id": "table_writer", "reserved_concurrency": 8, "start_cap": 1},
+      {"row_id": "inline_ingestion", "reserved_concurrency": 0, "start_cap": 1},
+      {"row_id": "provider_attempt_reconciler", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "ingest_operator", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "reprocess_operator", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "insight_precompute", "reserved_concurrency": 2, "start_cap": 4}
+    ],
+    "batch_athena_budget": 41, "chat_reserve_active_dml": 20, "active_dml_quota": 200, "certified_query_cap": 10,
+    "expect": {"verdict": "accepted", "total": 39},
+    "control": "load-unreserved"
+  },
+  {
+    "id": "load-unreserved",
+    "rows": [
+      {"row_id": "baker", "reserved_concurrency": 2, "start_cap": 10},
+      {"row_id": "table_writer", "reserved_concurrency": 8, "start_cap": 1},
+      {"row_id": "inline_ingestion", "reserved_concurrency": null, "start_cap": 1},
+      {"row_id": "provider_attempt_reconciler", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "ingest_operator", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "reprocess_operator", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "insight_precompute", "reserved_concurrency": 2, "start_cap": 4}
+    ],
+    "batch_athena_budget": 41, "chat_reserve_active_dml": 20, "active_dml_quota": 200, "certified_query_cap": 10,
+    "expect": {"verdict": "refused", "reason": "UNRESERVED"}
+  },
+  {
+    "id": "load-negative",
+    "rows": [
+      {"row_id": "baker", "reserved_concurrency": 2, "start_cap": 10},
+      {"row_id": "table_writer", "reserved_concurrency": 8, "start_cap": 1},
+      {"row_id": "inline_ingestion", "reserved_concurrency": -1, "start_cap": 1},
+      {"row_id": "provider_attempt_reconciler", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "ingest_operator", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "reprocess_operator", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "insight_precompute", "reserved_concurrency": 2, "start_cap": 4}
+    ],
+    "batch_athena_budget": 41, "chat_reserve_active_dml": 20, "active_dml_quota": 200, "certified_query_cap": 10,
+    "expect": {"verdict": "refused", "reason": "NEGATIVE_RESERVED_CONCURRENCY"}
+  },
+  {
+    "id": "raised-q-16",
+    "rows": [
+      {"row_id": "baker", "reserved_concurrency": 2, "start_cap": 16},
+      {"row_id": "table_writer", "reserved_concurrency": 8, "start_cap": 1},
+      {"row_id": "inline_ingestion", "reserved_concurrency": 2, "start_cap": 1},
+      {"row_id": "provider_attempt_reconciler", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "ingest_operator", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "reprocess_operator", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "insight_precompute", "reserved_concurrency": 2, "start_cap": 4}
+    ],
+    "batch_athena_budget": 53, "chat_reserve_active_dml": 20, "active_dml_quota": 200, "certified_query_cap": 10,
+    "expect": {"verdict": "accepted", "total": 53},
+    "control": "raised-q-16-budget-52"
+  },
+  {
+    "id": "raised-q-16-budget-52",
+    "rows": [
+      {"row_id": "baker", "reserved_concurrency": 2, "start_cap": 16},
+      {"row_id": "table_writer", "reserved_concurrency": 8, "start_cap": 1},
+      {"row_id": "inline_ingestion", "reserved_concurrency": 2, "start_cap": 1},
+      {"row_id": "provider_attempt_reconciler", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "ingest_operator", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "reprocess_operator", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "insight_precompute", "reserved_concurrency": 2, "start_cap": 4}
+    ],
+    "batch_athena_budget": 52, "chat_reserve_active_dml": 20, "active_dml_quota": 200, "certified_query_cap": 10,
+    "expect": {"verdict": "refused", "reason": "SUM_OVER_BUDGET"}
+  },
+  {
+    "id": "operator-row-two-processes",
+    "rows": [
+      {"row_id": "baker", "reserved_concurrency": 2, "start_cap": 10},
+      {"row_id": "table_writer", "reserved_concurrency": 8, "start_cap": 1},
+      {"row_id": "inline_ingestion", "reserved_concurrency": 2, "start_cap": 1},
+      {"row_id": "provider_attempt_reconciler", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "ingest_operator", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "reprocess_operator", "reserved_concurrency": 2, "start_cap": 1},
+      {"row_id": "insight_precompute", "reserved_concurrency": 2, "start_cap": 4}
+    ],
+    "batch_athena_budget": 41, "chat_reserve_active_dml": 20, "active_dml_quota": 200, "certified_query_cap": 10,
+    "expect": {"verdict": "refused", "reason": "SUM_OVER_BUDGET"}
+  },
+  {
+    "id": "budget-over-headroom",
+    "rows": [
+      {"row_id": "baker", "reserved_concurrency": 2, "start_cap": 10},
+      {"row_id": "table_writer", "reserved_concurrency": 8, "start_cap": 1},
+      {"row_id": "inline_ingestion", "reserved_concurrency": 2, "start_cap": 1},
+      {"row_id": "provider_attempt_reconciler", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "ingest_operator", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "reprocess_operator", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "insight_precompute", "reserved_concurrency": 2, "start_cap": 4}
+    ],
+    "batch_athena_budget": 181, "chat_reserve_active_dml": 20, "active_dml_quota": 200, "certified_query_cap": 10,
+    "expect": {"verdict": "refused", "reason": "BUDGET_OVER_CHAT_HEADROOM"}
+  },
+  {
+    "id": "chat-reserve-zero",
+    "rows": [
+      {"row_id": "baker", "reserved_concurrency": 2, "start_cap": 10},
+      {"row_id": "table_writer", "reserved_concurrency": 8, "start_cap": 1},
+      {"row_id": "inline_ingestion", "reserved_concurrency": 2, "start_cap": 1},
+      {"row_id": "provider_attempt_reconciler", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "ingest_operator", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "reprocess_operator", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "insight_precompute", "reserved_concurrency": 2, "start_cap": 4}
+    ],
+    "batch_athena_budget": 41, "chat_reserve_active_dml": 0, "active_dml_quota": 200, "certified_query_cap": 10,
+    "expect": {"verdict": "refused", "reason": "NON_POSITIVE_CHAT_RESERVE"}
+  },
+  {
+    "id": "start-cap-integral-float",
+    "rows": [
+      {"row_id": "baker", "reserved_concurrency": 2, "start_cap": 10.0},
+      {"row_id": "table_writer", "reserved_concurrency": 8, "start_cap": 1},
+      {"row_id": "inline_ingestion", "reserved_concurrency": 2, "start_cap": 1},
+      {"row_id": "provider_attempt_reconciler", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "ingest_operator", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "reprocess_operator", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "insight_precompute", "reserved_concurrency": 2, "start_cap": 4}
+    ],
+    "batch_athena_budget": 41, "chat_reserve_active_dml": 20, "active_dml_quota": 200, "certified_query_cap": 10,
+    "expect": {"verdict": "accepted", "total": 41},
+    "control": "start-cap-fraction"
+  },
+  {
+    "id": "start-cap-fraction",
+    "rows": [
+      {"row_id": "baker", "reserved_concurrency": 2, "start_cap": 10.5},
+      {"row_id": "table_writer", "reserved_concurrency": 8, "start_cap": 1},
+      {"row_id": "inline_ingestion", "reserved_concurrency": 2, "start_cap": 1},
+      {"row_id": "provider_attempt_reconciler", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "ingest_operator", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "reprocess_operator", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "insight_precompute", "reserved_concurrency": 2, "start_cap": 4}
+    ],
+    "batch_athena_budget": 41, "chat_reserve_active_dml": 20, "active_dml_quota": 200, "certified_query_cap": 10,
+    "expect": {"verdict": "refused", "reason": "NON_INTEGER"}
+  },
+  {
+    "id": "unknown-row",
+    "rows": [
+      {"row_id": "baker", "reserved_concurrency": 2, "start_cap": 10},
+      {"row_id": "table_writer", "reserved_concurrency": 8, "start_cap": 1},
+      {"row_id": "inline_ingestion", "reserved_concurrency": 2, "start_cap": 1},
+      {"row_id": "provider_attempt_reconciler", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "ingest_operator", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "reprocess_operator", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "insight_precompute", "reserved_concurrency": 2, "start_cap": 4},
+      {"row_id": "chat", "reserved_concurrency": 1, "start_cap": 1}
+    ],
+    "batch_athena_budget": 41, "chat_reserve_active_dml": 20, "active_dml_quota": 200, "certified_query_cap": 10,
+    "expect": {"verdict": "refused", "reason": "UNKNOWN_ROW"}
+  },
+  {
+    "id": "missing-row",
+    "rows": [
+      {"row_id": "baker", "reserved_concurrency": 2, "start_cap": 10},
+      {"row_id": "table_writer", "reserved_concurrency": 8, "start_cap": 1},
+      {"row_id": "inline_ingestion", "reserved_concurrency": 2, "start_cap": 1},
+      {"row_id": "provider_attempt_reconciler", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "ingest_operator", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "reprocess_operator", "reserved_concurrency": 1, "start_cap": 1}
+    ],
+    "batch_athena_budget": 41, "chat_reserve_active_dml": 20, "active_dml_quota": 200, "certified_query_cap": 10,
+    "expect": {"verdict": "refused", "reason": "MISSING_ROW"}
+  },
+  {
+    "id": "duplicate-row",
+    "rows": [
+      {"row_id": "baker", "reserved_concurrency": 2, "start_cap": 10},
+      {"row_id": "table_writer", "reserved_concurrency": 8, "start_cap": 1},
+      {"row_id": "inline_ingestion", "reserved_concurrency": 2, "start_cap": 1},
+      {"row_id": "provider_attempt_reconciler", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "ingest_operator", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "reprocess_operator", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "insight_precompute", "reserved_concurrency": 2, "start_cap": 4},
+      {"row_id": "table_writer", "reserved_concurrency": 1, "start_cap": 1}
+    ],
+    "batch_athena_budget": 41, "chat_reserve_active_dml": 20, "active_dml_quota": 200, "certified_query_cap": 10,
+    "expect": {"verdict": "refused", "reason": "DUPLICATE_ROW"}
+  },
+  {
+    "id": "insight-cap-zero",
+    "rows": [
+      {"row_id": "baker", "reserved_concurrency": 2, "start_cap": 10},
+      {"row_id": "table_writer", "reserved_concurrency": 8, "start_cap": 1},
+      {"row_id": "inline_ingestion", "reserved_concurrency": 2, "start_cap": 1},
+      {"row_id": "provider_attempt_reconciler", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "ingest_operator", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "reprocess_operator", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "insight_precompute", "reserved_concurrency": 2, "start_cap": 0}
+    ],
+    "batch_athena_budget": 41, "chat_reserve_active_dml": 20, "active_dml_quota": 200, "certified_query_cap": 10,
+    "expect": {"verdict": "refused", "reason": "NON_POSITIVE_CAP"}
+  },
+  {
+    "id": "baker-cap-below-certified",
+    "rows": [
+      {"row_id": "baker", "reserved_concurrency": 2, "start_cap": 9},
+      {"row_id": "table_writer", "reserved_concurrency": 8, "start_cap": 1},
+      {"row_id": "inline_ingestion", "reserved_concurrency": 2, "start_cap": 1},
+      {"row_id": "provider_attempt_reconciler", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "ingest_operator", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "reprocess_operator", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "insight_precompute", "reserved_concurrency": 2, "start_cap": 4}
+    ],
+    "batch_athena_budget": 41, "chat_reserve_active_dml": 20, "active_dml_quota": 200, "certified_query_cap": 10,
+    "expect": {"verdict": "refused", "reason": "BELOW_CERTIFIED_QUERY_CAP"}
+  },
+  {
+    "id": "reserved-boolean",
+    "rows": [
+      {"row_id": "baker", "reserved_concurrency": 2, "start_cap": 10},
+      {"row_id": "table_writer", "reserved_concurrency": 8, "start_cap": 1},
+      {"row_id": "inline_ingestion", "reserved_concurrency": true, "start_cap": 1},
+      {"row_id": "provider_attempt_reconciler", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "ingest_operator", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "reprocess_operator", "reserved_concurrency": 1, "start_cap": 1},
+      {"row_id": "insight_precompute", "reserved_concurrency": 2, "start_cap": 4}
+    ],
+    "batch_athena_budget": 41, "chat_reserve_active_dml": 20, "active_dml_quota": 200, "certified_query_cap": 10,
+    "expect": {"verdict": "refused", "reason": "NON_INTEGER"}
+  }
+]

@@ -1,0 +1,3 @@
+impression_date_utc,campaign_id_string,campaign_country,impressions,total_cost,impression_cost,currency_iso_code,reach_users,distinct_user_count,suppression_reason,rows_suppressed
+2026-08-25,TRAPRES-NAMED,US,40000,2000000,1600000,USD,3500,2,,false
+,,,457,139400,90000,,1,1,1 dsp_impressions users < 2 required,true

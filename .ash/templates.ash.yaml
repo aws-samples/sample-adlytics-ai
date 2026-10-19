@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: MIT-0
+#
+# ASH configuration for the template scan: the CloudFormation templates written by
+# `cd infra && npx ts-node scripts/export-scan-templates.ts <OUT>`. The export writes this file to
+# <OUT>/.ash/.ash.yaml with its secret suppressions appended; scan <OUT> with that copy, since
+# container mode mounts only the source directory. Do not scan with this file alone.
+#
+# Generated JSON has no comment syntax, so the secret scanners' false positives are suppressed in
+# config. Each suppression the export appends names one template and one line whose whole content
+# is a reviewed shape (`secretSuppressions` in the export script): a CDK logical ID or Lambda log
+# group name (A-ENTROPY-IDENTIFIER-001), a SHA-256 digest under a named key, a public token
+# audience, or the ClientSecretSource field (A-PROTOCOL-CONSTANT-001). A match on any other line
+# stays open. The IaC rule dispositions travel inside the templates instead, as resource Metadata
+# written by infra/lib/mixins/scan-dispositions.ts.
+project_name: adlytics-ai-templates
+global_settings:
+  suppressions:

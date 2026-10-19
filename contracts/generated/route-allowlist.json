@@ -1,0 +1,15 @@
+{
+  "not_found_page": "/404.html",
+  "routes": [
+    "/",
+    "/admin/prompts/",
+    "/audiences/",
+    "/campaigns/",
+    "/new-customers/",
+    "/reach/",
+    "/retail-health/",
+    "/retention/",
+    "/scorecard/"
+  ],
+  "version": 1
+}

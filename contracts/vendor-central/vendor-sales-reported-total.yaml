@@ -1,0 +1,156 @@
+# vendor-sales-reported-total — Amazon's own catalogue-wide sales total.
+#
+# The adapter from GET_VENDOR_SALES_REPORT's `salesAggregate[]` array. Same document as
+# vendor-sales-by-asin, different grain, therefore a different contract and a different
+# table — a source document containing two grains is two contracts, never one.
+#
+# WHAT THIS IS FOR, because it is not what it looks like. It is not "sales by catalogue"
+# as an analytical fact; nobody asks that question, and if they did the by-ASIN rows would
+# answer it. Its value is as a RECONCILIATION CONTROL TOTAL: Amazon states the total, and
+# comparing it against the sum of our by-ASIN rows is the only way to detect that the
+# by-ASIN array was incomplete.
+#
+# That check cannot be made any other way. An incomplete by-ASIN array is not a parse
+# error and not a null — every row present is correct, the total is simply short, and
+# every figure downstream is quietly understated. This is the same class of problem as AMC
+# suppression: information destroyed before delivery, detectable only by holding a second
+# statement of the same fact.
+#
+# Named for its role rather than its grain. It will never be regrained, because the source
+# defines it as "no product dimension", so a grain token here would be describing the one
+# thing that cannot change. It is NEVER a drill-across target and never a row header.
+
+contract_id: vendor-sales-reported-total
+contract_version: 1
+
+source_system: vendor_central
+source_dataset: GET_VENDOR_SALES_REPORT
+source_format: json_dual_array
+
+target_table: fct_retail_sales_reported_total
+
+# No amazon_asin at all — that absence IS the grain. The option columns stay in the grain
+# for the same reason as the by-ASIN contract: a MANUFACTURING total and a SOURCING total
+# are different populations and summing them double-counts.
+grain:
+  - date_key
+  - marketplace_key
+  - distributor_view
+  - selling_program
+
+partition_keys:
+  - marketplace_key
+  - date_key
+  - report_options_hash
+
+measurement_basis: retail_actual
+source_timezone: PST
+ecosystem_key: amazon
+platform_key: amazon_retail
+restatement_window_days: 45
+staleness_threshold_hours: 96
+source_tables: []
+
+fields:
+  # --- keys -----------------------------------------------------------------
+  - source_path: salesAggregate[].startDate
+    target_column: date_key
+    target_type: date
+
+  - source_path: reportSpecification.marketplaceIds[0]
+    target_column: marketplace_key
+    target_type: string
+
+  # --- dataset identity ------------------------------------------------------
+  - source_path: reportSpecification.reportType
+    target_column: report_type
+    target_type: string
+
+  - source_path: reportSpecification.reportOptions.reportPeriod
+    target_column: report_period
+    target_type: string
+
+  - source_path: reportSpecification.dataStartTime
+    target_column: period_start
+    target_type: date
+
+  - source_path: reportSpecification.dataEndTime
+    target_column: period_end
+    target_type: date
+
+  - source_path: reportSpecification.reportOptions.distributorView
+    target_column: distributor_view
+    target_type: string
+    # In the grain because it changes which population the total describes. Only
+    # MANUFACTURING reconciles to AMC retail purchases.
+
+  - source_path: reportSpecification.reportOptions.sellingProgram
+    target_column: selling_program
+    target_type: string
+
+  - source_path: reportSpecification.reportOptions
+    target_column: report_options_hash
+    target_type: string
+
+  - source_path: reportSpecification.lastUpdatedDate
+    target_column: source_watermark
+    target_type: date
+
+  - source_path: manifest.retrieved_at
+    target_column: retrieved_at
+    target_type: timestamp
+
+  # --- the control totals ----------------------------------------------------
+  # Same six measures as the by-ASIN array, minus the ASIN. Identical option-dependent
+  # nullability, because it is the same document and the same options.
+  - source_path: salesAggregate[].shippedRevenue.amount
+    target_column: revenue_shipped
+    scale_divisor: 1
+    currency_column: currency_code
+
+  - source_path: salesAggregate[].shippedRevenue.currencyCode
+    target_column: currency_code
+    target_type: string
+    # One currency for the fact, with the other two asserted equal to it (ADR-021).
+
+  - source_path: salesAggregate[].shippedCogs.amount
+    target_column: cogs_shipped
+    scale_divisor: 1
+    currency_column: currency_code
+
+  - source_path: salesAggregate[].orderedRevenue.amount
+    target_column: revenue_ordered
+    scale_divisor: 1
+    currency_column: currency_code
+    nullable: true
+    null_meaning: not_applicable_under_options
+    # MANUFACTURING only. Null is NOT zero.
+
+  - source_path: salesAggregate[].shippedUnits
+    target_column: units_shipped
+    target_type: bigint
+
+  - source_path: salesAggregate[].orderedUnits
+    target_column: units_ordered
+    target_type: bigint
+    nullable: true
+    null_meaning: not_applicable_under_options
+
+  - source_path: salesAggregate[].customerReturns
+    target_column: customer_returns
+    target_type: bigint
+    nullable: true
+    null_meaning: not_applicable_under_options
+    # RETAIL or BUSINESS only; null under FRESH.
+
+# The same three Amount currencies collapse onto one column here as in the by-ASIN
+# contract, so the same assertion applies (ADR-021).
+currency_agreement:
+  - salesAggregate[].shippedRevenue.currencyCode
+  - salesAggregate[].shippedCogs.currencyCode
+  - salesAggregate[].orderedRevenue.currencyCode
+
+tags:
+  - phase-1
+  - vendor-central
+  - reconciliation

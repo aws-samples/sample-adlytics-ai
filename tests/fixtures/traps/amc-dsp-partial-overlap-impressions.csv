@@ -1,0 +1,3 @@
+impression_date_utc,campaign_id_string,campaign_country,impressions,total_cost,impression_cost,currency_iso_code,reach_users,distinct_user_count,suppression_reason,rows_suppressed
+2026-08-20,TRAPDSP-SHARED,US,10000,500000,400000,USD,900,2,,false
+2026-08-20,TRAPDSP-IMPRONLY,US,2000,100000,80000,USD,2,2,,false

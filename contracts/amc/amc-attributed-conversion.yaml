@@ -1,0 +1,236 @@
+# amc-attributed-conversion — ad-attributed conversions at campaign × product × day.
+#
+# The contract that unblocks most of the product. Seven of thirteen metrics read this
+# fact, including the default ROAS, all three halo metrics and the new-to-brand rate.
+# Without it `roas_attributed_14d` — the flagship figure per ADR-017 — has no numerator.
+#
+# Source is amazon_attributed_events_by_conversion_time, NEVER _by_traffic_time. The
+# traffic-time table automatically extends its conversion range 30 days past the window
+# end, so the same query returns different numbers on different runs and a cached answer
+# drifts. Both tables share one schema and one docs page; only the event selection differs.
+#
+# THIS TABLE HAS NO SPEND COLUMN. click_cost, supply_cost, audience_fee, platform_fee and
+# bid_price are the only cost columns here, and none of them is media spend. ROAS is
+# therefore assembled in the semantic layer by UNION ALL against a delivery fact at a
+# shared aggregate grain — never a row-level join, which would double-count spend across
+# the one-to-many traffic-to-conversion relationship.
+
+contract_id: amc-attributed-conversion
+contract_version: 1
+
+source_system: amc
+source_dataset: amazon_attributed_events_by_conversion_time
+source_format: csv
+
+target_table: fct_attributed_conversion
+
+source_tables:
+  - amazon_attributed_events_by_conversion_time
+
+# rows_suppressed is in the grain for the same reason as every AMC fact: setting the
+# discriminator makes AMC null sub-threshold values and re-aggregate with SUM, so rows
+# merge and (date, channel, campaign, product, marketplace) legitimately duplicates.
+grain:
+  - date_key
+  - channel_key
+  - campaign_key
+  - amazon_asin
+  - marketplace_key
+  - rows_suppressed
+
+partition_keys:
+  - marketplace_key
+  - date_key
+
+measurement_basis: ad_attributed
+
+# AMC's default, and every column selected below is the _utc variant.
+source_timezone: UTC
+ecosystem_key: amazon
+platform_key: amazon_ads
+
+# The docs state this table is advertising-pipeline-sourced and subject to restatement and
+# advertising augmentation. 30 days is the rolling re-pull the load design assumes; the
+# conversion-time table does not auto-extend its window, which is exactly why it is chosen.
+restatement_window_days: 30
+
+# 48-hour data availability SLA. 72 allows one missed run before alarming.
+staleness_threshold_hours: 72
+
+grain_feasibility_note: >
+  Every output column is NONE or LOW, so the bar is 2 distinct users per row.
+  conversion_event_dt_utc (MEDIUM) is deliberately not selected; conversion_event_date_utc
+  gives the same day grain at LOW. user_id is not read at all here — reach belongs to the
+  delivery facts, so this contract needs no CTE.
+
+suppression:
+  discriminator_column: rows_suppressed
+  reason_column: suppression_reason
+  distinct_user_count_column: distinct_user_count
+
+fields:
+  # --- grain -----------------------------------------------------------------
+  - source_path: conversion_event_date_utc
+    target_column: date_key
+    # LOW. The conversion's own date, which is what this fact is grained on. Traffic may
+    # sit up to 14 days earlier, so impression_* dates on the same row can precede the
+    # query window — that is expected, not a fault.
+
+  - source_path: ad_product_type
+    target_column: channel_key
+    # LOW, and the mapping trap on this table. NULL here MEANS Amazon DSP — it is a
+    # sentinel value, not an absent one, so it is COALESCEd to 'amazon_dsp' during
+    # extraction and this column is never null. Deliberately not declared nullable:
+    # none of the four meanings of null applies to a value that means something.
+    #
+    # Filtering on it is mandatory before reporting any sponsored-ads figure, or display
+    # mixes into numbers labelled Sponsored Products.
+
+  - source_path: ad_product_type
+    target_column: ad_product_key
+    # Same column, the finer of the two splits. dim_ad_product keys on the raw value.
+
+  - source_path: >-
+      CASE WHEN COALESCE(ad_product_type, 'amazon_dsp') IN ('sponsored_products',
+      'sponsored_brands') THEN 'search' WHEN COALESCE(ad_product_type, 'amazon_dsp') =
+      'sponsored_television' THEN 'video' ELSE 'display' END
+    target_column: channel_group_key
+    target_type: string
+    derived_from: [ad_product_type]
+    value_domain: [search, display, video]
+
+  - source_path: campaign_id_string
+    target_column: campaign_key
+    # NOT campaign_id. The string form is correct on both platforms; the numeric form is
+    # a different identifier on sponsored ads and 18-digit DSP IDs do not survive JSON
+    # integer precision.
+
+  - source_path: tracked_asin
+    target_column: amazon_asin
+    # The CONVERSION-side ASIN, and it includes brand-halo products that were never
+    # advertised. Populated only when the event is a purchase, so extraction filters
+    # conversion_event_category to purchase before this is treated as an ASIN.
+    #
+    # This is NOT the advertised ASIN. creative_asin is, and it lives on the traffic
+    # tables. Halo analysis at promoted-ASIN grain needs both, which is why
+    # fct_attributed_conversion_amazon exists as a separate subtype fact.
+    #
+    # Joins dim_product on (amazon_asin, marketplace_key). Renamed from product_key
+    # 2026-08-19; see vendor-sales-by-asin for the reason.
+    # Resolved against dim_product on the amazon_asin namespace.
+
+  - source_path: conversion_event_marketplace_name
+    target_column: marketplace_key
+    # LOW. NOT traffic_event_marketplace_name — this table carries both, because traffic
+    # and conversion can occur in different marketplaces on the same row.
+    #
+    # The conversion marketplace is correct for a conversion fact: it is where the sale
+    # happened. It also means that for a cross-marketplace row, this fact's marketplace
+    # and the delivery fact's marketplace differ, so a marketplace-grain ROAS pairs
+    # revenue from one marketplace with spend from another. Rare, and real.
+    #
+    # marketplace_name does not exist on this table at all, and marketplace_id is
+    # INTERNAL across AMC, so the name variants are the only usable marketplace columns.
+
+  # --- conversion counts -----------------------------------------------------
+  - source_path: conversions
+    target_column: conversions
+
+  - source_path: purchases
+    target_column: purchases
+    # Promoted products only — excludes brand halo.
+
+  - source_path: total_purchases
+    target_column: purchases_incl_halo
+    # Promoted plus halo. AMC documents the identity, so the halo portion is derivable by
+    # subtraction rather than needing its own column.
+
+  # --- revenue: never divided ------------------------------------------------
+  # Attributed sales arrive as DECIMAL(38,4) already in local currency. The divisor is
+  # declared as 1 rather than omitted, because omitting it reads as "nobody checked" —
+  # and applying a cost divisor here would be a 5-to-8 order-of-magnitude error in the
+  # numerator of every ROAS, which is the single most expensive mistake in this contract.
+  - source_path: product_sales
+    target_column: revenue_attributed
+    scale_divisor: 1
+    currency_column: currency_code
+    # The DEFAULT ROAS numerator per ADR-017. Advertised products only.
+
+  - source_path: total_product_sales
+    target_column: revenue_attributed_incl_halo
+    scale_divisor: 1
+    currency_column: currency_code
+    # Includes halo. Never the default: it moves every ratio built on it upward. AMC
+    # documents total_product_sales = product_sales + brand_halo_product_sales, so
+    # attributed_revenue_halo_14d is the difference of these two and needs no third column.
+
+  - source_path: new_to_brand_product_sales
+    target_column: revenue_new_to_brand_12mo
+    scale_divisor: 1
+    currency_column: currency_code
+    # The window is 12 months, stated consistently across every NTB column, and it is in
+    # the target name because Amazon's windows disagree across surfaces — a 14-day order
+    # window elsewhere on this very table.
+
+  - source_path: purchase_currency
+    target_column: currency_code
+    # One currency column for the fact (ADR-021). This table supplies exactly one, so
+    # there is nothing to assert agreement between and no currency_agreement block.
+
+  # --- units -----------------------------------------------------------------
+  - source_path: units_sold
+    target_column: units_attributed
+
+  - source_path: total_units_sold
+    target_column: units_attributed_incl_halo
+
+  - source_path: new_to_brand_purchases
+    target_column: purchases_new_to_brand_12mo
+    # Advertised products only, like purchases. The halo-inclusive count is the next field.
+
+  - source_path: new_to_brand_total_purchases
+    target_column: purchases_new_to_brand_incl_halo_12mo
+    nullable: true
+    null_meaning: not_applicable_under_options
+    present_from_pack_version: 2
+    # Advertised plus brand-halo products: the New customers gateway-products measure
+    # (design §6.2). The advertised-only count would show a halo product as zero. Added in
+    # query pack version 2, so a delivery an earlier pack version produced doesn't carry it and
+    # its rows read NULL here (the pack version is the option), never zero. The load refuses a
+    # pack-v2 delivery with it NULL on any row (pack_version_column), on the claim that the
+    # pack's SUM always returns a value on a kept row [unverified: no live run yet; live
+    # acceptance L9]. The refusal blocks the whole delivery, so its days' other figures wait
+    # too (docs/capabilities/load-path/low-level-design.md). Additive: contract_version stays 1.
+
+  # --- suppression: schema, not diagnostics ---------------------------------
+  # Workflow options, not table columns. AMC synthesises them into the output because the
+  # workflow asked; the names are ours to choose. Column names match canonical-model.md
+  # section 4 exactly so the same concept is not called two things across two facts.
+  - source_path: values_removed
+    target_column: rows_suppressed
+    target_type: boolean
+    from_extraction_option: true
+
+  - source_path: filtered_reason
+    target_column: suppression_reason
+    target_type: string
+    from_extraction_option: true
+    nullable: true
+    null_meaning: suppressed
+
+  - source_path: distinct_user_count
+    target_column: distinct_user_count
+    target_type: int
+    from_extraction_option: true
+    nullable: true
+    null_meaning: suppressed
+    # EMPTY ON A SUPPRESSED ROW, and declaring it required was a defect found by building the
+    # trap fixture. docs/concepts/provenance-chain.md section 2 shows AMC's own output: the
+    # clean rows carry the count capped at the threshold, and the merged row leaves it blank
+    # because the count that drove the decision is not reported for a row that was merged.
+    # Required, it would reject every suppressed partition — data behaving exactly as designed.
+
+tags:
+  - phase-1
+  - amc
+  - conversion

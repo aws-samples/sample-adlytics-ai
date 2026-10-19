@@ -1,0 +1,62 @@
+# Who provides each audience segment: Amazon or a third party (owner decision 2, 2026-10-09
+# about 02:40 UTC). The load applies it to dim_audience_segment.provider (packs 9 and 13, ADR-103
+# point 7), so no answer or page calls every segment "Amazon's".
+#
+# A segment is classified by an exact (namespace, segment name) entry first, then by its
+# namespace's rule. A segment neither covers gets provider NULL, which reads "Provider not
+# recorded", never "Amazon" (domain.semantics.audience_segments).
+#
+# Namespaces are the two dim_audience_segment keeps separate (ADR-103 point 6):
+# - amc_asi: Audience Segment Insights. AMC's page for these tables is titled "Amazon audience
+#   segment membership" [snippet, advertising.amazon.com datasources/audience_segment_membership_paid,
+#   searched 2026-10-11], so the namespace rule is Amazon.
+# - amc_dsp_behavior: DSP behaviour segments. They mix Amazon's own segments with segments from
+#   onboarded third-party data providers (P-BO-3, validation/RESULTS.md 2026-10-09), so there is no
+#   namespace rule: only listed segments carry a provider.
+#
+# Segment entries: the P-BO-3 first-pass classification of demographic segments (age, gender,
+# household income) by the probing agent on 2026-10-09, accepted for dev by the owner the same
+# day; a human review is pending (plan S-B9). Names only; no count from the probe is recorded.
+# "Demo - ..." segments are Amazon's own demographic audiences [inference from the names; Amazon
+# Ads' audience-targeting help names "Demo - Age 18-24" among its audiences, snippet, searched
+# 2026-10-11]; the Experian segment onboarded through LiveRamp is a third party's [inference from
+# the name].
+version: 1
+namespaces:
+  - namespace: amc_asi
+    provider: amazon
+    evidence: AMC documents these tables as Amazon audience segment membership [snippet, 2026-10-11]
+  - namespace: amc_dsp_behavior
+    provider: null
+    evidence: P-BO-3 found Amazon and third-party segments in this namespace (validation/RESULTS.md 2026-10-09)
+segments:
+  - {namespace: amc_dsp_behavior, segment_name: "Demo - Age 18-24", category: age, provider: amazon, evidence: "P-BO-3 first pass, accepted for dev 2026-10-09; human review pending"}
+  - {namespace: amc_dsp_behavior, segment_name: "Demo - Age 21-24", category: age, provider: amazon, evidence: "P-BO-3 first pass, accepted for dev 2026-10-09; human review pending"}
+  - {namespace: amc_dsp_behavior, segment_name: "Demo - Age 25-34", category: age, provider: amazon, evidence: "P-BO-3 first pass, accepted for dev 2026-10-09; human review pending"}
+  - {namespace: amc_dsp_behavior, segment_name: "Demo - Age 35-44", category: age, provider: amazon, evidence: "P-BO-3 first pass, accepted for dev 2026-10-09; human review pending"}
+  - {namespace: amc_dsp_behavior, segment_name: "Demo - Age 45-49", category: age, provider: amazon, evidence: "P-BO-3 first pass, accepted for dev 2026-10-09; human review pending"}
+  - {namespace: amc_dsp_behavior, segment_name: "Demo - Age 45-54", category: age, provider: amazon, evidence: "P-BO-3 first pass, accepted for dev 2026-10-09; human review pending"}
+  - {namespace: amc_dsp_behavior, segment_name: "Demo - Age 55-64", category: age, provider: amazon, evidence: "P-BO-3 first pass, accepted for dev 2026-10-09; human review pending"}
+  - {namespace: amc_dsp_behavior, segment_name: "Demo - Age 65+", category: age, provider: amazon, evidence: "P-BO-3 first pass, accepted for dev 2026-10-09; human review pending"}
+  - {namespace: amc_dsp_behavior, segment_name: "Demo - Edad 18 - 24", category: age, provider: amazon, evidence: "P-BO-3 first pass, accepted for dev 2026-10-09; human review pending"}
+  - {namespace: amc_dsp_behavior, segment_name: "Demo - Edad 25 - 34", category: age, provider: amazon, evidence: "P-BO-3 first pass, accepted for dev 2026-10-09; human review pending"}
+  - {namespace: amc_dsp_behavior, segment_name: "Demo - Edad 35 - 44", category: age, provider: amazon, evidence: "P-BO-3 first pass, accepted for dev 2026-10-09; human review pending"}
+  - {namespace: amc_dsp_behavior, segment_name: "Demo - Edad 45 - 54", category: age, provider: amazon, evidence: "P-BO-3 first pass, accepted for dev 2026-10-09; human review pending"}
+  - {namespace: amc_dsp_behavior, segment_name: "Demo - Edad 55 - 64", category: age, provider: amazon, evidence: "P-BO-3 first pass, accepted for dev 2026-10-09; human review pending"}
+  - {namespace: amc_dsp_behavior, segment_name: "Demo - Edad 65+", category: age, provider: amazon, evidence: "P-BO-3 first pass, accepted for dev 2026-10-09; human review pending"}
+  - {namespace: amc_dsp_behavior, segment_name: "Demo - Female", category: gender, provider: amazon, evidence: "P-BO-3 first pass, accepted for dev 2026-10-09; human review pending"}
+  - {namespace: amc_dsp_behavior, segment_name: "Demo - Male", category: gender, provider: amazon, evidence: "P-BO-3 first pass, accepted for dev 2026-10-09; human review pending"}
+  - {namespace: amc_dsp_behavior, segment_name: "ExperianDemographicsGenderFemale_LiveRamp", category: gender, provider: third_party, evidence: "P-BO-3 first pass, accepted for dev 2026-10-09; human review pending"}
+  - {namespace: amc_dsp_behavior, segment_name: "Demo - Household Income - $1,000-$24,999", category: income, provider: amazon, evidence: "P-BO-3 first pass, accepted for dev 2026-10-09; human review pending"}
+  - {namespace: amc_dsp_behavior, segment_name: "Demo - Household Income - $100,000-$124,999", category: income, provider: amazon, evidence: "P-BO-3 first pass, accepted for dev 2026-10-09; human review pending"}
+  - {namespace: amc_dsp_behavior, segment_name: "Demo - Household Income - $125,000+", category: income, provider: amazon, evidence: "P-BO-3 first pass, accepted for dev 2026-10-09; human review pending"}
+  - {namespace: amc_dsp_behavior, segment_name: "Demo - Household Income - $125,000-$149,999", category: income, provider: amazon, evidence: "P-BO-3 first pass, accepted for dev 2026-10-09; human review pending"}
+  - {namespace: amc_dsp_behavior, segment_name: "Demo - Household Income - $15,000-$24,999", category: income, provider: amazon, evidence: "P-BO-3 first pass, accepted for dev 2026-10-09; human review pending"}
+  - {namespace: amc_dsp_behavior, segment_name: "Demo - Household Income - $200,000+", category: income, provider: amazon, evidence: "P-BO-3 first pass, accepted for dev 2026-10-09; human review pending"}
+  - {namespace: amc_dsp_behavior, segment_name: "Demo - Household Income - $25,000-$39,999", category: income, provider: amazon, evidence: "P-BO-3 first pass, accepted for dev 2026-10-09; human review pending"}
+  - {namespace: amc_dsp_behavior, segment_name: "Demo - Household Income - $25,000-$49,999", category: income, provider: amazon, evidence: "P-BO-3 first pass, accepted for dev 2026-10-09; human review pending"}
+  - {namespace: amc_dsp_behavior, segment_name: "Demo - Household Income - $40,000-$49,999", category: income, provider: amazon, evidence: "P-BO-3 first pass, accepted for dev 2026-10-09; human review pending"}
+  - {namespace: amc_dsp_behavior, segment_name: "Demo - Household Income - $50,000-$59,999", category: income, provider: amazon, evidence: "P-BO-3 first pass, accepted for dev 2026-10-09; human review pending"}
+  - {namespace: amc_dsp_behavior, segment_name: "Demo - Household Income - $60,000-$74,999", category: income, provider: amazon, evidence: "P-BO-3 first pass, accepted for dev 2026-10-09; human review pending"}
+  - {namespace: amc_dsp_behavior, segment_name: "Demo - Household Income - $75,000+", category: income, provider: amazon, evidence: "P-BO-3 first pass, accepted for dev 2026-10-09; human review pending"}
+  - {namespace: amc_dsp_behavior, segment_name: "Demo - Household Income - $75,000-$99,999", category: income, provider: amazon, evidence: "P-BO-3 first pass, accepted for dev 2026-10-09; human review pending"}

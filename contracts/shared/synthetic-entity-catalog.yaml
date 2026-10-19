@@ -1,0 +1,375 @@
+version: 2
+reserved_identifiers:
+  asin_prefixes: [B0FIXTUR, B0PARENT, B0TRAP]
+  canonical_campaign_prefix: 'campaign:'
+  dsp_campaign_pattern: '^[0-9]{18}$'
+  sponsored_campaign_pattern: '^A0[A-Z0-9]{16,}$'
+  trap_campaign_ids:
+    - TRAPATTR-000
+    - TRAPATTR-001
+    - TRAPATTR-002
+    - TRAPATTR-003
+    - TRAPATTR-004
+    - TRAPATTR-005
+    - TRAPDSP-SHARED
+    - TRAPDSP-CLICKONLY
+    - TRAPDSP-IMPRONLY
+    - TRAPRES-NAMED
+    - TRAPSUP-NAMED-A
+    - TRAPSUP-NAMED-B
+    - TRAPSUP-WITHHELD
+  unnamed_campaign_names:
+    - Unnamed synthetic campaign 2
+    - Unnamed synthetic campaign 4
+    - Unnamed synthetic campaign 6
+    - Unnamed synthetic campaign 8
+    - Unnamed synthetic campaign 10
+    - Unnamed synthetic campaign 12
+    - Unnamed synthetic campaign 14
+    - Unnamed synthetic campaign 16
+    - Unnamed synthetic campaign 18
+    - Unnamed synthetic campaign 20
+    - Unnamed synthetic campaign 22
+    - Unnamed synthetic campaign 24
+    - Unnamed synthetic campaign 26
+    - Unnamed synthetic campaign 28
+    - Unnamed synthetic campaign 30
+    - Unnamed synthetic campaign 32
+    - Unnamed synthetic campaign 34
+    - Unnamed synthetic campaign 36
+marketplaces:
+  - key: amazon_us
+    label: United States
+    aliases:
+      amazon.marketplace_id: ATVPDKIKX0DER
+      amc.marketplace_name: AMAZON.COM
+      amc.campaign_country: US
+      amc.segment_marketplace_id: '1'
+      amc.segment_marketplace_id: '1'
+brands:
+  - key: brand:northstar-home
+    code: NTHOME
+    name: Northstar Home Goods
+advertisers:
+  - key: advertiser:northstar
+    name: Northstar Home Goods Media
+    source_aliases:
+      amc.dsp.advertiser_id: '910000000000001'
+      amc.sponsored.advertiser_id: '910000000000002'
+bulk_campaign_scheme:
+  count: 1000
+  advertiser: advertiser:northstar
+  marketplace: amazon_us
+  platform: amazon_ads
+  channel: amazon_dsp
+  ad_product: amazon_dsp
+  canonical_pattern: 'campaign:bulk-estate-{ordinal:04d}'
+  source_namespace: amc.dsp.campaign_id_string
+  source_pattern: '92000000000000{ordinal:04d}'
+  name_pattern: 'Fictional Bulk Estate | Campaign {ordinal:04d}'
+  valid_from: 2025-01-01
+  scenario_cycle:
+    - growth_ramp
+    - sustained_decline
+    - spike_and_fade
+    - zero_conversion
+    - flat_traffic_rising_conversion
+    - coverage_gap
+# R-5 (design §3.1): ten of the twelve zero_conversion campaigns are reassigned in catalog order;
+# missing-name-sponsored and northstar-sponsored-26 stay zero_conversion. dsp-29 is the launch.
+# dsp-27's name carries embedded double quotes, so the generated amc-campaign-dsp.csv holds AMC's
+# backslash-escaped quote (docs/sources/amc.md §5, src/adapters/amc_csv.py).
+campaigns:
+  - key: campaign:northstar-dsp
+    advertiser: advertiser:northstar
+    marketplace: amazon_us
+    platform: amazon_ads
+    channel: amazon_dsp
+    ad_product: amazon_dsp
+    scenario: growth_ramp
+    source_aliases:
+      amc.dsp.campaign_id_string: '910000000000000001'
+    names:
+      - value: Northstar Home | Prospecting
+        valid_from: 2025-01-01
+        valid_to: 2026-08-12
+      - value: Northstar Home | Growth
+        valid_from: 2026-08-12
+  - key: campaign:harbor-dsp
+    advertiser: advertiser:northstar
+    marketplace: amazon_us
+    platform: amazon_ads
+    channel: amazon_dsp
+    ad_product: amazon_dsp
+    scenario: sustained_decline
+    source_aliases:
+      amc.dsp.campaign_id_string: '910000000000000002'
+    names:
+      - value: Northstar Home | Brand
+        valid_from: 2025-01-01
+  - key: campaign:fieldwork-sponsored
+    advertiser: advertiser:northstar
+    marketplace: amazon_us
+    platform: amazon_ads
+    channel: amazon_sponsored_brands
+    ad_product: sponsored_brands
+    scenario: spike_and_fade
+    source_aliases:
+      amc.sponsored.campaign_id_string: A0SYNTHETIC00000001
+    names:
+      - value: Northstar Home | Brand
+        valid_from: 2025-01-01
+  - key: campaign:missing-name-sponsored
+    advertiser: advertiser:northstar
+    marketplace: amazon_us
+    platform: amazon_ads
+    channel: amazon_sponsored_products
+    ad_product: sponsored_products
+    scenario: zero_conversion
+    source_aliases:
+      amc.sponsored.campaign_id_string: A0SYNTHETIC00000002
+    names: []
+  - {key: campaign:northstar-dsp-03, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_dsp, ad_product: amazon_dsp, scenario: spike_and_fade, source_aliases: {amc.dsp.campaign_id_string: '910000000000000003'}, names: [{value: Northstar DSP | Flight 03, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-dsp-04, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_dsp, ad_product: amazon_dsp, scenario: growth_ramp, source_aliases: {amc.dsp.campaign_id_string: '910000000000000004'}, names: [{value: Northstar DSP | Flight 04, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-dsp-05, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_dsp, ad_product: amazon_dsp, scenario: flat_traffic_rising_conversion, source_aliases: {amc.dsp.campaign_id_string: '910000000000000005'}, names: [{value: Northstar DSP | Flight 05, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-dsp-06, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_dsp, ad_product: amazon_dsp, scenario: growth_ramp, source_aliases: {amc.dsp.campaign_id_string: '910000000000000006'}, names: [{value: Northstar DSP | Flight 06, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-dsp-07, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_dsp, ad_product: amazon_dsp, scenario: sustained_decline, source_aliases: {amc.dsp.campaign_id_string: '910000000000000007'}, names: [{value: Northstar DSP | Flight 07, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-dsp-08, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_dsp, ad_product: amazon_dsp, scenario: spike_and_fade, source_aliases: {amc.dsp.campaign_id_string: '910000000000000008'}, names: [{value: Northstar DSP | Flight 08, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-dsp-09, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_dsp, ad_product: amazon_dsp, scenario: sustained_decline, source_aliases: {amc.dsp.campaign_id_string: '910000000000000009'}, names: [{value: Northstar DSP | Flight 09, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-dsp-10, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_dsp, ad_product: amazon_dsp, scenario: flat_traffic_rising_conversion, source_aliases: {amc.dsp.campaign_id_string: '910000000000000010'}, names: [{value: Northstar DSP | Flight 10, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-dsp-11, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_dsp, ad_product: amazon_dsp, scenario: growth_ramp, source_aliases: {amc.dsp.campaign_id_string: '910000000000000011'}, names: [{value: Northstar DSP | Flight 11, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-dsp-12, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_dsp, ad_product: amazon_dsp, scenario: sustained_decline, source_aliases: {amc.dsp.campaign_id_string: '910000000000000012'}, names: [{value: Northstar DSP | Flight 12, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-dsp-13, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_dsp, ad_product: amazon_dsp, scenario: spike_and_fade, source_aliases: {amc.dsp.campaign_id_string: '910000000000000013'}, names: [{value: Northstar DSP | Flight 13, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-dsp-14, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_dsp, ad_product: amazon_dsp, scenario: spike_and_fade, source_aliases: {amc.dsp.campaign_id_string: '910000000000000014'}, names: [{value: Northstar DSP | Flight 14, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-dsp-15, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_dsp, ad_product: amazon_dsp, scenario: flat_traffic_rising_conversion, source_aliases: {amc.dsp.campaign_id_string: '910000000000000015'}, names: [{value: Northstar DSP | Flight 15, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-dsp-16, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_dsp, ad_product: amazon_dsp, scenario: growth_ramp, source_aliases: {amc.dsp.campaign_id_string: '910000000000000016'}, names: [{value: Northstar DSP | Flight 16, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-dsp-17, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_dsp, ad_product: amazon_dsp, scenario: sustained_decline, source_aliases: {amc.dsp.campaign_id_string: '910000000000000017'}, names: [{value: Northstar DSP | Flight 17, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-dsp-18, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_dsp, ad_product: amazon_dsp, scenario: spike_and_fade, source_aliases: {amc.dsp.campaign_id_string: '910000000000000018'}, names: [{value: Northstar DSP | Flight 18, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-dsp-19, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_dsp, ad_product: amazon_dsp, scenario: flat_traffic_rising_conversion, source_aliases: {amc.dsp.campaign_id_string: '910000000000000019'}, names: [{value: Northstar DSP | Flight 19, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-dsp-20, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_dsp, ad_product: amazon_dsp, scenario: flat_traffic_rising_conversion, source_aliases: {amc.dsp.campaign_id_string: '910000000000000020'}, names: [{value: Northstar DSP | Flight 20, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-dsp-21, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_dsp, ad_product: amazon_dsp, scenario: growth_ramp, source_aliases: {amc.dsp.campaign_id_string: '910000000000000021'}, names: [{value: Northstar DSP | Flight 21, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-dsp-22, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_dsp, ad_product: amazon_dsp, scenario: sustained_decline, source_aliases: {amc.dsp.campaign_id_string: '910000000000000022'}, names: [{value: Northstar DSP | Flight 22, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-dsp-23, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_dsp, ad_product: amazon_dsp, scenario: spike_and_fade, source_aliases: {amc.dsp.campaign_id_string: '910000000000000023'}, names: [{value: Northstar DSP | Flight 23, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-dsp-24, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_dsp, ad_product: amazon_dsp, scenario: stable_growth, source_aliases: {amc.dsp.campaign_id_string: '910000000000000024'}, names: [{value: Northstar DSP | Flight 24, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-dsp-25, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_dsp, ad_product: amazon_dsp, scenario: flat_traffic_rising_conversion, source_aliases: {amc.dsp.campaign_id_string: '910000000000000025'}, names: [{value: Northstar DSP | Flight 25, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-dsp-26, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_dsp, ad_product: amazon_dsp, scenario: growth_ramp, source_aliases: {amc.dsp.campaign_id_string: '910000000000000026'}, names: [{value: Northstar DSP | Flight 26, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-dsp-27, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_dsp, ad_product: amazon_dsp, scenario: sustained_decline, source_aliases: {amc.dsp.campaign_id_string: '910000000000000027'}, names: [{value: 'Northstar DSP | "Flight" 27', valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-dsp-28, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_dsp, ad_product: amazon_dsp, scenario: spike_and_fade, source_aliases: {amc.dsp.campaign_id_string: '910000000000000028'}, names: [{value: Northstar DSP | Flight 28, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-dsp-29, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_dsp, ad_product: amazon_dsp, scenario: growth_ramp, source_aliases: {amc.dsp.campaign_id_string: '910000000000000029'}, names: [{value: Northstar DSP | Flight 29, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-dsp-30, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_dsp, ad_product: amazon_dsp, scenario: flat_traffic_rising_conversion, source_aliases: {amc.dsp.campaign_id_string: '910000000000000030'}, names: [{value: Northstar DSP | Flight 30, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-sponsored-03, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_sponsored_products, ad_product: sponsored_products, scenario: growth_ramp, source_aliases: {amc.sponsored.campaign_id_string: A0SYNTHETIC00000003}, names: [{value: Northstar Sponsored | Flight 03, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-sponsored-04, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_sponsored_products, ad_product: sponsored_products, scenario: sustained_decline, source_aliases: {amc.sponsored.campaign_id_string: A0SYNTHETIC00000004}, names: [{value: Northstar Sponsored | Flight 04, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-sponsored-05, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_sponsored_products, ad_product: sponsored_products, scenario: spike_and_fade, source_aliases: {amc.sponsored.campaign_id_string: A0SYNTHETIC00000005}, names: [{value: Northstar Sponsored | Flight 05, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-sponsored-06, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_sponsored_products, ad_product: sponsored_products, scenario: sustained_decline, source_aliases: {amc.sponsored.campaign_id_string: A0SYNTHETIC00000006}, names: [{value: Northstar Sponsored | Flight 06, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-sponsored-07, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_sponsored_products, ad_product: sponsored_products, scenario: flat_traffic_rising_conversion, source_aliases: {amc.sponsored.campaign_id_string: A0SYNTHETIC00000007}, names: [{value: Northstar Sponsored | Flight 07, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-sponsored-08, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_sponsored_products, ad_product: sponsored_products, scenario: growth_ramp, source_aliases: {amc.sponsored.campaign_id_string: A0SYNTHETIC00000008}, names: [{value: Northstar Sponsored | Flight 08, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-sponsored-09, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_sponsored_products, ad_product: sponsored_products, scenario: sustained_decline, source_aliases: {amc.sponsored.campaign_id_string: A0SYNTHETIC00000009}, names: [{value: Northstar Sponsored | Flight 09, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-sponsored-10, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_sponsored_products, ad_product: sponsored_products, scenario: spike_and_fade, source_aliases: {amc.sponsored.campaign_id_string: A0SYNTHETIC00000010}, names: [{value: Northstar Sponsored | Flight 10, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-sponsored-11, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_sponsored_products, ad_product: sponsored_products, scenario: spike_and_fade, source_aliases: {amc.sponsored.campaign_id_string: A0SYNTHETIC00000011}, names: [{value: Northstar Sponsored | Flight 11, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-sponsored-12, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_sponsored_products, ad_product: sponsored_products, scenario: flat_traffic_rising_conversion, source_aliases: {amc.sponsored.campaign_id_string: A0SYNTHETIC00000012}, names: [{value: Northstar Sponsored | Flight 12, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-sponsored-13, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_sponsored_products, ad_product: sponsored_products, scenario: growth_ramp, source_aliases: {amc.sponsored.campaign_id_string: A0SYNTHETIC00000013}, names: [{value: Northstar Sponsored | Flight 13, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-sponsored-14, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_sponsored_products, ad_product: sponsored_products, scenario: sustained_decline, source_aliases: {amc.sponsored.campaign_id_string: A0SYNTHETIC00000014}, names: [{value: Northstar Sponsored | Flight 14, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-sponsored-15, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_sponsored_products, ad_product: sponsored_products, scenario: spike_and_fade, source_aliases: {amc.sponsored.campaign_id_string: A0SYNTHETIC00000015}, names: [{value: Northstar Sponsored | Flight 15, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-sponsored-16, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_sponsored_products, ad_product: sponsored_products, scenario: flat_traffic_rising_conversion, source_aliases: {amc.sponsored.campaign_id_string: A0SYNTHETIC00000016}, names: [{value: Northstar Sponsored | Flight 16, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-sponsored-17, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_sponsored_products, ad_product: sponsored_products, scenario: flat_traffic_rising_conversion, source_aliases: {amc.sponsored.campaign_id_string: A0SYNTHETIC00000017}, names: [{value: Northstar Sponsored | Flight 17, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-sponsored-18, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_sponsored_products, ad_product: sponsored_products, scenario: growth_ramp, source_aliases: {amc.sponsored.campaign_id_string: A0SYNTHETIC00000018}, names: [{value: Northstar Sponsored | Flight 18, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-sponsored-19, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_sponsored_products, ad_product: sponsored_products, scenario: sustained_decline, source_aliases: {amc.sponsored.campaign_id_string: A0SYNTHETIC00000019}, names: [{value: Northstar Sponsored | Flight 19, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-sponsored-20, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_sponsored_products, ad_product: sponsored_products, scenario: spike_and_fade, source_aliases: {amc.sponsored.campaign_id_string: A0SYNTHETIC00000020}, names: [{value: Northstar Sponsored | Flight 20, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-sponsored-21, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_sponsored_products, ad_product: sponsored_products, scenario: stable_growth, source_aliases: {amc.sponsored.campaign_id_string: A0SYNTHETIC00000021}, names: [{value: Northstar Sponsored | Flight 21, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-sponsored-22, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_sponsored_products, ad_product: sponsored_products, scenario: flat_traffic_rising_conversion, source_aliases: {amc.sponsored.campaign_id_string: A0SYNTHETIC00000022}, names: [{value: Northstar Sponsored | Flight 22, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-sponsored-23, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_sponsored_products, ad_product: sponsored_products, scenario: growth_ramp, source_aliases: {amc.sponsored.campaign_id_string: A0SYNTHETIC00000023}, names: [{value: Northstar Sponsored | Flight 23, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-sponsored-24, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_sponsored_products, ad_product: sponsored_products, scenario: sustained_decline, source_aliases: {amc.sponsored.campaign_id_string: A0SYNTHETIC00000024}, names: [{value: Northstar Sponsored | Flight 24, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-sponsored-25, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_sponsored_products, ad_product: sponsored_products, scenario: spike_and_fade, source_aliases: {amc.sponsored.campaign_id_string: A0SYNTHETIC00000025}, names: [{value: Northstar Sponsored | Flight 25, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-sponsored-26, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_sponsored_products, ad_product: sponsored_products, scenario: zero_conversion, source_aliases: {amc.sponsored.campaign_id_string: A0SYNTHETIC00000026}, names: [{value: Northstar Sponsored | Flight 26, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-sponsored-27, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_sponsored_products, ad_product: sponsored_products, scenario: flat_traffic_rising_conversion, source_aliases: {amc.sponsored.campaign_id_string: A0SYNTHETIC00000027}, names: [{value: Northstar Sponsored | Flight 27, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-sponsored-28, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_sponsored_products, ad_product: sponsored_products, scenario: growth_ramp, source_aliases: {amc.sponsored.campaign_id_string: A0SYNTHETIC00000028}, names: [{value: Northstar Sponsored | Flight 28, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-sponsored-29, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_sponsored_products, ad_product: sponsored_products, scenario: sustained_decline, source_aliases: {amc.sponsored.campaign_id_string: A0SYNTHETIC00000029}, names: [{value: Northstar Sponsored | Flight 29, valid_from: 2025-01-01}]}
+  - {key: campaign:northstar-sponsored-30, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_sponsored_products, ad_product: sponsored_products, scenario: coverage_gap, source_aliases: {amc.sponsored.campaign_id_string: A0SYNTHETIC00000030}, names: [{value: Northstar Sponsored | Flight 30, valid_from: 2025-01-01}]}
+products:
+  - {asin: B0FIXTUR00, parent_asin: B0PARENT00, brand: brand:northstar-home, title: Northstar Home Product 0, roles: [advertised, converted], scenario: stable_growth}
+  - {asin: B0FIXTUR01, parent_asin: B0PARENT00, brand: brand:northstar-home, title: Northstar Home Product 1, roles: [advertised, converted], scenario: stable_growth}
+  - {asin: B0FIXTUR02, parent_asin: B0PARENT00, brand: brand:northstar-home, title: Northstar Home Product 2, roles: [advertised, converted], scenario: stable_growth}
+  - {asin: B0FIXTUR03, parent_asin: B0PARENT01, brand: brand:northstar-home, title: Northstar Home Product 3, roles: [converted, halo], scenario: returns_pressure}
+  - {asin: B0FIXTUR04, parent_asin: B0PARENT01, brand: brand:northstar-home, title: Northstar Home Product 4, roles: [advertised], scenario: stable_growth}
+  - {asin: B0FIXTUR05, parent_asin: B0PARENT01, brand: brand:northstar-home, title: Northstar Home Product 5, roles: [converted, halo], scenario: stable_growth}
+  - {asin: B0FIXTUR06, parent_asin: B0PARENT02, brand: brand:northstar-home, title: Northstar Home Product 6, roles: [converted], scenario: stable_growth}
+evidence:
+  amc_campaign_identifier_forms: docs/sources/amc.md#4-identifiers
+  amc_names_outputtable: docs/sources/amc.md#4-identifiers
+  amc_marketplace_aliases: docs/sources/amc.md#4-identifiers
+  amc_suppression_nulling: docs/sources/amc.md#which-column-gets-nulled--per-column-against-its-own-threshold-verified-2026-08-21
+  amc_product_roles: docs/sources/amc.md#4-identifiers
+# The declared shape of the fictional dev seed (ADR-086). Every generated value is a pure function
+# of these declarations and the seed; nothing reads a clock. Decimals are quoted strings. Event
+# offsets are days relative to event_anchor; the launch offset is relative to shape_anchor.
+# Campaign names are valid from 2025-01-01 so every named campaign has a name on first_day.
+shape:
+  seed: adlytics-dev-shape-2026-10-04-r1   # r1: the -10-04 seed breached window_roas_band at +7 days (evidence/proj_r9_seed_search.out); never widen a band
+  fixture_span: {first_day: "2025-07-01", last_day: "2026-10-06"}   # about 15 months (owner: at least 13); last_day is a literal per landing commit
+  shape_anchor: "2026-10-06"           # long-run trend, story, slope, conversion shape, spike, launch; never moved after the first landing
+  event_anchor: "2026-10-06"           # the ten short events below; the only date that moves
+  event_anchor_slack_days: 2           # shape_anchor <= event_anchor <= last_day <= event_anchor + 2
+  story_days: 56
+  launch: {campaign: campaign:northstar-dsp-29, first_delivery_offset: -10}
+  amc:
+    attribution_maturity: {age_0: "1", age_1: "1"}   # {1, 1} in dev whatever RL-2 finds (ADR-086)
+    # Pack 1 (amc-new-to-brand-buyers-platform, ADR-099): one platform row per complete ISO week
+    # and calendar month. Distinct buyers are 0.80 x the period's credited purchases in the
+    # attributed-conversion corpus, rounded down, so buyers never exceed purchases. The ISO week
+    # 6 weeks before the shape_anchor week returns only a suppressed one-shopper row, source keys
+    # NULL, so its platform cell is written not_returned and reads "not available".
+    new_to_brand_buyers: {buyers_per_purchase: "0.80", not_returned_week_offset: -6}
+    # Pack 2 (amc-new-to-brand-buyers-channel): one row per ad product with credited purchases,
+    # per complete ISO week and calendar month, drawn with pack 1's buyers_per_purchase from that
+    # ad product's own purchases, so it never exceeds them or the period's platform buyers. In
+    # the ISO week 1 week before the shape_anchor week, sponsored_brands (which has spend that
+    # week) returns only a suppressed one-shopper row, keys NULL: it is on the ad-product roster
+    # and reads "not available". Pack 1's not-returned week returns one suppressed row here too.
+    new_to_brand_buyers_channel: {missing: {ad_product: sponsored_brands, week_offset: -1}}
+    # Pack 3 (amc-new-to-brand-buyers-campaign): one row per campaign with credited purchases per
+    # calendar month only, drawn with pack 1's buyers_per_purchase from that campaign's own
+    # purchases, so it never exceeds them or the month's platform buyers. Every such campaign has
+    # spend that month, so it is on the campaign roster. The month 1 before the shape_anchor
+    # month drops the first quarter of its campaigns by source key (one merged suppressed row,
+    # keys NULL): its roster of 20 or more loses more than a fifth and the grain set is
+    # withdrawn, pointing to new buyers per channel. The month 2 before drops northstar-dsp-06
+    # only, which reads "not available" while the rest are served.
+    new_to_brand_buyers_campaign: {withdrawn: {month_offset: -1, missing_share: "0.25"}, missing: {month_offset: -2, campaign: campaign:northstar-dsp-06}}
+    # Pack 4 (amc-dsp-reach, plan D6): one delivery per UTC day, for these three days only, so
+    # every earlier DSP day has no reach publication and reads the coverage refusal. Each DSP
+    # campaign-day with impressions carries its distinct shoppers, never more than that day's
+    # amc-dsp-impressions impressions. On the first day northstar-dsp-05 had one shopper, below
+    # the bar of 2: its row comes back suppressed with its keys NULL, and reject_delivery refuses
+    # that day's delivery. Only the reach-side row is shaped; that day's impressions corpus isn't,
+    # so the bound holds but the implied frequency isn't realistic. The other two days are clean.
+    dsp_reach: {day_offsets: [-3, -2, -1], suppressed: {day_offset: -3, campaign: campaign:northstar-dsp-05}}
+    # Pack 5 (amc-exposure-groups, ADR-101): one delivery of the 3 x 2 grid (exposure source set x
+    # identity space) per complete ISO week and calendar month. A period's DSP and sponsored
+    # impressions and raw costs come from the amc-dsp-impressions and amc-reach-frequency corpora
+    # over its days: 0.60 of the DSP side to DSP only and the rest to both, 0.70 of the sponsored
+    # side to sponsored only and the rest to both, 0.75 of each on account IDs. Shoppers are
+    # impressions / 6 rounded down; outcome counts are the rates below of shoppers, device or
+    # browser IDs at 0.25 of them. Shaped: 2 weeks before the shape_anchor week the DSP-only
+    # device-or-browser cell returns only a suppressed one-shopper row (not available); the
+    # month 1 before, the sponsored-only device-or-browser cell held 3 shoppers but one source
+    # path had fewer than two, so it comes back withheld with a (path i of n) reason and NULL
+    # purchase sums and currency (plan D19); 3 weeks before, that cell holds 2 Sponsored Products
+    # shoppers with 3 impressions and one 1.20 billed click each, so its window spend is the
+    # clicks' 2.40; 4 weeks before, one row's sponsored currency disagrees with its MIN twin, so
+    # the load refuses the delivery and it is never landed.
+    exposure_groups: {impressions_per_shopper: 6, group_shares: {dsp: "0.60", sponsored: "0.70"}, account_share: "0.75", rates: {search: "0.12", detail_page_view: "0.30", purchaser: "0.05", ntb_share: "0.40", device_factor: "0.25"}, purchases_per_purchaser: "1.25", order_value: "32.50", not_returned: {week_offset: -2, cell: [dsp, device_or_browser]}, withheld_path: {month_offset: -1, cell: [sponsored, device_or_browser], shoppers: 3}, click_shoppers: {week_offset: -3, cell: [sponsored, device_or_browser], shoppers: 2, click_spend: "1.20"}, currency_disagreement: {week_offset: -4}}
+    # Packs 6 and 7 (amc-exposure-frequency-platform and -channel, design §6.3 D2): one delivery
+    # of every bucket by two identity spaces (pack 7 per ad product) per complete calendar month
+    # and quarter, drawn from the same DSP and sponsored corpora as pack 5 (pack 7 per ad
+    # product, DSP as amazon_dsp). Shoppers hold their bucket's impression count (10_plus: 14);
+    # bucket_shares split each slice's shoppers, purchaser_rates their purchasers per bucket,
+    # device or browser IDs at 0.25 of them. Shaped: the month 2 before the shape_anchor month,
+    # the 10_plus device-or-browser bucket (pack 7: of sponsored_products) held 3 shoppers but one
+    # source path had fewer than two, so it comes back withheld (plan D19); its slice grades
+    # degraded, so the month after is delivered under the coarse scheme (plan D10). The month 4
+    # before, one account row's bucket is NULL, so the load refuses it and it is never landed.
+    # Packs 9, 13 and 8 (amc-dsp-segment-names, amc-segment-metadata, amc-audience-performance,
+    # design §6.5 C1): one delivery per pack per complete calendar month. Pack 8 is per DSP
+    # campaign (the amc-dsp-impressions corpus) and DSP segment; segment_shares of a campaign's
+    # impressions and raw cost match each segment (overlapping, so they don't sum to 1), with 5
+    # impressions per reached shopper and 4 % of them buying. Declared: DSP and ASI segment 41001
+    # collide and stay separate rows (ADR-103 point 6); "Demo - Age 25-34" (Amazon) and the
+    # Experian LiveRamp segment (third party) are classified in audience-segment-providers.yaml,
+    # the two synthetic DSP segments are not ("Provider not recorded"); 41003's name carries an
+    # embedded quote, backslash-escaped in the CSV. Shaped: 41004 first matches impressions the
+    # month 13 before the shape_anchor month, when its name row comes back withheld, so its name
+    # arrives the month after (design §5.4); the month before the shape_anchor month, Northstar
+    # DSP 01's row for 41004 comes back withheld per path, a roster gap against the month before.
+    audience_segments: {dsp_segments: [{id: "41001", name: "Demo - Age 25-34", description: "Shoppers aged 25 to 34"}, {id: "41002", name: "ExperianDemographicsGenderFemale_LiveRamp", description: "Gender segment from a third-party data provider"}, {id: "41003", name: "Synthetic in-market: \"Trail\" running shoes", description: "Shoppers in market for \"trail\" running shoes"}, {id: "41004", name: "Synthetic lifestyle: weekend gardeners", description: "Shoppers who garden at weekends"}], asi_segments: [{id: "41001", name: "Synthetic ASI in-market: running shoes", description: "Shoppers in market for running shoes", category_level_1: In-market, category_level_2: Sports and outdoors, category_path: "In-market > Sports and outdoors > Running shoes"}, {id: "52001", name: "Synthetic ASI lifestyle: home cooks", description: "Shoppers who cook at home", category_level_1: Lifestyle, category_level_2: Food and cooking, category_path: "Lifestyle > Food and cooking > Home cooks"}], segment_shares: ["0.30", "0.12", "0.18", "0.08"], impressions_per_shopper: 5, purchaser_rate: "0.04", purchases_per_purchaser: "1.25", order_value: "41.00", name_withheld: {month_offset: -13, segment: "41004"}, roster_gap: {month_offset: -1, segment: "41004", campaign: campaign:northstar-dsp}}
+    # Packs 10-12 (amc-segment-buyer-profile-inmarket, -lifestyle, -dsp-exposed, design §5.5,
+    # §6.5 C2): one delivery per pack per complete calendar month, one row per declared segment
+    # and one profiled_total row. 2400 shoppers are profiled, 5 % of them buy in the month and 40 %
+    # of those are new to the brand; each segment holds its exposed and buyer shares of the two
+    # bases (overlapping, so they don't sum to 1). Declared: in-market 41009 isn't in pack 13's
+    # metadata, so it reads by its ID with "name not available yet" (partial enrolment). Shaped:
+    # packs 10-11 deliver only from the month 6 before the shape_anchor month, so earlier months
+    # carry the standard path alone (ASI absent); the month 2 before, packs 12's and 11's
+    # profiled_total rows come back withheld, so those deliveries' shares are not available; the
+    # month 3 before, pack 12's row for 41004, and the month before, pack 10's row for 41009, come
+    # back withheld per path with 3 and 2 shoppers (plan D19), roster gaps the month after.
+    segment_profile: {profiled_exposed: 2400, buyer_rate: "0.05", ntb_share: "0.40", sources: {asi_in_market: {segments: ["41001", "41009"], exposed_shares: ["0.20", "0.10"], buyer_shares: ["0.35", "0.10"]}, asi_lifestyle: {segments: ["52001"], exposed_shares: ["0.25"], buyer_shares: ["0.30"]}, dsp_exposed_only: {segments: ["41001", "41002", "41003", "41004"], exposed_shares: ["0.30", "0.12", "0.18", "0.08"], buyer_shares: ["0.40", "0.12", "0.18", "0.06"]}}, asi_from: {month_offset: -6}, total_withheld: [{month_offset: -2, source: dsp_exposed_only}, {month_offset: -2, source: asi_lifestyle}], segment_withheld: [{month_offset: -3, source: dsp_exposed_only, segment: "41004", shoppers: 3}, {month_offset: -1, source: asi_in_market, segment: "41009", shoppers: 2}]}
+    exposure_frequency: {bucket_shares: ["0.30", "0.18", "0.12", "0.09", "0.07", "0.05", "0.04", "0.03", "0.02", "0.10"], ten_plus_impressions: 14, purchaser_rates: ["0.020", "0.030", "0.038", "0.044", "0.048", "0.050", "0.051", "0.052", "0.052", "0.053"], account_share: "0.75", device_factor: "0.25", ntb_share: "0.40", purchases_per_purchaser: "1.25", order_value: "32.50", withheld_path: {month_offset: -2, cell: [10_plus, device_or_browser], shoppers: 3, ad_product: sponsored_products}, null_bucket: {month_offset: -4}}
+    # Packs 14 and 15 (amc-acquisition-cohorts and -arp, design §6.6 B3): one delivery per cohort
+    # vintage, the 13 calendar months ending with its as_of_month. Every cohort month and
+    # acquisition group holds cohort_buyers x its group share, account_share of them Amazon account
+    # IDs; repeat_rates[k-1] of a cohort buy again in follow-up month k, first_repeat_share of those
+    # for the first time, cumulative repeaters summing the first-time ones; each buys
+    # purchases_per_buyer times at order_value. The paid path's repeaters are arp_lift times the
+    # account-ID repeat rate of the account IDs; a quarterly cohort's follow-up quarter j repeats at
+    # quarter_lift x repeat_rates[j-1]. Shaped vintages (as_of_month offsets from the shape_anchor
+    # month): refused (-3), whose one cohort size differs between two follow-up rows, so the load
+    # refuses it (REPEATED_TOTAL_MISMATCH) and it is never landed; degraded (-2), monthly, where
+    # the absent cohort and group returned no row at any k (out of the loss denominator), one cell
+    # of 3 shoppers came back withheld per path with NULL repeat revenue and currency (plan D19),
+    # and the oldest cohort's dsp_only follow-ups 7 to 12 didn't come back, so that slice grades
+    # degraded; quarterly (-1), delivered under calendar-quarter cohorts because of it (plan D10).
+    # Pack 15 follows: degraded vintage monthly, quarterly vintage quarterly; on the degraded
+    # vintage its own count of the arp_check_gap cohort is one under pack 14's, so the ARP rate
+    # reads "cohort sizes changed between runs".
+    acquisition_cohorts: {cohort_buyers: 900, group_shares: ["0.30", "0.50", "0.20"], account_share: "0.75", repeat_rates: ["0.120", "0.100", "0.090", "0.085", "0.080", "0.076", "0.072", "0.070", "0.068", "0.066", "0.064", "0.062"], first_repeat_share: "0.60", purchases_per_buyer: "1.30", order_value: "28.00", arp_lift: "1.50", quarter_lift: "2.00", vintages: {refused: -3, degraded: -2, quarterly: -1}, absent: {cohort_offset: -8, group: dsp_only}, withheld: {cohort_offset: -5, k: 2, group: dsp_and_sponsored, shoppers: 3}, arp_check_gap: {cohort_offset: -10, group: sponsored_only}}
+  weekday_factors: ["1.00", "1.05", "1.07", "1.04", "0.98", "0.86", "0.80"]   # Monday..Sunday
+  weekday_amplitude: ["0.5", "1.5"]
+  month_factors: ["0.88", "0.90", "0.96", "0.98", "1.00", "1.02", "1.10", "0.98", "0.97", "1.02", "1.18", "1.24"]   # January..December
+  month_amplitude: ["0.6", "1.4"]
+  min_trend_multiplier: "0.10"
+  traffic_base: 4000
+  campaign_spread:
+    level_pct: ["60", "150"]
+    annual_growth_pct: ["-15", "35"]
+    slope_pct: ["-35", "55"]
+    volatility_pct: ["2", "12"]
+    cpc: ["0.60", "1.30"]
+    conversion_rate_pct: ["7", "13"]
+    order_value: ["24.00", "36.00"]
+    ctr_pct: ["5", "11"]
+    measurable_share: ["0.74", "0.88"]
+    viewable_share: ["0.70", "0.92"]
+    frequency: ["1.6", "2.6"]
+  conversion_shape:                    # [s0, s1]: before the story window, and from shape_anchor on
+    growth_ramp: ["1.00", "1.10"]
+    stable_growth: ["1.00", "1.05"]
+    coverage_gap: ["1.00", "1.05"]
+    sustained_decline: ["1.00", "0.85"]
+    spike_and_fade: ["1.00", "1.00"]
+    flat_traffic_rising_conversion: ["0.85", "1.50"]
+  campaign_checks:                     # fixed at review, never widened to pass
+    daily_cvr_max: "0.30"
+    window_cvr_band: ["0.04", "0.25"]
+    window_roas_band: ["1.00", "9.00"]
+  retail:
+    noise_pct: "5"
+    units_level: ["40", "160"]
+    annual_growth_pct: {stable_growth: "18", returns_pressure: "10"}
+    story_trend_pct_per_day: {stable_growth: "0.40", returns_pressure: "0.25"}
+    revenue_per_unit: ["18.00", "42.00"]
+    cogs_ratio: ["0.55", "0.72"]
+    views_per_ordered_unit: ["14", "26"]
+    views_noise_pct: "6"
+    order_to_ship_ratio: ["1.03", "1.08"]
+    return_rate: {stable_growth: "0.06", returns_pressure: "0.21"}
+    returns_lag_profile:
+      - {lag_days: 3, share: "0.20"}
+      - {lag_days: 7, share: "0.35"}
+      - {lag_days: 14, share: "0.30"}
+      - {lag_days: 21, share: "0.15"}
+    first_report_returns_share: "0.50"
+    unrestated_returns: final          # RL-1 found no governed first-report signal (ADR-086), so the last two days carry final returns
+    first_report_step_max_pct: "20"
+    served_rpu_band: ["12.00", "42.50"]
+  events:
+    - {kind: promotion, campaigns: [campaign:northstar-sponsored-08, campaign:northstar-sponsored-13], first_offset: -5, last_offset: -3, lift_pct: "45"}
+    - {kind: budget_shift, down: campaign:northstar-dsp-07, up: campaign:northstar-dsp-11, on_offset: -4, shift_pct: "35"}
+    - {kind: pause, campaign: campaign:northstar-dsp-16, first_offset: -2, last_offset: -1}
+    - {kind: coverage_gap, campaign: campaign:northstar-sponsored-30, on_offset: -4}
+    - {kind: ordered_shipped_divergence, products: [B0FIXTUR02], first_offset: -9, ramp_end_offset: 0, ordered_ratio_end: "1.40"}
+    - {kind: return_rate_shift, product: B0FIXTUR04, first_offset: -10, ramp_end_offset: 0, return_rate_end: "0.12"}
+    # reconciliation_mismatch removed 2026-10-05 (RC-5, ADR-086 §4): a mismatched reported total
+    # quarantines the whole day's Vendor delivery, which would drop that day's retail rows from
+    # every window (task evidence mismatch_reachability.out; test_seed_pre_landing.py).
+    - {kind: price_shift, product: B0FIXTUR06, first_offset: -8, pct: "-10"}
+  seal_generation: 2                   # 1: tail seal lost to the missing ReportBatchItemFailures (O-SEMANTIC-WRITE-ACK-001); 2: 600 s guard stopped before a 960 s redelivery (both 2026-10-06); the dimension seal's offset generation; a re-land after a diagnosed failure uses + 1

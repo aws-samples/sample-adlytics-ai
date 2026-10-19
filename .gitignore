@@ -1,0 +1,118 @@
+# --- Node / TypeScript (frontend, CDK, doc tooling) ---
+node_modules/
+# A worktree may link node_modules; the link is a file, which the rule above does not match.
+node_modules
+npm-debug.log*
+yarn-error.log*
+.pnpm-store/
+*.tsbuildinfo
+
+# CDK
+infra/cdk.out/
+cdk.out/
+.cdk.staging/
+# TypeScript compiler emissions are regenerated from adjacent authored sources.
+infra/**/*.js
+infra/**/*.d.ts
+# The Jest config is authored JavaScript, not a compiler emission.
+!infra/jest.config.js
+# cdk.context.json is intentionally NOT ignored — committing it keeps synth reproducible
+
+# Next.js
+frontend/.next/
+frontend/out/
+frontend/.vercel/
+frontend/next-env.d.ts
+# uv.lock is intentionally NOT ignored — it is the exact dependency pin
+
+# --- Python (backend, ML jobs) ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# --- Secrets / local config ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Kiro's MCP server config, which carries an AWS_PROFILE. Machine-local for the same
+# reason PROFILE is a required parameter with no default everywhere else: a committed
+# profile name points a customer's checkout at whichever account that name resolves to
+# on their machine. Steering and hooks under .kiro/ stay committed — they are the
+# project's, not the machine's.
+.kiro/settings/mcp.json
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# --- Publication-local evidence and tool state ---
+# Reusable validation probes and sanitized validation/RESULTS.md remain public.
+# Local scan bookkeeping; reviewed dispositions are published in docs/security-dispositions.md.
+/security-findings.md
+validation/RESULTS.local.md
+validation/evidence/
+validation/findings/*
+!validation/findings/.gitkeep
+# Local scratch probes and repros: operational identifiers stay out of the publication.
+validation/*.local.*
+# Endpoint-evaluation scenarios, baselines and sanitized reports are public; exact responses,
+# spans, evaluator explanations, capabilities and operational identifiers are local evidence.
+evaluation/runs/
+
+# Original bootstrap, local agent state, and scanner projects/reports are not solution content.
+project-context/
+.kiro/HANDOFF.md
+.kiro/state/
+.holmes/
+.holmesignore
+.protoshield/
+.import_linter_cache/
+
+# Retired browser prototypes must not re-enter the publication.
+screens/
+
+# Local test-run output.
+frontend/test-results/
+
+# --- Local scratch ---
+tmp/
+scratch/
+semantic-review/
+
+# Lambda build output. Produced by `make build-lambdas` and referenced by CDK;
+# never committed, because it contains cross-compiled binary wheels.
+build/
+
+# Mutation testing. The session database and generated config are per-run
+# artifacts; the reports under test-mutations/ are committed. See ADR-013.
+.cosmic-ray.toml
+.cosmic-ray.sqlite
+mutants/
+
+# Note: docs/ is committed in full. Diagrams are hand-authored SVG files in diagrams/
+# directories beside their docs, or Mermaid inside the markdown, so there are no
+# generated doc assets to ignore or to keep in sync.
+
+# Local working custody — never travels with the repository. The rules are owned
+# by meta-delivery-git (remotes and publication) and meta-style-steering
+# (tracked and local content).
+internal/
+.kiro/specs/
+.kiro/steering/local-*.md
+# Agent workflow run folders: research, reviews, prototypes and model weights.
+.agents/

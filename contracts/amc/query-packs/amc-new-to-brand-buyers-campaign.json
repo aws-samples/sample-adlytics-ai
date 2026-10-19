@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "packId": "amc-new-to-brand-buyers-campaign",
+  "packVersion": 1,
+  "contractId": "amc-new-to-brand-buyers-campaign",
+  "sourcePackId": "amc-new-to-brand-buyers-campaign",
+  "queryFile": "amc-new-to-brand-buyers-campaign.sql",
+  "accessTier": "standard",
+  "liveValidation": "required",
+  "maxResultBytes": 20000000,
+  "executionOptions": {
+    "timeWindowType": "EXPLICIT",
+    "timeWindowTimeZone": "UTC",
+    "filteredMetricsDiscriminatorColumn": "rows_suppressed",
+    "filteredReasonColumn": "suppression_reason",
+    "distinctUserCountColumn": "distinct_user_count"
+  },
+  "safetyBlockers": [],
+  "suppressionPolicy": "discard_suppressed_rows",
+  "periodPolicy": {"grains": ["month"]},
+  "inputParameters": {
+    "sponsored_marketplace_name": {"commerceIdentity": "amc.marketplace_name", "dataType": "STRING"}
+  },
+  "cadenceLagDays": 2,
+  "expectedBar": 2,
+  "outputColumns": [
+    "conversion_event_marketplace_name",
+    "ad_product_type",
+    "campaign_id_string",
+    "buyers_new_to_brand_12mo",
+    "buyers_attributed",
+    "time_window_start",
+    "time_window_end",
+    "rows_suppressed",
+    "suppression_reason",
+    "distinct_user_count"
+  ]
+}

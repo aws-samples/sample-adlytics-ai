@@ -1,0 +1,111 @@
+id: exposure
+version: 8
+purpose: Surface material concentration in the supplied portfolio composition.
+display_name: Exposure (Campaigns)
+output_class: perspective
+allowed_inputs:
+  - reporting and comparison window display context
+  - portfolio totals section (current and prior additive totals)
+  - campaign display roster with channels
+  - campaign additive spend and purchases
+  - server-computed concentration shares
+  - typed window profile (window length, grain, aligned prior, horizon role)
+deterministic_findings:
+  - share-of-total
+predicate:
+  required_evidence_inputs: [portfolio-totals, campaign-comparisons]
+  required_finding_kinds: [share-of-total]
+  materiality:
+    bases:
+      campaign_window:
+        per_unit:
+          share: {operational-pulse: "1", tactical-review: "1", pattern-confirmation: "1"}
+        per_metric: {}
+    near_zero_prior: {}
+  delivery_follow_up_evidence: []
+materiality_cases:
+  - {name: a share of 1.00 is admitted at operational-pulse, horizon: operational-pulse, basis: campaign_window, kind: share-of-total, metric: spend, current: "1", prior: "100", expect: admitted}
+  - {name: a share of 1.00 is admitted at tactical-review, horizon: tactical-review, basis: campaign_window, kind: share-of-total, metric: spend, current: "1", prior: "100", expect: admitted}
+  - {name: a share of 1.00 is admitted at pattern-confirmation, horizon: pattern-confirmation, basis: campaign_window, kind: share-of-total, metric: spend, current: "1", prior: "100", expect: admitted}
+  - {name: a share of 0.99 is silent at operational-pulse, horizon: operational-pulse, basis: campaign_window, kind: share-of-total, metric: spend, current: "0.99", prior: "100", expect: silent}
+  - {name: a share of 0.99 is silent at tactical-review, horizon: tactical-review, basis: campaign_window, kind: share-of-total, metric: spend, current: "0.99", prior: "100", expect: silent}
+  - {name: a share of 0.99 is silent at pattern-confirmation, horizon: pattern-confirmation, basis: campaign_window, kind: share-of-total, metric: spend, current: "0.99", prior: "100", expect: silent}
+silence_condition: No supplied concentration share exceeds the declared exposure threshold.
+structured_output_schema:
+  id: insight-narration-v1
+  fields: [output_class, sentences]
+initial_fictional_prompt: Describe one material supplied concentration and its monitoring implication without making a causal claim.
+calibration_cases:
+  - kind: known-correct
+    input_summary: Fictional Campaign Cedar has the largest supplied spend share above the exposure threshold.
+    expected_outcome: Accept a perspective based on that supplied share.
+    horizon: tactical-review
+    findings:
+      - {name: Campaign Cedar spend share, value: "46.8"}
+  - kind: exploratory
+    input_summary: A fictional pair of moderate shares invites a hedged reading about combined concentration.
+    expected_outcome: Accept the labeled concentration reading.
+    horizon: pattern-confirmation
+    findings:
+      - {name: Campaign Cedar spend share, value: "27.5"}
+      - {name: Campaign Dune spend share, value: "24.9"}
+  - kind: contradiction
+    input_summary: Fictional shares are all modest but the draft claims one campaign dominates.
+    expected_outcome: Reject the contradiction.
+    horizon: operational-pulse
+    findings:
+      - {name: Campaign Cedar spend share, value: "18.3"}
+    draft:
+      sentences:
+        - Campaign Cedar dominates the portfolio, holding 18.3 percent as an outsized majority of spend.
+  - kind: fluent-unsupported
+    input_summary: A fluent draft warns of delivery failure and cites a risk score no finding supplies.
+    expected_outcome: Reject the figure that is neither supplied nor derived from the findings.
+    horizon: tactical-review
+    findings:
+      - {name: Campaign Cedar spend share, value: "46.8"}
+    draft:
+      sentences:
+        - Campaign Cedar holds 46.8 percent of spend, putting delivery risk at 8.9 out of ten.
+  - kind: derived-figure
+    input_summary: A fictional draft states Campaign Cedar's spend percentage change derived from its supplied current and prior values.
+    expected_outcome: Accept the correctly derived percentage change.
+    horizon: tactical-review
+    findings:
+      - {name: Campaign Cedar spend this window, value: "2340"}
+      - {name: Campaign Cedar spend prior window, value: "1800"}
+    draft:
+      sentences:
+        - Campaign Cedar's spend grew from 1800 to 2340, up 30 percent, which may be deepening the portfolio's reliance on it.
+  - kind: miscomputed-derivation
+    input_summary: A fictional draft divides Campaign Cedar's spend change by the current value instead of the prior one.
+    expected_outcome: Reject the miscomputed percentage change.
+    horizon: tactical-review
+    findings:
+      - {name: Campaign Cedar spend this window, value: "2340"}
+      - {name: Campaign Cedar spend prior window, value: "1800"}
+    draft:
+      sentences:
+        - Campaign Cedar's spend grew from 1800 to 2340, up 23 percent, which may be deepening the portfolio's reliance on it.
+  - kind: incompatible-basis
+    input_summary: A fictional draft adds two spend shares taken of different totals.
+    expected_outcome: Reject the figure that combines findings of incompatible basis.
+    horizon: pattern-confirmation
+    findings:
+      - {name: Campaign Cedar share of Sponsored Products spend, value: "46.8"}
+      - {name: Campaign Dune share of DSP spend, value: "31.2"}
+    draft:
+      sentences:
+        - Campaign Cedar and Campaign Dune together hold 78 percent of spend, a heavy concentration.
+deep:
+  allowed_inputs:
+    - sibling preset directions from the same current pointer roster, direction only with no second-window figures
+    - complete daily series for every metric this surface serves
+    - every server-computed driver and cross-metric total for the window
+    - lag, estimate, and basis qualifications carried by the artifact
+  structured_output_schema:
+    id: insight-deep-dive-v1
+    fields: [what_stands_out, candidate_readings, discriminating_evidence, cited_figures]
+# FR-11 (design 4.12): no next step is offered until the gated card-next-step prompt ships.
+next_steps:
+  allowed_kinds: []

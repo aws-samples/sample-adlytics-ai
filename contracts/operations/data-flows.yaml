@@ -1,0 +1,694 @@
+# SPDX-License-Identifier: MIT-0
+registry_version: "1"
+identity_contract:
+  namespace_version: operational-data-flow-v1
+  uuid_namespace: 1ee42fd8-d351-559c-9565-015d408a1690
+  canonical_authority_digest: sha256-canonical-json-v1
+  event_name_tuple: [namespace_version, surface, authority_digest, transition_sequence, state]
+observation_policy: authority_backed_observation_only
+surfaces:
+  - id: external_source_delivery
+    classification: asynchronous
+    owner: source_acquisition
+    boundary: external extraction to repository landing observation
+    trigger: external
+    workload_transport: external
+    authority: external_system
+    source_observation: boundary_declaration
+    status_producer: none
+    states: [unknown, observed]
+    correlation: repository_observed_boundary
+    telemetry: external_boundary
+    reconciliation: none
+    freshness: external
+    retention: registry
+    completion_contract: external_boundary
+    dependency_roster_ref: null
+    evaluation_mode: observation_only
+    measurements: []
+    operator_definition: External delivery remains outside repository completion authority.
+    status: external_boundary
+
+  - id: producer_registration
+    classification: asynchronous
+    owner: source_acquisition
+    boundary: registration object to finalized or rejected manifest
+    trigger: registration
+    workload_transport: registration_store
+    authority: registration_status_and_raw_versions
+    source_observation: terminal_companion
+    status_producer: planned
+    states: [unknown, observed, running, blocked, failed, completed]
+    correlation: registration_companion
+    telemetry: lifecycle
+    reconciliation: exact_attempt_read
+    freshness: authority_observed
+    retention: operator_history
+    completion_contract: authority_terminal
+    dependency_roster_ref: null
+    evaluation_mode: observation_only
+    measurements: []
+    operator_definition: Registration is complete only after exact terminal authority readback.
+    status: planned
+
+  - id: raw_manifest_landing
+    classification: asynchronous
+    owner: source_acquisition
+    boundary: versioned objects to manifest-last marker
+    trigger: s3_object_created
+    workload_transport: eventbridge
+    authority: versioned_raw_s3
+    source_observation: existing_s3_notification
+    status_producer: planned
+    states: [unknown, observed, running, blocked, failed, completed]
+    correlation: immutable_version
+    telemetry: lifecycle
+    reconciliation: exact_version_head
+    freshness: authority_observed
+    retention: operator_history
+    completion_contract: manifest_last_attested
+    dependency_roster_ref: null
+    evaluation_mode: observation_only
+    measurements: []
+    operator_definition: Landing requires exact version and manifest-last evidence.
+    status: planned
+
+  - id: ingestion_transport
+    classification: asynchronous
+    owner: load_path
+    boundary: manifest queued to acknowledged or dead letter
+    trigger: workload_queue
+    workload_transport: sqs
+    authority: workload_transport_state
+    source_observation: queue_metrics
+    status_producer: planned
+    states: [unknown, queued, running, retrying, delayed, failed, completed]
+    correlation: delivery
+    telemetry: aggregate_transport
+    reconciliation: queue_attributes
+    freshness: observation_age
+    retention: operator_history
+    completion_contract: transport_observation
+    dependency_roster_ref: null
+    evaluation_mode: observation_only
+    measurements: []
+    operator_definition: Transport acknowledgement is not semantic completion.
+    status: planned
+
+  - id: semantic_source_materialization
+    classification: asynchronous
+    owner: load_path
+    boundary: exact source read to immutable source-aligned projection
+    trigger: ingestion
+    workload_transport: in_process
+    authority: immutable_source_s3_and_iceberg
+    source_observation: ingestion_companion
+    status_producer: planned
+    states: [unknown, observed, queued, running, retrying, blocked, failed, completed]
+    correlation: source_reference
+    telemetry: lifecycle
+    reconciliation: exact_source_reference
+    freshness: authority_observed
+    retention: operator_history
+    completion_contract: source_projection_attested
+    dependency_roster_ref: null
+    evaluation_mode: observation_only
+    measurements: []
+    operator_definition: Source materialization closes only on immutable source evidence.
+    status: planned
+
+  - id: semantic_candidate_publication
+    classification: asynchronous
+    owner: publication_state
+    boundary: parsed partitions to candidate or quarantine
+    trigger: semantic_attempt_transition
+    workload_transport: in_process
+    authority: candidate_s3_iceberg_and_attempt_ledger
+    source_observation: attempt_transition_companion
+    status_producer: semantic_attempts_stream
+    states: [unknown, observed, queued, running, retrying, blocked, failed, completed]
+    correlation: derived_from_attempt_authority
+    telemetry: lifecycle
+    reconciliation: exact_attempt_and_candidate_read
+    freshness: authority_observed
+    retention: operator_history
+    completion_contract: attempt_terminal_attested
+    dependency_roster_ref: null
+    evaluation_mode: observation_only
+    measurements:
+      - measurement_ref: semantic_candidate_decision_latency
+        measurement_version: "1"
+        measure: elapsed_time
+        unit: milliseconds
+        start_authority: semantic_attempt_started
+        completion_authority: semantic_attempt_terminal
+    operator_definition: Candidate publication reports authority-backed attempt progress without attainment.
+    status: active
+
+  - id: semantic_current_publication
+    classification: asynchronous
+    owner: publication_state
+    boundary: successful bytes to fenced current, skip, or failure
+    trigger: publication_transition
+    workload_transport: in_process
+    authority: publication_attempt_and_current_tables
+    source_observation: publications_stream
+    status_producer: planned
+    states: [unknown, observed, queued, running, retrying, blocked, failed, completed, superseded]
+    correlation: publication_companion
+    telemetry: lifecycle
+    reconciliation: exact_current_immutable_pair
+    freshness: current_revision
+    retention: operator_history
+    completion_contract: current_transition_attested
+    dependency_roster_ref: null
+    evaluation_mode: observation_only
+    measurements: []
+    operator_definition: Current publication requires exact successful bytes and fenced pointer evidence.
+    status: planned
+
+  - id: semantic_projection_plan
+    classification: asynchronous
+    owner: load_path
+    boundary: write plan recorded to completed, superseded, or admission failed
+    trigger: stage1_plan_lifecycle_transition
+    workload_transport: semantic_write_fifo
+    authority: write_plan_meta
+    source_observation: stage1_lifecycle_outbox
+    status_producer: stage1_lifecycle_producer
+    states: [unknown, queued, failed, completed, superseded]
+    correlation: plan_digest
+    telemetry: lifecycle
+    reconciliation: exact_write_plan_meta_and_lifecycle_head
+    freshness: authority_observed
+    retention: operator_history
+    completion_contract: required_children_successful
+    dependency_roster_ref: null
+    evaluation_mode: observation_only
+    measurements:
+      - measurement_ref: stage1_plan_settlement_latency
+        measurement_version: "1"
+        measure: elapsed_time
+        unit: milliseconds
+        start_authority: semantic_plan_recorded
+        completion_authority: semantic_plan_terminal
+    operator_definition: A projection plan closes only after admission and every required table-unit child succeeds, or on its durable failed or superseded terminal.
+    status: active
+
+  - id: semantic_projection_unit
+    classification: asynchronous
+    owner: load_path
+    boundary: admitted table unit claimed to attested or exhausted
+    trigger: stage1_unit_lifecycle_transition
+    workload_transport: semantic_write_fifo
+    authority: write_plan_unit
+    source_observation: stage1_lifecycle_outbox
+    status_producer: stage1_lifecycle_producer
+    states: [unknown, running, retrying, failed, completed]
+    correlation: plan_unit
+    telemetry: lifecycle
+    reconciliation: exact_write_plan_unit_and_lifecycle_head
+    freshness: authority_observed
+    retention: operator_history
+    completion_contract: table_unit_terminal_attested
+    dependency_roster_ref: null
+    evaluation_mode: observation_only
+    measurements:
+      - measurement_ref: stage1_unit_settlement_latency
+        measurement_version: "1"
+        measure: elapsed_time
+        unit: milliseconds
+        start_authority: semantic_unit_started
+        completion_authority: semantic_unit_attested_or_failed
+    operator_definition: A queued projection unit succeeds only on exact table attestation; refusal is retrying and exhausted failure remains recoverable under the same flow.
+    status: active
+
+  - id: semantic_inline_table_run
+    classification: asynchronous
+    owner: load_path
+    boundary: inline table run recorded to terminal disposition
+    trigger: stage1_inline_run_lifecycle_transition
+    workload_transport: in_process
+    authority: inline_table_run
+    source_observation: stage1_lifecycle_outbox
+    status_producer: stage1_lifecycle_producer
+    states: [unknown, running, retrying, failed, completed, superseded]
+    correlation: inline_operation_table
+    telemetry: lifecycle
+    reconciliation: exact_inline_table_run_and_lifecycle_head
+    freshness: authority_observed
+    retention: operator_history
+    completion_contract: inline_table_run_terminal
+    dependency_roster_ref: null
+    evaluation_mode: observation_only
+    measurements:
+      - measurement_ref: stage1_inline_run_settlement_latency
+        measurement_version: "1"
+        measure: elapsed_time
+        unit: milliseconds
+        start_authority: semantic_inline_run_recorded
+        completion_authority: semantic_inline_run_terminal
+    operator_definition: An inline table run closes only on its durable success, no-change, refusal, unavailable, failed, or superseded disposition.
+    status: active
+
+  - id: semantic_servable_pointer
+    classification: asynchronous
+    owner: load_path
+    boundary: servable-pointer disposition committed atomically with projection finalization
+    trigger: stage1_servable_pointer_transition
+    workload_transport: in_process
+    authority: current_servable_pointer
+    source_observation: stage1_lifecycle_outbox
+    status_producer: stage1_lifecycle_producer
+    states: [unknown, completed, superseded]
+    correlation: partition_publication_fence
+    telemetry: lifecycle
+    reconciliation: exact_current_servable_pointer
+    freshness: current_revision
+    retention: operator_history
+    completion_contract: servable_pointer_transition_attested
+    dependency_roster_ref: null
+    evaluation_mode: observation_only
+    measurements:
+      - measurement_ref: stage1_servable_pointer_decision_count
+        measurement_version: "1"
+        measure: decision_count
+        unit: count
+        start_authority: semantic_projection_servable
+        completion_authority: semantic_projection_servable
+    operator_definition: A servable-pointer flow is one immutable advanced or superseded pointer disposition re-attested from current pointer authority.
+    status: active
+
+  - id: page_cohort_readiness
+    classification: asynchronous
+    owner: presentation
+    boundary: first relevant current to complete page dependency cohort
+    trigger: current_transition
+    workload_transport: companion
+    authority: versioned_page_dependency_contract
+    source_observation: required_child_transition
+    status_producer: planned
+    states: [unknown, observed, running, blocked, failed, completed, superseded]
+    correlation: generation
+    telemetry: lifecycle
+    reconciliation: exact_dependency_and_children
+    freshness: cohort_revision
+    retention: operator_history
+    completion_contract: required_children_successful
+    dependency_roster_ref: planned
+    evaluation_mode: observation_only
+    measurements: []
+    operator_definition: Cohort readiness waits for every declared required dependency.
+    status: planned
+
+  - id: preset_enqueue
+    classification: asynchronous
+    owner: presentation
+    boundary: current transition to bake intent accepted or ignored
+    trigger: current_transition
+    workload_transport: fifo
+    authority: current_and_bake_intent
+    source_observation: enqueue_companion
+    status_producer: enqueue_companion
+    states: [unknown, observed, queued, blocked, failed, completed]
+    correlation: publication_generation
+    telemetry: lifecycle
+    reconciliation: current_declared_intents
+    freshness: current_revision
+    retention: operator_history
+    completion_contract: enqueue_decision_attested
+    dependency_roster_ref: planned
+    evaluation_mode: observation_only
+    measurements:
+      - measurement_ref: preset_enqueue_admitted_intents
+        measurement_version: "1"
+        measure: decision_count
+        unit: count
+        start_authority: current_transition_observed
+        completion_authority: enqueue_decision_attested
+    operator_definition: Enqueue completion is admission only and not artifact completion.
+    status: active
+
+  - id: preset_bake
+    classification: asynchronous
+    owner: presentation
+    boundary: bake intent to published, unavailable, retry, or dead letter
+    trigger: bake_fifo
+    workload_transport: fifo
+    authority: artifact_body_custody_and_pointer
+    source_observation: bake_terminal_companion
+    status_producer: baker_companion
+    states: [unknown, queued, running, retrying, blocked, failed, completed, superseded]
+    correlation: artifact_generation
+    telemetry: lifecycle_and_transport
+    reconciliation: exact_pointer_body_custody
+    freshness: artifact_revision
+    retention: operator_history
+    completion_contract: pointer_last_attested
+    dependency_roster_ref: planned
+    evaluation_mode: observation_only
+    measurements:
+      - measurement_ref: preset_bake_settlement_latency
+        measurement_version: "1"
+        measure: elapsed_time
+        unit: milliseconds
+        start_authority: bake_message_sent
+        completion_authority: bake_terminal_attested
+    operator_definition: Artifact bytes without the exact pointer remain incomplete.
+    status: active
+
+  - id: insight_precompute
+    classification: asynchronous
+    owner: conversational_runtime
+    boundary: current transition to immutable cache fill or refusal
+    trigger: current_transition
+    workload_transport: stream
+    authority: immutable_insight_cache
+    source_observation: publication_terminal_companion
+    status_producer: precompute_companion
+    states: [unknown, observed, running, retrying, blocked, failed, completed]
+    correlation: artifact_revision
+    telemetry: lifecycle
+    reconciliation: exact_current_and_cache_key
+    freshness: artifact_revision
+    retention: operator_history
+    completion_contract: eligible_slots_settled
+    dependency_roster_ref: planned
+    evaluation_mode: observation_only
+    measurements:
+      - measurement_ref: insight_precompute_settled_slots
+        measurement_version: "1"
+        measure: decision_count
+        unit: count
+        start_authority: current_transition_observed
+        completion_authority: cache_settlement_attested
+    operator_definition: Optional insight settlement never gates deterministic artifact completion.
+    status: active
+
+  - id: insight_continuation
+    classification: asynchronous
+    owner: conversational_runtime
+    boundary: continuation request to cache fill, retry, or dead letter
+    trigger: continuation_fifo
+    workload_transport: sqs
+    authority: immutable_insight_cache
+    source_observation: terminal_companion
+    status_producer: planned
+    states: [unknown, queued, running, retrying, blocked, failed, completed]
+    correlation: cache_key
+    telemetry: lifecycle_and_transport
+    reconciliation: exact_cache_key
+    freshness: cache_revision
+    retention: operator_history
+    completion_contract: cache_terminal_attested
+    dependency_roster_ref: null
+    evaluation_mode: observation_only
+    measurements: []
+    operator_definition: Queue admission is not continuation completion.
+    status: planned
+
+  - id: evaluation_handoff
+    classification: asynchronous
+    owner: agent_quality_loop
+    boundary: released audit to pending retained outbox
+    trigger: audit_transaction
+    workload_transport: outbox
+    authority: audit_admission_outbox_transaction
+    source_observation: audit_keys_stream
+    status_producer: planned
+    states: [unknown, observed, queued, blocked, failed, completed]
+    correlation: admission_companion
+    telemetry: lifecycle
+    reconciliation: exact_audit_admission_outbox
+    freshness: authority_observed
+    retention: operator_history
+    completion_contract: outbox_pending_attested
+    dependency_roster_ref: null
+    evaluation_mode: observation_only
+    measurements: []
+    operator_definition: Handoff closes only on the retained outbox authority.
+    status: planned
+
+  - id: evaluation_dispatch
+    classification: asynchronous
+    owner: agent_quality_loop
+    boundary: pending or leased outbox to delivery receipt
+    trigger: schedule
+    workload_transport: outbox_to_queue
+    authority: outbox_and_delivery_receipt
+    source_observation: content_free_delivery_receipt
+    status_producer: planned
+    states: [unknown, queued, running, retrying, blocked, failed, completed]
+    correlation: admission_companion
+    telemetry: lifecycle
+    reconciliation: exact_outbox_and_receipt
+    freshness: authority_observed
+    retention: operator_history
+    completion_contract: delivery_receipt_attested
+    dependency_roster_ref: null
+    evaluation_mode: observation_only
+    measurements: []
+    operator_definition: Dispatch completion requires the exact delivery receipt.
+    status: planned
+
+  - id: evaluation_input_write
+    classification: asynchronous
+    owner: agent_quality_loop
+    boundary: queue delivery to protected writer receipt or dead letter
+    trigger: evaluation_queue
+    workload_transport: sqs
+    authority: writer_receipt
+    source_observation: writer_companion
+    status_producer: planned
+    states: [unknown, queued, running, retrying, blocked, failed, completed]
+    correlation: admission_companion
+    telemetry: lifecycle_and_transport
+    reconciliation: exact_writer_receipt
+    freshness: authority_observed
+    retention: operator_history
+    completion_contract: writer_receipt_attested
+    dependency_roster_ref: null
+    evaluation_mode: observation_only
+    measurements: []
+    operator_definition: Input write closes only on the protected writer receipt.
+    status: planned
+
+  - id: evaluation_result_ingress
+    classification: asynchronous
+    owner: agent_quality_loop
+    boundary: managed log record to linked, ignored, or retry
+    trigger: managed_result_log
+    workload_transport: subscription
+    authority: admitted_audit_and_writer_evidence
+    source_observation: content_free_ingress_companion
+    status_producer: planned
+    states: [unknown, observed, running, retrying, blocked, failed, completed]
+    correlation: admission_companion
+    telemetry: lifecycle
+    reconciliation: exact_admission_and_writer
+    freshness: authority_observed
+    retention: operator_history
+    completion_contract: ingress_decision_attested
+    dependency_roster_ref: null
+    evaluation_mode: observation_only
+    measurements: []
+    operator_definition: Managed provider acceptance is not persisted result completion.
+    status: planned
+
+  - id: evaluation_result_persist
+    classification: asynchronous
+    owner: agent_quality_loop
+    boundary: projection queue to immutable evaluator persistence
+    trigger: projection_queue
+    workload_transport: sqs
+    authority: immutable_evaluator_companion
+    source_observation: audit_keys_and_result_read
+    status_producer: planned
+    states: [unknown, queued, running, retrying, blocked, failed, completed]
+    correlation: admission_companion
+    telemetry: lifecycle_and_transport
+    reconciliation: exact_evaluator_result
+    freshness: authority_observed
+    retention: operator_history
+    completion_contract: evaluator_persistence_attested
+    dependency_roster_ref: null
+    evaluation_mode: observation_only
+    measurements: []
+    operator_definition: Result persistence requires immutable evaluator evidence.
+    status: planned
+
+  - id: agent_quality_processing
+    classification: asynchronous
+    owner: agent_quality_loop
+    boundary: audit key to findings and aggregate terminal
+    trigger: audit_stream
+    workload_transport: stream
+    authority: audit_and_findings_table
+    source_observation: audit_keys_and_terminal_companion
+    status_producer: planned
+    states: [unknown, observed, running, retrying, blocked, failed, completed]
+    correlation: audit_companion
+    telemetry: lifecycle
+    reconciliation: exact_audit_and_finding
+    freshness: authority_observed
+    retention: operator_history
+    completion_contract: processing_terminal_attested
+    dependency_roster_ref: null
+    evaluation_mode: observation_only
+    measurements: []
+    operator_definition: Quality processing closes only on retained findings authority.
+    status: planned
+
+  - id: campaign_portfolio_parent
+    classification: synchronous_not_movement
+    owner: campaign_portfolio
+    boundary: authenticated request to exact parent artifact response
+    trigger: http_request
+    workload_transport: none
+    authority: authenticated_response_revision
+    source_observation: route_response
+    status_producer: planned
+    states: [unknown, observed, failed, completed]
+    correlation: request
+    telemetry: route
+    reconciliation: exact_pointer_and_response_revision
+    freshness: served_revision
+    retention: baseline_window
+    completion_contract: response_revision_attested
+    dependency_roster_ref: planned
+    evaluation_mode: observation_only
+    measurements: []
+    operator_definition: Synchronous parent serving is observed separately from movement.
+    status: planned
+
+  - id: campaign_portfolio_ordered_segment
+    classification: synchronous_not_movement
+    owner: campaign_portfolio
+    boundary: authenticated segment request to exact sibling response
+    trigger: http_request
+    workload_transport: none
+    authority: authenticated_response_revision
+    source_observation: route_response
+    status_producer: planned
+    states: [unknown, observed, failed, completed]
+    correlation: request
+    telemetry: route
+    reconciliation: exact_pointer_parent_and_sibling
+    freshness: served_revision
+    retention: baseline_window
+    completion_contract: response_revision_attested
+    dependency_roster_ref: planned
+    evaluation_mode: observation_only
+    measurements: []
+    operator_definition: Ordered segment serving is not asynchronous movement.
+    status: planned
+
+  - id: campaign_detail_displayed
+    classification: synchronous_not_movement
+    owner: campaign_portfolio
+    boundary: authenticated displayed-detail request to exact selected evidence
+    trigger: http_request
+    workload_transport: none
+    authority: authenticated_response_evidence
+    source_observation: route_response
+    status_producer: planned
+    states: [unknown, observed, failed, completed]
+    correlation: request
+    telemetry: route
+    reconciliation: exact_displayed_detail_evidence
+    freshness: served_revision
+    retention: baseline_window
+    completion_contract: response_evidence_attested
+    dependency_roster_ref: planned
+    evaluation_mode: observation_only
+    measurements: []
+    operator_definition: Displayed detail route evidence is observed separately from movement.
+    status: planned
+
+  - id: campaign_detail_live_tail
+    classification: synchronous_not_movement
+    owner: campaign_portfolio
+    boundary: authenticated tail request to exact live evidence
+    trigger: http_request
+    workload_transport: none
+    authority: authenticated_live_response_evidence
+    source_observation: route_response
+    status_producer: planned
+    states: [unknown, observed, failed, completed]
+    correlation: request
+    telemetry: route
+    reconciliation: exact_live_detail_evidence
+    freshness: observed_source
+    retention: baseline_window
+    completion_contract: response_evidence_attested
+    dependency_roster_ref: planned
+    evaluation_mode: observation_only
+    measurements: []
+    operator_definition: Live tail serving is a synchronous observation surface.
+    status: planned
+
+  - id: campaign_metric_focus
+    classification: synchronous_not_movement
+    owner: campaign_portfolio
+    boundary: authenticated focus request to exact cache or generated response
+    trigger: http_request
+    workload_transport: none
+    authority: authenticated_response_revision
+    source_observation: route_response
+    status_producer: planned
+    states: [unknown, observed, failed, completed]
+    correlation: request
+    telemetry: route
+    reconciliation: exact_focus_response_revision
+    freshness: served_revision
+    retention: baseline_window
+    completion_contract: response_revision_attested
+    dependency_roster_ref: planned
+    evaluation_mode: observation_only
+    measurements: []
+    operator_definition: Metric focus serving is observed without movement or attainment semantics.
+    status: planned
+
+  - id: retail_health_parent
+    classification: synchronous_not_movement
+    owner: retail_health
+    boundary: authenticated request to exact parent artifact response
+    trigger: http_request
+    workload_transport: none
+    authority: authenticated_response_revision
+    source_observation: route_response
+    status_producer: planned
+    states: [unknown, observed, failed, completed]
+    correlation: request
+    telemetry: route
+    reconciliation: exact_pointer_and_response_revision
+    freshness: served_revision
+    retention: baseline_window
+    completion_contract: response_revision_attested
+    dependency_roster_ref: planned
+    evaluation_mode: observation_only
+    measurements: []
+    operator_definition: Retail parent serving is observed separately from movement.
+    status: planned
+
+  - id: retail_health_metric_focus
+    classification: synchronous_not_movement
+    owner: retail_health
+    boundary: authenticated focus request to exact cache or generated response
+    trigger: http_request
+    workload_transport: none
+    authority: authenticated_response_revision
+    source_observation: route_response
+    status_producer: planned
+    states: [unknown, observed, failed, completed]
+    correlation: request
+    telemetry: route
+    reconciliation: exact_focus_response_revision
+    freshness: served_revision
+    retention: baseline_window
+    completion_contract: response_revision_attested
+    dependency_roster_ref: planned
+    evaluation_mode: observation_only
+    measurements: []
+    operator_definition: Retail metric focus serving is observed without movement or attainment semantics.
+    status: planned

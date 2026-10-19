@@ -1,0 +1,4060 @@
+{
+  "$comment": "GENERATED FROM contracts/*/*.yaml BY make generate-schemas. Do not edit. make check-schemas regenerates this and fails on any diff, so an edit here is reverted rather than kept. Change the contract instead.",
+  "tables": [
+    {
+      "name": "dim_audience_segment",
+      "kind": "dimension",
+      "load": "scd2_merge",
+      "grain": [
+        "platform_key",
+        "segment_id",
+        "segment_marketplace_key",
+        "segment_namespace",
+        "valid_from"
+      ],
+      "partitionKeys": [
+        "segment_marketplace_key"
+      ],
+      "measurementBases": [
+        "ad_attributed"
+      ],
+      "writtenBy": [
+        "amc-dsp-segment-names",
+        "amc-segment-metadata"
+      ],
+      "canonicalPublisher": "canonical-curation",
+      "columns": [
+        {
+          "name": "ecosystem_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-dsp-segment-names: assigned by the load \u00b7 amc-segment-metadata: assigned by the load"
+        },
+        {
+          "name": "platform_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-dsp-segment-names: assigned by the load \u00b7 amc-segment-metadata: assigned by the load"
+        },
+        {
+          "name": "segment_marketplace_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-dsp-segment-names: campaign_country \u00b7 amc-segment-metadata: segment_marketplace_id"
+        },
+        {
+          "name": "category_level_1",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-dsp-segment-names: assigned by the load \u00b7 amc-segment-metadata: derived from category_level_1",
+          "nullMeaning": "unsupported_by_channel"
+        },
+        {
+          "name": "category_level_2",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-dsp-segment-names: assigned by the load \u00b7 amc-segment-metadata: derived from category_level_2",
+          "nullMeaning": "unsupported_by_channel"
+        },
+        {
+          "name": "category_path",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-dsp-segment-names: assigned by the load \u00b7 amc-segment-metadata: derived from category_path",
+          "nullMeaning": "unsupported_by_channel"
+        },
+        {
+          "name": "is_current",
+          "type": "boolean",
+          "nullable": false,
+          "comment": "amc-dsp-segment-names: literal 'true' \u00b7 amc-segment-metadata: literal 'true'"
+        },
+        {
+          "name": "provider",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-dsp-segment-names: assigned by the load \u00b7 amc-segment-metadata: assigned by the load",
+          "nullMeaning": "not_yet_available"
+        },
+        {
+          "name": "segment_description",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-dsp-segment-names: derived from behavior_segment_description \u00b7 amc-segment-metadata: derived from segment_description",
+          "nullMeaning": "not_yet_available"
+        },
+        {
+          "name": "segment_id",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-dsp-segment-names: behavior_segment_id \u00b7 amc-segment-metadata: segment_id"
+        },
+        {
+          "name": "segment_name",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-dsp-segment-names: derived from behavior_segment_name \u00b7 amc-segment-metadata: derived from segment_name",
+          "nullMeaning": "not_yet_available"
+        },
+        {
+          "name": "segment_namespace",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-dsp-segment-names: literal 'amc_dsp_behavior' \u00b7 amc-segment-metadata: literal 'amc_asi'"
+        },
+        {
+          "name": "valid_from",
+          "type": "timestamp",
+          "nullable": false,
+          "comment": "amc-dsp-segment-names: assigned by the load \u00b7 amc-segment-metadata: assigned by the load"
+        },
+        {
+          "name": "valid_to",
+          "type": "timestamp",
+          "nullable": false,
+          "comment": "amc-dsp-segment-names: assigned by the load \u00b7 amc-segment-metadata: assigned by the load"
+        }
+      ]
+    },
+    {
+      "name": "dim_campaign",
+      "kind": "dimension",
+      "load": "scd2_merge",
+      "grain": [
+        "campaign_key",
+        "valid_from"
+      ],
+      "partitionKeys": [
+        "marketplace_key"
+      ],
+      "measurementBases": [
+        "ad_attributed"
+      ],
+      "writtenBy": [
+        "amc-campaign-dsp",
+        "amc-campaign-sponsored"
+      ],
+      "canonicalPublisher": "canonical-curation",
+      "columns": [
+        {
+          "name": "ad_product_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-campaign-dsp: assigned by the load \u00b7 amc-campaign-sponsored: assigned by the load"
+        },
+        {
+          "name": "advertiser_key",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-campaign-dsp: assigned by the load \u00b7 amc-campaign-sponsored: assigned by the load",
+          "nullMeaning": "not_yet_available"
+        },
+        {
+          "name": "campaign_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-campaign-dsp: assigned by the load \u00b7 amc-campaign-sponsored: assigned by the load"
+        },
+        {
+          "name": "channel_group_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-campaign-dsp: assigned by the load \u00b7 amc-campaign-sponsored: assigned by the load"
+        },
+        {
+          "name": "channel_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-campaign-dsp: assigned by the load \u00b7 amc-campaign-sponsored: assigned by the load"
+        },
+        {
+          "name": "commerce_scope_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-campaign-dsp: assigned by the load \u00b7 amc-campaign-sponsored: assigned by the load"
+        },
+        {
+          "name": "ecosystem_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-campaign-dsp: assigned by the load \u00b7 amc-campaign-sponsored: assigned by the load"
+        },
+        {
+          "name": "marketplace_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-campaign-dsp: campaign_country \u00b7 amc-campaign-sponsored: marketplace_name"
+        },
+        {
+          "name": "platform_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-campaign-dsp: assigned by the load \u00b7 amc-campaign-sponsored: assigned by the load"
+        },
+        {
+          "name": "source_system_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-campaign-dsp: assigned by the load \u00b7 amc-campaign-sponsored: assigned by the load"
+        },
+        {
+          "name": "advertiser_name",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-campaign-dsp: advertiser \u00b7 amc-campaign-sponsored: advertiser"
+        },
+        {
+          "name": "campaign_name",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-campaign-dsp: campaign \u00b7 amc-campaign-sponsored: campaign",
+          "nullMeaning": "not_yet_available"
+        },
+        {
+          "name": "is_current",
+          "type": "boolean",
+          "nullable": false,
+          "comment": "amc-campaign-dsp: literal 'true' \u00b7 amc-campaign-sponsored: literal 'true'"
+        },
+        {
+          "name": "rows_suppressed",
+          "type": "boolean",
+          "nullable": false,
+          "comment": "amc-campaign-dsp: extraction option, delivered as rows_suppressed \u00b7 amc-campaign-sponsored: extraction option, delivered as rows_suppressed"
+        },
+        {
+          "name": "source_ad_product_type",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-campaign-sponsored: ad_product_type",
+          "nullMeaning": "unsupported_by_channel"
+        },
+        {
+          "name": "source_advertiser_id",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-campaign-dsp: advertiser_id",
+          "nullMeaning": "unsupported_by_channel"
+        },
+        {
+          "name": "source_campaign_id",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-campaign-dsp: campaign_id_string \u00b7 amc-campaign-sponsored: campaign_id_string"
+        },
+        {
+          "name": "source_campaign_identifier_kind",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-campaign-dsp: literal 'campaign_id_string' \u00b7 amc-campaign-sponsored: literal 'campaign_id_string'"
+        },
+        {
+          "name": "source_campaign_namespace",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-campaign-dsp: literal 'amc.dsp.campaign_id_string' \u00b7 amc-campaign-sponsored: literal 'amc.sponsored.campaign_id_string'"
+        },
+        {
+          "name": "source_observed_on",
+          "type": "date",
+          "nullable": false,
+          "comment": "amc-campaign-dsp: derived from impression_date_utc \u00b7 amc-campaign-sponsored: derived from event_date_utc"
+        },
+        {
+          "name": "source_scope_namespace",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-campaign-dsp: assigned by the load \u00b7 amc-campaign-sponsored: assigned by the load"
+        },
+        {
+          "name": "source_scope_value",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-campaign-dsp: assigned by the load \u00b7 amc-campaign-sponsored: assigned by the load"
+        },
+        {
+          "name": "valid_from",
+          "type": "timestamp",
+          "nullable": false,
+          "comment": "amc-campaign-dsp: assigned by the load \u00b7 amc-campaign-sponsored: assigned by the load"
+        },
+        {
+          "name": "valid_to",
+          "type": "timestamp",
+          "nullable": false,
+          "comment": "amc-campaign-dsp: assigned by the load \u00b7 amc-campaign-sponsored: assigned by the load"
+        }
+      ]
+    },
+    {
+      "name": "dim_product",
+      "kind": "dimension",
+      "load": "scd2_merge",
+      "grain": [
+        "amazon_asin",
+        "marketplace_key",
+        "valid_from"
+      ],
+      "partitionKeys": [
+        "marketplace_key"
+      ],
+      "measurementBases": [
+        "retail_actual"
+      ],
+      "writtenBy": [
+        "vendor-product-hierarchy"
+      ],
+      "canonicalPublisher": "canonical-curation",
+      "columns": [
+        {
+          "name": "marketplace_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "vendor-product-hierarchy: marketplaceId"
+        },
+        {
+          "name": "amazon_asin",
+          "type": "string",
+          "nullable": false,
+          "comment": "vendor-product-hierarchy: asin"
+        },
+        {
+          "name": "amazon_parent_asin",
+          "type": "string",
+          "nullable": true,
+          "comment": "vendor-product-hierarchy: parentAsin",
+          "nullMeaning": "unsupported_by_channel"
+        },
+        {
+          "name": "brand",
+          "type": "string",
+          "nullable": true,
+          "comment": "vendor-product-hierarchy: brand",
+          "nullMeaning": "not_yet_available"
+        },
+        {
+          "name": "brand_code",
+          "type": "string",
+          "nullable": true,
+          "comment": "vendor-product-hierarchy: brandCode",
+          "nullMeaning": "not_yet_available"
+        },
+        {
+          "name": "is_current",
+          "type": "boolean",
+          "nullable": false,
+          "comment": "vendor-product-hierarchy: literal 'true'"
+        },
+        {
+          "name": "product_title",
+          "type": "string",
+          "nullable": true,
+          "comment": "vendor-product-hierarchy: productTitle",
+          "nullMeaning": "not_yet_available"
+        },
+        {
+          "name": "valid_from",
+          "type": "timestamp",
+          "nullable": false,
+          "comment": "vendor-product-hierarchy: assigned by the load"
+        },
+        {
+          "name": "valid_to",
+          "type": "timestamp",
+          "nullable": false,
+          "comment": "vendor-product-hierarchy: assigned by the load"
+        }
+      ]
+    },
+    {
+      "name": "fct_ad_exposure",
+      "kind": "fact",
+      "load": "partition_overwrite",
+      "grain": [
+        "ad_product_key",
+        "campaign_key",
+        "channel_key",
+        "date_key",
+        "marketplace_key",
+        "rows_suppressed"
+      ],
+      "partitionKeys": [
+        "date_key",
+        "marketplace_key"
+      ],
+      "measurementBases": [
+        "ad_attributed"
+      ],
+      "writtenBy": [
+        "amc-dsp-clicks",
+        "amc-dsp-impressions",
+        "amc-dsp-reach",
+        "amc-dsp-views",
+        "amc-reach-frequency"
+      ],
+      "canonicalPublisher": "canonical-curation",
+      "columns": [
+        {
+          "name": "ad_product_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-dsp-clicks: literal 'amazon_dsp' \u00b7 amc-dsp-impressions: literal 'amazon_dsp' \u00b7 amc-dsp-reach: literal 'amazon_dsp' \u00b7 amc-dsp-views: literal 'amazon_dsp' \u00b7 amc-reach-frequency: ad_product_type"
+        },
+        {
+          "name": "basis_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-dsp-clicks: literal 'ad_attributed' \u00b7 amc-dsp-impressions: literal 'ad_attributed' \u00b7 amc-dsp-reach: literal 'ad_attributed' \u00b7 amc-dsp-views: literal 'ad_attributed' \u00b7 amc-reach-frequency: literal 'ad_attributed'"
+        },
+        {
+          "name": "campaign_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-dsp-clicks: campaign_id_string \u00b7 amc-dsp-impressions: campaign_id_string \u00b7 amc-dsp-reach: campaign_id_string \u00b7 amc-dsp-views: campaign_id_string \u00b7 amc-reach-frequency: campaign_id_string"
+        },
+        {
+          "name": "channel_group_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-dsp-clicks: literal 'display' \u00b7 amc-dsp-impressions: literal 'display' \u00b7 amc-dsp-reach: literal 'display' \u00b7 amc-dsp-views: literal 'display' \u00b7 amc-reach-frequency: derived from ad_product_type"
+        },
+        {
+          "name": "channel_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-dsp-clicks: literal 'amazon_dsp' \u00b7 amc-dsp-impressions: literal 'amazon_dsp' \u00b7 amc-dsp-reach: literal 'amazon_dsp' \u00b7 amc-dsp-views: literal 'amazon_dsp' \u00b7 amc-reach-frequency: ad_product_type"
+        },
+        {
+          "name": "date_key",
+          "type": "date",
+          "nullable": false,
+          "comment": "amc-dsp-clicks: impression_date_utc \u00b7 amc-dsp-impressions: impression_date_utc \u00b7 amc-dsp-reach: impression_date_utc \u00b7 amc-dsp-views: event_date_utc \u00b7 amc-reach-frequency: event_date_utc"
+        },
+        {
+          "name": "ecosystem_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-dsp-clicks: governed ecosystem 'amazon' \u00b7 amc-dsp-impressions: governed ecosystem 'amazon' \u00b7 amc-dsp-reach: governed ecosystem 'amazon' \u00b7 amc-dsp-views: governed ecosystem 'amazon' \u00b7 amc-reach-frequency: governed ecosystem 'amazon'"
+        },
+        {
+          "name": "marketplace_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-dsp-clicks: campaign_country \u00b7 amc-dsp-impressions: campaign_country \u00b7 amc-dsp-reach: campaign_country \u00b7 amc-dsp-views: campaign_country \u00b7 amc-reach-frequency: marketplace_name"
+        },
+        {
+          "name": "platform_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-dsp-clicks: governed platform 'amazon_ads' \u00b7 amc-dsp-impressions: governed platform 'amazon_ads' \u00b7 amc-dsp-reach: governed platform 'amazon_ads' \u00b7 amc-dsp-views: governed platform 'amazon_ads' \u00b7 amc-reach-frequency: governed platform 'amazon_ads'"
+        },
+        {
+          "name": "clicks",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-dsp-clicks: clicks \u00b7 amc-reach-frequency: clicks"
+        },
+        {
+          "name": "currency_code",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-dsp-impressions: currency_iso_code \u00b7 amc-reach-frequency: currency_iso_code"
+        },
+        {
+          "name": "impressions",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-dsp-impressions: impressions \u00b7 amc-reach-frequency: impressions"
+        },
+        {
+          "name": "measurable_impressions",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-dsp-views: measurable_impressions"
+        },
+        {
+          "name": "reach_users",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-dsp-reach: derived from user_id \u00b7 amc-reach-frequency: derived from user_id",
+          "absentFill": "null"
+        },
+        {
+          "name": "rows_suppressed",
+          "type": "boolean",
+          "nullable": false,
+          "comment": "amc-dsp-clicks: extraction option, delivered as values_removed \u00b7 amc-dsp-impressions: extraction option, delivered as values_removed \u00b7 amc-dsp-reach: extraction option, delivered as values_removed \u00b7 amc-dsp-views: extraction option, delivered as values_removed \u00b7 amc-reach-frequency: extraction option, delivered as values_removed"
+        },
+        {
+          "name": "source_timezone",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-dsp-clicks: literal 'UTC' \u00b7 amc-dsp-impressions: literal 'UTC' \u00b7 amc-dsp-reach: literal 'UTC' \u00b7 amc-dsp-views: literal 'UTC' \u00b7 amc-reach-frequency: literal 'UTC'"
+        },
+        {
+          "name": "spend",
+          "type": "decimal(38,4)",
+          "nullable": true,
+          "comment": "amc-dsp-impressions: total_cost \u00b7 amc-reach-frequency: spend"
+        },
+        {
+          "name": "viewable_impressions",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-dsp-views: viewable_impressions"
+        },
+        {
+          "name": "viewable_impressions_estimated",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-dsp-views: unmeasurable_viewable_impressions"
+        }
+      ]
+    },
+    {
+      "name": "fct_ad_exposure_withheld",
+      "kind": "fact",
+      "load": "partition_overwrite",
+      "grain": [
+        "contract_id",
+        "marketplace_key",
+        "period_start",
+        "period_end",
+        "option_set_hash"
+      ],
+      "partitionKeys": [
+        "marketplace_key",
+        "period_start"
+      ],
+      "measurementBases": [
+        "ad_attributed"
+      ],
+      "writtenBy": [
+        "amc-dsp-clicks",
+        "amc-dsp-impressions",
+        "amc-dsp-reach",
+        "amc-dsp-views",
+        "amc-reach-frequency"
+      ],
+      "canonicalPublisher": "canonical-curation",
+      "columns": [
+        {
+          "name": "contract_id",
+          "type": "string",
+          "nullable": false,
+          "comment": "the delivery's manifest: contract_id"
+        },
+        {
+          "name": "marketplace_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "the delivery's manifest: marketplace_key"
+        },
+        {
+          "name": "period_start",
+          "type": "date",
+          "nullable": false,
+          "comment": "the delivery's manifest: period_start"
+        },
+        {
+          "name": "period_end",
+          "type": "date",
+          "nullable": false,
+          "comment": "the delivery's manifest: period_end"
+        },
+        {
+          "name": "option_set_hash",
+          "type": "string",
+          "nullable": false,
+          "comment": "the delivery's manifest: option_set_hash"
+        },
+        {
+          "name": "basis_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-dsp-clicks: literal 'ad_attributed' \u00b7 amc-dsp-impressions: literal 'ad_attributed' \u00b7 amc-dsp-reach: literal 'ad_attributed' \u00b7 amc-dsp-views: literal 'ad_attributed' \u00b7 amc-reach-frequency: literal 'ad_attributed'"
+        },
+        {
+          "name": "ecosystem_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-dsp-clicks: governed ecosystem 'amazon' \u00b7 amc-dsp-impressions: governed ecosystem 'amazon' \u00b7 amc-dsp-reach: governed ecosystem 'amazon' \u00b7 amc-dsp-views: governed ecosystem 'amazon' \u00b7 amc-reach-frequency: governed ecosystem 'amazon'"
+        },
+        {
+          "name": "platform_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-dsp-clicks: governed platform 'amazon_ads' \u00b7 amc-dsp-impressions: governed platform 'amazon_ads' \u00b7 amc-dsp-reach: governed platform 'amazon_ads' \u00b7 amc-dsp-views: governed platform 'amazon_ads' \u00b7 amc-reach-frequency: governed platform 'amazon_ads'"
+        },
+        {
+          "name": "source_timezone",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-dsp-clicks: literal 'UTC' \u00b7 amc-dsp-impressions: literal 'UTC' \u00b7 amc-dsp-reach: literal 'UTC' \u00b7 amc-dsp-views: literal 'UTC' \u00b7 amc-reach-frequency: literal 'UTC'"
+        },
+        {
+          "name": "channel_group_key",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-dsp-clicks: literal 'display' \u00b7 amc-dsp-impressions: literal 'display' \u00b7 amc-dsp-reach: literal 'display' \u00b7 amc-dsp-views: literal 'display' \u00b7 amc-reach-frequency: derived from ad_product_type"
+        },
+        {
+          "name": "clicks",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-dsp-clicks: clicks \u00b7 amc-reach-frequency: clicks"
+        },
+        {
+          "name": "currency_code",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-dsp-impressions: currency_iso_code \u00b7 amc-reach-frequency: currency_iso_code"
+        },
+        {
+          "name": "impressions",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-dsp-impressions: impressions \u00b7 amc-reach-frequency: impressions"
+        },
+        {
+          "name": "measurable_impressions",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-dsp-views: measurable_impressions"
+        },
+        {
+          "name": "reach_users",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-dsp-reach: derived from user_id \u00b7 amc-reach-frequency: derived from user_id"
+        },
+        {
+          "name": "spend",
+          "type": "decimal(38,4)",
+          "nullable": true,
+          "comment": "amc-dsp-impressions: total_cost \u00b7 amc-reach-frequency: spend"
+        },
+        {
+          "name": "viewable_impressions",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-dsp-views: viewable_impressions"
+        },
+        {
+          "name": "viewable_impressions_estimated",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-dsp-views: unmeasurable_viewable_impressions"
+        }
+      ]
+    },
+    {
+      "name": "fct_attributed_conversion",
+      "kind": "fact",
+      "load": "partition_overwrite",
+      "grain": [
+        "amazon_asin",
+        "campaign_key",
+        "channel_key",
+        "date_key",
+        "marketplace_key",
+        "rows_suppressed"
+      ],
+      "partitionKeys": [
+        "date_key",
+        "marketplace_key"
+      ],
+      "measurementBases": [
+        "ad_attributed"
+      ],
+      "writtenBy": [
+        "amc-attributed-conversion"
+      ],
+      "canonicalPublisher": "canonical-curation",
+      "columns": [
+        {
+          "name": "ad_product_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-attributed-conversion: ad_product_type"
+        },
+        {
+          "name": "basis_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-attributed-conversion: literal 'ad_attributed'"
+        },
+        {
+          "name": "campaign_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-attributed-conversion: campaign_id_string"
+        },
+        {
+          "name": "channel_group_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-attributed-conversion: derived from ad_product_type"
+        },
+        {
+          "name": "channel_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-attributed-conversion: ad_product_type"
+        },
+        {
+          "name": "date_key",
+          "type": "date",
+          "nullable": false,
+          "comment": "amc-attributed-conversion: conversion_event_date_utc"
+        },
+        {
+          "name": "ecosystem_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-attributed-conversion: governed ecosystem 'amazon'"
+        },
+        {
+          "name": "marketplace_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-attributed-conversion: conversion_event_marketplace_name"
+        },
+        {
+          "name": "platform_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-attributed-conversion: governed platform 'amazon_ads'"
+        },
+        {
+          "name": "amazon_asin",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-attributed-conversion: tracked_asin"
+        },
+        {
+          "name": "conversions",
+          "type": "bigint",
+          "nullable": false,
+          "comment": "amc-attributed-conversion: conversions"
+        },
+        {
+          "name": "currency_code",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-attributed-conversion: purchase_currency"
+        },
+        {
+          "name": "distinct_user_count",
+          "type": "int",
+          "nullable": true,
+          "comment": "amc-attributed-conversion: extraction option, delivered as distinct_user_count",
+          "nullMeaning": "suppressed"
+        },
+        {
+          "name": "purchases",
+          "type": "bigint",
+          "nullable": false,
+          "comment": "amc-attributed-conversion: purchases"
+        },
+        {
+          "name": "purchases_incl_halo",
+          "type": "bigint",
+          "nullable": false,
+          "comment": "amc-attributed-conversion: total_purchases"
+        },
+        {
+          "name": "purchases_new_to_brand_12mo",
+          "type": "bigint",
+          "nullable": false,
+          "comment": "amc-attributed-conversion: new_to_brand_purchases"
+        },
+        {
+          "name": "purchases_new_to_brand_incl_halo_12mo",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-attributed-conversion: new_to_brand_total_purchases",
+          "nullMeaning": "not_applicable_under_options"
+        },
+        {
+          "name": "revenue_attributed",
+          "type": "decimal(38,4)",
+          "nullable": false,
+          "comment": "amc-attributed-conversion: product_sales"
+        },
+        {
+          "name": "revenue_attributed_incl_halo",
+          "type": "decimal(38,4)",
+          "nullable": false,
+          "comment": "amc-attributed-conversion: total_product_sales"
+        },
+        {
+          "name": "revenue_new_to_brand_12mo",
+          "type": "decimal(38,4)",
+          "nullable": false,
+          "comment": "amc-attributed-conversion: new_to_brand_product_sales"
+        },
+        {
+          "name": "rows_suppressed",
+          "type": "boolean",
+          "nullable": false,
+          "comment": "amc-attributed-conversion: extraction option, delivered as values_removed"
+        },
+        {
+          "name": "source_timezone",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-attributed-conversion: literal 'UTC'"
+        },
+        {
+          "name": "suppression_reason",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-attributed-conversion: extraction option, delivered as filtered_reason",
+          "nullMeaning": "suppressed"
+        },
+        {
+          "name": "units_attributed",
+          "type": "bigint",
+          "nullable": false,
+          "comment": "amc-attributed-conversion: units_sold"
+        },
+        {
+          "name": "units_attributed_incl_halo",
+          "type": "bigint",
+          "nullable": false,
+          "comment": "amc-attributed-conversion: total_units_sold"
+        }
+      ]
+    },
+    {
+      "name": "fct_attributed_conversion_withheld",
+      "kind": "fact",
+      "load": "partition_overwrite",
+      "grain": [
+        "contract_id",
+        "marketplace_key",
+        "period_start",
+        "period_end",
+        "option_set_hash"
+      ],
+      "partitionKeys": [
+        "marketplace_key",
+        "period_start"
+      ],
+      "measurementBases": [
+        "ad_attributed"
+      ],
+      "writtenBy": [
+        "amc-attributed-conversion"
+      ],
+      "canonicalPublisher": "canonical-curation",
+      "columns": [
+        {
+          "name": "contract_id",
+          "type": "string",
+          "nullable": false,
+          "comment": "the delivery's manifest: contract_id"
+        },
+        {
+          "name": "marketplace_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "the delivery's manifest: marketplace_key"
+        },
+        {
+          "name": "period_start",
+          "type": "date",
+          "nullable": false,
+          "comment": "the delivery's manifest: period_start"
+        },
+        {
+          "name": "period_end",
+          "type": "date",
+          "nullable": false,
+          "comment": "the delivery's manifest: period_end"
+        },
+        {
+          "name": "option_set_hash",
+          "type": "string",
+          "nullable": false,
+          "comment": "the delivery's manifest: option_set_hash"
+        },
+        {
+          "name": "basis_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-attributed-conversion: literal 'ad_attributed'"
+        },
+        {
+          "name": "ecosystem_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-attributed-conversion: governed ecosystem 'amazon'"
+        },
+        {
+          "name": "platform_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-attributed-conversion: governed platform 'amazon_ads'"
+        },
+        {
+          "name": "source_timezone",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-attributed-conversion: literal 'UTC'"
+        },
+        {
+          "name": "ad_product_key",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-attributed-conversion: ad_product_type"
+        },
+        {
+          "name": "channel_group_key",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-attributed-conversion: derived from ad_product_type"
+        },
+        {
+          "name": "conversions",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-attributed-conversion: conversions"
+        },
+        {
+          "name": "currency_code",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-attributed-conversion: purchase_currency"
+        },
+        {
+          "name": "distinct_user_count",
+          "type": "int",
+          "nullable": true,
+          "comment": "amc-attributed-conversion: extraction option, delivered as distinct_user_count",
+          "nullMeaning": "suppressed"
+        },
+        {
+          "name": "purchases",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-attributed-conversion: purchases"
+        },
+        {
+          "name": "purchases_incl_halo",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-attributed-conversion: total_purchases"
+        },
+        {
+          "name": "purchases_new_to_brand_12mo",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-attributed-conversion: new_to_brand_purchases"
+        },
+        {
+          "name": "purchases_new_to_brand_incl_halo_12mo",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-attributed-conversion: new_to_brand_total_purchases",
+          "nullMeaning": "not_applicable_under_options"
+        },
+        {
+          "name": "revenue_attributed",
+          "type": "decimal(38,4)",
+          "nullable": true,
+          "comment": "amc-attributed-conversion: product_sales"
+        },
+        {
+          "name": "revenue_attributed_incl_halo",
+          "type": "decimal(38,4)",
+          "nullable": true,
+          "comment": "amc-attributed-conversion: total_product_sales"
+        },
+        {
+          "name": "revenue_new_to_brand_12mo",
+          "type": "decimal(38,4)",
+          "nullable": true,
+          "comment": "amc-attributed-conversion: new_to_brand_product_sales"
+        },
+        {
+          "name": "suppression_reason",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-attributed-conversion: extraction option, delivered as filtered_reason",
+          "nullMeaning": "suppressed"
+        },
+        {
+          "name": "units_attributed",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-attributed-conversion: units_sold"
+        },
+        {
+          "name": "units_attributed_incl_halo",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-attributed-conversion: total_units_sold"
+        }
+      ]
+    },
+    {
+      "name": "fct_deduplicated_temporal_attribution",
+      "kind": "fact",
+      "load": "partition_overwrite",
+      "grain": [
+        "attribution_model_key",
+        "channel_key",
+        "currency_code",
+        "date_key",
+        "marketplace_key",
+        "rows_suppressed"
+      ],
+      "partitionKeys": [
+        "date_key",
+        "marketplace_key"
+      ],
+      "measurementBases": [
+        "ad_attributed"
+      ],
+      "writtenBy": [
+        "amc-deduplicated-temporal-attribution"
+      ],
+      "canonicalPublisher": "canonical-curation",
+      "columns": [
+        {
+          "name": "ad_product_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-deduplicated-temporal-attribution: ad_product_type"
+        },
+        {
+          "name": "attribution_model_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-deduplicated-temporal-attribution: derived from conversion_id, user_id, event_dt_utc, impression_dt_utc, click_dt_utc, campaign_id_string"
+        },
+        {
+          "name": "basis_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-deduplicated-temporal-attribution: literal 'ad_attributed'"
+        },
+        {
+          "name": "channel_group_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-deduplicated-temporal-attribution: derived from ad_product_type"
+        },
+        {
+          "name": "channel_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-deduplicated-temporal-attribution: ad_product_type"
+        },
+        {
+          "name": "date_key",
+          "type": "date",
+          "nullable": false,
+          "comment": "amc-deduplicated-temporal-attribution: event_date_utc"
+        },
+        {
+          "name": "ecosystem_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-deduplicated-temporal-attribution: governed ecosystem 'amazon'"
+        },
+        {
+          "name": "marketplace_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-deduplicated-temporal-attribution: marketplace_name"
+        },
+        {
+          "name": "platform_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-deduplicated-temporal-attribution: governed platform 'amazon_ads'"
+        },
+        {
+          "name": "currency_code",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-deduplicated-temporal-attribution: purchase_currency"
+        },
+        {
+          "name": "distinct_user_count",
+          "type": "int",
+          "nullable": true,
+          "comment": "amc-deduplicated-temporal-attribution: extraction option, delivered as distinct_user_count",
+          "nullMeaning": "suppressed"
+        },
+        {
+          "name": "matched_purchase_credit",
+          "type": "decimal(38,4)",
+          "nullable": false,
+          "comment": "amc-deduplicated-temporal-attribution: derived from conversion_id, user_id, campaign_id_string"
+        },
+        {
+          "name": "revenue_attributed_deduplicated_incl_halo",
+          "type": "decimal(38,4)",
+          "nullable": false,
+          "comment": "amc-deduplicated-temporal-attribution: derived from conversion_id, user_id, total_product_sales, campaign_id_string"
+        },
+        {
+          "name": "rows_suppressed",
+          "type": "boolean",
+          "nullable": false,
+          "comment": "amc-deduplicated-temporal-attribution: extraction option, delivered as values_removed"
+        },
+        {
+          "name": "source_timezone",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-deduplicated-temporal-attribution: literal 'UTC'"
+        },
+        {
+          "name": "suppression_reason",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-deduplicated-temporal-attribution: extraction option, delivered as filtered_reason",
+          "nullMeaning": "suppressed"
+        }
+      ]
+    },
+    {
+      "name": "fct_deduplicated_temporal_attribution_withheld",
+      "kind": "fact",
+      "load": "partition_overwrite",
+      "grain": [
+        "contract_id",
+        "marketplace_key",
+        "period_start",
+        "period_end",
+        "option_set_hash"
+      ],
+      "partitionKeys": [
+        "marketplace_key",
+        "period_start"
+      ],
+      "measurementBases": [
+        "ad_attributed"
+      ],
+      "writtenBy": [
+        "amc-deduplicated-temporal-attribution"
+      ],
+      "canonicalPublisher": "canonical-curation",
+      "columns": [
+        {
+          "name": "contract_id",
+          "type": "string",
+          "nullable": false,
+          "comment": "the delivery's manifest: contract_id"
+        },
+        {
+          "name": "marketplace_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "the delivery's manifest: marketplace_key"
+        },
+        {
+          "name": "period_start",
+          "type": "date",
+          "nullable": false,
+          "comment": "the delivery's manifest: period_start"
+        },
+        {
+          "name": "period_end",
+          "type": "date",
+          "nullable": false,
+          "comment": "the delivery's manifest: period_end"
+        },
+        {
+          "name": "option_set_hash",
+          "type": "string",
+          "nullable": false,
+          "comment": "the delivery's manifest: option_set_hash"
+        },
+        {
+          "name": "basis_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-deduplicated-temporal-attribution: literal 'ad_attributed'"
+        },
+        {
+          "name": "ecosystem_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-deduplicated-temporal-attribution: governed ecosystem 'amazon'"
+        },
+        {
+          "name": "platform_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-deduplicated-temporal-attribution: governed platform 'amazon_ads'"
+        },
+        {
+          "name": "source_timezone",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-deduplicated-temporal-attribution: literal 'UTC'"
+        },
+        {
+          "name": "ad_product_key",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-deduplicated-temporal-attribution: ad_product_type"
+        },
+        {
+          "name": "channel_group_key",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-deduplicated-temporal-attribution: derived from ad_product_type"
+        },
+        {
+          "name": "distinct_user_count",
+          "type": "int",
+          "nullable": true,
+          "comment": "amc-deduplicated-temporal-attribution: extraction option, delivered as distinct_user_count",
+          "nullMeaning": "suppressed"
+        },
+        {
+          "name": "matched_purchase_credit",
+          "type": "decimal(38,4)",
+          "nullable": true,
+          "comment": "amc-deduplicated-temporal-attribution: derived from conversion_id, user_id, campaign_id_string"
+        },
+        {
+          "name": "revenue_attributed_deduplicated_incl_halo",
+          "type": "decimal(38,4)",
+          "nullable": true,
+          "comment": "amc-deduplicated-temporal-attribution: derived from conversion_id, user_id, total_product_sales, campaign_id_string"
+        },
+        {
+          "name": "suppression_reason",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-deduplicated-temporal-attribution: extraction option, delivered as filtered_reason",
+          "nullMeaning": "suppressed"
+        }
+      ]
+    },
+    {
+      "name": "fct_exposure_frequency",
+      "kind": "fact",
+      "load": "partition_overwrite",
+      "grain": [
+        "ad_product_key",
+        "bucket_scheme",
+        "frequency_bucket",
+        "grain_set",
+        "identity_space",
+        "marketplace_key",
+        "period_end",
+        "period_start",
+        "row_kind",
+        "time_grain"
+      ],
+      "partitionKeys": [
+        "marketplace_key",
+        "period_start"
+      ],
+      "measurementBases": [
+        "ad_attributed"
+      ],
+      "writtenBy": [
+        "amc-exposure-frequency-channel",
+        "amc-exposure-frequency-platform"
+      ],
+      "canonicalPublisher": "canonical-curation",
+      "columns": [
+        {
+          "name": "ad_product_key",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-exposure-frequency-channel: ad_product_type \u00b7 amc-exposure-frequency-platform: assigned by the load",
+          "nullMeaning": "not_applicable_under_options"
+        },
+        {
+          "name": "attribution_model_key",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-exposure-frequency-channel: assigned by the load \u00b7 amc-exposure-frequency-platform: assigned by the load",
+          "nullMeaning": "not_applicable_under_options"
+        },
+        {
+          "name": "basis_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-exposure-frequency-channel: literal 'ad_attributed' \u00b7 amc-exposure-frequency-platform: literal 'ad_attributed'"
+        },
+        {
+          "name": "campaign_key",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-exposure-frequency-channel: assigned by the load \u00b7 amc-exposure-frequency-platform: assigned by the load",
+          "nullMeaning": "not_applicable_under_options"
+        },
+        {
+          "name": "channel_group_key",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-exposure-frequency-channel: assigned by the load \u00b7 amc-exposure-frequency-platform: assigned by the load",
+          "nullMeaning": "not_applicable_under_options"
+        },
+        {
+          "name": "channel_key",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-exposure-frequency-channel: assigned by the load \u00b7 amc-exposure-frequency-platform: assigned by the load",
+          "nullMeaning": "not_applicable_under_options"
+        },
+        {
+          "name": "ecosystem_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-exposure-frequency-channel: governed ecosystem 'amazon' \u00b7 amc-exposure-frequency-platform: governed ecosystem 'amazon'"
+        },
+        {
+          "name": "marketplace_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-exposure-frequency-channel: marketplace_name \u00b7 amc-exposure-frequency-platform: marketplace_name"
+        },
+        {
+          "name": "platform_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-exposure-frequency-channel: governed platform 'amazon_ads' \u00b7 amc-exposure-frequency-platform: governed platform 'amazon_ads'"
+        },
+        {
+          "name": "bucket_scheme",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-exposure-frequency-channel: derived from impressions \u00b7 amc-exposure-frequency-platform: derived from impressions"
+        },
+        {
+          "name": "cell_state",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-exposure-frequency-channel: assigned by the load \u00b7 amc-exposure-frequency-platform: assigned by the load"
+        },
+        {
+          "name": "currency_code",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-exposure-frequency-channel: derived from purchase_currency \u00b7 amc-exposure-frequency-platform: derived from purchase_currency",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "dsp_currency",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-exposure-frequency-channel: derived from currency_iso_code \u00b7 amc-exposure-frequency-platform: derived from currency_iso_code",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "dsp_window_spend",
+          "type": "decimal(38,4)",
+          "nullable": true,
+          "comment": "amc-exposure-frequency-channel: derived from total_cost \u00b7 amc-exposure-frequency-platform: derived from total_cost",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "frequency_bucket",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-exposure-frequency-channel: derived from impressions \u00b7 amc-exposure-frequency-platform: derived from impressions"
+        },
+        {
+          "name": "grain_set",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-exposure-frequency-channel: literal 'channel' \u00b7 amc-exposure-frequency-platform: literal 'platform'"
+        },
+        {
+          "name": "identity_space",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-exposure-frequency-channel: derived from user_id_type \u00b7 amc-exposure-frequency-platform: derived from user_id_type"
+        },
+        {
+          "name": "identity_unit",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-exposure-frequency-channel: literal 'amazon_user_id' \u00b7 amc-exposure-frequency-platform: literal 'amazon_user_id'"
+        },
+        {
+          "name": "impressions",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-exposure-frequency-channel: derived from impressions \u00b7 amc-exposure-frequency-platform: derived from impressions",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "ntb_purchasers",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-exposure-frequency-channel: derived from user_id, event_category, new_to_brand \u00b7 amc-exposure-frequency-platform: derived from user_id, event_category, new_to_brand",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "period_end",
+          "type": "date",
+          "nullable": false,
+          "comment": "amc-exposure-frequency-channel: assigned by the load \u00b7 amc-exposure-frequency-platform: assigned by the load"
+        },
+        {
+          "name": "period_start",
+          "type": "date",
+          "nullable": false,
+          "comment": "amc-exposure-frequency-channel: assigned by the load \u00b7 amc-exposure-frequency-platform: assigned by the load"
+        },
+        {
+          "name": "purchasers",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-exposure-frequency-channel: derived from user_id, event_category \u00b7 amc-exposure-frequency-platform: derived from user_id, event_category",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "purchases",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-exposure-frequency-channel: derived from event_category \u00b7 amc-exposure-frequency-platform: derived from event_category",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "revenue_incl_halo",
+          "type": "decimal(38,4)",
+          "nullable": true,
+          "comment": "amc-exposure-frequency-channel: derived from total_product_sales \u00b7 amc-exposure-frequency-platform: derived from total_product_sales",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "row_kind",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-exposure-frequency-channel: derived from impressions \u00b7 amc-exposure-frequency-platform: derived from impressions"
+        },
+        {
+          "name": "shoppers",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-exposure-frequency-channel: derived from user_id, impressions \u00b7 amc-exposure-frequency-platform: derived from user_id, impressions",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "source_timezone",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-exposure-frequency-channel: literal 'UTC' \u00b7 amc-exposure-frequency-platform: literal 'UTC'"
+        },
+        {
+          "name": "sponsored_currency",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-exposure-frequency-channel: derived from currency_iso_code \u00b7 amc-exposure-frequency-platform: derived from currency_iso_code",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "sponsored_window_spend",
+          "type": "decimal(38,4)",
+          "nullable": true,
+          "comment": "amc-exposure-frequency-channel: derived from spend \u00b7 amc-exposure-frequency-platform: derived from spend",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "time_grain",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-exposure-frequency-channel: assigned by the load \u00b7 amc-exposure-frequency-platform: assigned by the load"
+        }
+      ]
+    },
+    {
+      "name": "fct_exposure_frequency_withheld",
+      "kind": "fact",
+      "load": "partition_overwrite",
+      "grain": [
+        "contract_id",
+        "marketplace_key",
+        "period_start",
+        "period_end",
+        "option_set_hash",
+        "row_kind",
+        "bucket_scheme"
+      ],
+      "partitionKeys": [
+        "marketplace_key",
+        "period_start"
+      ],
+      "measurementBases": [
+        "ad_attributed"
+      ],
+      "writtenBy": [
+        "amc-exposure-frequency-channel",
+        "amc-exposure-frequency-platform"
+      ],
+      "canonicalPublisher": "canonical-curation",
+      "columns": [
+        {
+          "name": "contract_id",
+          "type": "string",
+          "nullable": false,
+          "comment": "the delivery's manifest: contract_id"
+        },
+        {
+          "name": "marketplace_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "the delivery's manifest: marketplace_key"
+        },
+        {
+          "name": "period_start",
+          "type": "date",
+          "nullable": false,
+          "comment": "the delivery's manifest: period_start"
+        },
+        {
+          "name": "period_end",
+          "type": "date",
+          "nullable": false,
+          "comment": "the delivery's manifest: period_end"
+        },
+        {
+          "name": "option_set_hash",
+          "type": "string",
+          "nullable": false,
+          "comment": "the delivery's manifest: option_set_hash"
+        },
+        {
+          "name": "row_kind",
+          "type": "string",
+          "nullable": false,
+          "comment": "the withheld rows' row_kind, stamped by the pack's SELECT"
+        },
+        {
+          "name": "bucket_scheme",
+          "type": "string",
+          "nullable": false,
+          "comment": "the withheld rows' bucket_scheme, stamped by the pack's SELECT"
+        },
+        {
+          "name": "basis_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-exposure-frequency-channel: literal 'ad_attributed' \u00b7 amc-exposure-frequency-platform: literal 'ad_attributed'"
+        },
+        {
+          "name": "ecosystem_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-exposure-frequency-channel: governed ecosystem 'amazon' \u00b7 amc-exposure-frequency-platform: governed ecosystem 'amazon'"
+        },
+        {
+          "name": "platform_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-exposure-frequency-channel: governed platform 'amazon_ads' \u00b7 amc-exposure-frequency-platform: governed platform 'amazon_ads'"
+        },
+        {
+          "name": "source_timezone",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-exposure-frequency-channel: literal 'UTC' \u00b7 amc-exposure-frequency-platform: literal 'UTC'"
+        },
+        {
+          "name": "attribution_model_key",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-exposure-frequency-channel: assigned by the load \u00b7 amc-exposure-frequency-platform: assigned by the load",
+          "nullMeaning": "not_applicable_under_options"
+        },
+        {
+          "name": "campaign_key",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-exposure-frequency-channel: assigned by the load \u00b7 amc-exposure-frequency-platform: assigned by the load",
+          "nullMeaning": "not_applicable_under_options"
+        },
+        {
+          "name": "channel_group_key",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-exposure-frequency-channel: assigned by the load \u00b7 amc-exposure-frequency-platform: assigned by the load",
+          "nullMeaning": "not_applicable_under_options"
+        },
+        {
+          "name": "channel_key",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-exposure-frequency-channel: assigned by the load \u00b7 amc-exposure-frequency-platform: assigned by the load",
+          "nullMeaning": "not_applicable_under_options"
+        },
+        {
+          "name": "cell_state",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-exposure-frequency-channel: assigned by the load \u00b7 amc-exposure-frequency-platform: assigned by the load"
+        },
+        {
+          "name": "currency_code",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-exposure-frequency-channel: derived from purchase_currency \u00b7 amc-exposure-frequency-platform: derived from purchase_currency",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "dsp_currency",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-exposure-frequency-channel: derived from currency_iso_code \u00b7 amc-exposure-frequency-platform: derived from currency_iso_code",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "dsp_window_spend",
+          "type": "decimal(38,4)",
+          "nullable": true,
+          "comment": "amc-exposure-frequency-channel: derived from total_cost \u00b7 amc-exposure-frequency-platform: derived from total_cost",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "identity_unit",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-exposure-frequency-channel: literal 'amazon_user_id' \u00b7 amc-exposure-frequency-platform: literal 'amazon_user_id'"
+        },
+        {
+          "name": "impressions",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-exposure-frequency-channel: derived from impressions \u00b7 amc-exposure-frequency-platform: derived from impressions",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "ntb_purchasers",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-exposure-frequency-channel: derived from user_id, event_category, new_to_brand \u00b7 amc-exposure-frequency-platform: derived from user_id, event_category, new_to_brand",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "purchasers",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-exposure-frequency-channel: derived from user_id, event_category \u00b7 amc-exposure-frequency-platform: derived from user_id, event_category",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "purchases",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-exposure-frequency-channel: derived from event_category \u00b7 amc-exposure-frequency-platform: derived from event_category",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "revenue_incl_halo",
+          "type": "decimal(38,4)",
+          "nullable": true,
+          "comment": "amc-exposure-frequency-channel: derived from total_product_sales \u00b7 amc-exposure-frequency-platform: derived from total_product_sales",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "shoppers",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-exposure-frequency-channel: derived from user_id, impressions \u00b7 amc-exposure-frequency-platform: derived from user_id, impressions",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "sponsored_currency",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-exposure-frequency-channel: derived from currency_iso_code \u00b7 amc-exposure-frequency-platform: derived from currency_iso_code",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "sponsored_window_spend",
+          "type": "decimal(38,4)",
+          "nullable": true,
+          "comment": "amc-exposure-frequency-channel: derived from spend \u00b7 amc-exposure-frequency-platform: derived from spend",
+          "nullMeaning": "not_returned"
+        }
+      ]
+    },
+    {
+      "name": "fct_exposure_group_outcome",
+      "kind": "fact",
+      "load": "partition_overwrite",
+      "grain": [
+        "exposure_group",
+        "grain_set",
+        "identity_space",
+        "marketplace_key",
+        "period_end",
+        "period_start",
+        "row_kind",
+        "time_grain"
+      ],
+      "partitionKeys": [
+        "marketplace_key",
+        "period_start"
+      ],
+      "measurementBases": [
+        "ad_attributed"
+      ],
+      "writtenBy": [
+        "amc-exposure-groups"
+      ],
+      "canonicalPublisher": "canonical-curation",
+      "columns": [
+        {
+          "name": "ad_product_key",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-exposure-groups: assigned by the load",
+          "nullMeaning": "not_applicable_under_options"
+        },
+        {
+          "name": "basis_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-exposure-groups: literal 'ad_attributed'"
+        },
+        {
+          "name": "campaign_key",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-exposure-groups: assigned by the load",
+          "nullMeaning": "not_applicable_under_options"
+        },
+        {
+          "name": "channel_group_key",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-exposure-groups: assigned by the load",
+          "nullMeaning": "not_applicable_under_options"
+        },
+        {
+          "name": "channel_key",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-exposure-groups: assigned by the load",
+          "nullMeaning": "not_applicable_under_options"
+        },
+        {
+          "name": "ecosystem_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-exposure-groups: governed ecosystem 'amazon'"
+        },
+        {
+          "name": "marketplace_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-exposure-groups: marketplace_name"
+        },
+        {
+          "name": "platform_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-exposure-groups: governed platform 'amazon_ads'"
+        },
+        {
+          "name": "cell_state",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-exposure-groups: assigned by the load"
+        },
+        {
+          "name": "currency_code",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-exposure-groups: derived from purchase_currency",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "detail_page_view_shoppers",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-exposure-groups: derived from user_id, event_subtype, event_dt_hour_utc",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "dsp_currency",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-exposure-groups: derived from currency_iso_code",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "dsp_window_spend",
+          "type": "decimal(38,4)",
+          "nullable": true,
+          "comment": "amc-exposure-groups: derived from total_cost",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "exposure_group",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-exposure-groups: assigned by the load"
+        },
+        {
+          "name": "exposure_source_set",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-exposure-groups: derived from impressions"
+        },
+        {
+          "name": "grain_set",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-exposure-groups: literal 'platform'"
+        },
+        {
+          "name": "identity_space",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-exposure-groups: derived from user_id_type"
+        },
+        {
+          "name": "identity_unit",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-exposure-groups: literal 'amazon_user_id'"
+        },
+        {
+          "name": "impressions",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-exposure-groups: derived from impressions",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "ntb_purchasers",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-exposure-groups: derived from user_id, event_category, new_to_brand",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "period_end",
+          "type": "date",
+          "nullable": false,
+          "comment": "amc-exposure-groups: assigned by the load"
+        },
+        {
+          "name": "period_start",
+          "type": "date",
+          "nullable": false,
+          "comment": "amc-exposure-groups: assigned by the load"
+        },
+        {
+          "name": "purchasers",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-exposure-groups: derived from user_id, event_category",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "purchases",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-exposure-groups: derived from event_category",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "revenue_incl_halo",
+          "type": "decimal(38,4)",
+          "nullable": true,
+          "comment": "amc-exposure-groups: derived from total_product_sales",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "row_kind",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-exposure-groups: derived from impressions, event_category"
+        },
+        {
+          "name": "search_shoppers",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-exposure-groups: derived from user_id, event_subtype, event_dt_hour_utc",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "shoppers_reached",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-exposure-groups: derived from user_id, impressions",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "source_timezone",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-exposure-groups: literal 'UTC'"
+        },
+        {
+          "name": "sponsored_currency",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-exposure-groups: derived from currency_iso_code",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "sponsored_window_spend",
+          "type": "decimal(38,4)",
+          "nullable": true,
+          "comment": "amc-exposure-groups: derived from spend",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "time_grain",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-exposure-groups: assigned by the load"
+        }
+      ]
+    },
+    {
+      "name": "fct_exposure_group_outcome_withheld",
+      "kind": "fact",
+      "load": "partition_overwrite",
+      "grain": [
+        "contract_id",
+        "marketplace_key",
+        "period_start",
+        "period_end",
+        "option_set_hash",
+        "row_kind"
+      ],
+      "partitionKeys": [
+        "marketplace_key",
+        "period_start"
+      ],
+      "measurementBases": [
+        "ad_attributed"
+      ],
+      "writtenBy": [
+        "amc-exposure-groups"
+      ],
+      "canonicalPublisher": "canonical-curation",
+      "columns": [
+        {
+          "name": "contract_id",
+          "type": "string",
+          "nullable": false,
+          "comment": "the delivery's manifest: contract_id"
+        },
+        {
+          "name": "marketplace_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "the delivery's manifest: marketplace_key"
+        },
+        {
+          "name": "period_start",
+          "type": "date",
+          "nullable": false,
+          "comment": "the delivery's manifest: period_start"
+        },
+        {
+          "name": "period_end",
+          "type": "date",
+          "nullable": false,
+          "comment": "the delivery's manifest: period_end"
+        },
+        {
+          "name": "option_set_hash",
+          "type": "string",
+          "nullable": false,
+          "comment": "the delivery's manifest: option_set_hash"
+        },
+        {
+          "name": "row_kind",
+          "type": "string",
+          "nullable": false,
+          "comment": "the withheld rows' row_kind, stamped by the pack's SELECT"
+        },
+        {
+          "name": "basis_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-exposure-groups: literal 'ad_attributed'"
+        },
+        {
+          "name": "ecosystem_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-exposure-groups: governed ecosystem 'amazon'"
+        },
+        {
+          "name": "platform_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-exposure-groups: governed platform 'amazon_ads'"
+        },
+        {
+          "name": "source_timezone",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-exposure-groups: literal 'UTC'"
+        },
+        {
+          "name": "ad_product_key",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-exposure-groups: assigned by the load",
+          "nullMeaning": "not_applicable_under_options"
+        },
+        {
+          "name": "campaign_key",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-exposure-groups: assigned by the load",
+          "nullMeaning": "not_applicable_under_options"
+        },
+        {
+          "name": "channel_group_key",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-exposure-groups: assigned by the load",
+          "nullMeaning": "not_applicable_under_options"
+        },
+        {
+          "name": "channel_key",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-exposure-groups: assigned by the load",
+          "nullMeaning": "not_applicable_under_options"
+        },
+        {
+          "name": "cell_state",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-exposure-groups: assigned by the load"
+        },
+        {
+          "name": "currency_code",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-exposure-groups: derived from purchase_currency",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "detail_page_view_shoppers",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-exposure-groups: derived from user_id, event_subtype, event_dt_hour_utc",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "dsp_currency",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-exposure-groups: derived from currency_iso_code",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "dsp_window_spend",
+          "type": "decimal(38,4)",
+          "nullable": true,
+          "comment": "amc-exposure-groups: derived from total_cost",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "exposure_source_set",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-exposure-groups: derived from impressions"
+        },
+        {
+          "name": "identity_unit",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-exposure-groups: literal 'amazon_user_id'"
+        },
+        {
+          "name": "impressions",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-exposure-groups: derived from impressions",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "ntb_purchasers",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-exposure-groups: derived from user_id, event_category, new_to_brand",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "purchasers",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-exposure-groups: derived from user_id, event_category",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "purchases",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-exposure-groups: derived from event_category",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "revenue_incl_halo",
+          "type": "decimal(38,4)",
+          "nullable": true,
+          "comment": "amc-exposure-groups: derived from total_product_sales",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "search_shoppers",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-exposure-groups: derived from user_id, event_subtype, event_dt_hour_utc",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "shoppers_reached",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-exposure-groups: derived from user_id, impressions",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "sponsored_currency",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-exposure-groups: derived from currency_iso_code",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "sponsored_window_spend",
+          "type": "decimal(38,4)",
+          "nullable": true,
+          "comment": "amc-exposure-groups: derived from spend",
+          "nullMeaning": "not_returned"
+        }
+      ]
+    },
+    {
+      "name": "fct_new_to_brand_buyers",
+      "kind": "fact",
+      "load": "partition_overwrite",
+      "grain": [
+        "ad_product_key",
+        "campaign_key",
+        "grain_set",
+        "marketplace_key",
+        "period_end",
+        "period_start",
+        "time_grain"
+      ],
+      "partitionKeys": [
+        "marketplace_key",
+        "period_start"
+      ],
+      "measurementBases": [
+        "ad_attributed"
+      ],
+      "writtenBy": [
+        "amc-new-to-brand-buyers-campaign",
+        "amc-new-to-brand-buyers-channel",
+        "amc-new-to-brand-buyers-platform"
+      ],
+      "canonicalPublisher": "canonical-curation",
+      "columns": [
+        {
+          "name": "ad_product_key",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-new-to-brand-buyers-campaign: ad_product_type \u00b7 amc-new-to-brand-buyers-channel: ad_product_type \u00b7 amc-new-to-brand-buyers-platform: assigned by the load",
+          "nullMeaning": "not_applicable_under_options"
+        },
+        {
+          "name": "basis_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-new-to-brand-buyers-campaign: literal 'ad_attributed' \u00b7 amc-new-to-brand-buyers-channel: literal 'ad_attributed' \u00b7 amc-new-to-brand-buyers-platform: literal 'ad_attributed'"
+        },
+        {
+          "name": "campaign_key",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-new-to-brand-buyers-campaign: campaign_id_string \u00b7 amc-new-to-brand-buyers-channel: assigned by the load \u00b7 amc-new-to-brand-buyers-platform: assigned by the load",
+          "nullMeaning": "not_applicable_under_options"
+        },
+        {
+          "name": "channel_group_key",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-new-to-brand-buyers-campaign: assigned by the load \u00b7 amc-new-to-brand-buyers-channel: assigned by the load \u00b7 amc-new-to-brand-buyers-platform: assigned by the load",
+          "nullMeaning": "not_applicable_under_options"
+        },
+        {
+          "name": "channel_key",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-new-to-brand-buyers-campaign: assigned by the load \u00b7 amc-new-to-brand-buyers-channel: assigned by the load \u00b7 amc-new-to-brand-buyers-platform: assigned by the load",
+          "nullMeaning": "not_applicable_under_options"
+        },
+        {
+          "name": "ecosystem_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-new-to-brand-buyers-campaign: governed ecosystem 'amazon' \u00b7 amc-new-to-brand-buyers-channel: governed ecosystem 'amazon' \u00b7 amc-new-to-brand-buyers-platform: governed ecosystem 'amazon'"
+        },
+        {
+          "name": "marketplace_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-new-to-brand-buyers-campaign: conversion_event_marketplace_name \u00b7 amc-new-to-brand-buyers-channel: conversion_event_marketplace_name \u00b7 amc-new-to-brand-buyers-platform: conversion_event_marketplace_name"
+        },
+        {
+          "name": "platform_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-new-to-brand-buyers-campaign: governed platform 'amazon_ads' \u00b7 amc-new-to-brand-buyers-channel: governed platform 'amazon_ads' \u00b7 amc-new-to-brand-buyers-platform: governed platform 'amazon_ads'"
+        },
+        {
+          "name": "buyers_attributed",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-new-to-brand-buyers-campaign: derived from user_id \u00b7 amc-new-to-brand-buyers-channel: derived from user_id \u00b7 amc-new-to-brand-buyers-platform: derived from user_id",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "buyers_new_to_brand_12mo",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-new-to-brand-buyers-campaign: derived from new_to_brand, user_id \u00b7 amc-new-to-brand-buyers-channel: derived from new_to_brand, user_id \u00b7 amc-new-to-brand-buyers-platform: derived from new_to_brand, user_id",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "cell_state",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-new-to-brand-buyers-campaign: assigned by the load \u00b7 amc-new-to-brand-buyers-channel: assigned by the load \u00b7 amc-new-to-brand-buyers-platform: assigned by the load"
+        },
+        {
+          "name": "grain_set",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-new-to-brand-buyers-campaign: literal 'campaign' \u00b7 amc-new-to-brand-buyers-channel: literal 'channel' \u00b7 amc-new-to-brand-buyers-platform: literal 'platform'"
+        },
+        {
+          "name": "identity_unit",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-new-to-brand-buyers-campaign: literal 'amazon_user_id' \u00b7 amc-new-to-brand-buyers-channel: literal 'amazon_user_id' \u00b7 amc-new-to-brand-buyers-platform: literal 'amazon_user_id'"
+        },
+        {
+          "name": "period_end",
+          "type": "date",
+          "nullable": false,
+          "comment": "amc-new-to-brand-buyers-campaign: assigned by the load \u00b7 amc-new-to-brand-buyers-channel: assigned by the load \u00b7 amc-new-to-brand-buyers-platform: assigned by the load"
+        },
+        {
+          "name": "period_start",
+          "type": "date",
+          "nullable": false,
+          "comment": "amc-new-to-brand-buyers-campaign: assigned by the load \u00b7 amc-new-to-brand-buyers-channel: assigned by the load \u00b7 amc-new-to-brand-buyers-platform: assigned by the load"
+        },
+        {
+          "name": "source_timezone",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-new-to-brand-buyers-campaign: literal 'UTC' \u00b7 amc-new-to-brand-buyers-channel: literal 'UTC' \u00b7 amc-new-to-brand-buyers-platform: literal 'UTC'"
+        },
+        {
+          "name": "time_grain",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-new-to-brand-buyers-campaign: assigned by the load \u00b7 amc-new-to-brand-buyers-channel: assigned by the load \u00b7 amc-new-to-brand-buyers-platform: assigned by the load"
+        }
+      ]
+    },
+    {
+      "name": "fct_product_page_views",
+      "kind": "fact",
+      "load": "partition_overwrite",
+      "grain": [
+        "amazon_asin",
+        "date_key",
+        "marketplace_key"
+      ],
+      "partitionKeys": [
+        "date_key",
+        "marketplace_key",
+        "report_options_hash"
+      ],
+      "measurementBases": [
+        "retail_actual"
+      ],
+      "writtenBy": [
+        "vendor-traffic-by-asin"
+      ],
+      "canonicalPublisher": "canonical-curation",
+      "columns": [
+        {
+          "name": "basis_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "vendor-traffic-by-asin: literal 'retail_actual'"
+        },
+        {
+          "name": "date_key",
+          "type": "date",
+          "nullable": false,
+          "comment": "vendor-traffic-by-asin: trafficByAsin[].startDate"
+        },
+        {
+          "name": "ecosystem_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "vendor-traffic-by-asin: governed ecosystem 'amazon'"
+        },
+        {
+          "name": "marketplace_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "vendor-traffic-by-asin: reportSpecification.marketplaceIds[0]"
+        },
+        {
+          "name": "platform_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "vendor-traffic-by-asin: governed platform 'amazon_retail'"
+        },
+        {
+          "name": "amazon_asin",
+          "type": "string",
+          "nullable": false,
+          "comment": "vendor-traffic-by-asin: trafficByAsin[].asin"
+        },
+        {
+          "name": "glance_views",
+          "type": "bigint",
+          "nullable": false,
+          "comment": "vendor-traffic-by-asin: trafficByAsin[].glanceViews"
+        },
+        {
+          "name": "period_end",
+          "type": "date",
+          "nullable": false,
+          "comment": "vendor-traffic-by-asin: reportSpecification.dataEndTime"
+        },
+        {
+          "name": "period_start",
+          "type": "date",
+          "nullable": false,
+          "comment": "vendor-traffic-by-asin: reportSpecification.dataStartTime"
+        },
+        {
+          "name": "report_options_hash",
+          "type": "string",
+          "nullable": false,
+          "comment": "vendor-traffic-by-asin: reportSpecification.reportOptions"
+        },
+        {
+          "name": "report_period",
+          "type": "string",
+          "nullable": false,
+          "comment": "vendor-traffic-by-asin: reportSpecification.reportOptions.reportPeriod"
+        },
+        {
+          "name": "report_type",
+          "type": "string",
+          "nullable": false,
+          "comment": "vendor-traffic-by-asin: reportSpecification.reportType"
+        },
+        {
+          "name": "retrieved_at",
+          "type": "timestamp",
+          "nullable": false,
+          "comment": "vendor-traffic-by-asin: manifest.retrieved_at"
+        },
+        {
+          "name": "source_timezone",
+          "type": "string",
+          "nullable": false,
+          "comment": "vendor-traffic-by-asin: literal 'PST'"
+        },
+        {
+          "name": "source_watermark",
+          "type": "date",
+          "nullable": false,
+          "comment": "vendor-traffic-by-asin: reportSpecification.lastUpdatedDate"
+        }
+      ]
+    },
+    {
+      "name": "fct_product_page_views_reported_total",
+      "kind": "fact",
+      "load": "partition_overwrite",
+      "grain": [
+        "date_key",
+        "marketplace_key"
+      ],
+      "partitionKeys": [
+        "date_key",
+        "marketplace_key",
+        "report_options_hash"
+      ],
+      "measurementBases": [
+        "retail_actual"
+      ],
+      "writtenBy": [
+        "vendor-traffic-reported-total"
+      ],
+      "canonicalPublisher": "canonical-curation",
+      "columns": [
+        {
+          "name": "basis_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "vendor-traffic-reported-total: literal 'retail_actual'"
+        },
+        {
+          "name": "date_key",
+          "type": "date",
+          "nullable": false,
+          "comment": "vendor-traffic-reported-total: trafficAggregate[].startDate"
+        },
+        {
+          "name": "ecosystem_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "vendor-traffic-reported-total: governed ecosystem 'amazon'"
+        },
+        {
+          "name": "marketplace_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "vendor-traffic-reported-total: reportSpecification.marketplaceIds[0]"
+        },
+        {
+          "name": "platform_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "vendor-traffic-reported-total: governed platform 'amazon_retail'"
+        },
+        {
+          "name": "glance_views",
+          "type": "bigint",
+          "nullable": false,
+          "comment": "vendor-traffic-reported-total: trafficAggregate[].glanceViews"
+        },
+        {
+          "name": "period_end",
+          "type": "date",
+          "nullable": false,
+          "comment": "vendor-traffic-reported-total: reportSpecification.dataEndTime"
+        },
+        {
+          "name": "period_start",
+          "type": "date",
+          "nullable": false,
+          "comment": "vendor-traffic-reported-total: reportSpecification.dataStartTime"
+        },
+        {
+          "name": "report_options_hash",
+          "type": "string",
+          "nullable": false,
+          "comment": "vendor-traffic-reported-total: reportSpecification.reportOptions"
+        },
+        {
+          "name": "report_period",
+          "type": "string",
+          "nullable": false,
+          "comment": "vendor-traffic-reported-total: reportSpecification.reportOptions.reportPeriod"
+        },
+        {
+          "name": "report_type",
+          "type": "string",
+          "nullable": false,
+          "comment": "vendor-traffic-reported-total: reportSpecification.reportType"
+        },
+        {
+          "name": "retrieved_at",
+          "type": "timestamp",
+          "nullable": false,
+          "comment": "vendor-traffic-reported-total: manifest.retrieved_at"
+        },
+        {
+          "name": "source_timezone",
+          "type": "string",
+          "nullable": false,
+          "comment": "vendor-traffic-reported-total: literal 'PST'"
+        },
+        {
+          "name": "source_watermark",
+          "type": "date",
+          "nullable": false,
+          "comment": "vendor-traffic-reported-total: reportSpecification.lastUpdatedDate"
+        }
+      ]
+    },
+    {
+      "name": "fct_retail_purchase_amc",
+      "kind": "fact",
+      "load": "partition_overwrite",
+      "grain": [
+        "amazon_asin",
+        "date_key",
+        "marketplace_key",
+        "rows_suppressed"
+      ],
+      "partitionKeys": [
+        "date_key",
+        "marketplace_key"
+      ],
+      "measurementBases": [
+        "retail_actual"
+      ],
+      "writtenBy": [
+        "amc-retail-purchases"
+      ],
+      "canonicalPublisher": "canonical-curation",
+      "columns": [
+        {
+          "name": "basis_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-retail-purchases: literal 'retail_actual'"
+        },
+        {
+          "name": "date_key",
+          "type": "date",
+          "nullable": false,
+          "comment": "amc-retail-purchases: purchase_date_utc"
+        },
+        {
+          "name": "ecosystem_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-retail-purchases: governed ecosystem 'amazon'"
+        },
+        {
+          "name": "marketplace_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-retail-purchases: marketplace_name"
+        },
+        {
+          "name": "platform_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-retail-purchases: governed platform 'amazon_retail'"
+        },
+        {
+          "name": "amazon_asin",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-retail-purchases: asin"
+        },
+        {
+          "name": "currency_code",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-retail-purchases: currency_code"
+        },
+        {
+          "name": "distinct_user_count",
+          "type": "int",
+          "nullable": true,
+          "comment": "amc-retail-purchases: extraction option, delivered as distinct_user_count",
+          "nullMeaning": "suppressed"
+        },
+        {
+          "name": "revenue_purchased",
+          "type": "decimal(38,4)",
+          "nullable": false,
+          "comment": "amc-retail-purchases: derived from unit_price, purchase_units_sold"
+        },
+        {
+          "name": "rows_suppressed",
+          "type": "boolean",
+          "nullable": false,
+          "comment": "amc-retail-purchases: extraction option, delivered as values_removed"
+        },
+        {
+          "name": "source_timezone",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-retail-purchases: literal 'UTC'"
+        },
+        {
+          "name": "suppression_reason",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-retail-purchases: extraction option, delivered as filtered_reason",
+          "nullMeaning": "suppressed"
+        },
+        {
+          "name": "units_purchased",
+          "type": "bigint",
+          "nullable": false,
+          "comment": "amc-retail-purchases: purchase_units_sold"
+        }
+      ]
+    },
+    {
+      "name": "fct_retail_purchase_amc_withheld",
+      "kind": "fact",
+      "load": "partition_overwrite",
+      "grain": [
+        "contract_id",
+        "marketplace_key",
+        "period_start",
+        "period_end",
+        "option_set_hash"
+      ],
+      "partitionKeys": [
+        "marketplace_key",
+        "period_start"
+      ],
+      "measurementBases": [
+        "retail_actual"
+      ],
+      "writtenBy": [
+        "amc-retail-purchases"
+      ],
+      "canonicalPublisher": "canonical-curation",
+      "columns": [
+        {
+          "name": "contract_id",
+          "type": "string",
+          "nullable": false,
+          "comment": "the delivery's manifest: contract_id"
+        },
+        {
+          "name": "marketplace_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "the delivery's manifest: marketplace_key"
+        },
+        {
+          "name": "period_start",
+          "type": "date",
+          "nullable": false,
+          "comment": "the delivery's manifest: period_start"
+        },
+        {
+          "name": "period_end",
+          "type": "date",
+          "nullable": false,
+          "comment": "the delivery's manifest: period_end"
+        },
+        {
+          "name": "option_set_hash",
+          "type": "string",
+          "nullable": false,
+          "comment": "the delivery's manifest: option_set_hash"
+        },
+        {
+          "name": "basis_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-retail-purchases: literal 'retail_actual'"
+        },
+        {
+          "name": "ecosystem_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-retail-purchases: governed ecosystem 'amazon'"
+        },
+        {
+          "name": "platform_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-retail-purchases: governed platform 'amazon_retail'"
+        },
+        {
+          "name": "source_timezone",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-retail-purchases: literal 'UTC'"
+        },
+        {
+          "name": "currency_code",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-retail-purchases: currency_code"
+        },
+        {
+          "name": "distinct_user_count",
+          "type": "int",
+          "nullable": true,
+          "comment": "amc-retail-purchases: extraction option, delivered as distinct_user_count",
+          "nullMeaning": "suppressed"
+        },
+        {
+          "name": "revenue_purchased",
+          "type": "decimal(38,4)",
+          "nullable": true,
+          "comment": "amc-retail-purchases: derived from unit_price, purchase_units_sold"
+        },
+        {
+          "name": "suppression_reason",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-retail-purchases: extraction option, delivered as filtered_reason",
+          "nullMeaning": "suppressed"
+        },
+        {
+          "name": "units_purchased",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-retail-purchases: purchase_units_sold"
+        }
+      ]
+    },
+    {
+      "name": "fct_retail_sales",
+      "kind": "fact",
+      "load": "partition_overwrite",
+      "grain": [
+        "amazon_asin",
+        "date_key",
+        "distributor_view",
+        "marketplace_key",
+        "selling_program"
+      ],
+      "partitionKeys": [
+        "date_key",
+        "marketplace_key",
+        "report_options_hash"
+      ],
+      "measurementBases": [
+        "retail_actual"
+      ],
+      "writtenBy": [
+        "vendor-sales-by-asin"
+      ],
+      "canonicalPublisher": "canonical-curation",
+      "columns": [
+        {
+          "name": "basis_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "vendor-sales-by-asin: literal 'retail_actual'"
+        },
+        {
+          "name": "date_key",
+          "type": "date",
+          "nullable": false,
+          "comment": "vendor-sales-by-asin: salesByAsin[].startDate"
+        },
+        {
+          "name": "ecosystem_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "vendor-sales-by-asin: governed ecosystem 'amazon'"
+        },
+        {
+          "name": "marketplace_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "vendor-sales-by-asin: reportSpecification.marketplaceIds[0]"
+        },
+        {
+          "name": "platform_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "vendor-sales-by-asin: governed platform 'amazon_retail'"
+        },
+        {
+          "name": "amazon_asin",
+          "type": "string",
+          "nullable": false,
+          "comment": "vendor-sales-by-asin: salesByAsin[].asin"
+        },
+        {
+          "name": "cogs_shipped",
+          "type": "decimal(38,4)",
+          "nullable": false,
+          "comment": "vendor-sales-by-asin: salesByAsin[].shippedCogs.amount"
+        },
+        {
+          "name": "currency_code",
+          "type": "string",
+          "nullable": false,
+          "comment": "vendor-sales-by-asin: salesByAsin[].shippedRevenue.currencyCode"
+        },
+        {
+          "name": "customer_returns",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "vendor-sales-by-asin: salesByAsin[].customerReturns",
+          "nullMeaning": "not_applicable_under_options"
+        },
+        {
+          "name": "distributor_view",
+          "type": "string",
+          "nullable": false,
+          "comment": "vendor-sales-by-asin: reportSpecification.reportOptions.distributorView"
+        },
+        {
+          "name": "period_end",
+          "type": "date",
+          "nullable": false,
+          "comment": "vendor-sales-by-asin: reportSpecification.dataEndTime"
+        },
+        {
+          "name": "period_start",
+          "type": "date",
+          "nullable": false,
+          "comment": "vendor-sales-by-asin: reportSpecification.dataStartTime"
+        },
+        {
+          "name": "report_options_hash",
+          "type": "string",
+          "nullable": false,
+          "comment": "vendor-sales-by-asin: reportSpecification.reportOptions"
+        },
+        {
+          "name": "report_period",
+          "type": "string",
+          "nullable": false,
+          "comment": "vendor-sales-by-asin: reportSpecification.reportOptions.reportPeriod"
+        },
+        {
+          "name": "report_type",
+          "type": "string",
+          "nullable": false,
+          "comment": "vendor-sales-by-asin: reportSpecification.reportType"
+        },
+        {
+          "name": "retrieved_at",
+          "type": "timestamp",
+          "nullable": false,
+          "comment": "vendor-sales-by-asin: manifest.retrieved_at"
+        },
+        {
+          "name": "revenue_ordered",
+          "type": "decimal(38,4)",
+          "nullable": true,
+          "comment": "vendor-sales-by-asin: salesByAsin[].orderedRevenue.amount",
+          "nullMeaning": "not_applicable_under_options"
+        },
+        {
+          "name": "revenue_shipped",
+          "type": "decimal(38,4)",
+          "nullable": false,
+          "comment": "vendor-sales-by-asin: salesByAsin[].shippedRevenue.amount"
+        },
+        {
+          "name": "selling_program",
+          "type": "string",
+          "nullable": false,
+          "comment": "vendor-sales-by-asin: reportSpecification.reportOptions.sellingProgram"
+        },
+        {
+          "name": "source_timezone",
+          "type": "string",
+          "nullable": false,
+          "comment": "vendor-sales-by-asin: literal 'PST'"
+        },
+        {
+          "name": "source_watermark",
+          "type": "date",
+          "nullable": false,
+          "comment": "vendor-sales-by-asin: reportSpecification.lastUpdatedDate"
+        },
+        {
+          "name": "units_ordered",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "vendor-sales-by-asin: salesByAsin[].orderedUnits",
+          "nullMeaning": "not_applicable_under_options"
+        },
+        {
+          "name": "units_shipped",
+          "type": "bigint",
+          "nullable": false,
+          "comment": "vendor-sales-by-asin: salesByAsin[].shippedUnits"
+        }
+      ]
+    },
+    {
+      "name": "fct_retail_sales_reported_total",
+      "kind": "fact",
+      "load": "partition_overwrite",
+      "grain": [
+        "date_key",
+        "distributor_view",
+        "marketplace_key",
+        "selling_program"
+      ],
+      "partitionKeys": [
+        "date_key",
+        "marketplace_key",
+        "report_options_hash"
+      ],
+      "measurementBases": [
+        "retail_actual"
+      ],
+      "writtenBy": [
+        "vendor-sales-reported-total"
+      ],
+      "canonicalPublisher": "canonical-curation",
+      "columns": [
+        {
+          "name": "basis_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "vendor-sales-reported-total: literal 'retail_actual'"
+        },
+        {
+          "name": "date_key",
+          "type": "date",
+          "nullable": false,
+          "comment": "vendor-sales-reported-total: salesAggregate[].startDate"
+        },
+        {
+          "name": "ecosystem_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "vendor-sales-reported-total: governed ecosystem 'amazon'"
+        },
+        {
+          "name": "marketplace_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "vendor-sales-reported-total: reportSpecification.marketplaceIds[0]"
+        },
+        {
+          "name": "platform_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "vendor-sales-reported-total: governed platform 'amazon_retail'"
+        },
+        {
+          "name": "cogs_shipped",
+          "type": "decimal(38,4)",
+          "nullable": false,
+          "comment": "vendor-sales-reported-total: salesAggregate[].shippedCogs.amount"
+        },
+        {
+          "name": "currency_code",
+          "type": "string",
+          "nullable": false,
+          "comment": "vendor-sales-reported-total: salesAggregate[].shippedRevenue.currencyCode"
+        },
+        {
+          "name": "customer_returns",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "vendor-sales-reported-total: salesAggregate[].customerReturns",
+          "nullMeaning": "not_applicable_under_options"
+        },
+        {
+          "name": "distributor_view",
+          "type": "string",
+          "nullable": false,
+          "comment": "vendor-sales-reported-total: reportSpecification.reportOptions.distributorView"
+        },
+        {
+          "name": "period_end",
+          "type": "date",
+          "nullable": false,
+          "comment": "vendor-sales-reported-total: reportSpecification.dataEndTime"
+        },
+        {
+          "name": "period_start",
+          "type": "date",
+          "nullable": false,
+          "comment": "vendor-sales-reported-total: reportSpecification.dataStartTime"
+        },
+        {
+          "name": "report_options_hash",
+          "type": "string",
+          "nullable": false,
+          "comment": "vendor-sales-reported-total: reportSpecification.reportOptions"
+        },
+        {
+          "name": "report_period",
+          "type": "string",
+          "nullable": false,
+          "comment": "vendor-sales-reported-total: reportSpecification.reportOptions.reportPeriod"
+        },
+        {
+          "name": "report_type",
+          "type": "string",
+          "nullable": false,
+          "comment": "vendor-sales-reported-total: reportSpecification.reportType"
+        },
+        {
+          "name": "retrieved_at",
+          "type": "timestamp",
+          "nullable": false,
+          "comment": "vendor-sales-reported-total: manifest.retrieved_at"
+        },
+        {
+          "name": "revenue_ordered",
+          "type": "decimal(38,4)",
+          "nullable": true,
+          "comment": "vendor-sales-reported-total: salesAggregate[].orderedRevenue.amount",
+          "nullMeaning": "not_applicable_under_options"
+        },
+        {
+          "name": "revenue_shipped",
+          "type": "decimal(38,4)",
+          "nullable": false,
+          "comment": "vendor-sales-reported-total: salesAggregate[].shippedRevenue.amount"
+        },
+        {
+          "name": "selling_program",
+          "type": "string",
+          "nullable": false,
+          "comment": "vendor-sales-reported-total: reportSpecification.reportOptions.sellingProgram"
+        },
+        {
+          "name": "source_timezone",
+          "type": "string",
+          "nullable": false,
+          "comment": "vendor-sales-reported-total: literal 'PST'"
+        },
+        {
+          "name": "source_watermark",
+          "type": "date",
+          "nullable": false,
+          "comment": "vendor-sales-reported-total: reportSpecification.lastUpdatedDate"
+        },
+        {
+          "name": "units_ordered",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "vendor-sales-reported-total: salesAggregate[].orderedUnits",
+          "nullMeaning": "not_applicable_under_options"
+        },
+        {
+          "name": "units_shipped",
+          "type": "bigint",
+          "nullable": false,
+          "comment": "vendor-sales-reported-total: salesAggregate[].shippedUnits"
+        }
+      ]
+    },
+    {
+      "name": "fct_segment_delivery",
+      "kind": "fact",
+      "load": "partition_overwrite",
+      "grain": [
+        "campaign_key",
+        "grain_set",
+        "marketplace_key",
+        "period_end",
+        "period_start",
+        "segment_id",
+        "segment_namespace",
+        "time_grain"
+      ],
+      "partitionKeys": [
+        "marketplace_key",
+        "period_start"
+      ],
+      "measurementBases": [
+        "ad_attributed"
+      ],
+      "writtenBy": [
+        "amc-audience-performance"
+      ],
+      "canonicalPublisher": "canonical-curation",
+      "columns": [
+        {
+          "name": "ad_product_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-audience-performance: assigned by the load"
+        },
+        {
+          "name": "basis_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-audience-performance: literal 'ad_attributed'"
+        },
+        {
+          "name": "campaign_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-audience-performance: campaign_id_string"
+        },
+        {
+          "name": "channel_group_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-audience-performance: assigned by the load"
+        },
+        {
+          "name": "channel_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-audience-performance: assigned by the load"
+        },
+        {
+          "name": "ecosystem_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-audience-performance: governed ecosystem 'amazon'"
+        },
+        {
+          "name": "marketplace_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-audience-performance: campaign_country"
+        },
+        {
+          "name": "platform_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-audience-performance: governed platform 'amazon_ads'"
+        },
+        {
+          "name": "cell_state",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-audience-performance: assigned by the load"
+        },
+        {
+          "name": "dsp_currency",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-audience-performance: derived from currency_iso_code",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "dsp_spend",
+          "type": "decimal(38,4)",
+          "nullable": true,
+          "comment": "amc-audience-performance: derived from total_cost",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "grain_set",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-audience-performance: literal 'campaign'"
+        },
+        {
+          "name": "identity_unit",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-audience-performance: literal 'amazon_user_id'"
+        },
+        {
+          "name": "impressions",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-audience-performance: derived from impressions",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "period_end",
+          "type": "date",
+          "nullable": false,
+          "comment": "amc-audience-performance: assigned by the load"
+        },
+        {
+          "name": "period_start",
+          "type": "date",
+          "nullable": false,
+          "comment": "amc-audience-performance: assigned by the load"
+        },
+        {
+          "name": "purchase_currency",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-audience-performance: derived from purchase_currency",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "segment_attributed_revenue",
+          "type": "decimal(38,4)",
+          "nullable": true,
+          "comment": "amc-audience-performance: derived from product_sales",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "segment_id",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-audience-performance: behavior_segment_id"
+        },
+        {
+          "name": "segment_namespace",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-audience-performance: literal 'amc_dsp_behavior'"
+        },
+        {
+          "name": "segment_purchasers",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-audience-performance: derived from user_id, purchases",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "segment_purchases",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-audience-performance: derived from purchases",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "segment_reach",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-audience-performance: derived from user_id, behavior_segment_id",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "source_timezone",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-audience-performance: literal 'UTC'"
+        },
+        {
+          "name": "time_grain",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-audience-performance: assigned by the load"
+        }
+      ]
+    },
+    {
+      "name": "fct_segment_delivery_withheld",
+      "kind": "fact",
+      "load": "partition_overwrite",
+      "grain": [
+        "contract_id",
+        "marketplace_key",
+        "period_start",
+        "period_end",
+        "option_set_hash"
+      ],
+      "partitionKeys": [
+        "marketplace_key",
+        "period_start"
+      ],
+      "measurementBases": [
+        "ad_attributed"
+      ],
+      "writtenBy": [
+        "amc-audience-performance"
+      ],
+      "canonicalPublisher": "canonical-curation",
+      "columns": [
+        {
+          "name": "contract_id",
+          "type": "string",
+          "nullable": false,
+          "comment": "the delivery's manifest: contract_id"
+        },
+        {
+          "name": "marketplace_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "the delivery's manifest: marketplace_key"
+        },
+        {
+          "name": "period_start",
+          "type": "date",
+          "nullable": false,
+          "comment": "the delivery's manifest: period_start"
+        },
+        {
+          "name": "period_end",
+          "type": "date",
+          "nullable": false,
+          "comment": "the delivery's manifest: period_end"
+        },
+        {
+          "name": "option_set_hash",
+          "type": "string",
+          "nullable": false,
+          "comment": "the delivery's manifest: option_set_hash"
+        },
+        {
+          "name": "basis_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-audience-performance: literal 'ad_attributed'"
+        },
+        {
+          "name": "ecosystem_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-audience-performance: governed ecosystem 'amazon'"
+        },
+        {
+          "name": "platform_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-audience-performance: governed platform 'amazon_ads'"
+        },
+        {
+          "name": "source_timezone",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-audience-performance: literal 'UTC'"
+        },
+        {
+          "name": "ad_product_key",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-audience-performance: assigned by the load"
+        },
+        {
+          "name": "channel_group_key",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-audience-performance: assigned by the load"
+        },
+        {
+          "name": "channel_key",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-audience-performance: assigned by the load"
+        },
+        {
+          "name": "cell_state",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-audience-performance: assigned by the load"
+        },
+        {
+          "name": "dsp_currency",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-audience-performance: derived from currency_iso_code",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "dsp_spend",
+          "type": "decimal(38,4)",
+          "nullable": true,
+          "comment": "amc-audience-performance: derived from total_cost",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "identity_unit",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-audience-performance: literal 'amazon_user_id'"
+        },
+        {
+          "name": "impressions",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-audience-performance: derived from impressions",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "purchase_currency",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-audience-performance: derived from purchase_currency",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "segment_attributed_revenue",
+          "type": "decimal(38,4)",
+          "nullable": true,
+          "comment": "amc-audience-performance: derived from product_sales",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "segment_purchasers",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-audience-performance: derived from user_id, purchases",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "segment_purchases",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-audience-performance: derived from purchases",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "segment_reach",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-audience-performance: derived from user_id, behavior_segment_id",
+          "nullMeaning": "not_returned"
+        }
+      ]
+    },
+    {
+      "name": "fct_segment_profile",
+      "kind": "fact",
+      "load": "partition_overwrite",
+      "grain": [
+        "grain_set",
+        "marketplace_key",
+        "period_end",
+        "period_start",
+        "profile_path",
+        "row_kind",
+        "segment_id",
+        "segment_namespace",
+        "time_grain"
+      ],
+      "partitionKeys": [
+        "marketplace_key",
+        "period_start"
+      ],
+      "measurementBases": [
+        "ad_attributed"
+      ],
+      "writtenBy": [
+        "amc-segment-buyer-profile-dsp-exposed",
+        "amc-segment-buyer-profile-inmarket",
+        "amc-segment-buyer-profile-lifestyle"
+      ],
+      "canonicalPublisher": "canonical-curation",
+      "columns": [
+        {
+          "name": "ad_product_key",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-segment-buyer-profile-dsp-exposed: assigned by the load \u00b7 amc-segment-buyer-profile-inmarket: assigned by the load \u00b7 amc-segment-buyer-profile-lifestyle: assigned by the load",
+          "nullMeaning": "not_applicable_under_options"
+        },
+        {
+          "name": "basis_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-segment-buyer-profile-dsp-exposed: literal 'ad_attributed' \u00b7 amc-segment-buyer-profile-inmarket: literal 'ad_attributed' \u00b7 amc-segment-buyer-profile-lifestyle: literal 'ad_attributed'"
+        },
+        {
+          "name": "campaign_key",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-segment-buyer-profile-dsp-exposed: assigned by the load \u00b7 amc-segment-buyer-profile-inmarket: assigned by the load \u00b7 amc-segment-buyer-profile-lifestyle: assigned by the load",
+          "nullMeaning": "not_applicable_under_options"
+        },
+        {
+          "name": "channel_group_key",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-segment-buyer-profile-dsp-exposed: assigned by the load \u00b7 amc-segment-buyer-profile-inmarket: assigned by the load \u00b7 amc-segment-buyer-profile-lifestyle: assigned by the load",
+          "nullMeaning": "not_applicable_under_options"
+        },
+        {
+          "name": "channel_key",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-segment-buyer-profile-dsp-exposed: assigned by the load \u00b7 amc-segment-buyer-profile-inmarket: assigned by the load \u00b7 amc-segment-buyer-profile-lifestyle: assigned by the load",
+          "nullMeaning": "not_applicable_under_options"
+        },
+        {
+          "name": "ecosystem_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-segment-buyer-profile-dsp-exposed: governed ecosystem 'amazon' \u00b7 amc-segment-buyer-profile-inmarket: governed ecosystem 'amazon' \u00b7 amc-segment-buyer-profile-lifestyle: governed ecosystem 'amazon'"
+        },
+        {
+          "name": "marketplace_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-segment-buyer-profile-dsp-exposed: marketplace_name \u00b7 amc-segment-buyer-profile-inmarket: marketplace_name \u00b7 amc-segment-buyer-profile-lifestyle: marketplace_name"
+        },
+        {
+          "name": "platform_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-segment-buyer-profile-dsp-exposed: governed platform 'amazon_ads' \u00b7 amc-segment-buyer-profile-inmarket: governed platform 'amazon_ads' \u00b7 amc-segment-buyer-profile-lifestyle: governed platform 'amazon_ads'"
+        },
+        {
+          "name": "cell_state",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-segment-buyer-profile-dsp-exposed: assigned by the load \u00b7 amc-segment-buyer-profile-inmarket: assigned by the load \u00b7 amc-segment-buyer-profile-lifestyle: assigned by the load"
+        },
+        {
+          "name": "grain_set",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-segment-buyer-profile-dsp-exposed: literal 'platform' \u00b7 amc-segment-buyer-profile-inmarket: literal 'platform' \u00b7 amc-segment-buyer-profile-lifestyle: literal 'platform'"
+        },
+        {
+          "name": "identity_unit",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-segment-buyer-profile-dsp-exposed: literal 'amazon_user_id' \u00b7 amc-segment-buyer-profile-inmarket: literal 'amazon_user_id' \u00b7 amc-segment-buyer-profile-lifestyle: literal 'amazon_user_id'"
+        },
+        {
+          "name": "period_end",
+          "type": "date",
+          "nullable": false,
+          "comment": "amc-segment-buyer-profile-dsp-exposed: assigned by the load \u00b7 amc-segment-buyer-profile-inmarket: assigned by the load \u00b7 amc-segment-buyer-profile-lifestyle: assigned by the load"
+        },
+        {
+          "name": "period_start",
+          "type": "date",
+          "nullable": false,
+          "comment": "amc-segment-buyer-profile-dsp-exposed: assigned by the load \u00b7 amc-segment-buyer-profile-inmarket: assigned by the load \u00b7 amc-segment-buyer-profile-lifestyle: assigned by the load"
+        },
+        {
+          "name": "profile_path",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-segment-buyer-profile-dsp-exposed: literal 'dsp_exposed_only' \u00b7 amc-segment-buyer-profile-inmarket: literal 'asi_in_market' \u00b7 amc-segment-buyer-profile-lifestyle: literal 'asi_lifestyle'"
+        },
+        {
+          "name": "profiled_buyers_total",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-segment-buyer-profile-dsp-exposed: derived from user_id, event_category \u00b7 amc-segment-buyer-profile-inmarket: derived from user_id, event_category \u00b7 amc-segment-buyer-profile-lifestyle: derived from user_id, event_category",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "profiled_exposed_total",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-segment-buyer-profile-dsp-exposed: derived from user_id \u00b7 amc-segment-buyer-profile-inmarket: derived from user_id \u00b7 amc-segment-buyer-profile-lifestyle: derived from user_id",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "row_kind",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-segment-buyer-profile-dsp-exposed: derived from user_id \u00b7 amc-segment-buyer-profile-inmarket: derived from user_id \u00b7 amc-segment-buyer-profile-lifestyle: derived from user_id"
+        },
+        {
+          "name": "segment_buyers",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-segment-buyer-profile-dsp-exposed: derived from user_id, event_category \u00b7 amc-segment-buyer-profile-inmarket: derived from user_id, event_category \u00b7 amc-segment-buyer-profile-lifestyle: derived from user_id, event_category",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "segment_buyers_new_to_brand",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-segment-buyer-profile-dsp-exposed: derived from user_id, new_to_brand \u00b7 amc-segment-buyer-profile-inmarket: derived from user_id, new_to_brand \u00b7 amc-segment-buyer-profile-lifestyle: derived from user_id, new_to_brand",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "segment_exposed_shoppers",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-segment-buyer-profile-dsp-exposed: derived from user_id, behavior_segment_id \u00b7 amc-segment-buyer-profile-inmarket: derived from user_id, segment_id \u00b7 amc-segment-buyer-profile-lifestyle: derived from user_id, segment_id",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "segment_id",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-segment-buyer-profile-dsp-exposed: behavior_segment_id \u00b7 amc-segment-buyer-profile-inmarket: segment_id \u00b7 amc-segment-buyer-profile-lifestyle: segment_id",
+          "nullMeaning": "not_applicable_under_options"
+        },
+        {
+          "name": "segment_namespace",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-segment-buyer-profile-dsp-exposed: literal 'amc_dsp_behavior' \u00b7 amc-segment-buyer-profile-inmarket: literal 'amc_asi' \u00b7 amc-segment-buyer-profile-lifestyle: literal 'amc_asi'"
+        },
+        {
+          "name": "source_timezone",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-segment-buyer-profile-dsp-exposed: literal 'UTC' \u00b7 amc-segment-buyer-profile-inmarket: literal 'UTC' \u00b7 amc-segment-buyer-profile-lifestyle: literal 'UTC'"
+        },
+        {
+          "name": "time_grain",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-segment-buyer-profile-dsp-exposed: assigned by the load \u00b7 amc-segment-buyer-profile-inmarket: assigned by the load \u00b7 amc-segment-buyer-profile-lifestyle: assigned by the load"
+        }
+      ]
+    },
+    {
+      "name": "fct_shopper_acquisition",
+      "kind": "fact",
+      "load": "partition_overwrite",
+      "grain": [
+        "acquisition_channel_group",
+        "as_of_month",
+        "cohort_grain",
+        "cohort_month",
+        "cohort_path",
+        "grain_set",
+        "marketplace_key",
+        "months_since_acquisition",
+        "period_end",
+        "period_start",
+        "time_grain"
+      ],
+      "partitionKeys": [
+        "marketplace_key",
+        "period_start"
+      ],
+      "measurementBases": [
+        "ad_attributed",
+        "retail_actual"
+      ],
+      "writtenBy": [
+        "amc-acquisition-cohorts",
+        "amc-acquisition-cohorts-arp"
+      ],
+      "canonicalPublisher": "canonical-curation",
+      "columns": [
+        {
+          "name": "ad_product_key",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-acquisition-cohorts: assigned by the load \u00b7 amc-acquisition-cohorts-arp: assigned by the load",
+          "nullMeaning": "not_applicable_under_options"
+        },
+        {
+          "name": "basis_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-acquisition-cohorts: literal 'ad_attributed' \u00b7 amc-acquisition-cohorts-arp: literal 'retail_actual'"
+        },
+        {
+          "name": "campaign_key",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-acquisition-cohorts: assigned by the load \u00b7 amc-acquisition-cohorts-arp: assigned by the load",
+          "nullMeaning": "not_applicable_under_options"
+        },
+        {
+          "name": "channel_group_key",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-acquisition-cohorts: assigned by the load \u00b7 amc-acquisition-cohorts-arp: assigned by the load",
+          "nullMeaning": "not_applicable_under_options"
+        },
+        {
+          "name": "channel_key",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-acquisition-cohorts: assigned by the load \u00b7 amc-acquisition-cohorts-arp: assigned by the load",
+          "nullMeaning": "not_applicable_under_options"
+        },
+        {
+          "name": "ecosystem_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-acquisition-cohorts: governed ecosystem 'amazon' \u00b7 amc-acquisition-cohorts-arp: governed ecosystem 'amazon'"
+        },
+        {
+          "name": "marketplace_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-acquisition-cohorts: marketplace_name \u00b7 amc-acquisition-cohorts-arp: marketplace_name"
+        },
+        {
+          "name": "platform_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-acquisition-cohorts: governed platform 'amazon_ads' \u00b7 amc-acquisition-cohorts-arp: governed platform 'amazon_ads'"
+        },
+        {
+          "name": "acquisition_channel_group",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-acquisition-cohorts: assigned by the load \u00b7 amc-acquisition-cohorts-arp: assigned by the load"
+        },
+        {
+          "name": "acquisition_source_set",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-acquisition-cohorts: derived from ad_product_type \u00b7 amc-acquisition-cohorts-arp: derived from ad_product_type"
+        },
+        {
+          "name": "as_of_month",
+          "type": "date",
+          "nullable": false,
+          "comment": "amc-acquisition-cohorts: assigned by the load \u00b7 amc-acquisition-cohorts-arp: assigned by the load"
+        },
+        {
+          "name": "cell_state",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-acquisition-cohorts: assigned by the load \u00b7 amc-acquisition-cohorts-arp: assigned by the load"
+        },
+        {
+          "name": "cohort_buyers_account_ids",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-acquisition-cohorts: derived from user_id, user_id_type, new_to_brand",
+          "nullMeaning": "not_returned",
+          "absentFill": "null"
+        },
+        {
+          "name": "cohort_buyers_account_ids_check",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-acquisition-cohorts-arp: derived from user_id, user_id_type, new_to_brand",
+          "nullMeaning": "not_returned",
+          "absentFill": "null"
+        },
+        {
+          "name": "cohort_buyers_new_to_brand_12mo",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-acquisition-cohorts: derived from user_id, new_to_brand",
+          "nullMeaning": "not_returned",
+          "absentFill": "null"
+        },
+        {
+          "name": "cohort_grain",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-acquisition-cohorts: derived from conversion_event_date_utc \u00b7 amc-acquisition-cohorts-arp: derived from conversion_event_date_utc"
+        },
+        {
+          "name": "cohort_month",
+          "type": "date",
+          "nullable": false,
+          "comment": "amc-acquisition-cohorts: derived from conversion_event_date_utc \u00b7 amc-acquisition-cohorts-arp: derived from conversion_event_date_utc"
+        },
+        {
+          "name": "cohort_path",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-acquisition-cohorts: literal 'standard' \u00b7 amc-acquisition-cohorts-arp: literal 'arp'"
+        },
+        {
+          "name": "cumulative_repeat_buyers",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-acquisition-cohorts: derived from user_id, event_category \u00b7 amc-acquisition-cohorts-arp: derived from user_id, purchase_id",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "cumulative_repeat_buyers_account_ids",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-acquisition-cohorts: derived from user_id, user_id_type, event_category",
+          "nullMeaning": "not_returned",
+          "absentFill": "null"
+        },
+        {
+          "name": "currency_code",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-acquisition-cohorts: purchase_currency \u00b7 amc-acquisition-cohorts-arp: derived from currency_code",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "first_repeat_buyers",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-acquisition-cohorts: derived from user_id, event_category \u00b7 amc-acquisition-cohorts-arp: derived from user_id, purchase_id",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "grain_set",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-acquisition-cohorts: literal 'platform' \u00b7 amc-acquisition-cohorts-arp: literal 'platform'"
+        },
+        {
+          "name": "identity_unit",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-acquisition-cohorts: literal 'amazon_user_id' \u00b7 amc-acquisition-cohorts-arp: literal 'amazon_user_id'"
+        },
+        {
+          "name": "months_since_acquisition",
+          "type": "bigint",
+          "nullable": false,
+          "comment": "amc-acquisition-cohorts: derived from conversion_event_date_utc, event_date_utc \u00b7 amc-acquisition-cohorts-arp: derived from conversion_event_date_utc, purchase_date_utc"
+        },
+        {
+          "name": "period_end",
+          "type": "date",
+          "nullable": false,
+          "comment": "amc-acquisition-cohorts: assigned by the load \u00b7 amc-acquisition-cohorts-arp: assigned by the load"
+        },
+        {
+          "name": "period_start",
+          "type": "date",
+          "nullable": false,
+          "comment": "amc-acquisition-cohorts: assigned by the load \u00b7 amc-acquisition-cohorts-arp: assigned by the load"
+        },
+        {
+          "name": "repeat_buyers",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-acquisition-cohorts: derived from user_id, event_category \u00b7 amc-acquisition-cohorts-arp: derived from user_id, purchase_id",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "repeat_buyers_account_ids",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-acquisition-cohorts: derived from user_id, user_id_type, event_category",
+          "nullMeaning": "not_returned",
+          "absentFill": "null"
+        },
+        {
+          "name": "repeat_purchases",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-acquisition-cohorts: derived from event_category \u00b7 amc-acquisition-cohorts-arp: derived from purchase_id",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "repeat_revenue",
+          "type": "decimal(38,4)",
+          "nullable": true,
+          "comment": "amc-acquisition-cohorts: derived from conversions.total_product_sales \u00b7 amc-acquisition-cohorts-arp: derived from unit_price, purchase_units_sold",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "source_timezone",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-acquisition-cohorts: literal 'UTC' \u00b7 amc-acquisition-cohorts-arp: literal 'UTC'"
+        },
+        {
+          "name": "time_grain",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-acquisition-cohorts: assigned by the load \u00b7 amc-acquisition-cohorts-arp: assigned by the load"
+        }
+      ]
+    },
+    {
+      "name": "fct_shopper_acquisition_withheld",
+      "kind": "fact",
+      "load": "partition_overwrite",
+      "grain": [
+        "contract_id",
+        "marketplace_key",
+        "period_start",
+        "period_end",
+        "option_set_hash",
+        "as_of_month",
+        "cohort_grain",
+        "cohort_path"
+      ],
+      "partitionKeys": [
+        "marketplace_key",
+        "period_start"
+      ],
+      "measurementBases": [
+        "ad_attributed",
+        "retail_actual"
+      ],
+      "writtenBy": [
+        "amc-acquisition-cohorts",
+        "amc-acquisition-cohorts-arp"
+      ],
+      "canonicalPublisher": "canonical-curation",
+      "columns": [
+        {
+          "name": "contract_id",
+          "type": "string",
+          "nullable": false,
+          "comment": "the delivery's manifest: contract_id"
+        },
+        {
+          "name": "marketplace_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "the delivery's manifest: marketplace_key"
+        },
+        {
+          "name": "period_start",
+          "type": "date",
+          "nullable": false,
+          "comment": "the delivery's manifest: period_start"
+        },
+        {
+          "name": "period_end",
+          "type": "date",
+          "nullable": false,
+          "comment": "the delivery's manifest: period_end"
+        },
+        {
+          "name": "option_set_hash",
+          "type": "string",
+          "nullable": false,
+          "comment": "the delivery's manifest: option_set_hash"
+        },
+        {
+          "name": "as_of_month",
+          "type": "date",
+          "nullable": false,
+          "comment": "the delivery's manifest: the vintage's last month"
+        },
+        {
+          "name": "cohort_grain",
+          "type": "string",
+          "nullable": false,
+          "comment": "the withheld rows' cohort_grain, stamped by the pack's SELECT"
+        },
+        {
+          "name": "cohort_path",
+          "type": "string",
+          "nullable": false,
+          "comment": "the contract's cohort_path literal"
+        },
+        {
+          "name": "basis_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-acquisition-cohorts: literal 'ad_attributed' \u00b7 amc-acquisition-cohorts-arp: literal 'retail_actual'"
+        },
+        {
+          "name": "ecosystem_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-acquisition-cohorts: governed ecosystem 'amazon' \u00b7 amc-acquisition-cohorts-arp: governed ecosystem 'amazon'"
+        },
+        {
+          "name": "platform_key",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-acquisition-cohorts: governed platform 'amazon_ads' \u00b7 amc-acquisition-cohorts-arp: governed platform 'amazon_ads'"
+        },
+        {
+          "name": "source_timezone",
+          "type": "string",
+          "nullable": false,
+          "comment": "amc-acquisition-cohorts: literal 'UTC' \u00b7 amc-acquisition-cohorts-arp: literal 'UTC'"
+        },
+        {
+          "name": "ad_product_key",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-acquisition-cohorts: assigned by the load \u00b7 amc-acquisition-cohorts-arp: assigned by the load",
+          "nullMeaning": "not_applicable_under_options"
+        },
+        {
+          "name": "campaign_key",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-acquisition-cohorts: assigned by the load \u00b7 amc-acquisition-cohorts-arp: assigned by the load",
+          "nullMeaning": "not_applicable_under_options"
+        },
+        {
+          "name": "channel_group_key",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-acquisition-cohorts: assigned by the load \u00b7 amc-acquisition-cohorts-arp: assigned by the load",
+          "nullMeaning": "not_applicable_under_options"
+        },
+        {
+          "name": "channel_key",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-acquisition-cohorts: assigned by the load \u00b7 amc-acquisition-cohorts-arp: assigned by the load",
+          "nullMeaning": "not_applicable_under_options"
+        },
+        {
+          "name": "acquisition_source_set",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-acquisition-cohorts: derived from ad_product_type \u00b7 amc-acquisition-cohorts-arp: derived from ad_product_type"
+        },
+        {
+          "name": "cell_state",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-acquisition-cohorts: assigned by the load \u00b7 amc-acquisition-cohorts-arp: assigned by the load"
+        },
+        {
+          "name": "cohort_buyers_account_ids",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-acquisition-cohorts: derived from user_id, user_id_type, new_to_brand",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "cohort_buyers_account_ids_check",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-acquisition-cohorts-arp: derived from user_id, user_id_type, new_to_brand",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "cohort_buyers_new_to_brand_12mo",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-acquisition-cohorts: derived from user_id, new_to_brand",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "cumulative_repeat_buyers",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-acquisition-cohorts: derived from user_id, event_category \u00b7 amc-acquisition-cohorts-arp: derived from user_id, purchase_id",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "cumulative_repeat_buyers_account_ids",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-acquisition-cohorts: derived from user_id, user_id_type, event_category",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "currency_code",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-acquisition-cohorts: purchase_currency \u00b7 amc-acquisition-cohorts-arp: derived from currency_code",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "first_repeat_buyers",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-acquisition-cohorts: derived from user_id, event_category \u00b7 amc-acquisition-cohorts-arp: derived from user_id, purchase_id",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "identity_unit",
+          "type": "string",
+          "nullable": true,
+          "comment": "amc-acquisition-cohorts: literal 'amazon_user_id' \u00b7 amc-acquisition-cohorts-arp: literal 'amazon_user_id'"
+        },
+        {
+          "name": "repeat_buyers",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-acquisition-cohorts: derived from user_id, event_category \u00b7 amc-acquisition-cohorts-arp: derived from user_id, purchase_id",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "repeat_buyers_account_ids",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-acquisition-cohorts: derived from user_id, user_id_type, event_category",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "repeat_purchases",
+          "type": "bigint",
+          "nullable": true,
+          "comment": "amc-acquisition-cohorts: derived from event_category \u00b7 amc-acquisition-cohorts-arp: derived from purchase_id",
+          "nullMeaning": "not_returned"
+        },
+        {
+          "name": "repeat_revenue",
+          "type": "decimal(38,4)",
+          "nullable": true,
+          "comment": "amc-acquisition-cohorts: derived from conversions.total_product_sales \u00b7 amc-acquisition-cohorts-arp: derived from unit_price, purchase_units_sold",
+          "nullMeaning": "not_returned"
+        }
+      ]
+    }
+  ]
+}

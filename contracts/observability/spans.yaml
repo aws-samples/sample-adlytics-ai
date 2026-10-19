@@ -1,0 +1,1133 @@
+# Static hand-authored span names, hierarchy, metadata boundary, and purpose.
+# Generated Python constants are committed at src/adapters/outbound/telemetry/generated_spans.py.
+version: 1
+spans:
+  - constant: ATHENA_QUERY
+    name: athena.query
+    parent: current
+    # run_id, task_id and cohort_revision are conditionally required: every query beneath bake
+    # or precompute cohort correlation carries all three, and a serve-time chat query records
+    # them absent (owner decision 2026-10-15 ~04:25Z, the insight.model.call pattern). Bake
+    # trace completeness enforces the cohort case.
+    required_attributes: [metric, facts, max_rows]
+    allowed_attributes:
+      - metric
+      - facts
+      - max_rows
+      - bytes_scanned
+      - cache_hit
+      - engine_millis
+      - planning_millis
+      - queue_millis
+      - total_millis
+      - rows_returned
+      - truncated
+      - query_id
+      - workgroup
+      - statement_kind
+      - state
+      - service_processing_millis
+      - admission_wait_millis
+      - statistics_unavailable
+      - run_id
+      - task_id
+      - cohort_revision
+      - error_type
+      - error_class
+      - error_code
+      - alarms
+    propagation: current
+    purpose: Explain one Athena query execution's latency, scan cost, reuse, admission wait and bounded result shape, including a failed or cancelled one.
+
+  - constant: ATHENA_STATEMENT
+    name: athena.statement
+    parent: current
+    required_attributes: [operation_kind, logical_table]
+    allowed_attributes:
+      - operation_kind
+      - logical_table
+      - query_id
+      - bytes_scanned
+      - queue_millis
+      - planning_millis
+      - engine_millis
+      - total_millis
+      - reuse
+      - error_type
+      - error_class
+      - error_code
+      - alarms
+    propagation: current
+    purpose: Explain one reusable semantic-storage Athena statement without statement text or parameters.
+
+  - constant: CONVERSATION_TURN
+    name: conversation.turn
+    parent: root
+    required_attributes: [operation]
+    allowed_attributes:
+      - operation
+      - outcome
+      - question_assessed
+      - error_type
+      - error_class
+      - error_code
+      - alarms
+    propagation: remote_boundary
+    purpose: Bound one authenticated conversation turn at its supported remote trace boundary.
+
+  - constant: REPROCESS_PROCESS
+    name: reprocess.semantic_v2
+    parent: root
+    required_attributes:
+      - operation_id
+      - execution_id
+      - predecessor_execution_id
+      - plan_digest
+      - stage
+      - completed
+      - total
+    allowed_attributes:
+      - operation_id
+      - execution_id
+      - predecessor_execution_id
+      - plan_digest
+      - stage
+      - completed
+      - total
+      - error_type
+      - error_class
+      - error_code
+      - alarms
+    propagation: remote_boundary
+    purpose: Trace one complete Semantic V2 operator invocation and its durable progress lineage.
+
+  - constant: REPROCESS_PLAN
+    name: reprocess.semantic_v2.plan
+    parent: REPROCESS_PROCESS
+    required_attributes:
+      - operation_id
+      - execution_id
+      - predecessor_execution_id
+      - plan_digest
+      - stage
+      - completed
+      - total
+    allowed_attributes:
+      - operation_id
+      - execution_id
+      - predecessor_execution_id
+      - plan_digest
+      - stage
+      - completed
+      - total
+      - error_type
+      - error_class
+      - error_code
+      - alarms
+    propagation: lexical
+    purpose: Trace exact-version discovery and digest binding beneath one reprocess invocation.
+
+  - constant: REPROCESS_APPLY
+    name: reprocess.semantic_v2.apply
+    parent: REPROCESS_PROCESS
+    required_attributes:
+      - operation_id
+      - execution_id
+      - predecessor_execution_id
+      - plan_digest
+      - stage
+      - completed
+      - total
+    allowed_attributes:
+      - operation_id
+      - execution_id
+      - predecessor_execution_id
+      - plan_digest
+      - stage
+      - completed
+      - total
+      - error_type
+      - error_class
+      - error_code
+      - alarms
+    propagation: lexical
+    purpose: Trace the reviewed mutation phase and its monotonic durable progress.
+
+  - constant: REPROCESS_ACCEPTANCE
+    name: reprocess.semantic_v2.acceptance
+    parent: REPROCESS_PROCESS
+    required_attributes:
+      - operation_id
+      - execution_id
+      - predecessor_execution_id
+      - plan_digest
+      - stage
+      - completed
+      - total
+    allowed_attributes:
+      - operation_id
+      - execution_id
+      - predecessor_execution_id
+      - plan_digest
+      - stage
+      - completed
+      - total
+      - accepted
+      - error_type
+      - error_class
+      - error_code
+      - alarms
+    propagation: lexical
+    purpose: Trace post-apply readback of durable Semantic V2 authorities.
+
+  - constant: REPROCESS_DELIVERY
+    name: reprocess.semantic_v2.delivery
+    parent: REPROCESS_APPLY
+    required_attributes:
+      - operation_id
+      - execution_id
+      - predecessor_execution_id
+      - plan_digest
+      - stage
+      - completed
+      - total
+      - contract_ids
+    allowed_attributes:
+      - operation_id
+      - execution_id
+      - predecessor_execution_id
+      - plan_digest
+      - stage
+      - completed
+      - total
+      - contract_ids
+      - error_type
+      - error_class
+      - error_code
+      - alarms
+    propagation: current
+    purpose: Trace one independently resumable retained delivery beneath the apply phase.
+
+  - constant: INGEST_FETCH
+    name: ingest.fetch
+    parent: current
+    required_attributes:
+      - operation_id
+      - execution_id
+      - predecessor_execution_id
+      - plan_digest
+      - stage
+      - completed
+      - total
+    allowed_attributes:
+      - operation_id
+      - execution_id
+      - predecessor_execution_id
+      - plan_digest
+      - stage
+      - completed
+      - total
+      - outcome
+      - error_type
+      - error_class
+      - error_code
+      - alarms
+    propagation: current
+    purpose: Isolate exact immutable landing fetch latency inside one event-driven ingestion invocation.
+  - constant: INGEST_GRAPH_MATERIALIZE
+    name: ingest.graph_materialize
+    parent: current
+    required_attributes:
+      - dispatch_id
+      - run_id
+      - node_id
+      - conflict_unit
+      - receive_count
+      - stage
+      - completed
+      - total
+    allowed_attributes:
+      - dispatch_id
+      - run_id
+      - node_id
+      - conflict_unit
+      - receive_count
+      - stage
+      - completed
+      - total
+      - outcome
+      - node_state
+      - failure_reason
+      - unit_count
+      - error_type
+      - error_class
+      - error_code
+      - alarms
+    propagation: current
+    purpose: Trace one claimed GRAPH materialize_raw node under the delivery handler's invocation span, with the landing fetch nested beneath it.
+
+  - constant: INGEST_PARSE
+    name: ingest.parse
+    parent: current
+    required_attributes:
+      - operation_id
+      - execution_id
+      - predecessor_execution_id
+      - plan_digest
+      - stage
+      - completed
+      - total
+      - contract_count
+    allowed_attributes:
+      - operation_id
+      - execution_id
+      - predecessor_execution_id
+      - plan_digest
+      - stage
+      - completed
+      - total
+      - contract_count
+      - assessment_count
+      - outcome
+      - error_type
+      - error_class
+      - error_code
+      - alarms
+    propagation: current
+    purpose: Isolate source decoding, mapping, and assessment latency before semantic publication begins.
+
+  - constant: INGEST_DELIVERY
+    name: ingest.delivery
+    parent: current
+    required_attributes:
+      - operation_id
+      - execution_id
+      - predecessor_execution_id
+      - plan_digest
+      - stage
+      - completed
+      - total
+      - contract_ids
+    allowed_attributes:
+      - operation_id
+      - execution_id
+      - predecessor_execution_id
+      - plan_digest
+      - stage
+      - completed
+      - total
+      - contract_ids
+      - error_type
+      - error_class
+      - error_code
+      - alarms
+    propagation: current
+    purpose: Trace one reusable landed-delivery semantic sidecar operation.
+
+  - constant: INGEST_PARTITION
+    name: ingest.partition
+    parent: INGEST_DELIVERY
+    required_attributes:
+      - operation_id
+      - execution_id
+      - predecessor_execution_id
+      - plan_digest
+      - stage
+      - contract_ids
+      - bucket_starts
+      - completed
+      - total
+    allowed_attributes:
+      - operation_id
+      - execution_id
+      - predecessor_execution_id
+      - plan_digest
+      - stage
+      - contract_ids
+      - bucket_starts
+      - completed
+      - total
+      - error_type
+      - error_class
+      - error_code
+      - alarms
+    propagation: lexical
+    purpose: Trace one independently publishable partition group inside an ingest delivery.
+
+  - constant: TABLE_WRITER_PROCESS
+    name: ingest.table_writer
+    parent: root
+    required_attributes:
+      - flow_id
+      - parent_flow_id
+      - causation_event_id
+      - execution_id
+      - internal_plan_key
+      - internal_delivery_execution_id
+      - writer_execution_id
+      - stage
+      - completed
+      - total
+    allowed_attributes:
+      - flow_id
+      - parent_flow_id
+      - causation_event_id
+      - execution_id
+      - predecessor_execution_id
+      - internal_plan_key
+      - internal_delivery_execution_id
+      - writer_execution_id
+      - receive_count
+      - stage
+      - completed
+      - total
+      - outcome
+      - error_type
+      - error_class
+      - error_code
+      - alarms
+    propagation: remote_boundary
+    purpose: Bound one batch-size-one table-writer invocation; lifecycle fields are owner-persisted public status UUIDs and explicitly internal fields are safe opaque locators.
+
+  - constant: TABLE_WRITER_GRAPH_UNIT_BATCH
+    name: ingest.table_writer.graph_unit_batch
+    parent: root
+    required_attributes:
+      - dispatch_id
+      - batch_id
+      - lock_key
+      - member_count
+      - receive_count
+      - stage
+      - completed
+      - total
+    allowed_attributes:
+      - dispatch_id
+      - batch_id
+      - lock_key
+      - member_count
+      - receive_count
+      - stage
+      - completed
+      - total
+      - outcome
+      - set_count
+      - split_count
+      - succeeded_count
+      - failed_count
+      - returned_count
+      - skipped_count
+      - live_duplicate_count
+      - unresolved_count
+      - commit_ms
+      - budget_outcome_count
+      - error_type
+      - error_class
+      - error_code
+      - alarms
+    propagation: remote_boundary
+    purpose: Bound one GRAPH write_unit batch envelope in TableWriter (slice 7, D37); dispatch_id is the batch message's deduplication identity, each execution set's inline run nests beneath it, and each member's unit span is its child.
+
+  - constant: TABLE_WRITER_GRAPH_UNIT
+    name: ingest.table_writer.graph_unit
+    parent: current
+    required_attributes:
+      - dispatch_id
+      - run_id
+      - node_id
+      - conflict_unit
+      - receive_count
+      - node
+      - batch_id
+      - stage
+      - completed
+      - total
+    allowed_attributes:
+      - dispatch_id
+      - run_id
+      - node_id
+      - conflict_unit
+      - receive_count
+      - node
+      - batch_id
+      - execution_set_id
+      - admission
+      - stage
+      - completed
+      - total
+      - outcome
+      - node_state
+      - failure_reason
+      - error_type
+      - error_class
+      - error_code
+      - alarms
+    propagation: current
+    purpose: Bound one write_unit member's own settlement, return, skip or failure under its batch span (slice 7, D37), by its graph-native identity and the batch it ran in, with no legacy plan identity.
+  - constant: GRAPH_PUBLISH
+    name: ingest.graph_publish
+    parent: root
+    required_attributes:
+      - dispatch_id
+      - run_id
+      - node_id
+      - conflict_unit
+      - receive_count
+      - stage
+      - completed
+      - total
+      - grant_id
+    allowed_attributes:
+      - dispatch_id
+      - run_id
+      - node_id
+      - conflict_unit
+      - receive_count
+      - stage
+      - completed
+      - total
+      - grant_id
+      - outcome
+      - node_state
+      - failure_reason
+      - unit_count
+      - target_count
+      - advanced_count
+      - superseded_count
+      - error_type
+      - error_class
+      - error_code
+      - alarms
+    propagation: remote_boundary
+    purpose: Bound one GRAPH publish envelope in TableWriter (stage, flip, fold, settle) by its graph-native identity and grant, with the classified target counts.
+  - constant: POST_GRANT_CONSUME
+    name: graph.post_grant_consume
+    parent: current
+    required_attributes:
+      - dispatch_id
+      - run_id
+      - node_id
+      - conflict_unit
+      - receive_count
+      - stage
+      - completed
+      - total
+      - grant_id
+      - node
+    allowed_attributes:
+      - dispatch_id
+      - run_id
+      - node_id
+      - conflict_unit
+      - receive_count
+      - stage
+      - completed
+      - total
+      - grant_id
+      - node
+      - outcome
+      - node_state
+      - failure_reason
+      - unit_count
+      - error_type
+      - error_class
+      - error_code
+      - alarms
+    propagation: current
+    purpose: Trace one claimed GRAPH bake or precompute node under the baker's or the precompute worker's invocation span, by its graph-native identity and grant, with its settled outcome.
+
+  - constant: TABLE_WRITER_UNIT
+    name: ingest.table_writer.unit
+    parent: TABLE_WRITER_PROCESS
+    required_attributes:
+      - flow_id
+      - parent_flow_id
+      - causation_event_id
+      - execution_id
+      - internal_plan_key
+      - writer_execution_id
+      - stage
+      - completed
+      - total
+    allowed_attributes:
+      - flow_id
+      - parent_flow_id
+      - causation_event_id
+      - execution_id
+      - predecessor_execution_id
+      - internal_plan_key
+      - writer_execution_id
+      - table_kind
+      - receive_count
+      - stage
+      - completed
+      - total
+      - outcome
+      - error_type
+      - error_class
+      - error_code
+      - alarms
+    propagation: lexical
+    purpose: Trace one resumable physical-table projection with owner-persisted public status identity and no rows, statements, or ambiguous internal identifiers.
+
+  - constant: TABLE_WRITER_PLAN_TERMINAL
+    name: ingest.table_writer.plan_terminal
+    parent: current
+    required_attributes:
+      - flow_id
+      - execution_id
+      - internal_plan_key
+      - stage
+      - completed
+      - total
+    allowed_attributes:
+      - flow_id
+      - parent_flow_id
+      - causation_event_id
+      - execution_id
+      - predecessor_execution_id
+      - internal_plan_key
+      - stage
+      - completed
+      - total
+      - outcome
+      - error_type
+      - error_class
+      - error_code
+      - alarms
+    propagation: current
+    purpose: Trace one conditional plan-terminal transition with owner-persisted plan flow identity; the current unit is only its lexical trace parent and contributes no unit identity.
+
+  - constant: TABLE_INLINE_RUN
+    name: ingest.table_inline_run
+    parent: current
+    required_attributes:
+      - flow_id
+      - execution_id
+      - internal_operation_id
+      - writer_kind
+      - table_kind
+      - stage
+      - completed
+      - total
+    allowed_attributes:
+      - flow_id
+      - parent_flow_id
+      - causation_event_id
+      - execution_id
+      - predecessor_execution_id
+      - internal_operation_id
+      - writer_kind
+      - table_kind
+      - stage
+      - completed
+      - total
+      - outcome
+      - error_type
+      - error_class
+      - error_code
+      - alarms
+    propagation: current
+    purpose: Trace one per-table inline run beneath the active ingest or reprocess operator process with owner-persisted public run UUIDs and one safe opaque operation locator.
+
+  - constant: PRESET_ARTIFACT_PROCESS
+    name: preset_artifact.publish
+    parent: root
+    required_attributes:
+      - operation_id
+      - execution_id
+      - plan_digest
+      - stage
+      - completed
+      - total
+    allowed_attributes:
+      - operation_id
+      - execution_id
+      - plan_digest
+      - stage
+      - completed
+      - total
+      - outcome
+      - error_type
+      - error_class
+      - error_code
+      - alarms
+    propagation: remote_boundary
+    purpose: Trace one preset-artifact queue batch and its deterministic plan progress.
+
+  - constant: PRESET_ARTIFACT_DELIVERY
+    name: preset_artifact.publish.delivery
+    parent: PRESET_ARTIFACT_PROCESS
+    required_attributes:
+      - operation_id
+      - execution_id
+      - plan_digest
+      - stage
+      - completed
+      - total
+    allowed_attributes:
+      - operation_id
+      - execution_id
+      - plan_digest
+      - stage
+      - completed
+      - total
+      - error_type
+      - error_class
+      - error_code
+      - alarms
+    propagation: current
+    purpose: Trace one independently retryable preset-artifact delivery within the active batch.
+
+  - constant: PRESET_ARTIFACT_ENQUEUE
+    name: preset_artifact.enqueue
+    parent: root
+    required_attributes:
+      - operation_id
+      - execution_id
+      - plan_digest
+      - stage
+      - completed
+      - total
+    allowed_attributes:
+      - operation_id
+      - execution_id
+      - plan_digest
+      - stage
+      - completed
+      - total
+      - outcome
+      - error_type
+      - error_class
+      - error_code
+      - alarms
+    propagation: remote_boundary
+    purpose: Trace one retained-publication stream batch admitted into declared bake intents.
+
+  - constant: PRESET_ARTIFACT_ENQUEUE_DELIVERY
+    name: preset_artifact.enqueue.delivery
+    parent: PRESET_ARTIFACT_ENQUEUE
+    required_attributes:
+      - operation_id
+      - execution_id
+      - plan_digest
+      - stage
+      - completed
+      - total
+    allowed_attributes:
+      - operation_id
+      - execution_id
+      - plan_digest
+      - stage
+      - completed
+      - total
+      - error_type
+      - error_class
+      - error_code
+      - alarms
+    propagation: current
+    purpose: Trace one independently retryable stream trigger re-attestation and intent send.
+
+  - constant: PRESET_ARTIFACT_BACKFILL
+    name: preset_artifact.backfill
+    parent: root
+    required_attributes:
+      - operation_id
+      - execution_id
+      - plan_digest
+      - stage
+      - completed
+      - total
+    allowed_attributes:
+      - operation_id
+      - execution_id
+      - plan_digest
+      - stage
+      - completed
+      - total
+      - outcome
+      - error_type
+      - error_class
+      - error_code
+      - alarms
+    propagation: remote_boundary
+    purpose: Trace one CloudFormation-admitted declared backfill of every page variant.
+
+  - constant: EVALUATION_OUTBOX_DISPATCH
+    name: evaluation.outbox.dispatch
+    parent: root
+    required_attributes: [operation]
+    allowed_attributes: [operation, outcome, due_count, delivered_count, not_dispatched_count, waiting_count, retry_count, skipped_count, error_type, error_class, error_code, alarms]
+    propagation: remote_boundary
+    purpose: Trace one scheduled bounded evaluation-outbox dispatch invocation.
+
+  - constant: EVALUATION_WRITER
+    name: evaluation.writer
+    parent: root
+    required_attributes: [operation]
+    allowed_attributes: [operation, outcome, record_count, persisted_count, failed_count, error_type, error_class, error_code, alarms]
+    propagation: remote_boundary
+    purpose: Trace one released-response evaluation-writer queue batch.
+
+  - constant: EVALUATION_GATE
+    name: evaluation.gate
+    parent: root
+    required_attributes: [operation]
+    allowed_attributes: [operation, outcome, request_type, family, requested, execution_status, failed_assertion_count, calibration_case_count, calibration_failure_count, error_type, error_class, error_code, alarms]
+    propagation: remote_boundary
+    purpose: Trace one evaluation enablement-gate custom-resource callback without prompt, answer, or evaluator-explanation content.
+
+  - constant: INSIGHT_CONTINUATION
+    name: insight.continuation
+    parent: root
+    required_attributes: [operation]
+    allowed_attributes: [operation, outcome, record_count, acknowledged_count, failed_count, error_type, error_class, error_code, alarms]
+    propagation: remote_boundary
+    purpose: Trace one bounded insight-continuation queue batch without prompt or model content.
+
+  - constant: INSIGHT_PROMPT_CALIBRATION
+    name: insight.prompt_calibration
+    parent: root
+    required_attributes: [operation]
+    allowed_attributes: [operation, outcome, record_count, acknowledged_count, failed_count, dispatched_count, error_type, error_class, error_code, alarms]
+    propagation: remote_boundary
+    purpose: Trace one prompt-calibration queue batch without prompt, narration, or evaluator working.
+
+  - constant: INSIGHT_PRECOMPUTE
+    name: insight.precompute
+    parent: root
+    required_attributes: [operation]
+    allowed_attributes: [operation, outcome, record_count, acknowledged_count, failed_count, error_type, error_class, error_code, alarms]
+    propagation: remote_boundary
+    purpose: Trace one retained-publication precompute stream batch without publication identity or content.
+
+  - constant: PRECOMPUTE_RUN
+    name: precompute.run
+    parent: current
+    required_attributes: [run_id, task_id, cohort_revision, input_effect_roster_digest, task_count]
+    allowed_attributes: [run_id, task_id, cohort_revision, input_effect_roster_digest, task_count, request_count, no_request_count, outcome, error_type, error_class, error_code, alarms]
+    propagation: current
+    purpose: Trace one readiness-bound GRAPH precompute from the exact bake effect roster.
+
+  - constant: INSIGHT_PRECOMPUTE_PLAN
+    name: insight.precompute.plan
+    parent: current
+    required_attributes: [run_id, task_id, cohort_revision, input_effect_roster_digest]
+    allowed_attributes: [run_id, task_id, cohort_revision, input_effect_roster_digest, task_count, request_count, no_request_count, outcome, error_type, error_class, error_code, alarms]
+    propagation: current
+    purpose: Trace immutable artifact attestation and deterministic request derivation without content.
+
+  - constant: INSIGHT_GENERATION
+    name: insight.model.call
+    parent: current
+    # run_id, task_id and cohort_revision are conditionally required: a call beneath precompute
+    # cohort correlation carries all three; a serve-time chat call records them absent.
+    required_attributes: [slot_id, model_route, model_id]
+    allowed_attributes:
+      - slot_id
+      - model_route
+      - model_id
+      - run_id
+      - task_id
+      - cohort_revision
+      - configured_timeout_ms
+      - observed_timeout
+      - prompt_version
+      - output_class
+      - outcome
+      - stop_reason
+      # ADR-076 tiering attributes.
+      - tier
+      - horizon_role
+      # Model token-usage counts; the redaction vocabulary reserves the word "token".
+      - usage_input
+      - usage_output
+      - total_millis
+      # ADR-076 decision 1 (2026-10-05): digests of the exact model input and of the cache
+      # row identity, never their content or the scope id.
+      - input_sha256
+      - cache_identity_sha256
+      - error_type
+      - error_class
+      - error_code
+      - alarms
+    propagation: current
+    purpose: >-
+      Explain one Bedrock insight-generation call's latency, token usage, stop reason, and
+      outcome without prompt or narration content, under whichever serving, continuation, or
+      precompute boundary invoked it.
+  - constant: INSIGHT_PROMPT_REGISTRY_SEED
+    name: insight.prompt_registry.seed
+    parent: root
+    required_attributes: [operation]
+    allowed_attributes: [operation, outcome, request_type, contract_count, error_type, error_class, error_code, alarms]
+    propagation: remote_boundary
+    purpose: Trace one governed prompt-registry custom-resource seed without prompt content.
+
+  - constant: PRESENTATION_REQUEST
+    name: presentation.request
+    parent: root
+    required_attributes: [operation]
+    allowed_attributes: [operation, outcome, status, representation, result_kind, refusal_reason, error_type, error_class, error_code, alarms]
+    propagation: remote_boundary
+    purpose: Trace one authenticated Presentation API request across retained and live dependencies.
+
+  - constant: QUALITY_REVIEW_REQUEST
+    name: quality_review.request
+    parent: root
+    required_attributes: [operation]
+    allowed_attributes: [operation, outcome, status, error_type, error_class, error_code, alarms]
+    propagation: remote_boundary
+    purpose: Trace one authorized quality-review projection request without review content.
+
+  - constant: PROMPT_ADMIN_REQUEST
+    name: prompt_admin.request
+    parent: root
+    required_attributes: [operation]
+    allowed_attributes: [operation, outcome, status, error_type, error_class, error_code, alarms]
+    propagation: remote_boundary
+    purpose: Trace one authorized prompt-registry command or projection without prompt content.
+
+  - constant: AUTH_AUTHORIZE
+    name: auth.authorize
+    parent: root
+    required_attributes: [operation]
+    allowed_attributes: [operation, outcome, error_type, error_class, error_code, alarms]
+    propagation: remote_boundary
+    purpose: Trace one cookie authorizer decision without token, claim, or identity content.
+
+  - constant: AUTH_REQUEST
+    name: auth.request
+    parent: root
+    required_attributes: [operation]
+    allowed_attributes: [operation, outcome, status, error_type, error_class, error_code, alarms]
+    propagation: remote_boundary
+    purpose: Trace one authentication endpoint request without cookie, token, or provider content.
+  - constant: ROUTE_EXCHANGE_PROCESS
+    name: token_service.route_exchange
+    parent: root
+    required_attributes: [operation]
+    allowed_attributes: [operation, outcome, error_type, error_class, error_code, alarms]
+    propagation: remote_boundary
+    purpose: Trace one route exchange of a Cognito access token for a Harness token without token, claim, or identity content.
+  - constant: ISSUER_REQUEST
+    name: token_service.issuer
+    parent: root
+    required_attributes: [operation]
+    allowed_attributes: [operation, outcome, status, error_type, error_class, error_code, alarms]
+    propagation: remote_boundary
+    purpose: Trace one public discovery, key-set, or agent token-exchange request without request, token, secret, or key content.
+  - constant: GATEWAY_INTERCEPTOR
+    name: gateway.interceptor
+    parent: root
+    required_attributes: [operation]
+    allowed_attributes: [operation, outcome, jsonrpc_method, bearer_present, error_type, error_class, error_code, alarms]
+    propagation: remote_boundary
+    purpose: Trace one Gateway REQUEST interception by JSON-RPC method and outcome without header, bearer, or argument content.
+  - constant: CONVERSATION_ROUTE_EXCHANGE
+    name: conversation.route_exchange
+    parent: current
+    required_attributes: [operation]
+    allowed_attributes: [operation, outcome, error_type, error_class, error_code, alarms]
+    propagation: current
+    purpose: Attribute a conversation turn's latency to its one route exchange without token or identity content.
+
+  - constant: PRODUCER_REGISTRATION_FINALIZE
+    name: producer.registration.finalize
+    parent: root
+    required_attributes: [operation]
+    allowed_attributes: [operation, outcome, record_count, error_type, error_class, error_code, alarms]
+    propagation: remote_boundary
+    purpose: Trace one producer-registration finalizer queue invocation without registration content.
+
+  - constant: EVALUATION_RESULT_INGRESS
+    name: evaluation_result.ingress
+    parent: root
+    required_attributes: [operation]
+    allowed_attributes: [operation, outcome, linked_count, ignored_count, error_type, error_class, error_code, alarms]
+    propagation: remote_boundary
+    purpose: Trace one managed evaluation-result subscription invocation without result content.
+
+  - constant: EVALUATION_RESULT_PERSIST
+    name: evaluation_result.persist
+    parent: root
+    required_attributes: [operation]
+    allowed_attributes: [operation, outcome, record_count, failure_count, error_type, error_class, error_code, alarms]
+    propagation: remote_boundary
+    purpose: Trace one canonical evaluation-result persistence batch without score or label content.
+
+  - constant: AGENT_QUALITY_PROCESS
+    name: agent_quality.process
+    parent: root
+    required_attributes: [operation]
+    allowed_attributes: [operation, outcome, record_count, processed_count, failure_count, error_type, error_class, error_code, alarms]
+    propagation: remote_boundary
+    purpose: Trace one audit-receipt quality processing batch without audit or finding content.
+
+  - constant: INGEST_HANDLER_PROCESS
+    name: ingest.handler
+    parent: root
+    required_attributes: [operation]
+    allowed_attributes: [operation, outcome, record_count, error_type, error_class, error_code, alarms]
+    propagation: remote_boundary
+    purpose: Trace one event-driven landed-delivery ingestion invocation above reusable delivery spans.
+
+  - constant: INGEST_OPERATOR_PROCESS
+    name: ingest.operator
+    parent: root
+    required_attributes: [operation_id, execution_id, predecessor_execution_id, plan_digest, stage, completed, total]
+    allowed_attributes: [operation_id, execution_id, predecessor_execution_id, plan_digest, stage, completed, total, outcome, error_type, error_class, error_code, alarms]
+    propagation: remote_boundary
+    purpose: Trace one explicit operator-selected Semantic V2 ingest invocation.
+
+  - constant: LAND_FIXTURES_PROCESS
+    name: land.fixtures
+    parent: root
+    required_attributes: [operation_id, execution_id, predecessor_execution_id, plan_digest, stage, completed, total]
+    allowed_attributes: [operation_id, execution_id, predecessor_execution_id, plan_digest, stage, completed, total, outcome, error_type, error_class, error_code, alarms]
+    propagation: remote_boundary
+    purpose: Trace one deterministic immutable fixture landing invocation.
+
+  - constant: LAND_FIXTURES_DELIVERY
+    name: land.fixtures.delivery
+    parent: LAND_FIXTURES_PROCESS
+    required_attributes: [operation_id, execution_id, predecessor_execution_id, plan_digest, stage, completed, total]
+    allowed_attributes: [operation_id, execution_id, predecessor_execution_id, plan_digest, stage, completed, total, error_type, error_class, error_code, alarms]
+    propagation: lexical
+    purpose: Trace one independently resumable marker-last fixture delivery.
+
+  - constant: PRESENTATION_RELEASE_PREFLIGHT
+    name: presentation.release_preflight
+    parent: root
+    required_attributes: [operation_id, execution_id, predecessor_execution_id, plan_digest, stage, completed, total]
+    allowed_attributes: [operation_id, execution_id, predecessor_execution_id, plan_digest, stage, completed, total, outcome, accepted, declaration_count, finding_count, error_type, error_class, error_code, alarms]
+    propagation: remote_boundary
+    purpose: Trace one read-only deployed Presentation contract compatibility attestation.
+
+  - constant: MEASUREMENT_GATEWAY
+    name: tool.measurement_gateway
+    parent: root
+    required_attributes: [operation]
+    allowed_attributes: [operation, outcome, error_type, error_class, error_code, alarms]
+    propagation: remote_boundary
+    purpose: Bound one measurement Gateway invocation including malformed invocation parsing.
+
+  - constant: CATALOG_GATEWAY
+    name: tool.catalog_gateway
+    parent: root
+    required_attributes: [operation]
+    allowed_attributes: [operation, outcome, error_type, error_class, error_code, alarms]
+    propagation: remote_boundary
+    purpose: Bound one catalog Gateway invocation including malformed invocation parsing.
+
+  - constant: OPERATIONAL_STATUS_ATTEMPTS
+    name: operational_status.attempts
+    parent: root
+    required_attributes: [operation]
+    allowed_attributes: [operation, outcome, record_count, acknowledged_count, failed_count, error_type, error_class, error_code, alarms]
+    propagation: remote_boundary
+    purpose: Trace one semantic-attempt stream batch through exact authority readback and direct FIFO admission.
+
+  - constant: OPERATIONAL_STATUS_PROJECTOR
+    name: operational_status.projector
+    parent: root
+    required_attributes: [operation]
+    allowed_attributes: [operation, outcome, record_count, acknowledged_count, failed_count, error_type, error_class, error_code, alarms]
+    propagation: remote_boundary
+    purpose: Trace one status FIFO batch through conditional applied or pending disposition.
+
+  - constant: OPERATIONAL_STATUS_RECONCILER
+    name: operational_status.reconciler
+    parent: root
+    required_attributes: [operation]
+    allowed_attributes: [operation, outcome, queried_count, applied_count, parked_count, failed_count, windows_written, error_type, error_class, error_code, alarms]
+    propagation: remote_boundary
+    purpose: Trace one bounded pending-index reconciliation pass without authority or infrastructure identifiers.
+
+  - constant: OPERATIONAL_STATUS_REQUEST
+    name: operational_status.request
+    parent: root
+    required_attributes: [operation]
+    allowed_attributes: [operation, outcome, status, error_type, error_class, error_code, alarms]
+    propagation: remote_boundary
+    purpose: Trace one entitled operational-status read without flow or authority identifiers.
+  - constant: REQUEUE_PROVIDER_FENCE_PROCESS
+    name: operator.requeue_provider_fence
+    parent: root
+    required_attributes: [operation_id, execution_id, predecessor_execution_id, plan_digest, stage, completed, total]
+    allowed_attributes: [operation_id, execution_id, predecessor_execution_id, plan_digest, stage, completed, total, outcome, mode, error_type, error_class, error_code, alarms]
+    propagation: remote_boundary
+    purpose: Trace one invoke-only list or requeue of blocked provider-fence cases through the deployed recovery broker, carrying only the operation id, closed mode, and closed outcome.
+  - constant: VERIFY_STAGE1_PRESWITCH_PROCESS
+    name: operator.verify_stage1_preswitch
+    parent: root
+    required_attributes: [operation_id, execution_id, predecessor_execution_id, plan_digest, stage, completed, total]
+    allowed_attributes: [operation_id, execution_id, predecessor_execution_id, plan_digest, stage, completed, total, outcome, mode, pages_read, error_type, error_class, error_code, alarms]
+    propagation: remote_boundary
+    purpose: Trace one read-only Stage-1 pre-switch, edge, or drain verification run, carrying only the operation id, closed mode, pages read, and pass or fail outcome.
+  # Plan 4.7 and Addendum A2: the V3 GRAPH bake's spans. Every one carries the run, task
+  # (graph node), and cohort revision so one bake is followed end to end.
+  - constant: BAKE_RUN
+    name: bake.run
+    parent: current
+    required_attributes: [run_id, task_id, cohort_revision, task_count, query_cap]
+    allowed_attributes: [run_id, task_id, cohort_revision, task_count, query_cap, winner_id, source_manifest_digest, lanes, outcome, error_type, error_class, error_code, alarms]
+    propagation: current
+    purpose: Bound one winner's bake fan-out control, its one source selection and pin, and the arming of every roster task.
+  - constant: BAKE_SOURCE_PIN
+    name: bake.source_pin
+    parent: BAKE_RUN
+    required_attributes: [run_id, task_id, cohort_revision, task_count]
+    allowed_attributes: [run_id, task_id, cohort_revision, task_count, outcome, error_type, error_class, error_code, alarms]
+    propagation: lexical
+    purpose: Time the winner's one current selection, its zero-Athena bind pass and the durable source pin.
+  - constant: BAKE_FAN_OUT
+    name: bake.fan_out
+    parent: BAKE_RUN
+    required_attributes: [run_id, task_id, cohort_revision, tasks, lanes]
+    allowed_attributes: [run_id, task_id, cohort_revision, tasks, lanes, makespan_ms, outcome, error_type, error_class, error_code, alarms]
+    propagation: lexical
+    purpose: Time the two-lane partition on the pinned counts and the one transaction that arms every task.
+  - constant: BAKE_TASK
+    name: bake.task
+    parent: current
+    required_attributes: [run_id, task_id, cohort_revision, page, variant, lane, attempt, planned_query_count, budget_seconds]
+    allowed_attributes: [run_id, task_id, cohort_revision, page, variant, lane, attempt, planned_query_count, budget_seconds, effect_kind, reason, query_count, distinct_count, max_occupancy, queue_ms, admission_wait_ms, pairs, bytes, outcome, error_type, error_class, error_code, alarms]
+    propagation: current
+    purpose: Explain one roster task's duration against its budget, its query fan-in and admission, and its writes.
+  - constant: BAKE_PHASE
+    name: bake.phase
+    parent: BAKE_TASK
+    required_attributes: [run_id, task_id, cohort_revision, phase]
+    allowed_attributes: [run_id, task_id, cohort_revision, phase, outcome, error_type, error_class, error_code, alarms]
+    propagation: lexical
+    purpose: Time one closed phase of a roster task (plan, query, write) so phase time is readable per task.
+  - constant: BAKE_FINALIZE
+    name: bake.finalize
+    parent: current
+    required_attributes: [run_id, task_id, cohort_revision, task_count]
+    allowed_attributes: [run_id, task_id, cohort_revision, task_count, members, wait_ms, serving_authorized, outcome, error_type, error_class, error_code, alarms]
+    propagation: current
+    purpose: Time the winner's one final transaction, its member count, and how long it waited after the last task.
+  - constant: ARTIFACT_WRITE
+    name: artifact.write
+    parent: current
+    required_attributes: [object_kind, bytes, run_id, task_id, cohort_revision]
+    allowed_attributes: [object_kind, bytes, run_id, task_id, cohort_revision, outcome, error_type, error_class, error_code, alarms]
+    propagation: current
+    purpose: Time one immutable preset-artifact body-then-custody write chain and its size.
+
+  - constant: EXECUTION_GRAPH_PROMOTER_PASS
+    name: execution_graph.promoter_pass
+    parent: root
+    required_attributes: [aws_request_id, outcome]
+    allowed_attributes: [aws_request_id, outcome, error_type, error_class, error_code, alarms]
+    propagation: remote_boundary
+    purpose: Bound one request-scoped rolling promoter pass and its terminal outcome.
+  - constant: EXECUTION_GRAPH_PROMOTER_DOMAIN
+    name: execution_graph.promoter_domain
+    parent: EXECUTION_GRAPH_PROMOTER_PASS
+    required_attributes: [aws_request_id, domain, cohort_revision, outcome]
+    allowed_attributes: [aws_request_id, domain, cohort_revision, outcome, error_type, error_class, error_code, alarms]
+    propagation: lexical
+    purpose: Trace one isolated attempted cohort and its closed election or drain outcome.

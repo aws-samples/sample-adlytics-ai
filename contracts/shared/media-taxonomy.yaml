@@ -1,0 +1,122 @@
+version: 2
+ecosystems:
+  - {key: amazon, name: Amazon}
+platforms:
+  - {key: amazon_ads, ecosystem: amazon, name: Amazon Ads}
+  - {key: amazon_retail, ecosystem: amazon, name: Amazon Retail}
+channel_groups:
+  - {key: search, name: Search}
+  - {key: display, name: Display}
+  - {key: video, name: Video}
+channels:
+  - {key: amazon_dsp, platform: amazon_ads, channel_group: display, name: Amazon DSP}
+  - {key: amazon_sponsored_products, platform: amazon_ads, channel_group: search, name: Sponsored Products}
+  - {key: amazon_sponsored_brands, platform: amazon_ads, channel_group: search, name: Sponsored Brands}
+  - {key: amazon_sponsored_display, platform: amazon_ads, channel_group: display, name: Sponsored Display}
+  - {key: amazon_sponsored_television, platform: amazon_ads, channel_group: video, name: Sponsored Television}
+ad_products:
+  - {key: amazon_dsp, platform: amazon_ads, channel: amazon_dsp, name: Amazon DSP}
+  - {key: sponsored_products, platform: amazon_ads, channel: amazon_sponsored_products, name: Sponsored Products}
+  - {key: sponsored_brands, platform: amazon_ads, channel: amazon_sponsored_brands, name: Sponsored Brands}
+  - {key: sponsored_display, platform: amazon_ads, channel: amazon_sponsored_display, name: Sponsored Display}
+  - {key: sponsored_television, platform: amazon_ads, channel: amazon_sponsored_television, name: Sponsored Television}
+mappings:
+  - source: {namespace: adlytics.media_profile, value: amazon_dsp}
+    ecosystem: amazon
+    platform: amazon_ads
+    channel_group: display
+    channel: amazon_dsp
+    ad_product: amazon_dsp
+    mapping_version: 1
+    valid_from: 2000-01-01
+    evidence: contracts/amc/amc-dsp-impressions.yaml
+  - source: {namespace: amc.ad_product_type, value: amazon_dsp}
+    ecosystem: amazon
+    platform: amazon_ads
+    channel_group: display
+    channel: amazon_dsp
+    ad_product: amazon_dsp
+    mapping_version: 1
+    valid_from: 2000-01-01
+    evidence: docs/sources/amc.md#4-identifiers
+  - source: {namespace: amc.ad_product_type, value: sponsored_products}
+    ecosystem: amazon
+    platform: amazon_ads
+    channel_group: search
+    channel: amazon_sponsored_products
+    ad_product: sponsored_products
+    mapping_version: 1
+    valid_from: 2000-01-01
+    evidence: docs/sources/amc.md#4-identifiers
+  - source: {namespace: amc.ad_product_type, value: sponsored_brands}
+    ecosystem: amazon
+    platform: amazon_ads
+    channel_group: search
+    channel: amazon_sponsored_brands
+    ad_product: sponsored_brands
+    mapping_version: 1
+    valid_from: 2000-01-01
+    evidence: docs/sources/amc.md#4-identifiers
+  - source: {namespace: amc.ad_product_type, value: sponsored_display}
+    ecosystem: amazon
+    platform: amazon_ads
+    channel_group: display
+    channel: amazon_sponsored_display
+    ad_product: sponsored_display
+    mapping_version: 1
+    valid_from: 2000-01-01
+    evidence: docs/sources/amc.md#4-identifiers
+  - source: {namespace: amc.ad_product_type, value: sponsored_television}
+    ecosystem: amazon
+    platform: amazon_ads
+    channel_group: video
+    channel: amazon_sponsored_television
+    ad_product: sponsored_television
+    mapping_version: 1
+    valid_from: 2000-01-01
+    evidence: docs/sources/amc.md#4-identifiers
+  - source: {namespace: adlytics.media_profile, value: amazon_retail}
+    ecosystem: amazon
+    platform: amazon_retail
+    channel_group: null
+    channel: null
+    ad_product: null
+    mapping_version: 1
+    valid_from: 2000-01-01
+    evidence: docs/decisions/adr-052-separate-ecosystem-platform-channel-and-ad-product.md
+  # A grain set with no media split: platform-level shopper aggregates (ADR-099). Channel,
+  # channel group and ad product stay NULL, the same way amazon_retail resolves vendor rows.
+  - source: {namespace: adlytics.media_profile, value: amazon_ads}
+    ecosystem: amazon
+    platform: amazon_ads
+    channel_group: null
+    channel: null
+    ad_product: null
+    mapping_version: 1
+    valid_from: 2000-01-01
+    evidence: docs/decisions/adr-099-treat-distinct-shopper-counts-as-a-new-kind-of-fact.md
+# Version 2. A shopper-aggregate pack emits a source-set label, a source fact such as
+# "touched in dsp_impressions and in sponsored_ads_traffic", never a canonical key (AC-BR.9).
+# Each label resolves here, within one platform, to both disjoint grouping axes (ADR-101).
+exposure_source_sets:
+  - platform: amazon_ads
+    source_set: dsp
+    exposure_group: dsp_only
+    acquisition_channel_group: dsp_only
+    mapping_version: 1
+    valid_from: 2000-01-01
+    evidence: docs/decisions/adr-101-model-shopper-groupings-as-disjoint-axes-with-one-window-per-shopper.md
+  - platform: amazon_ads
+    source_set: sponsored
+    exposure_group: sponsored_only
+    acquisition_channel_group: sponsored_only
+    mapping_version: 1
+    valid_from: 2000-01-01
+    evidence: docs/decisions/adr-101-model-shopper-groupings-as-disjoint-axes-with-one-window-per-shopper.md
+  - platform: amazon_ads
+    source_set: dsp+sponsored
+    exposure_group: dsp_and_sponsored
+    acquisition_channel_group: dsp_and_sponsored
+    mapping_version: 1
+    valid_from: 2000-01-01
+    evidence: docs/decisions/adr-101-model-shopper-groupings-as-disjoint-axes-with-one-window-per-shopper.md

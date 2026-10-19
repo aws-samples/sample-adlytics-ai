@@ -1,0 +1,9 @@
+{
+  "schema_version": "d2-audiences-over-bound-v1",
+  "purpose": "The one over-bound month-B Audiences delivery the deploy-gated tests/integration/test_d2_audiences_over_bound_acceptance.py accepts as over_bound_source. A validation-only generator builds it at the D2 live-acceptance step and lands it as a probe-owned delivery; it is not in the generated fixture corpus, needs no src/ or land_fixtures/bundle.py change, and normal dev landing never lands it.",
+  "over_bound_source": "validation/d2-audiences-over-bound/amc-segment-buyer-profile-dsp-exposed.csv#month-b",
+  "page_row": "audiences#last_complete_month",
+  "month": "the profile month after the month A the Audiences CURRENT pointer serves when the acceptance starts",
+  "row_floor": 301,
+  "row_floor_basis": "audiences_row_budget(1) + 1: one more profile and campaign row than one Audiences body carries"
+}

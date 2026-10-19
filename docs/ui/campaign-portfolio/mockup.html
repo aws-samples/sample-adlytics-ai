@@ -1,0 +1,957 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: MIT-0 -->
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="design-revision" content="2026-10-09.2">
+    <title>Campaign Portfolio — command center (portfolio, estate reach, in-place detail, metric focus, evidence status; all values fictional)</title>
+    <link rel="stylesheet" href="command-center-draft.css">
+    <style>
+      /* Page-specific additions for this revision; shared tokens and classes come from the draft stylesheet. */
+      .state-divider { margin: 26px 0 14px; padding: 10px 14px; border: 1px dashed var(--line); border-radius: 10px; color: var(--text-dim); font-size: 12.5px; }
+      .state-divider strong { color: var(--text); }
+      .facts { display: flex; gap: 10px; flex-wrap: wrap; margin: 10px 0 2px; }
+      .fact { border: 1px solid var(--line); border-radius: 10px; padding: 7px 11px; background: var(--card); }
+      .fact .f-k { display: block; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint); }
+      .fact .f-v { font-size: 13px; font-weight: 650; font-variant-numeric: tabular-nums; }
+      .fact .f-v .sub-note { font-weight: 400; color: var(--text-faint); font-size: 11px; }
+      .drivers h5 { font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-faint); margin: 10px 0 6px; }
+      .share { color: var(--text-faint); font-size: 11px; font-variant-numeric: tabular-nums; }
+      .defline { color: var(--text-dim); font-size: 12px; margin-top: 2px; }
+      /* Estate reach (ADR-071): roster filter and pagination bar for the campaign table. */
+      .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+      .filter input {
+        font: inherit; font-size: 12.5px; color: var(--text); background: var(--card);
+        border: 1px solid var(--line); border-radius: 10px; padding: 6px 12px; min-width: 240px;
+      }
+      .filter input::placeholder { color: var(--text-faint); }
+      .filter input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+      .pager { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;
+        border-top: 1px solid var(--line); margin-top: 4px; padding-top: 10px; font-size: 12px; color: var(--text-dim); }
+      .pager-pos { font-variant-numeric: tabular-nums; }
+      .pager-controls { display: inline-flex; align-items: center; gap: 8px; }
+      .pager-controls button { font: inherit; font-size: 12px; color: var(--accent); background: var(--card);
+        border: 1px solid var(--line); border-radius: 8px; padding: 4px 12px; cursor: pointer; }
+      .pager-controls button:disabled { color: var(--text-faint); cursor: not-allowed; opacity: 0.6; }
+      .pager-controls button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+      .pager-page { font-variant-numeric: tabular-nums; color: var(--text-faint); }
+      /* Deep analysis band (ADR-076, rebalanced 2026-09-25): a full-width strip below the
+         dialog's evidence so its variable length extends the dialog evenly instead of
+         skewing one column. Readings render three-up wide, stacked narrow. */
+      .deep-band { margin-top: 14px; padding: 14px; border: 1px solid color-mix(in srgb, var(--ai) 30%, var(--line)); border-radius: 13px; background: color-mix(in srgb, var(--ai-soft) 40%, var(--card)); }
+      .deep-band h3 { margin: 0 0 10px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ai); }
+      .deep-cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+      /* Cells fill each row evenly, never leaving an orphan: two cells two-up, four
+         (the three-reading maximum plus the standout) two-by-two, three three-up. */
+      .deep-cols:has(> :nth-child(4)) { grid-template-columns: repeat(2, 1fr); }
+      .deep-cols:has(> :nth-child(2):last-child) { grid-template-columns: repeat(2, 1fr); }
+      @media (max-width: 900px) { .deep-cols, .deep-cols:has(> :nth-child(4)), .deep-cols:has(> :nth-child(2):last-child) { grid-template-columns: 1fr; } }
+      .deep-cell { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+      .deep-cell h4 { margin: 0 0 5px; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint); }
+      .deep-cell p { margin: 0; font-size: 12.5px; line-height: 1.5; }
+      .deep-band .discriminator { margin: 10px 0 0; font-size: 12.5px; color: var(--text-dim); }
+      .deep-band .discriminator strong { color: var(--text); font-weight: 650; }
+      /* Customer-appropriate provenance: one quiet strip, plain words only — no prompt
+         versions, no cache vocabulary, no internal tokens (revision 2026-09-25.1). */
+      .prov-strip { display: flex; gap: 6px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 11.5px; color: var(--text-faint); }
+      /* Evidence status sheet (ADR-072): per-metric served words inside the shared dialog shell. */
+      .status-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+      .status-row { display: grid; grid-template-columns: 130px auto 1fr; gap: 12px; align-items: start;
+        background: var(--card-raise); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+      @media (max-width: 720px) { .status-row { grid-template-columns: 1fr; gap: 4px; } }
+      .status-row .m { font-weight: 650; font-size: 12.5px; }
+      /* Role lines are definitions, not ornament: dim tier, AA on the card-raise rows. */
+      .status-row .m .role { display: block; font-weight: 400; font-size: 10.5px; color: var(--text-dim); }
+      .status-row .words { font-size: 12.5px; color: var(--text-dim); }
+      .status-row .words strong { color: var(--text); font-weight: 640; }
+      .tile.insuff { border-style: dashed; }
+      .tile.insuff .ask { opacity: 1; position: static; inset: auto; display: inline-flex; margin-top: 8px;
+        font: inherit; font-size: 12px; color: var(--accent); background: var(--accent-soft);
+        border: 0; border-radius: 8px; padding: 5px 12px; cursor: pointer; }
+      /* Detail summary metrics (revision 2026-09-24.1): the eight tiles wrap into two
+         rows of four equal-size columns — uniform tiles, never a single crowded row. With
+         insufficient delivery only three outcome tiles remain, so the grid narrows to three
+         columns and the full-width card forms the second row — never a hole. */
+      .tiles.detail-tiles { grid-auto-flow: row; grid-auto-columns: unset; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-rows: 1fr; }
+      .tiles.detail-tiles.delivery-short { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      @media (max-width: 980px) { .tiles.detail-tiles, .tiles.detail-tiles.delivery-short { grid-template-columns: repeat(2, 1fr); } }
+      @media (max-width: 480px) { .tiles.detail-tiles, .tiles.detail-tiles.delivery-short { grid-template-columns: 1fr; } }
+    </style>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to portfolio evidence</a>
+    <div class="shell">
+      <aside class="sidebar">
+        <a class="brand" href="mockup.html" aria-label="Adlytics AI home">
+          <svg class="logo" viewBox="0 0 34 34" role="img" aria-hidden="true">
+            <defs>
+              <linearGradient id="lg" x1="0" y1="1" x2="1" y2="0">
+                <stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#8b5cf6"/>
+              </linearGradient>
+            </defs>
+            <rect x="1" y="1" width="32" height="32" rx="9" fill="url(#lg)"/>
+            <path d="M19.5 6 10 19h5.4l-1.6 9L24 15h-5.6l1.1-9z" fill="#fff" opacity="0.96"/>
+            <circle cx="25.5" cy="9" r="2" fill="#fff" opacity="0.85"/>
+          </svg>
+          <span class="word">Adlytics AI<span>Retail media intelligence</span></span>
+        </a>
+        <nav class="nav" aria-label="Workspace pages">
+          <p class="nav-label">Workspace</p>
+          <a href="mockup.html" aria-current="page"><span class="glyph">▮</span>Campaigns</a>
+          <a href="../retail-health/mockup.html"><span class="glyph">▦</span>Retail health</a>
+          <p class="nav-label" style="margin-top:14px;">Admin · operators only</p>
+          <a href="../prompt-administration/mockup.html"><span class="glyph">⌘</span>Prompt administration</a>
+        </nav>
+        <p class="sidebar-foot">All values fictional and server-declared. Design revision <span style="color:var(--accent)">2026-09-24.1</span>; this mockup is the mandated implementation target for the Campaign Portfolio page: the portfolio view with estate reach (baked ordered segments, pagination, roster name filter), the in-place campaign detail view with its uniform two-row summary metric grid, the evidence status sheet for insufficient cards, and the hardened metric-focus dialog (<a href="../metric-focus-contract.md" style="color:var(--accent)">shared contract</a>).</p>
+      </aside>
+
+      <div class="main">
+        <header class="topbar">
+          <span>Campaigns</span>
+          <div class="actions">
+            <button type="button">Theme: Dark</button>
+            <button type="button">Assistant</button>
+            <button type="button">Sign out</button>
+          </div>
+        </header>
+
+        <main id="main" class="page">
+          <!-- ============================================================ -->
+          <!-- VIEW 1 · the portfolio (the route's landing state)           -->
+          <!-- ============================================================ -->
+
+          <!-- 1 · title band with preset windows (no Custom: ADR-070) -->
+          <div class="band">
+            <div class="band-title">
+              <p class="eyebrow">Campaign portfolio · United States</p>
+              <h1>Portfolio overview</h1>
+              <div class="scopes">
+                <span class="pill">1,024 authorized campaigns</span>
+                <span class="pill">Ad-attributed, 14-day</span>
+                <span class="pill good">Data fresh · loaded Aug 29</span>
+              </div>
+            </div>
+            <div class="windows" role="group" aria-label="Server-declared reporting windows">
+              <button class="win-card" type="button" aria-pressed="false"><span class="w">1D</span><span class="s">Aug 16</span></button>
+              <button class="win-card" type="button" aria-pressed="true"><span class="w">7D</span><span class="s">Aug 10–16</span></button>
+              <button class="win-card" type="button" aria-pressed="false"><span class="w">14D</span><span class="s">Aug 3–16</span></button>
+              <button class="win-card" type="button" disabled aria-describedby="win-note"><span class="w">30D</span><span class="s">needs Jul 18+</span></button>
+            </div>
+          </div>
+          <p id="win-note" class="footnote">Data as of Aug 16, 2026, built 2026-08-17 06:12:04 UTC. Windows anchor to the
+          published coverage this page was built from, never to today. An unavailable preset
+          says what it needs in plain words — reason codes stay internal. Changing the window re-resolves every card, table,
+          graph, and insight on this page to the new period; nothing ever shows a stale mix of two windows. Custom reporting
+          windows are not available for this page.</p>
+
+          <!-- 2 · purpose-typed insight row: every card is clickable and every absence states its served reason -->
+          <div class="narr-row" aria-label="Portfolio insights: fixed purpose-typed slots; every card opens its insight view, every absence states its served reason">
+            <div class="narr-card">
+              <div class="purpose"><h4>Contribution</h4><span class="tag observed">Observed</span></div>
+              <p>Of the +$9.8K spend increase, Northstar Growth contributed $5.3K (54%); the two declining campaigns offset $1.2K. This is one campaign's ramp, not a broad shift.</p>
+              <span class="ev">Server-computed delta decomposition · silent when no campaign exceeds 30% of the move</span>
+              <button class="open-insight" type="button">Open the insight view for Contribution</button>
+            </div>
+            <div class="narr-card quiet">
+              <div class="purpose"><h4>Divergence</h4><span class="tag quiet">Nothing noteworthy</span></div>
+              <p>No campaign direction materially diverges from the portfolio direction.</p>
+              <span class="ev">The served silence condition, never a generic fallback · quiet, never an error style</span>
+              <button class="open-insight" type="button">Open the insight view for Divergence</button>
+            </div>
+            <div class="narr-card">
+              <div class="purpose"><h4>Exposure</h4><span class="tag perspective">Perspective</span></div>
+              <p>$8.2K of this window's spend sits in two campaigns with zero attributed return. If they are prospecting plays that is a choice; if not, the clearest reallocation candidate here.</p>
+              <span class="ev">Agent judgment on server-computed exposure · silent under 5% of spend</span>
+              <button class="open-insight" type="button">Open the insight view for Exposure</button>
+            </div>
+            <div class="narr-card">
+              <div class="purpose"><h4>Movers</h4><span class="tag observed">Observed</span></div>
+              <div class="movers-stack" aria-label="Server-ranked largest changes vs prior window">
+                <div class="mover"><span><span class="who">Northstar Growth</span><span class="what">spend</span></span><span class="delta up">▲ 12.4%</span></div>
+                <div class="mover"><span><span class="who">Unnamed campaign 1</span><span class="what">spend</span></span><span class="delta down">▼ 21.9%</span></div>
+                <div class="mover"><span><span class="who">Sunrise Kitchen</span><span class="what">ROAS</span></span><span class="delta up">▲ 7.7%</span></div>
+                <div class="mover"><span><span class="who">Northstar Brand</span><span class="what">CTR</span></span><span class="delta down">▼ 9.3%</span></div>
+              </div>
+              <span class="ev" style="margin-top:8px;">Server-ranked by absolute change</span>
+              <button class="open-insight" type="button">Open the insight view for Movers</button>
+            </div>
+          </div>
+          <p class="narr-cache"><span class="dot" aria-hidden="true"></span>
+            Fixed slots — never padded, never an unexplained blank: a slot with nothing to say states its served reason,
+            and every card in the row keeps the exact same footprint whether it carries four sentences or one — narration
+            clamps at five lines on the card and reads in full in its insight view
+            (<a href="../insight-presentation-contract.md" style="color:var(--ai)">insight-presentation contract</a>).
+            Cached per window against the artifact revision: switching presets serves instantly from cache; the model
+            regenerates only when the underlying data republishes. Each slot runs its own versioned, calibration-gated prompt.</p>
+
+          <!-- 2b · state illustration: the four declared absence treatments -->
+          <div class="narr-row" aria-label="State illustration: the four declared insight card states beside a filled card" style="margin-top:10px;">
+            <div class="narr-card quiet">
+              <div class="purpose"><h4>Exposure</h4><span class="tag quiet">Nothing noteworthy</span></div>
+              <p>No supplied concentration share exceeds the declared exposure threshold.</p>
+              <span class="ev">Evaluated in full, nothing crossed the slot's threshold — quiet but discoverable</span>
+            </div>
+            <div class="narr-card callout">
+              <div class="purpose"><h4>Trend shape</h4><span class="tag needs-data">Needs data</span></div>
+              <p>This insight requires a daily purchase series, which is not available for this view and window.</p>
+              <span class="ev">Could not evaluate — loud at the display site, names exactly what is missing</span>
+            </div>
+            <div class="narr-card pending">
+              <div class="purpose"><h4>Contribution</h4><span class="tag retrying">Retrying</span></div>
+              <p>This insight could not be generated just now; it retries automatically and appears on a later view.</p>
+              <span class="ev">A declared healing state — honest and calm, recovery is automatic</span>
+            </div>
+            <div class="narr-card">
+              <div class="purpose"><h4>Next check</h4><span class="tag hypothesis">Hypothesis</span></div>
+              <p>Rising CPC with falling CTR while conversion holds is consistent with audience saturation. The frequency read for this campaign would confirm or kill that.</p>
+              <span class="ev">Filled — every card opens its insight view: the narration and its deep analysis, or the rule that held</span>
+            </div>
+          </div>
+
+          <!-- 2c · INSIGHT FOCUS (state illustration: a filled Contribution card opened, page dimmed and inert behind it.
+               Single column (rebalanced 2026-09-25): narration full width, the deep band full width beneath it,
+               and one customer-word provenance strip at the foot — no side rail. -->
+          <div class="scrim-demo" aria-label="State illustration: insight-focus dialog opened from the filled Contribution card, page dimmed and inert behind it">
+          <div class="focus-dialog" role="dialog" aria-modal="true" aria-label="Contribution insight view">
+            <div class="focus-head">
+              <div>
+                <p class="eyebrow">Insight focus · Portfolio · Aug 10–16 · Ad-attributed</p>
+                <h2 style="font-size:17px;">Contribution</h2>
+                <p class="defline">Which campaign changes carry the portfolio movement this window.</p>
+                <div style="display:flex; gap:10px; align-items:baseline; margin-top:6px;">
+                  <span class="tag perspective">Perspective</span>
+                </div>
+              </div>
+              <div style="display:flex; gap:10px; align-items:center;">
+                <span class="metric-switch" aria-label="Switch focused insight">
+                  <button type="button" aria-label="Previous insight: exposure">‹</button>
+                  <span><span class="current">Contribution</span> · Divergence · Exposure</span>
+                  <button type="button" aria-label="Next insight: divergence">›</button>
+                </span>
+                <button class="close" type="button" aria-label="Close insight view">✕</button>
+              </div>
+            </div>
+            <div class="narr-card" style="margin-top:12px;">
+              <div class="purpose"><h4>Narration</h4></div>
+              <p>The spend increase is concentrated, not broad: Northstar Growth's deliberate ramp explains over half of the
+              portfolio movement, with the remaining gain spread thinly across the roster. Read portfolio-level pacing
+              conclusions from this window as describing Northstar Growth more than the portfolio.</p>
+              <span class="ev">Read from the values this page already shows</span>
+            </div>
+            <div class="deep-band" aria-label="Deep analysis of this insight">
+              <h3>Deep analysis</h3>
+              <div class="deep-cols">
+                <div class="deep-cell">
+                  <h4>What stands out</h4>
+                  <p>One campaign carries the week: over half the portfolio's spend growth sits in a single deliberate ramp
+                  while everything else nets out close to flat.</p>
+                </div>
+                <div class="deep-cell">
+                  <h4>Reading one</h4>
+                  <p>The ramp is a planned budget shift — the daily series climbs in even steps, which usually reads as
+                  pacing rather than an auction surprise.</p>
+                </div>
+                <div class="deep-cell">
+                  <h4>Reading two</h4>
+                  <p>If this category runs seasonal — not confirmable from this data — part of the climb may be calendar
+                  lift arriving on top of the ramp.</p>
+                </div>
+              </div>
+              <p class="discriminator"><strong>What would tell these apart:</strong> open Northstar Growth's own spend focus
+              for this window — an even daily climb favors the pacing read; a late-window surge favors calendar lift.</p>
+            </div>
+            <div class="prov-strip">
+              <span>One governed reading of this view · updates when this page's data does</span>
+            </div>
+            <div class="ask-row" style="margin-top:10px;">
+              <button class="ask-chip" type="button">Ask the assistant about this window's contribution</button>
+            </div>
+            <p class="footnote" style="padding-top:10px;">Opened from any insight card; the page dims and goes inert. Escape or ✕
+            closes and returns focus to the card; ‹ › hops the page's insight slots without closing. A quiet card opens this same
+            single-column frame with its designed-absence words and the evaluated numbers behind the rule that held — and no deep
+            band, since deep analysis accompanies a filled insight only. Composition, states, and behavior are owned by the shared
+            <a href="../insight-presentation-contract.md" style="color:var(--ai)">insight-presentation contract</a>.</p>
+          </div>
+          </div>
+
+          <!-- 3 · metrics: every tile opens the metric-focus dialog -->
+          <div class="tiles" aria-label="Portfolio totals, current window against prior window">
+            <div class="tile">
+              <span class="k">Total spend <span class="delta up">▲ 9.6%</span></span>
+              <div class="row"><span class="v">$112,408</span></div>
+              <span class="prior">prior $102,561</span>
+              <button class="ask" type="button">Open the focus view for portfolio spend</button>
+            </div>
+            <div class="tile">
+              <span class="k">Portfolio ROAS <span class="delta up">▲ 2.1%</span></span>
+              <div class="row"><span class="v">0.88</span></div>
+              <span class="prior">prior 0.86 · server-computed at portfolio grain</span>
+              <button class="ask" type="button">Open the focus view for portfolio ROAS</button>
+            </div>
+            <div class="tile">
+              <span class="k">Purchases <span class="delta up">▲ 6.4%</span></span>
+              <div class="row"><span class="v">2,973</span></div>
+              <span class="prior">prior 2,794</span>
+              <button class="ask" type="button">Open the focus view for purchases</button>
+            </div>
+            <div class="tile">
+              <span class="k">Impressions <span class="delta down">▼ 1.8%</span></span>
+              <div class="row"><span class="v">5.87M</span></div>
+              <span class="prior">prior 5.98M</span>
+              <button class="ask" type="button">Open the focus view for impressions</button>
+            </div>
+          </div>
+
+          <!-- 3b · HARDENED METRIC FOCUS (state illustration: portfolio spend focus over the dimmed page) -->
+          <div class="scrim-demo" aria-label="State illustration: hardened metric-focus dialog opened from the Total spend tile, page dimmed and inert behind it">
+          <div class="focus-dialog" role="dialog" aria-modal="true" aria-label="Portfolio spend focus view">
+            <div class="focus-head">
+              <div>
+                <p class="eyebrow">Metric focus · Portfolio · Aug 10–16 · Ad-attributed</p>
+                <h2 style="font-size:17px;">Total spend</h2>
+                <p class="defline">The sum of ad spend across every authorized campaign in the resolved window.</p>
+                <div style="display:flex; gap:10px; align-items:baseline; margin-top:6px;">
+                  <span class="big">$112,408</span>
+                  <span class="delta up">▲ 9.6%</span>
+                  <span class="prior" style="font-size:12px; color:var(--text-faint);">prior $102,561</span>
+                </div>
+              </div>
+              <div style="display:flex; gap:10px; align-items:center;">
+                <span class="metric-switch" aria-label="Switch focused metric">
+                  <button type="button" aria-label="Previous metric: impressions">‹</button>
+                  <span><span class="current">Spend</span> · ROAS · Purchases</span>
+                  <button type="button" aria-label="Next metric: portfolio ROAS">›</button>
+                </span>
+                <button class="close" type="button" aria-label="Close focus view">✕</button>
+              </div>
+            </div>
+            <div class="focus-grid">
+              <div>
+                <svg width="100%" height="150" viewBox="0 0 620 150" preserveAspectRatio="none" role="img"
+                     aria-label="Daily portfolio spend, Aug 10 to 16, rising from 14.1 to 17.6 thousand dollars; prior week held near 14.6 thousand.">
+                  <g stroke="var(--line)" stroke-width="1">
+                    <line x1="40" y1="20" x2="600" y2="20"/><line x1="40" y1="65" x2="600" y2="65"/><line x1="40" y1="110" x2="600" y2="110"/>
+                  </g>
+                  <g fill="var(--text-faint)" font-size="10">
+                    <text x="4" y="24">$18K</text><text x="4" y="69">$16K</text><text x="4" y="114">$14K</text>
+                    <text x="62" y="140">Aug 10</text><text x="300" y="140">13</text><text x="560" y="140">16</text>
+                  </g>
+                  <polyline points="70,102 155,100 240,104 325,101 410,99 495,103 580,100"
+                            fill="none" stroke="var(--chart-prior)" stroke-width="2" stroke-dasharray="6 5"/>
+                  <polyline points="70,108 155,96 240,88 325,74 410,58 495,40 580,26"
+                            fill="none" stroke="var(--accent)" stroke-width="2.5"/>
+                </svg>
+                <div class="legend">
+                  <span><i></i>Current</span>
+                  <span><i class="prior"></i>Prior week</span>
+                </div>
+                <!-- facts strip: server-computed observations, labeled values, never prose -->
+                <div class="facts" aria-label="Server-computed facts about this metric in this window">
+                  <span class="fact"><span class="f-k">Peak day</span><span class="f-v">Aug 16 · $17.6K</span></span>
+                  <span class="fact"><span class="f-k">Trough day</span><span class="f-v">Aug 10 · $14.1K</span></span>
+                  <span class="fact"><span class="f-k">Largest day move</span><span class="f-v">+$0.9K <span class="sub-note">Aug 14→15</span></span></span>
+                  <span class="fact"><span class="f-k">Daily average</span><span class="f-v">$16.1K</span></span>
+                </div>
+                <details class="exact"><summary>Exact returned values</summary>
+                  <table class="data-table">
+                    <thead><tr><th scope="col">Series</th><th scope="col">Aug 10</th><th scope="col">11</th><th scope="col">12</th><th scope="col">13</th><th scope="col">14</th><th scope="col">15</th><th scope="col">16</th></tr></thead>
+                    <tbody>
+                      <tr><td>Current</td><td>$14.1K</td><td>$15.0K</td><td>$15.6K</td><td>$16.4K</td><td>$16.8K</td><td>$17.7K</td><td>$17.6K</td></tr>
+                      <tr><td>Prior week</td><td>$14.6K</td><td>$14.7K</td><td>$14.5K</td><td>$14.6K</td><td>$14.8K</td><td>$14.5K</td><td>$14.7K</td></tr>
+                    </tbody>
+                  </table>
+                </details>
+              </div>
+              <div class="related drivers" aria-label="What drove the change, and the metric's own interpretation">
+                <h5>Drivers · per campaign, server-computed</h5>
+                <div class="movers-stack" aria-label="Top contributors to the window-over-window spend change">
+                  <div class="mover"><span><span class="who">Northstar Growth</span><span class="what">+$5.3K · <span class="share">54% of the move</span></span></span><span class="delta up">▲ 12.4%</span></div>
+                  <div class="mover"><span><span class="who">Harborline Awareness</span><span class="what">+$3.1K · <span class="share">31%</span></span></span><span class="delta up">▲ 3.9%</span></div>
+                  <div class="mover"><span><span class="who">Sunrise Kitchen</span><span class="what">+$2.7K · <span class="share">27%</span></span></span><span class="delta flat">◆ 0.6%</span></div>
+                  <div class="mover"><span><span class="who">Unnamed campaign 1</span><span class="what">−$1.2K · <span class="share">offsets 12%</span></span></span><span class="delta down">▼ 21.9%</span></div>
+                </div>
+                <div class="narr-card" style="margin-top:10px;">
+                  <div class="purpose"><h4>Interpretation</h4><span class="tag perspective">Perspective</span></div>
+                  <p>The spend increase is concentrated, not broad: one campaign's deliberate ramp explains over half of it. Portfolio-level pacing conclusions drawn from this window describe Northstar Growth more than the portfolio.</p>
+                  <span class="ev">Read from the values this page already shows</span>
+                </div>
+              </div>
+            </div>
+            <!-- Deep band (rebalanced 2026-09-25): full width beneath the two evidence columns, so its
+                 variable length extends the dialog evenly. No citations render — grounding is verified
+                 server-side and everything shown stays in customer words. -->
+            <div class="deep-band" aria-label="Deep analysis of this metric">
+              <h3>Deep analysis</h3>
+              <div class="deep-cols">
+                <div class="deep-cell">
+                  <h4>What stands out</h4>
+                  <p>Spend rose all week without a single down day — a steady build, not a spike — while the prior week
+                  held flat.</p>
+                </div>
+                <div class="deep-cell">
+                  <h4>Reading one</h4>
+                  <p>A deliberate ramp: the even day-over-day steps and one campaign carrying most of the move both point
+                  to planned pacing.</p>
+                </div>
+                <div class="deep-cell">
+                  <h4>Reading two</h4>
+                  <p>Auction pressure rising under fixed bids could draw the same line — though the flat prior week makes
+                  a sudden market shift the weaker read.</p>
+                </div>
+              </div>
+              <p class="discriminator"><strong>What would tell these apart:</strong> the 14-day view — a ramp keeps
+              climbing from its start date; auction pressure shows up across other campaigns too.</p>
+            </div>
+            <div class="prov-strip">
+              <span>One governed reading of this view · updates when this page's data does</span>
+            </div>
+            <div class="ask-row" style="margin-top:8px;">
+              <button class="ask-chip" type="button">Open the focus view for Northstar Growth spend</button>
+              <button class="ask-chip" type="button">Ask the assistant about this window's spend</button>
+            </div>
+            <p class="footnote" style="padding-top:10px;">Opened from any metric tile; the page dims and goes inert. Escape or ✕
+            closes and returns focus to the tile; ‹ › hops metrics without closing. Same artifact, same window — a focused lens,
+            never a new query: facts and drivers are server-computed from the baked artifact, and the interpretation is one
+            versioned, calibration-gated prompt cached per metric per window. Composition, states, and behavior are owned by the
+            shared metric-focus contract; on compact layouts the dialog presents as a full-height sheet.</p>
+          </div>
+          </div>
+
+          <!-- 4 · graph, full width -->
+          <div class="panel" style="margin-top:14px;">
+            <div class="panel-head">
+              <h3>Portfolio spend · by day · Aug 10–16</h3>
+              <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <div class="seg" role="group" aria-label="Metric">
+                  <button type="button" aria-pressed="true">Spend</button>
+                  <button type="button" aria-pressed="false">ROAS</button>
+                  <button type="button" aria-pressed="false">Purchases</button>
+                </div>
+                <div class="seg" role="group" aria-label="Grain, as the server declares valid">
+                  <button type="button" aria-pressed="true">Daily</button>
+                  <button type="button" disabled title="Weekly needs a 14-day window or longer">Weekly</button>
+                </div>
+              </div>
+            </div>
+            <svg width="100%" height="210" viewBox="0 0 960 210" preserveAspectRatio="none" role="img"
+                 aria-label="Daily portfolio spend Aug 10 to 16 against the prior week overlaid. Current week climbs from 14.1 to 17.6 thousand dollars; prior week held near 14.6 thousand.">
+              <g stroke="var(--line)" stroke-width="1">
+                <line x1="50" y1="25" x2="940" y2="25"/><line x1="50" y1="75" x2="940" y2="75"/>
+                <line x1="50" y1="125" x2="940" y2="125"/><line x1="50" y1="175" x2="940" y2="175"/>
+              </g>
+              <g fill="var(--text-faint)" font-size="11">
+                <text x="8" y="29">$18K</text><text x="8" y="79">$16K</text><text x="8" y="129">$14K</text><text x="8" y="179">$12K</text>
+                <text x="80" y="200">Aug 10</text><text x="215" y="200">11</text><text x="350" y="200">12</text>
+                <text x="485" y="200">13</text><text x="620" y="200">14</text><text x="755" y="200">15</text><text x="890" y="200">16</text>
+              </g>
+              <polyline points="90,122 225,118 360,124 495,119 630,116 765,121 900,118"
+                        fill="none" stroke="var(--chart-prior)" stroke-width="2" stroke-dasharray="6 5"/>
+              <polyline points="90,128 225,113 360,104 495,90 630,74 765,54 900,39"
+                        fill="none" stroke="var(--accent)" stroke-width="2.5"/>
+              <g fill="var(--accent)">
+                <circle cx="90" cy="128" r="3.5"/><circle cx="225" cy="113" r="3.5"/><circle cx="360" cy="104" r="3.5"/>
+                <circle cx="495" cy="90" r="3.5"/><circle cx="630" cy="74" r="3.5"/><circle cx="765" cy="54" r="3.5"/><circle cx="900" cy="39" r="3.5"/>
+              </g>
+            </svg>
+            <div class="legend">
+              <span><i></i>Aug 10–16 (current)</span>
+              <span><i class="prior"></i>Aug 3–9 (prior, server-aligned)</span>
+            </div>
+          </div>
+
+          <!-- 5 · campaign table -->
+          <div class="panel" style="margin-top:12px;">
+            <div class="panel-head">
+              <h3>Campaigns</h3>
+              <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                <span class="filter">
+                  <label class="vh" for="estate-filter">Filter campaigns by name</label>
+                  <input id="estate-filter" type="search" placeholder="Filter 1,024 campaigns by name…">
+                </span>
+                <span class="pill">Server-ordered · every ordering baked</span>
+              </div>
+            </div>
+            <table class="camp-table">
+              <thead>
+                <tr>
+                  <th scope="col"><button type="button">Campaign</button></th>
+                  <th scope="col" class="num" aria-sort="descending"><button type="button">Spend</button></th>
+                  <th scope="col" class="num"><button type="button">Δ</button></th>
+                  <th scope="col" class="num"><button type="button">ROAS</button></th>
+                  <th scope="col" class="num"><button type="button">Δ</button></th>
+                  <th scope="col" class="num"><button type="button">Purchases</button></th>
+                  <th scope="col" class="num"><button type="button">CTR</button></th>
+                  <th scope="col" class="spark-cell">Trend · Aug 10–16</th>
+                  <th scope="col">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="name"><a href="#detail-view">Northstar Home | Growth<span class="sub">Amazon DSP · United States</span></a></td>
+                  <td class="num">$48.2K</td><td class="num"><span class="delta up">▲ 12.4%</span></td>
+                  <td class="num">0.94</td><td class="num"><span class="delta up">▲ 4.2%</span></td>
+                  <td class="num">1,284</td><td class="num">0.78%</td>
+                  <td class="spark-cell"><svg width="120" height="24" viewBox="0 0 120 24" role="img" aria-label="Rising"><polyline points="0,19 20,17 40,18 60,13 80,11 100,8 120,5" fill="none" stroke="var(--good)" stroke-width="2"/></svg></td>
+                  <td><span class="pill good">Fresh</span></td>
+                </tr>
+                <tr>
+                  <td class="name"><a href="#detail-view">Northstar Home | Brand<span class="sub">Amazon DSP · United States</span></a></td>
+                  <td class="num">$31.7K</td><td class="num"><span class="delta down">▼ 8.1%</span></td>
+                  <td class="num">0.62</td><td class="num"><span class="delta down">▼ 2.9%</span></td>
+                  <td class="num">402</td><td class="num">0.61%</td>
+                  <td class="spark-cell"><svg width="120" height="24" viewBox="0 0 120 24" role="img" aria-label="Declining"><polyline points="0,7 20,9 40,8 60,12 80,14 100,16 120,19" fill="none" stroke="var(--bad)" stroke-width="2"/></svg></td>
+                  <td><span class="pill good">Fresh</span></td>
+                </tr>
+                <tr>
+                  <td class="name"><a href="#detail-view">Sunrise Kitchen | Launch<span class="sub">Sponsored Brands · United States</span></a></td>
+                  <td class="num">$12.9K</td><td class="num"><span class="delta flat">◆ 0.6%</span></td>
+                  <td class="num">1.31</td><td class="num"><span class="delta up">▲ 7.7%</span></td>
+                  <td class="num">311</td><td class="num">1.04%</td>
+                  <td class="spark-cell"><svg width="120" height="24" viewBox="0 0 120 24" role="img" aria-label="Flat"><polyline points="0,12 20,11 40,13 60,12 80,11 100,12 120,11" fill="none" stroke="var(--text-faint)" stroke-width="2"/></svg></td>
+                  <td><span class="pill warn">Stale ⓘ</span></td>
+                </tr>
+                <tr>
+                  <td class="name"><a href="#detail-view">Harborline | Awareness<span class="sub">Sponsored Television · United States</span></a></td>
+                  <td class="num">$8.3K</td><td class="num"><span class="delta up">▲ 3.9%</span></td>
+                  <td class="num">0.71</td><td class="num"><span class="delta flat">◆ 0.4%</span></td>
+                  <td class="num">96</td><td class="num">0.32%</td>
+                  <td class="spark-cell"><svg width="120" height="24" viewBox="0 0 120 24" role="img" aria-label="Slightly rising"><polyline points="0,14 20,13 40,14 60,12 80,12 100,11 120,10" fill="none" stroke="var(--text-faint)" stroke-width="2"/></svg></td>
+                  <td><span class="pill good">Fresh</span></td>
+                </tr>
+                <tr>
+                  <td class="name"><a href="#detail-view">Unnamed campaign 1<span class="sub">Sponsored Display · United States</span></a></td>
+                  <td class="num">$4.1K</td><td class="num"><span class="delta down">▼ 21.9%</span></td>
+                  <td class="num">0.00</td><td class="num"><span class="delta flat">◆ 0.0%</span></td>
+                  <td class="num">0</td><td class="num">0.18%</td>
+                  <td class="spark-cell"><svg width="120" height="24" viewBox="0 0 120 24" role="img" aria-label="Declining sharply"><polyline points="0,5 20,7 40,11 60,14 80,17 100,19 120,21" fill="none" stroke="var(--bad)" stroke-width="2"/></svg></td>
+                  <td><span class="pill good">Fresh</span></td>
+                </tr>
+              </tbody>
+            </table>
+            <nav class="pager" aria-label="Campaign table position and paging">
+              <span class="pager-pos">Rows 1–10 of 1,024 · sorted by spend, descending</span>
+              <span class="pager-controls">
+                <button type="button" disabled aria-label="Previous 10 rows">‹ Prev</button>
+                <span class="pager-page">Page 1 of 103</span>
+                <button type="button" aria-label="Next 10 rows">Next ›</button>
+              </span>
+            </nav>
+            <p class="footnote">The table shows ten rows at a time — one comfortable viewport, never a fifty-row wall.
+            Display pages are a browser slice over the baked 50-row ordered segments (ADR-071): four of five page turns
+            are instant with no request, and reaching the last slice of a segment prefetches the next sibling. Every row
+            of the estate is reachable, and every segment of every ordering derives from the same publication revision —
+            no page can mix two data states. Choosing a sorted column serves that column's baked ordering from its first
+            segment; the browser never ranks. The name filter matches against the baked display-name roster as you type;
+            choosing a match jumps to the display page containing that campaign. A campaign with no display name shows a
+            deterministic placeholder, never an internal key. Selecting a campaign replaces this view with the campaign's
+            command center below — same route, breadcrumb returns. Portfolio totals, trend, and insights above always
+            cover all 1,024 campaigns, not the visible rows.</p>
+          </div>
+
+          <!-- 5b · designed loading state (state illustration) -->
+          <div class="panel" style="margin-top:12px;">
+            <div class="panel-head">
+              <h3 style="font-size:13.5px;">State illustration · window change in flight</h3>
+              <span class="loading-note"><span class="spin" aria-hidden="true"></span>Resolving 7D → 14D</span>
+            </div>
+            <div class="narr-row" aria-label="Skeleton placeholders shown while the new window resolves">
+              <div class="tile" aria-hidden="true">
+                <span class="skel h-label"></span>
+                <span class="skel h-value"></span>
+                <span class="skel h-line short"></span>
+              </div>
+              <div class="narr-card" aria-hidden="true">
+                <span class="skel h-label"></span>
+                <span class="skel h-line"></span>
+                <span class="skel h-line"></span>
+                <span class="skel h-line short"></span>
+              </div>
+              <div class="narr-card" aria-hidden="true">
+                <span class="skel h-label"></span>
+                <span class="skel h-chart"></span>
+              </div>
+              <div class="narr-card">
+                <div class="purpose"><h4>Contribution</h4><span class="tag observed">Observed</span></div>
+                <p>Cached insight for 14D renders immediately while neighbors resolve — arrived-first, shown-first.</p>
+                <span class="ev">Served from cache against the 14D artifact revision</span>
+              </div>
+            </div>
+            <p class="footnote" style="padding-top:8px;">Skeletons hold each element's exact position and size, so nothing shifts
+            when data lands. Cached content renders instantly; uncached content streams in as it resolves. Old-window values are
+            never shown beside new-window values.</p>
+          </div>
+
+          <!-- ============================================================ -->
+          <!-- VIEW 2 · state illustration: an open campaign fills the      -->
+          <!-- surface alone (same route; breadcrumb returns)               -->
+          <!-- ============================================================ -->
+          <div class="state-divider" id="detail-view">
+            <strong>State illustration · open campaign.</strong> Selecting a campaign replaces the portfolio: the campaign's
+            identity moves into the title band, the portfolio table leaves the surface, and the topbar breadcrumb
+            (<span style="color:var(--accent)">Campaigns</span> / Northstar Home | Growth) is the way back. Same route, no
+            second page declaration. The campaign switcher in the title band hops the sorted roster without leaving the
+            command center.
+          </div>
+
+          <div class="band">
+            <div class="band-title">
+              <p class="eyebrow">Campaign command center · 1 of 1,024 by spend</p>
+              <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                <h1 style="font-size:22px;">Northstar Home | Growth</h1>
+                <span class="metric-switch" aria-label="Switch campaign within the sorted roster">
+                  <button type="button" disabled aria-label="Previous campaign by spend (none — first of the roster)">‹</button>
+                  <span><span class="current">Northstar Home | Growth</span> · Northstar Home | Brand · Sunrise Kitchen | Launch</span>
+                  <button type="button" aria-label="Next campaign by spend: Northstar Home | Brand">›</button>
+                </span>
+                <span class="filter">
+                  <label class="vh" for="campaign-jump">Jump to another campaign by name</label>
+                  <input id="campaign-jump" type="search" placeholder="Jump to campaign…">
+                </span>
+              </div>
+              <div class="scopes">
+                <span class="pill">Amazon DSP</span>
+                <span class="pill">United States</span>
+                <span class="pill">Ad-attributed, 14-day</span>
+                <span class="pill good">Data fresh · loaded Aug 29</span>
+              </div>
+            </div>
+            <div class="windows" role="group" aria-label="Server-declared reporting windows">
+              <button class="win-card" type="button" aria-pressed="false"><span class="w">1D</span><span class="s">Aug 16</span></button>
+              <button class="win-card" type="button" aria-pressed="true"><span class="w">7D</span><span class="s">Aug 10–16</span></button>
+              <button class="win-card" type="button" aria-pressed="false"><span class="w">14D</span><span class="s">Aug 3–16</span></button>
+              <button class="win-card" type="button" disabled><span class="w">30D</span><span class="s">needs Jul 18+</span></button>
+            </div>
+          </div>
+          <p class="footnote">Swapping campaigns never leaves the command center. ‹ › walks the same server-declared
+          ordering the campaign was opened from — "next" means next by the active sort — and the position readout in the
+          eyebrow names that ordering. A swap inside the loaded 50-row segment needs no segment fetch (the next
+          campaign's capability is already in hand); the detail itself is the same request a table selection issues,
+          rendered in place with the skeleton discipline, and served from cache when that campaign and window were viewed
+          before. Crossing a segment boundary fetches the baked sibling first. The jump field searches the estate-wide
+          display-name roster, which carries canonical-ordering positions: a jump lands in the canonical (spend)
+          ordering and the position readout renames accordingly — the browser never ranks. The selected reporting window
+          carries across swaps; the breadcrumb still returns to the portfolio exactly where it was left.</p>
+
+          <div class="narr-row" aria-label="Campaign insights: fixed purpose-typed slots; every card opens its insight view, every absence states its served reason">
+            <div class="narr-card">
+              <div class="purpose"><h4>Trend shape</h4><span class="tag observed">Observed</span></div>
+              <p>The +12.4% spend move is a steady ramp, not a spike: all seven days rose in sequence and no single day drove more than 17% of the increase.</p>
+              <span class="ev">Spend series at the resolved grain · silent below a 3% window delta</span>
+              <button class="open-insight" type="button">Open the insight view for Trend shape</button>
+            </div>
+            <div class="narr-card">
+              <div class="purpose"><h4>Efficiency drift</h4><span class="tag observed">Observed</span></div>
+              <p>Each incremental dollar bought less: spend grew 12.4% but purchases only 9.8%, and CPC rose 20.2%. Growth is real; marginal efficiency is falling.</p>
+              <span class="ev">Spend, purchases, CPC comparisons · silent when outcomes keep pace</span>
+              <button class="open-insight" type="button">Open the insight view for Efficiency drift</button>
+            </div>
+            <div class="narr-card quiet">
+              <div class="purpose"><h4>Funnel</h4><span class="tag quiet">Nothing noteworthy</span></div>
+              <p>A required funnel stage is unavailable or no supplied stage relationship is material.</p>
+              <span class="ev">The slot's own served silence condition — quiet by rule, never a generic fallback</span>
+              <button class="open-insight" type="button">Open the insight view for Funnel</button>
+            </div>
+            <div class="narr-card callout">
+              <div class="purpose"><h4>Next check</h4><span class="tag needs-data">Needs data</span></div>
+              <p>This insight requires a governed delivery follow-up read, which is not available for this view and window.</p>
+              <span class="ev">Could not evaluate — the callout names exactly what is missing</span>
+              <button class="open-insight" type="button">Open the insight view for Next check</button>
+            </div>
+          </div>
+
+          <!-- Campaign summary metrics (revision 2026-09-24.1): one uniform grid, two
+               rows of four equal-size tiles — no labeled section groups, no size tiers. -->
+          <div class="tiles detail-tiles" aria-label="Campaign summary metrics: eight equal tiles across two rows">
+              <div class="tile">
+                <span class="k">Purchases <span class="delta up">▲ 9.8%</span></span>
+                <div class="row"><span class="v">1,284</span></div>
+                <span class="prior">prior 1,169</span>
+                <button class="ask" type="button">Open the focus view for purchases</button>
+              </div>
+              <div class="tile">
+                <span class="k">ROAS (14d) <span class="delta up">▲ 4.2%</span></span>
+                <div class="row"><span class="v">0.94</span></div>
+                <span class="prior">prior 0.90</span>
+                <button class="ask" type="button">Open the focus view for ROAS</button>
+              </div>
+              <div class="tile">
+                <span class="k">Spend <span class="delta up">▲ 12.4%</span></span>
+                <div class="row"><span class="v">$48,214</span></div>
+                <span class="prior">prior $42,890</span>
+                <button class="ask" type="button">Open the focus view for spend</button>
+              </div>
+              <div class="tile">
+                <span class="k">Impressions <span class="delta down">▼ 3.1%</span></span>
+                <div class="row"><span class="v">2.41M</span></div>
+                <span class="prior">prior 2.49M</span>
+                <button class="ask" type="button">Open the focus view for impressions</button>
+              </div>
+              <div class="tile">
+                <span class="k">Clicks <span class="delta down">▼ 6.5%</span></span>
+                <div class="row"><span class="v">18,904</span></div>
+                <span class="prior">prior 20,218</span>
+                <button class="ask" type="button">Open the focus view for clicks</button>
+              </div>
+              <div class="tile">
+                <span class="k">CTR <span class="delta down">▼ 3.5%</span></span>
+                <div class="row"><span class="v">0.78%</span></div>
+                <span class="prior">prior 0.81%</span>
+                <button class="ask" type="button">Open the focus view for CTR</button>
+              </div>
+              <div class="tile">
+                <span class="k">CPC <span class="delta up">▲ 20.2%</span></span>
+                <div class="row"><span class="v">$2.55</span></div>
+                <span class="prior">prior $2.12</span>
+                <button class="ask" type="button">Open the focus view for CPC</button>
+              </div>
+              <div class="tile">
+                <span class="k">CPM <span class="delta up">▲ 9.6%</span></span>
+                <div class="row"><span class="v">$20.01</span></div>
+                <span class="prior">prior $18.26</span>
+                <button class="ask" type="button">Open the focus view for CPM</button>
+              </div>
+          </div>
+
+          <!-- ADR-072 · insufficient delivery card + evidence status sheet (state illustrations) -->
+          <div class="state-divider">
+            <strong>State illustration · insufficient delivery evidence.</strong> When the delivery cohort cannot be
+            served for this window, the five delivery tiles are replaced by one full-width card that says so in
+            plain words and opens the evidence status sheet — a refusal is a diagnosis, never a dead end.
+          </div>
+
+          <section aria-label="State illustration: the metric grid with insufficient delivery evidence">
+            <div class="tiles" style="grid-template-columns: 1fr;">
+              <div class="tile empty insuff">
+                <span class="k">Delivery evidence</span>
+                <div class="row"><span class="v">Not enough data for this window</span></div>
+                <span class="prior">Daily delivery rows are missing for 4 of the 7 days · each metric's status is one tap away</span>
+                <button class="ask" type="button">See why delivery evidence is insufficient</button>
+              </div>
+            </div>
+          </section>
+
+          <div class="scrim-demo" aria-label="State illustration: the evidence status sheet opened from the insufficient delivery card">
+          <div class="focus-dialog" role="dialog" aria-modal="true" aria-label="Delivery evidence status">
+            <div class="focus-head">
+              <div>
+                <p class="eyebrow">Evidence status · Northstar Home | Growth · Aug 10–16 · Ad-attributed</p>
+                <h2 style="font-size:17px;">Why delivery is not shown</h2>
+                <p class="defline">A delivery metric renders only when its evidence is complete for the current and the
+                prior window. Every line below is written by the server; the browser renders the words it is served.</p>
+              </div>
+              <button class="close" type="button" aria-label="Close evidence status sheet">✕</button>
+            </div>
+            <div class="status-list">
+              <div class="status-row">
+                <span class="m">Spend<span class="role">current · prior · daily</span></span>
+                <span class="pill good">Complete</span>
+                <span class="words">All 7 of 7 days present in both windows.</span>
+              </div>
+              <div class="status-row">
+                <span class="m">Impressions<span class="role">daily series</span></span>
+                <span class="pill warn">Missing days</span>
+                <span class="words"><strong>4 of 7 days have no delivery row</strong> (Aug 11–12, 14–15). The trend and
+                the summary need every day of the window, so this metric is withheld rather than charted with gaps.</span>
+              </div>
+              <div class="status-row">
+                <span class="m">Clicks<span class="role">daily series</span></span>
+                <span class="pill warn">Missing days</span>
+                <span class="words"><strong>4 of 7 days have no delivery row</strong> (Aug 11–12, 14–15).</span>
+              </div>
+              <div class="status-row">
+                <span class="m">CTR · CPC · CPM<span class="role">derived ratios</span></span>
+                <span class="pill">Follows components</span>
+                <span class="words">These render when impressions and clicks are complete; nothing separate is missing.</span>
+              </div>
+              <div class="status-row">
+                <span class="m">What fills this<span class="role">recovery</span></span>
+                <span class="pill good">Available now</span>
+                <span class="words">Delivery data for every day Aug 10–16 has not yet arrived for this campaign. The
+                <strong>1D window (Aug 16) is fully covered</strong> and can be opened now; the 7-day view fills when the
+                source delivers the missing days.</span>
+              </div>
+            </div>
+            <p class="footnote" style="padding-top:10px;">Opened from the insufficient card; the page dims and goes inert.
+            Escape or ✕ closes and returns focus to the card; compact layouts present the full-height sheet. Status
+            vocabulary is a closed server-owned contract — codes stay on the wire and in logs; users read served words.
+            The same sheet presents attribution insufficiency (for example, a campaign whose purchases have no covered
+            rows in this window).</p>
+          </div>
+          </div>
+
+          <!-- detail-flavor metric focus: ratio decomposition (state illustration) -->
+          <div class="scrim-demo" aria-label="State illustration: metric focus opened from the CPC tile of the campaign detail; the ratio decomposes into its components">
+          <div class="focus-dialog" role="dialog" aria-modal="true" aria-label="CPC focus view">
+            <div class="focus-head">
+              <div>
+                <p class="eyebrow">Metric focus · Northstar Home | Growth · Aug 10–16 · Ad-attributed</p>
+                <h2 style="font-size:17px;">CPC — cost per click</h2>
+                <p class="defline">Ad spend divided by clicks for the resolved window.</p>
+                <div style="display:flex; gap:10px; align-items:baseline; margin-top:6px;">
+                  <span class="big">$2.55</span>
+                  <span class="delta up">▲ 20.2%</span>
+                  <span class="prior" style="font-size:12px; color:var(--text-faint);">prior $2.12</span>
+                </div>
+              </div>
+              <div style="display:flex; gap:10px; align-items:center;">
+                <span class="metric-switch" aria-label="Switch focused metric">
+                  <button type="button" aria-label="Previous metric: clicks">‹</button>
+                  <span>Clicks · <span class="current">CPC</span> · CTR</span>
+                  <button type="button" aria-label="Next metric: CTR">›</button>
+                </span>
+                <button class="close" type="button" aria-label="Close focus view">✕</button>
+              </div>
+            </div>
+            <div class="focus-grid">
+              <div>
+                <svg width="100%" height="150" viewBox="0 0 620 150" preserveAspectRatio="none" role="img"
+                     aria-label="Daily CPC, Aug 10 to 16, rising from 2.18 to 2.87 dollars; prior week flat near 2.12.">
+                  <g stroke="var(--line)" stroke-width="1">
+                    <line x1="40" y1="20" x2="600" y2="20"/><line x1="40" y1="65" x2="600" y2="65"/><line x1="40" y1="110" x2="600" y2="110"/>
+                  </g>
+                  <g fill="var(--text-faint)" font-size="10">
+                    <text x="6" y="24">$3.0</text><text x="6" y="69">$2.5</text><text x="6" y="114">$2.0</text>
+                    <text x="62" y="140">Aug 10</text><text x="300" y="140">13</text><text x="560" y="140">16</text>
+                  </g>
+                  <polyline points="70,104 155,102 240,105 325,103 410,101 495,104 580,102"
+                            fill="none" stroke="var(--chart-prior)" stroke-width="2" stroke-dasharray="6 5"/>
+                  <polyline points="70,98 155,92 240,84 325,74 410,58 495,40 580,28"
+                            fill="none" stroke="var(--accent)" stroke-width="2.5"/>
+                </svg>
+                <div class="legend">
+                  <span><i></i>Current</span>
+                  <span><i class="prior"></i>Prior week</span>
+                </div>
+                <div class="facts" aria-label="Server-computed facts about this metric in this window">
+                  <span class="fact"><span class="f-k">Peak day</span><span class="f-v">Aug 16 · $2.87</span></span>
+                  <span class="fact"><span class="f-k">Trough day</span><span class="f-v">Aug 10 · $2.18</span></span>
+                  <span class="fact"><span class="f-k">Largest day move</span><span class="f-v">+$0.14 <span class="sub-note">Aug 14→15</span></span></span>
+                  <span class="fact"><span class="f-k">Window value</span><span class="f-v">$2.55</span></span>
+                </div>
+              </div>
+              <div class="related drivers" aria-label="What drove the change, and the metric's own interpretation">
+                <h5>Drivers · a ratio moves by its components</h5>
+                <div class="rel"><span class="r-name">Spend (numerator)</span><span><span class="r-val">$48.2K</span> <span class="delta up">▲ 12.4%</span></span></div>
+                <div class="rel"><span class="r-name">Clicks (denominator)</span><span><span class="r-val">18,904</span> <span class="delta down">▼ 6.5%</span></span></div>
+                <div class="rel"><span class="r-name">CTR (companion)</span><span><span class="r-val">0.78%</span> <span class="delta down">▼ 3.5%</span></span></div>
+                <div class="narr-card" style="margin-top:10px;">
+                  <div class="purpose"><h4>Interpretation</h4><span class="tag observed">Observed</span></div>
+                  <p>CPC rose all seven days and fastest after Aug 13. The driver is arithmetic: spend +12.4% while clicks fell 6.5% — more was paid into fewer clicks.</p>
+                  <span class="ev">metric-focus v2 · registry-active · cached against this artifact revision</span>
+                </div>
+                <div class="ask-row" style="margin-top:8px;">
+                  <button class="ask-chip" type="button">Open the focus view for clicks</button>
+                  <button class="ask-chip" type="button">Ask: how do I lower CPC here?</button>
+                </div>
+              </div>
+            </div>
+            <p class="footnote" style="padding-top:10px;">The detail surface decomposes ratios into their declared numerator and
+            denominator movements; the portfolio surface decomposes per campaign; retail decomposes per product. Same dialog,
+            same behavior — the shared metric-focus contract owns the composition.</p>
+          </div>
+          </div>
+
+          <!-- detail chart + exact values -->
+          <div class="panel" style="margin-top:14px;">
+            <div class="panel-head">
+              <h3>Spend · by day · Aug 10–16</h3>
+              <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <div class="seg" role="group" aria-label="Metric">
+                  <button type="button" aria-pressed="true">Spend</button>
+                  <button type="button" aria-pressed="false">ROAS</button>
+                  <button type="button" aria-pressed="false">Purchases</button>
+                  <button type="button" aria-pressed="false">CTR</button>
+                </div>
+                <div class="seg" role="group" aria-label="Grain, as the server declares valid">
+                  <button type="button" aria-pressed="true">Daily</button>
+                  <button type="button" disabled title="Weekly needs a 14-day window or longer">Weekly</button>
+                </div>
+              </div>
+            </div>
+            <svg width="100%" height="230" viewBox="0 0 960 230" preserveAspectRatio="none" role="img"
+                 aria-label="Daily spend, Aug 10 to 16, against the prior week overlaid. Current week rises from 5.9 to 8.1 thousand dollars; prior week was flat near 6.1 thousand.">
+              <g stroke="var(--line)" stroke-width="1">
+                <line x1="50" y1="30" x2="940" y2="30"/><line x1="50" y1="85" x2="940" y2="85"/>
+                <line x1="50" y1="140" x2="940" y2="140"/><line x1="50" y1="195" x2="940" y2="195"/>
+              </g>
+              <g fill="var(--text-faint)" font-size="11">
+                <text x="12" y="34">$9K</text><text x="12" y="89">$7K</text><text x="12" y="144">$5K</text><text x="12" y="199">$3K</text>
+                <text x="80" y="220">Aug 10</text><text x="215" y="220">11</text><text x="350" y="220">12</text>
+                <text x="485" y="220">13</text><text x="620" y="220">14</text><text x="755" y="220">15</text><text x="890" y="220">16</text>
+              </g>
+              <polyline points="90,140 225,135 360,143 495,138 630,133 765,139 900,135"
+                        fill="none" stroke="var(--chart-prior)" stroke-width="2" stroke-dasharray="6 5"/>
+              <polyline points="90,145 225,131 360,121 495,105 630,88 765,66 900,50"
+                        fill="none" stroke="var(--accent)" stroke-width="2.5"/>
+              <g fill="var(--accent)">
+                <circle cx="90" cy="145" r="3.5"/><circle cx="225" cy="131" r="3.5"/><circle cx="360" cy="121" r="3.5"/>
+                <circle cx="495" cy="105" r="3.5"/><circle cx="630" cy="88" r="3.5"/><circle cx="765" cy="66" r="3.5"/><circle cx="900" cy="50" r="3.5"/>
+              </g>
+            </svg>
+            <div class="legend">
+              <span><i></i>Aug 10–16 (current)</span>
+              <span><i class="prior"></i>Aug 3–9 (prior, server-aligned)</span>
+            </div>
+          </div>
+
+          <!-- designed partial-coverage state (state illustration) -->
+          <div class="panel" style="margin-top:12px;">
+            <div class="panel-head">
+              <h3 style="font-size:13.5px;">State illustration · window partially covered</h3>
+              <span class="pill warn">2 of 14 days unpublished</span>
+            </div>
+            <svg width="100%" height="110" viewBox="0 0 960 110" preserveAspectRatio="none" role="img"
+                 aria-label="Fourteen-day window where the first two days have no published data, shown as a hatched region; the remaining twelve days chart normally.">
+              <defs>
+                <pattern id="hatch" width="8" height="8" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
+                  <rect width="8" height="8" fill="transparent"/>
+                  <line x1="0" y1="0" x2="0" y2="8" stroke="var(--line)" stroke-width="3"/>
+                </pattern>
+              </defs>
+              <rect x="50" y="10" width="128" height="80" fill="url(#hatch)" stroke="var(--line)" stroke-dasharray="4 4" rx="6"/>
+              <text x="60" y="55" fill="var(--text-faint)" font-size="11">No published data</text>
+              <text x="60" y="70" fill="var(--text-faint)" font-size="11">Aug 3–4</text>
+              <polyline points="190,72 255,68 320,71 385,66 450,60 515,63 580,55 645,49 710,42 775,34 840,28 905,22"
+                        fill="none" stroke="var(--accent)" stroke-width="2.5"/>
+            </svg>
+            <p class="footnote" style="padding-top:8px;">A window that reaches beyond published coverage is never a broken page:
+            the covered days chart normally, the gap is drawn and dated, totals and deltas state they cover 12 of 14 days,
+            and insights read only the covered span.</p>
+          </div>
+
+          <!-- exact values behind the chart -->
+          <div class="panel" style="margin-top:12px;">
+            <div class="panel-head"><h3>Values · by day · Aug 10–16</h3><span class="pill">Exact server figures behind the chart</span></div>
+            <table class="data-table">
+              <thead>
+                <tr><th scope="col">Metric</th><th scope="col">Aug 10</th><th scope="col">11</th><th scope="col">12</th><th scope="col">13</th><th scope="col">14</th><th scope="col">15</th><th scope="col">16</th><th scope="col">Window</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Spend</td><td>$5.9K</td><td>$6.3K</td><td>$6.6K</td><td>$7.0K</td><td>$7.4K</td><td>$7.9K</td><td>$8.1K</td><td>$48.2K</td></tr>
+                <tr><td>Spend · prior week</td><td>$6.1K</td><td>$6.2K</td><td>$6.0K</td><td>$6.1K</td><td>$6.2K</td><td>$6.1K</td><td>$6.2K</td><td>$42.9K</td></tr>
+                <tr><td>Purchases</td><td>158</td><td>171</td><td>176</td><td>184</td><td>192</td><td>198</td><td>205</td><td>1,284</td></tr>
+                <tr><td>CTR</td><td>0.81%</td><td>0.80%</td><td>0.79%</td><td>0.78%</td><td>0.77%</td><td>0.77%</td><td>0.76%</td><td>0.78%</td></tr>
+              </tbody>
+            </table>
+            <p class="footnote">The title, columns, and grain word all derive from the resolved window and its
+            server-declared display grain. Nothing on this page says "daily" unless the server resolved a daily grain.</p>
+          </div>
+
+          <!-- qualification + assistant hooks -->
+          <div class="quality" aria-label="Evidence qualification">
+            <span class="pill good">Coverage complete · Aug 10–16</span>
+            <span class="pill">Source business days, UTC</span>
+            <span class="pill warn">Last load Aug 29 · older than threshold ⓘ</span>
+            <span class="pill">No suppressed rows</span>
+          </div>
+          <div class="ask-row" aria-label="Hand this scope to the assistant">
+            <button class="ask-chip" type="button">Ask: why is CPC rising?</button>
+            <button class="ask-chip" type="button">Ask: compare this campaign to the portfolio</button>
+            <button class="ask-chip" type="button">Ask: what changed week over week?</button>
+          </div>
+        </main>
+      </div>
+    </div>
+  </body>
+</html>

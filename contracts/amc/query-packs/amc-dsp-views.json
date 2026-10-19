@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "packId": "amc-dsp-views",
+  "packVersion": 1,
+  "contractId": "amc-dsp-views",
+  "sourcePackId": "amc-dsp-views",
+  "queryFile": "amc-dsp-views.sql",
+  "accessTier": "standard",
+  "liveValidation": "required",
+  "maxResultBytes": 20000000,
+  "executionOptions": {
+    "timeWindowType": "EXPLICIT",
+    "timeWindowTimeZone": "UTC",
+    "filteredMetricsDiscriminatorColumn": "rows_suppressed",
+    "filteredReasonColumn": "suppression_reason",
+    "distinctUserCountColumn": "distinct_user_count"
+  },
+  "safetyBlockers": [],
+  "outputColumns": [
+    "event_date_utc",
+    "campaign_id_string",
+    "campaign_country",
+    "viewable_impressions",
+    "measurable_impressions",
+    "unmeasurable_viewable_impressions",
+    "time_window_start",
+    "time_window_end",
+    "rows_suppressed",
+    "suppression_reason",
+    "distinct_user_count"
+  ]
+}

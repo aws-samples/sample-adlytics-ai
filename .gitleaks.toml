@@ -1,0 +1,63 @@
+# Allowlist convention (tests/unit/test_gitleaks_allowlist_convention.py enforces it):
+# - one [[allowlists]] entry per fictional literal;
+# - a `description` naming the fixture's purpose;
+# - `targetRules` naming the exact rule the literal trips, and only that rule;
+# - `condition = "AND"`, so both the path and the literal must match;
+# - one `paths` regex anchored ^...$ to exactly one repository file;
+# - one `regexes` entry anchored ^...$ to the exact literal, which that file contains, unless the
+#   description says "history only": the literal left the file but stays in pushed history, which
+#   a full-history scan reads;
+# - never a path-only or regex-only allowlist, which would hide every finding in a file, or one
+#   literal in every file.
+title = "Adlytics repository-specific Gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Synthetic campaign_key-000 in the suppression refusal integration test (history only)"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^tests/integration/test_suppression_refusal_scope\.py$''']
+regexes = ['''^campaign_key-000$''']
+
+[[allowlists]]
+description = "Synthetic campaign_key-001 in the suppression refusal integration test (history only)"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^tests/integration/test_suppression_refusal_scope\.py$''']
+regexes = ['''^campaign_key-001$''']
+
+[[allowlists]]
+description = "Synthetic campaign_key-001 in the every-metric integration test"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^tests/integration/test_every_metric_executes\.py$''']
+regexes = ['''^campaign_key-001$''']
+[[allowlists]]
+description = "Keyword argument counts=FREQUENCY_COUNTS (a Python constant name) in the BO probe criteria"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^validation/bo_probe_criteria\.py$''']
+regexes = ['''^counts=FREQUENCY_COUNTS$''']
+
+[[allowlists]]
+description = "Synthetic fictional-key-000 in the allowlist-convention unit test at c8b9aac4, since respelled (history only)"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^tests/unit/test_gitleaks_allowlist_convention\.py$''']
+regexes = ['''^fictional-key-000$''']
+
+[[allowlists]]
+description = "Synthetic fictional-key-001 in the allowlist-convention unit test at c8b9aac4, since respelled (history only)"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^tests/unit/test_gitleaks_allowlist_convention\.py$''']
+regexes = ['''^fictional-key-001$''']
+
+[[allowlists]]
+description = "Synthetic fictional-key-002 in the allowlist-convention unit test at c8b9aac4, since respelled (history only)"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^tests/unit/test_gitleaks_allowlist_convention\.py$''']
+regexes = ['''^fictional-key-002$''']

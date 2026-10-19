@@ -1,0 +1,57 @@
+{
+  "name": "adlytics-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Production Next.js static export for governed presentation pages.",
+  "engines": {
+    "node": ">=24.0.0 <25.0.0",
+    "npm": ">=11.10.0"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build && node scripts/externalise-inline-scripts.mjs && node scripts/check-export-routes.mjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "next": "16.3.8",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-markdown": "10.1.0",
+    "remark-gfm": "4.0.1"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "@playwright/test": "1.62.1",
+    "@testing-library/dom": "10.4.1",
+    "@testing-library/react": "16.3.3",
+    "@testing-library/user-event": "14.6.6",
+    "@types/node": "24.13.3",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "axe-core": "4.13.0",
+    "eslint": "10.8.1",
+    "eslint-config-next": "16.3.1",
+    "jsdom": "30.0.1",
+    "typescript": "5.9.3",
+    "vitest": "4.1.11"
+  },
+  "overrides": {
+    "@next/eslint-plugin-next": {
+      "fast-glob": "npm:tinyglobby@0.2.17"
+    },
+    "sharp": "0.35.5",
+    "source-map-js": "1.2.2"
+  },
+  "//pins": {
+    "no component library": "Deliberate. The production shell uses semantic React components and CSS variables without a runtime UI dependency.",
+    "react-markdown": "10.1.0 with remark-gfm 4.0.1 (owner-approved, ADR-083): renders the streamed Markdown answer as React elements from a syntax tree, so raw HTML is never rendered and the ADR-082 lint rule stays in force. Both are ESM-only and peer on React >=18.",
+    "typescript": "5.9.3 to match infra/, where ts-jest forbids 7.x.",
+    "overrides": "@next/eslint-plugin-next's fast-glob 3.3.1 is aliased to tinyglobby 0.2.17, already in the lockfile, so fast-glob, micromatch and braces 3.0.3 (GHSA-vfj7-8cjw-p6xm, no patched release) leave the lockfile (A-CVE-BRACES-DEV-001). The plugin calls it only when ESLint settings.next.rootDir is set, which test/eslint-config.test.ts keeps unset. Drop the alias once a patched braces ships. sharp 0.35.5 (GHSA-wq5f-xc86-pv6w, O-ASH-CVE-SHARP-001) and source-map-js 1.2.2 (GHSA-68fv-2mgg-jv7q, O-ASH-CVE-SOURCEMAP-001) are the first patched versions; sharp is next's optional dependency and unused by the unoptimized static export, and source-map-js is build-time CSS tooling. Drop each once every parent's range resolves to a patched version on its own.",
+    "next": "16.3.8 is the first patched version for GHSA-cjq9-62q9-8jv4 and the five lower-rated advisories against 16.3.6 (O-ASH-CVE-NEXT-001).",
+    "@types/node": "24.x to match the Node 24 LTS target.",
+    "node": "Engine pinned to the Node 24 LTS line, enforced by engine-strict in .npmrc so a wrong runtime fails the install rather than warning. 26.x is Current, not LTS, and infra-style-cdk bans targeting it. 20.x is end-of-life."
+  }
+}

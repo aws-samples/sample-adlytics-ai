@@ -1,0 +1,154 @@
+# amc-dsp-impressions — DSP delivery and spend at campaign × day.
+#
+# The contract that makes ad_spend a cross-platform figure rather than a sponsored-ads-only
+# one. Until this exists, "what did I spend on advertising" silently means "on sponsored
+# ads", which is a wrong answer that looks right.
+#
+# THREE DSP CONTRACTS, NOT ONE, and the reason is in the source rather than in taste:
+# dsp_impressions has NO clicks column and dsp_clicks has NO impressions column [verified].
+# dsp_views is a third grain again — one row per view event, where an impression that is
+# both measurable and viewable produces two rows. Three datasets, one target grain,
+# combined by UNION ALL with zero-filled columns and then summed. ADR-022.
+#
+# MARKETPLACE COMES FROM campaign_country, per ADR-022. No DSP table carries
+# marketplace_name. campaign_country is chosen over iso_country_code because it is the
+# attribute of the SPEND — money is spent by a campaign, and a campaign is set up against
+# a marketplace — whereas iso_country_code is where the viewer happened to be, and it does
+# not exist on dsp_views at all. It resolves through dim_marketplace.country_code, and an
+# unresolvable lookup quarantines the partition.
+
+contract_id: amc-dsp-impressions
+contract_version: 1
+
+source_system: amc
+source_dataset: dsp_impressions
+source_format: csv
+
+target_table: fct_ad_exposure
+
+source_tables:
+  - dsp_impressions
+
+grain:
+  - date_key
+  - channel_key
+  - campaign_key
+  - ad_product_key
+  - marketplace_key
+  - rows_suppressed
+
+partition_keys:
+  - marketplace_key
+  - date_key
+
+measurement_basis: ad_attributed
+source_timezone: UTC
+ecosystem_key: amazon
+platform_key: amazon_ads
+
+# DSP traffic tables are not documented as restating, but the 48-hour availability SLA
+# means a window queried too early is incomplete rather than wrong. Matched to the other
+# exposure contracts so a UNION ALL never pairs a re-pulled table with a stale one.
+restatement_window_days: 30
+staleness_threshold_hours: 72
+
+grain_feasibility_note: >
+  Every output column is NONE or LOW, so the bar is 2 distinct users per row. impressions
+  and total_cost are NONE; campaign_id_string, campaign_country, impression_date_utc and
+  currency_iso_code are LOW. impression_dt_utc (MEDIUM) is deliberately not selected;
+  impression_date_utc gives the same day grain at LOW, and for an hourly grain the column
+  is impression_dt_hour_utc, also LOW — never a truncation of the MEDIUM timestamp.
+
+suppression:
+  discriminator_column: rows_suppressed
+  reason_column: suppression_reason
+  distinct_user_count_column: distinct_user_count
+
+fields:
+  # --- grain -----------------------------------------------------------------
+  - source_path: impression_date_utc
+    target_column: date_key
+    # LOW. Note the prefix: DSP tables use impression_*, sponsored_ads_traffic uses
+    # event_*, and dsp_views uses event_* again. The names do not follow a convention
+    # across tables and must be pinned as literals per table.
+
+  - target_column: channel_key
+    target_type: string
+    literal_value: amazon_dsp
+    # A LITERAL, because DSP tables carry no ad_product_type column at all. AMC's
+    # convention is that a NULL ad_product_type on the attributed-events tables MEANS DSP,
+    # so on a DSP-only table there is nothing to read — the channel is knowledge we hold.
+    # Declaring it makes that visible rather than leaving the pipeline to infer it.
+
+  - target_column: ad_product_key
+    target_type: string
+    literal_value: amazon_dsp
+    # Same reasoning. DSP is one ad product here; line_item is the finer split and is not
+    # in this fact's grain.
+
+  - target_column: channel_group_key
+    target_type: string
+    literal_value: display
+
+  - source_path: campaign_id_string
+    target_column: campaign_key
+    # On DSP both campaign_id and campaign_id_string hold identical values, but the
+    # 18-digit numeric form does not survive JSON integer precision. The string form is
+    # also the only choice that is correct on sponsored ads, so using it everywhere keeps
+    # the UNION ALL keyed consistently.
+
+  - source_path: campaign_country
+    target_column: marketplace_key
+    # Resolved against dim_marketplace on the country_code namespace, not the
+    # marketplace_name namespace the sponsored-ads contract uses. The conformed dimension
+    # absorbs the difference, which is what a conformed dimension is for.
+    #
+    # Whether campaign_country is populated for every DSP campaign is [unverified] — the
+    # page carries no note. Asserted at load rather than assumed: an unresolvable value
+    # quarantines the partition.
+
+  # --- measures --------------------------------------------------------------
+  - source_path: impressions
+    target_column: impressions
+
+  - source_path: total_cost
+    target_column: spend
+    scale_divisor: 100000
+    currency_column: currency_code
+    # MILLICENTS, ÷1e5 — and this is the divisor trap the whole per-column rule exists for.
+    # sponsored_ads_traffic.spend is MICROCENTS, ÷1e8. Same canonical column, same fact,
+    # divisors three orders of magnitude apart. A per-table or per-platform divisor makes
+    # every DSP fee figure wrong by exactly 1000x, and fee-inclusive ROAS still reconciles,
+    # so the headline looks correct while the decomposition is garbage.
+    #
+    # Fee-inclusive, which is the ADR-017 default for ad_spend.
+
+  - source_path: currency_iso_code
+    target_column: currency_code
+    # One currency column for the fact (ADR-021). This table supplies one, so there is
+    # nothing to assert agreement between.
+
+  # --- suppression -----------------------------------------------------------
+  - source_path: values_removed
+    target_column: rows_suppressed
+    target_type: boolean
+    from_extraction_option: true
+
+  # filteredReasonColumn and distinctUserCountColumn are still REQUESTED — the suppression block
+  # above names them, the delivery carries them, and check_header proves they arrived. They are
+  # deliberately NOT mapped into fct_ad_exposure, which four contracts write.
+  #
+  # Neither has a single value at a conformed row. The reason names its own data source in its own
+  # format — `97 'dsp_impressions' users < 100 required` — so three deliveries assembling one row
+  # carry three different reasons. The count is capped per query by the strictest output column,
+  # and AMC blanks it on a row it merged. Mapping either produced erasure rather than
+  # supersession, because all three DSP contracts stamp the same channel literal and so withdraw
+  # over identical rows. See ADR-033 and G-28.
+  #
+  # The per-row, per-dataset detail stays in the retained raw delivery, already split by dataset.
+
+tags:
+  - phase-1
+  - amc
+  - dsp
+  - exposure

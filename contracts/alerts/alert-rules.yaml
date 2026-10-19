@@ -1,0 +1,28 @@
+# Governed alert rules (ADR-108 decision 3, alerts-declined path; Scorecard LLD "Also changed").
+# Each rule names one insight contract and the finding it reads, a scope, a direction, a
+# threshold (in the finding's own unit) at or above the contract's materiality at its horizon,
+# and that horizon. Loading fails when any rule contradicts its contract. Customer-editable
+# thresholds are out of scope. Thresholds below are proposals for owner ratification.
+version: 1
+rules:
+  - id: dsp-roas-drop
+    insight_contract: network-scorecard
+    finding: channel-roas-mover
+    scope: {ecosystem: amazon, platform: amazon_ads, channel: amazon_dsp}
+    direction: down
+    threshold: "5"
+    horizon: tactical-review
+  - id: dsp-spend-spike
+    insight_contract: network-scorecard
+    finding: channel-spend-mover
+    scope: {ecosystem: amazon, platform: amazon_ads, channel: amazon_dsp}
+    direction: up
+    threshold: "20"
+    horizon: tactical-review
+  - id: sponsored-products-roas-drop
+    insight_contract: network-scorecard
+    finding: channel-roas-mover
+    scope: {ecosystem: amazon, platform: amazon_ads, channel: amazon_sponsored_products}
+    direction: down
+    threshold: "5"
+    horizon: tactical-review

@@ -1,0 +1,12 @@
+{
+  "$comment": "HAND-BUILT. One delivery carrying a fully-nulled row \u2014 the withheld residual AMC returns for a grain with one distinct user. A generated fixture cannot produce it. See ADR-034 and G-31.",
+  "source_system": "amc",
+  "source_scope": {"namespace": "amc.entity", "value": "fictional-trap-amc-entity"},
+  "source_dataset": "dsp_impressions",
+  "marketplace": "ATVPDKIKX0DER",
+  "option_set": {},
+  "period_start": "2026-08-25",
+  "period_end": "2026-08-25",
+  "source_watermark": "2026-08-25",
+  "retrieved_at": "2026-08-28T06:00:00Z"
+}

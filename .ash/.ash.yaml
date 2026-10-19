@@ -1,0 +1,116 @@
+# SPDX-License-Identifier: MIT-0
+#
+# ASH configuration for scans of this repository (ASH reads <source>/.ash/.ash.yaml).
+#
+# Only suppressions live here, each for a finding that is not a defect and cannot carry an inline
+# marker: JSON has no comment syntax, generated files are rewritten by their generators, and a
+# digest-pinned or fenced line would change meaning if a comment were added. Every entry cites its
+# ID in the security findings register and the published dispositions (docs/security-dispositions.md).
+# Inline markers (detect-secrets `pragma: allowlist`, bandit `nosec`, `nosemgrep`) cover the rest,
+# except bandit tests outside the publication gate's reviewed nosec set, which are scoped here.
+#
+# Template scans read `templates.ash.yaml` instead: infra/scripts/export-scan-templates.ts writes it
+# to <export-dir>/.ash/.ash.yaml with line-bound secret suppressions appended.
+project_name: adlytics-ai
+global_settings:
+  suppressions:
+    # A-ENTROPY-IDENTIFIER-001: SHA-256 digests, trace IDs and ULIDs in fixtures and generated
+    # JSON. The byte-oracle fixtures carry synthetic DynamoDB {"S": ...} digests.
+    - path: tests/fixtures/stage1-dynamodb-byte-oracle/**/*.json
+      rule_id: SECRET-HEX-HIGH-ENTROPY-STRING
+      reason: "A-ENTROPY-IDENTIFIER-001: synthetic SHA-256 digests in byte-oracle fixtures, not credentials"
+    - path: tests/fixtures/stage1-dynamodb-byte-oracle/**/*.json
+      rule_id: SECRET-BASE64-HIGH-ENTROPY-STRING
+      reason: "A-ENTROPY-IDENTIFIER-001: synthetic S3 prefixes and ULID references in byte-oracle fixtures"
+    - path: tests/fixtures/stage1-dynamodb-byte-oracle/**/*.json
+      rule_id: CKV_SECRET_6
+      reason: "A-ENTROPY-IDENTIFIER-001: fixture client_request_token values, synthetic identifiers"
+    - path: tests/fixtures/bake-certification/*.json
+      rule_id: SECRET-HEX-HIGH-ENTROPY-STRING
+      reason: "A-ENTROPY-IDENTIFIER-001: certification fixture digests"
+    - path: frontend/test/fixtures/*.json
+      rule_id: SECRET-HEX-HIGH-ENTROPY-STRING
+      reason: "A-ENTROPY-IDENTIFIER-001: artifact_revision and sha256 digests in served-artifact fixtures"
+    # O-ASH-SECRET-SCOPE-001: every secret suppression below this line names one exact file outside
+    # the fixture trees, never a glob, and tests/unit/test_ash_secret_suppression_scope.py accounts
+    # for every hex value in it from the file's own source. It governs any entry whose rule_id ASH
+    # could match to a secret rule, globs and an absent rule_id included. A pasted value, a glob,
+    # or a new path fails that test.
+    # A-ENTROPY-IDENTIFIER-001: generated design-manifest digests, each the SHA-256 of the
+    # committed file its sibling `path` names. JSON cannot carry a marker.
+    - path: docs/ui/generated/design-manifest.json
+      rule_id: SECRET-HEX-HIGH-ENTROPY-STRING
+      reason: "A-ENTROPY-IDENTIFIER-001: design-manifest file digests, bound by test_ash_secret_suppression_scope"
+    # A-ENTROPY-IDENTIFIER-001: generated contract digests; a marker would be rewritten by the
+    # generator (make generate-execution-graph-protocol, make generate-alarm-destinations).
+    - path: infra/lib/generated/alarm-destinations.ts
+      rule_id: SECRET-HEX-HIGH-ENTROPY-STRING
+      reason: "A-ENTROPY-IDENTIFIER-001: generated CONTRACT_DIGEST, bound by test_ash_secret_suppression_scope"
+    - path: infra/lib/generated/execution-graph-protocol.ts
+      rule_id: SECRET-HEX-HIGH-ENTROPY-STRING
+      reason: "A-ENTROPY-IDENTIFIER-001: generated CONTRACT_DIGEST, bound by test_ash_secret_suppression_scope"
+    - path: src/domain/operations/generated_alarm_destinations.py
+      rule_id: SECRET-HEX-HIGH-ENTROPY-STRING
+      reason: "A-ENTROPY-IDENTIFIER-001: generated CONTRACT_DIGEST, bound by test_ash_secret_suppression_scope"
+    - path: src/domain/operations/generated_execution_graphs.py
+      rule_id: SECRET-HEX-HIGH-ENTROPY-STRING
+      reason: "A-ENTROPY-IDENTIFIER-001: generated CONTRACT_DIGEST, bound by test_ash_secret_suppression_scope"
+    # A-ENTROPY-IDENTIFIER-001: the append-only deep-input revision registry, one SHA-256 per entry.
+    - path: src/adapters/deep_input_revision.py
+      rule_id: SECRET-HEX-HIGH-ENTROPY-STRING
+      reason: "A-ENTROPY-IDENTIFIER-001: registry code-closure digests, bound by test_ash_secret_suppression_scope"
+    # A-ENTROPY-IDENTIFIER-001: a synthetic member inside a fenced constructor vector, where a
+    # comment would render as part of the vector.
+    - path: docs/capabilities/load-path/write-discipline.md
+      rule_id: SECRET-HEX-HIGH-ENTROPY-STRING
+      reason: "A-ENTROPY-IDENTIFIER-001: synthetic vector members and digests, bound by test_ash_secret_suppression_scope"
+    # O-ASH-BANDIT-NOSEC-001: bandit tests outside the publication gate's reviewed nosec set
+    # (scripts/check-publication-boundary.py REVIEWED_BANDIT_IDS), scoped to the one file each.
+    - path: scripts/lambda_layer_packaging.py
+      rule_id: B302
+      reason: "O-ASH-BANDIT-NOSEC-001: marshal.loads on the build's own freshly compiled .pyc"
+    - path: validation/probe_ingestion_traceability_gate.py
+      rule_id: B314
+      reason: "O-ASH-BANDIT-NOSEC-001: ElementTree parses the runner's own pytest JUnit output"
+    - path: tests/unit/test_run_fresh_election_timing.py
+      rule_id: B108
+      reason: "O-ASH-BANDIT-NOSEC-001: a /tmp literal the test expects the code under test to refuse"
+    # A-TRIVY-LGPL-001: licence classifications of sharp's optional platform binaries, not
+    # vulnerabilities. No LGPL binary is redistributed and the static export does not use sharp.
+    - path: frontend/package-lock.json
+      rule_id: "@img/sharp-libvips-*:LGPL-3.0-or-later"
+      reason: "A-TRIVY-LGPL-001: licence classification of an unused optional sharp binary"
+    - path: frontend/package-lock.json
+      rule_id: "@img/sharp-wasm32:Apache-2.0 AND LGPL-3.0-or-later AND MIT"
+      reason: "A-TRIVY-LGPL-001: licence classification of an unused optional sharp binary"
+    - path: frontend/package-lock.json
+      rule_id: "@img/sharp-win32-*:Apache-2.0 AND LGPL-3.0-or-later"
+      reason: "A-TRIVY-LGPL-001: licence classification of an unused optional sharp binary"
+    # O-ASH-LICENSE-INFO-001: informational permissive-licence notices from trivy, not findings.
+    - path: "*package-lock.json"
+      rule_id: "*:MIT"
+      reason: "O-ASH-LICENSE-INFO-001: informational licence notice"
+    - path: "*package-lock.json"
+      rule_id: "*:(MIT OR GPL-3.0-or-later)"
+      reason: "O-ASH-LICENSE-INFO-001: informational licence notice (dual licence, MIT taken)"
+    - path: "*package-lock.json"
+      rule_id: "*:Apache-2.0"
+      reason: "O-ASH-LICENSE-INFO-001: informational licence notice"
+    - path: "*package-lock.json"
+      rule_id: "*:ISC"
+      reason: "O-ASH-LICENSE-INFO-001: informational licence notice"
+    - path: "*package-lock.json"
+      rule_id: "*:0BSD"
+      reason: "O-ASH-LICENSE-INFO-001: informational licence notice"
+    - path: "*package-lock.json"
+      rule_id: "*:BSD-3-Clause"
+      reason: "O-ASH-LICENSE-INFO-001: informational licence notice"
+    - path: "*package-lock.json"
+      rule_id: "*:BlueOak-1.0.0"
+      reason: "O-ASH-LICENSE-INFO-001: informational licence notice"
+    - path: "*package-lock.json"
+      rule_id: "*:CC-BY-4.0"
+      reason: "O-ASH-LICENSE-INFO-001: informational licence notice"
+    - path: "Loose%20File%20License%28s%29"
+      rule_id: ":Copyright"
+      reason: "O-ASH-LICENSE-INFO-001: informational loose-file copyright notice"

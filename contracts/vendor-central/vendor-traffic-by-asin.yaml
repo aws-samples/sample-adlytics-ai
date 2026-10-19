@@ -1,0 +1,127 @@
+# vendor-traffic-by-asin — glance views at ASIN grain.
+#
+# The adapter from GET_VENDOR_TRAFFIC_REPORT's `trafficByAsin[]` array into
+# fct_product_page_views. Completes the denominator of conversion_rate_retail, which is
+# the one retail funnel metric the sales report cannot supply on its own.
+#
+# glanceViews is the ONLY metric in this report [verified]. That is not an omission in our
+# mapping — the report has one measure and nothing else.
+#
+# THE OPTION SET IS DIFFERENT FROM THE SALES REPORT, and this is the trap. Traffic accepts
+# only reportPeriod: there is NO distributorView and NO sellingProgram [verified]. So this
+# contract must not carry either column, and the consequence reaches the semantic layer —
+# conversion rate is only coherent under MANUFACTURING, because a SOURCING sales pull has
+# no traffic counterpart to be rate-ed against.
+
+contract_id: vendor-traffic-by-asin
+contract_version: 1
+
+source_system: vendor_central
+source_dataset: GET_VENDOR_TRAFFIC_REPORT
+# Two sibling arrays at two grains, same as the sales report. This contract consumes only
+# trafficByAsin[]; trafficAggregate[] is vendor-traffic-reported-total.
+source_format: json_dual_array
+
+target_table: fct_product_page_views
+
+# No distributor_view or selling_program: this report has neither option, so adding them
+# would invent dataset identity the source does not carry.
+grain:
+  - amazon_asin
+  - date_key
+  - marketplace_key
+
+partition_keys:
+  - marketplace_key
+  - date_key
+  - report_options_hash
+
+measurement_basis: retail_actual
+
+# PST always, irrespective of marketplace or vendor location. Whether it observes daylight
+# saving is [unverified] — the docs never say — so no fixed offset is encoded.
+source_timezone: PST
+ecosystem_key: amazon
+platform_key: amazon_retail
+
+# Glance views are not net of anything, so this report has less reason to restate than
+# sales. But lastUpdatedDate exists on it for the same reason it exists on the other four,
+# and the load must not assume otherwise. Matched to the sales window so a conversion rate
+# never pairs a restated numerator with a stale denominator.
+restatement_window_days: 45
+
+# Non-Saturday daily periods take 72h. 96 allows one missed delivery before alarming.
+staleness_threshold_hours: 96
+
+# No AMC tables, so no threshold rules and no suppression columns. Vendor Central has no
+# privacy-threshold mechanism at all: a null here is never a withholding.
+source_tables: []
+
+fields:
+  # --- keys -----------------------------------------------------------------
+  - source_path: trafficByAsin[].asin
+    target_column: amazon_asin
+    target_type: string
+    # Joins dim_product on (amazon_asin, marketplace_key). Whether vendor ASINs are parent
+    # or child is undocumented and [unverified]; per ADR-020 the hierarchy comes from Data
+    # Kiosk, so this contract does not depend on the answer. Renamed from product_key
+    # 2026-08-19; see vendor-sales-by-asin for the reason.
+
+  - source_path: trafficByAsin[].startDate
+    target_column: date_key
+    target_type: date
+
+  - source_path: reportSpecification.marketplaceIds[0]
+    target_column: marketplace_key
+    target_type: string
+    # One marketplace per report, and it lives on reportSpecification rather than on the
+    # rows, so it is lifted down onto every row.
+
+  # --- dataset identity, lifted onto every row ------------------------------
+  - source_path: reportSpecification.reportType
+    target_column: report_type
+    target_type: string
+
+  - source_path: reportSpecification.reportOptions.reportPeriod
+    target_column: report_period
+    target_type: string
+    # The only option this report has. DAY is the source of truth: the WEEK lookback is
+    # 7 weeks against 1,460 days for DAY, so weekly history cannot be backfilled and
+    # weeks are derived by us.
+
+  - source_path: reportSpecification.dataStartTime
+    target_column: period_start
+    target_type: date
+
+  - source_path: reportSpecification.dataEndTime
+    target_column: period_end
+    target_type: date
+
+  - source_path: reportSpecification.reportOptions
+    target_column: report_options_hash
+    target_type: string
+    # Deterministic hash of the option set. Thinner here than on the sales side, because
+    # there is only one option — but kept for a uniform partition layout across contracts.
+
+  - source_path: reportSpecification.lastUpdatedDate
+    target_column: source_watermark
+    target_type: date
+    # The restatement watermark. A load whose watermark is not newer than the stored one
+    # must not write.
+
+  - source_path: manifest.retrieved_at
+    target_column: retrieved_at
+    target_type: timestamp
+    # When we fetched it, as distinct from what it covers and from when Amazon last
+    # revised it. Three different times a single column would collapse.
+
+  # --- the one and only measure ---------------------------------------------
+  - source_path: trafficByAsin[].glanceViews
+    target_column: glance_views
+    target_type: bigint
+    # Customer views of the vendor's product detail pages. The report's only metric.
+
+tags:
+  - phase-1
+  - vendor-central
+  - retail-demand

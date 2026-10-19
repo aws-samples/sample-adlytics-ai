@@ -1,0 +1,59 @@
+campaign_country,behavior_segment_id,segment_name,segment_description,time_window_start,time_window_end,distinct_user_count,suppression_reason,rows_suppressed
+US,41001,Demo - Age 25-34,Shoppers aged 25 to 34,2025-07-01T00:00:00.000Z,2025-08-01T00:00:00.000Z,2,,false
+US,41002,ExperianDemographicsGenderFemale_LiveRamp,Gender segment from a third-party data provider,2025-07-01T00:00:00.000Z,2025-08-01T00:00:00.000Z,2,,false
+US,41003,"Synthetic in-market: \"Trail\" running shoes","Shoppers in market for \"trail\" running shoes",2025-07-01T00:00:00.000Z,2025-08-01T00:00:00.000Z,2,,false
+US,41001,Demo - Age 25-34,Shoppers aged 25 to 34,2025-08-01T00:00:00.000Z,2025-09-01T00:00:00.000Z,2,,false
+US,41002,ExperianDemographicsGenderFemale_LiveRamp,Gender segment from a third-party data provider,2025-08-01T00:00:00.000Z,2025-09-01T00:00:00.000Z,2,,false
+US,41003,"Synthetic in-market: \"Trail\" running shoes","Shoppers in market for \"trail\" running shoes",2025-08-01T00:00:00.000Z,2025-09-01T00:00:00.000Z,2,,false
+US,41001,Demo - Age 25-34,Shoppers aged 25 to 34,2025-09-01T00:00:00.000Z,2025-10-01T00:00:00.000Z,2,,false
+US,41002,ExperianDemographicsGenderFemale_LiveRamp,Gender segment from a third-party data provider,2025-09-01T00:00:00.000Z,2025-10-01T00:00:00.000Z,2,,false
+US,41003,"Synthetic in-market: \"Trail\" running shoes","Shoppers in market for \"trail\" running shoes",2025-09-01T00:00:00.000Z,2025-10-01T00:00:00.000Z,2,,false
+,,,,2025-09-01T00:00:00.000Z,2025-10-01T00:00:00.000Z,1,1 dsp_impressions_by_matched_segments users < 2 required,true
+US,41001,Demo - Age 25-34,Shoppers aged 25 to 34,2025-10-01T00:00:00.000Z,2025-11-01T00:00:00.000Z,2,,false
+US,41002,ExperianDemographicsGenderFemale_LiveRamp,Gender segment from a third-party data provider,2025-10-01T00:00:00.000Z,2025-11-01T00:00:00.000Z,2,,false
+US,41003,"Synthetic in-market: \"Trail\" running shoes","Shoppers in market for \"trail\" running shoes",2025-10-01T00:00:00.000Z,2025-11-01T00:00:00.000Z,2,,false
+US,41004,Synthetic lifestyle: weekend gardeners,Shoppers who garden at weekends,2025-10-01T00:00:00.000Z,2025-11-01T00:00:00.000Z,2,,false
+US,41001,Demo - Age 25-34,Shoppers aged 25 to 34,2025-11-01T00:00:00.000Z,2025-12-01T00:00:00.000Z,2,,false
+US,41002,ExperianDemographicsGenderFemale_LiveRamp,Gender segment from a third-party data provider,2025-11-01T00:00:00.000Z,2025-12-01T00:00:00.000Z,2,,false
+US,41003,"Synthetic in-market: \"Trail\" running shoes","Shoppers in market for \"trail\" running shoes",2025-11-01T00:00:00.000Z,2025-12-01T00:00:00.000Z,2,,false
+US,41004,Synthetic lifestyle: weekend gardeners,Shoppers who garden at weekends,2025-11-01T00:00:00.000Z,2025-12-01T00:00:00.000Z,2,,false
+US,41001,Demo - Age 25-34,Shoppers aged 25 to 34,2025-12-01T00:00:00.000Z,2026-01-01T00:00:00.000Z,2,,false
+US,41002,ExperianDemographicsGenderFemale_LiveRamp,Gender segment from a third-party data provider,2025-12-01T00:00:00.000Z,2026-01-01T00:00:00.000Z,2,,false
+US,41003,"Synthetic in-market: \"Trail\" running shoes","Shoppers in market for \"trail\" running shoes",2025-12-01T00:00:00.000Z,2026-01-01T00:00:00.000Z,2,,false
+US,41004,Synthetic lifestyle: weekend gardeners,Shoppers who garden at weekends,2025-12-01T00:00:00.000Z,2026-01-01T00:00:00.000Z,2,,false
+US,41001,Demo - Age 25-34,Shoppers aged 25 to 34,2026-01-01T00:00:00.000Z,2026-02-01T00:00:00.000Z,2,,false
+US,41002,ExperianDemographicsGenderFemale_LiveRamp,Gender segment from a third-party data provider,2026-01-01T00:00:00.000Z,2026-02-01T00:00:00.000Z,2,,false
+US,41003,"Synthetic in-market: \"Trail\" running shoes","Shoppers in market for \"trail\" running shoes",2026-01-01T00:00:00.000Z,2026-02-01T00:00:00.000Z,2,,false
+US,41004,Synthetic lifestyle: weekend gardeners,Shoppers who garden at weekends,2026-01-01T00:00:00.000Z,2026-02-01T00:00:00.000Z,2,,false
+US,41001,Demo - Age 25-34,Shoppers aged 25 to 34,2026-02-01T00:00:00.000Z,2026-03-01T00:00:00.000Z,2,,false
+US,41002,ExperianDemographicsGenderFemale_LiveRamp,Gender segment from a third-party data provider,2026-02-01T00:00:00.000Z,2026-03-01T00:00:00.000Z,2,,false
+US,41003,"Synthetic in-market: \"Trail\" running shoes","Shoppers in market for \"trail\" running shoes",2026-02-01T00:00:00.000Z,2026-03-01T00:00:00.000Z,2,,false
+US,41004,Synthetic lifestyle: weekend gardeners,Shoppers who garden at weekends,2026-02-01T00:00:00.000Z,2026-03-01T00:00:00.000Z,2,,false
+US,41001,Demo - Age 25-34,Shoppers aged 25 to 34,2026-03-01T00:00:00.000Z,2026-04-01T00:00:00.000Z,2,,false
+US,41002,ExperianDemographicsGenderFemale_LiveRamp,Gender segment from a third-party data provider,2026-03-01T00:00:00.000Z,2026-04-01T00:00:00.000Z,2,,false
+US,41003,"Synthetic in-market: \"Trail\" running shoes","Shoppers in market for \"trail\" running shoes",2026-03-01T00:00:00.000Z,2026-04-01T00:00:00.000Z,2,,false
+US,41004,Synthetic lifestyle: weekend gardeners,Shoppers who garden at weekends,2026-03-01T00:00:00.000Z,2026-04-01T00:00:00.000Z,2,,false
+US,41001,Demo - Age 25-34,Shoppers aged 25 to 34,2026-04-01T00:00:00.000Z,2026-05-01T00:00:00.000Z,2,,false
+US,41002,ExperianDemographicsGenderFemale_LiveRamp,Gender segment from a third-party data provider,2026-04-01T00:00:00.000Z,2026-05-01T00:00:00.000Z,2,,false
+US,41003,"Synthetic in-market: \"Trail\" running shoes","Shoppers in market for \"trail\" running shoes",2026-04-01T00:00:00.000Z,2026-05-01T00:00:00.000Z,2,,false
+US,41004,Synthetic lifestyle: weekend gardeners,Shoppers who garden at weekends,2026-04-01T00:00:00.000Z,2026-05-01T00:00:00.000Z,2,,false
+US,41001,Demo - Age 25-34,Shoppers aged 25 to 34,2026-05-01T00:00:00.000Z,2026-06-01T00:00:00.000Z,2,,false
+US,41002,ExperianDemographicsGenderFemale_LiveRamp,Gender segment from a third-party data provider,2026-05-01T00:00:00.000Z,2026-06-01T00:00:00.000Z,2,,false
+US,41003,"Synthetic in-market: \"Trail\" running shoes","Shoppers in market for \"trail\" running shoes",2026-05-01T00:00:00.000Z,2026-06-01T00:00:00.000Z,2,,false
+US,41004,Synthetic lifestyle: weekend gardeners,Shoppers who garden at weekends,2026-05-01T00:00:00.000Z,2026-06-01T00:00:00.000Z,2,,false
+US,41001,Demo - Age 25-34,Shoppers aged 25 to 34,2026-06-01T00:00:00.000Z,2026-07-01T00:00:00.000Z,2,,false
+US,41002,ExperianDemographicsGenderFemale_LiveRamp,Gender segment from a third-party data provider,2026-06-01T00:00:00.000Z,2026-07-01T00:00:00.000Z,2,,false
+US,41003,"Synthetic in-market: \"Trail\" running shoes","Shoppers in market for \"trail\" running shoes",2026-06-01T00:00:00.000Z,2026-07-01T00:00:00.000Z,2,,false
+US,41004,Synthetic lifestyle: weekend gardeners,Shoppers who garden at weekends,2026-06-01T00:00:00.000Z,2026-07-01T00:00:00.000Z,2,,false
+US,41001,Demo - Age 25-34,Shoppers aged 25 to 34,2026-07-01T00:00:00.000Z,2026-08-01T00:00:00.000Z,2,,false
+US,41002,ExperianDemographicsGenderFemale_LiveRamp,Gender segment from a third-party data provider,2026-07-01T00:00:00.000Z,2026-08-01T00:00:00.000Z,2,,false
+US,41003,"Synthetic in-market: \"Trail\" running shoes","Shoppers in market for \"trail\" running shoes",2026-07-01T00:00:00.000Z,2026-08-01T00:00:00.000Z,2,,false
+US,41004,Synthetic lifestyle: weekend gardeners,Shoppers who garden at weekends,2026-07-01T00:00:00.000Z,2026-08-01T00:00:00.000Z,2,,false
+US,41001,Demo - Age 25-34,Shoppers aged 25 to 34,2026-08-01T00:00:00.000Z,2026-09-01T00:00:00.000Z,2,,false
+US,41002,ExperianDemographicsGenderFemale_LiveRamp,Gender segment from a third-party data provider,2026-08-01T00:00:00.000Z,2026-09-01T00:00:00.000Z,2,,false
+US,41003,"Synthetic in-market: \"Trail\" running shoes","Shoppers in market for \"trail\" running shoes",2026-08-01T00:00:00.000Z,2026-09-01T00:00:00.000Z,2,,false
+US,41004,Synthetic lifestyle: weekend gardeners,Shoppers who garden at weekends,2026-08-01T00:00:00.000Z,2026-09-01T00:00:00.000Z,2,,false
+US,41001,Demo - Age 25-34,Shoppers aged 25 to 34,2026-09-01T00:00:00.000Z,2026-10-01T00:00:00.000Z,2,,false
+US,41002,ExperianDemographicsGenderFemale_LiveRamp,Gender segment from a third-party data provider,2026-09-01T00:00:00.000Z,2026-10-01T00:00:00.000Z,2,,false
+US,41003,"Synthetic in-market: \"Trail\" running shoes","Shoppers in market for \"trail\" running shoes",2026-09-01T00:00:00.000Z,2026-10-01T00:00:00.000Z,2,,false
+US,41004,Synthetic lifestyle: weekend gardeners,Shoppers who garden at weekends,2026-09-01T00:00:00.000Z,2026-10-01T00:00:00.000Z,2,,false

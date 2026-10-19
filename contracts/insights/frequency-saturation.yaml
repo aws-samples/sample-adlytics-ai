@@ -1,0 +1,105 @@
+id: frequency-saturation
+version: 1
+purpose: Deterministically name the smallest frequency bucket after which the purchaser rate stops clearly rising, on returned Amazon account ID buckets inside one complete month's or quarter's frequency delivery, as association and never cause.
+display_name: Frequency saturation (Reach and funnel)
+output_class: perspective
+allowed_inputs:
+  - server-computed shoppers and purchasers per frequency bucket on Amazon account IDs inside one platform frequency delivery for one complete month or quarter and one marketplace, with the bucket scheme it used
+  - the period's server label
+deterministic_findings: [share-of-total]
+predicate:
+  required_evidence_inputs: [frequency-bucket-cells]
+  required_finding_kinds: [share-of-total]
+  # The two-step upper-bound rule below is the gate; this threshold admits any bucket it names
+  # (the shoppers who saw more ads than the named bucket, as a share of every bucket's).
+  materiality:
+    bases:
+      bucket_delivery:
+        per_unit:
+          share: {operational-pulse: "0.01", tactical-review: "0.01", pattern-confirmation: "0.01"}
+        per_metric: {}
+    near_zero_prior: {}
+  delivery_follow_up_evidence: []
+# Design §6.3 (findings BO-24, DS-8, DS6-6), [proposal] values versioned here. Compare buckets b
+# and b+1 only when both hold at least shoppers_min shoppers and purchasers_min purchasers. With
+# r1, r2 their purchaser rates and n1, n2 their shoppers, a step passes when
+# (r2 - r1) + z * sqrt(r1(1 - r1)/n1 + r2(1 - r2)/n2) <= tolerance * r1. Name the smallest b
+# whose steps b to b+1 and b+1 to b+2 both pass; the two-step rule is the multiplicity guard,
+# so z isn't corrected further. Only single-count buckets are compared (1 to 9 on the fine
+# scheme; 1, 2 and 3 on the coarse scheme), never a range bucket (4 to 6, 7 to 9, 10 or more),
+# and the slot stays silent next to any bucket that came back not available.
+saturation_policy:
+  shoppers_min: 1000
+  purchasers_min: 30
+  tolerance: "0.02"
+  z: "1.96"
+materiality_cases:
+  - {name: a share of 0.01 percent above the named bucket is admitted at operational-pulse, horizon: operational-pulse, basis: bucket_delivery, kind: share-of-total, metric: shoppers_in_frequency_bucket, current: "0.01", prior: "100", expect: admitted}
+  - {name: a share of 0.01 percent above the named bucket is admitted at tactical-review, horizon: tactical-review, basis: bucket_delivery, kind: share-of-total, metric: shoppers_in_frequency_bucket, current: "0.01", prior: "100", expect: admitted}
+  - {name: a share of 0.01 percent above the named bucket is admitted at pattern-confirmation, horizon: pattern-confirmation, basis: bucket_delivery, kind: share-of-total, metric: shoppers_in_frequency_bucket, current: "0.01", prior: "100", expect: admitted}
+  - {name: a share of 0.004 percent above the named bucket is silent at tactical-review, horizon: tactical-review, basis: bucket_delivery, kind: share-of-total, metric: shoppers_in_frequency_bucket, current: "0.004", prior: "100", expect: silent}
+silence_condition: No returned single-count bucket on Amazon account IDs has two following steps whose purchaser-rate rise is bounded within the declared tolerance with enough shoppers and purchasers, or the bucket sits next to one that came back not available.
+structured_output_schema: {id: insight-narration-v1, fields: [output_class, sentences]}
+initial_fictional_prompt: null
+calibration_cases:
+  - kind: known-correct
+    input_summary: Fictional account-ID purchaser rates rise to bucket 3 and then stay flat through bucket 5, each bucket with tens of thousands of shoppers and thousands of purchasers, so both steps after bucket 3 pass the upper-bound test.
+    expected_outcome: Accept the deterministic statement that names bucket 3, the account ID space and the 14-day window, and says association, not cause.
+    horizon: tactical-review
+    findings:
+      - {name: Share of account shoppers who saw more than 3 ads, value: "38.00"}
+  - kind: exploratory
+    input_summary: A fictional curve dips at bucket 4, where only 30 purchasers came back; the dip's upper bound is far above the tolerance, so the rule stays silent on noise.
+    expected_outcome: The slot stays silent; no prompt generates a reading of the dip.
+    horizon: pattern-confirmation
+    findings:
+      - {name: Purchasers in bucket 4 on account IDs, value: "30"}
+  - kind: contradiction
+    input_summary: A fictional draft says the purchaser rate keeps rising after the named bucket although both following steps passed the bounded test.
+    expected_outcome: Reject the contradiction.
+    horizon: tactical-review
+    findings:
+      - {name: Share of account shoppers who saw more than 3 ads, value: "38.00"}
+    draft:
+      sentences:
+        - Purchaser rate keeps climbing sharply after 3 ads.
+  - kind: fluent-unsupported
+    input_summary: A fluent draft says more ads caused, drove or lifted purchases up to the named bucket, or calls the extra purchases incremental, though shoppers can see more ads after they buy.
+    expected_outcome: Reject the causal claim; the curve shows association, not cause.
+    horizon: tactical-review
+    findings:
+      - {name: Share of account shoppers who saw more than 3 ads, value: "38.00"}
+    draft:
+      sentences:
+        - Showing 3 ads drove the most purchases, and more ads lifted nothing.
+  - kind: derived-figure
+    input_summary: A fictional renderer states the share of account shoppers who saw more ads than the named bucket, derived from the supplied bucket shoppers.
+    expected_outcome: Accept the correctly derived share; this deterministic slot never generates one.
+    horizon: tactical-review
+    findings:
+      - {name: Shoppers in buckets above 3 on account IDs, value: "38000"}
+      - {name: Shoppers in every bucket on account IDs, value: "100000"}
+    draft:
+      sentences:
+        - 38 percent of account-ID shoppers saw more than 3 ads. This shows association, not cause.
+  - kind: miscomputed-derivation
+    input_summary: A fictional draft compares a range bucket (4 to 6 ads) with a single-count bucket as if each step were one ad, on the coarse scheme.
+    expected_outcome: Reject the comparison across a range bucket; the coarse scheme compares 1, 2 and 3 ads only.
+    horizon: pattern-confirmation
+    findings:
+      - {name: Purchaser rate at 3 ads on account IDs, value: "0.050"}
+      - {name: Purchaser rate at 4 to 6 ads on account IDs, value: "0.051"}
+    draft:
+      sentences:
+        - The rate stops rising after 3 ads, because 4 ads bought at almost the same rate.
+  - kind: incompatible-basis
+    input_summary: A fictional draft quotes a frequency bucket's purchaser rate from device or browser IDs, which can't be matched to an account purchase.
+    expected_outcome: Reject the rate quoted from the device-or-browser ID space; the reading uses account IDs only.
+    horizon: tactical-review
+    findings:
+      - {name: Purchaser rate at 3 ads on device or browser IDs, value: "0.010"}
+      - {name: Purchaser rate at 3 ads on account IDs, value: "0.050"}
+    draft:
+      sentences:
+        - Shoppers who saw 3 ads bought at 1.0 percent on device and browser IDs.
+deep: null

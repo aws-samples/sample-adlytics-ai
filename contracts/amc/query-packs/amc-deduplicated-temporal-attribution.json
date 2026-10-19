@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "packId": "amc-deduplicated-temporal-attribution",
+  "packVersion": 1,
+  "contractId": "amc-deduplicated-temporal-attribution",
+  "sourcePackId": "amc-deduplicated-temporal-attribution",
+  "queryFile": "amc-deduplicated-temporal-attribution.sql",
+  "accessTier": "standard",
+  "liveValidation": "required",
+  "maxResultBytes": 20000000,
+  "executionOptions": {
+    "timeWindowType": "EXPLICIT",
+    "timeWindowTimeZone": "UTC",
+    "filteredMetricsDiscriminatorColumn": "rows_suppressed",
+    "filteredReasonColumn": "suppression_reason",
+    "distinctUserCountColumn": "distinct_user_count"
+  },
+  "safetyBlockers": [],
+  "rejectSuppressedRows": true,
+  "outputColumns": [
+    "event_date_utc",
+    "ad_product_type",
+    "channel_group_key",
+    "marketplace_name",
+    "attribution_model_key",
+    "matched_purchase_credit",
+    "revenue_attributed_deduplicated_incl_halo",
+    "purchase_currency",
+    "time_window_start",
+    "time_window_end",
+    "rows_suppressed",
+    "suppression_reason",
+    "distinct_user_count"
+  ]
+}

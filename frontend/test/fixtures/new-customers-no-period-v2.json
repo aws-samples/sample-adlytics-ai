@@ -1,0 +1,84 @@
+{
+  "envelope_version": 2,
+  "expected_after": "2026-09-02",
+  "kind": "window_unavailable",
+  "message": "No complete month has been measured yet. The first is expected after 2 Sep 2026.",
+  "reason_code": "no_complete_period_measured",
+  "recovery": {
+    "action_id": null,
+    "no_self_service_reason": "wait_for_source_coverage"
+  },
+  "session_id": "conversation-session",
+  "temporal": {
+    "comparison": {
+      "policy": "optional_equal_prior",
+      "reason_code": "calendar_period_selected",
+      "status": "not_applicable"
+    },
+    "custom": {
+      "availability": "unavailable",
+      "bounds": null,
+      "reason_code": "custom_disabled"
+    },
+    "mode": "selectable",
+    "presets": [
+      {
+        "availability": "available",
+        "id": "7d",
+        "label": "7 days",
+        "period_label": null,
+        "reason_code": null,
+        "reason_text": null,
+        "window": {
+          "end": "2026-09-20",
+          "start": "2026-09-14"
+        }
+      },
+      {
+        "availability": "unavailable",
+        "id": "30d",
+        "label": "30 days",
+        "period_label": null,
+        "reason_code": "preset_unavailable",
+        "reason_text": "Not available yet",
+        "window": null
+      },
+      {
+        "availability": "unavailable",
+        "id": "last_complete_week",
+        "label": "Latest measured week",
+        "period_label": null,
+        "reason_code": "preset_unavailable",
+        "reason_text": "Not available yet",
+        "window": null
+      },
+      {
+        "availability": "unavailable",
+        "id": "last_complete_month",
+        "label": "Latest measured month",
+        "period_label": "August 2026",
+        "reason_code": "no_complete_period_measured",
+        "reason_text": "Not measured yet",
+        "window": {
+          "end": "2026-08-31",
+          "start": "2026-08-01"
+        }
+      }
+    ],
+    "resolved": {
+      "as_of_month": null,
+      "display_grain": "month",
+      "period_label": "August 2026",
+      "reporting_window_status": "user_selected",
+      "selection": {
+        "kind": "preset",
+        "preset_id": "last_complete_month"
+      },
+      "window": {
+        "end": "2026-08-31",
+        "start": "2026-08-01"
+      }
+    },
+    "version": 2
+  }
+}

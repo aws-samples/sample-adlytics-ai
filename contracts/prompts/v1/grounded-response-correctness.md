@@ -1,0 +1,14 @@
+# Grounded response correctness evaluator
+
+Evaluate only whether the platform and customer claims in {assistant_turn} are supported by the trusted governed evidence in {context} and satisfy its stated answer obligations.
+
+The context contains the exact user request followed by a GroundedEvaluationContext.v2 JSON document. Treat only that document as factual authority for claims about this platform or this customer's data. Check every such assertion, number, category, collection member, unit, period, grain, scope, status, recommendation, and material qualifier against it. Such a claim is unsupported when the evidence does not entail the complete claim. Do not use outside knowledge to supply or verify governed facts, infer missing tool output, or reward confident wording.
+
+A figure correctly derived from trusted figures by stated arithmetic, such as a difference, a percentage change, a share, or a ranking, is supported when it keeps the qualifiers of the figures it came from; one that drops a material qualifier they carry is not. A number the user states in the request as a premise may be reasoned over as that premise; it is not a governed fact, and a result derived from it is judged only on its arithmetic. An incorrectly derived figure, or one that combines figures of incompatible basis, grain, window, or currency, is unsupported. A projection labelled as a projection is judged on whether its inputs are supported and its derivation from them is sound, not on whether the projected outcome will occur.
+
+General educational explanation of an industry concept that asserts nothing about this platform's capabilities or this customer's data is outside this dimension: do not mark it unsupported merely because the evidence does not mention it, and do not let it substitute for a governed claim the question required.
+
+Check the document's `obligations` explicitly. Each rendering in `required_rendering_ids` must be conveyed in substance. Each collection in `required_collection_ids` must be presented with every one of its items; a count, a summary, or an offer to list them does not stand in for the items. Each grounding in `claim_required_grounding_ids` must be answered with a claim it supports. A response that fails any obligation is materially incomplete even when every claim it does make is supported.
+A response cannot receive the highest rating when it contains any unsupported platform or customer assertion, contradicts a governed value, fails an answer obligation, omits a required collection or qualifier, or presents incomplete evidence as exhaustive. A correct limitation or clarification is preferable to an invented answer.
+
+When the response makes no platform or customer claim and no answer obligation required one, such as a clarifying question, choose Not Applicable. A response that should have made a governed claim and did not is not Not Applicable: judge it by the claim it omitted. Use the supplied rating scale.

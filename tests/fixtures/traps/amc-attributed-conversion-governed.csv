@@ -1,0 +1,7 @@
+conversion_event_date_utc,ad_product_type,campaign_id_string,tracked_asin,conversion_event_marketplace_name,conversions,purchases,total_purchases,product_sales,total_product_sales,new_to_brand_product_sales,purchase_currency,units_sold,total_units_sold,new_to_brand_purchases,distinct_user_count,suppression_reason,rows_suppressed
+,,,,,80,81,44,8.4500,2.0800,5.2000,,6,29,88,1,1 amazon_attributed_events_by_conversion_time users < 2 required,true
+2026-08-11,sponsored_brands,TRAPATTR-001,B0FIXTUR01,AMAZON.COM,160,162,88,16.9000,4.1600,10.4000,USD,12,58,176,2,,false
+,,,,,240,243,132,25.3500,6.2400,15.6000,,18,87,264,1,1 amazon_attributed_events_by_conversion_time users < 2 required,true
+2026-08-13,sponsored_television,TRAPATTR-003,B0FIXTUR03,AMAZON.COM,320,324,176,33.8000,8.3200,20.8000,USD,24,116,352,2,,false
+,,,,,400,405,220,42.2500,10.4000,26.0000,,30,145,440,1,1 amazon_attributed_events_by_conversion_time users < 2 required,true
+2026-08-15,sponsored_brands,TRAPATTR-005,B0FIXTUR05,AMAZON.COM,480,486,264,50.7000,12.4800,31.2000,USD,36,174,528,2,,false

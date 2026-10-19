@@ -1,0 +1,3293 @@
+# Metric dictionary — the single definition of every metric.
+#
+# Three consumers read this file: the curation pipeline decides what to
+# precompute, tools compute figures at query time, and the Context Engine tells
+# the model what a metric means. Without one declaration those three drift, and
+# the drift is invisible because every number still looks plausible.
+#
+# Formula, grain, basis, and interpretation semantics are owned by docs/canonical-model.md
+# section 5. This file is their machine-readable projection and owns the exact bounded
+# customer_definition and customer_caveat release copy; never let the two disagree.
+#
+# Rules:
+#   - No ratio is ever stored. Ratios are declared here and computed on read.
+#   - valid_grains is an allowlist. A request outside it must fail with a stated
+#     reason rather than return a plausible wrong number.
+#   - A ratio is valid only at the INTERSECTION of its operands' grains. That set
+#     is usually much smaller than either operand's own, and getting it wrong is
+#     how a figure becomes computable, plausible and wrong. make check-lineage
+#     compares them.
+#   - mixes_basis true means the narration layer is required to surface it.
+#   - Every simple metric declares source_system and source_datasets. A ratio
+#     declares neither: its sources are its operands', derived by
+#     Catalog.sources_across, and a copy here would go stale when an operand is
+#     repointed.
+#   - The window is in the metric name whenever a metric has one. Amazon's own
+#     windows disagree across surfaces, so an unnamed window is a wrong answer
+#     waiting to happen.
+#   - favourable_direction (up | down | none) says which way a change is good
+#     news, so a change chip's tone is governed, never read from its sign
+#     (ADR-121). Every metric a page serves with a comparison declares it, and
+#     loading the presentation's change semantics refuses one that doesn't.
+#     Spend, delivery volumes and Amazon's margin proxy are none. Baked bodies
+#     carry the tone, so changing a compared metric's value bumps both preset
+#     render formats (docs/ui/preset-artifact-publisher.md).
+#   - Every metric declares ecosystem_aggregation: additive | exact_only, which
+#     sets both the ecosystem and the platform axis (ADR-106). Only ad_spend is
+#     additive. A composite declares exact_only unless every operand is additive,
+#     and its operands' own rules are what the planner applies. A metric without
+#     the field fails loading. The platforms a simple metric can come from are
+#     derived from contracts, source packs and the media taxonomy, never declared.
+#
+# Why source_datasets exists, and it is not bookkeeping: measurement_basis does
+# not separate two systems that measure the same thing. retail_revenue_shipped
+# comes from Vendor Central and retail_revenue_purchased comes from AMC; both are
+# retail_actual, both answer "what did I sell", and they will disagree. So
+# mixes_basis stays false for a combination that is nonetheless a double count,
+# and the source is the only thing that makes it refusable.
+#
+# Status: the ROAS definition is settled by ADR-017 in all four dimensions —
+# ad-attributed numerator, brand halo excluded from the default and exposed as its
+# own metrics, window fixed at 14 days from
+# amazon_attributed_events_by_conversion_time, and a fee-inclusive denominator.
+# That closes Q-13 (docs/decision-coverage-registry.md); no metric definition here is a placeholder.
+
+version: 1
+
+axis_defaults:
+  time: {aggregation: additive, groupable: true, filterable: true, alignable: true}
+  # Each metric's ecosystem_aggregation replaces the aggregation of these two axes.
+  ecosystem: {aggregation: exact_only, groupable: true, filterable: true, alignable: true}
+  platform: {aggregation: exact_only, groupable: true, filterable: true, alignable: true}
+  channel_group: {aggregation: additive, groupable: true, filterable: true, alignable: true}
+  channel: {aggregation: additive, groupable: true, filterable: true, alignable: true}
+  campaign: {aggregation: additive, groupable: true, filterable: true, alignable: true}
+  ad_product: {aggregation: additive, groupable: true, filterable: true, alignable: true}
+  product: {aggregation: additive, groupable: true, filterable: true, alignable: true}
+  marketplace: {aggregation: exact_only, groupable: true, filterable: true, alignable: true}
+  attribution_model: {aggregation: exact_only, groupable: false, filterable: true, alignable: false}
+  source_option: {aggregation: exact_only, groupable: false, filterable: true, alignable: false}
+  # Disjoint shopper axes (ADR-101, D-3): each shopper is in exactly one value, so a sum across
+  # every value inside one fully returned delivery is exact. A metric declares them exact_only,
+  # because the planner can't see whether every value came back; the D-3 sum is domain code.
+  exposure_group: {aggregation: disjoint_within_extraction, groupable: true, filterable: true, alignable: false}
+  identity_space: {aggregation: disjoint_within_extraction, groupable: true, filterable: true, alignable: false}
+  # Within one channel and one bucket scheme (design §6.3): pack 7's buckets are disjoint inside
+  # one ad product, never across ad products, and fine and coarse buckets are separate series.
+  frequency_bucket: {aggregation: disjoint_within_extraction, groupable: true, filterable: true, alignable: false}
+  # Audience segments overlap: one shopper and one impression repeat once per segment, so
+  # segment figures never add up (ADR-103 point 2, D-4). Exact only, never summed; alignable,
+  # so a ratio reads its two operands from the same campaign and segment row.
+  audience_segment: {aggregation: exact_only, groupable: true, filterable: true, alignable: true}
+  # Cohorts (ADR-104, design §6.6): each shopper is won in one acquisition channel group, so it
+  # is disjoint inside one vintage's delivery (D-3). The cohort month and the follow-up month are
+  # exact only (D-9): cohort counts are never summed across cohorts, and one shopper repeats in
+  # several follow-up months while the cohort size repeats on every month's row.
+  acquisition_channel_group: {aggregation: disjoint_within_extraction, groupable: true, filterable: true, alignable: true}
+  cohort: {aggregation: exact_only, groupable: true, filterable: true, alignable: true}
+  months_since_acquisition: {aggregation: exact_only, groupable: true, filterable: true, alignable: true}
+
+compatibility_defaults:
+  population: amazon_retail_us
+  business_calendar: iso_gregorian
+  week_starts_on: 0
+  profile_version: 1
+
+units:
+  currency: { kind: currency, currency_from: source_column }
+  count: { kind: count }
+  ratio: { kind: ratio }
+
+# Complete ordered registry for the first-class Metric Inventory. Membership is
+# intentionally independent of comments and sources so every computable metric has one
+# stable public category and none is silently omitted or duplicated.
+inventory_categories:
+  - id: advertising_delivery_cost
+    label: Advertising delivery and cost
+    display_order: 1
+    metric_ids: [ad_spend, impressions, clicks, viewable_impressions, measurable_impressions, viewable_impressions_estimated, reach_users, ctr, viewable_rate, cpc, cpm, cost_per_reach, avg_frequency]
+  - id: attributed_conversions_roas
+    label: Attributed conversions and ROAS
+    display_order: 2
+    metric_ids: [attributed_revenue_14d, attributed_revenue_incl_halo_14d, attributed_revenue_halo_14d, purchases, purchases_incl_halo, matched_purchase_credit_deduplicated_incl_halo_14d, attributed_revenue_deduplicated_incl_halo_14d, purchases_new_to_brand_12mo, purchases_new_to_brand_incl_halo_12mo, revenue_new_to_brand_12mo, conversions, units_attributed, units_attributed_incl_halo, ntb_rate_12mo, ntb_revenue_share, aov_attributed, units_per_purchase, purchase_rate_of_conversions, roas_attributed_14d, portfolio_roas_attributed_14d, roas_attributed_incl_halo_14d, roas_deduplicated_incl_halo_14d, cost_per_purchase, cost_per_ntb, click_to_purchase_rate]
+  - id: retail_sales_units
+    label: Retail sales and units
+    display_order: 3
+    metric_ids: [retail_revenue_shipped, revenue_ordered, units_shipped, units_ordered, cogs_shipped, amazon_margin_proxy, customer_returns, returns_value_estimate_retail, conversion_rate_retail, return_rate, fulfilment_rate, asp_shipped]
+  - id: product_traffic
+    label: Product traffic
+    display_order: 4
+    metric_ids: [glance_views, revenue_per_glance_view]
+  - id: amc_retail_purchases
+    label: AMC retail purchases
+    display_order: 5
+    metric_ids: [retail_revenue_purchased, retail_units_purchased, retail_asp_purchased]
+  - id: cross_channel_efficiency
+    label: Cross-channel efficiency
+    display_order: 6
+    metric_ids: [roas_blended, tacos]
+  - id: shoppers_and_reach
+    label: Shoppers and reach
+    display_order: 7
+    metric_ids: [buyers_new_to_brand_12mo, buyers_attributed, cost_per_new_to_brand_buyer_12mo, shoppers_reached, impressions_in_window, dsp_window_spend_on_shoppers, sponsored_window_spend_on_shoppers, search_shoppers_in_window, detail_page_view_shoppers_in_window, purchasers_in_window, ntb_purchasers_in_window, purchases_in_window, revenue_incl_halo_in_window, overlap_share, overlap_share_all_ids, dsp_only_reach_share, search_rate, purchaser_rate, revenue_per_exposed_shopper, purchaser_rate_index_vs_sponsored_only, shoppers_in_frequency_bucket, purchasers_in_frequency_bucket, ntb_purchasers_in_frequency_bucket, impressions_in_frequency_bucket, dsp_window_spend_in_frequency_bucket, sponsored_window_spend_in_frequency_bucket, window_spend_in_frequency_bucket, purchases_in_frequency_bucket, revenue_incl_halo_in_frequency_bucket, purchaser_rate_by_frequency, roas_incl_halo_by_frequency, segment_impressions, segment_spend, segment_purchases, segment_attributed_revenue, segment_reach, segment_purchasers, segment_cpm, segment_roas_attributed, segment_purchase_rate, segment_buyers, segment_exposed_shoppers, segment_buyers_new_to_brand, profiled_buyers_total, profiled_exposed_total, segment_buyer_share, segment_exposed_share, segment_index, cohort_buyers_new_to_brand_12mo, cohort_buyers_account_ids, cohort_repeat_buyers, cohort_first_repeat_buyers, cohort_repeat_buyers_cumulative, cohort_repeat_buyers_account_ids, cohort_repeat_buyers_cumulative_account_ids, cohort_repeat_purchases, cohort_repeat_revenue, repeat_buyer_rate, cumulative_repeat_rate, repeat_buyer_rate_account_ids, cumulative_repeat_rate_account_ids, repeat_buyer_rate_arp, cumulative_repeat_rate_arp]
+
+metrics:
+  # =======================================================================
+  # SIMPLE — fct_ad_exposure. Exposure grain, and it has NO product
+  # dimension: DSP impressions carry no ASIN, so the fact is grained on
+  # campaign. That single absence explains most refusals in
+  # docs/answerable-questions.md section 6.
+  # =======================================================================
+
+  ad_spend:
+    label: Ad spend
+    aliases: [spend, advertising spend]
+    type: simple
+    aggregation: sum
+    # The one metric the owner allows to total across networks, and only within one
+    # marketplace and currency: marketplace stays exact_only (ADR-106).
+    ecosystem_aggregation: additive
+    time_class: daily_additive
+    time_grain: day
+    compatibility: strict
+    definition: sum(fct_ad_exposure.spend)
+    units: currency
+    favourable_direction: none
+    customer_definition: >-
+      Fee-inclusive advertising spend across DSP and sponsored ads, as AMC reports it.
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [dsp_impressions, sponsored_ads_traffic]
+    fee_inclusive: true
+    valid_grains: [date, ecosystem, platform, channel_group, channel, campaign, ad_product, marketplace]
+    notes: >
+      Fee-inclusive, and settled as such by ADR-017: impression_cost has no
+      sponsored-ads equivalent, so a media-only default cannot be computed for one
+      of the two channels. Sourced from AMC total_cost for DSP and spend for
+      sponsored ads, each with its own divisor — total_cost is millicents while
+      sponsored spend is microcents, and dsp_impressions mixes both scales in one
+      table. See data-contract-amc steering.
+
+  impressions:
+    label: Impressions
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: strict
+    definition: sum(fct_ad_exposure.impressions)
+    units: count
+    favourable_direction: none
+    customer_definition: >-
+      Ad impressions delivered across DSP and sponsored ads.
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [dsp_impressions, sponsored_ads_traffic]
+    valid_grains: [date, ecosystem, platform, channel_group, channel, campaign, ad_product, marketplace]
+
+  clicks:
+    label: Clicks
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: strict
+    definition: sum(fct_ad_exposure.clicks)
+    units: count
+    favourable_direction: none
+    customer_definition: >-
+      Ad clicks recorded across DSP and sponsored ads.
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [dsp_clicks, sponsored_ads_traffic]
+    valid_grains: [date, ecosystem, platform, channel_group, channel, campaign, ad_product, marketplace]
+
+  viewable_impressions:
+    label: Viewable impressions
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: strict
+    definition: sum(fct_ad_exposure.viewable_impressions)
+    units: count
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [dsp_views]
+    valid_grains: [date, ecosystem, platform, channel_group, channel, campaign, ad_product, marketplace]
+    notes: >
+      DSP ONLY. Sponsored ads publishes no viewability measure, so this is absent
+      for sponsored rows — absent, not zero. Summed from dsp_views'
+      viewable_impressions flag column, never a filter on event_type.
+
+  measurable_impressions:
+    label: Measurable impressions
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: strict
+    definition: sum(fct_ad_exposure.measurable_impressions)
+    units: count
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [dsp_views]
+    valid_grains: [date, ecosystem, platform, channel_group, channel, campaign, ad_product, marketplace]
+    notes: >
+      The denominator of a viewability rate. Carried because "60% viewable" is
+      meaningless without knowing what share was measurable at all. DSP only.
+
+  viewable_impressions_estimated:
+    label: Viewable impressions (estimated)
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: strict
+    definition: sum(fct_ad_exposure.viewable_impressions_estimated)
+    units: count
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [dsp_views]
+    valid_grains: [date, ecosystem, platform, channel_group, channel, campaign, ad_product, marketplace]
+    notes: >
+      Amazon's modelled viewability, kept distinct from the measured column rather
+      than folded into it. Never mix the two in one figure: an estimate and a
+      measurement summed together produce a number with no stated method.
+
+  reach_users:
+    label: Reach (distinct users)
+    aliases: [reach]
+    type: simple
+    aggregation: exact_distinct
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: strict
+    # NON-ADDITIVE. Declared as simple because it reads one column, but it must
+    # never be summed: Monday's distinct users plus Tuesday's is not two days'
+    # distinct users. The planner enforces this — a grain coarser than the fact's
+    # own is refused rather than aggregated.
+    non_additive: true
+    definition: fct_ad_exposure.reach_users
+    units: count
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [sponsored_ads_traffic, dsp_impressions]
+    # Read at exactly the grain it was extracted at. A coarser request needs a new
+    # extraction, not an aggregation — AMC has no approximate-distinct function, so
+    # no sketch can be exported and merged. See ADR-019 for how the offered grain
+    # is measured per customer rather than declared.
+    valid_grains: [date, ecosystem, platform, channel_group, channel, campaign, ad_product, marketplace]
+    notes: >
+      Exact COUNT(DISTINCT user_id) computed inside AMC, per campaign per UTC day: sponsored
+      channels from amc-reach-frequency, Amazon DSP from amc-dsp-reach (pack 4, ADR-109). DSP
+      reach is answered only when the question names Amazon DSP (channel or ad product), and
+      only for days with a current amc-dsp-reach publication; a day before the first one is
+      refused naming it. A later day with no publication (a refused delivery, or a recent day
+      still inside the pack's two-day cadence lag) is refused naming no day, by design: no later
+      day is promised. A breakdown that doesn't name Amazon DSP lists sponsored reach only.
+      Reach counts distinct resolvable identifiers (user_id IS NOT NULL; account, device and
+      browser identifier spaces mixed, user_id_type not read), while impressions count every
+      impression, so a frequency built on it is an upper bound.
+      Never summed across days or campaigns (D-2): a
+      multi-day or multi-campaign figure needs its own extraction. Reach across DSP and sponsored
+      channels likewise needs one extraction spanning both populations, because the same user
+      may appear in both.
+
+  # NOT DECLARED: fct_ad_exposure.spend_media_only. It maps AMC impression_cost,
+  # whose "excludes fees" claim is marked [unverified] in docs/sources/amc.md and
+  # was downgraded on 2026-08-19. The data-contract steering forbids a contract
+  # asserting a fact its source doc marks unverified, and a metric is no different
+  # — a media-only spend figure that silently includes fees reads lower than the
+  # truth and flatters every efficiency ratio built on it. Declare it once a live
+  # probe settles the fee question.
+
+  # =======================================================================
+  # SIMPLE — fct_attributed_conversion. Conversion grain: exposure PLUS
+  # product, because attributed conversions do carry an ASIN.
+  # =======================================================================
+
+  attributed_revenue_14d:
+    label: Attributed revenue (14 day, advertised products)
+    aliases: [sales]
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: strict
+    definition: sum(fct_attributed_conversion.revenue_attributed)
+    units: currency
+    favourable_direction: up
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [amazon_attributed_events_by_conversion_time]
+    attribution_window_days: 14
+    includes_brand_halo: false
+    valid_grains: [date, ecosystem, platform, channel_group, channel, campaign, ad_product, product, marketplace]
+    notes: >
+      The default revenue for ROAS, per ADR-017. Advertised products only —
+      AMC product_sales, which excludes brand halo.
+      ad_product is valid here because amc-attributed-conversion writes
+      ad_product_key; it was missing from this list until make check-lineage
+      compared it against roas_attributed_14d, which claimed the grain.
+
+  attributed_revenue_incl_halo_14d:
+    label: Attributed revenue (14 day, including brand halo)
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: strict
+    definition: sum(fct_attributed_conversion.revenue_attributed_incl_halo)
+    units: currency
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [amazon_attributed_events_by_conversion_time]
+    attribution_window_days: 14
+    includes_brand_halo: true
+    valid_grains: [date, ecosystem, platform, channel_group, channel, campaign, ad_product, product, marketplace]
+    notes: >
+      AMC total_product_sales. Never the default: including halo moves every
+      ratio built on it upward. Offered by name so the comparison is explicit.
+
+  attributed_revenue_halo_14d:
+    label: Brand halo revenue (14 day)
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: strict
+    # A DIFFERENCE OF SUMS, not a single column. The planner needs its
+    # multi-column expression kind to answer this; a single-reference planner
+    # refuses it rather than picking one operand.
+    definition: >
+      sum(fct_attributed_conversion.revenue_attributed_incl_halo)
+      - sum(fct_attributed_conversion.revenue_attributed)
+    units: currency
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [amazon_attributed_events_by_conversion_time]
+    attribution_window_days: 14
+    valid_grains: [date, ecosystem, platform, channel_group, channel, campaign, ad_product, product, marketplace]
+    notes: >
+      The halo portion alone, so "what lift do my ads generate on products I am
+      not advertising" is a direct answer rather than an invisible component of
+      every ROAS. Rests on AMC's documented identity
+      total_product_sales = product_sales + brand_halo_product_sales.
+      Halo is ad-exposed demand on non-advertised same-brand products. It is NOT
+      organic: true organic needs conversions_all.exposure_type, a paid feature.
+
+  purchases:
+    label: Attributed purchases
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: strict
+    definition: sum(fct_attributed_conversion.purchases)
+    units: count
+    favourable_direction: up
+    customer_definition: >-
+      Ad-attributed purchases within the 14-day attribution window.
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [amazon_attributed_events_by_conversion_time]
+    attribution_window_days: 14
+    includes_brand_halo: false
+    valid_grains: [date, ecosystem, platform, channel_group, channel, campaign, ad_product, product, marketplace]
+    notes: >
+      Declared as a metric rather than reached only as a raw column operand.
+      ntb_rate_12mo referenced it directly until now, which made that ratio's
+      source unresolvable — a column names a fact and a fact does not name a
+      dataset. Every ratio operand is a declared metric name.
+
+  purchases_incl_halo:
+    label: Attributed purchases (including brand halo)
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: strict
+    definition: sum(fct_attributed_conversion.purchases_incl_halo)
+    units: count
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [amazon_attributed_events_by_conversion_time]
+    attribution_window_days: 14
+    includes_brand_halo: true
+    valid_grains: [date, ecosystem, platform, channel_group, channel, campaign, ad_product, product, marketplace]
+
+  matched_purchase_credit_deduplicated_incl_halo_14d:
+    label: Matched purchase credit (deduplicated including brand halo, 14 day)
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: strict
+    definition: sum(fct_deduplicated_temporal_attribution.matched_purchase_credit)
+    units: count
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [deduplicated_temporal_attribution]
+    attribution_window_days: 14
+    includes_brand_halo: true
+    valid_grains: [date, ecosystem, platform, channel_group, channel, ad_product, marketplace]
+    requires_selector: [attribution_model_key]
+    notes: >
+      Fractional purchase credit across matched identifiable conversions. First and last touch
+      contribute one whole credit to one qualifying touch; linear divides one credit across all
+      qualifying touches. Excludes conversions with no resolvable user or qualifying touch.
+
+  attributed_revenue_deduplicated_incl_halo_14d:
+    label: Attributed revenue (deduplicated including brand halo, 14 day)
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: strict
+    definition: sum(fct_deduplicated_temporal_attribution.revenue_attributed_deduplicated_incl_halo)
+    units: currency
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [deduplicated_temporal_attribution]
+    attribution_window_days: 14
+    includes_brand_halo: true
+    valid_grains: [date, ecosystem, platform, channel_group, channel, ad_product, marketplace]
+    requires_selector: [attribution_model_key]
+    notes: >
+      Currency-scoped total_product_sales allocated to matched touches. This is halo-inclusive and
+      cannot replace the advertised-products-only numerator of the default attributed ROAS.
+
+  purchases_new_to_brand_12mo:
+    label: New-to-brand purchases (12 month lookback)
+    # Purchases and orders are transactions; customers and buyers are buyers_new_to_brand_12mo.
+    aliases: [NTB purchases, new-to-brand purchases, new-to-brand orders, NTB orders]
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: strict
+    definition: sum(fct_attributed_conversion.purchases_new_to_brand_12mo)
+    units: count
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [amazon_attributed_events_by_conversion_time]
+    customer_definition: >-
+      Ad-attributed purchases of your advertised products by shoppers who hadn't bought from the
+      brand in the previous 12 months. It counts purchases, not people: a shopper who buys twice
+      counts twice. New-to-brand customers or buyers are counted by new-to-brand buyers.
+    lookback_months: 12
+    includes_brand_halo: false
+    valid_grains: [date, ecosystem, platform, channel_group, channel, campaign, ad_product, product, marketplace]
+    notes: >
+      A purchase by a shopper who has not bought from this brand in twelve
+      months. The lookback is in the name because Amazon publishes several and an
+      unnamed one is a wrong answer waiting to happen. Advertised products only, so
+      includes_brand_halo is false; the halo-inclusive count is the next metric.
+
+  purchases_new_to_brand_incl_halo_12mo:
+    label: New-to-brand purchases including brand halo (12 month lookback)
+    aliases: [NTB purchases including halo, gateway new-to-brand purchases, gateway products]
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    # One purchase can be credited to more than one channel (one row per conversion and
+    # credited traffic event), so this count never sums across channels (design §6.2).
+    exact_only_axes: [channel, ad_product]
+    time_class: daily_additive
+    time_grain: day
+    compatibility: strict
+    definition: sum(fct_attributed_conversion.purchases_new_to_brand_incl_halo_12mo)
+    units: count
+    customer_definition: >-
+      Purchases by shoppers who hadn't bought from the brand in the previous 12 months,
+      credited to one channel with ad attribution (14-day window, by conversion date).
+      Includes products bought because of brand halo, not only the products you advertised.
+    customer_caveat: >-
+      Credited per channel. One purchase can be credited to more than one channel or
+      campaign, so channels aren't added together. Measured only for days delivered at
+      query pack version 2 or later.
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [amazon_attributed_events_by_conversion_time]
+    lookback_months: 12
+    includes_brand_halo: true
+    valid_grains: [date, ecosystem, platform, channel_group, channel, campaign, ad_product, product, marketplace]
+    notes: >
+      The New customers gateway-products measure, from new_to_brand_total_purchases
+      (amc-attributed-conversion query pack version 2). purchases_new_to_brand_12mo counts
+      advertised products only, so it would show a halo product with zero. Rows a pack-v1
+      delivery landed read NULL (the pack version is the option), so the planner answers it
+      only over a window whose every day is published from pack version 2 or later.
+
+  revenue_new_to_brand_12mo:
+    label: New-to-brand revenue (12 month lookback)
+    aliases: [NTB revenue, new-to-brand revenue]
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: strict
+    definition: sum(fct_attributed_conversion.revenue_new_to_brand_12mo)
+    units: currency
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [amazon_attributed_events_by_conversion_time]
+    lookback_months: 12
+    valid_grains: [date, ecosystem, platform, channel_group, channel, campaign, ad_product, product, marketplace]
+    notes: >
+      The money behind purchases_new_to_brand_12mo. Declared because acquisition
+      value is a different question from acquisition count, and the column was
+      loaded and unreachable.
+
+  conversions:
+    label: Attributed conversions
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: strict
+    definition: sum(fct_attributed_conversion.conversions)
+    units: count
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [amazon_attributed_events_by_conversion_time]
+    attribution_window_days: 14
+    valid_grains: [date, ecosystem, platform, channel_group, channel, campaign, ad_product, product, marketplace]
+    notes: >
+      BROADER THAN purchases. A conversion includes non-purchase actions Amazon
+      attributes, so conversions is always greater than or equal to purchases and
+      the two must never be presented as the same thing.
+
+  units_attributed:
+    label: Attributed units
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: strict
+    definition: sum(fct_attributed_conversion.units_attributed)
+    units: count
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [amazon_attributed_events_by_conversion_time]
+    attribution_window_days: 14
+    includes_brand_halo: false
+    valid_grains: [date, ecosystem, platform, channel_group, channel, campaign, ad_product, product, marketplace]
+
+  units_attributed_incl_halo:
+    label: Attributed units (including brand halo)
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: strict
+    definition: sum(fct_attributed_conversion.units_attributed_incl_halo)
+    units: count
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [amazon_attributed_events_by_conversion_time]
+    attribution_window_days: 14
+    includes_brand_halo: true
+    valid_grains: [date, ecosystem, platform, channel_group, channel, campaign, ad_product, product, marketplace]
+
+  # =======================================================================
+  # SIMPLE — fct_new_to_brand_buyers. A shopper-aggregate fact (ADR-099):
+  # exact distinct shoppers per complete ISO week or calendar month, one
+  # extraction per period and grain set. Served only at one exact extracted
+  # period (D-1, D-7): time_grain is an exact selector, and nothing sums a
+  # distinct count across periods, marketplaces, ad products or grain sets.
+  # Two grain sets are published: platform (pack 1, one row per marketplace)
+  # and channel (pack 2, one row per ad product). A marketplace request reads
+  # platform and an ad-product request reads channel; neither is derived from
+  # the other, and the channel grain set is read against the ad-product
+  # roster, so a rostered ad product with no row reads not available.
+  # =======================================================================
+  buyers_new_to_brand_12mo:
+    label: >-
+      New-to-brand ad-attributed buyers (12 month lookback) · 14-day attribution · conversion
+      date · advertised products
+    # Customers and buyers are distinct people; purchases and orders are purchases_new_to_brand_12mo.
+    aliases: [new buyers, new-to-brand buyers, NTB buyers, new customers, new-to-brand customers, NTB customers]
+    type: simple
+    aggregation: exact_distinct
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: week
+    period_grains: [week, month]
+    requires_selector: [time_grain]
+    compatibility: strict
+    non_additive: true
+    definition: fct_new_to_brand_buyers.buyers_new_to_brand_12mo
+    units: count
+    customer_definition: >-
+      Distinct shoppers who bought an advertised product with ad attribution (14-day window,
+      by conversion date) in one complete week or month, and hadn't bought from the brand in
+      the previous 12 months.
+    customer_caveat: >-
+      Counts Amazon shopper IDs. One person can appear under more than one ID, and counts may
+      include conversions Amazon modelled. Measured for complete weeks and months only; a
+      period with too few shoppers, or none, reads not available.
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [amazon_attributed_events_by_conversion_time]
+    lookback_months: 12
+    attribution_window_days: 14
+    valid_grains: [marketplace, channel, ad_product, campaign]
+    notes: >
+      Exact COUNT(DISTINCT user_id) computed inside AMC over one complete period, never a sum
+      of days or of finer rows. A missing platform cell is stored not_returned with a NULL
+      count and answered "not available", never 0. Per ad product (grain set channel, pack 2)
+      the figure is its own extraction; a channel request groups by ad product too, because
+      the channel grain set is one row per ad product. Never added across ad products: one
+      shopper can buy after ads on more than one. An ad product with spend in the period and
+      no row reads "not available: too few shoppers, or none". Per campaign (grain set
+      campaign, pack 3) the figure is its own extraction for complete calendar months only,
+      one marketplace at a time, never added across campaigns; a campaign with spend in the
+      month and no row reads "not available", and when 20 or more campaigns had spend and more
+      than a fifth have no row, no campaign figure is offered and each reads "not available:
+      too few shoppers in this breakdown; see new buyers per channel".
+
+  buyers_attributed:
+    label: Ad-attributed buyers · 14-day attribution · conversion date · advertised products
+    aliases: [attributed buyers, buyers]
+    type: simple
+    aggregation: exact_distinct
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: week
+    period_grains: [week, month]
+    requires_selector: [time_grain]
+    compatibility: strict
+    non_additive: true
+    definition: fct_new_to_brand_buyers.buyers_attributed
+    units: count
+    customer_definition: >-
+      Distinct shoppers who bought an advertised product with ad attribution (14-day window,
+      by conversion date) in one complete week or month.
+    customer_caveat: >-
+      Counts Amazon shopper IDs. One person can appear under more than one ID, and counts may
+      include conversions Amazon modelled. Measured for complete weeks and months only; a
+      period with too few shoppers, or none, reads not available.
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [amazon_attributed_events_by_conversion_time]
+    attribution_window_days: 14
+    valid_grains: [marketplace, channel, ad_product, campaign]
+    notes: >
+      The population new-to-brand buyers is a share of, from the same extraction. Exact and
+      periodic, like buyers_new_to_brand_12mo, at the same three grain sets.
+
+  # =======================================================================
+  # SHOPPER AGGREGATE — fct_exposure_group_outcome, pack 5 (ADR-101, ADR-102;
+  # design §6.3 D1b, §6.4 E1). One row per exposure group and identity space
+  # per complete week or month, each shopper's group and outcomes from one
+  # 14-day window from their first ad in the period. Groups aren't random, so
+  # every figure here is causal: false and its answer says "association, not
+  # cause". Rates read Amazon account IDs only.
+  # =======================================================================
+
+  shoppers_reached:
+    label: >-
+      Shoppers reached in the period, grouped by the ads they saw within 14 days of their first ad in that period
+    aliases: [shoppers reached, reach by exposure group, exposed shoppers]
+    type: simple
+    aggregation: exact_distinct
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: week
+    period_grains: [week, month]
+    requires_selector: [time_grain]
+    compatibility: strict
+    non_additive: true
+    definition: fct_exposure_group_outcome.shoppers_reached
+    units: count
+    customer_definition: >-
+      Distinct shoppers whose first ad in one complete week or month fell in it, by the ads they saw within 14 days of that first ad: DSP only, sponsored ads only, or both.
+    customer_caveat: >-
+      Counts Amazon shopper IDs within 14 days of each shopper's first ad in one complete week or month. This shows association, not cause: shoppers weren't randomly assigned to groups. A group with too few shoppers, or none, reads not available.
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [dsp_impressions]
+    causal: false
+    valid_grains: [marketplace, exposure_group, identity_space]
+    notes: >
+      Exact inside AMC over one complete period, per exposure group and identity space; never summed across periods, and a sum across the exposure groups or identity spaces of one delivery is computed only where every cell came back (D-3). The all-ID total is the sum over both identity spaces of one delivery.
+
+  impressions_in_window:
+    label: >-
+      Impressions on these shoppers in their 14-day window
+    aliases: [impressions in window, window impressions]
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: week
+    period_grains: [week, month]
+    requires_selector: [time_grain]
+    compatibility: strict
+    exact_only_axes: [exposure_group, identity_space]
+    definition: sum(fct_exposure_group_outcome.impressions)
+    units: count
+    customer_definition: >-
+      Impressions shown to the shoppers of one exposure group inside each shopper's 14-day window from their first ad in the period, including window days after the period ends.
+    customer_caveat: >-
+      Counts Amazon shopper IDs within 14 days of each shopper's first ad in one complete week or month. This shows association, not cause: shoppers weren't randomly assigned to groups. A group with too few shoppers, or none, reads not available.
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [dsp_impressions]
+    causal: false
+    valid_grains: [marketplace, exposure_group, identity_space]
+    notes: >
+      D-9: summable only across every value of the disjoint axes inside one fully returned delivery, and only in domain code; never compared with period impressions.
+
+  # Window spend is two metrics, one per spend column, each in its own currency
+  # (dsp_currency, sponsored_currency), so no figure sums two currencies (business outcomes
+  # design §6.3, decision B2-5 option C, 2026-10-11).
+  dsp_window_spend_on_shoppers:
+    label: >-
+      DSP spend on these shoppers in their 14-day window (impressions Amazon linked to a shopper ID)
+    aliases: [DSP window spend, DSP spend in window]
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: week
+    period_grains: [week, month]
+    requires_selector: [time_grain]
+    compatibility: strict
+    exact_only_axes: [exposure_group, identity_space]
+    definition: sum(fct_exposure_group_outcome.dsp_window_spend)
+    units: currency
+    customer_definition: >-
+      DSP cost of the impressions shown to the shoppers of one exposure group inside each shopper's 14-day window from their first ad in the period, in the DSP currency.
+    customer_caveat: >-
+      Counts Amazon shopper IDs within 14 days of each shopper's first ad in one complete week or month. This shows association, not cause: shoppers weren't randomly assigned to groups. Never compare it with the period's spend. A group with too few shoppers, or none, reads not available.
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [dsp_impressions]
+    causal: false
+    valid_grains: [marketplace, exposure_group, identity_space]
+    notes: >
+      D-9: summable only across every value of the disjoint axes inside one fully returned delivery, and only in domain code; never summed with sponsored window spend, which carries its own currency. A withheld row's DSP spend that came back without its currency is never summed; it reads withheld.
+
+  sponsored_window_spend_on_shoppers:
+    label: >-
+      Sponsored ads spend on these shoppers in their 14-day window (impressions and clicks Amazon linked to a shopper ID)
+    aliases: [sponsored window spend, sponsored spend in window]
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: week
+    period_grains: [week, month]
+    requires_selector: [time_grain]
+    compatibility: strict
+    exact_only_axes: [exposure_group, identity_space]
+    definition: sum(fct_exposure_group_outcome.sponsored_window_spend)
+    units: currency
+    customer_definition: >-
+      Sponsored ads cost, including click cost on cost-per-click ad products, of the shoppers of one exposure group inside each shopper's 14-day window from their first ad in the period, in the sponsored ads currency.
+    customer_caveat: >-
+      Counts Amazon shopper IDs within 14 days of each shopper's first ad in one complete week or month. This shows association, not cause: shoppers weren't randomly assigned to groups. Never compare it with the period's spend. A group with too few shoppers, or none, reads not available.
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [dsp_impressions]
+    causal: false
+    valid_grains: [marketplace, exposure_group, identity_space]
+    notes: >
+      D-9: summable only across every value of the disjoint axes inside one fully returned delivery, and only in domain code; never summed with DSP window spend, which carries its own currency. A withheld row's sponsored spend that came back without its currency is never summed; it reads withheld.
+
+  search_shoppers_in_window:
+    label: >-
+      Shoppers who searched from the hour after their first ad, within 14 days
+    aliases: [searching shoppers, search shoppers]
+    type: simple
+    aggregation: exact_distinct
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: week
+    period_grains: [week, month]
+    requires_selector: [time_grain]
+    compatibility: strict
+    non_additive: true
+    definition: fct_exposure_group_outcome.search_shoppers
+    units: count
+    customer_definition: >-
+      Distinct shoppers with an ad-attributed search conversion from the hour after their first ad to 14 days after it. AMC's documentation doesn't say these searches are branded.
+    customer_caveat: >-
+      Counts Amazon shopper IDs within 14 days of each shopper's first ad in one complete week or month. This shows association, not cause: shoppers weren't randomly assigned to groups. A group with too few shoppers, or none, reads not available.
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [dsp_impressions]
+    causal: false
+    valid_grains: [marketplace, exposure_group, identity_space]
+    notes: >
+      Exact inside AMC over one complete period, per exposure group and identity space; never summed across periods, and a sum across the exposure groups or identity spaces of one delivery is computed only where every cell came back (D-3).
+
+  detail_page_view_shoppers_in_window:
+    label: >-
+      Shoppers who viewed a product page from the hour after their first ad, within 14 days
+    aliases: [product page view shoppers, detail page view shoppers]
+    type: simple
+    aggregation: exact_distinct
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: week
+    period_grains: [week, month]
+    requires_selector: [time_grain]
+    compatibility: strict
+    non_additive: true
+    definition: fct_exposure_group_outcome.detail_page_view_shoppers
+    units: count
+    customer_definition: >-
+      Distinct shoppers with an ad-attributed product detail page view from the hour after their first ad to 14 days after it.
+    customer_caveat: >-
+      Counts Amazon shopper IDs within 14 days of each shopper's first ad in one complete week or month. This shows association, not cause: shoppers weren't randomly assigned to groups. A group with too few shoppers, or none, reads not available.
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [dsp_impressions]
+    causal: false
+    valid_grains: [marketplace, exposure_group, identity_space]
+    notes: >
+      Exact inside AMC over one complete period, per exposure group and identity space; never summed across periods, and a sum across the exposure groups or identity spaces of one delivery is computed only where every cell came back (D-3).
+
+  purchasers_in_window:
+    label: >-
+      Shoppers who bought within 14 days of their first ad
+    aliases: [exposed purchasers, purchasers by exposure group]
+    type: simple
+    aggregation: exact_distinct
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: week
+    period_grains: [week, month]
+    requires_selector: [time_grain]
+    compatibility: strict
+    non_additive: true
+    definition: fct_exposure_group_outcome.purchasers
+    units: count
+    customer_definition: >-
+      Distinct shoppers with an ad-attributed purchase from the hour of their first ad to 14 days after it.
+    customer_caveat: >-
+      Counts Amazon shopper IDs within 14 days of each shopper's first ad in one complete week or month. This shows association, not cause: shoppers weren't randomly assigned to groups. A group with too few shoppers, or none, reads not available.
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [dsp_impressions]
+    causal: false
+    valid_grains: [marketplace, exposure_group, identity_space]
+    notes: >
+      Exact inside AMC over one complete period, per exposure group and identity space; never summed across periods, and a sum across the exposure groups or identity spaces of one delivery is computed only where every cell came back (D-3). Purchaser figures here are exposure-group shoppers, not the new-to-brand buyer counts.
+
+  ntb_purchasers_in_window:
+    label: >-
+      New-to-brand shoppers who bought within 14 days of their first ad
+    aliases: [new-to-brand purchasers by exposure group]
+    type: simple
+    aggregation: exact_distinct
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: week
+    period_grains: [week, month]
+    requires_selector: [time_grain]
+    compatibility: strict
+    non_additive: true
+    definition: fct_exposure_group_outcome.ntb_purchasers
+    units: count
+    customer_definition: >-
+      Distinct shoppers whose purchase from the hour of their first ad to 14 days after it AMC flags new to the brand.
+    customer_caveat: >-
+      Counts Amazon shopper IDs within 14 days of each shopper's first ad in one complete week or month. This shows association, not cause: shoppers weren't randomly assigned to groups. A group with too few shoppers, or none, reads not available.
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [dsp_impressions]
+    lookback_months: 12
+    causal: false
+    valid_grains: [marketplace, exposure_group, identity_space]
+    notes: >
+      Exact inside AMC over one complete period, per exposure group and identity space; never summed across periods, and a sum across the exposure groups or identity spaces of one delivery is computed only where every cell came back (D-3).
+
+  purchases_in_window:
+    label: >-
+      Purchases by these shoppers within 14 days of their first ad
+    aliases: [purchases in window]
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: week
+    period_grains: [week, month]
+    requires_selector: [time_grain]
+    compatibility: strict
+    exact_only_axes: [exposure_group, identity_space]
+    definition: sum(fct_exposure_group_outcome.purchases)
+    units: count
+    customer_definition: >-
+      Ad-attributed purchases by the shoppers of one exposure group from the hour of their first ad to 14 days after it, each purchase once.
+    customer_caveat: >-
+      Counts Amazon shopper IDs within 14 days of each shopper's first ad in one complete week or month. This shows association, not cause: shoppers weren't randomly assigned to groups. A group with too few shoppers, or none, reads not available.
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [dsp_impressions]
+    causal: false
+    valid_grains: [marketplace, exposure_group, identity_space]
+    notes: >
+      D-9: summable only across every value of the disjoint axes inside one fully returned delivery, and only in domain code. Withheld rows' purchases go to the _withheld residual.
+
+  revenue_incl_halo_in_window:
+    label: >-
+      Sales by these shoppers within 14 days of their first ad, including brand halo
+    aliases: [revenue in window, sales in window]
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: week
+    period_grains: [week, month]
+    requires_selector: [time_grain]
+    compatibility: strict
+    exact_only_axes: [exposure_group, identity_space]
+    definition: sum(fct_exposure_group_outcome.revenue_incl_halo)
+    units: currency
+    customer_definition: >-
+      Halo-inclusive ad-attributed sales by the shoppers of one exposure group from the hour of their first ad to 14 days after it.
+    customer_caveat: >-
+      Counts Amazon shopper IDs within 14 days of each shopper's first ad in one complete week or month. This shows association, not cause: shoppers weren't randomly assigned to groups. A group with too few shoppers, or none, reads not available.
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [dsp_impressions]
+    includes_brand_halo: true
+    causal: false
+    valid_grains: [marketplace, exposure_group, identity_space]
+    notes: >
+      D-9: summable only across every value of the disjoint axes inside one fully returned delivery, and only in domain code. A withheld row's sales came back without a currency and are never summed; they read withheld.
+
+  overlap_share:
+    label: >-
+      Saw both within 14 days of their first ad · Amazon account IDs · a lower bound: DSP impressions Amazon couldn't link to an account aren't matched
+    aliases: [overlap share, saw both share, DSP and sponsored overlap]
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: week
+    compatibility: qualified_ratio
+    numerator: shoppers_reached
+    denominator: shoppers_reached
+    requires_selector: [time_grain]
+    within_delivery:
+      numerator: {exposure_group: dsp_and_sponsored, identity_space: account}
+      denominator: {identity_space: account}
+    units: ratio
+    ratio_scale: rate
+    measurement_basis: [ad_attributed]
+    mixes_basis: false
+    causal: false
+    valid_grains: [marketplace, exposure_group, identity_space]
+    notes: >
+      Shoppers who saw both DSP and sponsored ads over every exposure group's shoppers, on Amazon account IDs, inside one delivery. A lower bound, never exact. Computed by the Reach and funnel bake; chat offers shoppers_reached by exposure group.
+
+  overlap_share_all_ids:
+    label: >-
+      Saw both within 14 days of their first ad · all ID types · overlap is understated
+    aliases: [overlap share all IDs]
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: week
+    compatibility: qualified_ratio
+    numerator: shoppers_reached
+    denominator: shoppers_reached
+    requires_selector: [time_grain]
+    within_delivery:
+      numerator: {exposure_group: dsp_and_sponsored}
+      denominator: {}
+    units: ratio
+    ratio_scale: rate
+    measurement_basis: [ad_attributed]
+    mixes_basis: false
+    causal: false
+    valid_grains: [marketplace, exposure_group, identity_space]
+    notes: >
+      The same share over both identity spaces of one delivery. Understated, because a device or browser ID can't be matched across the two kinds of ads.
+
+  dsp_only_reach_share:
+    label: >-
+      Saw DSP only within 14 days of their first ad · Amazon account IDs
+    aliases: [DSP only share, DSP-only reach share]
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: week
+    compatibility: qualified_ratio
+    numerator: shoppers_reached
+    denominator: shoppers_reached
+    requires_selector: [time_grain]
+    within_delivery:
+      numerator: {exposure_group: dsp_only, identity_space: account}
+      denominator: {identity_space: account}
+    units: ratio
+    ratio_scale: rate
+    measurement_basis: [ad_attributed]
+    mixes_basis: false
+    causal: false
+    valid_grains: [marketplace, exposure_group, identity_space]
+    notes: >
+      Shoppers DSP reached that sponsored ads didn't, over every exposure group's shoppers, on Amazon account IDs, inside one delivery.
+
+  search_rate:
+    label: >-
+      Search rate · from the hour after the first ad, within 14 days · Amazon account IDs
+    aliases: [search rate]
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: week
+    compatibility: qualified_ratio
+    numerator: search_shoppers_in_window
+    denominator: shoppers_reached
+    requires_selector: [time_grain]
+    requires:
+      identity_space: account
+    units: ratio
+    ratio_scale: rate
+    measurement_basis: [ad_attributed]
+    mixes_basis: false
+    causal: false
+    valid_grains: [marketplace, exposure_group, identity_space]
+    notes: >
+      Searching shoppers over shoppers reached in one exposure group and delivery, account IDs only. Never called branded search: AMC's documentation doesn't say searchConversion events are branded (plan D13). Association, not cause.
+
+  purchaser_rate:
+    label: >-
+      Purchaser rate · within 14 days of the first ad · Amazon account IDs
+    aliases: [purchaser rate, purchase rate by exposure group]
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: week
+    compatibility: qualified_ratio
+    numerator: purchasers_in_window
+    denominator: shoppers_reached
+    requires_selector: [time_grain]
+    requires:
+      identity_space: account
+    units: ratio
+    ratio_scale: rate
+    measurement_basis: [ad_attributed]
+    mixes_basis: false
+    causal: false
+    valid_grains: [marketplace, exposure_group, identity_space]
+    notes: >
+      Purchasers over shoppers reached in one exposure group and delivery, account IDs only, so a device or browser ID that can't match an account purchase doesn't depress DSP-only rates. Association, not cause.
+
+  revenue_per_exposed_shopper:
+    label: >-
+      Sales per shopper reached · within 14 days of the first ad · includes brand halo · Amazon account IDs
+    aliases: [revenue per exposed shopper, sales per shopper]
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: week
+    compatibility: qualified_ratio
+    numerator: revenue_incl_halo_in_window
+    denominator: shoppers_reached
+    requires_selector: [time_grain]
+    requires:
+      identity_space: account
+    units: currency
+    measurement_basis: [ad_attributed]
+    mixes_basis: false
+    causal: false
+    valid_grains: [marketplace, exposure_group, identity_space]
+    notes: >
+      Halo-inclusive sales over shoppers reached in one exposure group and delivery, account IDs only. Association, not cause.
+
+  purchaser_rate_index_vs_sponsored_only:
+    label: >-
+      Purchaser rate index vs sponsored ads only · Amazon account IDs · may understate the difference between groups
+    aliases: [purchaser rate index]
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: week
+    compatibility: qualified_ratio
+    numerator: purchaser_rate
+    denominator: purchaser_rate
+    requires_selector: [time_grain]
+    within_delivery:
+      per: [exposure_group]
+      numerator: {identity_space: account}
+      denominator: {exposure_group: sponsored_only, identity_space: account}
+    units: ratio
+    ratio_scale: multiplier
+    measurement_basis: [ad_attributed]
+    mixes_basis: false
+    causal: false
+    valid_grains: [marketplace, exposure_group, identity_space]
+    notes: >
+      A group's purchaser rate over the sponsored-only group's in the same delivery, account IDs only. Biased toward 1, because account-space sponsored-only shoppers include some who saw DSP under a device or browser ID. Association, not cause.
+
+  # =======================================================================
+  # SHOPPER AGGREGATE — fct_exposure_frequency, packs 6 and 7 (ADR-101, ADR-102;
+  # design §6.3 D2). One row per frequency bucket and identity space (pack 6,
+  # platform) or per ad product, bucket and identity space (pack 7, channel), per
+  # complete month or quarter. A shopper's bucket counts the impressions they saw
+  # in the 14-day window from their first ad in the period (pack 7: the first ad
+  # of that ad product). The bucket scheme is fine (1 to 9, 10 or more) or, once
+  # switched on for a marketplace, coarse (1, 2, 3, 4 to 6, 7 to 9, 10 or more);
+  # each scheme is its own series and never compared with the other (D-8 (a)).
+  # Groups by frequency aren't random, so every figure is causal: false. Rates
+  # read Amazon account IDs only. Pack 7 ships without its credit branch (plan
+  # D12), so no credited measure is declared.
+  # =======================================================================
+
+  shoppers_in_frequency_bucket:
+    label: >-
+      Shoppers by how many ads they saw within 14 days of their first ad in the period
+    aliases: [shoppers by frequency, frequency distribution, shoppers in frequency bucket]
+    type: simple
+    aggregation: exact_distinct
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: month
+    period_grains: [month, quarter]
+    requires_selector: [time_grain]
+    compatibility: strict
+    non_additive: true
+    definition: fct_exposure_frequency.shoppers
+    units: count
+    customer_definition: >-
+      Distinct shoppers whose first ad in one complete month or quarter fell in it, by how many impressions they saw within 14 days of that first ad.
+    customer_caveat: >-
+      Counts Amazon shopper IDs within 14 days of each shopper's first ad in one complete month or quarter. This shows association, not cause: shoppers weren't randomly assigned to frequencies. A bucket with too few shoppers, or none, reads not available.
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [dsp_impressions]
+    causal: false
+    valid_grains: [marketplace, channel, ad_product, frequency_bucket, identity_space]
+    notes: >
+      Exact inside AMC over one complete period, per bucket and identity space (and per ad product at the channel grain set); never summed across periods or ad products, and a sum across the buckets or identity spaces of one delivery is computed only where every cell came back (D-3).
+
+  purchasers_in_frequency_bucket:
+    label: >-
+      Shoppers who bought within 14 days of their first ad, by how many ads they saw
+    aliases: [purchasers by frequency, purchasers in frequency bucket]
+    type: simple
+    aggregation: exact_distinct
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: month
+    period_grains: [month, quarter]
+    requires_selector: [time_grain]
+    compatibility: strict
+    non_additive: true
+    definition: fct_exposure_frequency.purchasers
+    units: count
+    customer_definition: >-
+      Distinct shoppers in one frequency bucket with an ad-attributed purchase from the hour of their first ad to 14 days after it.
+    customer_caveat: >-
+      Counts Amazon shopper IDs within 14 days of each shopper's first ad in one complete month or quarter. This shows association, not cause: shoppers can see more ads after they buy, so higher buckets may look stronger. A bucket with too few shoppers, or none, reads not available.
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [dsp_impressions]
+    causal: false
+    valid_grains: [marketplace, channel, ad_product, frequency_bucket, identity_space]
+    notes: >
+      Exact inside AMC over one complete period, per bucket and identity space (and per ad product at the channel grain set); never summed across periods or ad products, and a sum across the buckets or identity spaces of one delivery is computed only where every cell came back (D-3).
+
+  ntb_purchasers_in_frequency_bucket:
+    label: >-
+      New-to-brand shoppers who bought within 14 days of their first ad, by how many ads they saw
+    aliases: [new-to-brand purchasers by frequency]
+    type: simple
+    aggregation: exact_distinct
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: month
+    period_grains: [month, quarter]
+    requires_selector: [time_grain]
+    compatibility: strict
+    non_additive: true
+    definition: fct_exposure_frequency.ntb_purchasers
+    units: count
+    customer_definition: >-
+      Distinct shoppers in one frequency bucket whose purchase from the hour of their first ad to 14 days after it AMC flags new to the brand.
+    customer_caveat: >-
+      Counts Amazon shopper IDs within 14 days of each shopper's first ad in one complete month or quarter. This shows association, not cause: shoppers can see more ads after they buy, so higher buckets may look stronger. A bucket with too few shoppers, or none, reads not available.
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [dsp_impressions]
+    lookback_months: 12
+    causal: false
+    valid_grains: [marketplace, channel, ad_product, frequency_bucket, identity_space]
+    notes: >
+      Exact inside AMC over one complete period, per bucket and identity space (and per ad product at the channel grain set); never summed across periods or ad products, and a sum across the buckets or identity spaces of one delivery is computed only where every cell came back (D-3).
+
+  impressions_in_frequency_bucket:
+    label: >-
+      Impressions on these shoppers in their 14-day window, by how many ads they saw
+    aliases: [impressions by frequency, impressions in frequency bucket]
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: month
+    period_grains: [month, quarter]
+    requires_selector: [time_grain]
+    compatibility: strict
+    exact_only_axes: [frequency_bucket, identity_space, channel, ad_product]
+    definition: sum(fct_exposure_frequency.impressions)
+    units: count
+    customer_definition: >-
+      Impressions shown to the shoppers of one frequency bucket inside each shopper's 14-day window from their first ad in the period, including window days after the period ends.
+    customer_caveat: >-
+      Counts Amazon shopper IDs within 14 days of each shopper's first ad in one complete month or quarter. This shows association, not cause. A bucket with too few shoppers, or none, reads not available.
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [dsp_impressions]
+    causal: false
+    valid_grains: [marketplace, channel, ad_product, frequency_bucket, identity_space]
+    notes: >
+      D-9: summable only across every value of the disjoint axes inside one fully returned delivery, and only in domain code; never summed across ad products or compared with period impressions.
+
+  # Window spend is two metrics, one per spend column, each in its own currency
+  # (dsp_currency, sponsored_currency), as on pack 5 (decision B2-5 option C).
+  dsp_window_spend_in_frequency_bucket:
+    label: >-
+      DSP spend on these shoppers in their 14-day window, by how many ads they saw
+    aliases: [DSP window spend by frequency]
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: month
+    period_grains: [month, quarter]
+    requires_selector: [time_grain]
+    compatibility: strict
+    exact_only_axes: [frequency_bucket, identity_space, channel, ad_product]
+    definition: sum(fct_exposure_frequency.dsp_window_spend)
+    units: currency
+    customer_definition: >-
+      DSP cost of the impressions shown to the shoppers of one frequency bucket inside each shopper's 14-day window from their first ad in the period, in the DSP currency.
+    customer_caveat: >-
+      Counts Amazon shopper IDs within 14 days of each shopper's first ad in one complete month or quarter. This shows association, not cause. Never compare it with the period's spend. A bucket with too few shoppers, or none, reads not available.
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [dsp_impressions]
+    causal: false
+    valid_grains: [marketplace, channel, ad_product, frequency_bucket, identity_space]
+    notes: >
+      D-9: summable only across every value of the disjoint axes inside one fully returned delivery, and only in domain code; never summed with sponsored window spend, which carries its own currency. A withheld row's DSP spend that came back without its currency is never summed; it reads withheld.
+
+  sponsored_window_spend_in_frequency_bucket:
+    label: >-
+      Sponsored ads spend on these shoppers in their 14-day window, by how many ads they saw
+    aliases: [sponsored window spend by frequency]
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: month
+    period_grains: [month, quarter]
+    requires_selector: [time_grain]
+    compatibility: strict
+    exact_only_axes: [frequency_bucket, identity_space, channel, ad_product]
+    definition: sum(fct_exposure_frequency.sponsored_window_spend)
+    units: currency
+    customer_definition: >-
+      Sponsored ads cost, including click cost on cost-per-click ad products, of the shoppers of one frequency bucket inside each shopper's 14-day window from their first ad in the period, in the sponsored ads currency.
+    customer_caveat: >-
+      Counts Amazon shopper IDs within 14 days of each shopper's first ad in one complete month or quarter. This shows association, not cause. Never compare it with the period's spend. A bucket with too few shoppers, or none, reads not available.
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [dsp_impressions]
+    causal: false
+    valid_grains: [marketplace, channel, ad_product, frequency_bucket, identity_space]
+    notes: >
+      D-9: summable only across every value of the disjoint axes inside one fully returned delivery, and only in domain code; never summed with DSP window spend, which carries its own currency. A withheld row's sponsored spend that came back without its currency is never summed; it reads withheld.
+
+  # The denominator of platform return by frequency: both window spends of one bucket. They
+  # carry their own currencies, so no query sums them (the planner can't, by its rule for a
+  # simple expression); the Reach and funnel bake adds them, in domain code, only where the
+  # bucket's DSP, sponsored and purchase currencies agree (design §5.5 currency).
+  window_spend_in_frequency_bucket:
+    label: >-
+      Spend on these shoppers in their 14-day window (impressions and clicks), by how many ads they saw
+    aliases: [window spend by frequency]
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: month
+    period_grains: [month, quarter]
+    requires_selector: [time_grain]
+    compatibility: strict
+    exact_only_axes: [frequency_bucket, identity_space]
+    definition: sum(fct_exposure_frequency.dsp_window_spend) + sum(fct_exposure_frequency.sponsored_window_spend)
+    units: currency
+    customer_definition: >-
+      DSP and sponsored ads cost on the shoppers of one frequency bucket inside each shopper's 14-day window from their first ad in the period, shown only where both carry one currency.
+    customer_caveat: >-
+      Counts Amazon shopper IDs within 14 days of each shopper's first ad in one complete month or quarter. This shows association, not cause. Never compare it with the period's spend. Shown only inside platform return by frequency, where the two spends share a currency.
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [dsp_impressions]
+    causal: false
+    valid_grains: [marketplace, frequency_bucket, identity_space]
+    notes: >
+      Not a query: DSP and sponsored window spend carry their own currencies, so chat offers each on its own. The Reach and funnel bake adds them for one bucket of one pack 6 delivery, only where the DSP, sponsored and purchase currencies agree, as roas_incl_halo_by_frequency's denominator.
+
+  purchases_in_frequency_bucket:
+    label: >-
+      Purchases by these shoppers within 14 days of their first ad, by how many ads they saw
+    aliases: [purchases by frequency, purchases in frequency bucket]
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: month
+    period_grains: [month, quarter]
+    requires_selector: [time_grain]
+    compatibility: strict
+    exact_only_axes: [frequency_bucket, identity_space, channel, ad_product]
+    definition: sum(fct_exposure_frequency.purchases)
+    units: count
+    customer_definition: >-
+      Ad-attributed purchases by the shoppers of one frequency bucket from the hour of their first ad to 14 days after it, each purchase once per bucket. Per ad product, the same purchase sits in every ad product the shopper saw.
+    customer_caveat: >-
+      Counts Amazon shopper IDs within 14 days of each shopper's first ad in one complete month or quarter. This shows association, not cause. A bucket with too few shoppers, or none, reads not available.
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [dsp_impressions]
+    causal: false
+    valid_grains: [marketplace, channel, ad_product, frequency_bucket, identity_space]
+    notes: >
+      D-9: summable only across the buckets and identity spaces of one fully returned delivery, and only in domain code; never summed across the ad products of one pack 7 delivery, because one purchase sits in each ad product's row. Withheld rows' purchases go to the _withheld residual.
+
+  revenue_incl_halo_in_frequency_bucket:
+    label: >-
+      Sales by these shoppers within 14 days of their first ad, including brand halo, by how many ads they saw
+    aliases: [revenue by frequency, sales by frequency]
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: month
+    period_grains: [month, quarter]
+    requires_selector: [time_grain]
+    compatibility: strict
+    exact_only_axes: [frequency_bucket, identity_space, channel, ad_product]
+    definition: sum(fct_exposure_frequency.revenue_incl_halo)
+    units: currency
+    customer_definition: >-
+      Halo-inclusive ad-attributed sales by the shoppers of one frequency bucket from the hour of their first ad to 14 days after it.
+    customer_caveat: >-
+      Counts Amazon shopper IDs within 14 days of each shopper's first ad in one complete month or quarter. This shows association, not cause. A bucket with too few shoppers, or none, reads not available.
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [dsp_impressions]
+    includes_brand_halo: true
+    causal: false
+    valid_grains: [marketplace, channel, ad_product, frequency_bucket, identity_space]
+    notes: >
+      D-9: summable only across the buckets and identity spaces of one fully returned delivery, and only in domain code; never summed across ad products. A withheld row's sales came back without a currency and are never summed; they read withheld.
+
+  purchaser_rate_by_frequency:
+    label: >-
+      Purchaser rate by how many ads shoppers saw · within 14 days of the first ad · Amazon account IDs
+    aliases: [purchaser rate by frequency, frequency curve, conversion by frequency]
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: month
+    compatibility: qualified_ratio
+    numerator: purchasers_in_frequency_bucket
+    denominator: shoppers_in_frequency_bucket
+    requires_selector: [time_grain]
+    requires:
+      identity_space: account
+    units: ratio
+    ratio_scale: rate
+    measurement_basis: [ad_attributed]
+    mixes_basis: false
+    causal: false
+    valid_grains: [marketplace, channel, ad_product, frequency_bucket, identity_space]
+    notes: >
+      Purchasers over shoppers in one frequency bucket of one delivery, account IDs only. Shoppers can see more ads after they buy, so higher buckets may look stronger. Association, not cause.
+
+  roas_incl_halo_by_frequency:
+    label: >-
+      Sales ÷ window spend by how many ads shoppers saw · all ads · includes brand halo · Amazon account IDs
+    aliases: [ROAS by frequency, return by frequency]
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: month
+    compatibility: qualified_ratio
+    numerator: revenue_incl_halo_in_frequency_bucket
+    denominator: window_spend_in_frequency_bucket
+    requires_selector: [time_grain]
+    requires:
+      identity_space: account
+    units: ratio
+    ratio_scale: multiplier
+    measurement_basis: [ad_attributed]
+    mixes_basis: false
+    includes_brand_halo: true
+    causal: false
+    valid_grains: [marketplace, frequency_bucket, identity_space]
+    unsupported_grain_reason: per-channel return uses credited revenue
+    notes: >
+      Platform grain (pack 6) only: halo-inclusive sales after any ad over all window spend in one bucket of one delivery, account IDs only. Refused per channel or ad product, because one purchase follows ads on several channels and per-channel return uses credited revenue (pack 7's credit branch, not built). Computed by the Reach and funnel bake where the bucket's currencies agree; chat offers its sales and each window spend.
+
+  # =======================================================================
+  # SHOPPER AGGREGATE — fct_segment_delivery (pack 8, amc-audience-performance; design §6.5
+  # C1, ADR-103). One row per complete calendar month, DSP campaign and matched DSP behaviour
+  # segment. Segments overlap: a shopper and an impression repeat once per matched segment, so
+  # no figure is summed across segments or campaigns (D-4), and DSP and ASI segments are never
+  # one series (only DSP behaviour segments are here). Campaign grain shows which segments
+  # perform, not which line item to change.
+  # =======================================================================
+  segment_impressions:
+    label: DSP impressions matched to the segment · per campaign · month
+    aliases: [segment impressions, impressions by segment, impressions by audience]
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: month
+    period_grains: [month]
+    requires_selector: [time_grain]
+    compatibility: strict
+    exact_only_axes: [audience_segment, campaign]
+    definition: sum(fct_segment_delivery.impressions)
+    units: count
+    customer_definition: >-
+      DSP impressions of one campaign in one complete month whose line item targeted the segment and whose shopper was in it.
+    customer_caveat: >-
+      Impressions repeat once per matched segment. Segment figures never add up. A segment with too few shoppers, or none, reads not available.
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [dsp_impressions_by_matched_segments]
+    valid_grains: [marketplace, campaign, audience_segment]
+    unsupported_grain_reason: impressions repeat once per matched segment, so segment figures never add up
+    notes: >
+      D-9: summable only within one campaign and segment row; never across segments, campaigns or months.
+
+  segment_spend:
+    label: DSP spend on impressions matched to the segment · per campaign · month
+    aliases: [segment spend, spend by segment, spend by audience]
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: month
+    period_grains: [month]
+    requires_selector: [time_grain]
+    compatibility: strict
+    exact_only_axes: [audience_segment, campaign]
+    definition: sum(fct_segment_delivery.dsp_spend)
+    units: currency
+    customer_definition: >-
+      DSP cost of one campaign's impressions matched to the segment in one complete month, in the DSP currency.
+    customer_caveat: >-
+      An impression's cost repeats once per matched segment. Segment figures never add up. A segment with too few shoppers, or none, reads not available.
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [dsp_impressions_by_matched_segments]
+    valid_grains: [marketplace, campaign, audience_segment]
+    unsupported_grain_reason: an impression's cost repeats once per matched segment, so segment figures never add up
+    notes: >
+      D-9: within one campaign and segment row only. A withheld row's spend that came back without its currency is never summed; it reads withheld.
+
+  segment_purchases:
+    label: DSP-attributed purchases by shoppers in the segment · per campaign · month
+    aliases: [segment purchases, purchases by segment]
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: month
+    period_grains: [month]
+    requires_selector: [time_grain]
+    compatibility: strict
+    exact_only_axes: [audience_segment, campaign]
+    definition: sum(fct_segment_delivery.segment_purchases)
+    units: count
+    customer_definition: >-
+      Purchases attributed to the campaign (14-day attribution, conversion date) by shoppers who saw its impressions matched to the segment in one complete month.
+    customer_caveat: >-
+      A shopper's purchases repeat once per segment they were matched to. Segment figures never add up. A segment with too few shoppers, or none, reads not available.
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [dsp_impressions_by_matched_segments]
+    attribution_window_days: 14
+    valid_grains: [marketplace, campaign, audience_segment]
+    unsupported_grain_reason: a shopper's purchases repeat once per matched segment, so segment figures never add up
+    notes: >
+      Summed within one campaign only (design §5.1). Empty on a segment row no attributed purchase reached; segment_purchasers reads 0 there.
+
+  segment_attributed_revenue:
+    label: DSP-attributed sales by shoppers in the segment · per campaign · month
+    aliases: [segment sales, segment revenue, sales by segment]
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: month
+    period_grains: [month]
+    requires_selector: [time_grain]
+    compatibility: strict
+    exact_only_axes: [audience_segment, campaign]
+    definition: sum(fct_segment_delivery.segment_attributed_revenue)
+    units: currency
+    customer_definition: >-
+      Advertised-product sales attributed to the campaign (14-day attribution, conversion date) by shoppers who saw its impressions matched to the segment in one complete month, in the purchase currency.
+    customer_caveat: >-
+      A shopper's sales repeat once per segment they were matched to. Segment figures never add up. A segment with too few shoppers, or none, reads not available.
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [dsp_impressions_by_matched_segments]
+    attribution_window_days: 14
+    valid_grains: [marketplace, campaign, audience_segment]
+    unsupported_grain_reason: a shopper's sales repeat once per matched segment, so segment figures never add up
+    notes: >
+      Within one campaign and segment row only. A withheld row's sales came back without a currency and are never summed; they read withheld.
+
+  segment_reach:
+    label: Shoppers reached in the segment · per campaign · month
+    aliases: [segment reach, reach by segment, shoppers by segment]
+    type: simple
+    aggregation: exact_distinct
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: month
+    period_grains: [month]
+    requires_selector: [time_grain]
+    compatibility: strict
+    non_additive: true
+    definition: fct_segment_delivery.segment_reach
+    units: count
+    customer_definition: >-
+      Distinct shoppers who saw at least one of the campaign's impressions matched to the segment in one complete month.
+    customer_caveat: >-
+      Counts Amazon shopper IDs; one shopper is in many segments. Segment figures never add up. A segment with too few shoppers, or none, reads not available.
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [dsp_impressions_by_matched_segments]
+    valid_grains: [marketplace, campaign, audience_segment]
+    unsupported_grain_reason: one shopper is in many segments, so segment figures never add up
+    notes: >
+      Exact inside AMC per campaign, segment and month; never summed across segments, campaigns or months.
+
+  segment_purchasers:
+    label: Shoppers in the segment who bought after the campaign's ads · month
+    aliases: [segment purchasers, purchasers by segment, buyers by segment]
+    type: simple
+    aggregation: exact_distinct
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: month
+    period_grains: [month]
+    requires_selector: [time_grain]
+    compatibility: strict
+    non_additive: true
+    definition: fct_segment_delivery.segment_purchasers
+    units: count
+    customer_definition: >-
+      Distinct shoppers reached in the segment with a purchase attributed to the campaign (14-day attribution, conversion date) in one complete month.
+    customer_caveat: >-
+      Counts Amazon shopper IDs; one shopper is in many segments. Segment figures never add up. A segment with too few shoppers, or none, reads not available.
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [dsp_impressions_by_matched_segments]
+    attribution_window_days: 14
+    valid_grains: [marketplace, campaign, audience_segment]
+    unsupported_grain_reason: one shopper is in many segments, so segment figures never add up
+    notes: >
+      Exact inside AMC per campaign, segment and month; never summed across segments, campaigns or months.
+
+  segment_cpm:
+    label: DSP cost per thousand impressions matched to the segment · per campaign · month
+    aliases: [segment CPM, CPM by segment]
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: month
+    compatibility: qualified_ratio
+    numerator: segment_spend
+    denominator: segment_impressions
+    requires_selector: [time_grain]
+    multiplier: 1000
+    units: currency
+    measurement_basis: [ad_attributed]
+    mixes_basis: false
+    valid_grains: [marketplace, campaign, audience_segment]
+    unsupported_grain_reason: segment figures never add up, so a ratio is read within one campaign and segment row
+    notes: >
+      Within one campaign and segment row of one delivery.
+
+  segment_roas_attributed:
+    label: DSP-attributed sales ÷ DSP spend in the segment · per campaign · month
+    aliases: [segment ROAS, ROAS by segment]
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: month
+    compatibility: qualified_ratio
+    numerator: segment_attributed_revenue
+    denominator: segment_spend
+    requires_selector: [time_grain]
+    units: ratio
+    ratio_scale: multiplier
+    measurement_basis: [ad_attributed]
+    mixes_basis: false
+    valid_grains: [marketplace, campaign, audience_segment]
+    unsupported_grain_reason: segment figures never add up, so a ratio is read within one campaign and segment row
+    notes: >
+      Within one campaign and segment row of one delivery, where the purchase and DSP currencies agree. Sales and spend each carry their own currency column, so no query divides them: chat refuses it (ADLY-CATALOG-0002) and only a bake that checks both currencies agree may compute it, as return by frequency is.
+
+  segment_purchase_rate:
+    label: Share of the segment's reached shoppers who bought after the campaign's ads · month
+    aliases: [segment purchase rate, purchase rate by segment]
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: month
+    compatibility: qualified_ratio
+    numerator: segment_purchasers
+    denominator: segment_reach
+    requires_selector: [time_grain]
+    units: ratio
+    ratio_scale: rate
+    measurement_basis: [ad_attributed]
+    mixes_basis: false
+    valid_grains: [marketplace, campaign, audience_segment]
+    unsupported_grain_reason: segment figures never add up, so a ratio is read within one campaign and segment row
+    notes: >
+      Within one campaign and segment row of one delivery.
+
+  # =======================================================================
+  # SHOPPER AGGREGATE — fct_segment_profile, packs 10-12 (design §5.5, §6.5 C2,
+  # ADR-103, ADR-107). One row per complete calendar month, profile path and
+  # segment, and one profiled_total row per delivery. profile_path is an exact
+  # selector naming the delivery's own profiled base: asi_in_market and
+  # asi_lifestyle (packs 10-11, Audience Segment Insights, paid; the page's
+  # "Amazon audience segments (paid)") or dsp_exposed_only (pack 12, "DSP-exposed
+  # buyers only"); no figure spans two paths. Buyers are ad-touched purchasers in
+  # the month and may have bought before their first ad. Shares and the index are
+  # read inside one delivery: a missing profiled_total makes every share and index
+  # of that delivery not available, and no share is ever summed across segments.
+  # =======================================================================
+  segment_buyers:
+    label: >-
+      Buyers in the segment · Ad-touched buyers in the month · may have bought before seeing an ad
+    aliases: [segment buyers, buyers by segment, audience buyers]
+    type: simple
+    aggregation: exact_distinct
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: month
+    period_grains: [month]
+    requires_selector: [time_grain, profile_path]
+    compatibility: strict
+    non_additive: true
+    definition: fct_segment_profile.segment_buyers
+    units: count
+    customer_definition: >-
+      Distinct profiled shoppers in the segment with a purchase in one complete month: shoppers your ads reached who are in the segment's audience, on the delivery's profile path.
+    customer_caveat: >-
+      Counts Amazon shopper IDs; one shopper is in many segments. Segment figures never add up. A segment with too few shoppers, or none, reads not available.
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [audience_segments_amer_inmarket_snapshot, audience_segments_amer_lifestyle_snapshot, dsp_impressions_by_user_segments]
+    causal: false
+    valid_grains: [marketplace, audience_segment]
+    unsupported_grain_reason: one shopper is in many segments, so segment figures never add up
+    notes: >
+      Exact inside AMC per profile path, segment and month; never summed across segments, paths or months.
+
+  segment_exposed_shoppers:
+    label: >-
+      Shoppers your ads reached in the segment · month
+    aliases: [segment exposed shoppers, reached shoppers by segment]
+    type: simple
+    aggregation: exact_distinct
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: month
+    period_grains: [month]
+    requires_selector: [time_grain, profile_path]
+    compatibility: strict
+    non_additive: true
+    definition: fct_segment_profile.segment_exposed_shoppers
+    units: count
+    customer_definition: >-
+      Distinct shoppers your ads reached in one complete month who are in the segment's audience, on the delivery's profile path.
+    customer_caveat: >-
+      Counts Amazon shopper IDs; one shopper is in many segments. Segment figures never add up. A segment with too few shoppers, or none, reads not available.
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [audience_segments_amer_inmarket_snapshot, audience_segments_amer_lifestyle_snapshot, dsp_impressions_by_user_segments]
+    causal: false
+    valid_grains: [marketplace, audience_segment]
+    unsupported_grain_reason: one shopper is in many segments, so segment figures never add up
+    notes: >
+      Exact inside AMC per profile path, segment and month; never summed across segments, paths or months.
+
+  segment_buyers_new_to_brand:
+    label: >-
+      New-to-brand buyers in the segment · Ad-touched buyers in the month · may have bought before seeing an ad
+    aliases: [segment new-to-brand buyers, new-to-brand buyers by segment]
+    type: simple
+    aggregation: exact_distinct
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: month
+    period_grains: [month]
+    requires_selector: [time_grain, profile_path]
+    compatibility: strict
+    non_additive: true
+    definition: fct_segment_profile.segment_buyers_new_to_brand
+    units: count
+    customer_definition: >-
+      Distinct buyers in the segment with at least one purchase Amazon flags new-to-brand in one complete month, on the delivery's profile path.
+    customer_caveat: >-
+      Counts Amazon shopper IDs; one shopper is in many segments. Segment figures never add up. A segment with too few shoppers, or none, reads not available.
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [audience_segments_amer_inmarket_snapshot, audience_segments_amer_lifestyle_snapshot, dsp_impressions_by_user_segments]
+    causal: false
+    valid_grains: [marketplace, audience_segment]
+    unsupported_grain_reason: one shopper is in many segments, so segment figures never add up
+    notes: >
+      The new-to-brand view of segment_buyers; never summed across segments, paths or months.
+
+  profiled_buyers_total:
+    label: >-
+      Profiled buyers · Ad-touched buyers in the month · may have bought before seeing an ad
+    aliases: [profiled buyers, profiled buyers total]
+    type: simple
+    aggregation: exact_distinct
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: month
+    period_grains: [month]
+    requires_selector: [time_grain, profile_path]
+    compatibility: strict
+    non_additive: true
+    definition: fct_segment_profile.profiled_buyers_total
+    units: count
+    customer_definition: >-
+      Distinct profiled shoppers with a purchase in one complete month: the base every segment's buyer share reads, on the delivery's profile path.
+    customer_caveat: >-
+      Counts Amazon shopper IDs. If the total didn't come back, every share and index of that month and path reads not available.
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [audience_segments_amer_inmarket_snapshot, audience_segments_amer_lifestyle_snapshot, dsp_impressions_by_user_segments]
+    causal: false
+    valid_grains: [marketplace]
+    unsupported_grain_reason: a profiled total is one row per delivery, never split by segment
+    notes: >
+      Read from the delivery's profiled_total row; one per profile path and month.
+
+  profiled_exposed_total:
+    label: >-
+      Profiled shoppers your ads reached · month
+    aliases: [profiled shoppers, profiled exposed total]
+    type: simple
+    aggregation: exact_distinct
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: month
+    period_grains: [month]
+    requires_selector: [time_grain, profile_path]
+    compatibility: strict
+    non_additive: true
+    definition: fct_segment_profile.profiled_exposed_total
+    units: count
+    customer_definition: >-
+      Distinct shoppers your ads reached in one complete month who appear in the profile's segment data: the base every segment's exposed share reads, on the delivery's profile path.
+    customer_caveat: >-
+      Counts Amazon shopper IDs. If the total didn't come back, every share and index of that month and path reads not available.
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [audience_segments_amer_inmarket_snapshot, audience_segments_amer_lifestyle_snapshot, dsp_impressions_by_user_segments]
+    causal: false
+    valid_grains: [marketplace]
+    unsupported_grain_reason: a profiled total is one row per delivery, never split by segment
+    notes: >
+      Read from the delivery's profiled_total row; one per profile path and month.
+
+  segment_buyer_share:
+    label: >-
+      Share of profiled buyers in the segment · Ad-touched buyers in the month · may have bought before seeing an ad
+    aliases: [segment buyer share, buyer share by segment]
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: month
+    compatibility: qualified_ratio
+    numerator: segment_buyers
+    denominator: profiled_buyers_total
+    requires_selector: [time_grain, profile_path]
+    delivery_ratio: segment_profile
+    units: ratio
+    ratio_scale: rate
+    measurement_basis: [ad_attributed]
+    mixes_basis: false
+    causal: false
+    valid_grains: [marketplace, audience_segment]
+    unsupported_grain_reason: segment shares never add up, so a share or index is read per segment inside one delivery
+    notes: >
+      A segment's buyers over its delivery's profiled buyers, inside one delivery. Shares overlap, so they never add up to a whole. Not available for every segment when the delivery's profiled_total row is missing.
+
+  segment_exposed_share:
+    label: >-
+      Share of profiled shoppers your ads reached who are in the segment · month
+    aliases: [segment exposed share, reached share by segment]
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: month
+    compatibility: qualified_ratio
+    numerator: segment_exposed_shoppers
+    denominator: profiled_exposed_total
+    requires_selector: [time_grain, profile_path]
+    delivery_ratio: segment_profile
+    units: ratio
+    ratio_scale: rate
+    measurement_basis: [ad_attributed]
+    mixes_basis: false
+    causal: false
+    valid_grains: [marketplace, audience_segment]
+    unsupported_grain_reason: segment shares never add up, so a share or index is read per segment inside one delivery
+    notes: >
+      A segment's reached shoppers over its delivery's profiled reached shoppers, inside one delivery. Shares overlap, so they never add up to a whole. Not available for every segment when the delivery's profiled_total row is missing.
+
+  segment_index:
+    label: >-
+      Segment index · buyer share over reached share · 1 means buyers look like the shoppers your ads reached
+    aliases: [segment index, over-index, audience index]
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: month
+    compatibility: qualified_ratio
+    numerator: segment_buyer_share
+    denominator: segment_exposed_share
+    requires_selector: [time_grain, profile_path]
+    delivery_ratio: segment_profile
+    units: ratio
+    ratio_scale: multiplier
+    measurement_basis: [ad_attributed]
+    mixes_basis: false
+    causal: false
+    valid_grains: [marketplace, audience_segment]
+    unsupported_grain_reason: segment shares never add up, so a share or index is read per segment inside one delivery
+    notes: >
+      A segment's buyer share over its reached share, inside one delivery and profile path; never compared across paths. Not available for every segment when the delivery's profiled_total row is missing.
+
+  # =======================================================================
+  # SHOPPER AGGREGATE — fct_shopper_acquisition, packs 14 and 15 (ADR-104,
+  # ADR-101; design §6.6 B3). One row per cohort vintage (as_of_month, the
+  # 13 calendar months ending with it), path, cohort grain, cohort, follow-up
+  # and acquisition channel group. A cohort is the shoppers whose first
+  # new-to-brand purchase in the vintage fell in one calendar month (or, on a
+  # quarterly vintage, quarter); follow-up k counts later calendar months. Cohort
+  # sizes repeat on every k row and are never summed across k; cumulative repeat
+  # buyers are their own extracted count. The standard path (pack 14) counts
+  # ad-touched repeats only; the paid ARP path (pack 15) counts all Amazon
+  # purchases of the cohort's Amazon account IDs.
+  # =======================================================================
+
+  cohort_buyers_new_to_brand_12mo:
+    label: >-
+      New-to-brand buyers won in the cohort · all ID types
+    aliases: [cohort size, cohort buyers, new-to-brand cohort size]
+    type: simple
+    aggregation: exact_distinct
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: custom
+    period_grains: [custom]
+    requires_selector: [time_grain]
+    requires:
+      cohort_path: standard
+    compatibility: strict
+    non_additive: true
+    definition: fct_shopper_acquisition.cohort_buyers_new_to_brand_12mo
+    units: count
+    customer_definition: >-
+      Distinct shoppers whose first new-to-brand purchase in the vintage's 13 months fell in the cohort month, by how the ads won them on that day.
+    customer_caveat: >-
+      Counts Amazon shopper IDs of every type. The same count repeats on each month after the cohort month and is never added up across them. A cohort with too few shoppers, or none, reads not available.
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [amazon_attributed_events_by_conversion_time]
+    causal: false
+    valid_grains: [marketplace, acquisition_channel_group, cohort, months_since_acquisition]
+    notes: >
+      Exact inside AMC over one vintage; read at one cohort, group and follow-up month, never summed across k (repeated-total check, design §5.4). Standard path only: pack 15 carries no cohort size.
+
+  cohort_buyers_account_ids:
+    label: >-
+      New-to-brand buyers won in the cohort · Amazon account IDs
+    aliases: [cohort size account IDs, cohort account IDs]
+    type: simple
+    aggregation: exact_distinct
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: custom
+    period_grains: [custom]
+    requires_selector: [time_grain]
+    requires:
+      cohort_path: standard
+    compatibility: strict
+    non_additive: true
+    definition: fct_shopper_acquisition.cohort_buyers_account_ids
+    units: count
+    customer_definition: >-
+      The Amazon account ID part of the cohort: shoppers won in the cohort month whose ID is an Amazon account ID.
+    customer_caveat: >-
+      Counts Amazon account IDs only. The same count repeats on each month after the cohort month and is never added up across them. A cohort with too few shoppers, or none, reads not available.
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [amazon_attributed_events_by_conversion_time]
+    causal: false
+    valid_grains: [marketplace, acquisition_channel_group, cohort, months_since_acquisition]
+    notes: >
+      The denominator of the account-ID rates and of the ARP rates (design §6.6, review DS5-2). Standard path only.
+
+  cohort_repeat_buyers:
+    label: >-
+      Cohort shoppers who bought again in the month
+    aliases: [repeat buyers, cohort repeat buyers]
+    type: simple
+    aggregation: exact_distinct
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: custom
+    period_grains: [custom]
+    requires_selector: [time_grain, cohort_path]
+    compatibility: strict
+    non_additive: true
+    definition: fct_shopper_acquisition.repeat_buyers
+    units: count
+    customer_definition: >-
+      Distinct cohort shoppers with at least one purchase in the follow-up month: ad-touched repeat purchases from this advertiser on the standard path, all Amazon purchases on the paid path.
+    customer_caveat: >-
+      The standard path counts ad-touched repeats only, so it understates true repeat; month 0 repeats are excluded. The paid path counts Amazon account IDs only. A cell with too few shoppers, or none, reads not available.
+    measurement_basis: [ad_attributed, retail_actual]
+    source_system: amc
+    source_datasets: [amazon_attributed_events_by_conversion_time]
+    causal: false
+    valid_grains: [marketplace, acquisition_channel_group, cohort, months_since_acquisition]
+    notes: >
+      Pin cohort_path: standard rows are ad_attributed (pack 14), arp rows retail_actual (pack 15); the two are never one series.
+
+  cohort_first_repeat_buyers:
+    label: >-
+      Cohort shoppers whose first repeat purchase came in the month
+    aliases: [first-time repeaters, first repeat buyers]
+    type: simple
+    aggregation: exact_distinct
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: custom
+    period_grains: [custom]
+    requires_selector: [time_grain, cohort_path]
+    compatibility: strict
+    non_additive: true
+    definition: fct_shopper_acquisition.first_repeat_buyers
+    units: count
+    customer_definition: >-
+      Distinct cohort shoppers whose first repeat purchase after the cohort month came in the follow-up month.
+    customer_caveat: >-
+      The standard path counts ad-touched repeats only; the paid path counts Amazon account IDs only. A cell with too few shoppers, or none, reads not available.
+    measurement_basis: [ad_attributed, retail_actual]
+    source_system: amc
+    source_datasets: [amazon_attributed_events_by_conversion_time]
+    causal: false
+    valid_grains: [marketplace, acquisition_channel_group, cohort, months_since_acquisition]
+    notes: >
+      Pin cohort_path. Never summed across k: the cumulative count is its own extracted measure.
+
+  cohort_repeat_buyers_cumulative:
+    label: >-
+      Cohort shoppers who have bought again by the month
+    aliases: [cumulative repeat buyers]
+    type: simple
+    aggregation: exact_distinct
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: custom
+    period_grains: [custom]
+    requires_selector: [time_grain, cohort_path]
+    compatibility: strict
+    non_additive: true
+    definition: fct_shopper_acquisition.cumulative_repeat_buyers
+    units: count
+    customer_definition: >-
+      Distinct cohort shoppers whose first repeat purchase came in any follow-up month up to this one, counted inside AMC.
+    customer_caveat: >-
+      The standard path counts ad-touched repeats only; the paid path counts Amazon account IDs only. A cell with too few shoppers, or none, reads not available.
+    measurement_basis: [ad_attributed, retail_actual]
+    source_system: amc
+    source_datasets: [amazon_attributed_events_by_conversion_time]
+    causal: false
+    valid_grains: [marketplace, acquisition_channel_group, cohort, months_since_acquisition]
+    notes: >
+      Extracted as its own distinct count (finding BO-6), never a sum of first-time repeaters. Pin cohort_path.
+
+  cohort_repeat_buyers_account_ids:
+    label: >-
+      Cohort shoppers who bought again in the month · Amazon account IDs
+    aliases: [repeat buyers account IDs]
+    type: simple
+    aggregation: exact_distinct
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: custom
+    period_grains: [custom]
+    requires_selector: [time_grain]
+    requires:
+      cohort_path: standard
+    compatibility: strict
+    non_additive: true
+    definition: fct_shopper_acquisition.repeat_buyers_account_ids
+    units: count
+    customer_definition: >-
+      The Amazon account ID part of the cohort's repeat buyers in the follow-up month.
+    customer_caveat: >-
+      Counts ad-touched repeats of Amazon account IDs only. A cell with too few shoppers, or none, reads not available.
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [amazon_attributed_events_by_conversion_time]
+    causal: false
+    valid_grains: [marketplace, acquisition_channel_group, cohort, months_since_acquisition]
+    notes: >
+      Standard path only (review DS5-2): the numerator of repeat_buyer_rate_account_ids.
+
+  cohort_repeat_buyers_cumulative_account_ids:
+    label: >-
+      Cohort shoppers who have bought again by the month · Amazon account IDs
+    aliases: [cumulative repeat buyers account IDs]
+    type: simple
+    aggregation: exact_distinct
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: custom
+    period_grains: [custom]
+    requires_selector: [time_grain]
+    requires:
+      cohort_path: standard
+    compatibility: strict
+    non_additive: true
+    definition: fct_shopper_acquisition.cumulative_repeat_buyers_account_ids
+    units: count
+    customer_definition: >-
+      The Amazon account ID part of the cohort's cumulative repeat buyers to the follow-up month.
+    customer_caveat: >-
+      Counts ad-touched repeats of Amazon account IDs only. A cell with too few shoppers, or none, reads not available.
+    measurement_basis: [ad_attributed]
+    source_system: amc
+    source_datasets: [amazon_attributed_events_by_conversion_time]
+    causal: false
+    valid_grains: [marketplace, acquisition_channel_group, cohort, months_since_acquisition]
+    notes: >
+      Standard path only (review DS5-2): the numerator of cumulative_repeat_rate_account_ids, the only rate the cross-group repeat curve binds.
+
+  cohort_repeat_purchases:
+    label: >-
+      Repeat purchases by the cohort in the month
+    aliases: [repeat purchases, repeat orders]
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: custom
+    period_grains: [custom]
+    requires_selector: [time_grain, cohort_path]
+    compatibility: strict
+    exact_only_axes: [acquisition_channel_group, cohort, months_since_acquisition]
+    definition: sum(fct_shopper_acquisition.repeat_purchases)
+    units: count
+    customer_definition: >-
+      Repeat purchases by the cohort's shoppers in the follow-up month: ad-touched purchase events on the standard path, Amazon orders on the paid path.
+    customer_caveat: >-
+      The two paths count different units (purchase events and orders) and are never one series. A cell with too few shoppers, or none, reads not available.
+    measurement_basis: [ad_attributed, retail_actual]
+    source_system: amc
+    source_datasets: [amazon_attributed_events_by_conversion_time]
+    causal: false
+    valid_grains: [marketplace, acquisition_channel_group, cohort, months_since_acquisition]
+    notes: >
+      D-9: summable only across every value of the disjoint axes inside one fully returned delivery, and only in domain code. Pin cohort_path.
+
+  cohort_repeat_revenue:
+    label: >-
+      Repeat sales by the cohort in the month
+    aliases: [repeat revenue, repeat sales]
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: custom
+    period_grains: [custom]
+    requires_selector: [time_grain, cohort_path]
+    compatibility: strict
+    exact_only_axes: [acquisition_channel_group, cohort, months_since_acquisition]
+    definition: sum(fct_shopper_acquisition.repeat_revenue)
+    units: currency
+    customer_definition: >-
+      Sales of the cohort's repeat purchases in the follow-up month: total product sales on the standard path, unit price times units on the paid path, in the purchases' currency.
+    customer_caveat: >-
+      A cell with too few shoppers, or none, reads not available. A withheld amount that came back without its currency is never added; it reads withheld.
+    measurement_basis: [ad_attributed, retail_actual]
+    source_system: amc
+    source_datasets: [amazon_attributed_events_by_conversion_time]
+    causal: false
+    valid_grains: [marketplace, acquisition_channel_group, cohort, months_since_acquisition]
+    notes: >
+      D-9: summable only across every value of the disjoint axes inside one fully returned delivery, and only in domain code. Pin cohort_path.
+
+  repeat_buyer_rate:
+    label: >-
+      Repeat rate in the month · ad-touched repeat only, from this advertiser · all ID types
+    aliases: [repeat rate, repeat buyer rate]
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: custom
+    compatibility: qualified_ratio
+    numerator: cohort_repeat_buyers
+    denominator: cohort_buyers_new_to_brand_12mo
+    requires_selector: [time_grain]
+    requires:
+      cohort_path: standard
+    units: ratio
+    ratio_scale: rate
+    measurement_basis: [ad_attributed]
+    mixes_basis: false
+    causal: false
+    valid_grains: [marketplace, acquisition_channel_group, cohort, months_since_acquisition]
+    notes: >
+      Standard path: repeat buyers over the cohort size in one cell of one delivery. Shown for one acquisition group at a time, with the identity caveat; a cross-group visual binds the account-ID rate.
+
+  cumulative_repeat_rate:
+    label: >-
+      Cumulative repeat rate by the month · ad-touched repeat only, from this advertiser · all ID types
+    aliases: [cumulative repeat rate]
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: custom
+    compatibility: qualified_ratio
+    numerator: cohort_repeat_buyers_cumulative
+    denominator: cohort_buyers_new_to_brand_12mo
+    requires_selector: [time_grain]
+    requires:
+      cohort_path: standard
+    units: ratio
+    ratio_scale: rate
+    measurement_basis: [ad_attributed]
+    mixes_basis: false
+    causal: false
+    valid_grains: [marketplace, acquisition_channel_group, cohort, months_since_acquisition]
+    notes: >
+      Standard path, one cell of one delivery. Nothing is summed across k: the numerator is its own extracted count.
+
+  repeat_buyer_rate_account_ids:
+    label: >-
+      Repeat rate in the month · ad-touched repeat only, from this advertiser · Amazon account IDs
+    aliases: [repeat rate account IDs]
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: custom
+    compatibility: qualified_ratio
+    numerator: cohort_repeat_buyers_account_ids
+    denominator: cohort_buyers_account_ids
+    requires_selector: [time_grain]
+    requires:
+      cohort_path: standard
+    units: ratio
+    ratio_scale: rate
+    measurement_basis: [ad_attributed]
+    mixes_basis: false
+    causal: false
+    valid_grains: [marketplace, acquisition_channel_group, cohort, months_since_acquisition]
+    notes: >
+      Both sides Amazon account IDs, so a DSP-won member under a device or browser ID can't depress the DSP group's rate (review DS5-2). The standard-path rate a cross-group visual or insight may bind.
+
+  cumulative_repeat_rate_account_ids:
+    label: >-
+      Cumulative repeat rate by the month · ad-touched repeat only, from this advertiser · Amazon account IDs
+    aliases: [cumulative repeat rate account IDs]
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: custom
+    compatibility: qualified_ratio
+    numerator: cohort_repeat_buyers_cumulative_account_ids
+    denominator: cohort_buyers_account_ids
+    requires_selector: [time_grain]
+    requires:
+      cohort_path: standard
+    units: ratio
+    ratio_scale: rate
+    measurement_basis: [ad_attributed]
+    mixes_basis: false
+    causal: false
+    valid_grains: [marketplace, acquisition_channel_group, cohort, months_since_acquisition]
+    notes: >
+      The rate the Retention repeat curve binds, one line per acquisition group (design §6.6, review DS5-2).
+
+  repeat_buyer_rate_arp:
+    label: >-
+      Repeat rate in the month · all Amazon purchases · Amazon account IDs only · mixed basis
+    aliases: [ARP repeat rate, all purchases repeat rate]
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: custom
+    compatibility: qualified_ratio
+    numerator: cohort_repeat_buyers
+    denominator: cohort_buyers_account_ids
+    requires_selector: [time_grain]
+    cross_delivery: arp_cohort_ratio
+    units: ratio
+    ratio_scale: rate
+    measurement_basis: [ad_attributed, retail_actual]
+    mixes_basis: true
+    causal: false
+    valid_grains: [marketplace, acquisition_channel_group, cohort, months_since_acquisition]
+    notes: >
+      D-8 (b): pack 15 repeat buyers (cohort_path arp) over pack 14 cohort_buyers_account_ids for the same vintage, cohort and group. Withheld with "cohort sizes changed between runs" when pack 15's cohort_buyers_account_ids_check differs from pack 14's count or the numerator exceeds it; withheld with "Cohort grain changed in {period}." when the two operands' cohort grains differ. Chat answers it per cohort cell, planning each operand on its own path for one vintage, and the Retention bake computes it, both through one domain rule (owner decision 2026-10-12); without a pack 15 delivery for the vintage only this rate is refused.
+
+  cumulative_repeat_rate_arp:
+    label: >-
+      Cumulative repeat rate by the month · all Amazon purchases · Amazon account IDs only · mixed basis
+    aliases: [ARP cumulative repeat rate]
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: custom
+    compatibility: qualified_ratio
+    numerator: cohort_repeat_buyers_cumulative
+    denominator: cohort_buyers_account_ids
+    requires_selector: [time_grain]
+    cross_delivery: arp_cohort_ratio
+    units: ratio
+    ratio_scale: rate
+    measurement_basis: [ad_attributed, retail_actual]
+    mixes_basis: true
+    causal: false
+    valid_grains: [marketplace, acquisition_channel_group, cohort, months_since_acquisition]
+    notes: >
+      D-8 (b), as repeat_buyer_rate_arp, with the cumulative repeat buyers of pack 15 as the numerator.
+
+  # =======================================================================
+  # SIMPLE — fct_retail_sales, Vendor Central. Retail grain. This fact also
+  # carries distributor_view and selling_program in its grain, which are
+  # reporting lenses rather than populations: a tool defaults them and states
+  # which (ADR-027), and a metric that is null under one of them declares it
+  # with `requires`.
+  # =======================================================================
+
+  retail_revenue_shipped:
+    label: Retail revenue (shipped)
+    aliases: [sales, shipped revenue]
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: strict
+    definition: sum(fct_retail_sales.revenue_shipped)
+    units: currency
+    favourable_direction: up
+    customer_definition: >-
+      Revenue from units Amazon shipped to customers, net of returns, as the vendor reports it.
+    measurement_basis: [retail_actual]
+    source_system: vendor_central
+    source_datasets: [GET_VENDOR_SALES_REPORT]
+    valid_grains: [date, ecosystem, platform, product, marketplace]
+    notes: >
+      Net of returns, and restates after publication. NOT interchangeable with
+      retail_revenue_purchased, which measures the same thing from AMC and will
+      disagree — both are retail_actual, so mixes_basis will not warn about a sum
+      of the two.
+
+  revenue_ordered:
+    label: Retail revenue (ordered)
+    aliases: [ordered revenue]
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: strict
+    definition: sum(fct_retail_sales.revenue_ordered)
+    units: currency
+    favourable_direction: up
+    customer_definition: >-
+      Revenue from units customers ordered in the window, before fulfilment; Manufacturing view only.
+    measurement_basis: [retail_actual]
+    source_system: vendor_central
+    source_datasets: [GET_VENDOR_SALES_REPORT]
+    valid_grains: [date, ecosystem, platform, product, marketplace]
+    requires:
+      distributor_view: MANUFACTURING
+    notes: >
+      Ordered rather than shipped, so it leads revenue_shipped and includes what
+      was never fulfilled. Null under SOURCING, and null is not zero — a SUM
+      would skip those rows and report a partial figure as a whole one.
+
+  units_shipped:
+    label: Units shipped
+    aliases: [shipped units]
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: strict
+    definition: sum(fct_retail_sales.units_shipped)
+    units: count
+    favourable_direction: up
+    customer_definition: >-
+      Units Amazon shipped to customers in the window.
+    measurement_basis: [retail_actual]
+    source_system: vendor_central
+    source_datasets: [GET_VENDOR_SALES_REPORT]
+    valid_grains: [date, ecosystem, platform, product, marketplace]
+
+  units_ordered:
+    label: Units ordered
+    aliases: [ordered units]
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: strict
+    definition: sum(fct_retail_sales.units_ordered)
+    units: count
+    favourable_direction: up
+    customer_definition: >-
+      Units customers ordered in this window, whether or not Amazon has shipped them yet.
+    measurement_basis: [retail_actual]
+    source_system: vendor_central
+    source_datasets: [GET_VENDOR_SALES_REPORT]
+    valid_grains: [date, ecosystem, platform, product, marketplace]
+    requires:
+      distributor_view: MANUFACTURING
+    notes: Null under SOURCING, and null is not zero.
+
+  cogs_shipped:
+    label: Cost of goods shipped (Amazon's wholesale cost)
+    aliases: [COGS, cost of goods sold]
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: strict
+    definition: sum(fct_retail_sales.cogs_shipped)
+    units: currency
+    favourable_direction: none
+    customer_definition: >-
+      The wholesale cost Amazon paid the vendor for shipped units - Amazon's cost, and from the vendor's side revenue received.
+    measurement_basis: [retail_actual]
+    source_system: vendor_central
+    source_datasets: [GET_VENDOR_SALES_REPORT]
+    valid_grains: [date, ecosystem, platform, product, marketplace]
+    notes: >
+      The wholesale price AMAZON PAID, which from a vendor's side is revenue
+      received rather than cost incurred. NOT advertising cost — Vendor Central
+      contains no ad spend of any kind.
+      The one margin metric derived from this is amazon_margin_proxy, declared
+      as AMAZON'S margin: revenue_shipped minus cogs_shipped is Amazon's retail
+      margin on the vendor's products, not the vendor's own, and presenting it
+      as "your margin" would invert whose business it describes. The shippedCogs
+      semantics that gate this were verified against the official report schema
+      and recorded in docs/sources/vendor-central.md (2026-09-17).
+
+  amazon_margin_proxy:
+    label: Amazon margin proxy
+    aliases: [Amazon margin]
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: strict
+    # A DIFFERENCE OF SUMS over one fact, the same declared shape as
+    # attributed_revenue_halo_14d; the planner computes it as Combination.DIFFERENCE.
+    definition: >
+      sum(fct_retail_sales.revenue_shipped)
+      - sum(fct_retail_sales.cogs_shipped)
+    units: currency
+    favourable_direction: none
+    measurement_basis: [retail_actual]
+    source_system: vendor_central
+    source_datasets: [GET_VENDOR_SALES_REPORT]
+    customer_definition: >-
+      What Amazon retains on the vendor's shipped units before Amazon's own costs — shipped
+      revenue minus the wholesale cost Amazon paid the vendor. Amazon's margin on these
+      products, never the vendor's own margin.
+    customer_caveat: >-
+      A proxy for how profitable Amazon finds this catalog, not the vendor's profitability;
+      both operands are net of returns and restate as returns arrive.
+    valid_grains: [date, ecosystem, platform, product, marketplace]
+    notes: >
+      WHOSE margin is the load-bearing fact: this is Amazon's retail margin on the
+      vendor's products (docs/sources/vendor-central.md, shippedCogs semantics verified
+      2026-09-17). The customer_definition carries that framing and every rendering must
+      keep it — "your margin" would invert whose business the figure describes.
+
+  customer_returns:
+    label: Customer returns (units)
+    aliases: [returns]
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: strict
+    definition: sum(fct_retail_sales.customer_returns)
+    units: count
+    favourable_direction: down
+    customer_definition: >-
+      Units returned by customers in the window, as the vendor reports them; revenue figures are already net of returns.
+    measurement_basis: [retail_actual]
+    source_system: vendor_central
+    source_datasets: [GET_VENDOR_SALES_REPORT]
+    valid_grains: [date, ecosystem, platform, product, marketplace]
+    requires:
+      selling_program: RETAIL
+    notes: >
+      Null under FRESH. Also a lagging figure, which is part of why revenue
+      restates: returns arrive after the period they belong to, so a recent
+      window understates them.
+
+  # =======================================================================
+  # SIMPLE — fct_product_page_views, Vendor Central traffic.
+  # =======================================================================
+
+  glance_views:
+    label: Glance views
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: strict
+    definition: sum(fct_product_page_views.glance_views)
+    units: count
+    favourable_direction: up
+    measurement_basis: [retail_actual]
+    source_system: vendor_central
+    source_datasets: [GET_VENDOR_TRAFFIC_REPORT]
+    customer_definition: Glance views count customer views of the vendor's product detail pages.
+    customer_caveat: The Vendor Central traffic report does not expose a distributor-view option.
+    valid_grains: [date, ecosystem, platform, product, marketplace]
+    notes: >
+      The only metric in the vendor traffic report. Its report has no
+      distributorView option, which is why conversion_rate_retail is coherent
+      only under MANUFACTURING.
+
+  # =======================================================================
+  # SIMPLE — fct_retail_purchase_amc. A SECOND source of retail actuals,
+  # from AMC's amazon_retail_purchases (a paid feature). Same measurement
+  # basis as Vendor Central and a different system, so nothing derived from
+  # basis alone will warn when the two are combined.
+  # =======================================================================
+
+  retail_revenue_purchased:
+    label: Retail revenue (purchased, AMC)
+    aliases: [sales]
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: strict
+    definition: sum(fct_retail_purchase_amc.revenue_purchased)
+    units: currency
+    measurement_basis: [retail_actual]
+    source_system: amc
+    source_datasets: [amazon_retail_purchases]
+    valid_grains: [date, ecosystem, platform, product, marketplace]
+    notes: >
+      AMC's own view of retail purchases, and a DIFFERENT MEASUREMENT of the same
+      business event as retail_revenue_shipped. Never sum or add the two: they
+      share measurement_basis retail_actual, so mixes_basis stays false and only
+      the source distinguishes them. Present either alone, or both side by side
+      as a reconciliation with the difference stated.
+
+  retail_units_purchased:
+    label: Retail units (purchased, AMC)
+    type: simple
+    aggregation: sum
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: strict
+    definition: sum(fct_retail_purchase_amc.units_purchased)
+    units: count
+    measurement_basis: [retail_actual]
+    source_system: amc
+    source_datasets: [amazon_retail_purchases]
+    valid_grains: [date, ecosystem, platform, product, marketplace]
+
+  # NOT DECLARED: fct_retail_purchase_amc.unit_price. It is a STORED RATIO, which
+  # the data-contract rules forbid computing from — averaging an average is wrong,
+  # and declaring it as a simple metric would make it summable. The same figure is
+  # available honestly as retail_asp_purchased below, computed on read at whatever
+  # grain was asked for.
+
+  # =======================================================================
+  # RATIOS — never stored, always derived. Grouped by the grain INTERSECTION
+  # of their operands, because that is what bounds each one.
+  # =======================================================================
+
+  # --- exposure ∩ exposure → date · channel · campaign · ad_product · marketplace
+
+  ctr:
+    label: Click-through rate
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: qualified_ratio
+    numerator: clicks
+    denominator: impressions
+    units: ratio
+    favourable_direction: up
+    ratio_scale: rate
+    customer_definition: >-
+      Clicks per impression - how often an ad shown became an ad clicked.
+    measurement_basis: [ad_attributed]
+    mixes_basis: false
+    valid_grains: [date, ecosystem, platform, channel_group, channel, campaign, ad_product, marketplace]
+
+  viewable_rate:
+    label: Viewable rate
+    aliases: [viewability rate]
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: qualified_ratio
+    numerator: viewable_impressions
+    denominator: measurable_impressions
+    units: ratio
+    ratio_scale: rate
+    favourable_direction: up
+    measurement_basis: [ad_attributed]
+    mixes_basis: false
+    valid_grains: [date, ecosystem, platform, channel_group, channel, campaign, ad_product, marketplace]
+    notes: >
+      DSP ONLY, inherited from both operands. Sponsored ads publishes no
+      viewability, so this is absent for sponsored rows rather than zero.
+      docs/answerable-questions.md listed this as a raw division of two metrics;
+      declaring it means the division happens in a plan rather than in a model.
+
+  cpc:
+    label: Cost per click
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: qualified_ratio
+    numerator: ad_spend
+    denominator: clicks
+    units: currency
+    favourable_direction: down
+    customer_definition: >-
+      Ad spend per click.
+    measurement_basis: [ad_attributed]
+    mixes_basis: false
+    valid_grains: [date, ecosystem, platform, channel_group, channel, campaign, ad_product, marketplace]
+
+  cpm:
+    label: Cost per thousand impressions
+    aliases: [cost per mille]
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: qualified_ratio
+    numerator: ad_spend
+    denominator: impressions
+    # The one metric carrying a multiplier. Without it the choice is a metric
+    # named cpm that returns cost per single impression, or a tool multiplying by
+    # a thousand it found nowhere in the declaration — which is the model-computes
+    # failure wearing an adapter's clothes.
+    multiplier: 1000
+    units: currency
+    favourable_direction: down
+    customer_definition: >-
+      Ad spend per thousand impressions.
+    measurement_basis: [ad_attributed]
+    mixes_basis: false
+    valid_grains: [date, ecosystem, platform, channel_group, channel, campaign, ad_product, marketplace]
+
+  cost_per_reach:
+    label: Cost per reached shopper
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: qualified_ratio
+    numerator: ad_spend
+    denominator: reach_users
+    units: currency
+    measurement_basis: [ad_attributed]
+    mixes_basis: false
+    valid_grains: [date, ecosystem, platform, channel_group, channel, campaign, ad_product, marketplace]
+    notes: >
+      NON-ADDITIVE by inheritance: its denominator is a distinct count, so the
+      quotient is meaningless at any grain coarser than the one reach was
+      extracted at. The planner resolves that through the operand rather than
+      needing it declared again here.
+      Refused over Amazon DSP rows (ADLY-PLAN-0006, plan D7): DSP reach comes
+      from amc-dsp-reach and DSP spend from amc-dsp-impressions, and only the
+      spend delivery carries a currency, so no row holds both.
+
+  avg_frequency:
+    label: Average frequency
+    aliases: [frequency]
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: qualified_ratio
+    numerator: impressions
+    denominator: reach_users
+    units: ratio
+    ratio_scale: multiplier
+    measurement_basis: [ad_attributed]
+    mixes_basis: false
+    valid_grains: [date, ecosystem, platform, channel_group, channel, campaign, ad_product, marketplace]
+    notes: >
+      Impressions per distinct user. The worst case of the no-stored-ratios rule,
+      because its denominator is non-additive: averaging or summing a stored
+      frequency across two rows is wrong twice over. Computed on read at the grain
+      asked for, and only where reach_users is valid. An upper bound: impressions
+      count every impression, reach only distinct resolvable identifiers (mixed
+      identifier spaces, user_id_type not read), so it reads high by the unresolved share.
+
+  # --- conversion ∩ conversion → adds product to the exposure set
+
+  ntb_rate_12mo:
+    label: New-to-brand rate (12 month)
+    aliases: [NTB rate, new-to-brand rate]
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: qualified_ratio
+    # Both operands are declared metric names. They were table-qualified raw
+    # columns until purchases and purchases_new_to_brand_12mo were declared, and
+    # a column operand cannot resolve to a source dataset because a fact does not
+    # name one.
+    numerator: purchases_new_to_brand_12mo
+    denominator: purchases
+    units: ratio
+    ratio_scale: rate
+    measurement_basis: [ad_attributed]
+    mixes_basis: false
+    lookback_months: 12
+    valid_grains: [date, ecosystem, platform, channel_group, channel, campaign, ad_product, product, marketplace]
+
+  ntb_revenue_share:
+    label: New-to-brand share of attributed revenue (12 month)
+    aliases: [NTB revenue share]
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: qualified_ratio
+    numerator: revenue_new_to_brand_12mo
+    denominator: attributed_revenue_14d
+    units: ratio
+    ratio_scale: rate
+    # New customers' change in share (ADR-121): more new-to-brand revenue share is favourable.
+    favourable_direction: up
+    measurement_basis: [ad_attributed]
+    mixes_basis: false
+    lookback_months: 12
+    valid_grains: [date, ecosystem, platform, channel_group, channel, campaign, ad_product, product, marketplace]
+    notes: >
+      The money counterpart of ntb_rate_12mo. Note the windows differ by
+      construction — a twelve-month lookback numerator over a fourteen-day
+      attribution denominator — which is Amazon's shape, not ours, and the
+      narration must not present it as a single window.
+
+  aov_attributed:
+    label: Average order value (attributed)
+    aliases: [AOV]
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: qualified_ratio
+    numerator: attributed_revenue_14d
+    denominator: purchases
+    units: currency
+    measurement_basis: [ad_attributed]
+    mixes_basis: false
+    valid_grains: [date, ecosystem, platform, channel_group, channel, campaign, ad_product, product, marketplace]
+
+  units_per_purchase:
+    label: Units per purchase
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: qualified_ratio
+    numerator: units_attributed
+    denominator: purchases
+    units: ratio
+    ratio_scale: multiplier
+    measurement_basis: [ad_attributed]
+    mixes_basis: false
+    valid_grains: [date, ecosystem, platform, channel_group, channel, campaign, ad_product, product, marketplace]
+
+  purchase_rate_of_conversions:
+    label: Purchase share of attributed conversions
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: qualified_ratio
+    numerator: purchases
+    denominator: conversions
+    units: ratio
+    ratio_scale: rate
+    measurement_basis: [ad_attributed]
+    mixes_basis: false
+    valid_grains: [date, ecosystem, platform, channel_group, channel, campaign, ad_product, product, marketplace]
+    notes: >
+      What share of attributed conversions were purchases rather than other
+      actions. Bounded at one by construction, so a value above it means the two
+      columns disagree and the load has a defect.
+
+  # --- conversion ∩ exposure → EXPOSURE grain only. NO product: the
+  #     denominator side has no product dimension, so a product grain would
+  #     divide product-level conversions by spend broadcast across products.
+  #     This is D-8, and make check-lineage caught three metrics declaring it.
+
+  roas_attributed_14d:
+    label: ROAS (attributed, 14 day)
+    aliases: [ad-attributed ROAS]
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: qualified_ratio
+    numerator: attributed_revenue_14d
+    denominator: ad_spend
+    units: ratio
+    favourable_direction: up
+    ratio_scale: multiplier
+    measurement_basis: [ad_attributed]
+    mixes_basis: false
+    is_default_roas: true
+    includes_brand_halo: false
+    customer_definition: >-
+      Attributed ROAS is aggregate 14-day attributed revenue for advertised products divided by
+      aggregate fee-inclusive ad spend.
+    customer_caveat: >-
+      This is the default ROAS, excludes brand-halo revenue, is not available at product breakdown,
+      and reflects ad-attributed revenue rather than total business revenue.
+    valid_grains: [date, ecosystem, platform, channel_group, channel, campaign, ad_product, marketplace]
+    notes: >
+      The default ROAS, per ADR-017. Chosen because it is the only ROAS that
+      decomposes by campaign, carries a single measurement basis so it needs no
+      caveat, and can be cross-checked against the customer's own Amazon
+      reporting.
+      NO product grain: ad_spend has none, because fct_ad_exposure has no product
+      dimension. A promoted-product exposure fact would make it real.
+
+  portfolio_roas_attributed_14d:
+    label: Portfolio ROAS (attributed, 14 day)
+    aliases: [portfolio ad-attributed ROAS]
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: qualified_ratio
+    numerator: attributed_revenue_14d
+    denominator: ad_spend
+    units: ratio
+    favourable_direction: up
+    ratio_scale: multiplier
+    measurement_basis: [ad_attributed]
+    mixes_basis: false
+    includes_brand_halo: false
+    customer_definition: >-
+      Portfolio ROAS is aggregate 14-day attributed revenue over aggregate fee-inclusive ad spend
+      for the authorized campaign portfolio; it is never an average of campaign ROAS values.
+    customer_caveat: >-
+      This portfolio-grain metric has the governed default ROAS definition and excludes brand-halo
+      revenue; it is calculated by the semantic ratio planner from its declared operands.
+    valid_grains: [date, ecosystem, platform, channel_group, channel, marketplace]
+    notes: >
+      Portfolio-only projection of the ADR-017 default ROAS. It deliberately excludes campaign
+      grain so a portfolio response cannot substitute an average of campaign ratios for the
+      ratio of its aggregate operands.
+
+  roas_attributed_incl_halo_14d:
+    label: ROAS (attributed including brand halo, 14 day)
+    aliases: [halo-inclusive ROAS]
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: qualified_ratio
+    numerator: attributed_revenue_incl_halo_14d
+    denominator: ad_spend
+    units: ratio
+    ratio_scale: multiplier
+    measurement_basis: [ad_attributed]
+    mixes_basis: false
+    includes_brand_halo: true
+    valid_grains: [date, ecosystem, platform, channel_group, channel, campaign, ad_product, marketplace]
+    notes: >
+      Reads higher than the default by construction. Whenever this is presented,
+      the default must be presented alongside it so the halo contribution is
+      visible rather than absorbed.
+
+  roas_deduplicated_incl_halo_14d:
+    label: ROAS (deduplicated including brand halo, 14 day)
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: qualified_ratio
+    numerator: attributed_revenue_deduplicated_incl_halo_14d
+    denominator: ad_spend
+    units: ratio
+    favourable_direction: up
+    ratio_scale: multiplier
+    measurement_basis: [ad_attributed]
+    mixes_basis: false
+    includes_brand_halo: true
+    valid_grains: [date, ecosystem, platform, channel_group, channel, ad_product, marketplace]
+    requires_selector: [attribution_model_key]
+    notes: >
+      Requires one explicit registered attribution model. The model predicate applies only to the
+      deduplicated numerator; model-independent spend is aggregated once. Conversion-date revenue
+      is divided by delivery-date spend in the requested window. No campaign or product grain.
+
+  cost_per_purchase:
+    label: Cost per attributed purchase
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: qualified_ratio
+    numerator: ad_spend
+    denominator: purchases
+    units: currency
+    measurement_basis: [ad_attributed]
+    mixes_basis: false
+    valid_grains: [date, ecosystem, platform, channel_group, channel, campaign, ad_product, marketplace]
+    notes: >
+      The inverse shape of ROAS, in units a media buyer sets bids in. NO product
+      grain, same reason as ROAS.
+
+  cost_per_ntb:
+    label: Cost per new-to-brand purchase (12 month)
+    aliases: [cost per NTB]
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: qualified_ratio
+    numerator: ad_spend
+    denominator: purchases_new_to_brand_12mo
+    units: currency
+    measurement_basis: [ad_attributed]
+    mixes_basis: false
+    lookback_months: 12
+    valid_grains: [date, ecosystem, platform, channel_group, channel, campaign, ad_product, marketplace]
+    notes: >
+      Acquisition cost. Reads much higher than cost_per_purchase by construction,
+      because its denominator is a subset of that one's — presenting it without
+      saying so invites the reading that advertising got more expensive.
+
+  cost_per_new_to_brand_buyer_12mo:
+    label: Cost per new-to-brand buyer (12 month lookback)
+    aliases: [cost per new buyer, cost per new customer]
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: periodic
+    time_grain: week
+    compatibility: qualified_ratio
+    numerator: ad_spend
+    denominator: buyers_new_to_brand_12mo
+    requires_selector: [time_grain]
+    units: currency
+    measurement_basis: [ad_attributed]
+    mixes_basis: false
+    lookback_months: 12
+    valid_grains: [marketplace, channel, ad_product, campaign]
+    notes: >
+      Divides by distinct new-to-brand buyers, not by new-to-brand purchases, so it reads
+      higher than cost_per_ntb. D-6: the numerator sums exactly the days of the one complete
+      period the buyers were counted over, and the ratio is refused when any of those days
+      lacks a current spend publication. Per ad product or per campaign, that ad product's or
+      campaign's spend over the period's days is divided by its own new buyers; per campaign
+      for complete calendar months only.
+
+  click_to_purchase_rate:
+    label: Click-to-purchase rate
+    aliases: [conversion rate, CVR]
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: qualified_ratio
+    numerator: purchases
+    denominator: clicks
+    units: ratio
+    ratio_scale: rate
+    measurement_basis: [ad_attributed]
+    mixes_basis: false
+    valid_grains: [date, ecosystem, platform, channel_group, channel, campaign, ad_product, marketplace]
+    notes: >
+      NOT the same as conversion_rate_retail, which divides retail units by page
+      views and measures the detail page rather than the ad. Both are called
+      "conversion rate" in conversation and they answer different questions.
+
+  # --- retail ∩ retail → date · product · marketplace
+
+  conversion_rate_retail:
+    label: Retail conversion rate
+    aliases: [conversion rate, CVR]
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: qualified_ratio
+    numerator: units_ordered
+    denominator: glance_views
+    units: ratio
+    favourable_direction: up
+    ratio_scale: rate
+    customer_definition: >-
+      Ordered units per glance view - how often a product-page visit became an order.
+    measurement_basis: [retail_actual]
+    mixes_basis: false
+    valid_grains: [date, ecosystem, platform, product, marketplace]
+    requires:
+      distributor_view: MANUFACTURING
+      selling_program: RETAIL
+    notes: >
+      Only coherent under MANUFACTURING and RETAIL. The vendor traffic report has no
+      distributorView or sellingProgram, so the one-sided selectors are declared
+      compatibility qualifiers rather than silently applied to one operand.
+
+  return_rate:
+    label: Return rate
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: qualified_ratio
+    numerator: customer_returns
+    denominator: units_shipped
+    units: ratio
+    favourable_direction: down
+    ratio_scale: rate
+    customer_definition: >-
+      Returned units against shipped units, both observed in this window; returns lag sales, so a recent window understates it.
+    measurement_basis: [retail_actual]
+    mixes_basis: false
+    valid_grains: [date, ecosystem, platform, product, marketplace]
+    requires:
+      selling_program: RETAIL
+    notes: >
+      Null under FRESH, inherited from customer_returns. Returns lag the period
+      they belong to, so a recent window understates this and the narration must
+      say so rather than presenting an improving trend that is only incomplete.
+
+  fulfilment_rate:
+    label: Fulfilment rate (shipped over ordered)
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: qualified_ratio
+    numerator: units_shipped
+    denominator: units_ordered
+    units: ratio
+    favourable_direction: up
+    ratio_scale: rate
+    customer_definition: >-
+      The share of ordered units Amazon actually shipped; Manufacturing view only.
+    measurement_basis: [retail_actual]
+    mixes_basis: false
+    valid_grains: [date, ecosystem, platform, product, marketplace]
+    requires:
+      distributor_view: MANUFACTURING
+    notes: >
+      What share of ordered units Amazon actually shipped. MANUFACTURING only,
+      inherited from units_ordered, which is null under SOURCING.
+
+  asp_shipped:
+    label: Average selling price (shipped)
+    aliases: [ASP, average selling price]
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: qualified_ratio
+    numerator: retail_revenue_shipped
+    denominator: units_shipped
+    units: currency
+    favourable_direction: none
+    customer_definition: >-
+      Shipped revenue divided by shipped units: the average price a shipped unit sold for.
+    measurement_basis: [retail_actual]
+    mixes_basis: false
+    valid_grains: [date, ecosystem, platform, product, marketplace]
+    notes: >
+      docs/sources/vendor-central.md states shippedRevenue / shippedUnits as
+      average sale price directly, so this is the source's own identity rather
+      than an invention.
+
+  returns_value_estimate_retail:
+    label: Estimated revenue withheld by returns
+    aliases: [estimated returns value]
+    type: product
+    aggregation: product_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: qualified_ratio
+    operands: [customer_returns, asp_shipped]
+    units: currency
+    favourable_direction: down
+    measurement_basis: [retail_actual]
+    mixes_basis: false
+    non_additive: true
+    valid_grains: [date, ecosystem, platform, product, marketplace]
+    requires:
+      selling_program: RETAIL
+    customer_definition: >-
+      An estimate of the revenue already deducted by customer returns: returned units
+      multiplied by the window's average selling price.
+    customer_caveat: >-
+      An estimate, and visibly one — the source reports returned units, not returned
+      dollars, and it assumes the window's ASP mix. Revenue figures are already net of
+      returns, so this sizes the deduction that already happened and is never subtracted
+      from displayed revenue.
+    notes: >
+      A PRODUCT OF OPERANDS, derived at publish time from its measured operands rather
+      than by a live query — the planner refuses it by design. Inherits RETAIL-only from
+      customer_returns and the returns lag: a recent window understates it. Non-additive
+      because the window ASP is not a per-row constant.
+
+  revenue_per_glance_view:
+    label: Revenue per glance view
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: qualified_ratio
+    numerator: retail_revenue_shipped
+    denominator: glance_views
+    units: currency
+    favourable_direction: up
+    customer_definition: >-
+      Shipped revenue divided by glance views: what one product-page visit was worth.
+    measurement_basis: [retail_actual]
+    mixes_basis: false
+    valid_grains: [date, ecosystem, platform, product, marketplace]
+    requires:
+      distributor_view: MANUFACTURING
+      selling_program: RETAIL
+    notes: >
+      Traffic value under the MANUFACTURING and RETAIL reporting lens: what a
+      single detail-page visit is worth. Traffic has no lens columns, so the
+      one-sided selectors are explicit compatibility qualifiers.
+
+  # --- amc retail ∩ amc retail → date · product · marketplace
+
+  retail_asp_purchased:
+    label: Average selling price (purchased, AMC)
+    aliases: [ASP, average selling price]
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: qualified_ratio
+    numerator: retail_revenue_purchased
+    denominator: retail_units_purchased
+    units: currency
+    measurement_basis: [retail_actual]
+    mixes_basis: false
+    valid_grains: [date, ecosystem, platform, product, marketplace]
+    notes: >
+      The honest form of AMC's stored unit_price column, which is deliberately
+      not declared as a metric: a stored average cannot be re-averaged across
+      rows, whereas this quotient is correct at whatever grain was asked for.
+
+  # --- retail ∩ exposure → DATE AND MARKETPLACE ONLY, and this is much
+  #     narrower than it looks. Retail revenue carries no channel and no
+  #     campaign; ad spend carries no product. The intersection is two
+  #     dimensions, not four.
+
+  roas_blended:
+    label: ROAS (blended — all retail revenue over all ad spend)
+    aliases: [blended ROAS]
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: qualified_ratio
+    numerator: retail_revenue_shipped
+    denominator: ad_spend
+    units: ratio
+    ratio_scale: multiplier
+    measurement_basis: [retail_actual, ad_attributed]
+    mixes_basis: true
+    valid_grains: [date, ecosystem, marketplace]
+    requires:
+      distributor_view: MANUFACTURING
+      selling_program: RETAIL
+    notes: >
+      The inverse of TACoS. Answers whether advertising is growing total demand
+      rather than buying credit for demand that already existed, so it earns its
+      place — but it is an efficiency ratio, not attribution.
+      NO campaign grain and NO channel grain: retail revenue carries neither
+      dimension. NO product grain either: ad spend does not carry one. All three
+      must fail with that reason rather than return a number.
+      This is the metric whose declared grains were most wrong, and the reason is
+      instructive — a ratio across two measurement systems is valid only where
+      BOTH systems share a dimension, which is a much smaller set than either
+      operand's own.
+      Renamed from roas_total by ADR-017: "total" read as "the complete one",
+      which invited the misreading that it was the better figure.
+
+  tacos:
+    label: TACoS (total advertising cost of sale)
+    aliases: [total advertising cost of sale, total ACoS]
+    type: ratio
+    aggregation: ratio_of_operands
+    ecosystem_aggregation: exact_only
+    time_class: daily_additive
+    time_grain: day
+    compatibility: qualified_ratio
+    numerator: ad_spend
+    denominator: retail_revenue_shipped
+    units: ratio
+    # A lower share of retail revenue spent on ads is favourable (UI slice 9a; Scorecard chip).
+    favourable_direction: down
+    ratio_scale: rate
+    measurement_basis: [ad_attributed, retail_actual]
+    mixes_basis: true
+    valid_grains: [date, ecosystem, marketplace]
+    requires:
+      distributor_view: MANUFACTURING
+      selling_program: RETAIL
+    notes: >
+      The reciprocal of roas_blended, declared separately because it is the form
+      the category states targets in — "keep TACoS under 8%" — and asking a model
+      to invert a ratio is asking it to compute. Same two-dimension limit and the
+      same mixed-basis caveat: this divides ALL ad spend by ALL retail revenue and
+      is an efficiency ratio, not attribution.
+
+# Declared but not yet computable — the facts behind them are not built.
+deferred:
+  - metric_id: roas_incremental
+    label: Incremental ROAS
+    aliases: [iROAS, i-ROAS, incremental return on ad spend]
+    kind: ratio
+    unit: ratio
+  - metric_id: incremental_revenue
+    label: Incremental revenue
+    aliases: [incremental sales]
+    kind: simple
+    unit: currency
+  - metric_id: forecast_revenue
+    label: Forecast revenue
+    aliases: [revenue forecast, forecasted revenue]
+    kind: simple
+    unit: currency
+  - metric_id: saturation_marginal_return
+    label: Saturation marginal return
+    kind: ratio
+    unit: ratio

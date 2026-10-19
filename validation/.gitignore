@@ -1,0 +1,22 @@
+# Probe output. Contains query results from a live instance, so it is never committed —
+# even against synthetic sandbox data, which can still carry identifiers.
+findings/*
+!findings/.gitkeep
+
+# Exact execution/resource identifiers and local journals. Public conclusions belong in RESULTS.md.
+RESULTS.local.md
+evidence/
+
+# Nothing credential-shaped belongs in this directory at all. These entries exist so a
+# stray file cannot be committed by accident, not as a suggested place to put one.
+*.env
+.env*
+*credentials*
+*secret*
+*token*
+# The source of the token-minting script, which holds no credential and is imported by
+# tests/unit/test_mint_token.py; what it mints goes straight to Secrets Manager.
+!/mint_token.py
+
+__pycache__/
+*.py[cod]

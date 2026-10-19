@@ -1,0 +1,224 @@
+# vendor-sales-by-asin — Vendor Central retail sales at ASIN grain.
+#
+# The adapter from GET_VENDOR_SALES_REPORT's `salesByAsin[]` array into
+# fct_retail_sales. Field names, types and option-dependent nullability come from
+# Amazon's published JSON Schema `schemas/reports/vendorSalesReport.json` in
+# amzn/selling-partner-api-models, [verified] and recorded in
+# docs/sources/vendor-central.md section 3.
+#
+# ONE CONTRACT, ONE GRAIN. The same document also carries `salesAggregate[]` at
+# catalogue grain, which is a separate contract writing a separate fact. A document with
+# two grains is two contracts, never one.
+#
+# Source is the Reports API, per ADR-020: it supplies the facts, and Data Kiosk supplies
+# only the asin-to-parentAsin hierarchy for dim_product. Switching the facts to Data
+# Kiosk later changes source_format and this mapping table; the target fact does not move.
+
+contract_id: vendor-sales-by-asin
+contract_version: 1
+
+source_system: vendor_central
+source_dataset: GET_VENDOR_SALES_REPORT
+# Two sibling arrays at two different grains per document. The reader splits them; this
+# contract consumes only salesByAsin[].
+source_format: json_dual_array
+
+target_table: fct_retail_sales
+
+# One row per ASIN per period per marketplace per option set. reportOptions is part of
+# the grain, not a runtime flag: a MANUFACTURING pull and a SOURCING pull of the same
+# window are different datasets and double-count if merged.
+grain:
+  - amazon_asin
+  - date_key
+  - marketplace_key
+  - distributor_view
+  - selling_program
+
+partition_keys:
+  - marketplace_key
+  - date_key
+  - report_options_hash
+
+# Stamped as a literal. No source knows it is one of several measurement systems, which
+# is exactly why this cannot be sourced. These are retail actuals and will never
+# reconcile with AMC's ad-attributed figures at any grain (ADR-002).
+measurement_basis: retail_actual
+
+# PST always, irrespective of marketplace or vendor location, repeated verbatim on every
+# Vendor Retail Analytics page [verified]. Carried on the fact rather than normalised,
+# because a pre-aggregated day bucket cannot be re-bucketed (ADR-004).
+#
+# Recorded as the string Amazon uses. Whether it observes daylight saving is
+# [unverified] — the docs never say — so no fixed offset is encoded anywhere.
+source_timezone: PST
+ecosystem_key: amazon
+platform_key: amazon_retail
+
+# Revenue is net of returns and returns arrive later than shipments, so historical
+# periods move. There is no documented restatement window; 45 days is the upper end of
+# the rolling re-pull the load design assumes.
+restatement_window_days: 45
+
+# Weekly periods land end of day Monday, 48h after period close; non-Saturday daily
+# periods take 72h [verified]. 96 allows one missed delivery before alarming.
+staleness_threshold_hours: 96
+
+# No AMC tables, so the threshold rules do not apply and no suppression columns exist.
+# Vendor Central has no privacy-threshold mechanism: a null here is always one of the
+# other three meanings.
+source_tables: []
+
+fields:
+  # --- keys -----------------------------------------------------------------
+  - source_path: salesByAsin[].asin
+    target_column: amazon_asin
+    target_type: string
+    # A bare 10-character ASIN. Whether vendor reports carry parent or child ASINs is
+    # undocumented by Amazon and [unverified]; per ADR-020 the hierarchy comes from Data
+    # Kiosk, which states it, so this contract does not depend on the answer.
+    #
+    # Joins dim_product on (amazon_asin, marketplace_key) — the natural key, not a
+    # surrogate. Renamed from product_key 2026-08-19: it never was a surrogate, nothing
+    # minted one, and the old name claimed otherwise.
+
+  - source_path: salesByAsin[].startDate
+    target_column: date_key
+    target_type: date
+
+  - source_path: reportSpecification.marketplaceIds[0]
+    target_column: marketplace_key
+    target_type: string
+    # One marketplace per report, and it lives on reportSpecification rather than on the
+    # rows, so it is lifted down onto every row.
+
+  # --- dataset identity, lifted onto every row ------------------------------
+  # ALL of reportSpecification is stamped onto every row. Without it a MANUFACTURING pull
+  # and a SOURCING pull are indistinguishable and double-count.
+  - source_path: reportSpecification.reportType
+    target_column: report_type
+    target_type: string
+
+  - source_path: reportSpecification.reportOptions.reportPeriod
+    target_column: report_period
+    target_type: string
+    # DAY is the source of truth. WEEK has a 7-week lookback against 1,460 days for DAY,
+    # so weekly history cannot be backfilled and weeks are derived by us, not pulled.
+
+  - source_path: reportSpecification.dataStartTime
+    target_column: period_start
+    target_type: date
+    # ISO 8601, but the time component is ignored by Amazon. Never read a meaningful
+    # time of day from it.
+
+  - source_path: reportSpecification.dataEndTime
+    target_column: period_end
+    target_type: date
+
+  - source_path: reportSpecification.reportOptions.distributorView
+    target_column: distributor_view
+    target_type: string
+    # MANUFACTURING or SOURCING. In the grain because it changes what a row means.
+    # Only MANUFACTURING reconciles to AMC; SOURCING is a separate, non-reconcilable fact.
+
+  - source_path: reportSpecification.reportOptions.sellingProgram
+    target_column: selling_program
+    target_type: string
+    # RETAIL, BUSINESS or FRESH. In the grain for the same reason.
+
+  - source_path: reportSpecification.reportOptions
+    target_column: report_options_hash
+    target_type: string
+    # Deterministic hash of the full option set, so a partition cannot collide across
+    # option combinations.
+
+  - source_path: reportSpecification.lastUpdatedDate
+    target_column: source_watermark
+    target_type: date
+    # The restatement watermark, added to all five non-real-time vendor reports in April
+    # 2024 precisely because contents change after first publication. A load whose
+    # watermark is not newer than the stored one must not write. First-class column,
+    # deliberately separate from the period bounds.
+
+  - source_path: manifest.retrieved_at
+    target_column: retrieved_at
+    target_type: timestamp
+    # From the sibling manifest, not the document: when we fetched it, as distinct from
+    # what it covers and from when Amazon last revised it. Three different times that a
+    # single column would collapse.
+
+  # --- money: every amount carries its currency ----------------------------
+  # One currency_code for the fact, per ADR-021, uniform with the AMC facts. The source
+  # gives three currency values and we keep one, so `currency_agreement` below asserts
+  # they were equal. Without that assertion the discarded two could never be shown to
+  # have disagreed.
+  - source_path: salesByAsin[].shippedRevenue.amount
+    target_column: revenue_shipped
+    scale_divisor: 1
+    currency_column: currency_code
+    # Money is a nested {amount, currencyCode} object, not a scalar. Already in local
+    # currency, so the divisor is 1 rather than absent — absent would read as "nobody
+    # considered it".
+
+  - source_path: salesByAsin[].shippedRevenue.currencyCode
+    target_column: currency_code
+    target_type: string
+    # ISO 4217. This is the one currency value that reaches the row; the other two are
+    # asserted equal to it and then dropped.
+
+  - source_path: salesByAsin[].shippedCogs.amount
+    target_column: cogs_shipped
+    scale_divisor: 1
+    currency_column: currency_code
+    # Cost of goods: the wholesale price Amazon paid. NOT advertising cost. Vendor
+    # Central contains no ad spend of any kind.
+
+  - source_path: salesByAsin[].orderedRevenue.amount
+    target_column: revenue_ordered
+    scale_divisor: 1
+    currency_column: currency_code
+    nullable: true
+    null_meaning: not_applicable_under_options
+    # Populated only when distributorView is MANUFACTURING. Under SOURCING this is null
+    # and null is NOT zero.
+
+  # --- units and counts ----------------------------------------------------
+  - source_path: salesByAsin[].shippedUnits
+    target_column: units_shipped
+    target_type: bigint
+
+  - source_path: salesByAsin[].orderedUnits
+    target_column: units_ordered
+    target_type: bigint
+    nullable: true
+    null_meaning: not_applicable_under_options
+    # MANUFACTURING only, same as revenue_ordered.
+
+  - source_path: salesByAsin[].customerReturns
+    target_column: customer_returns
+    target_type: bigint
+    nullable: true
+    null_meaning: not_applicable_under_options
+    # Populated only when sellingProgram is RETAIL or BUSINESS. Null under FRESH.
+    # Also a lagging metric, which is part of why revenue restates.
+
+# Asserted equal on every load, before any row is written (ADR-021). The gate derives
+# this list from the monetary field mappings above, so it cannot be satisfied by naming
+# fewer paths than there are amounts.
+#
+# On disagreement the partition quarantines and alarms — the same behaviour as a failed
+# header assertion, owned by docs/capabilities/load-path/low-level-design.md §6. Not a dropped row and not a
+# coerced value: if the currencies disagree then no single currency_code is correct for
+# the row, so there is nothing honest to write.
+#
+# Amazon documents currencyCode as per-value, and one report is one marketplace, so
+# these should always agree. That is an inference, not a documented guarantee, which is
+# exactly why it is asserted rather than assumed.
+currency_agreement:
+  - salesByAsin[].shippedRevenue.currencyCode
+  - salesByAsin[].shippedCogs.currencyCode
+  - salesByAsin[].orderedRevenue.currencyCode
+
+tags:
+  - phase-1
+  - vendor-central

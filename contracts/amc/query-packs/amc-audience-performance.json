@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "packId": "amc-audience-performance",
+  "packVersion": 1,
+  "contractId": "amc-audience-performance",
+  "sourcePackId": "amc-audience-performance",
+  "queryFile": "amc-audience-performance.sql",
+  "accessTier": "standard",
+  "liveValidation": "required",
+  "maxResultBytes": 20000000,
+  "executionOptions": {
+    "timeWindowType": "EXPLICIT",
+    "timeWindowTimeZone": "UTC",
+    "filteredMetricsDiscriminatorColumn": "rows_suppressed",
+    "filteredReasonColumn": "suppression_reason",
+    "distinctUserCountColumn": "distinct_user_count"
+  },
+  "safetyBlockers": [],
+  "suppressionPolicy": "discard_suppressed_rows",
+  "periodPolicy": {"grains": ["month"]},
+  "inputParameters": {
+    "dsp_campaign_country": {"commerceIdentity": "amc.campaign_country", "dataType": "STRING"},
+    "sponsored_marketplace_name": {"commerceIdentity": "amc.marketplace_name", "dataType": "STRING"}
+  },
+  "cadenceLagDays": 2,
+  "expectedBar": 2,
+  "outputColumns": [
+    "campaign_country",
+    "campaign_id_string",
+    "behavior_segment_id",
+    "impressions",
+    "dsp_spend",
+    "dsp_currency",
+    "dsp_currency_min",
+    "segment_reach",
+    "segment_purchasers",
+    "segment_purchases",
+    "segment_attributed_revenue",
+    "purchase_currency",
+    "purchase_currency_min",
+    "time_window_start",
+    "time_window_end",
+    "rows_suppressed",
+    "suppression_reason",
+    "distinct_user_count"
+  ]
+}

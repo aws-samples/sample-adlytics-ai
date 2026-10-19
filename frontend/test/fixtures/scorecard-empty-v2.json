@@ -1,0 +1,147 @@
+{
+  "envelope_version": 2,
+  "kind": "page",
+  "page": {
+    "actions": [],
+    "artifact": {
+      "also_changed": null,
+      "boundary": [
+        "Channel rows are Amazon-attributed: Amazon credits a purchase to each channel the shopper saw within 14 days, so one purchase can count in two rows.",
+        "Deduplicated ROAS credits each purchase once, so it is the only return figure across channels.",
+        "TACoS divides ad spend by Vendor Central shipped revenue, two measurement systems. When Vendor Central is late, TACoS shows when its data last arrived and the rest of the page keeps its window."
+      ],
+      "boundary_heading": "About these figures",
+      "cards": [],
+      "cross_network_spend": [],
+      "evidence_status": null,
+      "findings": [],
+      "insight_cards": [],
+      "insights": [
+        {
+          "absence_class": "evaluated-quiet",
+          "absence_reason": "No channel's share of its network's spend and no channel's attributed ROAS move reaches the declared threshold.",
+          "artifact_revision": "fa90856e06a61844ffb76a82f53245d0437d2592b2b6c07489a69ae51fb3ae05",
+          "evidence_line": null,
+          "id": "network-scorecard",
+          "output_class": "observed",
+          "prompt_version": "deterministic-v1",
+          "state": "silent",
+          "text": null
+        }
+      ],
+      "insights_heading": "Insights",
+      "not_available_text": "Not available",
+      "outcome": "empty",
+      "outcome_text": "No ad spend was delivered in this window. Choose another window to see the Scorecard.",
+      "period": {
+        "end": "2026-09-15",
+        "start": "2026-09-09"
+      },
+      "period_label": null,
+      "pointers": [
+        {
+          "href": "/new-customers/",
+          "lead": "New-to-brand customers and gateway products are on",
+          "link_text": "Customers \u203a New customers",
+          "tab_id": "new-customers"
+        },
+        {
+          "href": "/simulator/",
+          "lead": "Try a budget move in",
+          "link_text": "Budget simulator",
+          "tab_id": "simulator"
+        }
+      ],
+      "preset_label": "7 days",
+      "prior_period": {
+        "end": "2026-09-08",
+        "start": "2026-09-02"
+      },
+      "retail_sales_heading": "Ad spend and retail sales",
+      "scope_text": "Showing Sep 9\u201315, 2026 (7 days) compared with Sep 2\u20138. Data through Sep 15, 2026.",
+      "tacos": [],
+      "type": "NetworkScorecardArtifact",
+      "version": 1
+    },
+    "artifact_id": "network_scorecard",
+    "artifact_revision": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "artifact_type": "NetworkScorecardArtifact",
+    "artifact_version": 1,
+    "kind": "network_scorecard",
+    "page_context_expires_at": "2026-08-19T13:00:00+00:00",
+    "page_context_label": "Scorecard \u00b7 Sep 9\u201315, 2026",
+    "page_id": "scorecard",
+    "route": "/scorecard/",
+    "starter_questions": []
+  },
+  "session_id": "conversation-session",
+  "temporal": {
+    "comparison": {
+      "policy": "optional_equal_prior",
+      "reason_code": null,
+      "status": "available"
+    },
+    "custom": {
+      "availability": "unavailable",
+      "bounds": null,
+      "reason_code": "custom_disabled"
+    },
+    "mode": "selectable",
+    "presets": [
+      {
+        "availability": "available",
+        "id": "7d",
+        "label": "7 days",
+        "period_label": null,
+        "reason_code": null,
+        "reason_text": null,
+        "window": {
+          "end": "2026-09-15",
+          "start": "2026-09-09"
+        }
+      },
+      {
+        "availability": "unavailable",
+        "id": "30d",
+        "label": "30 days",
+        "period_label": null,
+        "reason_code": "preset_unavailable",
+        "reason_text": "Not available yet",
+        "window": null
+      },
+      {
+        "availability": "unavailable",
+        "id": "last_complete_week",
+        "label": "Latest measured week",
+        "period_label": null,
+        "reason_code": "preset_unavailable",
+        "reason_text": "Not available yet",
+        "window": null
+      },
+      {
+        "availability": "unavailable",
+        "id": "last_complete_month",
+        "label": "Latest measured month",
+        "period_label": null,
+        "reason_code": "preset_unavailable",
+        "reason_text": "Not available yet",
+        "window": null
+      }
+    ],
+    "resolved": {
+      "as_of_month": null,
+      "display_grain": "period",
+      "period_label": null,
+      "reporting_window_status": "preferred_default",
+      "selection": {
+        "kind": "default",
+        "preset_id": null
+      },
+      "window": {
+        "end": "2026-09-15",
+        "start": "2026-09-09"
+      }
+    },
+    "version": 2
+  }
+}

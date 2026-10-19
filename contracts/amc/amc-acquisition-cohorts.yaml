@@ -1,0 +1,327 @@
+# amc-acquisition-cohorts — new-to-brand cohorts by month won, and when they bought again.
+#
+# Pack 14 of the shopper-aggregate family (ADR-099, ADR-101, ADR-104; design §5.2 row 14, §6.6
+# B3). One row per cohort month, follow-up month and acquisition source set, per cohort vintage
+# per marketplace: the 13 whole calendar months ending on the last day of the vintage's
+# as_of_month (time_grain custom). A shopper's acquisition date is their earliest new-to-brand
+# purchase in the window (Amazon's 12-month flag, ADR-104); their cohort is its calendar month,
+# and their acquisition source set is the credit sources on that day's new-to-brand purchase rows.
+# Repeats are purchase events in `conversions` in later calendar months, so this path counts
+# ad-touched repeats only and understates true repeat. On a multi-brand instance a shopper won
+# for one brand who buys another counts as a repeat: "from this advertiser".
+#
+# The pack is the 2026-10-09 probe-compiled text (validation/bo_probe_sql.py, plan D16): the
+# MONTH_INDEX round form ROUND(ABS(SECONDS_BETWEEN(a, b)) / 2629800.0), the as_of_month cast
+# CAST(CUSTOM_PARAMETER('as_of_month') AS TIMESTAMP), and the months CTE read from the repeats.
+# Its cohort set, between the cohort-set markers, is byte-identical in pack 15 and in both
+# packs' quarterly variants (a contract test compares them).
+#
+# The 2026-10-09 probe found AMC withholds cohort cells per data source (validation/RESULTS.md,
+# S-6), so design §8's "criterion 7 fails" row applies: monthly cohorts ship under
+# discard_suppressed_rows, and the calendar-quarter variant (pack version 2) switches on per
+# marketplace from the vintage after one whose graded slice passes the degrade threshold, sticky
+# until Step B (plan D9, D10). Each grain is its own series, so monthly and quarterly cells never
+# mix in one figure.
+contract_id: amc-acquisition-cohorts
+contract_version: 1
+source_system: amc
+source_dataset: amazon_attributed_events_by_conversion_time
+source_format: csv
+target_table: fct_shopper_acquisition
+source_tables:
+  - amazon_attributed_events_by_conversion_time
+  - conversions
+# One row per vintage (period and as_of_month), marketplace, path, cohort grain, cohort,
+# follow-up and acquisition channel group (design §6.6, plan D11). cohort_path is `standard` on
+# every pack 14 row and `arp` on every pack 15 row; cohort_grain is `month` on version-1 rows and
+# `quarter` on the quarterly variant's, where cohort_month holds the cohort quarter's first day and
+# months_since_acquisition counts follow-up quarters. The media columns are NULL at the platform
+# grain set.
+grain:
+  - period_start
+  - period_end
+  - time_grain
+  - as_of_month
+  - grain_set
+  - marketplace_key
+  - cohort_path
+  - cohort_grain
+  - cohort_month
+  - months_since_acquisition
+  - acquisition_channel_group
+key_unique_among_unsuppressed_only: true
+partition_keys:
+  - marketplace_key
+  - period_start
+measurement_basis: ad_attributed
+source_timezone: UTC
+ecosystem_key: amazon
+platform_key: amazon_ads
+# A re-pull of a vintage inside 30 days replaces itself, as on the attributed packs.
+restatement_window_days: 30
+# One vintage lands cadenceLagDays (2) after each as_of_month ends, so the freshest vintage is at
+# most 33 days old when the next is due (31 + 2), and 816 hours (34 days) allows one late day.
+staleness_threshold_hours: 816
+# Every OUTPUT column is NONE or LOW or derived: marketplace_name (the governed parameter echoed)
+# is LOW; the cohort, follow-up and source-set labels are derived in CTEs from
+# conversion_event_date_utc, event_date_utc and ad_product_type (LOW); the counts are
+# COUNT(DISTINCT user_id) and the sums read NONE columns. user_id (VERY_HIGH) is read only inside
+# CTEs. Criterion 11 read bar 2 for this text's probe candidate (Q7, validation/RESULTS.md
+# 2026-10-09).
+grain_feasibility_note: >
+  Every output column is NONE or LOW or derived in a CTE, so the bar is 2 distinct users per row.
+  The cohort month, follow-up month and acquisition source set are derived from
+  conversion_event_date_utc, event_date_utc and ad_product_type (LOW); the counts are
+  COUNT(DISTINCT user_id) and user_id (VERY_HIGH) never appears in output; the sums read
+  total_product_sales (NONE). The bar applies per data-source path: the 2026-10-09 probe withheld
+  cells with two or more cohort buyers and zero or one repeat buyer (S-6), and such a row is
+  discarded like any withheld row (plan D19).
+# The cells a vintage must return (plan D8, design §6.6): every cohort month m and follow-up month
+# k = 1 to 12 with m + k <= as_of_month, by the three acquisition source sets, enumerated from the
+# delivery's own period (domain.shopper_aggregates.cohorts). A cohort and group with no row at any
+# k is an absent cohort: it renders its own text and stays out of the loss denominator, so a
+# sponsored-only advertiser keeps an intact triangle. Graded per acquisition source set and never
+# withdrawn, because no coarser served view of the grid exists. The quarterly variant returns its
+# own triangle: cohort quarters wholly inside the vintage and follow-up quarters 1 to 3 that have
+# ended (Retention LLD "Quarterly cohorts"; no Quarter 4 cell fits the 13-month window).
+expected_cells:
+  slices:
+    - column: acquisition_source_set
+      values: [dsp, sponsored, dsp+sponsored]
+  cohorts:
+    column: cohort_month
+    offset: months_since_acquisition
+    grain: month
+    follow_ups: 12
+  cells:
+    - column: cohort_grain
+      values: [month]
+  variants:
+    quarterly:
+      - slices:
+          - column: acquisition_source_set
+            values: [dsp, sponsored, dsp+sponsored]
+        cohorts:
+          column: cohort_month
+          offset: months_since_acquisition
+          grain: quarter
+          follow_ups: 3
+        cells:
+          - column: cohort_grain
+            values: [quarter]
+# The repeat revenue's currency: MAX is mapped, its MIN twin is read by the load and never stored.
+# They differ when more than one currency reached a row (a shopper's own repeats included), and
+# the delivery is refused (design §6.6, review DS4-10).
+currency_minimums:
+  purchase_currency: purchase_currency_min
+# Each cohort's size is repeated on every follow-up row of its group. Copies come from one AMC
+# result, so two different values mean two populations, and the delivery is refused (design §5.4,
+# §7a). Never summed across k.
+repeated_totals:
+  - column: cohort_buyers_new_to_brand_12mo
+    keyed_by: [cohort_month, acquisition_source_set]
+  - column: cohort_buyers_account_ids
+    keyed_by: [cohort_month, acquisition_source_set]
+# Requested on every AMC pack. Under discard_suppressed_rows the load drops withheld rows before
+# the fact write; their additive measures go to the _withheld residual and their distinct counts
+# are dropped (ADR-099 points 7 and 12).
+suppression:
+  discriminator_column: rows_suppressed
+  reason_column: suppression_reason
+  distinct_user_count_column: distinct_user_count
+fields:
+  # --- grain -----------------------------------------------------------------
+  - target_column: period_start
+    assigned_by_load: true
+    target_type: date
+  - target_column: period_end
+    assigned_by_load: true
+    target_type: date
+  - target_column: time_grain
+    assigned_by_load: true
+    target_type: string
+    value_domain: [custom]
+  # The vintage's last month, from the period (ADR-104): the as_of_month the pack's parameter
+  # carried. An exact selector; serving defaults to the latest vintage with a publication.
+  - target_column: as_of_month
+    assigned_by_load: true
+    target_type: date
+  - target_column: grain_set
+    literal_value: platform
+    target_type: string
+    value_domain: [platform]
+  - source_path: marketplace_name
+    target_column: marketplace_key
+    # The pack echoes its governed sponsored_marketplace_name parameter, so a delivery carries
+    # one marketplace.
+  - target_column: cohort_path
+    literal_value: standard
+    target_type: string
+    value_domain: [standard, arp]
+  - source_path: the cohort grain literal of the pack version that emitted the row
+    target_column: cohort_grain
+    target_type: string
+    derived_from:
+      - conversion_event_date_utc
+    value_domain: [month, quarter]
+  - source_path: DATE_TRUNC('MONTH', acquisition date), or the cohort quarter's first day
+    target_column: cohort_month
+    target_type: date
+    derived_from:
+      - conversion_event_date_utc
+    # AMC's text form of a DATE_TRUNC value is [unverified]; a form that isn't a date refuses
+    # the delivery rather than mapping a wrong cohort.
+  - source_path: MONTH_INDEX(cohort start, the repeat's month or quarter start)
+    target_column: months_since_acquisition
+    target_type: bigint
+    derived_from:
+      - conversion_event_date_utc
+      - event_date_utc
+    # 1 to 12 follow-up months, or 1 to 3 follow-up quarters on a quarterly row; month 0 (and
+    # quarter 0) repeats are excluded by the pack's ordering predicate (design §6.6, DS4-1).
+  - source_path: CASE over the credit sources of the shopper's acquisition-day NTB purchase rows
+    target_column: acquisition_source_set
+    target_type: string
+    derived_from:
+      - ad_product_type
+    value_domain: [dsp, sponsored, dsp+sponsored]
+    # The source fact the pack emits: dsp when ad_product_type IS NULL, sponsored otherwise.
+  # The canonical acquisition channel group, resolved by the load from acquisition_source_set
+  # through the taxonomy's exposure_source_sets section (ADR-101). No pack emits it (AC-BR.9).
+  - target_column: acquisition_channel_group
+    assigned_by_load: true
+    target_type: string
+    value_domain: [dsp_only, sponsored_only, dsp_and_sponsored]
+  # --- media, NULL at the platform grain set (ADR-099 point 2) -----------------
+  - target_column: channel_group_key
+    assigned_by_load: true
+    target_type: string
+    nullable: true
+    null_meaning: not_applicable_under_options
+  - target_column: channel_key
+    assigned_by_load: true
+    target_type: string
+    nullable: true
+    null_meaning: not_applicable_under_options
+  - target_column: ad_product_key
+    assigned_by_load: true
+    target_type: string
+    nullable: true
+    null_meaning: not_applicable_under_options
+  - target_column: campaign_key
+    assigned_by_load: true
+    target_type: string
+    nullable: true
+    null_meaning: not_applicable_under_options
+  # --- shopper-aggregate shape (design §4.2) ----------------------------------
+  - target_column: identity_unit
+    literal_value: amazon_user_id
+    target_type: string
+  - target_column: cell_state
+    assigned_by_load: true
+    target_type: string
+    value_domain: [returned, not_returned]
+  # --- measures: exact distinct counts ----------------------------------------
+  # NULL, never 0, on a not_returned cell. Cohort sizes repeat on every follow-up row and are
+  # never summed across k; cumulative repeat buyers are their own extracted count (finding BO-6).
+  - source_path: COUNT(DISTINCT user_id) over the cohort and group
+    target_column: cohort_buyers_new_to_brand_12mo
+    target_type: bigint
+    derived_from:
+      - user_id
+      - new_to_brand
+    non_additive: true
+    nullable: true
+    null_meaning: not_returned
+  - source_path: COUNT(DISTINCT CASE WHEN user_id_type = 'adUserId' THEN user_id END)
+    target_column: cohort_buyers_account_ids
+    target_type: bigint
+    derived_from:
+      - user_id
+      - user_id_type
+      - new_to_brand
+    non_additive: true
+    nullable: true
+    null_meaning: not_returned
+    # The Amazon account ID part of the cohort: the denominator of the account-ID rates and of
+    # pack 15's ARP rates (design §6.6, review DS5-2).
+  - source_path: COUNT(DISTINCT cohort shoppers with a purchase in follow-up month k)
+    target_column: repeat_buyers
+    target_type: bigint
+    derived_from:
+      - user_id
+      - event_category
+    non_additive: true
+    nullable: true
+    null_meaning: not_returned
+  - source_path: COUNT(DISTINCT adUserId cohort shoppers with a purchase in follow-up month k)
+    target_column: repeat_buyers_account_ids
+    target_type: bigint
+    derived_from:
+      - user_id
+      - user_id_type
+      - event_category
+    non_additive: true
+    nullable: true
+    null_meaning: not_returned
+  - source_path: COUNT(DISTINCT cohort shoppers whose first repeat month is k)
+    target_column: first_repeat_buyers
+    target_type: bigint
+    derived_from:
+      - user_id
+      - event_category
+    non_additive: true
+    nullable: true
+    null_meaning: not_returned
+  - source_path: COUNT(DISTINCT cohort shoppers whose first repeat month is k or earlier)
+    target_column: cumulative_repeat_buyers
+    target_type: bigint
+    derived_from:
+      - user_id
+      - event_category
+    non_additive: true
+    nullable: true
+    null_meaning: not_returned
+  - source_path: COUNT(DISTINCT adUserId cohort shoppers whose first repeat month is k or earlier)
+    target_column: cumulative_repeat_buyers_account_ids
+    target_type: bigint
+    derived_from:
+      - user_id
+      - user_id_type
+      - event_category
+    non_additive: true
+    nullable: true
+    null_meaning: not_returned
+  # --- measures: additive within one delivery (D-9) ---------------------------
+  # Summable only across every value of the disjoint axis inside one fully returned delivery.
+  # Withheld rows' sums go to the _withheld residual, where a NULL currency reads withheld. On a
+  # returned row a NULL sum means no cohort shopper bought again in that follow-up month.
+  - source_path: SUM of the cohort shoppers' purchase events in follow-up month k
+    target_column: repeat_purchases
+    target_type: bigint
+    derived_from:
+      - event_category
+    nullable: true
+    null_meaning: not_returned
+    # conversions holds one row per conversion_id, so a repeat purchase counts once.
+  - source_path: SUM(total_product_sales) of those purchase events
+    target_column: repeat_revenue
+    derived_from:
+      # Read from conversions (one row per conversion_id), never the attributed table.
+      - conversions.total_product_sales
+    scale_divisor: 1
+    currency_column: currency_code
+    nullable: true
+    null_meaning: not_returned
+  # --- currency (design §5.5) -----------------------------------------------------
+  - source_path: purchase_currency
+    target_column: currency_code
+    target_type: string
+    nullable: true
+    null_meaning: not_returned
+    # MAX(purchase_currency) over the row's repeat purchases; NULL on a row with no repeat.
+tags:
+  - amc
+  - shopper-aggregate
+  - retention
+  - cohorts

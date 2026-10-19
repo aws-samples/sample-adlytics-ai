@@ -1,0 +1,897 @@
+{
+  "$comment": "GENERATED FROM contracts/*/*.yaml BY make generate-schemas. Do not edit. make check-schemas regenerates this and fails on any diff, so an edit here is reverted rather than kept. Change the contract instead.",
+  "rulesets": [
+    {
+      "table": "dim_audience_segment",
+      "description": "Generated from amc-dsp-segment-names, amc-segment-metadata. Edit the contract, not this ruleset.",
+      "ruleCount": 9,
+      "ruleset": "Rules = [\n    Uniqueness \"platform_key\" \"segment_id\" \"segment_marketplace_key\" \"segment_namespace\" \"valid_from\" = 1.0 where \"rows_suppressed = false\",\n    IsComplete \"ecosystem_key\",\n    IsComplete \"platform_key\",\n    IsComplete \"segment_marketplace_key\",\n    IsComplete \"is_current\",\n    IsComplete \"segment_id\",\n    IsComplete \"segment_namespace\",\n    IsComplete \"valid_from\",\n    IsComplete \"valid_to\"\n]",
+      "runtimeRules": {
+        "grain": [
+          "platform_key",
+          "segment_id",
+          "segment_marketplace_key",
+          "segment_namespace",
+          "valid_from"
+        ],
+        "requiredColumns": [
+          "ecosystem_key",
+          "platform_key",
+          "segment_marketplace_key",
+          "is_current",
+          "segment_id",
+          "segment_namespace",
+          "valid_from",
+          "valid_to"
+        ],
+        "currencyColumns": [],
+        "uniqueAmongUnsuppressedOnly": true
+      }
+    },
+    {
+      "table": "dim_campaign",
+      "description": "Generated from amc-campaign-dsp, amc-campaign-sponsored. Edit the contract, not this ruleset.",
+      "ruleCount": 21,
+      "ruleset": "Rules = [\n    Uniqueness \"campaign_key\" \"valid_from\" = 1.0 where \"rows_suppressed = false\",\n    IsComplete \"ad_product_key\",\n    IsComplete \"campaign_key\",\n    IsComplete \"channel_group_key\",\n    IsComplete \"channel_key\",\n    IsComplete \"commerce_scope_key\",\n    IsComplete \"ecosystem_key\",\n    IsComplete \"marketplace_key\",\n    IsComplete \"platform_key\",\n    IsComplete \"source_system_key\",\n    IsComplete \"advertiser_name\",\n    IsComplete \"is_current\",\n    IsComplete \"rows_suppressed\",\n    IsComplete \"source_campaign_id\",\n    IsComplete \"source_campaign_identifier_kind\",\n    IsComplete \"source_campaign_namespace\",\n    IsComplete \"source_observed_on\",\n    IsComplete \"source_scope_namespace\",\n    IsComplete \"source_scope_value\",\n    IsComplete \"valid_from\",\n    IsComplete \"valid_to\"\n]",
+      "runtimeRules": {
+        "grain": [
+          "campaign_key",
+          "valid_from"
+        ],
+        "requiredColumns": [
+          "ad_product_key",
+          "campaign_key",
+          "channel_group_key",
+          "channel_key",
+          "commerce_scope_key",
+          "ecosystem_key",
+          "marketplace_key",
+          "platform_key",
+          "source_system_key",
+          "advertiser_name",
+          "is_current",
+          "rows_suppressed",
+          "source_campaign_id",
+          "source_campaign_identifier_kind",
+          "source_campaign_namespace",
+          "source_observed_on",
+          "source_scope_namespace",
+          "source_scope_value",
+          "valid_from",
+          "valid_to"
+        ],
+        "currencyColumns": [],
+        "uniqueAmongUnsuppressedOnly": true
+      }
+    },
+    {
+      "table": "dim_product",
+      "description": "Generated from vendor-product-hierarchy. Edit the contract, not this ruleset.",
+      "ruleCount": 6,
+      "ruleset": "Rules = [\n    Uniqueness \"amazon_asin\" \"marketplace_key\" \"valid_from\" = 1.0,\n    IsComplete \"marketplace_key\",\n    IsComplete \"amazon_asin\",\n    IsComplete \"is_current\",\n    IsComplete \"valid_from\",\n    IsComplete \"valid_to\"\n]",
+      "runtimeRules": {
+        "grain": [
+          "amazon_asin",
+          "marketplace_key",
+          "valid_from"
+        ],
+        "requiredColumns": [
+          "marketplace_key",
+          "amazon_asin",
+          "is_current",
+          "valid_from",
+          "valid_to"
+        ],
+        "currencyColumns": [],
+        "uniqueAmongUnsuppressedOnly": false
+      }
+    },
+    {
+      "table": "fct_ad_exposure",
+      "description": "Generated from amc-dsp-clicks, amc-dsp-impressions, amc-dsp-reach, amc-dsp-views, amc-reach-frequency. Edit the contract, not this ruleset.",
+      "ruleCount": 13,
+      "ruleset": "Rules = [\n    Uniqueness \"ad_product_key\" \"campaign_key\" \"channel_key\" \"date_key\" \"marketplace_key\" \"rows_suppressed\" = 1.0,\n    IsComplete \"ad_product_key\",\n    IsComplete \"basis_key\",\n    IsComplete \"campaign_key\",\n    IsComplete \"channel_group_key\",\n    IsComplete \"channel_key\",\n    IsComplete \"date_key\",\n    IsComplete \"ecosystem_key\",\n    IsComplete \"marketplace_key\",\n    IsComplete \"platform_key\",\n    IsComplete \"rows_suppressed\",\n    IsComplete \"source_timezone\",\n    (ColumnValues \"currency_code\" matches \"^[A-Z]{3}$\") OR (ColumnValues \"currency_code\" = NULL)\n]",
+      "runtimeRules": {
+        "grain": [
+          "ad_product_key",
+          "campaign_key",
+          "channel_key",
+          "date_key",
+          "marketplace_key",
+          "rows_suppressed"
+        ],
+        "requiredColumns": [
+          "ad_product_key",
+          "basis_key",
+          "campaign_key",
+          "channel_group_key",
+          "channel_key",
+          "date_key",
+          "ecosystem_key",
+          "marketplace_key",
+          "platform_key",
+          "rows_suppressed",
+          "source_timezone"
+        ],
+        "currencyColumns": [
+          {
+            "name": "currency_code",
+            "nullable": true
+          }
+        ],
+        "uniqueAmongUnsuppressedOnly": false
+      }
+    },
+    {
+      "table": "fct_ad_exposure_withheld",
+      "description": "Generated from amc-dsp-clicks, amc-dsp-impressions, amc-dsp-reach, amc-dsp-views, amc-reach-frequency. Edit the contract, not this ruleset.",
+      "ruleCount": 10,
+      "ruleset": "Rules = [\n    Uniqueness \"contract_id\" \"marketplace_key\" \"period_start\" \"period_end\" \"option_set_hash\" = 1.0,\n    IsComplete \"contract_id\",\n    IsComplete \"marketplace_key\",\n    IsComplete \"period_start\",\n    IsComplete \"period_end\",\n    IsComplete \"option_set_hash\",\n    IsComplete \"basis_key\",\n    IsComplete \"ecosystem_key\",\n    IsComplete \"platform_key\",\n    IsComplete \"source_timezone\"\n]",
+      "runtimeRules": {
+        "grain": [
+          "contract_id",
+          "marketplace_key",
+          "period_start",
+          "period_end",
+          "option_set_hash"
+        ],
+        "requiredColumns": [
+          "contract_id",
+          "marketplace_key",
+          "period_start",
+          "period_end",
+          "option_set_hash",
+          "basis_key",
+          "ecosystem_key",
+          "platform_key",
+          "source_timezone"
+        ],
+        "currencyColumns": [],
+        "uniqueAmongUnsuppressedOnly": false
+      }
+    },
+    {
+      "table": "fct_attributed_conversion",
+      "description": "Generated from amc-attributed-conversion. Edit the contract, not this ruleset.",
+      "ruleCount": 24,
+      "ruleset": "Rules = [\n    Uniqueness \"amazon_asin\" \"campaign_key\" \"channel_key\" \"date_key\" \"marketplace_key\" \"rows_suppressed\" = 1.0,\n    IsComplete \"ad_product_key\",\n    IsComplete \"basis_key\",\n    IsComplete \"campaign_key\",\n    IsComplete \"channel_group_key\",\n    IsComplete \"channel_key\",\n    IsComplete \"date_key\",\n    IsComplete \"ecosystem_key\",\n    IsComplete \"marketplace_key\",\n    IsComplete \"platform_key\",\n    IsComplete \"amazon_asin\",\n    IsComplete \"conversions\",\n    IsComplete \"currency_code\",\n    IsComplete \"purchases\",\n    IsComplete \"purchases_incl_halo\",\n    IsComplete \"purchases_new_to_brand_12mo\",\n    IsComplete \"revenue_attributed\",\n    IsComplete \"revenue_attributed_incl_halo\",\n    IsComplete \"revenue_new_to_brand_12mo\",\n    IsComplete \"rows_suppressed\",\n    IsComplete \"source_timezone\",\n    IsComplete \"units_attributed\",\n    IsComplete \"units_attributed_incl_halo\",\n    ColumnValues \"currency_code\" matches \"^[A-Z]{3}$\"\n]",
+      "runtimeRules": {
+        "grain": [
+          "amazon_asin",
+          "campaign_key",
+          "channel_key",
+          "date_key",
+          "marketplace_key",
+          "rows_suppressed"
+        ],
+        "requiredColumns": [
+          "ad_product_key",
+          "basis_key",
+          "campaign_key",
+          "channel_group_key",
+          "channel_key",
+          "date_key",
+          "ecosystem_key",
+          "marketplace_key",
+          "platform_key",
+          "amazon_asin",
+          "conversions",
+          "currency_code",
+          "purchases",
+          "purchases_incl_halo",
+          "purchases_new_to_brand_12mo",
+          "revenue_attributed",
+          "revenue_attributed_incl_halo",
+          "revenue_new_to_brand_12mo",
+          "rows_suppressed",
+          "source_timezone",
+          "units_attributed",
+          "units_attributed_incl_halo"
+        ],
+        "currencyColumns": [
+          {
+            "name": "currency_code",
+            "nullable": false
+          }
+        ],
+        "uniqueAmongUnsuppressedOnly": false
+      }
+    },
+    {
+      "table": "fct_attributed_conversion_withheld",
+      "description": "Generated from amc-attributed-conversion. Edit the contract, not this ruleset.",
+      "ruleCount": 10,
+      "ruleset": "Rules = [\n    Uniqueness \"contract_id\" \"marketplace_key\" \"period_start\" \"period_end\" \"option_set_hash\" = 1.0,\n    IsComplete \"contract_id\",\n    IsComplete \"marketplace_key\",\n    IsComplete \"period_start\",\n    IsComplete \"period_end\",\n    IsComplete \"option_set_hash\",\n    IsComplete \"basis_key\",\n    IsComplete \"ecosystem_key\",\n    IsComplete \"platform_key\",\n    IsComplete \"source_timezone\"\n]",
+      "runtimeRules": {
+        "grain": [
+          "contract_id",
+          "marketplace_key",
+          "period_start",
+          "period_end",
+          "option_set_hash"
+        ],
+        "requiredColumns": [
+          "contract_id",
+          "marketplace_key",
+          "period_start",
+          "period_end",
+          "option_set_hash",
+          "basis_key",
+          "ecosystem_key",
+          "platform_key",
+          "source_timezone"
+        ],
+        "currencyColumns": [],
+        "uniqueAmongUnsuppressedOnly": false
+      }
+    },
+    {
+      "table": "fct_deduplicated_temporal_attribution",
+      "description": "Generated from amc-deduplicated-temporal-attribution. Edit the contract, not this ruleset.",
+      "ruleCount": 16,
+      "ruleset": "Rules = [\n    Uniqueness \"attribution_model_key\" \"channel_key\" \"currency_code\" \"date_key\" \"marketplace_key\" \"rows_suppressed\" = 1.0,\n    IsComplete \"ad_product_key\",\n    IsComplete \"attribution_model_key\",\n    IsComplete \"basis_key\",\n    IsComplete \"channel_group_key\",\n    IsComplete \"channel_key\",\n    IsComplete \"date_key\",\n    IsComplete \"ecosystem_key\",\n    IsComplete \"marketplace_key\",\n    IsComplete \"platform_key\",\n    IsComplete \"currency_code\",\n    IsComplete \"matched_purchase_credit\",\n    IsComplete \"revenue_attributed_deduplicated_incl_halo\",\n    IsComplete \"rows_suppressed\",\n    IsComplete \"source_timezone\",\n    ColumnValues \"currency_code\" matches \"^[A-Z]{3}$\"\n]",
+      "runtimeRules": {
+        "grain": [
+          "attribution_model_key",
+          "channel_key",
+          "currency_code",
+          "date_key",
+          "marketplace_key",
+          "rows_suppressed"
+        ],
+        "requiredColumns": [
+          "ad_product_key",
+          "attribution_model_key",
+          "basis_key",
+          "channel_group_key",
+          "channel_key",
+          "date_key",
+          "ecosystem_key",
+          "marketplace_key",
+          "platform_key",
+          "currency_code",
+          "matched_purchase_credit",
+          "revenue_attributed_deduplicated_incl_halo",
+          "rows_suppressed",
+          "source_timezone"
+        ],
+        "currencyColumns": [
+          {
+            "name": "currency_code",
+            "nullable": false
+          }
+        ],
+        "uniqueAmongUnsuppressedOnly": false
+      }
+    },
+    {
+      "table": "fct_deduplicated_temporal_attribution_withheld",
+      "description": "Generated from amc-deduplicated-temporal-attribution. Edit the contract, not this ruleset.",
+      "ruleCount": 10,
+      "ruleset": "Rules = [\n    Uniqueness \"contract_id\" \"marketplace_key\" \"period_start\" \"period_end\" \"option_set_hash\" = 1.0,\n    IsComplete \"contract_id\",\n    IsComplete \"marketplace_key\",\n    IsComplete \"period_start\",\n    IsComplete \"period_end\",\n    IsComplete \"option_set_hash\",\n    IsComplete \"basis_key\",\n    IsComplete \"ecosystem_key\",\n    IsComplete \"platform_key\",\n    IsComplete \"source_timezone\"\n]",
+      "runtimeRules": {
+        "grain": [
+          "contract_id",
+          "marketplace_key",
+          "period_start",
+          "period_end",
+          "option_set_hash"
+        ],
+        "requiredColumns": [
+          "contract_id",
+          "marketplace_key",
+          "period_start",
+          "period_end",
+          "option_set_hash",
+          "basis_key",
+          "ecosystem_key",
+          "platform_key",
+          "source_timezone"
+        ],
+        "currencyColumns": [],
+        "uniqueAmongUnsuppressedOnly": false
+      }
+    },
+    {
+      "table": "fct_exposure_frequency",
+      "description": "Generated from amc-exposure-frequency-channel, amc-exposure-frequency-platform. Edit the contract, not this ruleset.",
+      "ruleCount": 19,
+      "ruleset": "Rules = [\n    Uniqueness \"ad_product_key\" \"bucket_scheme\" \"frequency_bucket\" \"grain_set\" \"identity_space\" \"marketplace_key\" \"period_end\" \"period_start\" \"row_kind\" \"time_grain\" = 1.0 where \"rows_suppressed = false\",\n    IsComplete \"basis_key\",\n    IsComplete \"ecosystem_key\",\n    IsComplete \"marketplace_key\",\n    IsComplete \"platform_key\",\n    IsComplete \"bucket_scheme\",\n    IsComplete \"cell_state\",\n    IsComplete \"frequency_bucket\",\n    IsComplete \"grain_set\",\n    IsComplete \"identity_space\",\n    IsComplete \"identity_unit\",\n    IsComplete \"period_end\",\n    IsComplete \"period_start\",\n    IsComplete \"row_kind\",\n    IsComplete \"source_timezone\",\n    IsComplete \"time_grain\",\n    (ColumnValues \"currency_code\" matches \"^[A-Z]{3}$\") OR (ColumnValues \"currency_code\" = NULL),\n    (ColumnValues \"dsp_currency\" matches \"^[A-Z]{3}$\") OR (ColumnValues \"dsp_currency\" = NULL),\n    (ColumnValues \"sponsored_currency\" matches \"^[A-Z]{3}$\") OR (ColumnValues \"sponsored_currency\" = NULL)\n]",
+      "runtimeRules": {
+        "grain": [
+          "ad_product_key",
+          "bucket_scheme",
+          "frequency_bucket",
+          "grain_set",
+          "identity_space",
+          "marketplace_key",
+          "period_end",
+          "period_start",
+          "row_kind",
+          "time_grain"
+        ],
+        "requiredColumns": [
+          "basis_key",
+          "ecosystem_key",
+          "marketplace_key",
+          "platform_key",
+          "bucket_scheme",
+          "cell_state",
+          "frequency_bucket",
+          "grain_set",
+          "identity_space",
+          "identity_unit",
+          "period_end",
+          "period_start",
+          "row_kind",
+          "source_timezone",
+          "time_grain"
+        ],
+        "currencyColumns": [
+          {
+            "name": "currency_code",
+            "nullable": true
+          },
+          {
+            "name": "dsp_currency",
+            "nullable": true
+          },
+          {
+            "name": "sponsored_currency",
+            "nullable": true
+          }
+        ],
+        "uniqueAmongUnsuppressedOnly": true
+      }
+    },
+    {
+      "table": "fct_exposure_frequency_withheld",
+      "description": "Generated from amc-exposure-frequency-channel, amc-exposure-frequency-platform. Edit the contract, not this ruleset.",
+      "ruleCount": 12,
+      "ruleset": "Rules = [\n    Uniqueness \"contract_id\" \"marketplace_key\" \"period_start\" \"period_end\" \"option_set_hash\" \"row_kind\" \"bucket_scheme\" = 1.0,\n    IsComplete \"contract_id\",\n    IsComplete \"marketplace_key\",\n    IsComplete \"period_start\",\n    IsComplete \"period_end\",\n    IsComplete \"option_set_hash\",\n    IsComplete \"row_kind\",\n    IsComplete \"bucket_scheme\",\n    IsComplete \"basis_key\",\n    IsComplete \"ecosystem_key\",\n    IsComplete \"platform_key\",\n    IsComplete \"source_timezone\"\n]",
+      "runtimeRules": {
+        "grain": [
+          "contract_id",
+          "marketplace_key",
+          "period_start",
+          "period_end",
+          "option_set_hash",
+          "row_kind",
+          "bucket_scheme"
+        ],
+        "requiredColumns": [
+          "contract_id",
+          "marketplace_key",
+          "period_start",
+          "period_end",
+          "option_set_hash",
+          "row_kind",
+          "bucket_scheme",
+          "basis_key",
+          "ecosystem_key",
+          "platform_key",
+          "source_timezone"
+        ],
+        "currencyColumns": [],
+        "uniqueAmongUnsuppressedOnly": false
+      }
+    },
+    {
+      "table": "fct_exposure_group_outcome",
+      "description": "Generated from amc-exposure-groups. Edit the contract, not this ruleset.",
+      "ruleCount": 19,
+      "ruleset": "Rules = [\n    Uniqueness \"exposure_group\" \"grain_set\" \"identity_space\" \"marketplace_key\" \"period_end\" \"period_start\" \"row_kind\" \"time_grain\" = 1.0 where \"rows_suppressed = false\",\n    IsComplete \"basis_key\",\n    IsComplete \"ecosystem_key\",\n    IsComplete \"marketplace_key\",\n    IsComplete \"platform_key\",\n    IsComplete \"cell_state\",\n    IsComplete \"exposure_group\",\n    IsComplete \"exposure_source_set\",\n    IsComplete \"grain_set\",\n    IsComplete \"identity_space\",\n    IsComplete \"identity_unit\",\n    IsComplete \"period_end\",\n    IsComplete \"period_start\",\n    IsComplete \"row_kind\",\n    IsComplete \"source_timezone\",\n    IsComplete \"time_grain\",\n    (ColumnValues \"currency_code\" matches \"^[A-Z]{3}$\") OR (ColumnValues \"currency_code\" = NULL),\n    (ColumnValues \"dsp_currency\" matches \"^[A-Z]{3}$\") OR (ColumnValues \"dsp_currency\" = NULL),\n    (ColumnValues \"sponsored_currency\" matches \"^[A-Z]{3}$\") OR (ColumnValues \"sponsored_currency\" = NULL)\n]",
+      "runtimeRules": {
+        "grain": [
+          "exposure_group",
+          "grain_set",
+          "identity_space",
+          "marketplace_key",
+          "period_end",
+          "period_start",
+          "row_kind",
+          "time_grain"
+        ],
+        "requiredColumns": [
+          "basis_key",
+          "ecosystem_key",
+          "marketplace_key",
+          "platform_key",
+          "cell_state",
+          "exposure_group",
+          "exposure_source_set",
+          "grain_set",
+          "identity_space",
+          "identity_unit",
+          "period_end",
+          "period_start",
+          "row_kind",
+          "source_timezone",
+          "time_grain"
+        ],
+        "currencyColumns": [
+          {
+            "name": "currency_code",
+            "nullable": true
+          },
+          {
+            "name": "dsp_currency",
+            "nullable": true
+          },
+          {
+            "name": "sponsored_currency",
+            "nullable": true
+          }
+        ],
+        "uniqueAmongUnsuppressedOnly": true
+      }
+    },
+    {
+      "table": "fct_exposure_group_outcome_withheld",
+      "description": "Generated from amc-exposure-groups. Edit the contract, not this ruleset.",
+      "ruleCount": 11,
+      "ruleset": "Rules = [\n    Uniqueness \"contract_id\" \"marketplace_key\" \"period_start\" \"period_end\" \"option_set_hash\" \"row_kind\" = 1.0,\n    IsComplete \"contract_id\",\n    IsComplete \"marketplace_key\",\n    IsComplete \"period_start\",\n    IsComplete \"period_end\",\n    IsComplete \"option_set_hash\",\n    IsComplete \"row_kind\",\n    IsComplete \"basis_key\",\n    IsComplete \"ecosystem_key\",\n    IsComplete \"platform_key\",\n    IsComplete \"source_timezone\"\n]",
+      "runtimeRules": {
+        "grain": [
+          "contract_id",
+          "marketplace_key",
+          "period_start",
+          "period_end",
+          "option_set_hash",
+          "row_kind"
+        ],
+        "requiredColumns": [
+          "contract_id",
+          "marketplace_key",
+          "period_start",
+          "period_end",
+          "option_set_hash",
+          "row_kind",
+          "basis_key",
+          "ecosystem_key",
+          "platform_key",
+          "source_timezone"
+        ],
+        "currencyColumns": [],
+        "uniqueAmongUnsuppressedOnly": false
+      }
+    },
+    {
+      "table": "fct_new_to_brand_buyers",
+      "description": "Generated from amc-new-to-brand-buyers-campaign, amc-new-to-brand-buyers-channel, amc-new-to-brand-buyers-platform. Edit the contract, not this ruleset.",
+      "ruleCount": 12,
+      "ruleset": "Rules = [\n    Uniqueness \"ad_product_key\" \"campaign_key\" \"grain_set\" \"marketplace_key\" \"period_end\" \"period_start\" \"time_grain\" = 1.0 where \"rows_suppressed = false\",\n    IsComplete \"basis_key\",\n    IsComplete \"ecosystem_key\",\n    IsComplete \"marketplace_key\",\n    IsComplete \"platform_key\",\n    IsComplete \"cell_state\",\n    IsComplete \"grain_set\",\n    IsComplete \"identity_unit\",\n    IsComplete \"period_end\",\n    IsComplete \"period_start\",\n    IsComplete \"source_timezone\",\n    IsComplete \"time_grain\"\n]",
+      "runtimeRules": {
+        "grain": [
+          "ad_product_key",
+          "campaign_key",
+          "grain_set",
+          "marketplace_key",
+          "period_end",
+          "period_start",
+          "time_grain"
+        ],
+        "requiredColumns": [
+          "basis_key",
+          "ecosystem_key",
+          "marketplace_key",
+          "platform_key",
+          "cell_state",
+          "grain_set",
+          "identity_unit",
+          "period_end",
+          "period_start",
+          "source_timezone",
+          "time_grain"
+        ],
+        "currencyColumns": [],
+        "uniqueAmongUnsuppressedOnly": true
+      }
+    },
+    {
+      "table": "fct_product_page_views",
+      "description": "Generated from vendor-traffic-by-asin. Edit the contract, not this ruleset.",
+      "ruleCount": 16,
+      "ruleset": "Rules = [\n    Uniqueness \"amazon_asin\" \"date_key\" \"marketplace_key\" = 1.0,\n    IsComplete \"basis_key\",\n    IsComplete \"date_key\",\n    IsComplete \"ecosystem_key\",\n    IsComplete \"marketplace_key\",\n    IsComplete \"platform_key\",\n    IsComplete \"amazon_asin\",\n    IsComplete \"glance_views\",\n    IsComplete \"period_end\",\n    IsComplete \"period_start\",\n    IsComplete \"report_options_hash\",\n    IsComplete \"report_period\",\n    IsComplete \"report_type\",\n    IsComplete \"retrieved_at\",\n    IsComplete \"source_timezone\",\n    IsComplete \"source_watermark\"\n]",
+      "runtimeRules": {
+        "grain": [
+          "amazon_asin",
+          "date_key",
+          "marketplace_key"
+        ],
+        "requiredColumns": [
+          "basis_key",
+          "date_key",
+          "ecosystem_key",
+          "marketplace_key",
+          "platform_key",
+          "amazon_asin",
+          "glance_views",
+          "period_end",
+          "period_start",
+          "report_options_hash",
+          "report_period",
+          "report_type",
+          "retrieved_at",
+          "source_timezone",
+          "source_watermark"
+        ],
+        "currencyColumns": [],
+        "uniqueAmongUnsuppressedOnly": false
+      }
+    },
+    {
+      "table": "fct_product_page_views_reported_total",
+      "description": "Generated from vendor-traffic-reported-total. Edit the contract, not this ruleset.",
+      "ruleCount": 15,
+      "ruleset": "Rules = [\n    Uniqueness \"date_key\" \"marketplace_key\" = 1.0,\n    IsComplete \"basis_key\",\n    IsComplete \"date_key\",\n    IsComplete \"ecosystem_key\",\n    IsComplete \"marketplace_key\",\n    IsComplete \"platform_key\",\n    IsComplete \"glance_views\",\n    IsComplete \"period_end\",\n    IsComplete \"period_start\",\n    IsComplete \"report_options_hash\",\n    IsComplete \"report_period\",\n    IsComplete \"report_type\",\n    IsComplete \"retrieved_at\",\n    IsComplete \"source_timezone\",\n    IsComplete \"source_watermark\"\n]",
+      "runtimeRules": {
+        "grain": [
+          "date_key",
+          "marketplace_key"
+        ],
+        "requiredColumns": [
+          "basis_key",
+          "date_key",
+          "ecosystem_key",
+          "marketplace_key",
+          "platform_key",
+          "glance_views",
+          "period_end",
+          "period_start",
+          "report_options_hash",
+          "report_period",
+          "report_type",
+          "retrieved_at",
+          "source_timezone",
+          "source_watermark"
+        ],
+        "currencyColumns": [],
+        "uniqueAmongUnsuppressedOnly": false
+      }
+    },
+    {
+      "table": "fct_retail_purchase_amc",
+      "description": "Generated from amc-retail-purchases. Edit the contract, not this ruleset.",
+      "ruleCount": 13,
+      "ruleset": "Rules = [\n    Uniqueness \"amazon_asin\" \"date_key\" \"marketplace_key\" \"rows_suppressed\" = 1.0,\n    IsComplete \"basis_key\",\n    IsComplete \"date_key\",\n    IsComplete \"ecosystem_key\",\n    IsComplete \"marketplace_key\",\n    IsComplete \"platform_key\",\n    IsComplete \"amazon_asin\",\n    IsComplete \"currency_code\",\n    IsComplete \"revenue_purchased\",\n    IsComplete \"rows_suppressed\",\n    IsComplete \"source_timezone\",\n    IsComplete \"units_purchased\",\n    ColumnValues \"currency_code\" matches \"^[A-Z]{3}$\"\n]",
+      "runtimeRules": {
+        "grain": [
+          "amazon_asin",
+          "date_key",
+          "marketplace_key",
+          "rows_suppressed"
+        ],
+        "requiredColumns": [
+          "basis_key",
+          "date_key",
+          "ecosystem_key",
+          "marketplace_key",
+          "platform_key",
+          "amazon_asin",
+          "currency_code",
+          "revenue_purchased",
+          "rows_suppressed",
+          "source_timezone",
+          "units_purchased"
+        ],
+        "currencyColumns": [
+          {
+            "name": "currency_code",
+            "nullable": false
+          }
+        ],
+        "uniqueAmongUnsuppressedOnly": false
+      }
+    },
+    {
+      "table": "fct_retail_purchase_amc_withheld",
+      "description": "Generated from amc-retail-purchases. Edit the contract, not this ruleset.",
+      "ruleCount": 10,
+      "ruleset": "Rules = [\n    Uniqueness \"contract_id\" \"marketplace_key\" \"period_start\" \"period_end\" \"option_set_hash\" = 1.0,\n    IsComplete \"contract_id\",\n    IsComplete \"marketplace_key\",\n    IsComplete \"period_start\",\n    IsComplete \"period_end\",\n    IsComplete \"option_set_hash\",\n    IsComplete \"basis_key\",\n    IsComplete \"ecosystem_key\",\n    IsComplete \"platform_key\",\n    IsComplete \"source_timezone\"\n]",
+      "runtimeRules": {
+        "grain": [
+          "contract_id",
+          "marketplace_key",
+          "period_start",
+          "period_end",
+          "option_set_hash"
+        ],
+        "requiredColumns": [
+          "contract_id",
+          "marketplace_key",
+          "period_start",
+          "period_end",
+          "option_set_hash",
+          "basis_key",
+          "ecosystem_key",
+          "platform_key",
+          "source_timezone"
+        ],
+        "currencyColumns": [],
+        "uniqueAmongUnsuppressedOnly": false
+      }
+    },
+    {
+      "table": "fct_retail_sales",
+      "description": "Generated from vendor-sales-by-asin. Edit the contract, not this ruleset.",
+      "ruleCount": 22,
+      "ruleset": "Rules = [\n    Uniqueness \"amazon_asin\" \"date_key\" \"distributor_view\" \"marketplace_key\" \"selling_program\" = 1.0,\n    IsComplete \"basis_key\",\n    IsComplete \"date_key\",\n    IsComplete \"ecosystem_key\",\n    IsComplete \"marketplace_key\",\n    IsComplete \"platform_key\",\n    IsComplete \"amazon_asin\",\n    IsComplete \"cogs_shipped\",\n    IsComplete \"currency_code\",\n    IsComplete \"distributor_view\",\n    IsComplete \"period_end\",\n    IsComplete \"period_start\",\n    IsComplete \"report_options_hash\",\n    IsComplete \"report_period\",\n    IsComplete \"report_type\",\n    IsComplete \"retrieved_at\",\n    IsComplete \"revenue_shipped\",\n    IsComplete \"selling_program\",\n    IsComplete \"source_timezone\",\n    IsComplete \"source_watermark\",\n    IsComplete \"units_shipped\",\n    ColumnValues \"currency_code\" matches \"^[A-Z]{3}$\"\n]",
+      "runtimeRules": {
+        "grain": [
+          "amazon_asin",
+          "date_key",
+          "distributor_view",
+          "marketplace_key",
+          "selling_program"
+        ],
+        "requiredColumns": [
+          "basis_key",
+          "date_key",
+          "ecosystem_key",
+          "marketplace_key",
+          "platform_key",
+          "amazon_asin",
+          "cogs_shipped",
+          "currency_code",
+          "distributor_view",
+          "period_end",
+          "period_start",
+          "report_options_hash",
+          "report_period",
+          "report_type",
+          "retrieved_at",
+          "revenue_shipped",
+          "selling_program",
+          "source_timezone",
+          "source_watermark",
+          "units_shipped"
+        ],
+        "currencyColumns": [
+          {
+            "name": "currency_code",
+            "nullable": false
+          }
+        ],
+        "uniqueAmongUnsuppressedOnly": false
+      }
+    },
+    {
+      "table": "fct_retail_sales_reported_total",
+      "description": "Generated from vendor-sales-reported-total. Edit the contract, not this ruleset.",
+      "ruleCount": 21,
+      "ruleset": "Rules = [\n    Uniqueness \"date_key\" \"distributor_view\" \"marketplace_key\" \"selling_program\" = 1.0,\n    IsComplete \"basis_key\",\n    IsComplete \"date_key\",\n    IsComplete \"ecosystem_key\",\n    IsComplete \"marketplace_key\",\n    IsComplete \"platform_key\",\n    IsComplete \"cogs_shipped\",\n    IsComplete \"currency_code\",\n    IsComplete \"distributor_view\",\n    IsComplete \"period_end\",\n    IsComplete \"period_start\",\n    IsComplete \"report_options_hash\",\n    IsComplete \"report_period\",\n    IsComplete \"report_type\",\n    IsComplete \"retrieved_at\",\n    IsComplete \"revenue_shipped\",\n    IsComplete \"selling_program\",\n    IsComplete \"source_timezone\",\n    IsComplete \"source_watermark\",\n    IsComplete \"units_shipped\",\n    ColumnValues \"currency_code\" matches \"^[A-Z]{3}$\"\n]",
+      "runtimeRules": {
+        "grain": [
+          "date_key",
+          "distributor_view",
+          "marketplace_key",
+          "selling_program"
+        ],
+        "requiredColumns": [
+          "basis_key",
+          "date_key",
+          "ecosystem_key",
+          "marketplace_key",
+          "platform_key",
+          "cogs_shipped",
+          "currency_code",
+          "distributor_view",
+          "period_end",
+          "period_start",
+          "report_options_hash",
+          "report_period",
+          "report_type",
+          "retrieved_at",
+          "revenue_shipped",
+          "selling_program",
+          "source_timezone",
+          "source_watermark",
+          "units_shipped"
+        ],
+        "currencyColumns": [
+          {
+            "name": "currency_code",
+            "nullable": false
+          }
+        ],
+        "uniqueAmongUnsuppressedOnly": false
+      }
+    },
+    {
+      "table": "fct_segment_delivery",
+      "description": "Generated from amc-audience-performance. Edit the contract, not this ruleset.",
+      "ruleCount": 20,
+      "ruleset": "Rules = [\n    Uniqueness \"campaign_key\" \"grain_set\" \"marketplace_key\" \"period_end\" \"period_start\" \"segment_id\" \"segment_namespace\" \"time_grain\" = 1.0 where \"rows_suppressed = false\",\n    IsComplete \"ad_product_key\",\n    IsComplete \"basis_key\",\n    IsComplete \"campaign_key\",\n    IsComplete \"channel_group_key\",\n    IsComplete \"channel_key\",\n    IsComplete \"ecosystem_key\",\n    IsComplete \"marketplace_key\",\n    IsComplete \"platform_key\",\n    IsComplete \"cell_state\",\n    IsComplete \"grain_set\",\n    IsComplete \"identity_unit\",\n    IsComplete \"period_end\",\n    IsComplete \"period_start\",\n    IsComplete \"segment_id\",\n    IsComplete \"segment_namespace\",\n    IsComplete \"source_timezone\",\n    IsComplete \"time_grain\",\n    (ColumnValues \"dsp_currency\" matches \"^[A-Z]{3}$\") OR (ColumnValues \"dsp_currency\" = NULL),\n    (ColumnValues \"purchase_currency\" matches \"^[A-Z]{3}$\") OR (ColumnValues \"purchase_currency\" = NULL)\n]",
+      "runtimeRules": {
+        "grain": [
+          "campaign_key",
+          "grain_set",
+          "marketplace_key",
+          "period_end",
+          "period_start",
+          "segment_id",
+          "segment_namespace",
+          "time_grain"
+        ],
+        "requiredColumns": [
+          "ad_product_key",
+          "basis_key",
+          "campaign_key",
+          "channel_group_key",
+          "channel_key",
+          "ecosystem_key",
+          "marketplace_key",
+          "platform_key",
+          "cell_state",
+          "grain_set",
+          "identity_unit",
+          "period_end",
+          "period_start",
+          "segment_id",
+          "segment_namespace",
+          "source_timezone",
+          "time_grain"
+        ],
+        "currencyColumns": [
+          {
+            "name": "dsp_currency",
+            "nullable": true
+          },
+          {
+            "name": "purchase_currency",
+            "nullable": true
+          }
+        ],
+        "uniqueAmongUnsuppressedOnly": true
+      }
+    },
+    {
+      "table": "fct_segment_delivery_withheld",
+      "description": "Generated from amc-audience-performance. Edit the contract, not this ruleset.",
+      "ruleCount": 10,
+      "ruleset": "Rules = [\n    Uniqueness \"contract_id\" \"marketplace_key\" \"period_start\" \"period_end\" \"option_set_hash\" = 1.0,\n    IsComplete \"contract_id\",\n    IsComplete \"marketplace_key\",\n    IsComplete \"period_start\",\n    IsComplete \"period_end\",\n    IsComplete \"option_set_hash\",\n    IsComplete \"basis_key\",\n    IsComplete \"ecosystem_key\",\n    IsComplete \"platform_key\",\n    IsComplete \"source_timezone\"\n]",
+      "runtimeRules": {
+        "grain": [
+          "contract_id",
+          "marketplace_key",
+          "period_start",
+          "period_end",
+          "option_set_hash"
+        ],
+        "requiredColumns": [
+          "contract_id",
+          "marketplace_key",
+          "period_start",
+          "period_end",
+          "option_set_hash",
+          "basis_key",
+          "ecosystem_key",
+          "platform_key",
+          "source_timezone"
+        ],
+        "currencyColumns": [],
+        "uniqueAmongUnsuppressedOnly": false
+      }
+    },
+    {
+      "table": "fct_segment_profile",
+      "description": "Generated from amc-segment-buyer-profile-dsp-exposed, amc-segment-buyer-profile-inmarket, amc-segment-buyer-profile-lifestyle. Edit the contract, not this ruleset.",
+      "ruleCount": 15,
+      "ruleset": "Rules = [\n    Uniqueness \"grain_set\" \"marketplace_key\" \"period_end\" \"period_start\" \"profile_path\" \"row_kind\" \"segment_id\" \"segment_namespace\" \"time_grain\" = 1.0 where \"rows_suppressed = false\",\n    IsComplete \"basis_key\",\n    IsComplete \"ecosystem_key\",\n    IsComplete \"marketplace_key\",\n    IsComplete \"platform_key\",\n    IsComplete \"cell_state\",\n    IsComplete \"grain_set\",\n    IsComplete \"identity_unit\",\n    IsComplete \"period_end\",\n    IsComplete \"period_start\",\n    IsComplete \"profile_path\",\n    IsComplete \"row_kind\",\n    IsComplete \"segment_namespace\",\n    IsComplete \"source_timezone\",\n    IsComplete \"time_grain\"\n]",
+      "runtimeRules": {
+        "grain": [
+          "grain_set",
+          "marketplace_key",
+          "period_end",
+          "period_start",
+          "profile_path",
+          "row_kind",
+          "segment_id",
+          "segment_namespace",
+          "time_grain"
+        ],
+        "requiredColumns": [
+          "basis_key",
+          "ecosystem_key",
+          "marketplace_key",
+          "platform_key",
+          "cell_state",
+          "grain_set",
+          "identity_unit",
+          "period_end",
+          "period_start",
+          "profile_path",
+          "row_kind",
+          "segment_namespace",
+          "source_timezone",
+          "time_grain"
+        ],
+        "currencyColumns": [],
+        "uniqueAmongUnsuppressedOnly": true
+      }
+    },
+    {
+      "table": "fct_shopper_acquisition",
+      "description": "Generated from amc-acquisition-cohorts, amc-acquisition-cohorts-arp. Edit the contract, not this ruleset.",
+      "ruleCount": 20,
+      "ruleset": "Rules = [\n    Uniqueness \"acquisition_channel_group\" \"as_of_month\" \"cohort_grain\" \"cohort_month\" \"cohort_path\" \"grain_set\" \"marketplace_key\" \"months_since_acquisition\" \"period_end\" \"period_start\" \"time_grain\" = 1.0 where \"rows_suppressed = false\",\n    IsComplete \"basis_key\",\n    IsComplete \"ecosystem_key\",\n    IsComplete \"marketplace_key\",\n    IsComplete \"platform_key\",\n    IsComplete \"acquisition_channel_group\",\n    IsComplete \"acquisition_source_set\",\n    IsComplete \"as_of_month\",\n    IsComplete \"cell_state\",\n    IsComplete \"cohort_grain\",\n    IsComplete \"cohort_month\",\n    IsComplete \"cohort_path\",\n    IsComplete \"grain_set\",\n    IsComplete \"identity_unit\",\n    IsComplete \"months_since_acquisition\",\n    IsComplete \"period_end\",\n    IsComplete \"period_start\",\n    IsComplete \"source_timezone\",\n    IsComplete \"time_grain\",\n    (ColumnValues \"currency_code\" matches \"^[A-Z]{3}$\") OR (ColumnValues \"currency_code\" = NULL)\n]",
+      "runtimeRules": {
+        "grain": [
+          "acquisition_channel_group",
+          "as_of_month",
+          "cohort_grain",
+          "cohort_month",
+          "cohort_path",
+          "grain_set",
+          "marketplace_key",
+          "months_since_acquisition",
+          "period_end",
+          "period_start",
+          "time_grain"
+        ],
+        "requiredColumns": [
+          "basis_key",
+          "ecosystem_key",
+          "marketplace_key",
+          "platform_key",
+          "acquisition_channel_group",
+          "acquisition_source_set",
+          "as_of_month",
+          "cell_state",
+          "cohort_grain",
+          "cohort_month",
+          "cohort_path",
+          "grain_set",
+          "identity_unit",
+          "months_since_acquisition",
+          "period_end",
+          "period_start",
+          "source_timezone",
+          "time_grain"
+        ],
+        "currencyColumns": [
+          {
+            "name": "currency_code",
+            "nullable": true
+          }
+        ],
+        "uniqueAmongUnsuppressedOnly": true
+      }
+    },
+    {
+      "table": "fct_shopper_acquisition_withheld",
+      "description": "Generated from amc-acquisition-cohorts, amc-acquisition-cohorts-arp. Edit the contract, not this ruleset.",
+      "ruleCount": 13,
+      "ruleset": "Rules = [\n    Uniqueness \"contract_id\" \"marketplace_key\" \"period_start\" \"period_end\" \"option_set_hash\" \"as_of_month\" \"cohort_grain\" \"cohort_path\" = 1.0,\n    IsComplete \"contract_id\",\n    IsComplete \"marketplace_key\",\n    IsComplete \"period_start\",\n    IsComplete \"period_end\",\n    IsComplete \"option_set_hash\",\n    IsComplete \"as_of_month\",\n    IsComplete \"cohort_grain\",\n    IsComplete \"cohort_path\",\n    IsComplete \"basis_key\",\n    IsComplete \"ecosystem_key\",\n    IsComplete \"platform_key\",\n    IsComplete \"source_timezone\"\n]",
+      "runtimeRules": {
+        "grain": [
+          "contract_id",
+          "marketplace_key",
+          "period_start",
+          "period_end",
+          "option_set_hash",
+          "as_of_month",
+          "cohort_grain",
+          "cohort_path"
+        ],
+        "requiredColumns": [
+          "contract_id",
+          "marketplace_key",
+          "period_start",
+          "period_end",
+          "option_set_hash",
+          "as_of_month",
+          "cohort_grain",
+          "cohort_path",
+          "basis_key",
+          "ecosystem_key",
+          "platform_key",
+          "source_timezone"
+        ],
+        "currencyColumns": [],
+        "uniqueAmongUnsuppressedOnly": false
+      }
+    }
+  ]
+}

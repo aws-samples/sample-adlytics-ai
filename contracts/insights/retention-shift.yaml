@@ -1,0 +1,102 @@
+id: retention-shift
+version: 1
+purpose: Deterministically name the change in one acquisition group's month-1 or month-3 repeat rate between the latest two cohorts that have reached that month, inside one cohort vintage's standard-path delivery, never across groups or paths.
+display_name: Retention shift (Retention)
+output_class: perspective
+allowed_inputs:
+  - server-computed month-1 and month-3 repeat rates and cohort sizes of the latest two cohorts of one acquisition group inside one cohort vintage's standard-path delivery and one marketplace
+  - the vintage's and the cohorts' server labels
+deterministic_findings: [absolute-change]
+predicate:
+  required_evidence_inputs: [cohort-cells]
+  required_finding_kinds: [absolute-change]
+  # The minimum base and the interval below are the gate; materiality then asks for a change of
+  # at least two rate points [proposal].
+  materiality:
+    bases:
+      cohort_delivery:
+        per_unit:
+          rate_pp: {operational-pulse: "2", tactical-review: "2", pattern-confirmation: "2"}
+        per_metric: {}
+    near_zero_prior: {}
+  delivery_follow_up_evidence: []
+# Design §6.6 (review DS5-7), [proposal] values versioned here. A shift is named only when both
+# cohorts hold at least cohort_min shoppers in the rate's denominator (cohort_buyers_new_to_brand_12mo
+# on the standard path) and, with rates r1, r2 and denominators n1, n2, the interval
+# (r2 - r1) +/- z * sqrt(r1(1 - r1)/n1 + r2(1 - r2)/n2) excludes zero. It compares two cohorts of one
+# acquisition group, so it never compares groups, and it reads one delivery, so D-8 holds. Silent
+# when either cell is not_returned, and on a quarterly vintage, which has no month-1 or month-3 rate.
+shift_policy:
+  cohort_min: 200
+  z: "1.96"
+materiality_cases:
+  - {name: a month-1 rate up 3 points is admitted at tactical-review, horizon: tactical-review, basis: cohort_delivery, kind: absolute-change, metric: repeat_buyer_rate, current: "0.13", prior: "0.10", expect: admitted}
+  - {name: a month-1 rate up 1 point is silent at tactical-review, horizon: tactical-review, basis: cohort_delivery, kind: absolute-change, metric: repeat_buyer_rate, current: "0.11", prior: "0.10", expect: silent}
+  - {name: a month-3 rate down 2 points is admitted at operational-pulse, horizon: operational-pulse, basis: cohort_delivery, kind: absolute-change, metric: repeat_buyer_rate, current: "0.18", prior: "0.20", expect: admitted}
+  - {name: a month-3 rate up 2 points is admitted at pattern-confirmation, horizon: pattern-confirmation, basis: cohort_delivery, kind: absolute-change, metric: repeat_buyer_rate, current: "0.22", prior: "0.20", expect: admitted}
+silence_condition: No acquisition group's month-1 or month-3 repeat rate moved by the declared threshold between its latest two cohorts with enough shoppers and an interval that excludes zero, either cell is not available, or the vintage is grouped by quarter.
+structured_output_schema: {id: insight-narration-v1, fields: [output_class, sentences]}
+initial_fictional_prompt: null
+calibration_cases:
+  - kind: known-correct
+    input_summary: Fictional sponsored-only cohorts of 1,000 shoppers each repeat at 10 percent and 15 percent in month 1, so the interval of the difference excludes zero.
+    expected_outcome: Accept the deterministic statement that names the group, the month, the two cohorts and the ad-touched repeat basis.
+    horizon: tactical-review
+    findings:
+      - {name: Month-1 repeat rate change for shoppers won by sponsored ads only, value: "5.0"}
+  - kind: exploratory
+    input_summary: Two fictional 40-shopper cohorts repeat at 10 percent and 20 percent in month 1; both are under the 200-shopper minimum.
+    expected_outcome: The slot names nothing; no prompt generates a reading of the small cohorts.
+    horizon: pattern-confirmation
+    findings:
+      - {name: Month-1 repeat rate change for shoppers won by DSP only, value: "10.0"}
+  - kind: contradiction
+    input_summary: A fictional draft says the month-1 repeat rate fell, although the latest cohort's rate is the higher one.
+    expected_outcome: Reject the contradiction.
+    horizon: tactical-review
+    findings:
+      - {name: Month-1 repeat rate change for shoppers won by both, value: "4.0"}
+    draft:
+      sentences:
+        - The month-1 repeat rate fell for shoppers won by both.
+  - kind: fluent-unsupported
+    input_summary: A fluent draft says the ads caused the repeat rate to rise, though the standard path counts ad-touched repeats only and cohorts aren't randomised.
+    expected_outcome: Reject the causal claim; the rule names a change in a measured rate, not its cause.
+    horizon: tactical-review
+    findings:
+      - {name: Month-1 repeat rate change for shoppers won by sponsored ads only, value: "5.0"}
+    draft:
+      sentences:
+        - Sponsored ads drove five more points of repeat purchases.
+  - kind: derived-figure
+    input_summary: A fictional renderer states the change in rate points, derived from the two supplied cohort rates.
+    expected_outcome: Accept the correctly derived change; this deterministic slot never generates one.
+    horizon: tactical-review
+    findings:
+      - {name: Month-1 repeat rate of the latest cohort, value: "0.15"}
+      - {name: Month-1 repeat rate of the earlier cohort, value: "0.10"}
+    draft:
+      sentences:
+        - The month-1 repeat rate rose 5.0 points from the earlier cohort to the latest.
+  - kind: miscomputed-derivation
+    input_summary: A fictional draft sums the month-1 repeat rates of the three acquisition groups into one total rate and reports its change.
+    expected_outcome: Reject summing repeat rates across groups; each group's rate has its own denominator and the rule never compares or combines groups.
+    horizon: pattern-confirmation
+    findings:
+      - {name: Month-1 repeat rate for shoppers won by DSP only, value: "0.10"}
+      - {name: Month-1 repeat rate for shoppers won by sponsored ads only, value: "0.15"}
+      - {name: Month-1 repeat rate for shoppers won by both, value: "0.20"}
+    draft:
+      sentences:
+        - Across all groups the month-1 repeat rate is 45 percent.
+  - kind: incompatible-basis
+    input_summary: A fictional draft compares a standard-path ad-touched repeat rate with the paid path's all-purchases rate as if they were one series.
+    expected_outcome: Reject the comparison across paths; standard and ARP rates count different repeats on different bases.
+    horizon: tactical-review
+    findings:
+      - {name: Month-1 repeat rate on the standard path, value: "0.10"}
+      - {name: Month-1 repeat rate on all Amazon purchases, value: "0.30"}
+    draft:
+      sentences:
+        - The month-1 repeat rate tripled from the ad-touched figure to the all-purchases figure.
+deep: null

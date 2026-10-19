@@ -1,0 +1,1024 @@
+{
+  "pages": [
+    {
+      "actions": [],
+      "artifacts": [
+        {
+          "artifact_id": "campaign_catalog",
+          "outcomes": [
+            "complete",
+            "empty",
+            "insufficient"
+          ],
+          "type": "CampaignPortfolioArtifact",
+          "version": 1
+        },
+        {
+          "artifact_id": "campaign_detail",
+          "outcomes": [
+            "selected",
+            "insufficient"
+          ],
+          "type": "CampaignAttributionDetail",
+          "version": 2
+        }
+      ],
+      "boundary_required": true,
+      "compatibility_routes": [
+        "/"
+      ],
+      "display_name": "Campaign Portfolio",
+      "mode": "selectable_parent_child",
+      "page_id": "campaigns",
+      "primary_job": "Select an authorized campaign and review its attributed outcome and delivery evidence.",
+      "purpose": "Find a governed campaign cohort, then inspect one selected campaign without browser ranking or causal claims.",
+      "route": "/campaigns/",
+      "sections": [
+        {
+          "cardinality": "exactly_one",
+          "role": "scope",
+          "section_id": "workspace-scope"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "selection",
+          "section_id": "campaign-catalog"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "summary",
+          "section_id": "selected-summary"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "trend",
+          "section_id": "purchase-series"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "evidence",
+          "section_id": "delivery-evidence"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "evidence",
+          "section_id": "evidence-trace"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "boundary",
+          "section_id": "boundary"
+        }
+      ],
+      "temporal_policy": {
+        "candidate_presets": [
+          "1d",
+          "7d",
+          "14d",
+          "30d"
+        ],
+        "comparison_intent": null,
+        "comparison_policy": "required_equal_prior",
+        "custom": {
+          "enabled": false,
+          "max_duration_days": 90,
+          "min_duration_days": 2
+        },
+        "default_preset": "7d",
+        "display_grains": [
+          "period",
+          "day"
+        ],
+        "preset_exceptions": []
+      },
+      "visuals": [
+        {
+          "metric_cohort": [
+            "ad_spend",
+            "portfolio_roas_attributed_14d",
+            "purchases"
+          ],
+          "narration_eligible": true,
+          "visual_id": "campaign_portfolio_trend"
+        },
+        {
+          "metric_cohort": [
+            "ad_spend",
+            "impressions",
+            "clicks",
+            "ctr",
+            "cpc",
+            "cpm"
+          ],
+          "narration_eligible": true,
+          "visual_id": "campaign_delivery_daily"
+        }
+      ]
+    },
+    {
+      "actions": [],
+      "artifacts": [
+        {
+          "artifact_id": "channel_robustness",
+          "outcomes": [
+            "robust_leader",
+            "model_sensitive",
+            "insufficient"
+          ],
+          "type": "ChannelAttributionRobustness",
+          "version": 2
+        },
+        {
+          "artifact_id": "selected_channel_daily",
+          "outcomes": [
+            "complete",
+            "partial",
+            "insufficient"
+          ],
+          "type": "ChannelAttributionRobustnessDaily",
+          "version": 1
+        }
+      ],
+      "boundary_required": true,
+      "compatibility_routes": [],
+      "display_name": "Channel Robustness",
+      "mode": "selectable_parent_child",
+      "page_id": "channel-performance",
+      "primary_job": "Review model sensitivity and, when authorized, inspect one channel's daily evidence.",
+      "purpose": "Assess whether channel ROAS ranking remains robust across every declared attribution model.",
+      "route": "/channel-performance/",
+      "sections": [
+        {
+          "cardinality": "exactly_one",
+          "role": "scope",
+          "section_id": "workspace-scope"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "summary",
+          "section_id": "summary"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "table",
+          "section_id": "channel-table"
+        },
+        {
+          "cardinality": "zero_or_one",
+          "role": "evidence",
+          "section_id": "channel-daily-evidence"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "boundary",
+          "section_id": "boundary"
+        }
+      ],
+      "temporal_policy": {
+        "candidate_presets": [
+          "1d",
+          "7d",
+          "14d",
+          "30d"
+        ],
+        "comparison_intent": null,
+        "comparison_policy": "required_equal_prior",
+        "custom": {
+          "enabled": true,
+          "max_duration_days": 90,
+          "min_duration_days": 1
+        },
+        "default_preset": "7d",
+        "display_grains": [
+          "period",
+          "day"
+        ],
+        "preset_exceptions": []
+      },
+      "visuals": [
+        {
+          "metric_cohort": [
+            "ad_spend",
+            "roas_deduplicated_incl_halo_14d"
+          ],
+          "narration_eligible": true,
+          "visual_id": "channel_roas_model_matrix"
+        },
+        {
+          "metric_cohort": [
+            "ad_spend",
+            "roas_deduplicated_incl_halo_14d"
+          ],
+          "narration_eligible": true,
+          "visual_id": "channel_daily_evidence"
+        }
+      ]
+    },
+    {
+      "actions": [],
+      "artifacts": [
+        {
+          "artifact_id": "marketplace_comparison",
+          "outcomes": [
+            "comparable",
+            "one_marketplace",
+            "insufficient",
+            "no_coverage"
+          ],
+          "type": "MarketplaceComparisonArtifact",
+          "version": 1
+        }
+      ],
+      "boundary_required": true,
+      "compatibility_routes": [],
+      "display_name": "Marketplace Movement",
+      "mode": "selectable",
+      "page_id": "workspace",
+      "primary_job": "Review qualified marketplace movement and pair-local evidence limitations.",
+      "purpose": "Compare advertising and shipped-retail movement within each marketplace without cross-currency ranking or causal attribution.",
+      "route": "/workspace/",
+      "sections": [
+        {
+          "cardinality": "exactly_one",
+          "role": "scope",
+          "section_id": "workspace-scope"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "table",
+          "section_id": "comparison-table"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "evidence",
+          "section_id": "evidence-detail"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "boundary",
+          "section_id": "boundary"
+        }
+      ],
+      "temporal_policy": {
+        "candidate_presets": [
+          "1d",
+          "7d",
+          "14d",
+          "30d"
+        ],
+        "comparison_intent": null,
+        "comparison_policy": "required_equal_prior",
+        "custom": {
+          "enabled": true,
+          "max_duration_days": 90,
+          "min_duration_days": 1
+        },
+        "default_preset": "7d",
+        "display_grains": [
+          "period"
+        ],
+        "preset_exceptions": []
+      },
+      "visuals": []
+    },
+    {
+      "actions": [],
+      "artifacts": [
+        {
+          "artifact_id": "evidence_health",
+          "outcomes": [
+            "healthy",
+            "qualified",
+            "insufficient",
+            "no_coverage"
+          ],
+          "type": "DataHealthDetail",
+          "version": 1
+        }
+      ],
+      "boundary_required": true,
+      "compatibility_routes": [],
+      "display_name": "Evidence Health",
+      "mode": "selectable",
+      "page_id": "data-health",
+      "primary_job": "Determine the current evidence condition and its safe disclosed recovery boundary.",
+      "purpose": "Explain the exact-source reach and frequency condition without diagnosing operational cause or inventing a history.",
+      "route": "/data-health/",
+      "sections": [
+        {
+          "cardinality": "exactly_one",
+          "role": "scope",
+          "section_id": "workspace-scope"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "summary",
+          "section_id": "health-summary"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "evidence",
+          "section_id": "condition-evidence"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "evidence",
+          "section_id": "source-disclosure"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "boundary",
+          "section_id": "boundary"
+        }
+      ],
+      "temporal_policy": {
+        "candidate_presets": [
+          "1d",
+          "7d",
+          "14d",
+          "30d"
+        ],
+        "comparison_intent": null,
+        "comparison_policy": "none",
+        "custom": {
+          "enabled": true,
+          "max_duration_days": 90,
+          "min_duration_days": 1
+        },
+        "default_preset": "7d",
+        "display_grains": [
+          "day"
+        ],
+        "preset_exceptions": []
+      },
+      "visuals": []
+    },
+    {
+      "actions": [],
+      "artifacts": [
+        {
+          "artifact_id": "media_scope_list",
+          "outcomes": [
+            "choices",
+            "empty"
+          ],
+          "type": "MediaEfficiencyScopeList",
+          "version": 1
+        },
+        {
+          "artifact_id": "media_efficiency",
+          "outcomes": [
+            "complete",
+            "qualified",
+            "insufficient"
+          ],
+          "type": "MediaEfficiencyArtifact",
+          "version": 1
+        }
+      ],
+      "boundary_required": true,
+      "compatibility_routes": [],
+      "display_name": "Media Efficiency",
+      "mode": "selectable_parent_child",
+      "page_id": "media-efficiency",
+      "primary_job": "Select an authorized media scope and inspect returned delivery and DSP-quality evidence.",
+      "purpose": "Review advertising delivery and DSP viewability at one authorized media scope while keeping unsupported audience evidence explicit.",
+      "route": "/media-efficiency/",
+      "sections": [
+        {
+          "cardinality": "exactly_one",
+          "role": "scope",
+          "section_id": "workspace-scope"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "selection",
+          "section_id": "media-scope-list"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "summary",
+          "section_id": "delivery-summary"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "evidence",
+          "section_id": "delivery-evidence"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "evidence",
+          "section_id": "dsp-viewability"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "availability",
+          "section_id": "audience-availability"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "evidence",
+          "section_id": "evidence-detail"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "boundary",
+          "section_id": "boundary"
+        }
+      ],
+      "temporal_policy": {
+        "candidate_presets": [
+          "1d",
+          "7d",
+          "14d",
+          "30d"
+        ],
+        "comparison_intent": "compare_previous",
+        "comparison_policy": "optional_equal_prior",
+        "custom": {
+          "enabled": true,
+          "max_duration_days": 90,
+          "min_duration_days": 1
+        },
+        "default_preset": "7d",
+        "display_grains": [
+          "period",
+          "day"
+        ],
+        "preset_exceptions": []
+      },
+      "visuals": [
+        {
+          "metric_cohort": [
+            "ad_spend",
+            "impressions",
+            "clicks",
+            "ctr",
+            "cpc",
+            "cpm"
+          ],
+          "narration_eligible": true,
+          "visual_id": "media_delivery_daily"
+        },
+        {
+          "metric_cohort": [
+            "measurable_impressions",
+            "viewable_impressions",
+            "viewable_impressions_estimated",
+            "viewable_rate"
+          ],
+          "narration_eligible": true,
+          "visual_id": "media_dsp_viewability_daily"
+        }
+      ]
+    },
+    {
+      "actions": [],
+      "artifacts": [
+        {
+          "artifact_id": "retail_health",
+          "outcomes": [
+            "complete",
+            "empty",
+            "insufficient"
+          ],
+          "type": "RetailHealthArtifact",
+          "version": 2
+        },
+        {
+          "artifact_id": "retail_product_detail",
+          "outcomes": [
+            "selected",
+            "insufficient"
+          ],
+          "type": "RetailProductDetail",
+          "version": 1
+        }
+      ],
+      "boundary_required": true,
+      "compatibility_routes": [],
+      "display_name": "Retail Health",
+      "mode": "selectable_parent_child",
+      "page_id": "retail-health",
+      "primary_job": "Triage shipped, ordered, returns, traffic, and declared reconciliation for the resolved reporting window, then open one product in place.",
+      "purpose": "Review governed 1P retail movement without advertising attribution or browser-derived calculations.",
+      "route": "/retail-health/",
+      "sections": [
+        {
+          "cardinality": "exactly_one",
+          "role": "scope",
+          "section_id": "workspace-scope"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "summary",
+          "section_id": "retail-totals"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "evidence",
+          "section_id": "retail-insights"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "trend",
+          "section_id": "retail-trend"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "table",
+          "section_id": "product-table"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "evidence",
+          "section_id": "reconciliation"
+        },
+        {
+          "cardinality": "zero_or_one",
+          "role": "summary",
+          "section_id": "product-summary"
+        },
+        {
+          "cardinality": "zero_or_one",
+          "role": "evidence",
+          "section_id": "product-insights"
+        },
+        {
+          "cardinality": "zero_or_one",
+          "role": "trend",
+          "section_id": "product-daily"
+        },
+        {
+          "cardinality": "zero_or_one",
+          "role": "table",
+          "section_id": "product-ad-attributed"
+        },
+        {
+          "cardinality": "zero_or_one",
+          "role": "evidence",
+          "section_id": "evidence-trace"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "boundary",
+          "section_id": "boundary"
+        }
+      ],
+      "temporal_policy": {
+        "candidate_presets": [
+          "1d",
+          "7d",
+          "14d"
+        ],
+        "comparison_intent": null,
+        "comparison_policy": "required_equal_prior",
+        "custom": {
+          "enabled": false,
+          "max_duration_days": 90,
+          "min_duration_days": 1
+        },
+        "default_preset": "7d",
+        "display_grains": [
+          "period",
+          "day"
+        ],
+        "preset_exceptions": []
+      },
+      "visuals": [
+        {
+          "metric_cohort": [
+            "retail_revenue_shipped",
+            "units_shipped",
+            "customer_returns",
+            "glance_views"
+          ],
+          "narration_eligible": true,
+          "visual_id": "retail_health_daily"
+        },
+        {
+          "metric_cohort": [
+            "retail_revenue_shipped"
+          ],
+          "narration_eligible": true,
+          "visual_id": "product_sales_daily"
+        },
+        {
+          "metric_cohort": [
+            "glance_views"
+          ],
+          "narration_eligible": true,
+          "visual_id": "product_traffic_daily"
+        }
+      ]
+    },
+    {
+      "actions": [],
+      "artifacts": [
+        {
+          "artifact_id": "network_scorecard",
+          "outcomes": [
+            "complete",
+            "empty"
+          ],
+          "type": "NetworkScorecardArtifact",
+          "version": 1
+        }
+      ],
+      "boundary_required": true,
+      "compatibility_routes": [],
+      "display_name": "Scorecard",
+      "mode": "selectable",
+      "page_id": "scorecard",
+      "primary_job": "See which channels return most inside each network, whether the ranking holds under every attribution model, and where ad spend stands against retail sales.",
+      "purpose": "Compare return on ad spend inside each network and channel, never added across networks or channels.",
+      "route": "/scorecard/",
+      "sections": [
+        {
+          "cardinality": "exactly_one",
+          "role": "scope",
+          "section_id": "workspace-scope"
+        },
+        {
+          "cardinality": "zero_or_more",
+          "role": "summary",
+          "section_id": "network-card"
+        },
+        {
+          "cardinality": "zero_or_more",
+          "role": "table",
+          "section_id": "model-ranking"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "evidence",
+          "section_id": "scorecard-insights"
+        },
+        {
+          "cardinality": "zero_or_one",
+          "role": "evidence",
+          "section_id": "also-changed"
+        },
+        {
+          "cardinality": "zero_or_more",
+          "role": "table",
+          "section_id": "channel-table"
+        },
+        {
+          "cardinality": "zero_or_more",
+          "role": "availability",
+          "section_id": "pointers"
+        },
+        {
+          "cardinality": "zero_or_one",
+          "role": "summary",
+          "section_id": "ad-spend-and-retail-sales"
+        },
+        {
+          "cardinality": "zero_or_one",
+          "role": "evidence",
+          "section_id": "evidence-trace"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "boundary",
+          "section_id": "boundary"
+        }
+      ],
+      "temporal_policy": {
+        "candidate_presets": [
+          "7d",
+          "30d",
+          "last_complete_week",
+          "last_complete_month"
+        ],
+        "comparison_intent": null,
+        "comparison_policy": "optional_equal_prior",
+        "custom": {
+          "enabled": false,
+          "max_duration_days": 90,
+          "min_duration_days": 1
+        },
+        "default_preset": "7d",
+        "display_grains": [
+          "period"
+        ],
+        "preset_exceptions": []
+      },
+      "visuals": []
+    },
+    {
+      "actions": [],
+      "artifacts": [
+        {
+          "artifact_id": "new_customers",
+          "outcomes": [
+            "complete",
+            "empty",
+            "insufficient"
+          ],
+          "type": "NewCustomersArtifact",
+          "version": 2
+        }
+      ],
+      "boundary_required": true,
+      "compatibility_routes": [],
+      "display_name": "New customers",
+      "mode": "selectable",
+      "page_id": "new-customers",
+      "primary_job": "See which channels bring shoppers new to the brand, how many new buyers a complete week or month brought and at what cost, and which products they bought first.",
+      "purpose": "Show new-to-brand purchases and new buyers inside each channel of the Amazon Ads network, never added across channels.",
+      "route": "/new-customers/",
+      "sections": [
+        {
+          "cardinality": "exactly_one",
+          "role": "scope",
+          "section_id": "workspace-scope"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "table",
+          "section_id": "new-to-brand"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "evidence",
+          "section_id": "new-customers-insights"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "summary",
+          "section_id": "new-to-brand-step-2"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "table",
+          "section_id": "gateway-products"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "availability",
+          "section_id": "pointers"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "evidence",
+          "section_id": "evidence-trace"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "boundary",
+          "section_id": "boundary"
+        }
+      ],
+      "temporal_policy": {
+        "candidate_presets": [
+          "7d",
+          "30d",
+          "last_complete_week",
+          "last_complete_month"
+        ],
+        "comparison_intent": null,
+        "comparison_policy": "optional_equal_prior",
+        "custom": {
+          "enabled": false,
+          "max_duration_days": 90,
+          "min_duration_days": 1
+        },
+        "default_preset": "7d",
+        "display_grains": [
+          "period"
+        ],
+        "preset_exceptions": []
+      },
+      "visuals": []
+    },
+    {
+      "actions": [],
+      "artifacts": [
+        {
+          "artifact_id": "reach",
+          "outcomes": [
+            "complete",
+            "empty",
+            "insufficient"
+          ],
+          "type": "ReachAndFunnelArtifact",
+          "version": 1
+        }
+      ],
+      "boundary_required": true,
+      "compatibility_routes": [],
+      "display_name": "Reach and funnel",
+      "mode": "selectable",
+      "page_id": "reach",
+      "primary_job": "How many shoppers your ads reached, how often, and what they did next.",
+      "purpose": "Show how many shoppers the ads reached in one complete period, how the DSP and sponsored audiences overlap, what each exposure group did next, and how purchase rates move with the number of ads seen.",
+      "route": "/reach/",
+      "sections": [
+        {
+          "cardinality": "exactly_one",
+          "role": "scope",
+          "section_id": "workspace-scope"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "summary",
+          "section_id": "overlap"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "table",
+          "section_id": "funnel"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "evidence",
+          "section_id": "reach-insights"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "trend",
+          "section_id": "frequency"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "evidence",
+          "section_id": "evidence-trace"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "boundary",
+          "section_id": "boundary"
+        }
+      ],
+      "temporal_policy": {
+        "candidate_presets": [
+          "last_complete_week",
+          "last_complete_month",
+          "last_complete_quarter"
+        ],
+        "comparison_intent": null,
+        "comparison_policy": "prior_calendar_period",
+        "custom": {
+          "enabled": false,
+          "max_duration_days": 90,
+          "min_duration_days": 1
+        },
+        "default_preset": "last_complete_month",
+        "display_grains": [
+          "declared_period"
+        ],
+        "preset_exceptions": []
+      },
+      "visuals": []
+    },
+    {
+      "actions": [],
+      "artifacts": [
+        {
+          "artifact_id": "retention",
+          "outcomes": [
+            "complete",
+            "empty",
+            "insufficient"
+          ],
+          "type": "RetentionCohortArtifact",
+          "version": 1
+        }
+      ],
+      "boundary_required": true,
+      "compatibility_routes": [],
+      "display_name": "Retention",
+      "mode": "selectable",
+      "page_id": "retention",
+      "primary_job": "Compare repeat purchase by acquisition group and month since acquisition for one cohort vintage.",
+      "purpose": "Show cohorts of new customers your ads brought in, and when they buy again.",
+      "route": "/retention/",
+      "sections": [
+        {
+          "cardinality": "exactly_one",
+          "role": "scope",
+          "section_id": "workspace-scope"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "selection",
+          "section_id": "path"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "table",
+          "section_id": "triangle"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "trend",
+          "section_id": "retention-curve"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "evidence",
+          "section_id": "retention-insights"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "evidence",
+          "section_id": "evidence-trace"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "boundary",
+          "section_id": "boundary"
+        }
+      ],
+      "vintage_policy": {
+        "comparison": "none",
+        "default": "latest_with_current_publication",
+        "selector": "as_of_month"
+      },
+      "visuals": []
+    },
+    {
+      "actions": [],
+      "artifacts": [
+        {
+          "artifact_id": "audiences",
+          "outcomes": [
+            "complete",
+            "empty",
+            "insufficient"
+          ],
+          "type": "AudienceProfileArtifact",
+          "version": 1
+        }
+      ],
+      "boundary_required": true,
+      "compatibility_routes": [],
+      "display_name": "Audiences",
+      "mode": "selectable",
+      "page_id": "audiences",
+      "primary_job": "Compare buyer and reached-shopper segment shares, inspect over-indexing, and review DSP campaign performance by segment for one complete month.",
+      "purpose": "Show which Amazon audience segments your buyers belong to, compared with the shoppers your ads reached, and how DSP campaigns did per segment.",
+      "route": "/audiences/",
+      "sections": [
+        {
+          "cardinality": "exactly_one",
+          "role": "scope",
+          "section_id": "workspace-scope"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "selection",
+          "section_id": "profile-path"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "table",
+          "section_id": "segment-ranking"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "evidence",
+          "section_id": "audience-insights"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "table",
+          "section_id": "campaign-audiences"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "evidence",
+          "section_id": "evidence-trace"
+        },
+        {
+          "cardinality": "exactly_one",
+          "role": "boundary",
+          "section_id": "boundary"
+        }
+      ],
+      "temporal_policy": {
+        "candidate_presets": [
+          "last_complete_month"
+        ],
+        "comparison_intent": null,
+        "comparison_policy": "prior_calendar_period",
+        "custom": {
+          "enabled": false,
+          "max_duration_days": 90,
+          "min_duration_days": 1
+        },
+        "default_preset": "last_complete_month",
+        "display_grains": [
+          "declared_period"
+        ],
+        "preset_exceptions": []
+      },
+      "visuals": []
+    }
+  ],
+  "presentation_result_version": 2,
+  "temporal_control_version": 2,
+  "version": 2
+}

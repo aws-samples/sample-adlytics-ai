@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "packId": "amc-dsp-segment-names",
+  "packVersion": 1,
+  "contractId": "amc-dsp-segment-names",
+  "sourcePackId": "amc-dsp-segment-names",
+  "queryFile": "amc-dsp-segment-names.sql",
+  "accessTier": "standard",
+  "liveValidation": "required",
+  "maxResultBytes": 20000000,
+  "executionOptions": {
+    "timeWindowType": "EXPLICIT",
+    "timeWindowTimeZone": "UTC",
+    "filteredMetricsDiscriminatorColumn": "rows_suppressed",
+    "filteredReasonColumn": "suppression_reason",
+    "distinctUserCountColumn": "distinct_user_count"
+  },
+  "safetyBlockers": [],
+  "suppressionPolicy": "discard_suppressed_rows",
+  "periodPolicy": {"grains": ["month"]},
+  "inputParameters": {
+    "dsp_campaign_country": {"commerceIdentity": "amc.campaign_country", "dataType": "STRING"}
+  },
+  "cadenceLagDays": 2,
+  "expectedBar": 2,
+  "outputColumns": [
+    "campaign_country",
+    "behavior_segment_id",
+    "segment_name",
+    "segment_description",
+    "time_window_start",
+    "time_window_end",
+    "rows_suppressed",
+    "suppression_reason",
+    "distinct_user_count"
+  ]
+}

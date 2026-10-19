@@ -1,0 +1,17 @@
+{
+  "marketplace": "US",
+  "option_set": {
+    "distinctUserCountColumn": "distinct_user_count",
+    "filteredMetricsDiscriminatorColumn": "rows_suppressed",
+    "filteredReasonColumn": "suppression_reason",
+    "timeWindowEnd": "2026-08-11T00:00:00",
+    "timeWindowStart": "2026-08-10T00:00:00"
+  },
+  "period_end": "2026-08-10",
+  "period_start": "2026-08-10",
+  "retrieved_at": "2026-08-19T06:00:00+00:00",
+  "source_dataset": "dsp_impressions",
+  "source_system": "amc",
+  "source_scope": {"namespace": "amc.entity", "value": "fictional-trap-amc-entity"},
+  "source_watermark": "2026-08-11"
+}

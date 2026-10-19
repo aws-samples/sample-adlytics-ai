@@ -1,0 +1,104 @@
+id: ordered-vs-shipped
+version: 7
+purpose: Describe a material supplied Manufacturing ordered-versus-shipped difference without forecasting fulfilment.
+display_name: Ordered vs shipped (Retail health)
+output_class: perspective
+allowed_inputs:
+  - retail current and prior totals
+  - retail reconciliation
+  - typed window profile (window length, grain, aligned prior, horizon role)
+deterministic_findings: [absolute-change, percentage-change]
+predicate:
+  required_evidence_inputs: [retail-totals, retail-reconciliation]
+  required_finding_kinds: [absolute-change, percentage-change]
+  materiality:
+    bases:
+      retail_window:
+        per_unit:
+          currency: {operational-pulse: "1000", tactical-review: "3000", pattern-confirmation: "10000"}
+          percent: {operational-pulse: "10", tactical-review: "5", pattern-confirmation: "5"}
+        per_metric: {}
+    near_zero_prior:
+      currency: "5"
+  delivery_follow_up_evidence: []
+materiality_cases:
+  - {name: an ordered-over-shipped gap of 3000 clears the tactical row, horizon: tactical-review, basis: retail_window, kind: absolute-change, metric: revenue_ordered, current: "23000", prior: "20000", expect: admitted}
+  - {name: an ordered-over-shipped gap of 2999 is below the tactical row, horizon: tactical-review, basis: retail_window, kind: absolute-change, metric: revenue_ordered, current: "22999", prior: "20000", expect: silent}
+  - {name: no shipped revenue builds no percentage, horizon: tactical-review, basis: retail_window, kind: percentage-change, metric: revenue_ordered, current: "2000", prior: "0", expect: not-built}
+silence_condition: Ordered figures are unavailable or no supplied ordered-versus-shipped difference is material.
+structured_output_schema: {id: insight-narration-v1, fields: [output_class, sentences]}
+initial_fictional_prompt: Describe one supplied ordered and shipped difference without predicting fulfilment or demand.
+calibration_cases:
+  - kind: known-correct
+    input_summary: Fictional ordered revenue exceeds shipped revenue in the manufacturing-view totals.
+    expected_outcome: Accept a perspective limited to supplied figures.
+    horizon: tactical-review
+    findings:
+      - {name: Ordered minus shipped revenue, value: "4600"}
+  - kind: exploratory
+    input_summary: A fictional widening ordered-shipped gap across the window invites a hedged fulfillment reading.
+    expected_outcome: Accept the labeled reading of the supplied gap.
+    horizon: pattern-confirmation
+    findings:
+      - {name: Ordered minus shipped revenue, value: "7300"}
+      - {name: Ordered minus shipped percentage change, value: "18.9"}
+  - kind: contradiction
+    input_summary: Fictional shipped revenue exceeds ordered revenue but the draft reverses them.
+    expected_outcome: Reject the contradiction.
+    horizon: operational-pulse
+    findings:
+      - {name: Ordered minus shipped revenue, value: "-2500"}
+    draft:
+      sentences:
+        - Ordered revenue ran 2500 ahead of shipped, signaling unmet demand.
+  - kind: fluent-unsupported
+    input_summary: A fluent draft forecasts next-month demand and cites the projected total.
+    expected_outcome: Reject the figure that is neither supplied nor derived from the findings.
+    horizon: tactical-review
+    findings:
+      - {name: Ordered minus shipped revenue, value: "4600"}
+    draft:
+      sentences:
+        - The gap of 4600 points to roughly 91000 in demand next month.
+  - kind: derived-figure
+    input_summary: A fictional draft states the percentage change in the supplied ordered-minus-shipped gap across windows.
+    expected_outcome: Accept the correctly derived percentage change.
+    horizon: tactical-review
+    findings:
+      - {name: Ordered minus shipped revenue this window, value: "4600"}
+      - {name: Ordered minus shipped revenue prior window, value: "4000"}
+    draft:
+      sentences:
+        - Ordered revenue ran 4600 ahead of shipped this window against 4000 in the prior window, a gap about 15 percent wider.
+  - kind: miscomputed-derivation
+    input_summary: A fictional draft divides the gap change by the current gap instead of the prior one.
+    expected_outcome: Reject the miscomputed percentage change.
+    horizon: tactical-review
+    findings:
+      - {name: Ordered minus shipped revenue this window, value: "4600"}
+      - {name: Ordered minus shipped revenue prior window, value: "4000"}
+    draft:
+      sentences:
+        - Ordered revenue ran 4600 ahead of shipped this window against 4000 in the prior window, a gap about 13 percent wider.
+  - kind: incompatible-basis
+    input_summary: A fictional draft subtracts shipped revenue of the prior window from ordered revenue of this window.
+    expected_outcome: Reject the figure that combines findings of incompatible window.
+    horizon: pattern-confirmation
+    findings:
+      - {name: Ordered revenue this window, value: "52000"}
+      - {name: Shipped revenue prior window, value: "47400"}
+    draft:
+      sentences:
+        - Ordered revenue ran 4600 ahead of shipped revenue, a gap worth watching.
+deep:
+  allowed_inputs:
+    - sibling preset directions from the same current pointer roster, direction only with no second-window figures
+    - complete daily series for every metric this surface serves
+    - every server-computed driver and cross-metric total for the window
+    - lag, estimate, and basis qualifications carried by the artifact
+  structured_output_schema:
+    id: insight-deep-dive-v1
+    fields: [what_stands_out, candidate_readings, discriminating_evidence, cited_figures]
+# FR-11 (design 4.12): no next step is offered until the gated card-next-step prompt ships.
+next_steps:
+  allowed_kinds: []

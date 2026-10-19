@@ -1,0 +1,325 @@
+# amc-exposure-groups — shoppers per exposure group and identity space, and what they did next.
+#
+# Pack 5 of the shopper-aggregate family (ADR-099, ADR-101, ADR-102; design §5.2 row 5, §5.5,
+# §6.3 D1b, §6.4 E1). One row per exposure group (DSP only, sponsored ads only, both) and
+# identity space (Amazon account IDs, device or browser IDs), per complete ISO week or calendar
+# month per marketplace. Each shopper's group, impressions, window spend and outcomes come from
+# one 14-day window W from their first impression in the period, so D1 (overlap) and E1 (the
+# funnel) read identical groups from one extraction.
+#
+# The pack's exposure fence is the 2026-10-09 probe-compiled text, byte-identical between its
+# markers in every pack declaring it (validation/bo_probe_sql.py, plan D16; a contract test
+# compares them). The Sandbox fence result is a structural check, not the exact pack text, and
+# AC-E1.5 (no pre-exposure purchase and no post-window DSP touch counted) is pending Step B.
+#
+# Groups aren't random, so every figure here shows association, not cause (ADR-102). Searches
+# count from the hour after first exposure: AMC's documentation doesn't say `searchConversion`
+# is a branded search, so the measure is search_shoppers (plan D13).
+contract_id: amc-exposure-groups
+contract_version: 1
+source_system: amc
+source_dataset: dsp_impressions
+source_format: csv
+target_table: fct_exposure_group_outcome
+source_tables:
+  - dsp_impressions
+  - sponsored_ads_traffic
+  - conversions
+# One row per period, grain set, marketplace, exposure group, identity space and row kind.
+# row_kind is `combined` on every version-1 row; the touch-only variant (pack version 2, design §8
+# "criterion 7 fails" row (1)) writes `exposure` and `outcome` rows instead, so it needs no
+# DataV2 append when switched on (plan D11). The media columns are NULL at the platform grain set.
+grain:
+  - period_start
+  - period_end
+  - time_grain
+  - grain_set
+  - marketplace_key
+  - exposure_group
+  - identity_space
+  - row_kind
+key_unique_among_unsuppressed_only: true
+partition_keys:
+  - marketplace_key
+  - period_start
+measurement_basis: ad_attributed
+source_timezone: UTC
+ecosystem_key: amazon
+platform_key: amazon_ads
+# A re-pull of a closed period inside 30 days replaces itself, as on the attributed packs.
+restatement_window_days: 30
+# One weekly delivery lands cadenceLagDays (16) after each ISO week: each shopper's window runs
+# 14 days past the period. So the freshest week is at most 23 days old when the next is due, and
+# 576 hours (24 days) allows one late day.
+staleness_threshold_hours: 576
+# Every OUTPUT column is NONE or LOW or derived: marketplace_name (the governed parameter echoed)
+# is LOW; the source-set and identity-space labels are derived in CTEs from impressions and
+# user_id_type (LOW); the counts are COUNT(DISTINCT user_id) and the sums are NONE columns.
+# user_id (VERY_HIGH) is read only inside CTEs. The pack declares expectedBar 2 and the load
+# checks it on every unsuppressed row; criterion 11 read 2 for this text (structural check).
+grain_feasibility_note: >
+  Every output column is NONE or LOW or derived in a CTE, so the bar is 2 distinct users per row.
+  The exposure source set and identity space are derived from impressions and user_id_type (LOW);
+  the counts are COUNT(DISTINCT user_id) and user_id (VERY_HIGH) never appears in output; the sums
+  read impressions, total_cost, spend and total_product_sales (NONE). The bar applies per
+  data-source path, so a group row can be withheld with two or more shoppers when one path has
+  fewer; it is discarded like any withheld row (plan D19).
+# The cells a delivery must return (plan D8): three exposure groups by two identity spaces, graded
+# per identity space and never withdrawn (design §4.4). The touch-only variant returns exposure
+# rows for both identity spaces and outcome rows for account IDs only, each carrying its own
+# measures; `serves` names what serving reads from each branch (design §8 "criterion 7 fails"
+# row (1)), so a figure is read from the rows that carry it.
+expected_cells:
+  slices:
+    - column: identity_space
+      values: [account, device_or_browser]
+  cells:
+    - column: exposure_source_set
+      values: [dsp, sponsored, dsp+sponsored]
+    - column: row_kind
+      values: [combined]
+  variants:
+    touch_only:
+      - slices:
+          - column: identity_space
+            values: [account, device_or_browser]
+        cells:
+          - column: exposure_source_set
+            values: [dsp, sponsored, dsp+sponsored]
+          - column: row_kind
+            values: [exposure]
+        measures: [shoppers_reached]
+        serves: [shoppers_reached, impressions, dsp_window_spend, sponsored_window_spend, dsp_currency, sponsored_currency]
+      - slices:
+          - column: identity_space
+            values: [account]
+        cells:
+          - column: exposure_source_set
+            values: [dsp, sponsored, dsp+sponsored]
+          - column: row_kind
+            values: [outcome]
+        measures: [search_shoppers, detail_page_view_shoppers, purchasers, ntb_purchasers]
+        serves: [search_shoppers, detail_page_view_shoppers, purchasers, ntb_purchasers, purchases, revenue_incl_halo, currency_code]
+# Each currency's MAX is mapped; its MIN twin is read by the load and never stored. They differ
+# when more than one currency reached a row, and the delivery is refused (design §5.5).
+currency_minimums:
+  dsp_currency: dsp_currency_min
+  sponsored_currency: sponsored_currency_min
+  currency_code: purchase_currency_min
+# Refuse a delivery whose every reached account row has no purchaser: probably a marketplace
+# filter that missed the conversions table (design §5.5, review DS4-7). A heuristic.
+marketplace_filter_check:
+  slice_column: identity_space
+  slice_value: account
+  reached: shoppers_reached
+  outcome: purchasers
+# Requested on every AMC pack. Under discard_suppressed_rows the load drops withheld rows before
+# the fact write; their additive measures go to the _withheld residual and their distinct counts
+# are dropped (ADR-099 points 7 and 12).
+suppression:
+  discriminator_column: rows_suppressed
+  reason_column: suppression_reason
+  distinct_user_count_column: distinct_user_count
+fields:
+  # --- grain -----------------------------------------------------------------
+  - target_column: period_start
+    assigned_by_load: true
+    target_type: date
+  - target_column: period_end
+    assigned_by_load: true
+    target_type: date
+  - target_column: time_grain
+    assigned_by_load: true
+    target_type: string
+    value_domain: [week, month]
+  - target_column: grain_set
+    literal_value: platform
+    target_type: string
+    value_domain: [platform]
+  - source_path: marketplace_name
+    target_column: marketplace_key
+    # The pack echoes its governed sponsored_marketplace_name parameter, so a delivery carries
+    # one marketplace; DSP touches are filtered by the paired campaign_country parameter.
+  # The canonical exposure group, resolved by the load from exposure_source_set through the
+  # taxonomy's exposure_source_sets section (ADR-101). No pack emits it (AC-BR.9).
+  - target_column: exposure_group
+    assigned_by_load: true
+    target_type: string
+    value_domain: [dsp_only, sponsored_only, dsp_and_sponsored]
+  - source_path: CASE over each shopper's in-window impressions by source table
+    target_column: exposure_source_set
+    target_type: string
+    derived_from:
+      - impressions
+    value_domain: [dsp, sponsored, dsp+sponsored]
+    # The source fact the pack emits: which touch tables reached the shopper inside W.
+  - source_path: CASE WHEN user_id_type = 'adUserId' THEN 'account' ELSE 'device_or_browser' END
+    target_column: identity_space
+    target_type: string
+    derived_from:
+      - user_id_type
+    value_domain: [account, device_or_browser]
+  - source_path: the branch of the pack's SELECT that emitted the row
+    target_column: row_kind
+    target_type: string
+    derived_from:
+      - impressions
+      - event_category
+    value_domain: [combined, exposure, outcome]
+  # --- media, NULL at the platform grain set (ADR-099 point 2) -----------------
+  - target_column: channel_group_key
+    assigned_by_load: true
+    target_type: string
+    nullable: true
+    null_meaning: not_applicable_under_options
+  - target_column: channel_key
+    assigned_by_load: true
+    target_type: string
+    nullable: true
+    null_meaning: not_applicable_under_options
+  - target_column: ad_product_key
+    assigned_by_load: true
+    target_type: string
+    nullable: true
+    null_meaning: not_applicable_under_options
+  - target_column: campaign_key
+    assigned_by_load: true
+    target_type: string
+    nullable: true
+    null_meaning: not_applicable_under_options
+  # --- shopper-aggregate shape (design §4.2) ----------------------------------
+  - target_column: identity_unit
+    literal_value: amazon_user_id
+    target_type: string
+  - target_column: cell_state
+    assigned_by_load: true
+    target_type: string
+    value_domain: [returned, not_returned]
+  # --- measures: exact distinct counts ----------------------------------------
+  # NULL, never 0, on a not_returned cell. On the touch-only variant an exposure row carries no
+  # outcome count and an outcome row no reach (row_kind says which): those are NULL too.
+  - source_path: COUNT(DISTINCT user_id)
+    target_column: shoppers_reached
+    target_type: bigint
+    derived_from:
+      - user_id
+      - impressions
+    non_additive: true
+    nullable: true
+    null_meaning: not_returned
+  - source_path: COUNT(DISTINCT CASE WHEN searched THEN user_id END)
+    target_column: search_shoppers
+    target_type: bigint
+    derived_from:
+      - user_id
+      - event_subtype
+      - event_dt_hour_utc
+    non_additive: true
+    nullable: true
+    null_meaning: not_returned
+    # searchConversion events from the hour after first exposure, inside W.
+  - source_path: COUNT(DISTINCT CASE WHEN viewed THEN user_id END)
+    target_column: detail_page_view_shoppers
+    target_type: bigint
+    derived_from:
+      - user_id
+      - event_subtype
+      - event_dt_hour_utc
+    non_additive: true
+    nullable: true
+    null_meaning: not_returned
+  - source_path: COUNT(DISTINCT CASE WHEN purchased THEN user_id END)
+    target_column: purchasers
+    target_type: bigint
+    derived_from:
+      - user_id
+      - event_category
+    non_additive: true
+    nullable: true
+    null_meaning: not_returned
+  - source_path: COUNT(DISTINCT CASE WHEN ntb THEN user_id END)
+    target_column: ntb_purchasers
+    target_type: bigint
+    derived_from:
+      - user_id
+      - event_category
+      - new_to_brand
+    non_additive: true
+    nullable: true
+    null_meaning: not_returned
+  # --- measures: additive within one delivery (D-9) ---------------------------
+  # Summable only across every value of the disjoint axes inside one fully returned delivery.
+  # Withheld rows' sums go to the _withheld residual. NULL on a not_returned cell; on a returned
+  # row a NULL purchase-side sum means no shopper in the cell had an outcome event in W.
+  - source_path: SUM(impressions)
+    target_column: impressions
+    target_type: bigint
+    derived_from:
+      - impressions
+    nullable: true
+    null_meaning: not_returned
+  - source_path: SUM(total_cost)
+    target_column: dsp_window_spend
+    derived_from:
+      - total_cost
+    scale_divisor: 100000
+    currency_column: dsp_currency
+    nullable: true
+    null_meaning: not_returned
+    # DSP total_cost on these shoppers' impressions inside W, millicents ÷1e5.
+  - source_path: SUM(spend)
+    target_column: sponsored_window_spend
+    derived_from:
+      - spend
+    scale_divisor: 100000000
+    currency_column: sponsored_currency
+    nullable: true
+    null_meaning: not_returned
+    # Sponsored spend on these shoppers' impressions and clicks inside W, microcents ÷1e8,
+    # including click cost on cost-per-click ad products (DS5-1).
+  - source_path: SUM(purchases)
+    target_column: purchases
+    target_type: bigint
+    derived_from:
+      - event_category
+    nullable: true
+    null_meaning: not_returned
+  - source_path: SUM(total_product_sales)
+    target_column: revenue_incl_halo
+    derived_from:
+      - total_product_sales
+    scale_divisor: 1
+    currency_column: currency_code
+    nullable: true
+    null_meaning: not_returned
+    # Halo-inclusive (total_product_sales); purchases come from conversions, one row per
+    # conversion_id, so each purchase counts once per shopper.
+  # --- currencies, one per money column (design §5.5) ---------------------------
+  - source_path: MAX(currency_iso_code) over the shopper's DSP touches in W
+    target_column: dsp_currency
+    target_type: string
+    derived_from:
+      - currency_iso_code
+    nullable: true
+    null_meaning: not_returned
+    # NULL on a row no DSP touch reached (sponsored only).
+  - source_path: MAX(currency_iso_code) over the shopper's sponsored touches in W
+    target_column: sponsored_currency
+    target_type: string
+    derived_from:
+      - currency_iso_code
+    nullable: true
+    null_meaning: not_returned
+  - source_path: MAX(purchase_currency) over the shopper's purchases in W
+    target_column: currency_code
+    target_type: string
+    derived_from:
+      - purchase_currency
+    nullable: true
+    null_meaning: not_returned
+    # The fact's one currency column (ADR-021) is revenue's; each spend column names its own.
+tags:
+  - amc
+  - shopper-aggregate
+  - reach
+  - association-only

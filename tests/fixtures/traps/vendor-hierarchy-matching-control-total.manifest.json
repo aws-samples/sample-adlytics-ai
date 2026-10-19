@@ -1,0 +1,11 @@
+{
+  "marketplace": "ATVPDKIKX0DER",
+  "option_set": {},
+  "period_end": "2025-06-16",
+  "period_start": "2025-06-16",
+  "retrieved_at": "2026-08-26T06:05:00+00:00",
+  "source_dataset": "analytics_vendorAnalytics_2024_09_30",
+  "source_system": "vendor_data_kiosk",
+  "source_scope": {"namespace": "vendor_data_kiosk.vendor_group", "value": "fictional-trap-vendor-group"},
+  "source_watermark": null
+}

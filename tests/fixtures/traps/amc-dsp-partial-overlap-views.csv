@@ -1,0 +1,2 @@
+event_date_utc,campaign_id_string,campaign_country,viewable_impressions,measurable_impressions,unmeasurable_viewable_impressions,distinct_user_count,suppression_reason,rows_suppressed
+2026-08-20,TRAPDSP-SHARED,US,7000,9500,120,2,,false

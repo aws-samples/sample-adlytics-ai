@@ -1,0 +1,61 @@
+{
+  "schema_version": "runtime-admission-retirement-v1",
+  "purpose": "The closed retired day/capacity runtime-admission vocabulary RuntimeAdmissionRetirementV1 rejects (D7). It lives outside the scanned auxiliary AST roots so the scanner holds no legacy literal of its own.",
+  "key_prefixes": ["SERVING_DAY#", "CAPACITY_WAIT#"],
+  "types": [
+    "ServingDayReservation",
+    "ServingDayState",
+    "ServingCapacityWait",
+    "ServingCapacityTransition",
+    "ServingCapacityMergeRequest",
+    "ServingCapacityParkRequest",
+    "ServingCapacityRolloverRequest",
+    "ServingCapacityTerminalRequest",
+    "ServingDayCloseRequest",
+    "ServingDayCloseResult",
+    "ReserveServingWinnerRequest",
+    "ReserveServingWinnerResult",
+    "ServingAuthorityReadResult"
+  ],
+  "identity_type": "ServingAuthorityIdentity",
+  "identity_day_members": ["day", "cycle_epoch"],
+  "fields": [
+    "serving_day",
+    "origin_day",
+    "reservation_day",
+    "cycle_epoch",
+    "capacity_wait_id",
+    "wait_revision",
+    "rollover_count",
+    "reservation_seconds",
+    "capacity_state"
+  ],
+  "methods": [
+    "read_serving_day",
+    "read_serving_authority",
+    "bootstrap_serving_authority_and_apply_grant",
+    "begin_close_serving_day",
+    "close_serving_day",
+    "reserve_serving_winner",
+    "park_cohort_for_capacity",
+    "merge_capacity_wait",
+    "roll_capacity_wait",
+    "settle_capacity_unavailable"
+  ],
+  "functions": ["winner_reservation_seconds", "winners_fit", "decide_capacity_transition"],
+  "states": [
+    "WAITING_CAPACITY",
+    "ROLLED_OVER",
+    "serving_snapshot_active",
+    "serving_day_closing",
+    "serving_capacity_waiting",
+    "serving_capacity_rolled_over",
+    "serving_execution_budget_exhausted"
+  ],
+  "allowlist": [
+    "validation/probe_ingestion_traceability_gate.py::gather_legacy_serving_census",
+    "validation/probe_ingestion_traceability_gate.py::legacy_serving_inertness_verdict",
+    "tests/unit/test_probe_ingestion_traceability_gate.py::_legacy_serving_census_rows",
+    "tests/unit/test_probe_ingestion_traceability_gate.py::_legacy_serving_inertness_rows"
+  ]
+}

@@ -1,0 +1,560 @@
+version: 2
+presentation_result_version: 2
+temporal_control_version: 2
+pages:
+  - id: campaigns
+    display_name: Campaign Portfolio
+    route: /campaigns/
+    purpose: Find a governed campaign cohort, then inspect one selected campaign without browser ranking or causal claims.
+    primary_job: Select an authorized campaign and review its attributed outcome and delivery evidence.
+    mode: selectable_parent_child
+    boundary_required: true
+    compatibility_routes: ["/"]
+    navigation:
+      hub_id: performance
+      tab_label: Campaigns
+      tab_description: Every campaign, for all channels, sponsored ads only or one channel
+      order: 2
+    assistant:
+      starter_questions:
+        page:
+          - Which campaign changed spend most between {prior_window} and {window}?
+          - How is spend split across campaigns in {window}?
+        detail:
+          - How did ROAS on {campaign} change from {prior_window} to {window}?
+          - How did daily spend on {campaign} move in {window}?
+    temporal_policy:
+      candidate_presets: [1d, 7d, 14d, 30d]
+      default_preset: 7d
+      custom:
+        enabled: false
+        min_duration_days: 2
+        max_duration_days: 90
+      comparison_policy: required_equal_prior
+      display_grains: [period, day]
+    artifacts:
+      - id: campaign_catalog
+        type: CampaignPortfolioArtifact
+        version: 1
+        outcomes: [complete, empty, insufficient]
+      - id: campaign_detail
+        type: CampaignAttributionDetail
+        version: 2
+        outcomes: [selected, insufficient]
+    visuals:
+      - id: campaign_portfolio_trend
+        metric_cohort: [ad_spend, portfolio_roas_attributed_14d, purchases]
+        narration_eligible: true
+      - id: campaign_delivery_daily
+        metric_cohort: [ad_spend, impressions, clicks, ctr, cpc, cpm]
+        narration_eligible: true
+    sections:
+      - id: workspace-scope
+        cardinality: exactly_one
+      - id: campaign-catalog
+        cardinality: exactly_one
+      - id: selected-summary
+        cardinality: exactly_one
+      - id: purchase-series
+        cardinality: exactly_one
+      - id: delivery-evidence
+        cardinality: exactly_one
+      - id: evidence-trace
+        cardinality: exactly_one
+      - id: boundary
+        cardinality: exactly_one
+    actions: []
+
+  - id: channel-performance
+    display_name: Channel Robustness
+    route: /channel-performance/
+    purpose: Assess whether channel ROAS ranking remains robust across every declared attribution model.
+    primary_job: Review model sensitivity and, when authorized, inspect one channel's daily evidence.
+    mode: selectable_parent_child
+    boundary_required: true
+    compatibility_routes: []
+    temporal_policy:
+      candidate_presets: [1d, 7d, 14d, 30d]
+      default_preset: 7d
+      custom:
+        enabled: true
+        min_duration_days: 1
+        max_duration_days: 90
+      comparison_policy: required_equal_prior
+      display_grains: [period, day]
+    artifacts:
+      - id: channel_robustness
+        type: ChannelAttributionRobustness
+        version: 2
+        outcomes: [robust_leader, model_sensitive, insufficient]
+      - id: selected_channel_daily
+        type: ChannelAttributionRobustnessDaily
+        version: 1
+        outcomes: [complete, partial, insufficient]
+    visuals:
+      - id: channel_roas_model_matrix
+        metric_cohort: [ad_spend, roas_deduplicated_incl_halo_14d]
+        narration_eligible: true
+      - id: channel_daily_evidence
+        metric_cohort: [ad_spend, roas_deduplicated_incl_halo_14d]
+        narration_eligible: true
+    sections:
+      - id: workspace-scope
+        cardinality: exactly_one
+      - id: summary
+        cardinality: exactly_one
+      - id: channel-table
+        cardinality: exactly_one
+      - id: channel-daily-evidence
+        cardinality: zero_or_one
+      - id: boundary
+        cardinality: exactly_one
+    actions: []
+
+  - id: workspace
+    display_name: Marketplace Movement
+    route: /workspace/
+    purpose: Compare advertising and shipped-retail movement within each marketplace without cross-currency ranking or causal attribution.
+    primary_job: Review qualified marketplace movement and pair-local evidence limitations.
+    mode: selectable
+    boundary_required: true
+    compatibility_routes: []
+    temporal_policy:
+      candidate_presets: [1d, 7d, 14d, 30d]
+      default_preset: 7d
+      custom:
+        enabled: true
+        min_duration_days: 1
+        max_duration_days: 90
+      comparison_policy: required_equal_prior
+      display_grains: [period]
+    artifacts:
+      - id: marketplace_comparison
+        type: MarketplaceComparisonArtifact
+        version: 1
+        outcomes: [comparable, one_marketplace, insufficient, no_coverage]
+    visuals: []
+    sections:
+      - id: workspace-scope
+        cardinality: exactly_one
+      - id: comparison-table
+        cardinality: exactly_one
+      - id: evidence-detail
+        cardinality: exactly_one
+      - id: boundary
+        cardinality: exactly_one
+    actions: []
+
+  - id: data-health
+    display_name: Evidence Health
+    route: /data-health/
+    purpose: Explain the exact-source reach and frequency condition without diagnosing operational cause or inventing a history.
+    primary_job: Determine the current evidence condition and its safe disclosed recovery boundary.
+    mode: selectable
+    boundary_required: true
+    compatibility_routes: []
+    temporal_policy:
+      candidate_presets: [1d, 7d, 14d, 30d]
+      default_preset: 7d
+      custom:
+        enabled: true
+        min_duration_days: 1
+        max_duration_days: 90
+      comparison_policy: none
+      display_grains: [day]
+    artifacts:
+      - id: evidence_health
+        type: DataHealthDetail
+        version: 1
+        outcomes: [healthy, qualified, insufficient, no_coverage]
+    visuals: []
+    sections:
+      - id: workspace-scope
+        cardinality: exactly_one
+      - id: health-summary
+        cardinality: exactly_one
+      - id: condition-evidence
+        cardinality: exactly_one
+      - id: source-disclosure
+        cardinality: exactly_one
+      - id: boundary
+        cardinality: exactly_one
+    actions: []
+
+  - id: media-efficiency
+    display_name: Media Efficiency
+    route: /media-efficiency/
+    purpose: Review advertising delivery and DSP viewability at one authorized media scope while keeping unsupported audience evidence explicit.
+    primary_job: Select an authorized media scope and inspect returned delivery and DSP-quality evidence.
+    mode: selectable_parent_child
+    boundary_required: true
+    compatibility_routes: []
+    temporal_policy:
+      candidate_presets: [1d, 7d, 14d, 30d]
+      default_preset: 7d
+      custom:
+        enabled: true
+        min_duration_days: 1
+        max_duration_days: 90
+      comparison_policy: optional_equal_prior
+      display_grains: [period, day]
+      comparison_intent: compare_previous
+    artifacts:
+      - id: media_scope_list
+        type: MediaEfficiencyScopeList
+        version: 1
+        outcomes: [choices, empty]
+      - id: media_efficiency
+        type: MediaEfficiencyArtifact
+        version: 1
+        outcomes: [complete, qualified, insufficient]
+    visuals:
+      - id: media_delivery_daily
+        metric_cohort: [ad_spend, impressions, clicks, ctr, cpc, cpm]
+        narration_eligible: true
+      - id: media_dsp_viewability_daily
+        metric_cohort: [measurable_impressions, viewable_impressions, viewable_impressions_estimated, viewable_rate]
+        narration_eligible: true
+    sections:
+      - id: workspace-scope
+        cardinality: exactly_one
+      - id: media-scope-list
+        cardinality: exactly_one
+      - id: delivery-summary
+        cardinality: exactly_one
+      - id: delivery-evidence
+        cardinality: exactly_one
+      - id: dsp-viewability
+        cardinality: exactly_one
+      - id: audience-availability
+        cardinality: exactly_one
+      - id: evidence-detail
+        cardinality: exactly_one
+      - id: boundary
+        cardinality: exactly_one
+    actions: []
+
+  - id: retail-health
+    display_name: Retail Health
+    route: /retail-health/
+    purpose: Review governed 1P retail movement without advertising attribution or browser-derived calculations.
+    primary_job: Triage shipped, ordered, returns, traffic, and declared reconciliation for the resolved reporting window, then open one product in place.
+    mode: selectable_parent_child
+    boundary_required: true
+    compatibility_routes: []
+    navigation:
+      hub_id: retail
+      tab_label: Retail health
+      tab_description: Sales, traffic, conversion and returns from Vendor Central, per product
+      order: 1
+    assistant:
+      starter_questions:
+        page:
+          - Which products added most shipped revenue from {prior_window} to {window}?
+          - How did glance views change between {prior_window} and {window}?
+        detail:
+          - How did shipped revenue for {product} change in {window}?
+          - How did glance views for {product} change in {window}?
+    temporal_policy:
+      candidate_presets: [1d, 7d, 14d]
+      default_preset: 7d
+      custom:
+        enabled: false
+        min_duration_days: 1
+        max_duration_days: 90
+      comparison_policy: required_equal_prior
+      display_grains: [period, day]
+    artifacts:
+      - id: retail_health
+        type: RetailHealthArtifact
+        version: 2
+        outcomes: [complete, empty, insufficient]
+      - id: retail_product_detail
+        type: RetailProductDetail
+        version: 1
+        outcomes: [selected, insufficient]
+    visuals:
+      - id: retail_health_daily
+        metric_cohort: [retail_revenue_shipped, units_shipped, customer_returns, glance_views]
+        narration_eligible: true
+      - id: product_sales_daily
+        metric_cohort: [retail_revenue_shipped]
+        narration_eligible: true
+      - id: product_traffic_daily
+        metric_cohort: [glance_views]
+        narration_eligible: true
+    sections:
+      - id: workspace-scope
+        cardinality: exactly_one
+      - id: retail-totals
+        cardinality: exactly_one
+      - id: retail-insights
+        cardinality: exactly_one
+      - id: retail-trend
+        cardinality: exactly_one
+      - id: product-table
+        cardinality: exactly_one
+      - id: reconciliation
+        cardinality: exactly_one
+      - id: product-summary
+        cardinality: zero_or_one
+      - id: product-insights
+        cardinality: zero_or_one
+      - id: product-daily
+        cardinality: zero_or_one
+      - id: product-ad-attributed
+        cardinality: zero_or_one
+      - id: evidence-trace
+        cardinality: zero_or_one
+      - id: boundary
+        cardinality: exactly_one
+    actions: []
+  - id: scorecard
+    display_name: Scorecard
+    route: /scorecard/
+    purpose: Compare return on ad spend inside each network and channel, never added across networks or channels.
+    primary_job: See which channels return most inside each network, whether the ranking holds under every attribution model, and where ad spend stands against retail sales.
+    mode: selectable
+    boundary_required: true
+    compatibility_routes: []
+    navigation:
+      hub_id: performance
+      tab_label: Scorecard
+      tab_description: Return on ad spend per network and channel
+      order: 1
+    assistant:
+      starter_questions:
+        page:
+          - Which channel had the highest ROAS in {window}?
+          - How did Amazon DSP spend change from {prior_window} to {window}?
+    temporal_policy:
+      candidate_presets: [7d, 30d, last_complete_week, last_complete_month]
+      default_preset: 7d
+      custom:
+        enabled: false
+        min_duration_days: 1
+        max_duration_days: 90
+      comparison_policy: optional_equal_prior
+      display_grains: [period]
+    artifacts:
+      - id: network_scorecard
+        type: NetworkScorecardArtifact
+        version: 1
+        outcomes: [complete, empty]
+    visuals: []
+    sections:
+      - id: workspace-scope
+        cardinality: exactly_one
+      - id: network-card
+        cardinality: zero_or_more
+      - id: model-ranking
+        cardinality: zero_or_more
+      - id: scorecard-insights
+        cardinality: exactly_one
+      - id: also-changed
+        cardinality: zero_or_one
+      - id: channel-table
+        cardinality: zero_or_more
+      - id: pointers
+        cardinality: zero_or_more
+      - id: ad-spend-and-retail-sales
+        cardinality: zero_or_one
+      - id: evidence-trace
+        cardinality: zero_or_one
+      - id: boundary
+        cardinality: exactly_one
+    actions: []
+
+  - id: new-customers
+    display_name: New customers
+    route: /new-customers/
+    purpose: Show new-to-brand purchases and new buyers inside each channel of the Amazon Ads network, never added across channels.
+    primary_job: See which channels bring shoppers new to the brand, how many new buyers a complete week or month brought and at what cost, and which products they bought first.
+    mode: selectable
+    boundary_required: true
+    compatibility_routes: []
+    navigation:
+      hub_id: customers
+      tab_label: New customers
+      tab_description: Shoppers buying from your brand for the first time in 12 months
+      order: 1
+    assistant:
+      starter_questions:
+        page:
+          - Which channel had the highest new-to-brand share in {window}?
+    temporal_policy:
+      candidate_presets: [7d, 30d, last_complete_week, last_complete_month]
+      default_preset: 7d
+      custom:
+        enabled: false
+        min_duration_days: 1
+        max_duration_days: 90
+      comparison_policy: optional_equal_prior
+      display_grains: [period]
+    artifacts:
+      - id: new_customers
+        type: NewCustomersArtifact
+        version: 2
+        outcomes: [complete, empty, insufficient]
+    visuals: []
+    sections:
+      - id: workspace-scope
+        cardinality: exactly_one
+      - id: new-to-brand
+        cardinality: exactly_one
+      - id: new-customers-insights
+        cardinality: exactly_one
+      - id: new-to-brand-step-2
+        cardinality: exactly_one
+        declared_periods: [last_complete_week, last_complete_month]
+        period_anchor: false
+        metrics: [buyers_new_to_brand_12mo, cost_per_new_to_brand_buyer_12mo]
+      - id: gateway-products
+        cardinality: exactly_one
+      - id: pointers
+        cardinality: exactly_one
+      - id: evidence-trace
+        cardinality: exactly_one
+      - id: boundary
+        cardinality: exactly_one
+    actions: []
+
+  - id: reach
+    display_name: Reach and funnel
+    route: /reach/
+    purpose: Show how many shoppers the ads reached in one complete period, how the DSP and sponsored audiences overlap, what each exposure group did next, and how purchase rates move with the number of ads seen.
+    primary_job: How many shoppers your ads reached, how often, and what they did next.
+    mode: selectable
+    boundary_required: true
+    compatibility_routes: []
+    navigation:
+      hub_id: reach
+      tab_label: Reach and funnel
+      tab_description: How many shoppers your ads reached, how often, and what they did next
+      order: 1
+    assistant:
+      starter_questions:
+        page:
+          - Which exposure group's purchaser rate was highest in {window}, and what is it associated with?
+    temporal_policy:
+      candidate_presets: [last_complete_week, last_complete_month, last_complete_quarter]
+      default_preset: last_complete_month
+      custom:
+        enabled: false
+        min_duration_days: 1
+        max_duration_days: 90
+      comparison_policy: prior_calendar_period
+      display_grains: [declared_period]
+    artifacts:
+      - id: reach
+        type: ReachAndFunnelArtifact
+        version: 1
+        outcomes: [complete, empty, insufficient]
+    visuals: []
+    sections:
+      - id: workspace-scope
+        cardinality: exactly_one
+      - id: overlap
+        cardinality: exactly_one
+        declared_periods: [last_complete_week, last_complete_month]
+        period_anchor: true
+      - id: funnel
+        cardinality: exactly_one
+        declared_periods: [last_complete_week, last_complete_month]
+        period_anchor: true
+      - id: reach-insights
+        cardinality: exactly_one
+      - id: frequency
+        cardinality: exactly_one
+        declared_periods: [last_complete_month, last_complete_quarter]
+        period_anchor: false
+      - id: evidence-trace
+        cardinality: exactly_one
+      - id: boundary
+        cardinality: exactly_one
+    actions: []
+
+  - id: retention
+    display_name: Retention
+    route: /retention/
+    purpose: Show cohorts of new customers your ads brought in, and when they buy again.
+    primary_job: Compare repeat purchase by acquisition group and month since acquisition for one cohort vintage.
+    mode: selectable
+    boundary_required: true
+    compatibility_routes: []
+    navigation:
+      hub_id: customers
+      tab_label: Retention
+      tab_description: Cohorts of new customers your ads brought in, and when they buy again
+      order: 2
+    assistant:
+      starter_questions:
+        page:
+          - Which acquisition group's cohorts bought again most by month 3, as of {window}?
+    vintage_policy:
+      selector: as_of_month
+      default: latest_with_current_publication
+      comparison: none
+    artifacts:
+      - id: retention
+        type: RetentionCohortArtifact
+        version: 1
+        outcomes: [complete, empty, insufficient]
+    visuals: []
+    sections:
+      - {id: workspace-scope, cardinality: exactly_one}
+      - {id: path, cardinality: exactly_one}
+      - {id: triangle, cardinality: exactly_one, metrics: [repeat_buyer_rate]}
+      - id: retention-curve
+        cardinality: exactly_one
+        metrics: [cumulative_repeat_rate_account_ids]
+      - {id: retention-insights, cardinality: exactly_one}
+      - {id: evidence-trace, cardinality: exactly_one}
+      - {id: boundary, cardinality: exactly_one}
+    actions: []
+
+  - id: audiences
+    display_name: Audiences
+    route: /audiences/
+    purpose: Show which Amazon audience segments your buyers belong to, compared with the shoppers your ads reached, and how DSP campaigns did per segment.
+    primary_job: Compare buyer and reached-shopper segment shares, inspect over-indexing, and review DSP campaign performance by segment for one complete month.
+    mode: selectable
+    boundary_required: true
+    compatibility_routes: []
+    navigation:
+      hub_id: reach
+      tab_label: Audiences
+      tab_description: Which Amazon audience segments your buyers belong to, compared with the shoppers your ads reached, and how DSP campaigns did per segment
+      order: 2
+    assistant:
+      starter_questions:
+        page:
+          - Which DSP behaviour segments did {window}'s buyers over-index in?
+          - Which DSP campaigns reached which segments in {window}?
+    temporal_policy:
+      candidate_presets: [last_complete_month]
+      default_preset: last_complete_month
+      custom: {enabled: false, min_duration_days: 1, max_duration_days: 90}
+      comparison_policy: prior_calendar_period
+      display_grains: [declared_period]
+    artifacts:
+      - id: audiences
+        type: AudienceProfileArtifact
+        version: 1
+        outcomes: [complete, empty, insufficient]
+    visuals: []
+    sections:
+      - {id: workspace-scope, cardinality: exactly_one}
+      - {id: profile-path, cardinality: exactly_one}
+      - id: segment-ranking
+        cardinality: exactly_one
+        declared_periods: [last_complete_month]
+        period_anchor: true
+      - {id: audience-insights, cardinality: exactly_one}
+      - id: campaign-audiences
+        cardinality: exactly_one
+        declared_periods: [last_complete_month]
+        period_anchor: false
+      - {id: evidence-trace, cardinality: exactly_one}
+      - {id: boundary, cardinality: exactly_one}
+    actions: []

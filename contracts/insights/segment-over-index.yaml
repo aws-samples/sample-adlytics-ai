@@ -1,0 +1,106 @@
+id: segment-over-index
+version: 1
+purpose: Deterministically name the audience segments whose share of the month's ad-touched buyers clearly exceeds their share of the shoppers the ads reached, inside one complete month's buyer-profile delivery and profile path, never across paths and never by summing shares.
+display_name: Over-index (Audiences)
+output_class: perspective
+allowed_inputs:
+  - server-computed segment buyers, segment reached shoppers and the delivery's profiled totals for every segment row of one buyer-profile delivery, one profile path, one complete month and one marketplace
+  - the month's, the profile path's and each segment's server labels, with its provider label
+deterministic_findings: [absolute-change]
+predicate:
+  required_evidence_inputs: [segment-profile-rows]
+  required_finding_kinds: [absolute-change]
+  # The minimum buyers and the corrected lower bound below are the gate; materiality then asks
+  # for a buyer share at least one rate point above the reached share [proposal].
+  materiality:
+    bases:
+      segment_delivery:
+        per_unit:
+          rate_pp: {operational-pulse: "1", tactical-review: "1", pattern-confirmation: "1"}
+        per_metric: {}
+    near_zero_prior: {}
+  delivery_follow_up_evidence: []
+# Design §6.5 (reviews DS-8, DS3-6), [proposal] values versioned here. A segment is named only
+# when segment_buyers >= buyers_min (B_min) and, with p_b its buyer share over n_b =
+# profiled_buyers_total and p_e its reached share over n_e = profiled_exposed_total, the bound
+# L = (p_b - p_e) - z_S * sqrt(p_b(1 - p_b)/n_b + p_e(1 - p_e)/n_e) is above 0. z_S is the
+# Bonferroni value inv_cdf(1 - family_alpha / S) over the S segment rows of the delivery and
+# profile path, from statistics.NormalDist, so there is no new dependency; buyers are a subset
+# of the reached shoppers, so treating the two shares as independent keeps L conservative. Every
+# share reads one delivery: a delivery with no profiled_total row names nothing, and a segment
+# is never compared with another path's.
+over_index_policy:
+  buyers_min: 30
+  family_alpha: "0.025"
+  correction: bonferroni
+materiality_cases:
+  - {name: a buyer share 15 points above the reached share is admitted at tactical-review, horizon: tactical-review, basis: segment_delivery, kind: absolute-change, metric: segment_buyer_share, current: "0.35", prior: "0.20", expect: admitted}
+  - {name: a buyer share half a point above the reached share is silent at tactical-review, horizon: tactical-review, basis: segment_delivery, kind: absolute-change, metric: segment_buyer_share, current: "0.205", prior: "0.20", expect: silent}
+  - {name: a buyer share one point above the reached share is admitted at operational-pulse, horizon: operational-pulse, basis: segment_delivery, kind: absolute-change, metric: segment_buyer_share, current: "0.11", prior: "0.10", expect: admitted}
+  - {name: a buyer share two points above the reached share is admitted at pattern-confirmation, horizon: pattern-confirmation, basis: segment_delivery, kind: absolute-change, metric: segment_buyer_share, current: "0.32", prior: "0.30", expect: admitted}
+silence_condition: No segment of the delivery holds at least the declared minimum buyers with a buyer share whose corrected lower bound clears its reached share by the declared threshold, or the delivery's profiled total is not available.
+structured_output_schema: {id: insight-narration-v1, fields: [output_class, sentences]}
+initial_fictional_prompt: null
+calibration_cases:
+  - kind: known-correct
+    input_summary: A fictional in-market segment holds 35 percent of 1,200 profiled buyers and 20 percent of 24,000 profiled reached shoppers on the paid in-market path; its corrected lower bound is well above zero.
+    expected_outcome: Accept the deterministic statement that names the segment, its provider, the profile path, the month and the minimum-buyers sentence.
+    horizon: tactical-review
+    findings:
+      - {name: Buyer share minus reached share for the fictional running segment, value: "0.15"}
+  - kind: exploratory
+    input_summary: A fictional segment shows a buyer share 10 points above its reached share but holds 12 buyers, under the 30-buyer minimum.
+    expected_outcome: The slot names nothing; no prompt generates a reading of the small segment.
+    horizon: pattern-confirmation
+    findings:
+      - {name: Buyers in the fictional small segment, value: "12"}
+  - kind: contradiction
+    input_summary: A fictional draft says the named segment is under-represented among buyers, although its buyer share is the higher one.
+    expected_outcome: Reject the contradiction.
+    horizon: tactical-review
+    findings:
+      - {name: Buyer share minus reached share for the fictional running segment, value: "0.15"}
+    draft:
+      sentences:
+        - Buyers are less likely than the shoppers your ads reached to be in the running segment.
+  - kind: fluent-unsupported
+    input_summary: A fluent draft says the ads made the segment buy, though buyers are any ad-touched purchasers in the month, who may have bought before seeing an ad.
+    expected_outcome: Reject the causal claim; the rule names an over-represented segment, not a cause.
+    horizon: tactical-review
+    findings:
+      - {name: Buyer share minus reached share for the fictional running segment, value: "0.15"}
+    draft:
+      sentences:
+        - The ads persuaded the running segment to buy.
+  - kind: derived-figure
+    input_summary: A fictional renderer states the segment index derived from the two supplied shares.
+    expected_outcome: Accept the correctly derived index of 1.75; this deterministic slot never generates one.
+    horizon: tactical-review
+    findings:
+      - {name: Buyer share of the fictional running segment, value: "0.35"}
+      - {name: Reached share of the fictional running segment, value: "0.20"}
+    draft:
+      sentences:
+        - The running segment's index is 1.75, its buyer share over its reached share.
+  - kind: miscomputed-derivation
+    input_summary: A fictional draft sums the buyer shares of three overlapping segments into one share of buyers.
+    expected_outcome: Reject summing segment shares; one shopper is in many segments, so segment shares never add up.
+    horizon: pattern-confirmation
+    findings:
+      - {name: Buyer share of the fictional running segment, value: "0.35"}
+      - {name: Buyer share of the fictional cooking segment, value: "0.30"}
+      - {name: Buyer share of the fictional gardening segment, value: "0.40"}
+    draft:
+      sentences:
+        - Together these three segments hold 105 percent of buyers.
+  - kind: incompatible-basis
+    input_summary: A fictional draft compares a paid-path segment index with a DSP-exposed-path index as if they were one series.
+    expected_outcome: Reject the comparison across profile paths; each path has its own base and its own segment IDs.
+    horizon: tactical-review
+    findings:
+      - {name: Index on the paid in-market path, value: "1.75"}
+      - {name: Index on the DSP-exposed path, value: "1.20"}
+    draft:
+      sentences:
+        - The segment's index fell from 1.75 on the paid profile to 1.20 on the DSP profile.
+deep: null

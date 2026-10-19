@@ -1,0 +1,4 @@
+impression_date_utc,campaign_id_string,campaign_country,impressions,total_cost,impression_cost,currency_iso_code,reach_users,distinct_user_count,suppression_reason,rows_suppressed
+2026-08-10,TRAPSUP-NAMED-A,US,48210,140231000,98000000,USD,4120,2,,false
+2026-08-10,TRAPSUP-NAMED-B,US,9845,50877000,35000000,USD,980,2,,false
+2026-08-10,TRAPSUP-WITHHELD,US,457,1394000,900000,USD,1,,1 dsp_impressions users < 2 required,true

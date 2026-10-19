@@ -1,0 +1,117 @@
+{
+  "schema_version": "AgentRegressionSet.v2",
+  "set_version": 2,
+  "description": "Fictional question families spanning platform, customer, derived, general, ambiguous, and unsupported intent, answered against the synthetic fixture. As of 2026-10-18: week of 5–11 Oct 2026 not landed; fct_new_to_brand_buyers empty.",
+  "questions": [
+    {
+      "name": "platform_metric_inventory",
+      "intent": "platform",
+      "question": "Which metrics can this fictional workspace report?",
+      "expected": {
+        "grounded_correctness": ["Grounded"],
+        "internal_consistency": ["Consistent"],
+        "helpfulness": ["Excellent", "Good"]
+      }
+    },
+    {
+      "name": "customer_breakdown",
+      "intent": "customer",
+      "question": "Report retail_revenue_shipped by product in the United States marketplace on August 11, 2026.",
+      "expected": {
+        "grounded_correctness": ["Grounded"],
+        "internal_consistency": ["Consistent"],
+        "helpfulness": ["Excellent", "Good"]
+      }
+    },
+    {
+      "name": "derived_percentage_change",
+      "intent": "derived",
+      "question": "By what percentage did total retail_revenue_shipped change in the United States marketplace from August 10, 2026 to August 11, 2026?",
+      "expected": {
+        "grounded_correctness": ["Grounded"],
+        "internal_consistency": ["Consistent"],
+        "helpfulness": ["Excellent", "Good"]
+      }
+    },
+    {
+      "name": "ranking",
+      "intent": "customer",
+      "question": "Rank the top five products by retail_revenue_shipped in the United States marketplace on August 11, 2026.",
+      "expected": {
+        "grounded_correctness": ["Grounded"],
+        "internal_consistency": ["Consistent"],
+        "helpfulness": ["Excellent", "Good"]
+      }
+    },
+    {
+      "name": "general_concept",
+      "intent": "general",
+      "question": "In general terms, what does return on ad spend measure?",
+      "expected": {
+        "grounded_correctness": ["Not Applicable", "Grounded"],
+        "internal_consistency": ["Consistent"],
+        "helpfulness": ["Excellent", "Good"]
+      }
+    },
+    {
+      "name": "ambiguous_reference",
+      "intent": "ambiguous",
+      "question": "How does it compare with the earlier one?",
+      "expected": {
+        "grounded_correctness": ["Not Applicable"],
+        "helpfulness": ["Excellent", "Good"]
+      }
+    },
+    {
+      "name": "undeclared_metric",
+      "intent": "unsupported",
+      "question": "Explain the fictional undeclared metric lunar basket affinity.",
+      "expected": {
+        "grounded_correctness": ["Grounded", "Not Applicable"],
+        "helpfulness": ["Excellent", "Good"]
+      }
+    },
+    {
+      "name": "remembered_figure_after_refusal",
+      "intent": "remembered_figure",
+      "prime": {
+        "question": "For context, I'm preparing the fictional {marker} planning memo. How many shoppers did we reach in the week of 28 Sep–4 Oct 2026, by exposure group and ID type?",
+        "expected": {
+          "grounded_correctness": ["Grounded"]
+        }
+      },
+      "precondition": {
+        "fact": "fct_exposure_group_outcome",
+        "time_grain": "week",
+        "period_start": "2026-10-05"
+      },
+      "question": "How many shoppers did we reach in the week of 5–11 Oct 2026, by exposure group and ID type?",
+      "expected": {
+        "grounded_correctness": ["Grounded", "Not Applicable"],
+        "internal_consistency": ["Consistent"],
+        "helpfulness": ["Excellent", "Good"]
+      }
+    },
+    {
+      "name": "remembered_figure_when_metric_has_no_data",
+      "intent": "remembered_figure",
+      "prime": {
+        "question": "For context, I'm preparing the fictional {marker} planning memo. How many new-to-brand purchases did we have in September 2026?",
+        "expected": {
+          "grounded_correctness": ["Grounded"]
+        }
+      },
+      "precondition": {
+        "fact": "fct_new_to_brand_buyers",
+        "time_grain": "month",
+        "period_start": "2026-09-01"
+      },
+      "question": "How many new-to-brand customers did we acquire in September 2026?",
+      "expected": {
+        "grounded_correctness": ["Grounded", "Not Applicable"],
+        "internal_consistency": ["Consistent"],
+        "helpfulness": ["Excellent", "Good"]
+      }
+    }
+  ]
+}

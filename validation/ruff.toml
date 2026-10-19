@@ -1,0 +1,30 @@
+# Lint config for validation/, which sits outside `make verify` by design (see README).
+#
+# Ruff uses the nearest config to the file being checked, so this file is what applies
+# here. It extends the root so the rule set stays the same, and then names the handful
+# of exemptions this directory legitimately needs — declared here rather than left as
+# 28 findings a reader has to triage every time.
+#
+# Run it by hand: uv run ruff check validation
+
+extend = "../pyproject.toml"
+
+[lint]
+extend-ignore = [
+    # print IS the interface here. These are operator-facing CLI scripts, not Lambdas —
+    # the T20 ban exists so a function uses the Powertools Logger, and nothing in this
+    # directory ever runs in Lambda.
+    "T201",
+
+    # Keyword-only arguments rather than request objects. The hexagonal rule that three
+    # parameters means a named request object governs ports and domain signatures, where
+    # a field added later must not break every call site. These are a thin HTTP client's
+    # own methods, all arguments are keyword-only so call sites already read as
+    # sentences, and a request object per HTTP verb would be ceremony.
+    "PLR0913",
+
+    # boto3 is imported inside load_credentials on purpose, so that --from-env needs no
+    # AWS session at all. That is the path used before any secret exists, which is
+    # exactly when someone is least likely to have a working profile.
+    "PLC0415",
+]

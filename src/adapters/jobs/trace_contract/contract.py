@@ -1,0 +1,273 @@
+# SPDX-License-Identifier: MIT-0
+"""Load the closed hand-authored span registry and render its Python projection."""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Final, cast
+
+import yaml
+
+SPAN_CONTRACT_PATH: Final = Path("contracts/observability/spans.yaml")
+GENERATED_SPANS_PATH: Final = Path("src/adapters/outbound/telemetry/generated_spans.py")
+_SCHEMA_FIELDS: Final = frozenset({"version", "spans"})
+_SPAN_FIELDS: Final = frozenset(
+    {
+        "constant",
+        "name",
+        "parent",
+        "required_attributes",
+        "allowed_attributes",
+        "propagation",
+        "purpose",
+    }
+)
+_PROPAGATION_VALUES: Final = frozenset({"lexical", "current", "remote_boundary"})
+_RESERVED_PARENTS: Final = frozenset({"root", "current"})
+_CONSTANT_PATTERN: Final = re.compile(r"^[A-Z][A-Z0-9_]*$")
+_NAME_PATTERN: Final = re.compile(r"^[a-z][a-z0-9_.]*$")
+_ATTRIBUTE_PATTERN: Final = re.compile(r"^[a-z][a-z0-9_]*$")
+_SENSITIVE_PARTS: Final = frozenset(
+    {
+        "sql",
+        "parameter",
+        "parameters",
+        "payload",
+        "body",
+        "credential",
+        "credentials",
+        "token",
+        "tokens",
+        "cookie",
+        "cookies",
+    }
+)
+_IDENTIFIER_SUBJECTS: Final = frozenset({"canonical", "customer", "entity", "campaign"})
+_IDENTIFIER_PARTS: Final = frozenset({"id", "ids", "identifier", "identifiers", "key", "keys"})
+type Mapping = dict[str, object]
+
+
+class TraceContractError(ValueError):
+    """A span declaration or its committed source projection is invalid."""
+
+
+@dataclass(frozen=True, slots=True)
+class SpanDeclaration:
+    """The closed hierarchy and metadata contract for one static span."""
+
+    constant: str
+    name: str
+    parent: str
+    required_attributes: tuple[str, ...]
+    allowed_attributes: tuple[str, ...]
+    propagation: str
+    purpose: str
+
+
+@dataclass(frozen=True, slots=True)
+class TraceContract:
+    """The versioned collection of every static hand-authored span."""
+
+    version: int
+    spans: tuple[SpanDeclaration, ...]
+
+    @property
+    def constants(self) -> frozenset[str]:
+        """Return every declared constant for source-wide call-site checks."""
+        return frozenset(span.constant for span in self.spans)
+
+
+class _StrictSafeLoader(yaml.SafeLoader):
+    """Safe YAML loader that rejects duplicate mapping keys."""
+
+
+def _construct_unique_mapping(
+    loader: _StrictSafeLoader, node: yaml.MappingNode, deep: bool = False
+) -> Mapping:
+    loader.flatten_mapping(node)
+    mapping: Mapping = {}
+    for key_node, value_node in node.value:
+        key = cast("Any", loader).construct_object(key_node, deep=deep)
+        if not isinstance(key, str):
+            raise TraceContractError("trace-contract YAML mapping keys must be text.")
+        if key in mapping:
+            raise TraceContractError(f"trace-contract YAML contains duplicate key: {key}.")
+        mapping[key] = cast("Any", loader).construct_object(value_node, deep=deep)
+    return mapping
+
+
+_StrictSafeLoader.add_constructor(
+    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _construct_unique_mapping
+)
+
+
+def forbidden_attribute(name: str) -> bool:
+    """Return whether an attribute name denotes prohibited telemetry content."""
+    parts = frozenset(name.lower().split("_"))
+    if name.lower() in {"row", "rows"} or parts & _SENSITIVE_PARTS:
+        return True
+    return bool(parts & _IDENTIFIER_SUBJECTS and parts & _IDENTIFIER_PARTS)
+
+
+def load_trace_contract(root: Path) -> TraceContract:
+    """Load and validate the exact registry schema."""
+    path = root / SPAN_CONTRACT_PATH
+    if not path.is_file():
+        raise TraceContractError(f"trace contract is missing at {path}.")
+    try:
+        raw = cast("object", yaml.load(path.read_text(), Loader=_StrictSafeLoader))  # noqa: S506  # nosec B506 # A-YAML-SAFELOADER-001
+    except yaml.YAMLError as error:
+        raise TraceContractError(f"{path}: invalid YAML: {error}.") from error
+    document = _mapping(raw, str(path))
+    _exact_fields(document, _SCHEMA_FIELDS, str(path))
+    version = document["version"]
+    if isinstance(version, bool) or version != 1:
+        raise TraceContractError(f"{path}.version must be the integer 1.")
+    items = _sequence(document["spans"], f"{path}.spans")
+    spans = tuple(_span(item, f"{path}.spans[{index}]") for index, item in enumerate(items))
+    if not spans:
+        raise TraceContractError(f"{path}.spans must not be empty.")
+    contract = TraceContract(version=1, spans=spans)
+    _validate_registry(contract)
+    return contract
+
+
+def render_generated_spans(contract: TraceContract) -> str:
+    """Render the deterministic Python constant projection."""
+    constants = [span.constant for span in contract.spans]
+    lines = [
+        "# SPDX-License-Identifier: MIT-0",
+        '"""Generated by `make generate-trace-contract`; do not edit by hand."""',
+        "",
+        "from typing import Final",
+        "",
+        "__all__ = [",
+        *(f'    "{constant}",' for constant in sorted(constants)),
+        "]",
+        "",
+        *(f'{span.constant}: Final = "{span.name}"' for span in contract.spans),
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def _span(value: object, where: str) -> SpanDeclaration:
+    raw = _mapping(value, where)
+    _exact_fields(raw, _SPAN_FIELDS, where)
+    constant = _text(raw["constant"], f"{where}.constant")
+    name = _text(raw["name"], f"{where}.name")
+    parent = _text(raw["parent"], f"{where}.parent")
+    propagation = _text(raw["propagation"], f"{where}.propagation")
+    required = _attributes(raw["required_attributes"], f"{where}.required_attributes")
+    allowed = _attributes(raw["allowed_attributes"], f"{where}.allowed_attributes")
+    if not _CONSTANT_PATTERN.fullmatch(constant):
+        raise TraceContractError(f"{where}.constant must be an upper-case Python identifier.")
+    if not _NAME_PATTERN.fullmatch(name):
+        raise TraceContractError(f"{where}.name must be a lower-case dotted span name.")
+    if propagation not in _PROPAGATION_VALUES:
+        values = ", ".join(sorted(_PROPAGATION_VALUES))
+        raise TraceContractError(f"{where}.propagation must be one of: {values}.")
+    missing = set(required) - set(allowed)
+    if missing:
+        raise TraceContractError(
+            f"{where}: required attributes are not allowed: {', '.join(sorted(missing))}."
+        )
+    forbidden = sorted(attribute for attribute in allowed if forbidden_attribute(attribute))
+    if forbidden:
+        raise TraceContractError(
+            f"{where}: forbidden attributes are declared: {', '.join(forbidden)}."
+        )
+    return SpanDeclaration(
+        constant=constant,
+        name=name,
+        parent=parent,
+        required_attributes=required,
+        allowed_attributes=allowed,
+        propagation=propagation,
+        purpose=_text(raw["purpose"], f"{where}.purpose"),
+    )
+
+
+def _validate_registry(contract: TraceContract) -> None:
+    constants: set[str] = set()
+    names: set[str] = set()
+    for span in contract.spans:
+        if span.constant in constants:
+            raise TraceContractError(f"duplicate span constant: {span.constant}.")
+        if span.name in names:
+            raise TraceContractError(f"duplicate span name: {span.name}.")
+        constants.add(span.constant)
+        names.add(span.name)
+    for span in contract.spans:
+        if span.parent not in _RESERVED_PARENTS and span.parent not in constants:
+            raise TraceContractError(
+                f"{span.constant}: parent {span.parent!r} is not a declared constant."
+            )
+        if span.parent == span.constant:
+            raise TraceContractError(f"{span.constant}: a span cannot parent itself.")
+        if span.parent == "root" and span.propagation != "remote_boundary":
+            raise TraceContractError(
+                f"{span.constant}: root spans must use remote_boundary propagation."
+            )
+        if span.parent == "current" and span.propagation != "current":
+            raise TraceContractError(
+                f"{span.constant}: reusable current-parent spans must use current propagation."
+            )
+        if span.parent not in _RESERVED_PARENTS and span.propagation == "remote_boundary":
+            raise TraceContractError(
+                f"{span.constant}: a declared child cannot use remote_boundary propagation."
+            )
+    _reject_parent_cycles(contract)
+
+
+def _reject_parent_cycles(contract: TraceContract) -> None:
+    parents = {span.constant: span.parent for span in contract.spans}
+    for constant in parents:
+        seen: set[str] = set()
+        cursor = constant
+        while cursor in parents:
+            if cursor in seen:
+                raise TraceContractError(f"{constant}: span parent declarations contain a cycle.")
+            seen.add(cursor)
+            cursor = parents[cursor]
+
+
+def _mapping(value: object, where: str) -> Mapping:
+    if not isinstance(value, dict):
+        raise TraceContractError(f"{where}: expected a mapping.")
+    return cast("Mapping", value)
+
+
+def _sequence(value: object, where: str) -> list[object]:
+    if not isinstance(value, list):
+        raise TraceContractError(f"{where}: expected a list.")
+    return cast("list[object]", value)
+
+
+def _text(value: object, where: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise TraceContractError(f"{where}: expected nonblank text.")
+    return value
+
+
+def _attributes(value: object, where: str) -> tuple[str, ...]:
+    attributes = tuple(_text(item, where) for item in _sequence(value, where))
+    if len(attributes) != len(set(attributes)):
+        raise TraceContractError(f"{where}: attribute names must be unique.")
+    invalid = sorted(
+        attribute for attribute in attributes if not _ATTRIBUTE_PATTERN.fullmatch(attribute)
+    )
+    if invalid:
+        raise TraceContractError(f"{where}: invalid attribute names: {', '.join(invalid)}.")
+    return attributes
+
+
+def _exact_fields(raw: Mapping, expected: frozenset[str], where: str) -> None:
+    observed = set(raw)
+    if observed != set(expected):
+        missing = ", ".join(sorted(expected - observed)) or "none"
+        extra = ", ".join(sorted(observed - expected)) or "none"
+        message = f"{where}: fields are not exact; missing={missing}; extra={extra}."
+        raise TraceContractError(message)

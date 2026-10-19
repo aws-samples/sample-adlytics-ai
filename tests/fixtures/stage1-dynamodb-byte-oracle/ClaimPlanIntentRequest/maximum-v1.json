@@ -1,0 +1,576 @@
+{
+ "branch": "maximum",
+ "expected": {
+  "action_count": 4,
+  "aggregate_upper_bound": 4191,
+  "outcome": "accepted",
+  "wire_json_bytes": 3717
+ },
+ "expected_request": {
+  "TransactItems": [
+   {
+    "Update": {
+     "ConditionExpression": "revision = :revision AND last_generation = :last_generation AND attribute_not_exists(reserved_intent_id)",
+     "ExpressionAttributeValues": {
+      ":claimed_generation": {
+       "N": "1"
+      },
+      ":intent_id": {
+       "S": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef"
+      },
+      ":last_generation": {
+       "N": "0"
+      },
+      ":new_revision": {
+       "N": "3"
+      },
+      ":revision": {
+       "N": "2"
+      }
+     },
+     "Key": {
+      "partition_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b"
+      },
+      "record_key": {
+       "S": "SUCCESSOR_OWNER"
+      }
+     },
+     "TableName": "publications-fixture",
+     "UpdateExpression": "SET revision = :new_revision, reserved_intent_id = :intent_id, reserved_intent_digest = :intent_id, reserved_generation = :claimed_generation"
+    }
+   },
+   {
+    "Update": {
+     "ConditionExpression": "#state = :pending AND intent_id = :intent_id AND attribute_not_exists(claimed_generation) AND ready_status = :ready AND ready_order = :ready_order",
+     "ExpressionAttributeNames": {
+      "#state": "state"
+     },
+     "ExpressionAttributeValues": {
+      ":claimed": {
+       "S": "claimed"
+      },
+      ":claimed_generation": {
+       "N": "1"
+      },
+      ":instant": {
+       "S": "00001789821296789012"
+      },
+      ":intent_id": {
+       "S": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef"
+      },
+      ":pending": {
+       "S": "pending"
+      },
+      ":ready": {
+       "S": "ready"
+      },
+      ":ready_order": {
+       "S": "00001789821296789012#efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef"
+      }
+     },
+     "Key": {
+      "partition_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#INTENT#efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef"
+      },
+      "record_key": {
+       "S": "META"
+      }
+     },
+     "TableName": "publications-fixture",
+     "UpdateExpression": "SET #state = :claimed, claimed_generation = :claimed_generation, last_transition_at = :instant REMOVE ready_status, ready_order"
+    }
+   },
+   {
+    "ConditionCheck": {
+     "ConditionExpression": "#status = :planned AND generation = :generation AND origin_intent_id = :origin_intent_id",
+     "ExpressionAttributeNames": {
+      "#status": "status"
+     },
+     "ExpressionAttributeValues": {
+      ":generation": {
+       "N": "0"
+      },
+      ":origin_intent_id": {
+       "S": "abababababababababababababababababababababababababababababababab"
+      },
+      ":planned": {
+       "S": "planned"
+      }
+     },
+     "Key": {
+      "partition_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+      },
+      "record_key": {
+       "S": "META"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "ConditionCheck": {
+     "ConditionExpression": "head_contract_version = :prior_head_contract_version AND latest_transition_sequence = :prior_latest_transition_sequence AND surface = :prior_surface AND flow_id = :prior_flow_id AND current_execution_id = :prior_current_execution_id AND current_internal_execution_id = :prior_current_internal_execution_id AND latest_event_id = :prior_latest_event_id AND latest_authority_digest = :prior_latest_authority_digest AND latest_state = :prior_latest_state AND attribute_not_exists(predecessor_execution_id) AND attribute_not_exists(parent_flow_id) AND attribute_not_exists(causation_event_id)",
+     "ExpressionAttributeValues": {
+      ":prior_current_execution_id": {
+       "S": "f36d0f8e-eb24-53ee-811b-60dcd95068dc"
+      },
+      ":prior_current_internal_execution_id": {
+       "S": "1212121212121212121212121212121212121212121212121212121212121212"
+      },
+      ":prior_flow_id": {
+       "S": "acaa4ea4-b442-5024-a434-95febac5560a"
+      },
+      ":prior_head_contract_version": {
+       "N": "1"
+      },
+      ":prior_latest_authority_digest": {
+       "S": "23d26cbecc912cdd11f29e26a730f1df9f124a60c32dcf500783e892d8fe819f"
+      },
+      ":prior_latest_event_id": {
+       "S": "b9030100-3047-5280-8ef1-190890aafe8e"
+      },
+      ":prior_latest_state": {
+       "S": "queued"
+      },
+      ":prior_latest_transition_sequence": {
+       "N": "1"
+      },
+      ":prior_surface": {
+       "S": "semantic_projection_plan"
+      }
+     },
+     "Key": {
+      "partition_key": {
+       "S": "STATUS_FLOW#acaa4ea4-b442-5024-a434-95febac5560a"
+      },
+      "record_key": {
+       "S": "HEAD"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   }
+  ]
+ },
+ "fixture_version": "v1",
+ "table_name": "publications-fixture",
+ "targets": [
+  {
+   "expected_pre_state_map": {
+    "active_intent_id": {
+     "S": "abababababababababababababababababababababababababababababababab"
+    },
+    "active_plan_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "last_generation": {
+     "N": "0"
+    },
+    "last_plan_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "latest_internal_execution_id": {
+     "S": "1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b"
+    },
+    "record_key": {
+     "S": "SUCCESSOR_OWNER"
+    },
+    "revision": {
+     "N": "2"
+    },
+    "root_plan_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    }
+   },
+   "expected_result_map": {
+    "active_intent_id": {
+     "S": "abababababababababababababababababababababababababababababababab"
+    },
+    "active_plan_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "last_generation": {
+     "N": "0"
+    },
+    "last_plan_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "latest_internal_execution_id": {
+     "S": "1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b"
+    },
+    "record_key": {
+     "S": "SUCCESSOR_OWNER"
+    },
+    "reserved_generation": {
+     "N": "1"
+    },
+    "reserved_intent_digest": {
+     "S": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef"
+    },
+    "reserved_intent_id": {
+     "S": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef"
+    },
+    "revision": {
+     "N": "3"
+    },
+    "root_plan_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    }
+   },
+   "pre_state_conservative_bytes": 880,
+   "result_conservative_bytes": 1104,
+   "target_upper_bound": 1104
+  },
+  {
+   "expected_pre_state_map": {
+    "created_at": {
+     "S": "00001789821296789012"
+    },
+    "due_at": {
+     "S": "00001789821296789012"
+    },
+    "intent_id": {
+     "S": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef"
+    },
+    "last_transition_at": {
+     "S": "00001789821296789012"
+    },
+    "origin_kind": {
+     "S": "source_delivery"
+    },
+    "origin_member": {
+     "S": "652c43e1add22378c10deeb1e0957edf1817319415a9c371b19024271a45273f"
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#INTENT#efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef"
+    },
+    "plan_digest": {
+     "S": "a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b"
+    },
+    "ready_order": {
+     "S": "00001789821296789012#efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef"
+    },
+    "ready_status": {
+     "S": "ready"
+    },
+    "record_key": {
+     "S": "META"
+    },
+    "retry_count": {
+     "N": "0"
+    },
+    "root_plan_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "roster_digest": {
+     "S": "ef37abcc47a2afeec9b11692dbdf1944b5209904d139953ba63116c123ccae4f"
+    },
+    "state": {
+     "S": "pending"
+    }
+   },
+   "expected_result_map": {
+    "claimed_generation": {
+     "N": "1"
+    },
+    "created_at": {
+     "S": "00001789821296789012"
+    },
+    "due_at": {
+     "S": "00001789821296789012"
+    },
+    "intent_id": {
+     "S": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef"
+    },
+    "last_transition_at": {
+     "S": "00001789821296789012"
+    },
+    "origin_kind": {
+     "S": "source_delivery"
+    },
+    "origin_member": {
+     "S": "652c43e1add22378c10deeb1e0957edf1817319415a9c371b19024271a45273f"
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#INTENT#efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef"
+    },
+    "plan_digest": {
+     "S": "a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b"
+    },
+    "ready_order": {
+     "S": "00001789821296789012#efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef"
+    },
+    "ready_status": {
+     "S": "ready"
+    },
+    "record_key": {
+     "S": "META"
+    },
+    "retry_count": {
+     "N": "0"
+    },
+    "root_plan_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "roster_digest": {
+     "S": "ef37abcc47a2afeec9b11692dbdf1944b5209904d139953ba63116c123ccae4f"
+    },
+    "state": {
+     "S": "claimed"
+    }
+   },
+   "pre_state_conservative_bytes": 1067,
+   "result_conservative_bytes": 1098,
+   "target_upper_bound": 1098
+  },
+  {
+   "expected_pre_state_map": {
+    "admitted_count": {
+     "N": "2"
+    },
+    "attested_count": {
+     "N": "0"
+    },
+    "child_outcome_reduction_version": {
+     "N": "2"
+    },
+    "created_at": {
+     "S": "00001789821296789012"
+    },
+    "failed_count": {
+     "N": "0"
+    },
+    "generation": {
+     "N": "0"
+    },
+    "internal_execution_id": {
+     "S": "1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "origin_intent_id": {
+     "S": "abababababababababababababababababababababababababababababababab"
+    },
+    "origin_kind": {
+     "S": "source_delivery"
+    },
+    "origin_member": {
+     "S": "652c43e1add22378c10deeb1e0957edf1817319415a9c371b19024271a45273f"
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "plan_digest": {
+     "S": "a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b"
+    },
+    "record_key": {
+     "S": "META"
+    },
+    "required_child_expectations": {
+     "L": [
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "10b8fe15-0aad-5add-b259-5da4c54d3028"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "e380d3c6-7b14-5810-ad16-1a9847076b90"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      }
+     ]
+    },
+    "root_plan_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "roster_digest": {
+     "S": "ef37abcc47a2afeec9b11692dbdf1944b5209904d139953ba63116c123ccae4f"
+    },
+    "settled_attempt_count": {
+     "N": "0"
+    },
+    "status": {
+     "S": "planned"
+    },
+    "unit_count": {
+     "N": "2"
+    }
+   },
+   "expected_result_map": {
+    "admitted_count": {
+     "N": "2"
+    },
+    "attested_count": {
+     "N": "0"
+    },
+    "child_outcome_reduction_version": {
+     "N": "2"
+    },
+    "created_at": {
+     "S": "00001789821296789012"
+    },
+    "failed_count": {
+     "N": "0"
+    },
+    "generation": {
+     "N": "0"
+    },
+    "internal_execution_id": {
+     "S": "1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "origin_intent_id": {
+     "S": "abababababababababababababababababababababababababababababababab"
+    },
+    "origin_kind": {
+     "S": "source_delivery"
+    },
+    "origin_member": {
+     "S": "652c43e1add22378c10deeb1e0957edf1817319415a9c371b19024271a45273f"
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "plan_digest": {
+     "S": "a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b"
+    },
+    "record_key": {
+     "S": "META"
+    },
+    "required_child_expectations": {
+     "L": [
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "10b8fe15-0aad-5add-b259-5da4c54d3028"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "e380d3c6-7b14-5810-ad16-1a9847076b90"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      }
+     ]
+    },
+    "root_plan_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "roster_digest": {
+     "S": "ef37abcc47a2afeec9b11692dbdf1944b5209904d139953ba63116c123ccae4f"
+    },
+    "settled_attempt_count": {
+     "N": "0"
+    },
+    "status": {
+     "S": "planned"
+    },
+    "unit_count": {
+     "N": "2"
+    }
+   },
+   "pre_state_conservative_bytes": 1353,
+   "result_conservative_bytes": 1353,
+   "target_upper_bound": 1353
+  },
+  {
+   "expected_pre_state_map": {
+    "current_execution_id": {
+     "S": "f36d0f8e-eb24-53ee-811b-60dcd95068dc"
+    },
+    "current_internal_execution_id": {
+     "S": "1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "flow_id": {
+     "S": "acaa4ea4-b442-5024-a434-95febac5560a"
+    },
+    "head_contract_version": {
+     "N": "1"
+    },
+    "latest_authority_digest": {
+     "S": "23d26cbecc912cdd11f29e26a730f1df9f124a60c32dcf500783e892d8fe819f"
+    },
+    "latest_event_id": {
+     "S": "b9030100-3047-5280-8ef1-190890aafe8e"
+    },
+    "latest_state": {
+     "S": "queued"
+    },
+    "latest_transition_sequence": {
+     "N": "1"
+    },
+    "partition_key": {
+     "S": "STATUS_FLOW#acaa4ea4-b442-5024-a434-95febac5560a"
+    },
+    "record_key": {
+     "S": "HEAD"
+    },
+    "surface": {
+     "S": "semantic_projection_plan"
+    }
+   },
+   "expected_result_map": {
+    "current_execution_id": {
+     "S": "f36d0f8e-eb24-53ee-811b-60dcd95068dc"
+    },
+    "current_internal_execution_id": {
+     "S": "1212121212121212121212121212121212121212121212121212121212121212"
+    },
+    "flow_id": {
+     "S": "acaa4ea4-b442-5024-a434-95febac5560a"
+    },
+    "head_contract_version": {
+     "N": "1"
+    },
+    "latest_authority_digest": {
+     "S": "23d26cbecc912cdd11f29e26a730f1df9f124a60c32dcf500783e892d8fe819f"
+    },
+    "latest_event_id": {
+     "S": "b9030100-3047-5280-8ef1-190890aafe8e"
+    },
+    "latest_state": {
+     "S": "queued"
+    },
+    "latest_transition_sequence": {
+     "N": "1"
+    },
+    "partition_key": {
+     "S": "STATUS_FLOW#acaa4ea4-b442-5024-a434-95febac5560a"
+    },
+    "record_key": {
+     "S": "HEAD"
+    },
+    "surface": {
+     "S": "semantic_projection_plan"
+    }
+   },
+   "pre_state_conservative_bytes": 636,
+   "result_conservative_bytes": 636,
+   "target_upper_bound": 636
+  }
+ ],
+ "typed_operation": "ClaimPlanIntentRequest"
+}

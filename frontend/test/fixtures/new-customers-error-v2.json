@@ -1,0 +1,8 @@
+{
+  "body": {
+    "code": "ADLY-UNEXPECTED-0000",
+    "error": "The request could not be completed. The issue has been recorded.",
+    "error_class": "invariant"
+  },
+  "status": 500
+}

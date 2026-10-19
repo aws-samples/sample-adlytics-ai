@@ -1,0 +1,111 @@
+id: returns-pressure
+version: 8
+purpose: Explain a material supplied customer-returns movement, retaining any supplied lag qualifier.
+display_name: Returns pressure (Retail health)
+output_class: perspective
+allowed_inputs:
+  - retail current and prior totals
+  - retail daily trend
+  - freshness qualifiers
+  - typed window profile (window length, grain, aligned prior, horizon role)
+deterministic_findings: [absolute-change, percentage-change]
+predicate:
+  required_evidence_inputs: [retail-totals]
+  required_finding_kinds: [absolute-change, percentage-change]
+  materiality:
+    bases:
+      retail_window:
+        per_unit:
+          currency: {operational-pulse: "1000", tactical-review: "3000", pattern-confirmation: "10000"}
+          rate_pp: {operational-pulse: "0.32", tactical-review: "0.12", pattern-confirmation: "0.32"}
+          percent: {operational-pulse: "3.4", tactical-review: "1.5", pattern-confirmation: "3.3"}
+        per_metric:
+          customer_returns: {operational-pulse: "3", tactical-review: "8", pattern-confirmation: "30"}
+    near_zero_prior:
+      currency: "5"
+      count: "5"
+      rate_pp: "0.5"
+  delivery_follow_up_evidence: []
+materiality_cases:
+  - {name: customer returns change of 8 clears its own row, horizon: tactical-review, basis: retail_window, kind: absolute-change, metric: customer_returns, current: "48", prior: "40", expect: admitted}
+  - {name: customer returns change of 7 is below its own row, horizon: tactical-review, basis: retail_window, kind: absolute-change, metric: customer_returns, current: "47", prior: "40", expect: silent}
+  - {name: return rate up 0.4 pp clears the tactical row, horizon: tactical-review, basis: retail_window, kind: absolute-change, metric: return_rate, current: "0.054", prior: "0.050", expect: admitted}
+  - {name: a returns prior of 4 is near zero, horizon: tactical-review, basis: retail_window, kind: percentage-change, metric: customer_returns, current: "6", prior: "4", expect: suppressed}
+silence_condition: No supplied returns movement exceeds the declared materiality threshold.
+structured_output_schema: {id: insight-narration-v1, fields: [output_class, sentences]}
+initial_fictional_prompt: State one material supplied returns movement and do not infer customer cause.
+calibration_cases:
+  - kind: known-correct
+    input_summary: Fictional customer returns rise in the supplied totals.
+    expected_outcome: Accept a perspective citing the supplied change.
+    horizon: pattern-confirmation
+    findings:
+      - {name: Customer returns change, value: "340"}
+      - {name: Customer returns percentage change, value: "12.6"}
+  - kind: exploratory
+    input_summary: Fictional returns rise while shipped units hold, inviting a hedged pressure reading.
+    expected_outcome: Accept the labeled returns-pressure hypothesis.
+    horizon: tactical-review
+    findings:
+      - {name: Customer returns percentage change, value: "8.4"}
+      - {name: Shipped units percentage change, value: "0.9"}
+  - kind: contradiction
+    input_summary: Fictional returns fall but the draft says they increased.
+    expected_outcome: Reject the contradiction.
+    horizon: operational-pulse
+    findings:
+      - {name: Customer returns change, value: "-85"}
+    draft:
+      sentences:
+        - Customer returns increased by 85 on the day.
+  - kind: fluent-unsupported
+    input_summary: A fluent draft claims a defect rate that no fictional finding supplies.
+    expected_outcome: Reject the figure that is neither supplied nor derived from the findings.
+    horizon: pattern-confirmation
+    findings:
+      - {name: Customer returns change, value: "340"}
+    draft:
+      sentences:
+        - Returns rose 340, consistent with a 3.7 percent defect rate in the latest batch.
+  - kind: derived-figure
+    input_summary: A fictional draft states the customer returns percentage change it derives from the supplied current and prior values.
+    expected_outcome: Accept the correctly derived percentage change.
+    horizon: pattern-confirmation
+    findings:
+      - {name: Customer returns this window, value: "3040"}
+      - {name: Customer returns prior window, value: "2700"}
+    draft:
+      sentences:
+        - Customer returns rose from 2700 to 3040, about 13 percent higher than in the prior window.
+  - kind: miscomputed-derivation
+    input_summary: A fictional draft divides the returns change by the current value instead of the prior one.
+    expected_outcome: Reject the miscomputed percentage change.
+    horizon: pattern-confirmation
+    findings:
+      - {name: Customer returns this window, value: "3040"}
+      - {name: Customer returns prior window, value: "2700"}
+    draft:
+      sentences:
+        - Customer returns rose from 2700 to 3040, about 11 percent higher than in the prior window.
+  - kind: incompatible-basis
+    input_summary: A fictional draft divides a returns unit count by a revenue amount.
+    expected_outcome: Reject the figure that combines findings of incompatible basis.
+    horizon: tactical-review
+    findings:
+      - {name: Customer returns this window in units, value: "3040"}
+      - {name: Shipped revenue this window, value: "141400"}
+    draft:
+      sentences:
+        - Returns ran at about 2 percent of shipped sales this window.
+deep:
+  allowed_inputs:
+    - sibling preset directions from the same current pointer roster, direction only with no second-window figures
+    - complete daily series for every metric this surface serves
+    - every server-computed driver and cross-metric total for the window
+    - lag, estimate, and basis qualifications carried by the artifact
+  structured_output_schema:
+    id: insight-deep-dive-v1
+    fields: [what_stands_out, candidate_readings, discriminating_evidence, cited_figures]
+# FR-11 (design 4.12): no next step is offered until the gated card-next-step prompt ships.
+next_steps:
+  allowed_kinds: []

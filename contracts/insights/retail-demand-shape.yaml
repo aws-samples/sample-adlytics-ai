@@ -1,0 +1,110 @@
+id: demand-shape
+version: 7
+purpose: Explain a material supplied retail demand movement without causal attribution.
+display_name: Demand shape (Retail health)
+output_class: perspective
+allowed_inputs:
+  - retail current and prior totals
+  - retail daily trend
+  - typed window profile (window length, grain, aligned prior, horizon role)
+deterministic_findings: [absolute-change, percentage-change]
+predicate:
+  required_evidence_inputs: [retail-totals]
+  required_finding_kinds: [absolute-change, percentage-change]
+  materiality:
+    bases:
+      retail_window:
+        per_unit:
+          currency: {operational-pulse: "1000", tactical-review: "3000", pattern-confirmation: "10000"}
+          percent: {operational-pulse: "5.8", tactical-review: "2.5", pattern-confirmation: "4.7"}
+        per_metric:
+          units_shipped: {operational-pulse: "40", tactical-review: "100", pattern-confirmation: "400"}
+          glance_views: {operational-pulse: "800", tactical-review: "5000", pattern-confirmation: "12000"}
+    near_zero_prior:
+      currency: "5"
+      count: "5"
+  delivery_follow_up_evidence: []
+materiality_cases:
+  - {name: shipped revenue change of 3000 clears the tactical row, horizon: tactical-review, basis: retail_window, kind: absolute-change, metric: retail_revenue_shipped, current: "23000", prior: "20000", expect: admitted}
+  - {name: units shipped change of 99 is below its own row, horizon: tactical-review, basis: retail_window, kind: absolute-change, metric: units_shipped, current: "1099", prior: "1000", expect: silent}
+  - {name: glance views change of 5000 clears its own row, horizon: tactical-review, basis: retail_window, kind: absolute-change, metric: glance_views, current: "25000", prior: "20000", expect: admitted}
+  - {name: shipped revenue up 6 percent clears the tactical percent row, horizon: tactical-review, basis: retail_window, kind: percentage-change, metric: retail_revenue_shipped, current: "10600", prior: "10000", expect: admitted}
+  - {name: a units prior of 4 is near zero, horizon: tactical-review, basis: retail_window, kind: percentage-change, metric: units_shipped, current: "6", prior: "4", expect: suppressed}
+silence_condition: No supplied retail demand change exceeds the declared materiality threshold.
+structured_output_schema: {id: insight-narration-v1, fields: [output_class, sentences]}
+initial_fictional_prompt: State one material supplied demand movement without adding arithmetic or causal explanation.
+calibration_cases:
+  - kind: known-correct
+    input_summary: Fictional shipped revenue rises in the supplied totals.
+    expected_outcome: Accept a perspective citing only the supplied movement.
+    horizon: pattern-confirmation
+    findings:
+      - {name: Shipped revenue change, value: "8400"}
+      - {name: Shipped revenue percentage change, value: "6.3"}
+  - kind: exploratory
+    input_summary: Fictional shipped units rise faster than revenue, inviting a hedged mix reading.
+    expected_outcome: Accept the labeled reading of the supplied pair.
+    horizon: tactical-review
+    findings:
+      - {name: Shipped units percentage change, value: "9.1"}
+      - {name: Shipped revenue percentage change, value: "2.4"}
+  - kind: contradiction
+    input_summary: Fictional units fall but the draft calls them higher.
+    expected_outcome: Reject the contradiction.
+    horizon: operational-pulse
+    findings:
+      - {name: Shipped units change, value: "-130"}
+    draft:
+      sentences:
+        - Shipped units climbed 130 on the day.
+  - kind: fluent-unsupported
+    input_summary: A fluent draft credits an advertising lift figure absent from the fictional findings.
+    expected_outcome: Reject the figure that is neither supplied nor derived from the findings.
+    horizon: pattern-confirmation
+    findings:
+      - {name: Shipped revenue change, value: "8400"}
+    draft:
+      sentences:
+        - Shipped revenue rose 8400 on the back of a 19 percent advertising lift.
+  - kind: derived-figure
+    input_summary: A fictional draft states the shipped revenue percentage change it derives from the supplied current and prior values.
+    expected_outcome: Accept the correctly derived percentage change.
+    horizon: pattern-confirmation
+    findings:
+      - {name: Shipped revenue this window, value: "141400"}
+      - {name: Shipped revenue prior window, value: "133000"}
+    draft:
+      sentences:
+        - Shipped revenue reached 141400 against 133000 in the prior window, a rise of about 6 percent.
+  - kind: miscomputed-derivation
+    input_summary: A fictional draft misstates the shipped revenue percentage change.
+    expected_outcome: Reject the miscomputed percentage change.
+    horizon: pattern-confirmation
+    findings:
+      - {name: Shipped revenue this window, value: "141400"}
+      - {name: Shipped revenue prior window, value: "133000"}
+    draft:
+      sentences:
+        - Shipped revenue reached 141400 against 133000 in the prior window, a rise of about 8 percent.
+  - kind: incompatible-basis
+    input_summary: A fictional draft computes a shipped revenue change across the Manufacturing and Sourcing views.
+    expected_outcome: Reject the figure that combines findings of incompatible distributor view.
+    horizon: tactical-review
+    findings:
+      - {name: Shipped revenue this window in the Manufacturing view, value: "141400"}
+      - {name: Shipped revenue prior window in the Sourcing view, value: "120000"}
+    draft:
+      sentences:
+        - Shipped revenue grew about 18 percent, from 120000 to 141400.
+deep:
+  allowed_inputs:
+    - sibling preset directions from the same current pointer roster, direction only with no second-window figures
+    - complete daily series for every metric this surface serves
+    - every server-computed driver and cross-metric total for the window
+    - lag, estimate, and basis qualifications carried by the artifact
+  structured_output_schema:
+    id: insight-deep-dive-v1
+    fields: [what_stands_out, candidate_readings, discriminating_evidence, cited_figures]
+# FR-11 (design 4.12): no next step is offered until the gated card-next-step prompt ships.
+next_steps:
+  allowed_kinds: []

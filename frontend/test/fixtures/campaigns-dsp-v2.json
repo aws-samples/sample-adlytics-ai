@@ -1,0 +1,960 @@
+{
+  "envelope_version": 2,
+  "kind": "page",
+  "page": {
+    "actions": [],
+    "artifact": {
+      "channel_filter": {
+        "options": [
+          {
+            "filter_id": "all",
+            "label": "All channels"
+          },
+          {
+            "filter_id": "sponsored",
+            "label": "Sponsored ads (all sponsored channels)"
+          },
+          {
+            "filter_id": "amazon_dsp",
+            "label": "Amazon DSP"
+          },
+          {
+            "filter_id": "amazon_sponsored_products",
+            "label": "Sponsored Products"
+          },
+          {
+            "filter_id": "amazon_sponsored_brands",
+            "label": "Sponsored Brands"
+          }
+        ],
+        "selected": "amazon_dsp"
+      },
+      "channel_view": null,
+      "evidence": [
+        {
+          "actual_coverage": [
+            {
+              "end": "2026-08-21",
+              "start": "2026-08-15"
+            }
+          ],
+          "coverage_holes": [],
+          "freshness_qualifiers": [],
+          "requested_period": {
+            "end": "2026-08-21",
+            "start": "2026-08-15"
+          },
+          "source": "Governed campaign catalog"
+        }
+      ],
+      "evidence_status": {
+        "entries": [
+          {
+            "absence_text": null,
+            "coverage_text": null,
+            "label": "Ad spend",
+            "missing_dates": [],
+            "missing_text": "None",
+            "reason": "Every day of this window has arrived.",
+            "recovery": "No action needed.",
+            "role": "current",
+            "role_label": "Headline and campaign rows",
+            "slot": "spend",
+            "state": "complete"
+          },
+          {
+            "absence_text": null,
+            "coverage_text": null,
+            "label": "Attributed purchases",
+            "missing_dates": [],
+            "missing_text": "None",
+            "reason": "Every day of this window has arrived.",
+            "recovery": "No action needed.",
+            "role": "current",
+            "role_label": "Headline and campaign rows",
+            "slot": "purchases",
+            "state": "complete"
+          },
+          {
+            "absence_text": null,
+            "coverage_text": null,
+            "label": "Impressions",
+            "missing_dates": [],
+            "missing_text": "None",
+            "reason": "Every day of this window has arrived.",
+            "recovery": "No action needed.",
+            "role": "current",
+            "role_label": "Headline",
+            "slot": "impressions",
+            "state": "complete"
+          },
+          {
+            "absence_text": null,
+            "coverage_text": null,
+            "label": "Portfolio ROAS (attributed, 14 day)",
+            "missing_dates": [],
+            "missing_text": "None",
+            "reason": "Every day of this window has arrived.",
+            "recovery": "No action needed.",
+            "role": "current",
+            "role_label": "Headline",
+            "slot": "portfolio_roas_attributed_14d",
+            "state": "complete"
+          },
+          {
+            "absence_text": null,
+            "coverage_text": null,
+            "label": "ROAS (attributed, 14 day)",
+            "missing_dates": [],
+            "missing_text": "None",
+            "reason": "Every day of this window has arrived.",
+            "recovery": "No action needed.",
+            "role": "current",
+            "role_label": "Campaign rows",
+            "slot": "attributed_roas",
+            "state": "complete"
+          },
+          {
+            "absence_text": null,
+            "coverage_text": null,
+            "label": "Click-through rate",
+            "missing_dates": [],
+            "missing_text": "None",
+            "reason": "Every day of this window has arrived.",
+            "recovery": "No action needed.",
+            "role": "current",
+            "role_label": "Campaign rows",
+            "slot": "ctr",
+            "state": "complete"
+          }
+        ],
+        "summary": "Every figure is complete for this window.",
+        "version": 2,
+        "window": {
+          "end": "2026-08-21",
+          "start": "2026-08-15"
+        }
+      },
+      "insights": [
+        {
+          "absence_class": "generation-pending",
+          "absence_reason": "This insight could not be generated just now; it retries automatically and appears on a later view.",
+          "artifact_revision": "sha256:f833f12e680aadf5f76f8c175226c37f8d491ae378fd7af14e4d23209d82d801",
+          "evidence_line": null,
+          "id": "contribution",
+          "output_class": "perspective",
+          "prompt_version": "not-generated",
+          "state": "unavailable",
+          "text": null
+        },
+        {
+          "absence_class": "evaluated-quiet",
+          "absence_reason": "No campaign moved against the portfolio's direction enough to call out in this view.",
+          "artifact_revision": "sha256:f833f12e680aadf5f76f8c175226c37f8d491ae378fd7af14e4d23209d82d801",
+          "evidence_line": null,
+          "id": "divergence",
+          "output_class": "perspective",
+          "prompt_version": "deterministic-gate1",
+          "state": "silent",
+          "text": null
+        },
+        {
+          "absence_class": "generation-pending",
+          "absence_reason": "This insight could not be generated just now; it retries automatically and appears on a later view.",
+          "artifact_revision": "sha256:f833f12e680aadf5f76f8c175226c37f8d491ae378fd7af14e4d23209d82d801",
+          "evidence_line": null,
+          "id": "exposure",
+          "output_class": "perspective",
+          "prompt_version": "not-generated",
+          "state": "unavailable",
+          "text": null
+        },
+        {
+          "artifact_revision": "sha256:f833f12e680aadf5f76f8c175226c37f8d491ae378fd7af14e4d23209d82d801",
+          "evidence_line": "Server-ranked absolute changes.",
+          "id": "movers",
+          "output_class": "observed",
+          "prompt_version": "deterministic-v1",
+          "state": "filled",
+          "text": "Fictional DSP Retargeting changed by -350.00 USD; Fictional DSP Prospecting changed by 140.00 USD."
+        }
+      ],
+      "kind": "campaign_portfolio",
+      "outcome": "complete",
+      "pagination": {
+        "segment_count": 1,
+        "segment_index": 0,
+        "segment_size": 50,
+        "total_count": 2
+      },
+      "period": {
+        "end": "2026-08-21",
+        "start": "2026-08-15"
+      },
+      "prior_period": {
+        "end": "2026-08-14",
+        "start": "2026-08-08"
+      },
+      "reason_codes": [],
+      "roster": {
+        "channels": [
+          "Amazon DSP"
+        ],
+        "entries": [
+          [
+            "Fictional DSP Retargeting",
+            0,
+            0,
+            0
+          ],
+          [
+            "Fictional DSP Prospecting",
+            0,
+            0,
+            1
+          ]
+        ],
+        "marketplaces": [
+          "United States"
+        ]
+      },
+      "rows": [
+        {
+          "capability": {
+            "expires_at": "2026-08-19T13:00:00+00:00",
+            "selection_reference": "v2_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+          },
+          "comparisons": [
+            {
+              "absolute_change": "-350",
+              "change": {
+                "direction": "down",
+                "display_text": "\u221220.0%",
+                "not_meaningful": null,
+                "sentiment": "neutral",
+                "unit": "percent"
+              },
+              "current": {
+                "basis": "ad_attributed",
+                "display_value": "1400.00",
+                "grain": [
+                  "period",
+                  "campaign",
+                  "marketplace"
+                ],
+                "period": {
+                  "end": "2026-08-21",
+                  "start": "2026-08-15"
+                },
+                "units": {
+                  "currency_code": "USD",
+                  "kind": "currency"
+                },
+                "value": "1400"
+              },
+              "metric": "spend",
+              "prior": {
+                "basis": "ad_attributed",
+                "display_value": "1750.00",
+                "grain": [
+                  "period",
+                  "campaign",
+                  "marketplace"
+                ],
+                "period": {
+                  "end": "2026-08-14",
+                  "start": "2026-08-08"
+                },
+                "units": {
+                  "currency_code": "USD",
+                  "kind": "currency"
+                },
+                "value": "1750"
+              }
+            },
+            {
+              "absolute_change": "0.9",
+              "change": {
+                "direction": "up",
+                "display_text": "+0.90\u00d7",
+                "not_meaningful": null,
+                "sentiment": "favourable",
+                "unit": "absolute"
+              },
+              "current": {
+                "basis": "ad_attributed",
+                "display_value": null,
+                "grain": [
+                  "period",
+                  "campaign",
+                  "marketplace"
+                ],
+                "period": {
+                  "end": "2026-08-21",
+                  "start": "2026-08-15"
+                },
+                "units": {
+                  "currency_code": null,
+                  "kind": "ratio"
+                },
+                "value": "2.5"
+              },
+              "metric": "attributed_roas",
+              "prior": {
+                "basis": "ad_attributed",
+                "display_value": null,
+                "grain": [
+                  "period",
+                  "campaign",
+                  "marketplace"
+                ],
+                "period": {
+                  "end": "2026-08-14",
+                  "start": "2026-08-08"
+                },
+                "units": {
+                  "currency_code": null,
+                  "kind": "ratio"
+                },
+                "value": "1.6"
+              }
+            },
+            {
+              "absolute_change": -7,
+              "change": {
+                "direction": "down",
+                "display_text": "\u221220.0%",
+                "not_meaningful": null,
+                "sentiment": "unfavourable",
+                "unit": "percent"
+              },
+              "current": {
+                "basis": "ad_attributed",
+                "display_value": null,
+                "grain": [
+                  "period",
+                  "campaign",
+                  "marketplace"
+                ],
+                "period": {
+                  "end": "2026-08-21",
+                  "start": "2026-08-15"
+                },
+                "units": {
+                  "currency_code": null,
+                  "kind": "count"
+                },
+                "value": 28
+              },
+              "metric": "purchases",
+              "prior": {
+                "basis": "ad_attributed",
+                "display_value": null,
+                "grain": [
+                  "period",
+                  "campaign",
+                  "marketplace"
+                ],
+                "period": {
+                  "end": "2026-08-14",
+                  "start": "2026-08-08"
+                },
+                "units": {
+                  "currency_code": null,
+                  "kind": "count"
+                },
+                "value": 35
+              }
+            },
+            {
+              "absolute_change": "-0.0000571428571428571428571428571",
+              "change": {
+                "direction": "down",
+                "display_text": "\u22120.006 pts",
+                "not_meaningful": null,
+                "sentiment": "unfavourable",
+                "unit": "percentage_points"
+              },
+              "current": {
+                "basis": "ad_attributed",
+                "display_value": null,
+                "grain": [
+                  "period",
+                  "campaign",
+                  "marketplace"
+                ],
+                "period": {
+                  "end": "2026-08-21",
+                  "start": "2026-08-15"
+                },
+                "units": {
+                  "currency_code": null,
+                  "kind": "ratio"
+                },
+                "value": "0.0003"
+              },
+              "metric": "ctr",
+              "prior": {
+                "basis": "ad_attributed",
+                "display_value": null,
+                "grain": [
+                  "period",
+                  "campaign",
+                  "marketplace"
+                ],
+                "period": {
+                  "end": "2026-08-14",
+                  "start": "2026-08-08"
+                },
+                "units": {
+                  "currency_code": null,
+                  "kind": "ratio"
+                },
+                "value": "0.0003571428571428571428571428571"
+              }
+            }
+          ],
+          "freshness_qualifiers": [],
+          "signature": {
+            "channel": "Amazon DSP",
+            "effective_name": "Fictional DSP Retargeting",
+            "effective_name_status": "available",
+            "effective_name_valid_from": "2026-01-01",
+            "effective_name_valid_to": null,
+            "marketplace": "United States",
+            "platform": "Amazon Ads"
+          }
+        },
+        {
+          "capability": {
+            "expires_at": "2026-08-19T13:00:00+00:00",
+            "selection_reference": "v2_CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"
+          },
+          "comparisons": [
+            {
+              "absolute_change": "140",
+              "change": {
+                "direction": "up",
+                "display_text": "+25.0%",
+                "not_meaningful": null,
+                "sentiment": "neutral",
+                "unit": "percent"
+              },
+              "current": {
+                "basis": "ad_attributed",
+                "display_value": "700.00",
+                "grain": [
+                  "period",
+                  "campaign",
+                  "marketplace"
+                ],
+                "period": {
+                  "end": "2026-08-21",
+                  "start": "2026-08-15"
+                },
+                "units": {
+                  "currency_code": "USD",
+                  "kind": "currency"
+                },
+                "value": "700"
+              },
+              "metric": "spend",
+              "prior": {
+                "basis": "ad_attributed",
+                "display_value": "560.00",
+                "grain": [
+                  "period",
+                  "campaign",
+                  "marketplace"
+                ],
+                "period": {
+                  "end": "2026-08-14",
+                  "start": "2026-08-08"
+                },
+                "units": {
+                  "currency_code": "USD",
+                  "kind": "currency"
+                },
+                "value": "560"
+              }
+            },
+            {
+              "absolute_change": "0.5",
+              "change": {
+                "direction": "up",
+                "display_text": "+0.50\u00d7",
+                "not_meaningful": null,
+                "sentiment": "favourable",
+                "unit": "absolute"
+              },
+              "current": {
+                "basis": "ad_attributed",
+                "display_value": null,
+                "grain": [
+                  "period",
+                  "campaign",
+                  "marketplace"
+                ],
+                "period": {
+                  "end": "2026-08-21",
+                  "start": "2026-08-15"
+                },
+                "units": {
+                  "currency_code": null,
+                  "kind": "ratio"
+                },
+                "value": "3"
+              },
+              "metric": "attributed_roas",
+              "prior": {
+                "basis": "ad_attributed",
+                "display_value": null,
+                "grain": [
+                  "period",
+                  "campaign",
+                  "marketplace"
+                ],
+                "period": {
+                  "end": "2026-08-14",
+                  "start": "2026-08-08"
+                },
+                "units": {
+                  "currency_code": null,
+                  "kind": "ratio"
+                },
+                "value": "2.5"
+              }
+            },
+            {
+              "absolute_change": 7,
+              "change": {
+                "direction": "up",
+                "display_text": "+50.0%",
+                "not_meaningful": null,
+                "sentiment": "favourable",
+                "unit": "percent"
+              },
+              "current": {
+                "basis": "ad_attributed",
+                "display_value": null,
+                "grain": [
+                  "period",
+                  "campaign",
+                  "marketplace"
+                ],
+                "period": {
+                  "end": "2026-08-21",
+                  "start": "2026-08-15"
+                },
+                "units": {
+                  "currency_code": null,
+                  "kind": "count"
+                },
+                "value": 21
+              },
+              "metric": "purchases",
+              "prior": {
+                "basis": "ad_attributed",
+                "display_value": null,
+                "grain": [
+                  "period",
+                  "campaign",
+                  "marketplace"
+                ],
+                "period": {
+                  "end": "2026-08-14",
+                  "start": "2026-08-08"
+                },
+                "units": {
+                  "currency_code": null,
+                  "kind": "count"
+                },
+                "value": 14
+              }
+            },
+            {
+              "absolute_change": "0.0000333333333333333333333333333",
+              "change": {
+                "direction": "up",
+                "display_text": "+0.003 pts",
+                "not_meaningful": null,
+                "sentiment": "favourable",
+                "unit": "percentage_points"
+              },
+              "current": {
+                "basis": "ad_attributed",
+                "display_value": null,
+                "grain": [
+                  "period",
+                  "campaign",
+                  "marketplace"
+                ],
+                "period": {
+                  "end": "2026-08-21",
+                  "start": "2026-08-15"
+                },
+                "units": {
+                  "currency_code": null,
+                  "kind": "ratio"
+                },
+                "value": "0.0007"
+              },
+              "metric": "ctr",
+              "prior": {
+                "basis": "ad_attributed",
+                "display_value": null,
+                "grain": [
+                  "period",
+                  "campaign",
+                  "marketplace"
+                ],
+                "period": {
+                  "end": "2026-08-14",
+                  "start": "2026-08-08"
+                },
+                "units": {
+                  "currency_code": null,
+                  "kind": "ratio"
+                },
+                "value": "0.0006666666666666666666666666667"
+              }
+            }
+          ],
+          "freshness_qualifiers": [],
+          "signature": {
+            "channel": "Amazon DSP",
+            "effective_name": "Fictional DSP Prospecting",
+            "effective_name_status": "available",
+            "effective_name_valid_from": "2026-01-01",
+            "effective_name_valid_to": null,
+            "marketplace": "United States",
+            "platform": "Amazon Ads"
+          }
+        }
+      ],
+      "sort": {
+        "direction": "desc",
+        "field": "spend"
+      },
+      "total_count": 2,
+      "totals": [
+        {
+          "absolute_change": "-210",
+          "change": {
+            "direction": "down",
+            "display_text": "\u22129.1%",
+            "not_meaningful": null,
+            "sentiment": "neutral",
+            "unit": "percent"
+          },
+          "current": {
+            "basis": "ad_attributed",
+            "display_value": "2100.00",
+            "grain": [
+              "period",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-21",
+              "start": "2026-08-15"
+            },
+            "units": {
+              "currency_code": "USD",
+              "kind": "currency"
+            },
+            "value": "2100"
+          },
+          "metric": "spend",
+          "prior": {
+            "basis": "ad_attributed",
+            "display_value": "2310.00",
+            "grain": [
+              "period",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-14",
+              "start": "2026-08-08"
+            },
+            "units": {
+              "currency_code": "USD",
+              "kind": "currency"
+            },
+            "value": "2310"
+          }
+        },
+        {
+          "absolute_change": "0",
+          "change": {
+            "direction": "flat",
+            "display_text": "No change",
+            "not_meaningful": null,
+            "sentiment": "neutral",
+            "unit": "percent"
+          },
+          "current": {
+            "basis": "ad_attributed",
+            "display_value": null,
+            "grain": [
+              "period",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-21",
+              "start": "2026-08-15"
+            },
+            "units": {
+              "currency_code": null,
+              "kind": "count"
+            },
+            "value": "49"
+          },
+          "metric": "purchases",
+          "prior": {
+            "basis": "ad_attributed",
+            "display_value": null,
+            "grain": [
+              "period",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-14",
+              "start": "2026-08-08"
+            },
+            "units": {
+              "currency_code": null,
+              "kind": "count"
+            },
+            "value": "49"
+          }
+        },
+        {
+          "absolute_change": "21000",
+          "change": {
+            "direction": "up",
+            "display_text": "+8.1%",
+            "not_meaningful": null,
+            "sentiment": "neutral",
+            "unit": "percent"
+          },
+          "current": {
+            "basis": "ad_attributed",
+            "display_value": null,
+            "grain": [
+              "period",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-21",
+              "start": "2026-08-15"
+            },
+            "units": {
+              "currency_code": null,
+              "kind": "count"
+            },
+            "value": "280000"
+          },
+          "metric": "impressions",
+          "prior": {
+            "basis": "ad_attributed",
+            "display_value": null,
+            "grain": [
+              "period",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-14",
+              "start": "2026-08-08"
+            },
+            "units": {
+              "currency_code": null,
+              "kind": "count"
+            },
+            "value": "259000"
+          }
+        },
+        {
+          "absolute_change": "0.8485",
+          "change": {
+            "direction": "up",
+            "display_text": "+0.85\u00d7",
+            "not_meaningful": null,
+            "sentiment": "favourable",
+            "unit": "absolute"
+          },
+          "current": {
+            "basis": "ad_attributed",
+            "display_value": null,
+            "grain": [
+              "period",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-21",
+              "start": "2026-08-15"
+            },
+            "units": {
+              "currency_code": null,
+              "kind": "ratio"
+            },
+            "value": "2.6667"
+          },
+          "metric": "portfolio_roas_attributed_14d",
+          "prior": {
+            "basis": "ad_attributed",
+            "display_value": null,
+            "grain": [
+              "period",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-14",
+              "start": "2026-08-08"
+            },
+            "units": {
+              "currency_code": null,
+              "kind": "ratio"
+            },
+            "value": "1.8182"
+          }
+        }
+      ],
+      "trend": {
+        "basis": "ad_attributed",
+        "grain": [
+          "date",
+          "marketplace"
+        ],
+        "period": {
+          "end": "2026-08-21",
+          "start": "2026-08-15"
+        },
+        "points": [
+          {
+            "date": "2026-08-15",
+            "portfolio_roas_attributed_14d": "2.6667",
+            "purchases": "49",
+            "spend": "2100"
+          },
+          {
+            "date": "2026-08-16",
+            "portfolio_roas_attributed_14d": null,
+            "purchases": "0",
+            "spend": "0"
+          },
+          {
+            "date": "2026-08-17",
+            "portfolio_roas_attributed_14d": null,
+            "purchases": "0",
+            "spend": "0"
+          },
+          {
+            "date": "2026-08-18",
+            "portfolio_roas_attributed_14d": null,
+            "purchases": "0",
+            "spend": "0"
+          },
+          {
+            "date": "2026-08-19",
+            "portfolio_roas_attributed_14d": null,
+            "purchases": "0",
+            "spend": "0"
+          },
+          {
+            "date": "2026-08-20",
+            "portfolio_roas_attributed_14d": null,
+            "purchases": "0",
+            "spend": "0"
+          },
+          {
+            "date": "2026-08-21",
+            "portfolio_roas_attributed_14d": null,
+            "purchases": "0",
+            "spend": "0"
+          }
+        ],
+        "units": {
+          "portfolio_roas_attributed_14d": {
+            "currency_code": null,
+            "kind": "ratio"
+          },
+          "purchases": {
+            "currency_code": null,
+            "kind": "count"
+          },
+          "spend": {
+            "currency_code": "USD",
+            "kind": "currency"
+          }
+        }
+      }
+    },
+    "artifact_id": "campaign_catalog",
+    "artifact_revision": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "artifact_type": "CampaignPortfolioArtifact",
+    "artifact_version": 1,
+    "kind": "campaign_portfolio",
+    "page_context_expires_at": "2026-08-19T13:00:00+00:00",
+    "page_context_label": "Campaigns \u00b7 Amazon DSP \u00b7 Aug 15\u201321, 2026",
+    "page_id": "campaigns",
+    "route": "/campaigns/",
+    "scorecard_step": null,
+    "starter_questions": [
+      "Which campaign changed spend most between Aug 8\u201314, 2026 and Aug 15\u201321, 2026?",
+      "How is spend split across campaigns in Aug 15\u201321, 2026?"
+    ]
+  },
+  "session_id": "conversation-session",
+  "temporal": {
+    "comparison": {
+      "policy": "required_equal_prior",
+      "reason_code": null,
+      "status": "available"
+    },
+    "custom": {
+      "availability": "unavailable",
+      "bounds": null,
+      "reason_code": "custom_disabled"
+    },
+    "mode": "selectable",
+    "presets": [
+      {
+        "availability": "unavailable",
+        "id": "1d",
+        "label": "1D",
+        "reason_code": "preset_unavailable"
+      },
+      {
+        "availability": "available",
+        "id": "7d",
+        "label": "7D",
+        "reason_code": null
+      },
+      {
+        "availability": "unavailable",
+        "id": "14d",
+        "label": "14D",
+        "reason_code": "preset_unavailable"
+      },
+      {
+        "availability": "unavailable",
+        "id": "30d",
+        "label": "30D",
+        "reason_code": "preset_unavailable"
+      }
+    ],
+    "resolved": {
+      "display_grain": "period",
+      "reporting_window_status": "preferred_default",
+      "selection": {
+        "kind": "default",
+        "preset_id": null
+      },
+      "window": {
+        "end": "2026-08-21",
+        "start": "2026-08-15"
+      }
+    },
+    "version": 1
+  }
+}

@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1460 260" role="img" focusable="false" aria-labelledby="extend-it-title extend-it-desc">
+  <title id="extend-it-title">Call-flow diagram: how a change moves from a declared contract to a deployed environment</title>
+  <desc id="extend-it-desc">You edit a declared contract, such as a metric, a data contract, a page or a prompt. A make generate target regenerates the schemas, fixtures and typed code that depend on it. The local gates make check and make verify refuse any drift between contract, code and docs. Only a passing tree is deployed, with make deploy-all, first as a diff and then with approval.</desc>
+  <defs>
+    <marker id="extend-it-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#536275"/></marker>
+  </defs>
+  <rect x="0" y="0" width="1460" height="260" fill="#ffffff"/>
+  <g stroke-width="2">
+    <rect x="30" y="70" width="230" height="100" rx="10" fill="#fff4e0" stroke="#c77700" stroke-width="3"/>
+    <rect x="420" y="70" width="230" height="100" rx="10" fill="#f3fbf6" stroke="#2e7d4f"/>
+    <polygon points="925,40 1035,120 925,200 815,120" fill="#fff4e0" stroke="#c77700"/>
+    <rect x="1200" y="70" width="230" height="100" rx="10" fill="#ffffff" stroke="#9aa8bb"/>
+  </g>
+  <g fill="none" stroke="#536275" stroke-width="2" marker-end="url(#extend-it-arrow)">
+    <line x1="260" y1="120" x2="418" y2="120"/>
+    <line x1="650" y1="120" x2="813" y2="120"/>
+    <line x1="1035" y1="120" x2="1198" y2="120"/>
+  </g>
+  <g fill="none" stroke="#536275" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#extend-it-arrow)">
+    <path d="M925 200 V235 H145 V172"/>
+  </g>
+  <g font-family="Arial, sans-serif" fill="#172033" text-anchor="middle">
+    <g font-size="15" font-weight="bold">
+      <text x="145" y="108">Declared contract</text>
+      <text x="535" y="108">Generators</text>
+      <text x="925" y="116">make check,</text>
+      <text x="925" y="134">make verify</text>
+      <text x="1315" y="108">Your environment</text>
+    </g>
+    <g font-size="13" fill="#536275">
+      <text x="145" y="130">metric, data contract,</text>
+      <text x="145" y="146">page, prompt (YAML, Markdown)</text>
+      <text x="535" y="130">make generate-* targets:</text>
+      <text x="535" y="146">schemas, fixtures, typed code</text>
+      <text x="1315" y="130">CloudFormation stacks</text>
+      <text x="1315" y="146">from AWS CDK</text>
+    </g>
+    <g font-size="13">
+      <text x="337" y="100">regenerated</text>
+      <text x="337" y="114">from</text>
+      <text x="732" y="100">code, schemas</text>
+      <text x="732" y="114">and docs checked</text>
+      <text x="1117" y="100">passing tree:</text>
+      <text x="1117" y="114">make deploy-all</text>
+      <text x="535" y="252">drift refused: fix the contract or rerun the generator</text>
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,91 @@
+id: reach-overlap
+version: 1
+purpose: Deterministically state the shoppers DSP reached that sponsored ads didn't, as a share of every exposure group's shoppers on Amazon account IDs inside one complete period's exposure-groups delivery, naming the ID space and the 14-day window.
+display_name: Reach overlap (Reach and funnel)
+output_class: perspective
+allowed_inputs:
+  - server-computed shoppers reached per exposure group on Amazon account IDs inside one exposure-groups delivery for one complete week or month and one marketplace
+  - the period's server label and grain word
+deterministic_findings: [share-of-total]
+predicate:
+  required_evidence_inputs: [exposure-group-cells]
+  required_finding_kinds: [share-of-total]
+  materiality:
+    bases:
+      group_delivery:
+        per_unit:
+          share: {operational-pulse: "1", tactical-review: "1", pattern-confirmation: "1"}
+        per_metric: {}
+    near_zero_prior: {}
+  delivery_follow_up_evidence: []
+materiality_cases:
+  - {name: a DSP-only share of 1.00 is admitted at operational-pulse, horizon: operational-pulse, basis: group_delivery, kind: share-of-total, metric: shoppers_reached, current: "1", prior: "100", expect: admitted}
+  - {name: a DSP-only share of 1.00 is admitted at tactical-review, horizon: tactical-review, basis: group_delivery, kind: share-of-total, metric: shoppers_reached, current: "1", prior: "100", expect: admitted}
+  - {name: a DSP-only share of 1.00 is admitted at pattern-confirmation, horizon: pattern-confirmation, basis: group_delivery, kind: share-of-total, metric: shoppers_reached, current: "1", prior: "100", expect: admitted}
+  - {name: a DSP-only share of 0.99 is silent at tactical-review, horizon: tactical-review, basis: group_delivery, kind: share-of-total, metric: shoppers_reached, current: "0.99", prior: "100", expect: silent}
+silence_condition: DSP-only shoppers on Amazon account IDs are below the declared share of every exposure group's shoppers, or a cell the share needs came back not available.
+structured_output_schema: {id: insight-narration-v1, fields: [output_class, sentences]}
+initial_fictional_prompt: null
+calibration_cases:
+  - kind: known-correct
+    input_summary: Fictional DSP-only shoppers on Amazon account IDs hold a supplied share of every exposure group's shoppers in one complete week.
+    expected_outcome: Accept the deterministic statement naming the account ID space, the 14-day window and the lower-bound overlap.
+    horizon: tactical-review
+    findings:
+      - {name: DSP-only shoppers share of account-ID shoppers, value: "24.00"}
+  - kind: exploratory
+    input_summary: Fictional DSP-only and both-groups shares are close, which would invite a reading this deterministic slot never generates.
+    expected_outcome: The slot states the DSP-only share only; no prompt generates a reading.
+    horizon: pattern-confirmation
+    findings:
+      - {name: DSP-only shoppers share of account-ID shoppers, value: "21.00"}
+      - {name: Saw-both shoppers share of account-ID shoppers, value: "19.50"}
+  - kind: contradiction
+    input_summary: A fictional draft says DSP reached fewer shoppers alone than the supplied share shows.
+    expected_outcome: Reject the contradiction.
+    horizon: tactical-review
+    findings:
+      - {name: DSP-only shoppers share of account-ID shoppers, value: "24.00"}
+    draft:
+      sentences:
+        - Among Amazon account IDs, DSP alone reached 4 percent of shoppers.
+  - kind: fluent-unsupported
+    input_summary: A fluent draft presents the account-ID overlap as an exact count of shoppers who saw both kinds of ads, though DSP impressions Amazon couldn't link to an account aren't matched.
+    expected_outcome: Reject presenting the account overlap as exact rather than a lower bound.
+    horizon: tactical-review
+    findings:
+      - {name: Saw-both shoppers share of account-ID shoppers, value: "19.50"}
+    draft:
+      sentences:
+        - Exactly 19.5 percent of shoppers saw both DSP and sponsored ads.
+  - kind: derived-figure
+    input_summary: A fictional renderer states the DSP-only share derived from supplied account-ID shopper counts per exposure group.
+    expected_outcome: Accept the correctly derived share; this deterministic slot never generates one.
+    horizon: tactical-review
+    findings:
+      - {name: DSP-only shoppers on account IDs, value: "2400"}
+      - {name: Every exposure group's shoppers on account IDs, value: "10000"}
+    draft:
+      sentences:
+        - Among Amazon account IDs, DSP reached 2400 shoppers that sponsored ads didn't, 24 percent of the total.
+  - kind: miscomputed-derivation
+    input_summary: A fictional draft divides DSP-only shoppers on account IDs by every group's shoppers across both ID spaces.
+    expected_outcome: Reject the share, because its numerator and denominator count different ID spaces.
+    horizon: pattern-confirmation
+    findings:
+      - {name: DSP-only shoppers on account IDs, value: "2400"}
+      - {name: Every exposure group's shoppers on all ID types, value: "16000"}
+    draft:
+      sentences:
+        - DSP alone reached 15 percent of shoppers.
+  - kind: incompatible-basis
+    input_summary: A fictional draft adds this week's DSP-only shoppers to last week's, though one shopper can be reached in both weeks.
+    expected_outcome: Reject the summed shopper count, because distinct counts are never added across periods.
+    horizon: tactical-review
+    findings:
+      - {name: DSP-only shoppers on account IDs this week, value: "2400"}
+      - {name: DSP-only shoppers on account IDs last week, value: "2300"}
+    draft:
+      sentences:
+        - Over two weeks DSP alone reached 4700 shoppers.
+deep: null

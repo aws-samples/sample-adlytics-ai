@@ -1,0 +1,89 @@
+id: retail-movers
+version: 5
+purpose: Deterministically list the largest supplied retail product movement.
+display_name: Largest movers (Retail health)
+output_class: observed
+allowed_inputs:
+  - server-ranked retail product comparisons
+deterministic_findings: [ranked-absolute-change]
+predicate:
+  required_evidence_inputs: [retail-product-comparisons]
+  required_finding_kinds: [ranked-absolute-change]
+  materiality:
+    bases:
+      product_window:
+        per_unit:
+          currency: {operational-pulse: "150", tactical-review: "500", pattern-confirmation: "1500"}
+        per_metric: {}
+    near_zero_prior: {}
+  delivery_follow_up_evidence: []
+materiality_cases:
+  - {name: a product revenue move of 500 clears the tactical row, horizon: tactical-review, basis: product_window, kind: ranked-absolute-change, metric: retail_revenue_shipped, current: "1500", prior: "1000", expect: admitted}
+  - {name: a product revenue move of 499 is below the tactical row, horizon: tactical-review, basis: product_window, kind: ranked-absolute-change, metric: retail_revenue_shipped, current: "1499", prior: "1000", expect: silent}
+silence_condition: No supplied product movement exceeds the declared materiality threshold.
+structured_output_schema: {id: insight-narration-v1, fields: [output_class, sentences]}
+initial_fictional_prompt: null
+calibration_cases:
+  - kind: known-correct
+    input_summary: Fictional Product Aurora has the largest supplied shipped-revenue movement.
+    expected_outcome: Accept the deterministic ranked observation.
+    horizon: tactical-review
+    findings:
+      - {name: Product Aurora shipped revenue change, value: "2900"}
+      - {name: Product Birch shipped revenue change, value: "-1750"}
+  - kind: exploratory
+    input_summary: Fictional ranked products with close magnitudes would invite a reading, which this deterministic slot never generates.
+    expected_outcome: The slot renders ranked observations only; no prompt generates a reading.
+    horizon: pattern-confirmation
+    findings:
+      - {name: Product Aurora shipped revenue change, value: "1100"}
+      - {name: Product Birch shipped revenue change, value: "-1050"}
+  - kind: contradiction
+    input_summary: Fictional Product Aurora declines but the observation calls it an increase.
+    expected_outcome: Reject the contradiction.
+    horizon: operational-pulse
+    findings:
+      - {name: Product Aurora shipped revenue change, value: "-2200"}
+    draft:
+      sentences:
+        - Product Aurora led the gains, up 2200 in shipped revenue.
+  - kind: fluent-unsupported
+    input_summary: A fluent draft explains the ranked move with a stock figure outside the findings.
+    expected_outcome: Reject the figure that is neither supplied nor derived from the findings.
+    horizon: tactical-review
+    findings:
+      - {name: Product Aurora shipped revenue change, value: "2900"}
+    draft:
+      sentences:
+        - Product Aurora moved 2900 after inventory recovered to 480 units.
+  - kind: derived-figure
+    input_summary: A fictional renderer states Product Aurora's shipped revenue percentage change derived from its supplied values.
+    expected_outcome: Accept the correctly derived percentage change; this deterministic slot never generates one.
+    horizon: tactical-review
+    findings:
+      - {name: Product Aurora shipped revenue this window, value: "9700"}
+      - {name: Product Aurora shipped revenue prior window, value: "6800"}
+    draft:
+      sentences:
+        - Product Aurora's shipped revenue moved from 6800 to 9700, up about 43 percent.
+  - kind: miscomputed-derivation
+    input_summary: A fictional renderer divides Product Aurora's change by the current value instead of the prior one.
+    expected_outcome: Reject the miscomputed percentage change.
+    horizon: tactical-review
+    findings:
+      - {name: Product Aurora shipped revenue this window, value: "9700"}
+      - {name: Product Aurora shipped revenue prior window, value: "6800"}
+    draft:
+      sentences:
+        - Product Aurora's shipped revenue moved from 6800 to 9700, up about 30 percent.
+  - kind: incompatible-basis
+    input_summary: A fictional renderer compares a daily average with a window total.
+    expected_outcome: Reject the figure that combines findings of incompatible grain.
+    horizon: pattern-confirmation
+    findings:
+      - {name: Product Aurora shipped units daily average, value: "48"}
+      - {name: Product Birch shipped units window total, value: "310"}
+    draft:
+      sentences:
+        - Product Aurora trailed Product Birch by 262 shipped units.
+deep: null

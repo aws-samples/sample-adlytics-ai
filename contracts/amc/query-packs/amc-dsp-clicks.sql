@@ -1,0 +1,1 @@
+SELECT impression_date_utc, campaign_id_string, campaign_country, SUM(clicks) AS clicks, BUILT_IN_PARAMETER('TIME_WINDOW_START') AS time_window_start, BUILT_IN_PARAMETER('TIME_WINDOW_END') AS time_window_end FROM dsp_clicks GROUP BY impression_date_utc, campaign_id_string, campaign_country

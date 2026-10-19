@@ -1,0 +1,30 @@
+{
+  "reportSpecification": {
+    "reportType": "GET_VENDOR_TRAFFIC_REPORT",
+    "marketplaceIds": [
+      "ATVPDKIKX0DER"
+    ],
+    "dataStartTime": "2025-06-16",
+    "dataEndTime": "2025-06-21",
+    "lastUpdatedDate": "2025-06-22T00:00:00Z",
+    "reportOptions": {
+      "reportPeriod": "DAY"
+    }
+  },
+  "trafficByAsin": [
+    {"asin": "B0TRAP0001", "startDate": "2025-06-16", "glanceViews": 85},
+    {"asin": "B0TRAP0002", "startDate": "2025-06-17", "glanceViews": 170},
+    {"asin": "B0TRAP0003", "startDate": "2025-06-18", "glanceViews": 255},
+    {"asin": "B0TRAP0004", "startDate": "2025-06-19", "glanceViews": 340},
+    {"asin": "B0TRAP0005", "startDate": "2025-06-20", "glanceViews": 425},
+    {"asin": "B0TRAP0006", "startDate": "2025-06-21", "glanceViews": 510}
+  ],
+  "trafficAggregate": [
+    {"startDate": "2025-06-16", "glanceViews": 85},
+    {"startDate": "2025-06-17", "glanceViews": 170},
+    {"startDate": "2025-06-18", "glanceViews": 255},
+    {"startDate": "2025-06-19", "glanceViews": 340},
+    {"startDate": "2025-06-20", "glanceViews": 425},
+    {"startDate": "2025-06-21", "glanceViews": 510}
+  ]
+}

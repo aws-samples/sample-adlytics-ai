@@ -1,0 +1,159 @@
+# vendor-product-hierarchy — the ASIN hierarchy and product identity, from Data Kiosk.
+#
+# The contract nothing else works without. Every fact in the model resolves amazon_asin
+# against dim_product on the amazon_asin namespace, so until this loads, four contracts can
+# land rows whose product cannot be identified.
+#
+# WHY DATA KIOSK AND NOT THE REPORTS API. Vendor sales and traffic reports carry no
+# parentAsin and no asinGranularity option, and the docs never state whether their `asin` is
+# a parent or a child [unverified]. Data Kiosk states the hierarchy explicitly. Decided in
+# ADR-020: facts come from the Reports API, product identity comes from here, and never both
+# for the same dataset. Dataset analytics_vendorAnalytics_2024_09_30. [verified]
+#
+# THIS ALSO SUPPLIES BRAND, which corrects a recorded gap. docs/sources/amc.md section 9 and
+# canonical-model both sent `brand` to AMC's amazon_retail_purchases — a PAID feature — or to
+# an external catalogue, and treated it as a procurement decision. Data Kiosk exposes `brand`
+# and `brandCode` as group-by dimensions [verified], so brand needs neither. That moves
+# "how did brand X perform" from unanswerable to answerable and removes one of the three
+# capabilities riding on the Q-07 paid-features decision. ADR-020 is amended accordingly.
+#
+# LOAD SEMANTICS ARE SCD2, NOT PARTITION OVERWRITE. Variation relationships change: an ASIN
+# can move to a different parent, and a brand can be renamed. Overwriting would silently
+# rewrite history and make last quarter's brand rollup disagree with itself. Each incoming
+# row is compared against the current version and closes the old one. Owned by
+# docs/concepts/slowly-changing-dimensions.md.
+
+contract_id: vendor-product-hierarchy
+contract_version: 1
+
+source_system: vendor_data_kiosk
+source_dataset: analytics_vendorAnalytics_2024_09_30
+# JSONL, flatter than the Reports API's dual-array documents. The one other reader this
+# model needs, and the reason source_format is declared as data rather than written as code.
+source_format: jsonl
+
+target_table: dim_product
+
+# SCD2 grain: one row per ASIN per marketplace per validity window. valid_from is part of
+# the key because two rows for the same ASIN legitimately coexist when an attribute changed.
+grain:
+  - amazon_asin
+  - marketplace_key
+  - valid_from
+
+partition_keys:
+  - marketplace_key
+
+# A dimension is not a measurement, so it carries no basis of its own. Stamped as the
+# literal that says so rather than left absent, because absent would read as an oversight
+# on the one field that must never be inferred.
+measurement_basis: retail_actual
+
+# Data Kiosk takes a currencyCode argument and reports business facts in local time, but this
+# hierarchy exposes no source business/effective date. Semantic V2 therefore does not use this
+# value for snapshot validity: the source pack declares system_first_observed and compiles one
+# technical_utc/UTC bucket from immutable raw-manifest S3 metadata. Kept for the legacy contract
+# interface until that path is retired; it must never be presented as hierarchy business time.
+source_timezone: PST
+ecosystem_key: amazon
+platform_key: amazon_retail
+
+# Hierarchy changes are not restatements — a moved ASIN is a new version, not a correction.
+# But a late-arriving change must still be able to open a new version, so the load re-reads
+# a trailing window rather than only today.
+restatement_window_days: 7
+
+# Data Kiosk is ready after 34 hours, with a given day available at 10 AM local two days
+# later. 96 allows one missed delivery before alarming. A stale hierarchy degrades every
+# product-grain answer, so this is the one staleness that should alarm loudly.
+staleness_threshold_hours: 96
+
+# Not AMC, so no threshold rules and no suppression. Data Kiosk has no privacy-threshold
+# mechanism of its own.
+source_tables: []
+
+fields:
+  # --- identity --------------------------------------------------------------
+  - source_path: asin
+    target_column: amazon_asin
+    target_type: string
+    # The child ASIN, and the natural key every fact joins on. Namespaced deliberately:
+    # ASIN is an identifier namespace, not a concept, so nothing in the model is named
+    # after it and a second platform adds a column rather than a table.
+
+  - source_path: parentAsin
+    target_column: amazon_parent_asin
+    target_type: string
+    nullable: true
+    null_meaning: unsupported_by_channel
+    # Null for an ASIN with no variation family — a standalone product is its own thing,
+    # not a product missing a parent. Emphatically not "unknown": Data Kiosk states the
+    # hierarchy, so an absent parent is a fact about the product.
+    #
+    # This is the column that closes the parent-versus-child ambiguity. If the Reports API
+    # `asin` ever disagrees with this hierarchy, the mismatch surfaces as an ASIN that
+    # cannot be resolved in dim_product — a loud failure instead of a silently wrong
+    # rollup, which is the whole point of ADR-020.
+
+  - source_path: marketplaceId
+    target_column: marketplace_key
+    target_type: string
+    # Data Kiosk returns multiple marketplaces per call, unlike the Reports API's one per
+    # document. Resolved against dim_marketplace on the marketplace_id namespace — the
+    # same namespace the vendor fact contracts use, so no conformance work is needed.
+
+  # --- attributes ------------------------------------------------------------
+  - source_path: productTitle
+    target_column: product_title
+    target_type: string
+    nullable: true
+    null_meaning: not_yet_available
+    # Can lag for a newly listed ASIN.
+
+  - source_path: brand
+    target_column: brand
+    target_type: string
+    nullable: true
+    null_meaning: not_yet_available
+    # THE CORRECTED GAP. Previously sourced from AMC ARP's asin_brand, a paid feature, or
+    # from an external catalogue — and treated as a procurement decision rather than an
+    # implementation detail. Data Kiosk exposes it as a group-by dimension [verified].
+    #
+    # Brand membership was otherwise only IMPLIED by AMC's brand_halo_* metric family,
+    # which tells you a halo product shares the brand without ever naming it. That is why
+    # "how did brand X perform" was in the never-answerable bucket.
+
+  - source_path: brandCode
+    target_column: brand_code
+    target_type: string
+    nullable: true
+    null_meaning: not_yet_available
+    # The stable identifier behind the display name. Carried because brands get renamed,
+    # and an SCD2 dimension keyed on a display string would fork history on a rename.
+
+  # --- SCD2 bookkeeping ------------------------------------------------------
+  # Ours, not the source's. Data Kiosk reports current state with no validity window. V2 assigns
+  # these from the immutable raw manifest version's system_first_observed instant; they are
+  # technical observation bounds, never Amazon business-effective dates.
+  # assigned_by_load, not literals. Both were declared as literals whose "value" was prose
+  # describing who fills them in — so the mapper stamped that prose into a timestamp column
+  # and the row model rejected it. The merge computes the window by finding the row this one
+  # supersedes, which is knowledge no mapping has.
+  - target_column: valid_from
+    target_type: timestamp
+    assigned_by_load: true
+
+  - target_column: valid_to
+    target_type: timestamp
+    assigned_by_load: true
+
+  - target_column: is_current
+    target_type: boolean
+    literal_value: "true"
+    # True on insert; set false by the merge when a later version supersedes this row.
+
+tags:
+  - phase-1
+  - vendor-central
+  - data-kiosk
+  - dimension

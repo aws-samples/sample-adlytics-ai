@@ -1,0 +1,229 @@
+version: 1
+revision: "2026-10-09.2"
+parent:
+  path: docs/ui/README.md
+  status: "Approved for implementation — manifest revision `2026-10-09.2` (revised 2026-10-09 — business outcomes wave 2b revises four page packages: New customers adds new buyers and cost per new buyer per channel under the platform tiles, with `NewCustomersArtifact` v2; Audiences labels each segment by its provider, Amazon or third party, and states that DSP behaviour segments and Amazon audience segments use different IDs and are never linked; Retention adds the designed state for a vintage built on calendar-quarter cohorts, and its scope band names the cohort grain; Reach and funnel relabels the funnel's branded-search rate as search rate, because AMC's documentation doesn't say searchConversion is a branded search; approved under the owner's UI/IA approval of 2026-10-07 (owner-decisions-ui.md) with owner ratification of the revision pending; the Scorecard's open item for New customers names the v2 artifact, with no change to the Scorecard's design; every other package is carried forward unchanged. Prior revision `2026-10-09.1` (2026-10-09) — adds the New customers page package, built from the information-architecture New customers mockup and the business outcomes design, approved under the owner's UI/IA approval of 2026-10-07 (owner-decisions-ui.md) with owner ratification of the package pending; the Scorecard's open item for New customers now points to that package, with no change to the Scorecard's design; every other package is carried forward unchanged. Prior revision `2026-10-08.1` (2026-10-08) — adds the Scorecard, Reach and funnel, Audiences, Retention and Repeat purchase by product page packages, built from the UI and information-architecture mockups and design, and one Retail health page action that links to Repeat purchase by product, with no change to its time model; approved under the owner's UI/IA approval of 2026-10-07 (owner-decisions-ui.md); the campaign-portfolio and prompt-administration packages are carried forward unchanged. Prior revision `2026-10-01.1` (2026-10-01) — monetary values display at two decimal places from a server-derived display value on the campaign portfolio, campaign detail, retail health, and the metric-focus dialog, which moves to `MetricFocus.v3` (ADR-084), and prompt versions state who created them, by email resolved at read time (ADR-069 amendment); the campaign-portfolio mockup is carried forward unchanged. Prior revision `2026-09-25.1` (2026-09-25) — the insight and metric-focus dialogs rebalance — the deep analysis renders as a full-width band beneath the dialog's evidence with readings three-up wide, the insight dialog goes single-column, provenance collapses to one customer-word strip, and no citations or internal vocabulary render anywhere customer-facing — grounding verification stays server-side. Prior revision `2026-09-24.1` (2026-09-24) — the campaign detail summary metrics render as a uniform two-row × four-column grid of equal tiles, superseding the labeled section grouping and, for that strip only, the single-row card-group rule; also carries the ADR-076 slice D prompt-administration wire-contract amendment, tier dimension and fragment digests. Prior revision `2026-09-23.4` carried insight absence states per the [insight-presentation contract](insight-presentation-contract.md) and the 2026-09-23 UX revisions — single-row equal-height card groups, raised type-tier contrast with full-strength card body text, full-width retail insight rows, 10-row display paging, and the in-detail campaign switcher; accepted 2026-09-23; frontend implementation delivered and live-verified 2026-09-24)"
+  implementation_disposition: approved_for_implementation
+  implementation_decision_date: "2026-10-07"
+  approval_scope: "The workspace declared in `docs/ui/design-manifest.yaml`. Campaign Portfolio (portfolio and campaign detail), Retail health, and Prompt Administration carry the command-center visual language. From revision `2026-10-08.1`, the Scorecard, Reach and funnel, Audiences, Retention, and Repeat purchase by product packages, and from revision `2026-10-09.1` the New customers package, carry the information-architecture visual language; each is implemented only in its own build slice, once that slice's prerequisites and route approval are met. The channel, product, marketplace, evidence-health, and media-efficiency pages are retired from the frontend; their presentation APIs remain deployed for reuse"
+gallery: docs/ui/mockups/index.html
+shared_owners:
+  - id: temporal-control
+    members:
+      - docs/ui/temporal-control-contract.md
+  - id: metric-focus
+    members:
+      - docs/ui/metric-focus-contract.md
+  - id: insight-presentation
+    members:
+      - docs/ui/insight-presentation-contract.md
+  - id: theme-preference
+    members:
+      - docs/ui/theme-preference-contract.md
+  - id: visual-narration
+    members:
+      - docs/ui/visual-narration-harness.md
+      - docs/ui/diagrams/narration-prompt.svg
+      - docs/ui/diagrams/narration-flow.svg
+  - id: workspace-assistant
+    members:
+      - docs/ui/workspace-assistant.md
+  - id: cutover
+    members:
+      - docs/ui/implementation-cutover.md
+  - id: readiness-review
+    members:
+      - docs/ui/design-readiness-review.md
+  # Added at 2026-10-08.1: the information-architecture design the five business-outcome
+  # packages are built from, and the stylesheet their static mockups share.
+  - id: information-architecture
+    members:
+      - docs/ui/information-architecture/README.md
+      - docs/ui/information-architecture/delivery-slices.md
+      - docs/ui/information-architecture/diagrams/site-map.svg
+  - id: hub-mockup-style
+    members:
+      - docs/ui/mockups/hub-workspace.css
+pages:
+  - id: campaign-portfolio
+    readme: docs/ui/campaign-portfolio/README.md
+    mockup: docs/ui/campaign-portfolio/mockup.html
+    members:
+      - docs/ui/campaign-portfolio/README.md
+      - docs/ui/campaign-portfolio/high-level-design.md
+      - docs/ui/campaign-portfolio/operational-design.md
+      - docs/ui/campaign-portfolio/low-level-design.md
+      - docs/ui/campaign-portfolio/mockup.html
+      - docs/ui/campaign-portfolio/command-center-draft.css
+      - docs/ui/campaign-portfolio/diagrams/campaign-journey.svg
+      - docs/ui/campaign-portfolio/diagrams/campaign-topology.svg
+      - docs/ui/campaign-portfolio/diagrams/campaign-flow.svg
+      - docs/ui/campaign-portfolio/diagrams/campaign-custody.svg
+      - docs/ui/campaign-portfolio/diagrams/campaign-state.svg
+    shared_owners:
+      - temporal-control
+      - metric-focus
+      - theme-preference
+      - visual-narration
+      - workspace-assistant
+      - cutover
+      - readiness-review
+  - id: retail-health
+    readme: docs/ui/retail-health/README.md
+    mockup: docs/ui/retail-health/mockup.html
+    members:
+      - docs/ui/retail-health/README.md
+      - docs/ui/retail-health/high-level-design.md
+      - docs/ui/retail-health/operational-design.md
+      - docs/ui/retail-health/low-level-design.md
+      - docs/ui/retail-health/mockup.html
+    shared_owners:
+      - temporal-control
+      - metric-focus
+      - theme-preference
+      - workspace-assistant
+  - id: prompt-administration
+    readme: docs/ui/prompt-administration/README.md
+    mockup: docs/ui/prompt-administration/mockup.html
+    members:
+      - docs/ui/prompt-administration/README.md
+      - docs/ui/prompt-administration/high-level-design.md
+      - docs/ui/prompt-administration/operational-design.md
+      - docs/ui/prompt-administration/low-level-design.md
+      - docs/ui/prompt-administration/mockup.html
+    shared_owners:
+      - theme-preference
+      - cutover
+# Added at 2026-10-08.1, approved under the owner's UI/IA approval of 2026-10-07
+# (owner-decisions-ui.md). Each mockup state is its own static file.
+  - id: scorecard
+    readme: docs/ui/scorecard/README.md
+    mockup: docs/ui/scorecard/mockup.html
+    members:
+      - docs/ui/scorecard/README.md
+      - docs/ui/scorecard/high-level-design.md
+      - docs/ui/scorecard/low-level-design.md
+      - docs/ui/scorecard/mockup.html
+      - docs/ui/scorecard/mockup-dialog-insight.html
+      - docs/ui/scorecard/mockup-dialog-metric.html
+      - docs/ui/scorecard/mockup-dialog-rk-wk-sp.html
+      - docs/ui/scorecard/mockup-highlight.html
+      - docs/ui/scorecard/mockup-last-complete-month.html
+      - docs/ui/scorecard/mockup-light.html
+      - docs/ui/scorecard/mockup-loading.html
+      - docs/ui/scorecard/mockup-suppressed.html
+    shared_owners:
+      - temporal-control
+      - metric-focus
+      - insight-presentation
+      - theme-preference
+      - workspace-assistant
+      - information-architecture
+      - hub-mockup-style
+# Added at 2026-10-09.1, built from the information-architecture New customers mockup and approved
+# under the owner's UI/IA approval of 2026-10-07 (owner-decisions-ui.md); owner ratification pending.
+# Revised at 2026-10-09.2 (per-channel new buyers, NewCustomersArtifact v2); no member added.
+  - id: new-customers
+    readme: docs/ui/new-customers/README.md
+    mockup: docs/ui/new-customers/mockup.html
+    members:
+      - docs/ui/new-customers/README.md
+      - docs/ui/new-customers/high-level-design.md
+      - docs/ui/new-customers/low-level-design.md
+      - docs/ui/new-customers/mockup.html
+      - docs/ui/new-customers/mockup-30d.html
+      - docs/ui/new-customers/mockup-dialog-insight.html
+      - docs/ui/new-customers/mockup-last-complete-month.html
+      - docs/ui/new-customers/mockup-last-complete-week.html
+      - docs/ui/new-customers/mockup-light.html
+      - docs/ui/new-customers/mockup-loading.html
+    shared_owners:
+      - temporal-control
+      - insight-presentation
+      - theme-preference
+      - workspace-assistant
+      - information-architecture
+      - hub-mockup-style
+  - id: reach-and-funnel
+    readme: docs/ui/reach-and-funnel/README.md
+    mockup: docs/ui/reach-and-funnel/mockup.html
+    members:
+      - docs/ui/reach-and-funnel/README.md
+      - docs/ui/reach-and-funnel/high-level-design.md
+      - docs/ui/reach-and-funnel/low-level-design.md
+      - docs/ui/reach-and-funnel/mockup.html
+      - docs/ui/reach-and-funnel/mockup-dialog-insight.html
+      - docs/ui/reach-and-funnel/mockup-dialog-ov-mo.html
+      - docs/ui/reach-and-funnel/mockup-instant.html
+      - docs/ui/reach-and-funnel/mockup-last-complete-week.html
+      - docs/ui/reach-and-funnel/mockup-light.html
+      - docs/ui/reach-and-funnel/mockup-loading.html
+      - docs/ui/reach-and-funnel/mockup-missing.html
+      - docs/ui/reach-and-funnel/mockup-nocredit.html
+      - docs/ui/reach-and-funnel/mockup-pending.html
+    shared_owners:
+      - temporal-control
+      - metric-focus
+      - insight-presentation
+      - theme-preference
+      - workspace-assistant
+      - information-architecture
+      - hub-mockup-style
+  - id: audiences
+    readme: docs/ui/audiences/README.md
+    mockup: docs/ui/audiences/mockup.html
+    members:
+      - docs/ui/audiences/README.md
+      - docs/ui/audiences/high-level-design.md
+      - docs/ui/audiences/low-level-design.md
+      - docs/ui/audiences/mockup.html
+      - docs/ui/audiences/mockup-dialog-insight.html
+      - docs/ui/audiences/mockup-dsp-paid.html
+      - docs/ui/audiences/mockup-light.html
+      - docs/ui/audiences/mockup-loading.html
+      - docs/ui/audiences/mockup-paid.html
+    shared_owners:
+      - temporal-control
+      - metric-focus
+      - insight-presentation
+      - theme-preference
+      - workspace-assistant
+      - information-architecture
+      - hub-mockup-style
+  - id: retention
+    readme: docs/ui/retention/README.md
+    mockup: docs/ui/retention/mockup.html
+    members:
+      - docs/ui/retention/README.md
+      - docs/ui/retention/high-level-design.md
+      - docs/ui/retention/low-level-design.md
+      - docs/ui/retention/mockup.html
+      - docs/ui/retention/mockup-dialog-insight.html
+      - docs/ui/retention/mockup-light.html
+      - docs/ui/retention/mockup-loading.html
+    shared_owners:
+      - temporal-control
+      - metric-focus
+      - insight-presentation
+      - theme-preference
+      - workspace-assistant
+      - information-architecture
+      - hub-mockup-style
+  - id: repeat-purchase-by-product
+    readme: docs/ui/repeat-purchase-by-product/README.md
+    mockup: docs/ui/repeat-purchase-by-product/mockup.html
+    members:
+      - docs/ui/repeat-purchase-by-product/README.md
+      - docs/ui/repeat-purchase-by-product/high-level-design.md
+      - docs/ui/repeat-purchase-by-product/low-level-design.md
+      - docs/ui/repeat-purchase-by-product/mockup.html
+      - docs/ui/repeat-purchase-by-product/mockup-light.html
+      - docs/ui/repeat-purchase-by-product/mockup-loading.html
+      - docs/ui/repeat-purchase-by-product/mockup-noaccess.html
+    shared_owners:
+      - temporal-control
+      - insight-presentation
+      - theme-preference
+      - workspace-assistant
+      - information-architecture
+      - hub-mockup-style

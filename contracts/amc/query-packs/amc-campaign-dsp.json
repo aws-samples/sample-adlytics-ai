@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "packId": "amc-campaign-dsp",
+  "packVersion": 1,
+  "contractId": "amc-campaign-dsp",
+  "sourcePackId": "amc-campaign-dsp",
+  "queryFile": "amc-campaign-dsp.sql",
+  "accessTier": "standard",
+  "liveValidation": "required",
+  "maxResultBytes": 10000000,
+  "executionOptions": {
+    "timeWindowType": "EXPLICIT",
+    "timeWindowTimeZone": "UTC",
+    "filteredMetricsDiscriminatorColumn": "rows_suppressed",
+    "filteredReasonColumn": "suppression_reason",
+    "distinctUserCountColumn": "distinct_user_count"
+  },
+  "safetyBlockers": [],
+  "rejectSuppressedRows": true,
+  "outputColumns": [
+    "source_observed_on",
+    "campaign_id_string",
+    "campaign",
+    "advertiser_id",
+    "advertiser",
+    "campaign_country",
+    "time_window_start",
+    "time_window_end",
+    "rows_suppressed",
+    "suppression_reason",
+    "distinct_user_count"
+  ]
+}

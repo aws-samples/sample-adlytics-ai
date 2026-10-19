@@ -1,0 +1,127 @@
+# amc-segment-metadata — the names and categories of Amazon audience segments (ASI), for
+# dim_audience_segment.
+#
+# Pack 13 of the audience family (ADR-103; design §5.2 row 13, §6.5). Audience Segment Insights
+# is a paid feature (ADR-107): the pack is accessTier paid_feature, and a workspace with no
+# delivery reads the ADR-107 state, never "not subscribed". One row per segment of
+# segment_metadata under the pinned US segment_marketplace_id (amc.segment_marketplace_id in
+# contracts/shared/commerce-identities.yaml; the page makes every ASI query filter on it), with
+# its name, description and categories. The rows land in dim_audience_segment under the
+# namespace amc_asi, kept separate from amc_dsp_behavior (pack 9) with no shared key: P-BO-4
+# step 1 failed on 2026-10-09 (ADR-103 point 6).
+#
+# segment_metadata is a DIMENSION dataset with no event time, so the monthly window only names
+# the month this description is valid from; whether AMC applies the window to it is
+# [unverified]. Free-text names and descriptions read through the AMC CSV dialect, as pack 9.
+# discard_suppressed_rows (owner decision 3): a withheld row is dropped and its segment keeps
+# its earlier version.
+contract_id: amc-segment-metadata
+contract_version: 1
+source_system: amc
+source_dataset: segment_metadata
+source_format: csv
+target_table: dim_audience_segment
+source_tables:
+  - segment_metadata
+grain:
+  - platform_key
+  - segment_namespace
+  - segment_id
+  - segment_marketplace_key
+  - valid_from
+key_unique_among_unsuppressed_only: true
+partition_keys:
+  - segment_marketplace_key
+measurement_basis: ad_attributed
+source_timezone: UTC
+ecosystem_key: amazon
+platform_key: amazon_ads
+restatement_window_days: 30
+staleness_threshold_hours: 840
+grain_feasibility_note: >
+  Every output column is LOW or NONE: segment_marketplace_id, segment_id, segment_name,
+  segment_description and the three category columns, so the bar is 2 distinct users per row.
+  The table has no user column.
+suppression:
+  discriminator_column: rows_suppressed
+  reason_column: suppression_reason
+  distinct_user_count_column: distinct_user_count
+fields:
+  # --- business key ----------------------------------------------------------
+  - target_column: platform_key
+    target_type: string
+    assigned_by_load: true
+  - target_column: ecosystem_key
+    target_type: string
+    assigned_by_load: true
+  - target_column: segment_namespace
+    target_type: string
+    literal_value: amc_asi
+    value_domain: [amc_asi]
+  - source_path: segment_id
+    target_column: segment_id
+    target_type: string
+    # LOW. INTEGER in AMC, unique only within segment_marketplace_id; stored as decimal text.
+  - source_path: segment_marketplace_id
+    target_column: segment_marketplace_key
+    target_type: string
+    # LOW, LONG on this table. Resolved through amc.segment_marketplace_id ('1' is amazon_us).
+  # --- attributes ------------------------------------------------------------
+  - source_path: MAX(segment_name)
+    target_column: segment_name
+    target_type: string
+    derived_from:
+      - segment_name
+    nullable: true
+    null_meaning: not_yet_available
+  - source_path: MAX(segment_description)
+    target_column: segment_description
+    target_type: string
+    derived_from:
+      - segment_description
+    nullable: true
+    null_meaning: not_yet_available
+  - source_path: MAX(category_level_1)
+    target_column: category_level_1
+    target_type: string
+    derived_from:
+      - category_level_1
+    nullable: true
+    null_meaning: not_yet_available
+  - source_path: MAX(category_level_2)
+    target_column: category_level_2
+    target_type: string
+    derived_from:
+      - category_level_2
+    nullable: true
+    null_meaning: not_yet_available
+  - source_path: MAX(category_path)
+    target_column: category_path
+    target_type: string
+    derived_from:
+      - category_path
+    nullable: true
+    null_meaning: not_yet_available
+  # Amazon for every ASI segment, by the namespace rule in
+  # contracts/shared/audience-segment-providers.yaml, applied at load.
+  - target_column: provider
+    target_type: string
+    assigned_by_load: true
+    nullable: true
+    null_meaning: not_yet_available
+    value_domain: [amazon, third_party]
+  # --- SCD2 bookkeeping, as dim_product ----------------------------------------
+  - target_column: valid_from
+    target_type: timestamp
+    assigned_by_load: true
+  - target_column: valid_to
+    target_type: timestamp
+    assigned_by_load: true
+  - target_column: is_current
+    target_type: boolean
+    literal_value: "true"
+tags:
+  - amc
+  - dimension
+  - audience-segment
+  - paid-feature

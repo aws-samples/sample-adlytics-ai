@@ -1,0 +1,75 @@
+{
+  "schema_version": "AgentRegressionSet.v1",
+  "set_version": 1,
+  "description": "Fictional question families spanning platform, customer, derived, general, ambiguous, and unsupported intent, answered against the synthetic fixture.",
+  "questions": [
+    {
+      "name": "platform_metric_inventory",
+      "intent": "platform",
+      "question": "Which metrics can this fictional workspace report?",
+      "expected": {
+        "grounded_correctness": ["Grounded"],
+        "internal_consistency": ["Consistent"],
+        "helpfulness": ["Excellent", "Good"]
+      }
+    },
+    {
+      "name": "customer_breakdown",
+      "intent": "customer",
+      "question": "Report retail_revenue_shipped by product in the United States marketplace on August 11, 2026.",
+      "expected": {
+        "grounded_correctness": ["Grounded"],
+        "internal_consistency": ["Consistent"],
+        "helpfulness": ["Excellent", "Good"]
+      }
+    },
+    {
+      "name": "derived_percentage_change",
+      "intent": "derived",
+      "question": "By what percentage did total retail_revenue_shipped change in the United States marketplace from August 10, 2026 to August 11, 2026?",
+      "expected": {
+        "grounded_correctness": ["Grounded"],
+        "internal_consistency": ["Consistent"],
+        "helpfulness": ["Excellent", "Good"]
+      }
+    },
+    {
+      "name": "ranking",
+      "intent": "customer",
+      "question": "Rank the top five products by retail_revenue_shipped in the United States marketplace on August 11, 2026.",
+      "expected": {
+        "grounded_correctness": ["Grounded"],
+        "internal_consistency": ["Consistent"],
+        "helpfulness": ["Excellent", "Good"]
+      }
+    },
+    {
+      "name": "general_concept",
+      "intent": "general",
+      "question": "In general terms, what does return on ad spend measure?",
+      "expected": {
+        "grounded_correctness": ["Not Applicable", "Grounded"],
+        "internal_consistency": ["Consistent"],
+        "helpfulness": ["Excellent", "Good"]
+      }
+    },
+    {
+      "name": "ambiguous_reference",
+      "intent": "ambiguous",
+      "question": "How does it compare with the earlier one?",
+      "expected": {
+        "grounded_correctness": ["Not Applicable"],
+        "helpfulness": ["Excellent", "Good"]
+      }
+    },
+    {
+      "name": "undeclared_metric",
+      "intent": "unsupported",
+      "question": "Explain the fictional undeclared metric lunar basket affinity.",
+      "expected": {
+        "grounded_correctness": ["Grounded", "Not Applicable"],
+        "helpfulness": ["Excellent", "Good"]
+      }
+    }
+  ]
+}

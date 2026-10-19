@@ -1,0 +1,145 @@
+id: metric-focus
+version: 9
+purpose: Explain one focused campaign metric using its supplied summary, comparator, series, facts, and declared drivers.
+display_name: Why this moved (Campaigns)
+output_class: perspective
+allowed_inputs:
+  - reporting and comparison window display context
+  - selected campaign or portfolio display identity
+  - focused metric display label and its dictionary definition line
+  - full summary comparison section (current and prior metrics)
+  - server-computed facts (peak day, trough day, largest single-day move, window total or average)
+  - per-campaign contribution drivers with each contributor's exact change and share of the move
+  - declared numerator and denominator movements for a ratio metric
+  - server-computed deterministic findings
+  - typed window profile (window length, grain, aligned prior, horizon role)
+deterministic_findings:
+  - absolute-change
+  - percentage-change
+  - ranked-absolute-change
+  - share-of-total
+predicate:
+  required_evidence_inputs: [focused-metric]
+  required_finding_kinds: [absolute-change]
+  materiality:
+    bases:
+      portfolio_window:
+        per_unit:
+          currency: {operational-pulse: "1000", tactical-review: "4000", pattern-confirmation: "20000"}
+          multiplier: {operational-pulse: "0.03", tactical-review: "0.06", pattern-confirmation: "0.12"}
+          percent: {operational-pulse: "4.0", tactical-review: "8.0", pattern-confirmation: "7.7"}
+        per_metric:
+          purchases: {operational-pulse: "80", tactical-review: "500", pattern-confirmation: "4000"}
+          impressions: {operational-pulse: "8000", tactical-review: "40000", pattern-confirmation: "250000"}
+      campaign_window:
+        per_unit:
+          currency: {operational-pulse: "20", tactical-review: "300", pattern-confirmation: "1500"}
+          count: {operational-pulse: "3", tactical-review: "40", pattern-confirmation: "150"}
+          multiplier: {operational-pulse: "0.25", tactical-review: "0.15", pattern-confirmation: "0.10"}
+          rate_pp: {operational-pulse: "0.5", tactical-review: "0.3", pattern-confirmation: "0.2"}
+          percent: {operational-pulse: "10", tactical-review: "5", pattern-confirmation: "5"}
+        per_metric:
+          impressions: {operational-pulse: "400", tactical-review: "5000", pattern-confirmation: "20000"}
+          clicks: {operational-pulse: "40", tactical-review: "500", pattern-confirmation: "2000"}
+          cpc: {operational-pulse: "0.05", tactical-review: "0.03", pattern-confirmation: "0.02"}
+          cpm: {operational-pulse: "5.00", tactical-review: "3.00", pattern-confirmation: "2.00"}
+    near_zero_prior:
+      currency: "5"
+      count: "5"
+      rate_pp: "0.5"
+      multiplier: "0.1"
+      unit_price:
+        cpc: "0.05"
+        cpm: "1.50"
+  delivery_follow_up_evidence: []
+materiality_cases:
+  - {name: N-2 - CTR up 0.4 pp is admitted at tactical-review, horizon: tactical-review, basis: campaign_window, kind: absolute-change, metric: ctr, current: "0.087", prior: "0.083", expect: admitted}
+  - {name: N-2 - CTR up 0.4 pp is silent at operational-pulse, horizon: operational-pulse, basis: campaign_window, kind: absolute-change, metric: ctr, current: "0.087", prior: "0.083", expect: silent}
+  - {name: N-2 - a CTR prior of 0.004 is near zero, horizon: tactical-review, basis: campaign_window, kind: percentage-change, metric: ctr, current: "0.005", prior: "0.004", expect: suppressed}
+  - {name: spend change of 400 is admitted for one campaign, horizon: tactical-review, basis: campaign_window, kind: absolute-change, metric: spend, current: "1400", prior: "1000", expect: admitted}
+  - {name: spend change of 400 is silent for the portfolio, horizon: tactical-review, basis: portfolio_window, kind: absolute-change, metric: spend, current: "1400", prior: "1000", expect: silent}
+  - {name: CPC up 10 percent off 0.80 is judged against percent, horizon: tactical-review, basis: campaign_window, kind: percentage-change, metric: cpc, current: "0.88", prior: "0.80", expect: admitted}
+  - {name: a CPC prior of 0.04 is near zero, horizon: tactical-review, basis: campaign_window, kind: percentage-change, metric: cpc, current: "0.044", prior: "0.04", expect: suppressed}
+  - {name: impressions change of 5000 clears its own campaign row, horizon: tactical-review, basis: campaign_window, kind: absolute-change, metric: impressions, current: "25000", prior: "20000", expect: admitted}
+  - {name: impressions change of 4999 is below its own campaign row, horizon: tactical-review, basis: campaign_window, kind: absolute-change, metric: impressions, current: "24999", prior: "20000", expect: silent}
+  - {name: portfolio purchases change of 500 clears its own row, horizon: tactical-review, basis: portfolio_window, kind: absolute-change, metric: purchases, current: "4500", prior: "4000", expect: admitted}
+silence_condition: The focused metric or its required comparator is unavailable, or no supplied finding is material.
+structured_output_schema:
+  id: insight-narration-v1
+  fields: [output_class, sentences]
+initial_fictional_prompt: Describe one material supplied focused-metric relationship using only delivered metric values and declared neighbors.
+calibration_cases:
+  - kind: known-correct
+    input_summary: A fictional focused metric fell and its supplied percentage neighbor confirms one material relationship.
+    expected_outcome: Accept a perspective limited to the delivered figures.
+    horizon: tactical-review
+    findings:
+      - {name: Ad spend change, value: "-540"}
+      - {name: Ad spend percentage change, value: "-12.45"}
+  - kind: exploratory
+    input_summary: A fictional single-day purchases jump invites a hedged reading tying both supplied figures together.
+    expected_outcome: Accept the labeled reading of the supplied movement.
+    horizon: operational-pulse
+    findings:
+      - {name: Purchases change, value: "18"}
+      - {name: Purchases percentage change, value: "9.2"}
+  - kind: contradiction
+    input_summary: The fictional comparator fell but the draft reports it as having improved.
+    expected_outcome: Reject the contradiction.
+    horizon: tactical-review
+    findings:
+      - {name: Roas change, value: "-0.35"}
+    draft:
+      sentences:
+        - Roas improved by 0.35 against the prior week.
+  - kind: fluent-unsupported
+    input_summary: A fluent draft cites a display-context benchmark value that is not among the supplied findings.
+    expected_outcome: Reject the figure that is neither supplied nor derived from the findings.
+    horizon: pattern-confirmation
+    findings:
+      - {name: Impressions change, value: "3120"}
+    draft:
+      sentences:
+        - Impressions rose by 3120, well ahead of the category benchmark of 4.1.
+  - kind: derived-figure
+    input_summary: A fictional draft states the ad spend percentage change it derives from the supplied current and prior values.
+    expected_outcome: Accept the correctly derived percentage change.
+    horizon: tactical-review
+    findings:
+      - {name: Ad spend this window, value: "3800"}
+      - {name: Ad spend prior window, value: "4340"}
+    draft:
+      sentences:
+        - Ad spend came in at 3800 against 4340 in the prior window, a cut of about 12 percent.
+  - kind: miscomputed-derivation
+    input_summary: A fictional draft divides the ad spend change by the current value instead of the prior one.
+    expected_outcome: Reject the miscomputed percentage change.
+    horizon: tactical-review
+    findings:
+      - {name: Ad spend this window, value: "3800"}
+      - {name: Ad spend prior window, value: "4340"}
+    draft:
+      sentences:
+        - Ad spend came in at 3800 against 4340 in the prior window, a cut of about 14 percent.
+  - kind: incompatible-basis
+    input_summary: A fictional draft computes a purchases change across two different attribution bases.
+    expected_outcome: Reject the figure that combines findings of incompatible attribution basis.
+    horizon: pattern-confirmation
+    findings:
+      - {name: Purchases this window on 14-day attribution, value: "210"}
+      - {name: Purchases prior window on 7-day attribution, value: "180"}
+    draft:
+      sentences:
+        - Purchases grew about 17 percent over the prior window, from 180 to 210.
+deep:
+  allowed_inputs:
+    - sibling preset directions from the same current pointer roster, direction only with no second-window figures
+    - complete daily series for every metric this surface serves
+    - every server-computed driver and cross-metric total for the window
+    - lag, estimate, and basis qualifications carried by the artifact
+  structured_output_schema:
+    id: insight-deep-dive-v1
+    fields: [what_stands_out, candidate_readings, discriminating_evidence, cited_figures]
+# FR-11 (design 4.12): no next step is offered until the gated card-next-step prompt ships.
+next_steps:
+  allowed_kinds: []

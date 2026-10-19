@@ -1,0 +1,20 @@
+{
+  "name": "adlytics-doc-checks",
+  "private": true,
+  "type": "module",
+  "description": "Verification scripts for docs/ (plus local working documents when present). Isolated here so the repo root stays free for the application toolchain.",
+  "scripts": {
+    "check": "node check-diagrams.mjs"
+  },
+  "devDependencies": {
+    "jsdom": "29.1.1",
+    "mermaid": "11.16.1"
+  },
+  "overrides": {
+    "katex": "0.18.2",
+    "source-map-js": "1.2.2"
+  },
+  "//pins": {
+    "overrides": "First patched versions, both dev-only diagram tooling: source-map-js 1.2.2 (GHSA-68fv-2mgg-jv7q, O-ASH-CVE-SOURCEMAP-001) and katex 0.18.2 (GHSA-238p-pmpm-9mq7, O-ASH-KATEX-001), which mermaid 11.16.1 ranges at ^0.16.45. check-diagrams proves the override renders. Drop each once mermaid's own range resolves to a patched version."
+  }
+}

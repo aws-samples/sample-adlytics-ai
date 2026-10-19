@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="design-revision" content="2026-10-09.2">
+    <title>Prompt Administration — alignment draft</title>
+    <link rel="stylesheet" href="../campaign-portfolio/command-center-draft.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to prompt administration</a>
+    <div class="shell">
+      <aside class="sidebar">
+        <a class="brand" href="../campaign-portfolio/mockup.html" aria-label="Adlytics AI home">
+          <svg class="logo" viewBox="0 0 34 34" role="img" aria-hidden="true">
+            <defs>
+              <linearGradient id="lg" x1="0" y1="1" x2="1" y2="0">
+                <stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#8b5cf6"/>
+              </linearGradient>
+            </defs>
+            <rect x="1" y="1" width="32" height="32" rx="9" fill="url(#lg)"/>
+            <path d="M19.5 6 10 19h5.4l-1.6 9L24 15h-5.6l1.1-9z" fill="#fff" opacity="0.96"/>
+            <circle cx="25.5" cy="9" r="2" fill="#fff" opacity="0.85"/>
+          </svg>
+          <span class="word">Adlytics AI<span>Retail media intelligence</span></span>
+        </a>
+        <nav class="nav" aria-label="Workspace pages">
+          <p class="nav-label">Workspace</p>
+          <a href="../campaign-portfolio/mockup.html"><span class="glyph">▮</span>Campaigns</a>
+          <a href="../retail-health/mockup.html"><span class="glyph">▦</span>Retail health</a>
+          <p class="nav-label" style="margin-top:14px;">Admin · operators only</p>
+          <a href="mockup.html" aria-current="page"><span class="glyph">⌘</span>Prompt administration</a>
+        </nav>
+        <p class="sidebar-foot">Alignment draft 4 — all names and values fictional. The Admin section renders only for
+        authorized operators.</p>
+      </aside>
+
+      <div class="main">
+        <header class="topbar">
+          <span>Admin / Prompt administration</span>
+          <div class="actions">
+            <button type="button">Theme: Dark</button>
+            <button type="button">Assistant</button>
+            <button type="button">Sign out</button>
+          </div>
+        </header>
+
+        <main id="main" class="page">
+          <div class="band">
+            <div class="band-title">
+              <p class="eyebrow">Operator control surface</p>
+              <h1>Insight prompt registry</h1>
+              <div class="scopes">
+                <span class="pill">7 declared slots</span>
+                <span class="pill">Versions are immutable · activation is calibration-gated</span>
+                <span class="pill good">Operator: fictional.operator</span>
+              </div>
+            </div>
+          </div>
+          <p class="footnote">This page carries no customer data. Slot declarations are owned by the insight contracts;
+          this surface manages only the prompt versions a declared slot runs.</p>
+
+          <div class="admin-grid">
+            <!-- roster -->
+            <div class="panel">
+              <div class="panel-head"><h3>Slots</h3><span class="pill">Newest version's calibration shown</span></div>
+              <table class="data-table">
+                <thead>
+                  <tr><th scope="col">Slot</th><th scope="col">Class</th><th scope="col">Active</th><th scope="col">Newest</th><th scope="col">Calibration</th></tr>
+                </thead>
+                <tbody>
+                  <tr style="background:var(--accent-soft);">
+                    <td>trend-shape</td><td><span class="tag observed">Observed</span></td>
+                    <td>v3</td><td>v4</td><td><span class="cal pending">Running</span></td>
+                  </tr>
+                  <tr>
+                    <td>efficiency-drift</td><td><span class="tag observed">Observed</span></td>
+                    <td>v2</td><td>v2</td><td><span class="cal pass">Passed</span></td>
+                  </tr>
+                  <tr>
+                    <td>funnel</td><td><span class="tag observed">Observed</span></td>
+                    <td>v1</td><td>v2</td><td><span class="cal fail">Failed</span></td>
+                  </tr>
+                  <tr>
+                    <td>next-check</td><td><span class="tag hypothesis">Hypothesis</span></td>
+                    <td>v1</td><td>v1</td><td><span class="cal pass">Passed</span></td>
+                  </tr>
+                  <tr>
+                    <td>contribution</td><td><span class="tag observed">Observed</span></td>
+                    <td>v2</td><td>v2</td><td><span class="cal pass">Passed</span></td>
+                  </tr>
+                  <tr>
+                    <td>divergence</td><td><span class="tag observed">Observed</span></td>
+                    <td>v1</td><td>v1</td><td><span class="cal pass">Passed</span></td>
+                  </tr>
+                  <tr>
+                    <td>exposure</td><td><span class="tag perspective">Perspective</span></td>
+                    <td>v1</td><td>v1</td><td><span class="cal pass">Passed</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- detail -->
+            <div class="panel">
+              <div class="panel-head"><h3>trend-shape</h3><span class="pill">Reads: daily series · silent below materiality</span></div>
+              <p class="footnote" style="padding:0 0 4px;">Purpose: is the headline delta trustworthy? Output class: Observed.</p>
+              <div class="prompt-text">You receive one daily metric series and its prior-period series,
+with the window delta precomputed. State whether the movement is a
+steady trend, an acceleration, or concentrated in specific days.
+Cite only figures present in the input. If no day exceeds the
+declared concentration threshold and the delta is below the
+materiality bound, return silent.</div>
+              <div class="version-line">
+                <span><span class="v-id">v4</span> · draft by fictional.operator · today</span>
+                <span class="cal pending">Calibration running</span>
+              </div>
+              <div class="version-line">
+                <span><span class="v-id">v3</span> · active since Sep 12</span>
+                <span class="cal pass">Passed 3/3</span>
+              </div>
+              <div class="version-line">
+                <span><span class="v-id">v2</span> · superseded</span>
+                <span class="cal pass">Passed 3/3</span>
+              </div>
+              <div class="version-line">
+                <span><span class="v-id">v1</span> · superseded</span>
+                <span class="cal pass">Passed 2/2</span>
+              </div>
+              <div class="ask-row" style="margin-top:12px;">
+                <button class="btn primary" type="button" disabled title="Calibration must pass before activation">Activate v4</button>
+                <button class="btn" type="button">New version</button>
+                <button class="btn" type="button">Retire slot</button>
+              </div>
+              <p class="footnote" style="padding-top:8px;">Activate v4 is disabled until its calibration passes — one
+              known-correct, one contradiction, one fluent-but-unsupported case. Activating will regenerate only this slot's
+              cached insights; other slots are untouched. Every activation is recorded: who, when, from v3 → to v4.</p>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+  </body>
+</html>

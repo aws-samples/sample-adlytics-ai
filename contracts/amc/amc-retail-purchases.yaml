@@ -1,0 +1,158 @@
+# amc-retail-purchases — AMC's retail purchase truth, as a reconciliation anchor.
+#
+# SUBSCRIPTION-DEPENDENT. amazon_retail_purchases is an AMC Paid Feature. It is queryable at
+# no cost through 2026-12-31, then carries a subscription. If Q-07 is answered "not funded",
+# this contract comes out of scope and nothing else in the model breaks — which is why it is
+# written last and depended on by nothing.
+#
+# WHAT IT IS FOR, and what it stopped being for. ARP was carrying three jobs in the design:
+# the parent ASIN, the brand name, and the AMC-to-vendor reconciliation anchor. The first two
+# are now supplied FREE by Data Kiosk (see vendor-product-hierarchy and the ADR-020
+# amendment), so only the third remains — plus 60 months of history against 13 everywhere
+# else. That is a large reduction in what the paid subscription buys, and it should inform
+# the Q-07 decision.
+#
+# ITS VALUE IS TRUST. ARP's scope is documented to match Vendor Central → Retail Analytics →
+# Sales → Distributor View = MANUFACTURING [verified]. That makes it the only documented way
+# to check that our vendor retail figures are right, using a completely independent pipeline.
+# A discrepancy is a finding either way: it means one of the two loads is wrong, and without
+# a second source neither could ever be shown to be.
+#
+# NEVER SUMMED WITH fct_retail_sales. Both are retail_actual and both cover the same
+# purchases, so adding them double-counts every sale. Two sources of one measurement system
+# are two tables, compared, never combined. Never a drill-across target.
+#
+# THERE IS NO REVENUE COLUMN ON THIS TABLE [verified]. Every ARP sales figure is derived from
+# unit_price × purchase_units_sold. That is unusual enough that the page carries no
+# Metric/Dimension marking on any column either, which is why the registry leaves `kind`
+# unset here rather than guessing it.
+
+contract_id: amc-retail-purchases
+contract_version: 1
+
+source_system: amc
+source_dataset: amazon_retail_purchases
+source_format: csv
+
+# Channel-subtype suffix, permitted because this is a source-specific subtype of a
+# conformed process rather than a conformed object in its own right.
+target_table: fct_retail_purchase_amc
+
+source_tables:
+  - amazon_retail_purchases
+
+grain:
+  - date_key
+  - amazon_asin
+  - marketplace_key
+  - rows_suppressed
+
+partition_keys:
+  - marketplace_key
+  - date_key
+
+# The same basis as fct_retail_sales, which is exactly why the two can be compared — and
+# exactly why they must never be added.
+measurement_basis: retail_actual
+
+# UTC-only on this table: no advertiser-timezone twins and no advertiser_timezone column,
+# unlike the traffic tables. So there is no configurable alternative here.
+source_timezone: UTC
+ecosystem_key: amazon
+platform_key: amazon_retail
+
+# Documented as retail-pipeline-sourced including restatements, the same wording vendor
+# reports carry. Matched to the vendor window so a reconciliation never compares a restated
+# figure against a stale one — which would read as a discrepancy that is really a timing skew.
+restatement_window_days: 45
+
+staleness_threshold_hours: 72
+
+grain_feasibility_note: >
+  Every output column is NONE or LOW: purchase_units_sold and the derived purchase revenue
+  are NONE, and asin, marketplace_name, currency_code and purchase_date_utc are LOW.
+  purchase_dt_utc (MEDIUM) is deliberately not selected; purchase_date_utc gives the same
+  day grain at LOW, and purchase_dt_hour_utc is the LOW hourly option. marketplace_id is
+  INTERNAL and never read. Note the 60-month retention here against 13 months everywhere
+  else: Amazon warns explicitly that failing to account for the mismatch produces inaccurate
+  analysis, so a reconciliation must bound itself to the shorter window.
+
+suppression:
+  discriminator_column: rows_suppressed
+  reason_column: suppression_reason
+  distinct_user_count_column: distinct_user_count
+
+fields:
+  # --- grain -----------------------------------------------------------------
+  - source_path: purchase_date_utc
+    target_column: date_key
+    # The only date-typed column on the table. purchase_day_utc, purchase_hour_utc and
+    # purchase_month_utc are calendar-part INTEGERS, not dates — a genuine trap.
+
+  - source_path: asin
+    target_column: amazon_asin
+    # The child ASIN, in the same namespace the vendor contracts use — which is what makes
+    # the reconciliation a join rather than a guess. Joins dim_product on
+    # (amazon_asin, marketplace_key). Renamed from product_key 2026-08-19; see
+    # vendor-sales-by-asin for the reason.
+
+  - source_path: marketplace_name
+    target_column: marketplace_key
+    # marketplace_id on this table is INTERNAL and unusable. Values take the AMAZON.COM
+    # form rather than the amazon.us form used elsewhere in AMC, so dim_marketplace has to
+    # hold both spellings or the join drops rows silently.
+
+  # --- measures --------------------------------------------------------------
+  - source_path: purchase_units_sold
+    target_column: units_purchased
+
+  - source_path: currency_code
+    target_column: currency_code
+    # ARP names this currency_code where the DSP tables use currency_iso_code and the
+    # conversion tables use purchase_currency. Three names, one concept, no convention.
+
+  - source_path: unit_price * purchase_units_sold
+    target_column: revenue_purchased
+    derived_from:
+      - unit_price
+      - purchase_units_sold
+    scale_divisor: 1
+    currency_column: currency_code
+    # DERIVED, because this table has no revenue column at all. Declared as derived rather
+    # than mapped so the gate checks both inputs exist and nobody later looks for an ARP
+    # revenue column that was never there.
+    #
+    # This is the figure that reconciles against fct_retail_sales.revenue_shipped under
+    # MANUFACTURING. Note it is a purchase-side figure while the vendor column is a
+    # shipped-side one, so a residual difference is expected and is not itself a fault.
+
+  # --- suppression -----------------------------------------------------------
+  - source_path: values_removed
+    target_column: rows_suppressed
+    target_type: boolean
+    from_extraction_option: true
+
+  - source_path: filtered_reason
+    target_column: suppression_reason
+    target_type: string
+    from_extraction_option: true
+    nullable: true
+    null_meaning: suppressed
+
+  - source_path: distinct_user_count
+    target_column: distinct_user_count
+    target_type: int
+    from_extraction_option: true
+    nullable: true
+    null_meaning: suppressed
+    # EMPTY ON A SUPPRESSED ROW, and declaring it required was a defect found by building the
+    # trap fixture. docs/concepts/provenance-chain.md section 2 shows AMC's own output: the
+    # clean rows carry the count capped at the threshold, and the merged row leaves it blank
+    # because the count that drove the decision is not reported for a row that was merged.
+    # Required, it would reject every suppressed partition — data behaving exactly as designed.
+
+tags:
+  - phase-4
+  - amc
+  - paid-feature
+  - reconciliation

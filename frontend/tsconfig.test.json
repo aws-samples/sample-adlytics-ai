@@ -1,0 +1,24 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "incremental": false,
+    "isolatedModules": false,
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "noEmit": false,
+    "outDir": ".test-dist",
+    "plugins": [],
+    "rootDir": "."
+  },
+  "include": [
+    "lib/chat.ts",
+    "lib/config.ts",
+    "lib/presentation.ts",
+    "lib/session.ts",
+    "test/**/*.test.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "out"
+  ]
+}

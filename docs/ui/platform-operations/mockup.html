@@ -1,0 +1,420 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: MIT-0 -->
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Platform operations — proposal draft 3 (all values fictional)</title>
+    <link rel="stylesheet" href="../campaign-portfolio/command-center-draft.css">
+    <style>
+      /* Proposal-only additions; every shared token and class comes from the draft stylesheet. */
+      .sec-head{display:flex;align-items:baseline;gap:10px;margin:18px 0 2px;border-bottom:1px solid var(--line);padding-bottom:6px}
+      .sec-head h2{font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:var(--text);margin:0}
+      .sec-head .sec-cap{font-size:12px;color:var(--text-faint)}
+      .support{margin-left:auto}
+      /* attention list under the pulse band */
+      .attention{margin-top:12px;display:flex;flex-direction:column;gap:8px}
+      .attention .item{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;
+        background:var(--card);border:1px solid color-mix(in srgb, var(--warn) 45%, var(--line));
+        border-radius:12px;padding:10px 14px;font-size:13px}
+      .attention .item .what strong{display:block}
+      .attention .item .what span{color:var(--text-dim);font-size:12px}
+      .attention .go{color:var(--accent);font-size:12px;white-space:nowrap}
+      /* serving currency rows */
+      .currency-row{display:grid;grid-template-columns:190px 1fr auto;gap:14px;align-items:center;
+        border-bottom:1px solid var(--line);padding:10px 4px;font-size:13px}
+      .currency-row:last-child{border-bottom:0}
+      .currency-row .pg{font-weight:650}
+      .currency-row .facts{color:var(--text-dim);font-size:12.5px}
+      .currency-row .facts strong{color:var(--text);font-variant-numeric:tabular-nums}
+      /* pipeline strip */
+      .pipe{display:flex;align-items:stretch;gap:0;margin-top:12px}
+      .pipe-seg{flex:1;background:var(--card);border:1px solid var(--line);border-radius:12px;
+        padding:10px 12px;min-width:0;cursor:pointer}
+      .pipe-seg .s-k{display:block;font-size:10.5px;letter-spacing:0.09em;text-transform:uppercase;color:var(--text-faint)}
+      .pipe-seg .s-v{display:block;font-weight:650;font-size:13px;margin-top:3px}
+      .pipe-seg .s-n{display:block;color:var(--text-dim);font-size:11px;margin-top:2px}
+      .pipe-seg.ok{border-color:color-mix(in srgb, var(--good) 35%, var(--line))}
+      .pipe-seg.ok .s-v{color:var(--good)}
+      .pipe-seg.warn{border-color:color-mix(in srgb, var(--warn) 60%, var(--line));background:color-mix(in srgb, var(--warn-soft) 45%, var(--card))}
+      .pipe-seg.warn .s-v{color:var(--warn)}
+      .pipe-seg.boundary{border-style:dashed}
+      .pipe-seg.boundary .s-v{color:var(--text-dim)}
+      .pipe-arrow{align-self:center;color:var(--text-faint);padding:0 6px;font-size:14px}
+      /* data movement */
+      .owner-label td{padding:12px 12px 4px;border-bottom:0;font-size:10.5px;letter-spacing:0.1em;
+        text-transform:uppercase;color:var(--text-faint);font-weight:650}
+      .evidence-badge{font-size:10.5px;color:var(--text-faint)}
+      .collapse-row td{color:var(--text-faint);font-size:12px;padding:7px 12px}
+      .collapse-row .disc{color:var(--accent);cursor:pointer}
+      /* runs */
+      .byd-row td{background:color-mix(in srgb, var(--good-soft) 40%, transparent);color:var(--text-dim);
+        font-size:12px;text-align:left}
+      .byd-row .disc{color:var(--accent);cursor:pointer}
+      /* failed pill variant: --bad tokens exist in the draft stylesheet, no pill rule uses them yet */
+      .pill.bad{color:var(--bad);background:var(--bad-soft);border-color:transparent}
+      .flow-events{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+      .flow-events li{display:grid;grid-template-columns:24px 150px 1fr;gap:10px;align-items:start;
+        background:var(--card-raise);border:1px solid var(--line);border-radius:10px;padding:8px 12px;font-size:12.5px}
+      .flow-events .seq{color:var(--text-faint);font-variant-numeric:tabular-nums}
+      .flow-events .st{font-weight:650}
+      .flow-events .rd{color:var(--text-dim)}
+      .flow-events li.adverse{border-color:color-mix(in srgb, var(--warn) 55%, var(--line))}
+    </style>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to platform operations</a>
+    <div class="shell">
+      <aside class="sidebar">
+        <a class="brand" href="../campaign-portfolio/mockup.html" aria-label="Adlytics AI home">
+          <svg class="logo" viewBox="0 0 34 34" role="img" aria-hidden="true">
+            <defs>
+              <linearGradient id="lg" x1="0" y1="1" x2="1" y2="0">
+                <stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#8b5cf6"/>
+              </linearGradient>
+            </defs>
+            <rect x="1" y="1" width="32" height="32" rx="9" fill="url(#lg)"/>
+            <path d="M19.5 6 10 19h5.4l-1.6 9L24 15h-5.6l1.1-9z" fill="#fff" opacity="0.96"/>
+            <circle cx="25.5" cy="9" r="2" fill="#fff" opacity="0.85"/>
+          </svg>
+          <span class="word">Adlytics AI<span>Retail media intelligence</span></span>
+        </a>
+        <nav class="nav" aria-label="Workspace pages">
+          <p class="nav-label">Workspace</p>
+          <a href="../campaign-portfolio/mockup.html"><span class="glyph">▮</span>Campaigns</a>
+          <a href="../retail-health/mockup.html"><span class="glyph">▦</span>Retail health</a>
+          <p class="nav-label" style="margin-top:14px;">Admin · operators only</p>
+          <a href="../prompt-administration/mockup.html"><span class="glyph">⌘</span>Prompt administration</a>
+          <a href="mockup.html" aria-current="page"><span class="glyph">◉</span>Platform operations</a>
+        </nav>
+        <p class="sidebar-foot">Proposal draft 3 — all values fictional; surface and contract
+        names are drawn from or patterned on committed contracts. Requires the
+        <span class="accent">operations-status-read</span> entitlement; every state, reading, and
+        next action on this page is server-declared, never inferred by the browser.</p>
+      </aside>
+      <div class="main">
+        <header class="topbar">
+          <span>Admin / Platform operations</span>
+          <div class="actions">
+            <button type="button">Theme: Dark</button>
+            <button type="button">Assistant</button>
+            <button type="button">Sign out</button>
+          </div>
+        </header>
+        <main id="main" class="page">
+
+          <!-- 1 · platform pulse: triage first -->
+          <div class="band">
+            <div class="band-title">
+              <p class="eyebrow">Platform operations · Operator view</p>
+              <h1>Platform pulse</h1>
+              <div class="scopes">
+                <span class="pill warn">2 items need attention</span>
+                <span class="pill">5 of 29 registered surfaces reporting · coverage incomplete</span>
+                <span class="pill">Observed 4 min ago · 06:34 UTC · Sep 17, 2026</span>
+                <span class="tag needs-data">Attention list — requires summary semantics fix</span>
+              </div>
+            </div>
+          </div>
+          <div class="attention" role="list" aria-label="Items needing attention">
+            <div class="item" role="listitem">
+              <span class="pill warn">Blocked</span>
+              <span class="what"><strong>Semantic source materialization</strong>
+                <span>One run is blocked on an authority-backed condition · served next action: retry via owner</span></span>
+              <span class="go">Open runs ↓</span>
+            </div>
+            <div class="item" role="listitem">
+              <span class="pill warn">Feed overdue</span>
+              <span class="what"><strong>Vendor traffic feed</strong>
+                <span>Expected daily; last delivery landed 26 h ago (Sep 16, 04:20 UTC) · Retail health serves through Sep 15 until it lands</span></span>
+              <span class="go">Open contract ↓</span>
+            </div>
+          </div>
+          <p class="footnote">When nothing needs attention this list is one calm line, never an empty box.
+          One status authority: this page projects the operational control plane read-only — no customer
+          data, no AWS identifiers, no raw diagnostics. Evidence for every claim is complete for this
+          observation; degraded evidence renders here in plain words.</p>
+
+          <!-- 2 · serving freshness per page -->
+          <div class="sec-head"><h2>Page freshness</h2>
+            <span class="sec-cap">is the data behind each workspace page current, and did expected feeds land</span>
+            <span class="tag needs-data support">Requires currency read</span></div>
+          <div class="panel">
+            <div class="currency-row">
+              <span class="pg">Campaign Portfolio</span>
+              <span class="facts">Serving data through <strong>Sep 16</strong> · latest AMC delivery landed
+                <strong>Sep 17, 04:12 UTC</strong> · published to the page <strong>58 min</strong> after landing</span>
+              <span class="pill good">Fresh</span>
+            </div>
+            <div class="currency-row">
+              <span class="pg">Retail health</span>
+              <span class="facts">Serving data through <strong>Sep 15</strong> · expected daily Vendor traffic feed
+                last landed <strong>26 h ago</strong> (Sep 16, 04:20 UTC) · sales feed current through <strong>Sep 16</strong></span>
+              <span class="pill warn">Feed overdue</span>
+            </div>
+          </div>
+          <p class="footnote">This strip is the customer-outcome anchor: it says whether expected feeds are
+          properly landing and how quickly a landed delivery became servable. Data-through, landing, and
+          published-elapsed are authority-backed facts (artifact pointers, publications, landings) the
+          status API does not yet project — the strip's serving extension.</p>
+
+          <!-- 3 · pipeline -->
+          <div class="sec-head"><h2>Pipeline</h2>
+            <span class="sec-cap">where data is in the pipe; each stage is its registry family, colored by its worst member</span>
+            <span class="tag needs-data support">Stage coloring — requires summary semantics fix</span></div>
+          <div class="pipe" role="list" aria-label="Data pipeline stages">
+            <div class="pipe-seg boundary" role="listitem"><span class="s-k">Delivery</span>
+              <span class="s-v">External boundary</span>
+              <span class="s-n">Visibility begins at landing</span></div>
+            <span class="pipe-arrow" aria-hidden="true">─▶</span>
+            <div class="pipe-seg warn" role="listitem"><span class="s-k">Ingestion</span>
+              <span class="s-v">Needs attention</span>
+              <span class="s-n">1 blocked · 1 failed · 3 running · rest completed</span></div>
+            <span class="pipe-arrow" aria-hidden="true">─▶</span>
+            <div class="pipe-seg ok" role="listitem"><span class="s-k">Publication</span>
+              <span class="s-v">Completed</span>
+              <span class="s-n">Terminal decisions recorded</span></div>
+            <span class="pipe-arrow" aria-hidden="true">─▶</span>
+            <div class="pipe-seg ok" role="listitem"><span class="s-k">Bake</span>
+              <span class="s-v">Completed</span>
+              <span class="s-n">50 baked this window</span></div>
+            <span class="pipe-arrow" aria-hidden="true">─▶</span>
+            <div class="pipe-seg ok" role="listitem"><span class="s-k">Insights</span>
+              <span class="s-v">Completed</span>
+              <span class="s-n">All settled slots accounted for</span></div>
+          </div>
+          <p class="footnote">Stages are dependent: a stage needing attention makes everything to its right
+          stale by consequence, which the strip shows in one glance. Selecting a stage opens its family in
+          the table below. Stage membership is the registry owner served by the definitions catalog.</p>
+
+          <!-- 4 · data movement by owner family -->
+          <div class="sec-head"><h2>Data movement</h2>
+            <span class="sec-cap">every registered surface, grouped by its registry owner</span>
+            <span class="tag needs-data support">Counts &amp; freshness — requires summary semantics fix</span></div>
+          <div class="panel">
+            <div class="table-scroll" tabindex="0">
+              <table class="camp-table">
+                <thead><tr>
+                  <th scope="col">Surface</th><th scope="col">State</th>
+                  <th scope="col" class="num">Queued</th><th scope="col" class="num">Active</th>
+                  <th scope="col" class="num">Retrying</th><th scope="col" class="num">Blocked</th>
+                  <th scope="col" class="num">Failed</th><th scope="col" class="num">Completed · 24 h</th>
+                  <th scope="col">Freshness</th><th scope="col">Reading · next action</th>
+                </tr></thead>
+                <tbody>
+                  <tr class="owner-label"><td colspan="10">Source acquisition</td></tr>
+                  <tr>
+                    <td class="name"><strong>External source delivery</strong><span class="sub">AMC · Vendor reports</span></td>
+                    <td><span class="pill">External boundary</span></td>
+                    <td class="num">—</td><td class="num">—</td><td class="num">—</td>
+                    <td class="num">—</td><td class="num">—</td><td class="num">—</td>
+                    <td>—</td>
+                    <td class="evidence-badge">Visibility begins at immutable landing · observe</td>
+                  </tr>
+                  <tr class="collapse-row"><td colspan="10"><span class="disc">▸</span> 2 declared surfaces not yet reporting — expand</td></tr>
+                  <tr class="owner-label"><td colspan="10">Load path</td></tr>
+                  <tr style="background:color-mix(in srgb, var(--warn-soft) 40%, transparent);">
+                    <td class="name"><strong>Semantic source materialization</strong></td>
+                    <td><span class="pill warn">Blocked</span></td>
+                    <td class="num">0</td><td class="num">0</td><td class="num">0</td>
+                    <td class="num">1</td><td class="num">1</td><td class="num">42 of 44</td>
+                    <td><span class="pill warn">Expected hourly · last observed 2 h ago (overdue 1 h)</span></td>
+                    <td class="evidence-badge">Blocked on an authority-backed condition · retry via owner</td>
+                  </tr>
+                  <tr style="background:var(--accent-soft);">
+                    <td class="name"><strong>Inline table runs</strong></td>
+                    <td><span class="pill warn">Running</span></td>
+                    <td class="num">0</td><td class="num">3</td><td class="num">0</td>
+                    <td class="num">0</td><td class="num">0</td><td class="num">112 of 112</td>
+                    <td><span class="pill good">Expected hourly · observed 4 min ago</span></td>
+                    <td class="evidence-badge">Work is executing against the load authority · observe</td>
+                  </tr>
+                  <tr class="collapse-row"><td colspan="10"><span class="disc">▸</span> 4 declared surfaces not yet reporting — expand</td></tr>
+                  <tr class="owner-label"><td colspan="10">Publication state</td></tr>
+                  <tr>
+                    <td class="name"><strong>Candidate publication</strong></td>
+                    <td><span class="pill good">Completed</span></td>
+                    <td class="num">0</td><td class="num">0</td><td class="num">0</td>
+                    <td class="num">0</td><td class="num">0</td><td class="num">47 of 47</td>
+                    <td><span class="pill good">Expected hourly · observed 9 min ago</span></td>
+                    <td class="evidence-badge">The owning authority recorded a terminal decision · observe</td>
+                  </tr>
+                  <tr class="collapse-row"><td colspan="10"><span class="disc">▸</span> 1 declared surface not yet reporting — expand</td></tr>
+                  <tr class="owner-label"><td colspan="10">Presentation</td></tr>
+                  <tr>
+                    <td class="name"><strong>Preset bake</strong></td>
+                    <td><span class="pill good">Completed</span></td>
+                    <td class="num">0</td><td class="num">0</td><td class="num">0</td>
+                    <td class="num">0</td><td class="num">0</td><td class="num">50 of 50</td>
+                    <td><span class="pill good">Expected hourly · observed 7 min ago</span></td>
+                    <td class="evidence-badge">50 baked this window; terminal decisions recorded · observe</td>
+                  </tr>
+                  <tr class="collapse-row"><td colspan="10"><span class="disc">▸</span> 2 declared surfaces not yet reporting — expand</td></tr>
+                  <tr class="owner-label"><td colspan="10">Conversational runtime</td></tr>
+                  <tr>
+                    <td class="name"><strong>Insight precompute</strong></td>
+                    <td><span class="pill good">Completed</span></td>
+                    <td class="num">0</td><td class="num">0</td><td class="num">0</td>
+                    <td class="num">0</td><td class="num">0</td><td class="num">31 of 31</td>
+                    <td><span class="pill good">Expected hourly · observed 7 min ago</span></td>
+                    <td class="evidence-badge">All settled slots accounted for · observe</td>
+                  </tr>
+                  <tr class="collapse-row"><td colspan="10"><span class="disc">▸</span> 1 declared surface not yet reporting — expand</td></tr>
+                  <tr class="owner-label"><td colspan="10">Agent quality loop · Serving pages</td></tr>
+                  <tr class="collapse-row"><td colspan="10"><span class="disc">▸</span> 13 declared surfaces not yet reporting — expand</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="footnote">Declared-but-silent surfaces stay one honest line per family — reachable,
+            never dominating. Counts are current flow states and "Completed · 24 h" carries its denominator
+            and window; freshness evaluates the registry's declared cadence ("expected hourly · observed
+            4 min ago"), never a bare label. Both are the summary-semantics serving fix: today's V1 summary
+            aggregates the last 100 lifecycle events per surface, which cannot honestly fill these columns.</p>
+          </div>
+
+          <!-- 5 · runs (list-detail with the table) -->
+          <div class="sec-head"><h2>Runs · Semantic source materialization</h2>
+            <span class="sec-cap">selected from the table — what is running and what has run</span>
+            <span class="tag needs-data support">Run list — requires flow index route · by-design labels — requires readings extension</span></div>
+          <div class="panel">
+            <div class="panel-head">
+              <h3>Recent runs</h3>
+              <span class="pill">Last 24 h · 44 runs: newest 5 of 26 work runs shown · 18 by-design summarized below</span>
+              <span class="pill">History retained 14 days</span>
+            </div>
+            <table class="data-table">
+              <thead><tr>
+                <th scope="col" style="text-align:left;">Run</th><th scope="col">Started</th>
+                <th scope="col">State</th><th scope="col">Outcome</th>
+                <th scope="col">Duration <span class="tag needs-data">Requires measurement serving</span></th>
+              </tr></thead>
+              <tbody>
+                <tr style="background:color-mix(in srgb, var(--warn-soft) 40%, transparent);">
+                  <td style="text-align:left;">run 4c1a…9f</td><td>2 h ago · 04:31 UTC</td>
+                  <td><span class="pill warn">Blocked</span></td>
+                  <td>Blocked — needs attention · retry via owner</td><td>—</td>
+                </tr>
+                <tr>
+                  <td style="text-align:left;">run 88e2…c4</td><td>3 h ago · 03:30 UTC</td>
+                  <td><span class="pill good">Completed</span></td><td>Completed</td><td>—</td>
+                </tr>
+                <tr>
+                  <td style="text-align:left;">run 17bd…a0</td><td>4 h ago · 02:30 UTC</td>
+                  <td><span class="pill good">Completed</span></td>
+                  <td>Completed after retry · 2 executions</td><td>—</td>
+                </tr>
+                <tr>
+                  <td style="text-align:left;">run 09f3…77</td><td>5 h ago · 01:30 UTC</td>
+                  <td><span class="pill bad">Failed</span></td>
+                  <td>Failed — superseded by run 17bd…a0</td><td>—</td>
+                </tr>
+                <tr>
+                  <td style="text-align:left;">run e5d0…b2</td><td>6 h ago · 00:30 UTC</td>
+                  <td><span class="pill good">Completed</span></td><td>Completed</td><td>—</td>
+                </tr>
+                <tr class="byd-row">
+                  <td colspan="5"><span class="disc">▸</span> + 18 runs completed by design without work in
+                  this window (no new coverage to process) — a distinct kind of success, not an error — show</td>
+                </tr>
+              </tbody>
+            </table>
+            <p class="footnote">A run is one logical flow: retries keep the run and add executions, so the
+            list never double-counts. By-design completions stay visible as one summarized line so their
+            volume is known without drowning real work; which outcomes are "by design" is a served
+            classification on the reading (a readings extension), never a browser judgment. Opening a run
+            raises its drill-in dialog. Run snapshots and event history are served today; the per-surface
+            list needs the flow index route.</p>
+          </div>
+
+          <!-- 6 · drill-in dialog -->
+          <div class="sec-head"><h2>Run drill-in</h2>
+            <span class="sec-cap">opens as a dialog over the page, per the shared command-center dialog pattern; Escape returns focus to the opening run row</span></div>
+          <div class="scrim-demo" aria-label="State illustration: run drill-in dialog opened from the runs list, page dimmed and inert behind it">
+            <div class="focus-dialog" role="dialog" aria-modal="true" aria-label="Run drill-in for semantic source materialization">
+              <div class="panel-head" style="margin-bottom:4px;">
+                <h3>Semantic source materialization · run 4c1a…9f</h3>
+                <span class="pill warn">Blocked</span>
+                <span class="pill">Stage: source loading</span>
+              </div>
+              <p class="footnote" style="padding:0 0 4px;">Reading: the run is blocked on an authority-backed
+              operational condition. Next action: retry via owner. The run id is the only join to
+              diagnostics; no trace, query, or provider identifier crosses this page.</p>
+              <ol class="flow-events">
+                <li><span class="seq">1</span><span class="st">Observed</span>
+                  <span class="rd">An authority-backed registration was observed for this run · 04:31 UTC</span></li>
+                <li><span class="seq">2</span><span class="st">Queued</span>
+                  <span class="rd">The work item entered its registered transport lane · 04:31 UTC</span></li>
+                <li><span class="seq">3</span><span class="st">Running</span>
+                  <span class="rd">Work began against the load authority · 04:32 UTC</span></li>
+                <li class="adverse"><span class="seq">4</span><span class="st">Blocked</span>
+                  <span class="rd">The run reached an authority-backed operational stop with a typed reason ·
+                  04:38 UTC · retry keeps this run and adds an execution</span></li>
+              </ol>
+            </div>
+          </div>
+
+          <!-- 7 · job speed -->
+          <div class="sec-head"><h2>Job speed, tied to outcomes</h2>
+            <span class="sec-cap">how long the platform takes, from delivery to servable decision</span></div>
+          <div class="tiles">
+            <div class="tile empty"><span class="k">Ingestion → servable <span class="tag needs-data">Requires measurement serving</span></span>
+              <p class="v">Values not yet served</p>
+              <p class="prior">Per-run durations render here when the control plane's descriptive
+              measurements are exposed on the API; measurement is already running continuously
+              (48 finalized hourly baseline windows per active surface, zero late samples)</p></div>
+            <div class="tile empty"><span class="k">SLO attainment</span>
+              <p class="v">Objectives not yet activated</p>
+              <p class="prior">Attainment renders here when an ADR-074 objective activates for a
+              surface; observation mode never substitutes description for a health claim</p></div>
+            <div class="tile empty"><span class="k">Agentic latency <span class="tag needs-data">Requires surface registration</span></span>
+              <p class="v">No registered surface</p>
+              <p class="prior">The chat runtime has no declared status surface yet; this tile
+              activates when one is registered with its status producer</p></div>
+          </div>
+
+          <!-- 8 · active data contracts -->
+          <div class="sec-head"><h2>Active data contracts</h2>
+            <span class="sec-cap">the governed sources this deployment ingests, and whether expected feeds are landing</span>
+            <span class="tag needs-data support">Requires new roster projection</span></div>
+          <div class="panel">
+            <table class="data-table">
+              <thead><tr>
+                <th scope="col">Contract</th><th scope="col">Source system</th>
+                <th scope="col">Feeds</th><th scope="col">Last delivered</th>
+                <th scope="col">Expected</th><th scope="col">Status</th>
+              </tr></thead>
+              <tbody>
+                <tr><td style="text-align:left;">amc-campaign-sponsored</td><td style="text-align:left;">AMC</td>
+                  <td style="text-align:left;">Campaign Portfolio</td><td>Sep 17, 04:12 UTC</td><td>Daily</td>
+                  <td><span class="pill good">Landing on time</span></td></tr>
+                <tr><td style="text-align:left;">amc-attributed-conversion</td><td style="text-align:left;">AMC</td>
+                  <td style="text-align:left;">Campaign Portfolio</td><td>Sep 17, 04:12 UTC</td><td>Daily</td>
+                  <td><span class="pill good">Landing on time</span></td></tr>
+                <tr><td style="text-align:left;">vendor-sales-manufacturing</td><td style="text-align:left;">Vendor Central</td>
+                  <td style="text-align:left;">Retail health</td><td>Sep 17, 04:20 UTC</td><td>Daily</td>
+                  <td><span class="pill good">Landing on time</span></td></tr>
+                <tr style="background:color-mix(in srgb, var(--warn-soft) 40%, transparent);">
+                  <td style="text-align:left;">vendor-traffic-report</td><td style="text-align:left;">Vendor Central</td>
+                  <td style="text-align:left;">Retail health</td><td>Sep 16, 04:20 UTC</td><td>Daily</td>
+                  <td><span class="pill warn">Last landed 26 h ago · overdue 2 h</span></td></tr>
+              </tbody>
+            </table>
+            <p class="footnote">"Last delivered" and "Expected" are the same authority-backed landing facts
+            the Page freshness strip uses, at contract grain — together they answer whether expected feeds
+            are properly landing and which page a late feed affects. No API serves this roster today; the
+            panel validates the look ahead of its roster-projection extension.</p>
+          </div>
+
+          <div class="state-note" role="note" style="margin-top:18px;">
+            <span class="badge">Basis boundary</span>
+            <strong>Operational status is not business performance.</strong>
+            <span>This page answers "where is the data and what is it waiting on" — campaign and retail
+            outcomes stay on their own pages. Health here is declared by the control plane; the browser
+            maps nothing and infers nothing.</span>
+          </div>
+
+        </main>
+      </div>
+    </div>
+  </body>
+</html>

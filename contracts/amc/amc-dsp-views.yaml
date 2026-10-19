@@ -1,0 +1,131 @@
+# amc-dsp-views — DSP viewability at campaign × day.
+#
+# The only source of fct_ad_exposure.viewable_impressions. Sponsored ads publishes no
+# viewability measure, so this column is DSP-only and permanently absent for sponsored
+# rows — absent, not zero.
+#
+# SUMMED FROM THE PER-KIND FLAG COLUMNS, NEVER FILTERED ON event_type. dsp_views carries
+# viewable_impressions, measurable_impressions and unmeasurable_viewable_impressions as
+# separate 1/0 flags at threshold NONE, and the page's own guidance is to use them, because
+# one impression that is both measurable and viewable produces TWO ROWS — so any impression
+# count taken from this table double-counts. Filtering on event_type is unnecessary and a
+# wrong literal would return zero rows silently where a missing column errors loudly.
+#
+# NO CURRENCY COLUMN EXISTS ON THIS TABLE [verified], even though a millicent budget column
+# does. That is fine here because this contract maps no money — but it is why viewability
+# and spend cannot come from one extraction.
+
+contract_id: amc-dsp-views
+contract_version: 1
+
+source_system: amc
+source_dataset: dsp_views
+source_format: csv
+
+target_table: fct_ad_exposure
+
+source_tables:
+  - dsp_views
+
+grain:
+  - date_key
+  - channel_key
+  - campaign_key
+  - ad_product_key
+  - marketplace_key
+  - rows_suppressed
+
+partition_keys:
+  - marketplace_key
+  - date_key
+
+measurement_basis: ad_attributed
+source_timezone: UTC
+ecosystem_key: amazon
+platform_key: amazon_ads
+restatement_window_days: 30
+staleness_threshold_hours: 72
+
+grain_feasibility_note: >
+  Every output column is NONE or LOW: the three per-kind impression flags are NONE, and
+  campaign_id_string, campaign_country and event_date_utc are LOW. event_dt_utc (MEDIUM) is
+  deliberately not selected. user_id is VERY_HIGH and not read at all here — reach for the
+  DSP channel comes from amc-dsp-impressions, because computing it here would count only
+  users whose impressions produced a view event.
+
+suppression:
+  discriminator_column: rows_suppressed
+  reason_column: suppression_reason
+  distinct_user_count_column: distinct_user_count
+
+fields:
+  # --- grain -----------------------------------------------------------------
+  - source_path: event_date_utc
+    target_column: date_key
+    # event_* here, not impression_* as on dsp_impressions and dsp_clicks. The prefix
+    # genuinely differs per table and must not be derived from a pattern.
+
+  - target_column: channel_key
+    target_type: string
+    literal_value: amazon_dsp
+
+  - target_column: ad_product_key
+    target_type: string
+    literal_value: amazon_dsp
+
+  - target_column: channel_group_key
+    target_type: string
+    literal_value: display
+
+  - source_path: campaign_id_string
+    target_column: campaign_key
+
+  - source_path: campaign_country
+    target_column: marketplace_key
+    # campaign_country is the only marketplace candidate present on this table:
+    # iso_country_code does not exist here, which is one of the two reasons ADR-022 chose
+    # it over the viewer's country.
+
+  # --- viewability measures --------------------------------------------------
+  - source_path: viewable_impressions
+    target_column: viewable_impressions
+    # A 1/0 flag per row, so SUM it. The page states a viewable impression also has a
+    # measurable row, so this and measurable_impressions never both apply to the same row.
+
+  - source_path: measurable_impressions
+    target_column: measurable_impressions
+    # The denominator of a viewability rate. Carried because "60% viewable" is meaningless
+    # without knowing what share was even measurable — and the ratio itself is derived in
+    # the semantic layer, never stored.
+
+  - source_path: unmeasurable_viewable_impressions
+    target_column: viewable_impressions_estimated
+    # Covers both the unmeasurable-viewable and synthetic-view kinds, which are ESTIMATED
+    # rather than observed. Kept separate from viewable_impressions so a measured figure is
+    # never silently inflated by a modelled one — the same principle as measurement_basis
+    # at the row level.
+
+  # --- suppression -----------------------------------------------------------
+  - source_path: values_removed
+    target_column: rows_suppressed
+    target_type: boolean
+    from_extraction_option: true
+
+  # filteredReasonColumn and distinctUserCountColumn are still REQUESTED — the suppression block
+  # above names them, the delivery carries them, and check_header proves they arrived. They are
+  # deliberately NOT mapped into fct_ad_exposure, which four contracts write.
+  #
+  # Neither has a single value at a conformed row. The reason names its own data source in its own
+  # format — `97 'dsp_impressions' users < 100 required` — so three deliveries assembling one row
+  # carry three different reasons. The count is capped per query by the strictest output column,
+  # and AMC blanks it on a row it merged. Mapping either produced erasure rather than
+  # supersession, because all three DSP contracts stamp the same channel literal and so withdraw
+  # over identical rows. See ADR-033 and G-28.
+  #
+  # The per-row, per-dataset detail stays in the retained raw delivery, already split by dataset.
+
+tags:
+  - phase-1
+  - amc
+  - dsp
+  - exposure

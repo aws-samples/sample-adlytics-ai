@@ -1,0 +1,2754 @@
+{
+  "envelope_version": 2,
+  "kind": "page",
+  "page": {
+    "actions": [],
+    "artifact": {
+      "absences": [],
+      "amc_retail_purchases": {
+        "status": "paid_feature",
+        "text": "Retail purchases from Amazon Marketing Cloud, a second view of the same sales, need the Amazon Retail Purchases paid feature. No data has arrived for this workspace. When it does, they show beside the Vendor Central figures with the difference stated, never added to them."
+      },
+      "boundary": "Fictional retail boundary statement.",
+      "distributor_view": "MANUFACTURING",
+      "evidence_status": {
+        "entries": [
+          {
+            "absence_text": null,
+            "coverage_text": null,
+            "label": "Retail revenue (shipped)",
+            "missing_dates": [],
+            "missing_text": "None",
+            "reason": "Every day of this window has arrived.",
+            "recovery": "No action needed.",
+            "role": "current",
+            "role_label": "Headline and product rows",
+            "slot": "retail_revenue_shipped",
+            "state": "complete"
+          },
+          {
+            "absence_text": null,
+            "coverage_text": null,
+            "label": "Units shipped",
+            "missing_dates": [],
+            "missing_text": "None",
+            "reason": "Every day of this window has arrived.",
+            "recovery": "No action needed.",
+            "role": "current",
+            "role_label": "Headline and product rows",
+            "slot": "units_shipped",
+            "state": "complete"
+          },
+          {
+            "absence_text": null,
+            "coverage_text": null,
+            "label": "Customer returns (units)",
+            "missing_dates": [],
+            "missing_text": "None",
+            "reason": "Every day of this window has arrived.",
+            "recovery": "No action needed.",
+            "role": "current",
+            "role_label": "Headline and product rows",
+            "slot": "customer_returns",
+            "state": "complete"
+          },
+          {
+            "absence_text": null,
+            "coverage_text": null,
+            "label": "Glance views",
+            "missing_dates": [],
+            "missing_text": "None",
+            "reason": "Every day of this window has arrived.",
+            "recovery": "No action needed.",
+            "role": "current",
+            "role_label": "Headline and product rows",
+            "slot": "glance_views",
+            "state": "complete"
+          },
+          {
+            "absence_text": null,
+            "coverage_text": null,
+            "label": "Retail revenue (ordered)",
+            "missing_dates": [],
+            "missing_text": "None",
+            "reason": "Every day of this window has arrived.",
+            "recovery": "No action needed.",
+            "role": "current",
+            "role_label": "Headline",
+            "slot": "revenue_ordered",
+            "state": "complete"
+          },
+          {
+            "absence_text": null,
+            "coverage_text": null,
+            "label": "Cost of goods shipped (Amazon's wholesale cost)",
+            "missing_dates": [],
+            "missing_text": "None",
+            "reason": "Every day of this window has arrived.",
+            "recovery": "No action needed.",
+            "role": "current",
+            "role_label": "Headline",
+            "slot": "cogs_shipped",
+            "state": "complete"
+          },
+          {
+            "absence_text": null,
+            "coverage_text": null,
+            "label": "Retail conversion rate",
+            "missing_dates": [],
+            "missing_text": "None",
+            "reason": "Every day of this window has arrived.",
+            "recovery": "No action needed.",
+            "role": "current",
+            "role_label": "Headline",
+            "slot": "conversion_rate_retail",
+            "state": "complete"
+          },
+          {
+            "absence_text": null,
+            "coverage_text": null,
+            "label": "Return rate",
+            "missing_dates": [],
+            "missing_text": "None",
+            "reason": "Every day of this window has arrived.",
+            "recovery": "No action needed.",
+            "role": "current",
+            "role_label": "Headline and product rows",
+            "slot": "return_rate",
+            "state": "complete"
+          },
+          {
+            "absence_text": null,
+            "coverage_text": null,
+            "label": "Estimated revenue withheld by returns",
+            "missing_dates": [],
+            "missing_text": "None",
+            "reason": "Every day of this window has arrived.",
+            "recovery": "No action needed.",
+            "role": "current",
+            "role_label": "Headline",
+            "slot": "returns_value_estimate_retail",
+            "state": "complete"
+          },
+          {
+            "absence_text": null,
+            "coverage_text": null,
+            "label": "Fulfilment rate (shipped over ordered)",
+            "missing_dates": [],
+            "missing_text": "None",
+            "reason": "Every day of this window has arrived.",
+            "recovery": "No action needed.",
+            "role": "current",
+            "role_label": "Headline",
+            "slot": "fulfilment_rate",
+            "state": "complete"
+          },
+          {
+            "absence_text": null,
+            "coverage_text": null,
+            "label": "Amazon margin proxy",
+            "missing_dates": [],
+            "missing_text": "None",
+            "reason": "Every day of this window has arrived.",
+            "recovery": "No action needed.",
+            "role": "current",
+            "role_label": "Headline and product rows",
+            "slot": "amazon_margin_proxy",
+            "state": "complete"
+          },
+          {
+            "absence_text": null,
+            "coverage_text": null,
+            "label": "Units ordered",
+            "missing_dates": [],
+            "missing_text": "None",
+            "reason": "Every day of this window has arrived.",
+            "recovery": "No action needed.",
+            "role": "current",
+            "role_label": "Headline",
+            "slot": "units_ordered",
+            "state": "complete"
+          },
+          {
+            "absence_text": null,
+            "coverage_text": null,
+            "label": "Average selling price (shipped)",
+            "missing_dates": [],
+            "missing_text": "None",
+            "reason": "Every day of this window has arrived.",
+            "recovery": "No action needed.",
+            "role": "current",
+            "role_label": "Headline",
+            "slot": "asp_shipped",
+            "state": "complete"
+          },
+          {
+            "absence_text": null,
+            "coverage_text": null,
+            "label": "Revenue per glance view",
+            "missing_dates": [],
+            "missing_text": "None",
+            "reason": "Every day of this window has arrived.",
+            "recovery": "No action needed.",
+            "role": "current",
+            "role_label": "Headline",
+            "slot": "revenue_per_glance_view",
+            "state": "complete"
+          }
+        ],
+        "summary": "Every figure is complete for this window.",
+        "version": 2,
+        "window": {
+          "end": "2026-08-19",
+          "start": "2026-08-13"
+        }
+      },
+      "insights": [
+        {
+          "absence_class": "evaluated-quiet",
+          "absence_reason": "No change in this view is large enough to call out.",
+          "artifact_revision": "sha256:0be03041acef764d9805840f72028b0b15d3b4b23973b83af25d42e763498697",
+          "evidence_line": null,
+          "id": "demand-shape",
+          "output_class": "perspective",
+          "prompt_version": "deterministic-gate1",
+          "state": "silent",
+          "text": null
+        },
+        {
+          "absence_class": "generation-pending",
+          "absence_reason": "This insight could not be generated just now; it retries automatically and appears on a later view.",
+          "artifact_revision": "sha256:0be03041acef764d9805840f72028b0b15d3b4b23973b83af25d42e763498697",
+          "evidence_line": null,
+          "id": "returns-pressure",
+          "output_class": "perspective",
+          "prompt_version": "not-generated",
+          "state": "unavailable",
+          "text": null
+        },
+        {
+          "absence_class": "evaluated-quiet",
+          "absence_reason": "No change in this view is large enough to call out.",
+          "artifact_revision": "sha256:0be03041acef764d9805840f72028b0b15d3b4b23973b83af25d42e763498697",
+          "evidence_line": null,
+          "id": "ordered-vs-shipped",
+          "output_class": "perspective",
+          "prompt_version": "deterministic-gate1",
+          "state": "silent",
+          "text": null
+        },
+        {
+          "artifact_revision": "publication-1",
+          "evidence_line": "Server-ranked absolute shipped-revenue changes.",
+          "id": "retail-movers",
+          "next_step": {
+            "kind": "open_product_detail",
+            "label": "Open Fictional Product FICTA",
+            "reason": "It changed shipped revenue more than any other product.",
+            "target": {
+              "selection_reference": "v2_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+            }
+          },
+          "output_class": "observed",
+          "prompt_version": "deterministic-v1",
+          "state": "filled",
+          "text": "Fictional Product FICTA changed by 10.00 USD."
+        }
+      ],
+      "kind": "retail_health",
+      "outcome": "complete",
+      "period": {
+        "end": "2026-08-19",
+        "start": "2026-08-13"
+      },
+      "prior_period": {
+        "end": "2026-08-12",
+        "start": "2026-08-06"
+      },
+      "reconciliation": {
+        "as_of": "2026-08-19",
+        "outcome": "reconciled",
+        "product_revenue": null,
+        "product_units": null,
+        "reported_revenue": null,
+        "reported_units": null
+      },
+      "return_reasons": {
+        "reason": "Vendor Central doesn't send return reasons for this account."
+      },
+      "rows": [
+        {
+          "child_asin": "FICTA",
+          "comparisons": [
+            {
+              "absolute_change": 19,
+              "change": {
+                "direction": "up",
+                "display_text": "+19.00 USD",
+                "not_meaningful": "near_zero_prior",
+                "sentiment": "favourable",
+                "unit": "absolute"
+              },
+              "current": {
+                "basis": "retail_actual",
+                "display_value": "20.00",
+                "grain": [
+                  "period",
+                  "product",
+                  "marketplace"
+                ],
+                "period": {
+                  "end": "2026-08-19",
+                  "start": "2026-08-13"
+                },
+                "units": {
+                  "currency_code": "USD",
+                  "kind": "currency"
+                },
+                "value": 20
+              },
+              "metric": "retail_revenue_shipped",
+              "prior": {
+                "basis": "retail_actual",
+                "display_value": "1.00",
+                "grain": [
+                  "period",
+                  "product",
+                  "marketplace"
+                ],
+                "period": {
+                  "end": "2026-08-12",
+                  "start": "2026-08-06"
+                },
+                "units": {
+                  "currency_code": "USD",
+                  "kind": "currency"
+                },
+                "value": 1
+              }
+            },
+            {
+              "absolute_change": 1,
+              "change": {
+                "direction": "up",
+                "display_text": "+100.0%",
+                "not_meaningful": null,
+                "sentiment": "favourable",
+                "unit": "percent"
+              },
+              "current": {
+                "basis": "retail_actual",
+                "display_value": null,
+                "grain": [
+                  "period",
+                  "product",
+                  "marketplace"
+                ],
+                "period": {
+                  "end": "2026-08-19",
+                  "start": "2026-08-13"
+                },
+                "units": {
+                  "currency_code": null,
+                  "kind": "count"
+                },
+                "value": 2
+              },
+              "metric": "units_shipped",
+              "prior": {
+                "basis": "retail_actual",
+                "display_value": null,
+                "grain": [
+                  "period",
+                  "product",
+                  "marketplace"
+                ],
+                "period": {
+                  "end": "2026-08-12",
+                  "start": "2026-08-06"
+                },
+                "units": {
+                  "currency_code": null,
+                  "kind": "count"
+                },
+                "value": 1
+              }
+            },
+            {
+              "absolute_change": -1,
+              "change": {
+                "direction": "down",
+                "display_text": "\u2212100.0%",
+                "not_meaningful": null,
+                "sentiment": "favourable",
+                "unit": "percent"
+              },
+              "current": {
+                "basis": "retail_actual",
+                "display_value": null,
+                "grain": [
+                  "period",
+                  "product",
+                  "marketplace"
+                ],
+                "period": {
+                  "end": "2026-08-19",
+                  "start": "2026-08-13"
+                },
+                "units": {
+                  "currency_code": null,
+                  "kind": "count"
+                },
+                "value": 0
+              },
+              "metric": "customer_returns",
+              "prior": {
+                "basis": "retail_actual",
+                "display_value": null,
+                "grain": [
+                  "period",
+                  "product",
+                  "marketplace"
+                ],
+                "period": {
+                  "end": "2026-08-12",
+                  "start": "2026-08-06"
+                },
+                "units": {
+                  "currency_code": null,
+                  "kind": "count"
+                },
+                "value": 1
+              }
+            },
+            {
+              "absolute_change": 4,
+              "change": {
+                "direction": "up",
+                "display_text": "+400.0%",
+                "not_meaningful": null,
+                "sentiment": "favourable",
+                "unit": "percent"
+              },
+              "current": {
+                "basis": "retail_actual",
+                "display_value": null,
+                "grain": [
+                  "period",
+                  "product",
+                  "marketplace"
+                ],
+                "period": {
+                  "end": "2026-08-19",
+                  "start": "2026-08-13"
+                },
+                "units": {
+                  "currency_code": null,
+                  "kind": "count"
+                },
+                "value": 5
+              },
+              "metric": "glance_views",
+              "prior": {
+                "basis": "retail_actual",
+                "display_value": null,
+                "grain": [
+                  "period",
+                  "product",
+                  "marketplace"
+                ],
+                "period": {
+                  "end": "2026-08-12",
+                  "start": "2026-08-06"
+                },
+                "units": {
+                  "currency_code": null,
+                  "kind": "count"
+                },
+                "value": 1
+              }
+            },
+            {
+              "absolute_change": "-1.0000",
+              "change": {
+                "direction": "down",
+                "display_text": "\u2212100.0 pts",
+                "not_meaningful": null,
+                "sentiment": "favourable",
+                "unit": "percentage_points"
+              },
+              "current": {
+                "basis": "retail_actual",
+                "display_value": null,
+                "grain": [
+                  "period",
+                  "product",
+                  "marketplace"
+                ],
+                "period": {
+                  "end": "2026-08-19",
+                  "start": "2026-08-13"
+                },
+                "units": {
+                  "currency_code": null,
+                  "kind": "ratio"
+                },
+                "value": "0.0000"
+              },
+              "metric": "return_rate",
+              "prior": {
+                "basis": "retail_actual",
+                "display_value": null,
+                "grain": [
+                  "period",
+                  "product",
+                  "marketplace"
+                ],
+                "period": {
+                  "end": "2026-08-12",
+                  "start": "2026-08-06"
+                },
+                "units": {
+                  "currency_code": null,
+                  "kind": "ratio"
+                },
+                "value": 1
+              }
+            },
+            {
+              "absolute_change": 11,
+              "change": {
+                "direction": "up",
+                "display_text": "+11.00 USD",
+                "not_meaningful": "near_zero_prior",
+                "sentiment": "neutral",
+                "unit": "absolute"
+              },
+              "current": {
+                "basis": "retail_actual",
+                "display_value": "12.00",
+                "grain": [
+                  "period",
+                  "product",
+                  "marketplace"
+                ],
+                "period": {
+                  "end": "2026-08-19",
+                  "start": "2026-08-13"
+                },
+                "units": {
+                  "currency_code": "USD",
+                  "kind": "currency"
+                },
+                "value": 12
+              },
+              "metric": "amazon_margin_proxy",
+              "prior": {
+                "basis": "retail_actual",
+                "display_value": "1.00",
+                "grain": [
+                  "period",
+                  "product",
+                  "marketplace"
+                ],
+                "period": {
+                  "end": "2026-08-12",
+                  "start": "2026-08-06"
+                },
+                "units": {
+                  "currency_code": "USD",
+                  "kind": "currency"
+                },
+                "value": 1
+              }
+            }
+          ],
+          "freshness_qualifiers": [],
+          "parent_asin": "PARENT-FICTA",
+          "selection_reference": "v2_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+          "shipped_revenue_spark": [
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "product",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-13",
+                "start": "2026-08-13"
+              },
+              "units": {
+                "currency_code": "USD",
+                "kind": "currency"
+              },
+              "value": 1
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "product",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-14",
+                "start": "2026-08-14"
+              },
+              "units": {
+                "currency_code": "USD",
+                "kind": "currency"
+              },
+              "value": 1
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "product",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-15",
+                "start": "2026-08-15"
+              },
+              "units": {
+                "currency_code": "USD",
+                "kind": "currency"
+              },
+              "value": 1
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "product",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-16",
+                "start": "2026-08-16"
+              },
+              "units": {
+                "currency_code": "USD",
+                "kind": "currency"
+              },
+              "value": 1
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "product",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-17",
+                "start": "2026-08-17"
+              },
+              "units": {
+                "currency_code": "USD",
+                "kind": "currency"
+              },
+              "value": 1
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "product",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-18",
+                "start": "2026-08-18"
+              },
+              "units": {
+                "currency_code": "USD",
+                "kind": "currency"
+              },
+              "value": 1
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "product",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-19",
+                "start": "2026-08-19"
+              },
+              "units": {
+                "currency_code": "USD",
+                "kind": "currency"
+              },
+              "value": 1
+            }
+          ],
+          "title": "Fictional Product FICTA"
+        },
+        {
+          "child_asin": "FICTB",
+          "comparisons": [
+            {
+              "absolute_change": 9,
+              "change": {
+                "direction": "up",
+                "display_text": "+900.0%",
+                "not_meaningful": null,
+                "sentiment": "favourable",
+                "unit": "percent"
+              },
+              "current": {
+                "basis": "retail_actual",
+                "display_value": "10.00",
+                "grain": [
+                  "period",
+                  "product",
+                  "marketplace"
+                ],
+                "period": {
+                  "end": "2026-08-19",
+                  "start": "2026-08-13"
+                },
+                "units": {
+                  "currency_code": "USD",
+                  "kind": "currency"
+                },
+                "value": 10
+              },
+              "metric": "retail_revenue_shipped",
+              "prior": {
+                "basis": "retail_actual",
+                "display_value": "1.00",
+                "grain": [
+                  "period",
+                  "product",
+                  "marketplace"
+                ],
+                "period": {
+                  "end": "2026-08-12",
+                  "start": "2026-08-06"
+                },
+                "units": {
+                  "currency_code": "USD",
+                  "kind": "currency"
+                },
+                "value": 1
+              }
+            },
+            {
+              "absolute_change": 3,
+              "change": {
+                "direction": "up",
+                "display_text": "+300.0%",
+                "not_meaningful": null,
+                "sentiment": "favourable",
+                "unit": "percent"
+              },
+              "current": {
+                "basis": "retail_actual",
+                "display_value": null,
+                "grain": [
+                  "period",
+                  "product",
+                  "marketplace"
+                ],
+                "period": {
+                  "end": "2026-08-19",
+                  "start": "2026-08-13"
+                },
+                "units": {
+                  "currency_code": null,
+                  "kind": "count"
+                },
+                "value": 4
+              },
+              "metric": "units_shipped",
+              "prior": {
+                "basis": "retail_actual",
+                "display_value": null,
+                "grain": [
+                  "period",
+                  "product",
+                  "marketplace"
+                ],
+                "period": {
+                  "end": "2026-08-12",
+                  "start": "2026-08-06"
+                },
+                "units": {
+                  "currency_code": null,
+                  "kind": "count"
+                },
+                "value": 1
+              }
+            },
+            {
+              "absolute_change": 0,
+              "change": {
+                "direction": "flat",
+                "display_text": "No change",
+                "not_meaningful": null,
+                "sentiment": "neutral",
+                "unit": "percent"
+              },
+              "current": {
+                "basis": "retail_actual",
+                "display_value": null,
+                "grain": [
+                  "period",
+                  "product",
+                  "marketplace"
+                ],
+                "period": {
+                  "end": "2026-08-19",
+                  "start": "2026-08-13"
+                },
+                "units": {
+                  "currency_code": null,
+                  "kind": "count"
+                },
+                "value": 1
+              },
+              "metric": "customer_returns",
+              "prior": {
+                "basis": "retail_actual",
+                "display_value": null,
+                "grain": [
+                  "period",
+                  "product",
+                  "marketplace"
+                ],
+                "period": {
+                  "end": "2026-08-12",
+                  "start": "2026-08-06"
+                },
+                "units": {
+                  "currency_code": null,
+                  "kind": "count"
+                },
+                "value": 1
+              }
+            },
+            {
+              "absolute_change": 8,
+              "change": {
+                "direction": "up",
+                "display_text": "+800.0%",
+                "not_meaningful": null,
+                "sentiment": "favourable",
+                "unit": "percent"
+              },
+              "current": {
+                "basis": "retail_actual",
+                "display_value": null,
+                "grain": [
+                  "period",
+                  "product",
+                  "marketplace"
+                ],
+                "period": {
+                  "end": "2026-08-19",
+                  "start": "2026-08-13"
+                },
+                "units": {
+                  "currency_code": null,
+                  "kind": "count"
+                },
+                "value": 9
+              },
+              "metric": "glance_views",
+              "prior": {
+                "basis": "retail_actual",
+                "display_value": null,
+                "grain": [
+                  "period",
+                  "product",
+                  "marketplace"
+                ],
+                "period": {
+                  "end": "2026-08-12",
+                  "start": "2026-08-06"
+                },
+                "units": {
+                  "currency_code": null,
+                  "kind": "count"
+                },
+                "value": 1
+              }
+            },
+            {
+              "absolute_change": "-0.7500",
+              "change": {
+                "direction": "down",
+                "display_text": "\u221275.0 pts",
+                "not_meaningful": null,
+                "sentiment": "favourable",
+                "unit": "percentage_points"
+              },
+              "current": {
+                "basis": "retail_actual",
+                "display_value": null,
+                "grain": [
+                  "period",
+                  "product",
+                  "marketplace"
+                ],
+                "period": {
+                  "end": "2026-08-19",
+                  "start": "2026-08-13"
+                },
+                "units": {
+                  "currency_code": null,
+                  "kind": "ratio"
+                },
+                "value": "0.2500"
+              },
+              "metric": "return_rate",
+              "prior": {
+                "basis": "retail_actual",
+                "display_value": null,
+                "grain": [
+                  "period",
+                  "product",
+                  "marketplace"
+                ],
+                "period": {
+                  "end": "2026-08-12",
+                  "start": "2026-08-06"
+                },
+                "units": {
+                  "currency_code": null,
+                  "kind": "ratio"
+                },
+                "value": 1
+              }
+            },
+            {
+              "absolute_change": 5,
+              "change": {
+                "direction": "up",
+                "display_text": "+500.0%",
+                "not_meaningful": null,
+                "sentiment": "neutral",
+                "unit": "percent"
+              },
+              "current": {
+                "basis": "retail_actual",
+                "display_value": "6.00",
+                "grain": [
+                  "period",
+                  "product",
+                  "marketplace"
+                ],
+                "period": {
+                  "end": "2026-08-19",
+                  "start": "2026-08-13"
+                },
+                "units": {
+                  "currency_code": "USD",
+                  "kind": "currency"
+                },
+                "value": 6
+              },
+              "metric": "amazon_margin_proxy",
+              "prior": {
+                "basis": "retail_actual",
+                "display_value": "1.00",
+                "grain": [
+                  "period",
+                  "product",
+                  "marketplace"
+                ],
+                "period": {
+                  "end": "2026-08-12",
+                  "start": "2026-08-06"
+                },
+                "units": {
+                  "currency_code": "USD",
+                  "kind": "currency"
+                },
+                "value": 1
+              }
+            }
+          ],
+          "freshness_qualifiers": [],
+          "parent_asin": "PARENT-FICTB",
+          "selection_reference": "v2_CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+          "shipped_revenue_spark": [
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "product",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-13",
+                "start": "2026-08-13"
+              },
+              "units": {
+                "currency_code": "USD",
+                "kind": "currency"
+              },
+              "value": 1
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "product",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-14",
+                "start": "2026-08-14"
+              },
+              "units": {
+                "currency_code": "USD",
+                "kind": "currency"
+              },
+              "value": 1
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "product",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-15",
+                "start": "2026-08-15"
+              },
+              "units": {
+                "currency_code": "USD",
+                "kind": "currency"
+              },
+              "value": 1
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "product",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-16",
+                "start": "2026-08-16"
+              },
+              "units": {
+                "currency_code": "USD",
+                "kind": "currency"
+              },
+              "value": 1
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "product",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-17",
+                "start": "2026-08-17"
+              },
+              "units": {
+                "currency_code": "USD",
+                "kind": "currency"
+              },
+              "value": 1
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "product",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-18",
+                "start": "2026-08-18"
+              },
+              "units": {
+                "currency_code": "USD",
+                "kind": "currency"
+              },
+              "value": 1
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "product",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-19",
+                "start": "2026-08-19"
+              },
+              "units": {
+                "currency_code": "USD",
+                "kind": "currency"
+              },
+              "value": 1
+            }
+          ],
+          "title": "Fictional Product FICTB"
+        }
+      ],
+      "total_count": 2,
+      "totals": [
+        {
+          "absolute_change": 15,
+          "change": {
+            "direction": "up",
+            "display_text": "+100.0%",
+            "not_meaningful": null,
+            "sentiment": "favourable",
+            "unit": "percent"
+          },
+          "current": {
+            "basis": "retail_actual",
+            "display_value": "30.00",
+            "grain": [
+              "period",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-19",
+              "start": "2026-08-13"
+            },
+            "units": {
+              "currency_code": "USD",
+              "kind": "currency"
+            },
+            "value": 30
+          },
+          "metric": "retail_revenue_shipped",
+          "prior": {
+            "basis": "retail_actual",
+            "display_value": "15.00",
+            "grain": [
+              "period",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-12",
+              "start": "2026-08-06"
+            },
+            "units": {
+              "currency_code": "USD",
+              "kind": "currency"
+            },
+            "value": 15
+          }
+        },
+        {
+          "absolute_change": 15,
+          "change": {
+            "direction": "up",
+            "display_text": "+100.0%",
+            "not_meaningful": null,
+            "sentiment": "favourable",
+            "unit": "percent"
+          },
+          "current": {
+            "basis": "retail_actual",
+            "display_value": null,
+            "grain": [
+              "period",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-19",
+              "start": "2026-08-13"
+            },
+            "units": {
+              "currency_code": null,
+              "kind": "count"
+            },
+            "value": 30
+          },
+          "metric": "units_shipped",
+          "prior": {
+            "basis": "retail_actual",
+            "display_value": null,
+            "grain": [
+              "period",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-12",
+              "start": "2026-08-06"
+            },
+            "units": {
+              "currency_code": null,
+              "kind": "count"
+            },
+            "value": 15
+          }
+        },
+        {
+          "absolute_change": 15,
+          "change": {
+            "direction": "up",
+            "display_text": "+100.0%",
+            "not_meaningful": null,
+            "sentiment": "unfavourable",
+            "unit": "percent"
+          },
+          "current": {
+            "basis": "retail_actual",
+            "display_value": null,
+            "grain": [
+              "period",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-19",
+              "start": "2026-08-13"
+            },
+            "units": {
+              "currency_code": null,
+              "kind": "count"
+            },
+            "value": 30
+          },
+          "metric": "customer_returns",
+          "prior": {
+            "basis": "retail_actual",
+            "display_value": null,
+            "grain": [
+              "period",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-12",
+              "start": "2026-08-06"
+            },
+            "units": {
+              "currency_code": null,
+              "kind": "count"
+            },
+            "value": 15
+          }
+        },
+        {
+          "absolute_change": 15,
+          "change": {
+            "direction": "up",
+            "display_text": "+100.0%",
+            "not_meaningful": null,
+            "sentiment": "favourable",
+            "unit": "percent"
+          },
+          "current": {
+            "basis": "retail_actual",
+            "display_value": null,
+            "grain": [
+              "period",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-19",
+              "start": "2026-08-13"
+            },
+            "units": {
+              "currency_code": null,
+              "kind": "count"
+            },
+            "value": 30
+          },
+          "metric": "glance_views",
+          "prior": {
+            "basis": "retail_actual",
+            "display_value": null,
+            "grain": [
+              "period",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-12",
+              "start": "2026-08-06"
+            },
+            "units": {
+              "currency_code": null,
+              "kind": "count"
+            },
+            "value": 15
+          }
+        },
+        {
+          "absolute_change": 15,
+          "change": {
+            "direction": "up",
+            "display_text": "+100.0%",
+            "not_meaningful": null,
+            "sentiment": "favourable",
+            "unit": "percent"
+          },
+          "current": {
+            "basis": "retail_actual",
+            "display_value": "30.00",
+            "grain": [
+              "period",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-19",
+              "start": "2026-08-13"
+            },
+            "units": {
+              "currency_code": "USD",
+              "kind": "currency"
+            },
+            "value": 30
+          },
+          "metric": "revenue_ordered",
+          "prior": {
+            "basis": "retail_actual",
+            "display_value": "15.00",
+            "grain": [
+              "period",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-12",
+              "start": "2026-08-06"
+            },
+            "units": {
+              "currency_code": "USD",
+              "kind": "currency"
+            },
+            "value": 15
+          }
+        },
+        {
+          "absolute_change": 15,
+          "change": {
+            "direction": "up",
+            "display_text": "+100.0%",
+            "not_meaningful": null,
+            "sentiment": "neutral",
+            "unit": "percent"
+          },
+          "current": {
+            "basis": "retail_actual",
+            "display_value": "30.00",
+            "grain": [
+              "period",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-19",
+              "start": "2026-08-13"
+            },
+            "units": {
+              "currency_code": "USD",
+              "kind": "currency"
+            },
+            "value": 30
+          },
+          "metric": "cogs_shipped",
+          "prior": {
+            "basis": "retail_actual",
+            "display_value": "15.00",
+            "grain": [
+              "period",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-12",
+              "start": "2026-08-06"
+            },
+            "units": {
+              "currency_code": "USD",
+              "kind": "currency"
+            },
+            "value": 15
+          }
+        },
+        {
+          "absolute_change": "0.01",
+          "change": {
+            "direction": "up",
+            "display_text": "+100.0%",
+            "not_meaningful": null,
+            "sentiment": "favourable",
+            "unit": "percent"
+          },
+          "current": {
+            "basis": "retail_actual",
+            "display_value": null,
+            "grain": [
+              "period",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-19",
+              "start": "2026-08-13"
+            },
+            "units": {
+              "currency_code": null,
+              "kind": "ratio"
+            },
+            "value": "0.02"
+          },
+          "metric": "conversion_rate_retail",
+          "prior": {
+            "basis": "retail_actual",
+            "display_value": null,
+            "grain": [
+              "period",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-12",
+              "start": "2026-08-06"
+            },
+            "units": {
+              "currency_code": null,
+              "kind": "ratio"
+            },
+            "value": "0.01"
+          }
+        },
+        {
+          "absolute_change": "0.01",
+          "change": {
+            "direction": "up",
+            "display_text": "+1.0 pts",
+            "not_meaningful": null,
+            "sentiment": "unfavourable",
+            "unit": "percentage_points"
+          },
+          "current": {
+            "basis": "retail_actual",
+            "display_value": null,
+            "grain": [
+              "period",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-19",
+              "start": "2026-08-13"
+            },
+            "units": {
+              "currency_code": null,
+              "kind": "ratio"
+            },
+            "value": "0.02"
+          },
+          "metric": "return_rate",
+          "prior": {
+            "basis": "retail_actual",
+            "display_value": null,
+            "grain": [
+              "period",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-12",
+              "start": "2026-08-06"
+            },
+            "units": {
+              "currency_code": null,
+              "kind": "ratio"
+            },
+            "value": "0.01"
+          }
+        },
+        {
+          "absolute_change": 15,
+          "change": {
+            "direction": "up",
+            "display_text": "+100.0%",
+            "not_meaningful": null,
+            "sentiment": "unfavourable",
+            "unit": "percent"
+          },
+          "current": {
+            "basis": "retail_actual",
+            "display_value": "30.00",
+            "grain": [
+              "period",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-19",
+              "start": "2026-08-13"
+            },
+            "units": {
+              "currency_code": "USD",
+              "kind": "currency"
+            },
+            "value": 30
+          },
+          "metric": "returns_value_estimate_retail",
+          "prior": {
+            "basis": "retail_actual",
+            "display_value": "15.00",
+            "grain": [
+              "period",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-12",
+              "start": "2026-08-06"
+            },
+            "units": {
+              "currency_code": "USD",
+              "kind": "currency"
+            },
+            "value": 15
+          }
+        },
+        {
+          "absolute_change": "0.01",
+          "change": {
+            "direction": "up",
+            "display_text": "+1.0 pts",
+            "not_meaningful": null,
+            "sentiment": "favourable",
+            "unit": "percentage_points"
+          },
+          "current": {
+            "basis": "retail_actual",
+            "display_value": null,
+            "grain": [
+              "period",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-19",
+              "start": "2026-08-13"
+            },
+            "units": {
+              "currency_code": null,
+              "kind": "ratio"
+            },
+            "value": "0.02"
+          },
+          "metric": "fulfilment_rate",
+          "prior": {
+            "basis": "retail_actual",
+            "display_value": null,
+            "grain": [
+              "period",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-12",
+              "start": "2026-08-06"
+            },
+            "units": {
+              "currency_code": null,
+              "kind": "ratio"
+            },
+            "value": "0.01"
+          }
+        },
+        {
+          "absolute_change": 15,
+          "change": {
+            "direction": "up",
+            "display_text": "+100.0%",
+            "not_meaningful": null,
+            "sentiment": "neutral",
+            "unit": "percent"
+          },
+          "current": {
+            "basis": "retail_actual",
+            "display_value": "30.00",
+            "grain": [
+              "period",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-19",
+              "start": "2026-08-13"
+            },
+            "units": {
+              "currency_code": "USD",
+              "kind": "currency"
+            },
+            "value": 30
+          },
+          "metric": "amazon_margin_proxy",
+          "prior": {
+            "basis": "retail_actual",
+            "display_value": "15.00",
+            "grain": [
+              "period",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-12",
+              "start": "2026-08-06"
+            },
+            "units": {
+              "currency_code": "USD",
+              "kind": "currency"
+            },
+            "value": 15
+          }
+        },
+        {
+          "absolute_change": 15,
+          "change": {
+            "direction": "up",
+            "display_text": "+100.0%",
+            "not_meaningful": null,
+            "sentiment": "favourable",
+            "unit": "percent"
+          },
+          "current": {
+            "basis": "retail_actual",
+            "display_value": null,
+            "grain": [
+              "period",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-19",
+              "start": "2026-08-13"
+            },
+            "units": {
+              "currency_code": null,
+              "kind": "count"
+            },
+            "value": 30
+          },
+          "metric": "units_ordered",
+          "prior": {
+            "basis": "retail_actual",
+            "display_value": null,
+            "grain": [
+              "period",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-12",
+              "start": "2026-08-06"
+            },
+            "units": {
+              "currency_code": null,
+              "kind": "count"
+            },
+            "value": 15
+          }
+        },
+        {
+          "absolute_change": 15,
+          "change": {
+            "direction": "up",
+            "display_text": "+100.0%",
+            "not_meaningful": null,
+            "sentiment": "neutral",
+            "unit": "percent"
+          },
+          "current": {
+            "basis": "retail_actual",
+            "display_value": "30.00",
+            "grain": [
+              "period",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-19",
+              "start": "2026-08-13"
+            },
+            "units": {
+              "currency_code": "USD",
+              "kind": "currency"
+            },
+            "value": 30
+          },
+          "metric": "asp_shipped",
+          "prior": {
+            "basis": "retail_actual",
+            "display_value": "15.00",
+            "grain": [
+              "period",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-12",
+              "start": "2026-08-06"
+            },
+            "units": {
+              "currency_code": "USD",
+              "kind": "currency"
+            },
+            "value": 15
+          }
+        },
+        {
+          "absolute_change": 15,
+          "change": {
+            "direction": "up",
+            "display_text": "+100.0%",
+            "not_meaningful": null,
+            "sentiment": "favourable",
+            "unit": "percent"
+          },
+          "current": {
+            "basis": "retail_actual",
+            "display_value": "30.00",
+            "grain": [
+              "period",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-19",
+              "start": "2026-08-13"
+            },
+            "units": {
+              "currency_code": "USD",
+              "kind": "currency"
+            },
+            "value": 30
+          },
+          "metric": "revenue_per_glance_view",
+          "prior": {
+            "basis": "retail_actual",
+            "display_value": "15.00",
+            "grain": [
+              "period",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-12",
+              "start": "2026-08-06"
+            },
+            "units": {
+              "currency_code": "USD",
+              "kind": "currency"
+            },
+            "value": 15
+          }
+        }
+      ],
+      "trend": [
+        {
+          "current": [
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-13",
+                "start": "2026-08-13"
+              },
+              "units": {
+                "currency_code": "USD",
+                "kind": "currency"
+              },
+              "value": 2
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-13",
+                "start": "2026-08-13"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "count"
+              },
+              "value": 2
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-13",
+                "start": "2026-08-13"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "count"
+              },
+              "value": 2
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-13",
+                "start": "2026-08-13"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "count"
+              },
+              "value": 2
+            }
+          ],
+          "date": "2026-08-13",
+          "prior": [
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-06",
+                "start": "2026-08-06"
+              },
+              "units": {
+                "currency_code": "USD",
+                "kind": "currency"
+              },
+              "value": 1
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-06",
+                "start": "2026-08-06"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "count"
+              },
+              "value": 1
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-06",
+                "start": "2026-08-06"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "count"
+              },
+              "value": 1
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-06",
+                "start": "2026-08-06"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "count"
+              },
+              "value": 1
+            }
+          ]
+        },
+        {
+          "current": [
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-14",
+                "start": "2026-08-14"
+              },
+              "units": {
+                "currency_code": "USD",
+                "kind": "currency"
+              },
+              "value": 2
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-14",
+                "start": "2026-08-14"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "count"
+              },
+              "value": 2
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-14",
+                "start": "2026-08-14"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "count"
+              },
+              "value": 2
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-14",
+                "start": "2026-08-14"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "count"
+              },
+              "value": 2
+            }
+          ],
+          "date": "2026-08-14",
+          "prior": [
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-07",
+                "start": "2026-08-07"
+              },
+              "units": {
+                "currency_code": "USD",
+                "kind": "currency"
+              },
+              "value": 1
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-07",
+                "start": "2026-08-07"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "count"
+              },
+              "value": 1
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-07",
+                "start": "2026-08-07"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "count"
+              },
+              "value": 1
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-07",
+                "start": "2026-08-07"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "count"
+              },
+              "value": 1
+            }
+          ]
+        },
+        {
+          "current": [
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-15",
+                "start": "2026-08-15"
+              },
+              "units": {
+                "currency_code": "USD",
+                "kind": "currency"
+              },
+              "value": 2
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-15",
+                "start": "2026-08-15"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "count"
+              },
+              "value": 2
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-15",
+                "start": "2026-08-15"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "count"
+              },
+              "value": 2
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-15",
+                "start": "2026-08-15"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "count"
+              },
+              "value": 2
+            }
+          ],
+          "date": "2026-08-15",
+          "prior": [
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-08",
+                "start": "2026-08-08"
+              },
+              "units": {
+                "currency_code": "USD",
+                "kind": "currency"
+              },
+              "value": 1
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-08",
+                "start": "2026-08-08"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "count"
+              },
+              "value": 1
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-08",
+                "start": "2026-08-08"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "count"
+              },
+              "value": 1
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-08",
+                "start": "2026-08-08"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "count"
+              },
+              "value": 1
+            }
+          ]
+        },
+        {
+          "current": [
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-16",
+                "start": "2026-08-16"
+              },
+              "units": {
+                "currency_code": "USD",
+                "kind": "currency"
+              },
+              "value": 2
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-16",
+                "start": "2026-08-16"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "count"
+              },
+              "value": 2
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-16",
+                "start": "2026-08-16"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "count"
+              },
+              "value": 2
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-16",
+                "start": "2026-08-16"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "count"
+              },
+              "value": 2
+            }
+          ],
+          "date": "2026-08-16",
+          "prior": [
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-09",
+                "start": "2026-08-09"
+              },
+              "units": {
+                "currency_code": "USD",
+                "kind": "currency"
+              },
+              "value": 1
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-09",
+                "start": "2026-08-09"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "count"
+              },
+              "value": 1
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-09",
+                "start": "2026-08-09"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "count"
+              },
+              "value": 1
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-09",
+                "start": "2026-08-09"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "count"
+              },
+              "value": 1
+            }
+          ]
+        },
+        {
+          "current": [
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-17",
+                "start": "2026-08-17"
+              },
+              "units": {
+                "currency_code": "USD",
+                "kind": "currency"
+              },
+              "value": 2
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-17",
+                "start": "2026-08-17"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "count"
+              },
+              "value": 2
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-17",
+                "start": "2026-08-17"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "count"
+              },
+              "value": 2
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-17",
+                "start": "2026-08-17"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "count"
+              },
+              "value": 2
+            }
+          ],
+          "date": "2026-08-17",
+          "prior": [
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-10",
+                "start": "2026-08-10"
+              },
+              "units": {
+                "currency_code": "USD",
+                "kind": "currency"
+              },
+              "value": 1
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-10",
+                "start": "2026-08-10"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "count"
+              },
+              "value": 1
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-10",
+                "start": "2026-08-10"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "count"
+              },
+              "value": 1
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-10",
+                "start": "2026-08-10"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "count"
+              },
+              "value": 1
+            }
+          ]
+        },
+        {
+          "current": [
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-18",
+                "start": "2026-08-18"
+              },
+              "units": {
+                "currency_code": "USD",
+                "kind": "currency"
+              },
+              "value": 2
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-18",
+                "start": "2026-08-18"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "count"
+              },
+              "value": 2
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-18",
+                "start": "2026-08-18"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "count"
+              },
+              "value": 2
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-18",
+                "start": "2026-08-18"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "count"
+              },
+              "value": 2
+            }
+          ],
+          "date": "2026-08-18",
+          "prior": [
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-11",
+                "start": "2026-08-11"
+              },
+              "units": {
+                "currency_code": "USD",
+                "kind": "currency"
+              },
+              "value": 1
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-11",
+                "start": "2026-08-11"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "count"
+              },
+              "value": 1
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-11",
+                "start": "2026-08-11"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "count"
+              },
+              "value": 1
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-11",
+                "start": "2026-08-11"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "count"
+              },
+              "value": 1
+            }
+          ]
+        },
+        {
+          "current": [
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-19",
+                "start": "2026-08-19"
+              },
+              "units": {
+                "currency_code": "USD",
+                "kind": "currency"
+              },
+              "value": 2
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-19",
+                "start": "2026-08-19"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "count"
+              },
+              "value": 2
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-19",
+                "start": "2026-08-19"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "count"
+              },
+              "value": 2
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-19",
+                "start": "2026-08-19"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "count"
+              },
+              "value": 2
+            }
+          ],
+          "date": "2026-08-19",
+          "prior": [
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-12",
+                "start": "2026-08-12"
+              },
+              "units": {
+                "currency_code": "USD",
+                "kind": "currency"
+              },
+              "value": 1
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-12",
+                "start": "2026-08-12"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "count"
+              },
+              "value": 1
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-12",
+                "start": "2026-08-12"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "count"
+              },
+              "value": 1
+            },
+            {
+              "basis": "retail_actual",
+              "grain": [
+                "date",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-12",
+                "start": "2026-08-12"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "count"
+              },
+              "value": 1
+            }
+          ]
+        }
+      ],
+      "truncation": null
+    },
+    "artifact_id": "retail_health",
+    "artifact_revision": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "artifact_type": "RetailHealthArtifact",
+    "artifact_version": 2,
+    "kind": "retail_health",
+    "page_context_expires_at": "2026-08-19T13:00:00+00:00",
+    "page_context_label": "Retail health \u00b7 Aug 13\u201319, 2026",
+    "page_id": "retail-health",
+    "route": "/retail-health/",
+    "starter_questions": [
+      "Which products added most shipped revenue from Aug 6\u201312, 2026 to Aug 13\u201319, 2026?",
+      "How did glance views change between Aug 6\u201312, 2026 and Aug 13\u201319, 2026?"
+    ]
+  },
+  "session_id": "conversation-session",
+  "temporal": {
+    "comparison": {
+      "policy": "required_equal_prior",
+      "reason_code": null,
+      "status": "available"
+    },
+    "custom": {
+      "availability": "unavailable",
+      "bounds": null,
+      "reason_code": "custom_disabled"
+    },
+    "mode": "selectable",
+    "presets": [
+      {
+        "availability": "unavailable",
+        "id": "1d",
+        "label": "1D",
+        "reason_code": "preset_unavailable"
+      },
+      {
+        "availability": "available",
+        "id": "7d",
+        "label": "7D",
+        "reason_code": null
+      },
+      {
+        "availability": "unavailable",
+        "id": "14d",
+        "label": "14D",
+        "reason_code": "preset_unavailable"
+      },
+      {
+        "availability": "unavailable",
+        "id": "30d",
+        "label": "30D",
+        "reason_code": "preset_unavailable"
+      }
+    ],
+    "resolved": {
+      "display_grain": "period",
+      "reporting_window_status": "preferred_default",
+      "selection": {
+        "kind": "default",
+        "preset_id": null
+      },
+      "window": {
+        "end": "2026-08-19",
+        "start": "2026-08-13"
+      }
+    },
+    "version": 1
+  }
+}

@@ -1,0 +1,93 @@
+id: full-funnel-association
+version: 1
+purpose: Deterministically compare the purchaser rate of shoppers who saw both DSP and sponsored ads with that of shoppers who saw sponsored ads only, on Amazon account IDs inside one complete period's exposure-groups delivery, as association and never cause.
+display_name: Full-funnel association (Reach and funnel)
+output_class: perspective
+allowed_inputs:
+  - server-computed purchaser rates per exposure group on Amazon account IDs inside one exposure-groups delivery for one complete week or month and one marketplace
+  - the period's server label
+deterministic_findings: [percentage-change]
+predicate:
+  required_evidence_inputs: [exposure-group-cells]
+  required_finding_kinds: [percentage-change]
+  materiality:
+    bases:
+      group_delivery:
+        per_unit:
+          percent: {operational-pulse: "10", tactical-review: "10", pattern-confirmation: "10"}
+        per_metric: {}
+    near_zero_prior:
+      rate_pp: "0.1"
+  delivery_follow_up_evidence: []
+materiality_cases:
+  - {name: a saw-both rate 20 percent above sponsored only is admitted at tactical-review, horizon: tactical-review, basis: group_delivery, kind: percentage-change, metric: purchaser_rate, current: "0.060", prior: "0.050", expect: admitted}
+  - {name: a saw-both rate 4 percent above sponsored only is silent at tactical-review, horizon: tactical-review, basis: group_delivery, kind: percentage-change, metric: purchaser_rate, current: "0.052", prior: "0.050", expect: silent}
+  - {name: a saw-both rate 20 percent above is admitted at operational-pulse, horizon: operational-pulse, basis: group_delivery, kind: percentage-change, metric: purchaser_rate, current: "0.060", prior: "0.050", expect: admitted}
+  - {name: a saw-both rate 20 percent above is admitted at pattern-confirmation, horizon: pattern-confirmation, basis: group_delivery, kind: percentage-change, metric: purchaser_rate, current: "0.060", prior: "0.050", expect: admitted}
+  - {name: a sponsored-only rate of 0.0005 is near zero, horizon: tactical-review, basis: group_delivery, kind: percentage-change, metric: purchaser_rate, current: "0.0010", prior: "0.0005", expect: suppressed}
+silence_condition: The purchaser rates of shoppers who saw both and of shoppers who saw sponsored ads only don't differ by the declared threshold on Amazon account IDs, or either rate is not available.
+structured_output_schema: {id: insight-narration-v1, fields: [output_class, sentences]}
+initial_fictional_prompt: null
+calibration_cases:
+  - kind: known-correct
+    input_summary: Fictional shoppers who saw both kinds of ads have a supplied purchaser rate above that of shoppers who saw sponsored ads only, on Amazon account IDs.
+    expected_outcome: Accept the deterministic comparison that names the account ID space and says association, not cause.
+    horizon: tactical-review
+    findings:
+      - {name: Saw-both purchaser rate against sponsored only, value: "20.00"}
+  - kind: exploratory
+    input_summary: Fictional DSP-only and saw-both purchaser rates both sit above sponsored only, which would invite a reading this deterministic slot never generates.
+    expected_outcome: The slot states the saw-both comparison only; no prompt generates a reading.
+    horizon: pattern-confirmation
+    findings:
+      - {name: Saw-both purchaser rate against sponsored only, value: "20.00"}
+      - {name: DSP-only purchaser rate against sponsored only, value: "12.00"}
+  - kind: contradiction
+    input_summary: A fictional draft calls the saw-both purchaser rate lower than sponsored only's although the supplied comparison is higher.
+    expected_outcome: Reject the contradiction.
+    horizon: tactical-review
+    findings:
+      - {name: Saw-both purchaser rate against sponsored only, value: "20.00"}
+    draft:
+      sentences:
+        - Shoppers who saw both bought at a lower rate than shoppers who saw sponsored ads only.
+  - kind: fluent-unsupported
+    input_summary: A fluent draft says DSP caused, drove or lifted the higher purchaser rate, or calls it incremental, though groups aren't randomly assigned.
+    expected_outcome: Reject the causal claim; the comparison shows association, not cause.
+    horizon: tactical-review
+    findings:
+      - {name: Saw-both purchaser rate against sponsored only, value: "20.00"}
+    draft:
+      sentences:
+        - DSP drove a 20 percent lift in purchases among shoppers who also saw sponsored ads.
+  - kind: derived-figure
+    input_summary: A fictional renderer states the saw-both comparison derived from the two supplied account-ID purchaser rates.
+    expected_outcome: Accept the correctly derived percentage; this deterministic slot never generates one.
+    horizon: tactical-review
+    findings:
+      - {name: Saw-both purchaser rate on account IDs, value: "0.060"}
+      - {name: Sponsored-only purchaser rate on account IDs, value: "0.050"}
+    draft:
+      sentences:
+        - Shoppers who saw both bought at 6.0 percent against 5.0 percent for sponsored ads only, 20 percent higher. This shows association, not cause.
+  - kind: miscomputed-derivation
+    input_summary: A fictional draft credits DSP for search by comparing a DSP group's search rate with sponsored only's, though sponsored ads appear when shoppers search.
+    expected_outcome: Reject the DSP-versus-sponsored-only credit for search.
+    horizon: pattern-confirmation
+    findings:
+      - {name: DSP-only search rate on account IDs, value: "0.14"}
+      - {name: Sponsored-only search rate on account IDs, value: "0.10"}
+    draft:
+      sentences:
+        - DSP earned 4 more searches per 100 shoppers than sponsored ads.
+  - kind: incompatible-basis
+    input_summary: A fictional draft quotes a purchaser rate from device or browser IDs, which can't be matched to an account purchase.
+    expected_outcome: Reject the rate quoted from the device-or-browser ID space; rates read account IDs only.
+    horizon: tactical-review
+    findings:
+      - {name: Saw-both purchaser rate on device or browser IDs, value: "0.012"}
+      - {name: Saw-both purchaser rate on account IDs, value: "0.060"}
+    draft:
+      sentences:
+        - Shoppers who saw both bought at 1.2 percent on device and browser IDs.
+deep: null

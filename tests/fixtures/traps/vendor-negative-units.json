@@ -1,0 +1,57 @@
+{
+  "reportSpecification": {
+    "reportType": "GET_VENDOR_SALES_REPORT",
+    "marketplaceIds": [
+      "ATVPDKIKX0DER"
+    ],
+    "dataStartTime": "2025-06-18",
+    "dataEndTime": "2025-06-18",
+    "lastUpdatedDate": "2025-06-18T00:00:00Z",
+    "reportOptions": {
+      "reportPeriod": "DAY",
+      "distributorView": "MANUFACTURING",
+      "sellingProgram": "RETAIL"
+    }
+  },
+  "salesByAsin": [
+    {
+      "asin": "B0TRAP0004",
+      "startDate": "2025-06-18",
+      "shippedRevenue": {
+        "amount": "0.0",
+        "currencyCode": "USD"
+      },
+      "shippedCogs": {
+        "amount": "0.0",
+        "currencyCode": "USD"
+      },
+      "shippedUnits": 0,
+      "orderedRevenue": {
+        "amount": "-45.5",
+        "currencyCode": "USD"
+      },
+      "orderedUnits": -3,
+      "customerReturns": 0
+    }
+  ],
+  "salesAggregate": [
+    {
+      "startDate": "2025-06-18",
+      "shippedRevenue": {
+        "amount": "0.0",
+        "currencyCode": "USD"
+      },
+      "shippedCogs": {
+        "amount": "0.0",
+        "currencyCode": "USD"
+      },
+      "orderedRevenue": {
+        "amount": "-45.5",
+        "currencyCode": "USD"
+      },
+      "shippedUnits": 0,
+      "orderedUnits": -3,
+      "customerReturns": 0
+    }
+  ]
+}

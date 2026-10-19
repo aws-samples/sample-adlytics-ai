@@ -1,0 +1,117 @@
+id: next-check
+version: 9
+purpose: Suggest the next governed read that can discriminate a supplied material change.
+display_name: Next check (campaign detail)
+output_class: hypothesis
+allowed_inputs:
+  - reporting and comparison window display context
+  - selected campaign display identity
+  - full summary comparison section (current and prior metrics)
+  - full delivery summary section
+  - server-computed deterministic findings
+  - typed window profile (window length, grain, aligned prior, horizon role)
+deterministic_findings:
+  - absolute-change
+  - percentage-change
+predicate:
+  required_evidence_inputs: [detail-comparisons, delivery-follow-up]
+  required_finding_kinds: [absolute-change, percentage-change]
+  materiality:
+    bases:
+      campaign_window:
+        per_unit:
+          currency: {operational-pulse: "20", tactical-review: "300", pattern-confirmation: "1500"}
+          count: {operational-pulse: "3", tactical-review: "40", pattern-confirmation: "150"}
+          multiplier: {operational-pulse: "0.25", tactical-review: "0.15", pattern-confirmation: "0.10"}
+          percent: {operational-pulse: "10", tactical-review: "5", pattern-confirmation: "5"}
+        per_metric: {}
+    near_zero_prior:
+      currency: "5"
+      count: "5"
+      multiplier: "0.1"
+  delivery_follow_up_evidence: [delivery-clicks]
+materiality_cases:
+  - {name: spend change of 400 clears the tactical row, horizon: tactical-review, basis: campaign_window, kind: absolute-change, metric: spend, current: "1400", prior: "1000", expect: admitted}
+  - {name: purchases change of 40 clears the tactical row, horizon: tactical-review, basis: campaign_window, kind: absolute-change, metric: purchases, current: "140", prior: "100", expect: admitted}
+  - {name: purchases change of 39 is below the tactical row, horizon: tactical-review, basis: campaign_window, kind: absolute-change, metric: purchases, current: "139", prior: "100", expect: silent}
+  - {name: ROAS change of 0.25 clears the operational row, horizon: operational-pulse, basis: campaign_window, kind: absolute-change, metric: attributed_roas, current: "3.25", prior: "3.00", expect: admitted}
+  - {name: ROAS change of 0.24 is below the operational row, horizon: operational-pulse, basis: campaign_window, kind: absolute-change, metric: attributed_roas, current: "3.24", prior: "3.00", expect: silent}
+  - {name: the launch campaign's zero 14D prior builds no percentage, horizon: pattern-confirmation, basis: campaign_window, kind: percentage-change, metric: spend, current: "2400", prior: "0", expect: not-built}
+silence_condition: No supplied material change has a declared governed follow-up read.
+structured_output_schema:
+  id: insight-narration-v1
+  fields: [output_class, sentences]
+initial_fictional_prompt: Propose only the next declared governed read that could clarify the supplied change; do not assert a cause.
+calibration_cases:
+  - kind: known-correct
+    input_summary: A fictional material ROAS change has an available declared delivery follow-up read.
+    expected_outcome: Accept a hypothesis that proposes that read without a causal claim.
+    horizon: tactical-review
+    findings:
+      - {name: Roas change, value: "-0.9"}
+  - kind: exploratory
+    input_summary: A fictional spend swing invites a hedged proposal about which supplied read to check first.
+    expected_outcome: Accept the labeled next-check hypothesis.
+    horizon: operational-pulse
+    findings:
+      - {name: Ad spend change, value: "260"}
+      - {name: Ad spend percentage change, value: "11.4"}
+  - kind: contradiction
+    input_summary: The fictional change is a decline but the draft proposes confirming an improvement.
+    expected_outcome: Reject the contradiction.
+    horizon: pattern-confirmation
+    findings:
+      - {name: Purchases change, value: "-14"}
+    draft:
+      sentences:
+        - Purchases improved by 14, so confirm the gain held across placements.
+  - kind: fluent-unsupported
+    input_summary: A fluent draft proposes an audience-overlap check and cites an overlap rate no input supplies.
+    expected_outcome: Reject the figure that is neither supplied nor derived from the findings.
+    horizon: tactical-review
+    findings:
+      - {name: Roas change, value: "-0.9"}
+    draft:
+      sentences:
+        - Roas fell 0.9, so audit the 38.2 percent audience overlap first.
+  - kind: derived-figure
+    input_summary: A fictional draft states the purchases percentage change it derives from the supplied values and proposes a served check.
+    expected_outcome: Accept the correctly derived percentage change.
+    horizon: tactical-review
+    findings:
+      - {name: Purchases this window, value: "126"}
+      - {name: Purchases prior window, value: "140"}
+    draft:
+      sentences:
+        - Purchases fell from 140 to 126, a 10 percent decline; the placement breakdown could show whether one placement carried the drop.
+  - kind: miscomputed-derivation
+    input_summary: A fictional draft reports the absolute purchases change as the percentage change.
+    expected_outcome: Reject the miscomputed percentage change.
+    horizon: tactical-review
+    findings:
+      - {name: Purchases this window, value: "126"}
+      - {name: Purchases prior window, value: "140"}
+    draft:
+      sentences:
+        - Purchases fell from 140 to 126, a 14 percent decline; the placement breakdown could show whether one placement carried the drop.
+  - kind: incompatible-basis
+    input_summary: A fictional draft computes a spend change across two currencies.
+    expected_outcome: Reject the figure that combines findings of incompatible currency.
+    horizon: operational-pulse
+    findings:
+      - {name: Ad spend this window in US dollars, value: "2400"}
+      - {name: Ad spend prior window in euros, value: "2000"}
+    draft:
+      sentences:
+        - Spend rose 20 percent from 2000 to 2400, so check the delivery breakdown first.
+deep:
+  allowed_inputs:
+    - complete daily series for every metric this surface serves
+    - every server-computed driver and cross-metric total for the window
+    - lag, estimate, and basis qualifications carried by the artifact
+  structured_output_schema:
+    id: insight-deep-dive-v1
+    fields: [what_stands_out, candidate_readings, discriminating_evidence, cited_figures]
+# FR-11 (design 4.12): no next step is offered until the gated card-next-step prompt ships.
+next_steps:
+  allowed_kinds: []

@@ -1,0 +1,327 @@
+[project]
+name = "adlytics-ai"
+version = "0.1.0"
+description = "Conversational retail media intelligence for Amazon 1P advertisers"
+requires-python = ">=3.14"
+
+# Exact versions are pinned in uv.lock, which is committed. Floors here state the
+# minimum the code assumes; the lock is what any environment actually resolves to.
+dependencies = [
+    # No [tracer] extra. It installs aws-xray-sdk, which the observability
+    # steering forbids using and which entered maintenance on 2026-02-25. Logger
+    # and Metrics are in the base package; tracing is ADOT, added with the layer.
+    "aws-lambda-powertools>=3.0.0",
+    # The OTel **API only**, never the SDK. [verified 2026-08-22 from the
+    # opentelemetry-python README] the API package ships abstract classes and
+    # no-op implementations, the SDK is the reference implementation, and code
+    # that *produces* telemetry should depend on the API alone and leave the SDK
+    # choice to whatever runs it.
+    #
+    # That split is what makes the observability steering's "instrumentation
+    # always on, ingestion configurable" true rather than aspirational. The ADOT
+    # Lambda layer supplies the SDK at runtime; with no SDK present every span
+    # this repository authors is a no-op, so `make verify` needs no collector, no
+    # network and no credentials, and turning ingestion off costs nothing at the
+    # call sites.
+    #
+    # Deliberately not aws-opentelemetry-distro: that is the SDK plus exporters,
+    # it belongs in the layer, and depending on it here would put an exporter in
+    # the unit-test path.
+    "opentelemetry-api>=1.30.0",
+    "boto3>=1.40.0",
+    "pydantic>=2.9.0",
+    # Reports every missing and mistyped config key in one error rather than
+    # failing on the first. On a first deploy that is one failed deploy instead
+    # of one per missing value.
+    "pydantic-settings>=2.7.0",
+    # JWT signature verification against the Cognito JWKS, needed by the request
+    # authorizer. Neither Powertools nor boto3 does this. The crypto extra pulls
+    # `cryptography`, which boto3 already brings in transitively.
+    "pyjwt[crypto]>=2.10.0",
+    # Reads contracts/. Python has no YAML parser in the standard library, and the
+    # contract format is YAML because contracts are hand-authored and need comments
+    # — see the data-contract-definition steering. A runtime dependency rather than
+    # dev-only: the curation job reads its contract, and the tools and Context
+    # Engine read contracts/shared/metric-dictionary.yaml.
+    #
+    # Always `yaml.safe_load`, never `yaml.load`. The full loader constructs
+    # arbitrary Python objects, and contracts/ is read by a Lambda. ruff's S506
+    # enforces this, which is why no rule for it exists in steering.
+    "pyyaml>=6.0.2",
+    # Security-sensitive outbound HTTP calls use the adapter-owned HTTPS-only
+    # session boundary. Exact by policy: this is already the resolved lock version.
+    "requests==2.34.2",
+    "aws-opentelemetry-distro>=0.18.0",
+]
+
+[project.optional-dependencies]
+# Public-preview Dataset Evaluation is local operator tooling, never a shared Lambda dependency.
+# Exact until the compatibility and baseline review required by ADR-057 approves an upgrade.
+evaluation = [
+    "bedrock-agentcore[datasets]==1.22.0",
+]
+# Heavy analytics dependencies, deliberately separate: they go in a Lambda layer
+# or a container image, never in an interactive function. See ADR-005.
+curation = [
+    "polars>=1.20.0",
+    "pyarrow>=18.0.0",
+]
+
+[dependency-groups]
+dev = [
+    # Mutation testing. Chosen over mutmut, which generates no mutants at all for
+    # a @dataclass method or a module-level constant — see ADR-013 for the probe.
+    "cosmic-ray>=8.7.0",
+    "import-linter>=2.1",
+    "pyright>=1.1.390",
+    "pytest>=8.3.0",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.8.0",
+    # Type information for the AWS SDK. boto3 builds its clients at runtime from
+    # botocore's JSON models, so there is no source for a checker to read and
+    # strict mode reports every call as unknown. Same role as @types/node in
+    # infra/ and frontend/: build-time only, never shipped, and what lets a
+    # misspelled parameter or response key fail `make typecheck` rather than
+    # production.
+    #
+    # The -full package rather than per-service extras, deliberately. boto3.client
+    # is one overload across every AWS service, so with only some services stubbed
+    # its return type is still partially unknown and the call needs a suppression
+    # anyway. It is large, and it is dev-only, so the cost is CI install time and
+    # nothing else.
+    # Both are required, verified empirically. `types-boto3` types the boto3 module
+    # itself, which is where the `client()` overloads live. `types-boto3-full`
+    # supplies the per-service client types those overloads return — but it does
+    # not cover every service, so the ones we actually call are named as extras.
+    #
+    # Add the extra for each new service adapter. Without it that call site is
+    # unchecked and needs a suppression, which is what this dependency exists to
+    # remove. `make typecheck` is what tells you it is missing.
+    "types-boto3[bedrock-agentcore,secretsmanager]>=1.43.0",
+    "types-boto3-full>=1.43.0",
+    # PyYAML ships no inline types, so pyright strict reports every safe_load as
+    # returning Unknown without this. Same role as the boto3 stubs above.
+    "types-pyyaml>=6.0.12",
+    # Dead-code candidates. Ruff's F401 catches unused imports; vulture is the
+    # only thing that finds an unused function, method or enum member.
+    "vulture>=2.16",
+]
+
+# ---------------------------------------------------------------------------
+# Dead-code detection. `make dead-code` reports; it never gates a merge.
+# Confidence is overridable: make dead-code MIN_CONFIDENCE=100
+# ---------------------------------------------------------------------------
+[tool.vulture]
+paths = ["src", "scripts"]
+# src/ports holds Protocol declarations only. Every parameter there is unused by
+# construction and always will be, which made the 100%-confidence tier entirely
+# false positives. An orphaned port surfaces as a missing adapter, not as dead code.
+#
+# node_modules because `scripts` above contains scripts/node_modules, so vendored
+# third-party Python was being scanned — at 75% confidence the only finding in the
+# whole repository was an unused import inside katex. A pattern with no wildcard is
+# wrapped as *pattern* by vulture, so this matches the directory at any depth.
+exclude = ["src/ports", "node_modules"]
+# 60 surfaces unused functions, classes, methods and variables. 100 is only the
+# unarguable cases — unreachable code and unused imports.
+min_confidence = 60
+sort_by_size = true
+# Called by the runtime, never by us, so absence of a caller proves nothing.
+ignore_decorators = ["@property", "@staticmethod", "@classmethod", "@abstractmethod"]
+ignore_names = ["__post_init__", "__enter__", "__exit__", "side_effect"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/domain", "src/ports", "src/adapters"]
+
+# ---------------------------------------------------------------------------
+# Hexagonal boundary enforcement — the highest-value gate in the repo.
+# Rules mirror docs/repo-structure.md section 2. `make lint-boundaries` runs this.
+# ---------------------------------------------------------------------------
+[tool.importlinter]
+root_packages = ["domain", "ports", "adapters"]
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Imports point inward only"
+type = "layers"
+layers = ["adapters", "ports", "domain"]
+
+[[tool.importlinter.contracts]]
+name = "Domain never imports AWS, a Lambda framework or telemetry"
+type = "forbidden"
+source_modules = ["domain"]
+# `opentelemetry` joins the list for the same reason as the others rather than a new one: a domain
+# function that opened a span would need a tracer to be testable, and the maths must stay callable
+# with no credentials, no network and nothing to instrument. Spans are authored in adapters, where
+# the operations whose duration must be explainable actually live.
+forbidden_modules = ["boto3", "botocore", "aws_lambda_powertools", "opentelemetry"]
+
+[[tool.importlinter.contracts]]
+name = "Ports declare interfaces only, never touch AWS"
+type = "forbidden"
+source_modules = ["ports"]
+forbidden_modules = ["boto3", "botocore", "opentelemetry"]
+[[tool.importlinter.contracts]]
+# The validation client exists to probe external sources with operator credentials; runtime code
+# importing it would smuggle an operator surface into a deployed workload.
+name = "Runtime never imports the validation client"
+type = "forbidden"
+source_modules = ["domain", "ports", "adapters"]
+forbidden_modules = ["validation"]
+
+[[tool.importlinter.contracts]]
+# ADR-111: the product is read-only, so a deployed workload never imports a customer-run producer
+# or an ad-platform client. One contract for every producer and SDK, shared with the forecasting
+# design: whichever change adds a producer or an ad-platform SDK dependency (owner approval)
+# appends its module here. No ad-platform SDK is a dependency today.
+name = "Runtime never imports a producer or an ad-platform client"
+type = "forbidden"
+source_modules = ["domain", "ports", "adapters"]
+forbidden_modules = ["producers"]
+
+[tool.ruff]
+src = ["src", "tests"]
+target-version = "py314"
+line-length = 100
+
+[tool.ruff.format]
+# A generated file the formatter would rewrite is a file two gates disagree about, forever.
+# `make generate-schemas` emits a wrapped `description=(...)` that `ruff format` collapses onto
+# one line, so formatting this file makes `make check-schemas` report it stale — and regenerating
+# it makes the formatter want to change it again. Neither gate is wrong; the loop is.
+#
+# Excluded from formatting only. `ruff check` still lints it, and pyright still type-checks it,
+# which is the coverage that matters for an artefact nobody edits by hand. The generator owns its
+# own layout, which is the honest ownership: it is the thing that would have to change.
+# The three generated operations modules are in the same loop with their own `make check-*` gates
+# (check-alarm-destinations, check-data-flow-coverage, check-execution-graph-protocol).
+exclude = [
+    "src/domain/data_contracts/generated_rows.py",
+    "src/domain/operations/generated_alarm_destinations.py",
+    "src/domain/operations/generated_data_flows.py",
+    "src/domain/operations/generated_execution_graphs.py",
+]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # import sorting
+    "N",        # naming
+    "UP",       # pyupgrade
+    "B",        # bugbear
+    "S",        # bandit — security (S110/S112: no try-except-pass/continue)
+    "BLE",      # blind except. src/ delegates BLE001 to make check-exception-handling (below)
+    "A",        # builtin shadowing
+    "C4",       # comprehensions
+    "D",        # pydocstyle — presence, not template. See meta-testing-strategy
+    "DTZ",      # naive datetimes — load-bearing here, see ADR-004
+    "T20",      # no print
+    "RET",      # return simplification
+    "SIM",      # simplification
+    "ARG",      # unused arguments
+    "PTH",      # pathlib over os.path
+    "ERA",      # commented-out code
+    "PL",       # pylint subset
+    "RUF",
+]
+ignore = [
+    "D105",     # magic methods: the name is the documentation
+    "D107",     # __init__: documented on the class instead
+    "D203",     # conflicts with D211
+    "D213",     # conflicts with D212
+]
+# ERA001 reads `# nosemgrep: python.lang.security.audit.x` as a commented-out annotated assignment.
+# A Semgrep marker must stand alone on the line above its match (docs/security-dispositions.md),
+# so it is a task tag here: eradicate skips comments that start with one. The first three are
+# Ruff's defaults; no TD or FIX rule is selected, so the list affects ERA001 only.
+task-tags = ["TODO", "FIXME", "XXX", "nosemgrep"]
+
+[tool.ruff.lint.pylint]
+# Three or more parameters means a request object. PLR0913 is the mechanical half
+# of that rule; the naming and validation-placement half is in
+# meta-architecture-hexagonal steering. `self` is not counted.
+max-args = 3
+
+[tool.ruff.lint.pydocstyle]
+# pep257 rather than google: google's D417 demands an Args section per parameter,
+# which is the ceremony that turns docstrings into "config: The config."
+convention = "pep257"
+
+[tool.ruff.lint.per-file-ignores]
+# Asserts and magic numbers are the point of a test. Docstrings on individual
+# tests are optional because the test *name* carries what it asserts — a
+# docstring is for why, and only where the why is non-obvious. Module docstrings
+# stay required (D100) so a file states what area it covers.
+# S105/S106 flag credential-shaped literals. A test that builds a TokenSet or a
+# cookie must pass a literal token value, and there is no phrasing that avoids
+# it — the rule earns its place in src, not here.
+"tests/**" = ["S101", "PLR2004", "D101", "D102", "D103", "S105", "S106"]
+
+# BLE001 for src/ is enforced by `make check-exception-handling`, which recognises the two forms
+# ruff reads as blind: the `raise <TaxonomyError> from None` translation (it keeps provider text
+# out of chained tracebacks) and the `report_error` seam. That gate also refuses a BLE001, S110 or
+# S112 suppression in src/, so this delegation cannot be bypassed. tests/ stays under ruff.
+"src/**" = ["BLE001"]
+
+# The contract gate is a command-line tool run by `make validate-contracts`, not a
+# Lambda: it reads the repository, touches no AWS and takes no configuration. Its
+# output IS its interface, so stdout is correct here where the Powertools Logger is
+# the tool for a running service. Scoped to the entrypoint alone, so the loader and
+# every rule module stay under the rule.
+"src/adapters/jobs/contract_validation/__main__.py" = ["T201"]
+# Same reasoning for the schema generator: a command-line tool run by
+# `make generate-schemas`, whose output is its interface.
+"src/adapters/jobs/schema_generation/__main__.py" = ["T201"]
+# And for the fixture generator, run by `make generate-fixtures`.
+"src/adapters/jobs/fixture_generation/__main__.py" = ["T201"]
+
+# And for the tool-schema generator, run by `make generate-tool-schemas`. Its output is read by
+# AgentStack, so the file it writes is the interface and its stdout is the operator's.
+"src/adapters/jobs/tool_schema_generation/__main__.py" = ["T201"]
+# Local producer conformance and its generated registry are command-line interfaces.
+"src/adapters/jobs/producer/__main__.py" = ["T201"]
+"src/adapters/jobs/producer_pack_generation/__main__.py" = ["T201"]
+# Page-schema validation is another read-only repository gate whose stdout is its interface.
+"src/adapters/jobs/presentation_validation/__main__.py" = ["T201"]
+# The one-time servable-pointer migration is an operator command line whose stdout is its
+# evidence (stamped/already/failed counts and the zero-unstamped verification).
+"src/adapters/jobs/migrate_servable_pointer/__main__.py" = ["T201"]
+# The generated span registry holds span names only. S105 reads the PASS in
+# EXECUTION_GRAPH_PROMOTER_PASS as a credential name; no value in that file is a secret.
+"src/adapters/outbound/telemetry/generated_spans.py" = ["S105"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.pyright]
+include = ["src", "tests"]
+pythonVersion = "3.14"
+typeCheckingMode = "strict"
+reportMissingTypeStubs = false
+venvPath = "."
+venv = ".venv"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--strict-markers --strict-config"
+markers = [
+    "unit: pure domain logic, no I/O",
+    "contract: a data contract against a real fixture",
+    "integration: touches a real AWS service",
+    "evaluation: agent behaviour against the golden question set",
+    # Traceability. Arguments are decision IDs that already exist in docs/:
+    # ADR-NNN, G-NN, F-NN, Q-NN. There is deliberately no separate test ID —
+    # the pytest node ID is the identifier, and it cannot drift from the code.
+    # `make check-coverage-matrix` reports which decisions have no test.
+    "covers(*decision_ids): links a test to the decisions it verifies",
+    "requires_git_history(revision): skip, naming the revision, when it is not in this checkout's git history",
+]
+
+[tool.coverage.run]
+source = ["src"]
+branch = true

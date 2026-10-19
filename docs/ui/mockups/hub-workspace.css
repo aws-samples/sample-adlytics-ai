@@ -1,0 +1,709 @@
+/* SPDX-License-Identifier: MIT-0 */
+/*
+ * Adlytics AI static mockups (design only, fictional data).
+ * Tokens are copied from frontend/app/globals.css (lines 10-99)
+ * and EXTENDED, never replaced, per ia.md §8.13. New or changed tokens are marked NEW / CHANGED.
+ */
+
+/* ---------- tokens: dark base ---------- */
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #070b13;
+  --bg-raise: #0c1220;
+  --card: #141d30;
+  --card-raise: #1b2740;
+  --line: #1f2c44;
+  --text: #eaf0f9;
+  --text-dim: #a7b0c3;
+  --text-faint: #7c8aa5;          /* kept, but mockups never use it for text (F09) */
+  --accent: #22d3ee;
+  --accent-soft: rgba(34, 211, 238, 0.12);
+  --accent-glow: rgba(34, 211, 238, 0.22);
+  --ai: #a78bfa;
+  --ai-soft: rgba(167, 139, 250, 0.14);
+  --good: #34d399;
+  --good-soft: rgba(52, 211, 153, 0.13);
+  --bad: #fb7185;
+  --bad-soft: rgba(251, 113, 133, 0.13);
+  --warn: #fbbf24;
+  --warn-soft: rgba(251, 191, 36, 0.13);
+  --chart-prior: #3b4a63;
+  --on-accent: #06202a;
+  --on-ai: #070b13;               /* CHANGED from #ffffff: 7.24:1 on --ai (F07) */
+  --scrim: rgba(4, 7, 12, 0.62);
+  --glow:
+    radial-gradient(900px 520px at 85% -10%, rgba(34, 211, 238, 0.10), transparent 60%),
+    radial-gradient(700px 480px at -10% 30%, rgba(167, 139, 250, 0.09), transparent 55%);
+  --glass-card: rgba(20, 29, 48, 0.62);
+  --glass-dialog: rgba(20, 29, 48, 0.97);
+  --edge-shadow: 0 1px 2px rgba(0, 0, 0, 0.22), 0 12px 32px rgba(0, 0, 0, 0.18);
+  --dialog-shadow: 0 0 0 1px rgba(34, 211, 238, 0.06), 0 32px 80px rgba(0, 0, 0, 0.45);
+  --assistant-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+  --stroke-strong: #66789a;       /* NEW: inputs, segmented controls, table rules; 3.78:1 on --card, 3.34:1 on --card-raise (F08) */
+  --chart-prior-strong: #7a8ba8;  /* NEW: dashed prior series; 4.88:1 on --card (F08) */
+  --skel: #24324d;                /* NEW: skeleton fill (F21) */
+  --hatch: rgba(167, 176, 195, 0.28);
+  --pill-soft: rgba(167, 176, 195, 0.16); /* NEW: neutral status pill fill, no stroke (M5-14) */
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f4f7fb;
+  --bg-raise: #ffffff;
+  --card: #ffffff;
+  --card-raise: #f7fafd;
+  --line: #dbe3ef;
+  --text: #101828;
+  --text-dim: #4a5266;
+  --text-faint: #64748b;
+  --accent: #0e7490;
+  --accent-soft: rgba(14, 116, 144, 0.10);
+  --accent-glow: rgba(14, 116, 144, 0.18);
+  --ai: #6d28d9;
+  --ai-soft: rgba(109, 40, 217, 0.10);
+  --good: #065f46;
+  --good-soft: rgba(6, 95, 70, 0.10);
+  --bad: #be123c;
+  --bad-soft: rgba(190, 18, 60, 0.10);
+  --warn: #92400e;
+  --warn-soft: rgba(180, 83, 9, 0.12);
+  --chart-prior: #b6c2d8;
+  --on-accent: #ffffff;
+  --on-ai: #ffffff;
+  --scrim: rgba(16, 24, 40, 0.38);
+  --glow:
+    radial-gradient(900px 520px at 85% -10%, rgba(8, 145, 178, 0.07), transparent 60%),
+    radial-gradient(700px 480px at -10% 30%, rgba(124, 58, 237, 0.05), transparent 55%);
+  --glass-card: rgba(255, 255, 255, 0.72);
+  --glass-dialog: rgba(255, 255, 255, 0.98);
+  --edge-shadow: 0 1px 2px rgba(22, 25, 42, 0.06), 0 12px 32px rgba(22, 25, 42, 0.07);
+  --dialog-shadow: 0 0 0 1px rgba(8, 145, 178, 0.06), 0 32px 80px rgba(16, 24, 40, 0.10);
+  --assistant-shadow: 0 18px 50px rgba(16, 24, 40, 0.16);
+  --stroke-strong: #7b88a0;       /* NEW: 3.58:1 on --card, 3.33:1 on --bg */
+  --chart-prior-strong: #66789a;  /* NEW: 4.45:1 on --card */
+  --skel: #dfe6f0;                /* NEW */
+  --hatch: rgba(74, 82, 102, 0.22);
+  --pill-soft: rgba(74, 82, 102, 0.10); /* NEW */
+}
+
+/* ---------- base ---------- */
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  min-height: 100vh;
+  background: var(--glow), var(--bg);
+  background-attachment: fixed;
+  color: var(--text);
+  font: 14px/1.5 -apple-system, "SF Pro Text", "Segoe UI", Inter, Roboto, sans-serif;
+}
+h1, h2, h3, h4 { margin: 0; font-weight: 650; letter-spacing: -0.01em; color: var(--text); }
+h1 { font-size: 24px; line-height: 1.25; }
+h2 { font-size: 16px; }
+h3 { font-size: 14px; }
+h4 { font-size: 13px; }
+p { margin: 0; }
+a { color: var(--accent); text-underline-offset: 2px; }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+[hidden] { display: none !important; }
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
+.num { font-variant-numeric: tabular-nums; }
+.dim { color: var(--text-dim); }
+.small { font-size: 12px; }
+.icon { width: 18px; height: 18px; flex: 0 0 auto; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.icon.sm { width: 14px; height: 14px; }
+
+/* ---------- mockup chrome (not product UI) ---------- */
+.mockbar {
+  display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center;
+  padding: 6px 16px; font-size: 12px; color: var(--text);
+  background: repeating-linear-gradient(135deg, var(--warn-soft) 0 10px, transparent 10px 20px), var(--bg-raise);
+  border-bottom: 1px solid var(--stroke-strong);
+}
+.mockbar .tag { font-weight: 700; color: var(--warn); }
+.mockbar a { color: var(--text); }
+.mockbar a[aria-current="true"] { font-weight: 700; color: var(--accent); }
+.mockbar .grp { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
+.mockbar .grp > span:first-child { color: var(--text-dim); }
+.mock-note { font-size: 12px; color: var(--warn); border: 1px dashed var(--warn); border-radius: 8px; padding: 4px 8px; display: inline-block; }
+
+/* ---------- app grid (ia.md §3.4) ---------- */
+.app {
+  --nav-w: 232px; --asst-w: 360px;
+  display: grid; min-height: 100vh; position: relative;
+  grid-template-columns: var(--nav-w) minmax(0, 1fr) var(--asst-w);
+  grid-template-rows: auto 1fr;
+  grid-template-areas: "nav top asst" "nav main asst";
+}
+.app[data-assistant="closed"] { --asst-w: 0px; }
+.app[data-assistant="closed"] .assistant { display: none; }
+.app[data-assistant="none"] { --asst-w: 0px; }
+.app[data-nav="none"] { --nav-w: 0px !important; }
+@media (min-width: 881px) and (max-width: 1419px) { .app { --nav-w: 88px; } }
+@media (max-width: 880px) { .app { --nav-w: 0px; --asst-w: 320px; } .hubnav { display: none; } }
+
+.skips a { position: absolute; left: -9999px; top: 8px; z-index: 30; background: var(--accent); color: var(--on-accent); padding: 8px 14px; border-radius: 8px; font-weight: 650; }
+.skips a:focus { left: 12px; }
+
+/* ---------- hub navigation: sidebar, labelled rail ---------- */
+.hubnav {
+  grid-area: nav; position: sticky; top: 0; align-self: start; height: calc(100vh - var(--mockoff, 0px));
+  background: var(--bg-raise); border-right: 1px solid var(--line);
+  padding: 16px 12px; display: flex; flex-direction: column; gap: 18px; overflow-y: auto;
+}
+.brand { display: flex; align-items: center; gap: 10px; color: var(--text); text-decoration: none; font-weight: 750; font-size: 15px; padding: 0 6px; }
+.brand svg { width: 32px; height: 32px; flex: 0 0 32px; }
+.hubnav ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.hubnav .grp-label { font-size: 12px; color: var(--text-dim); margin: 14px 0 4px 10px; }
+.hubnav a.hub {
+  position: relative; display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 8px 10px; border-radius: 10px;
+  color: var(--text-dim); text-decoration: none; font-size: 14px;
+}
+.hubnav a.hub:hover { background: var(--card-raise); color: var(--text); }
+.hubnav a.hub[aria-current] { background: var(--accent-soft); color: var(--text); font-weight: 650; }
+.hubnav a.hub[aria-current] .icon { color: var(--accent); }
+.hubnav .short, .hubnav .tip { display: none; }
+@media (min-width: 881px) and (max-width: 1419px) {
+  .hubnav { padding: 14px 6px; align-items: center; }
+  .brand .word { display: none; }
+  .hubnav ul { width: 100%; }
+  .hubnav .grp-label { margin: 10px 0 2px; text-align: center; font-size: 12px; }
+  .hubnav a.hub { flex-direction: column; gap: 4px; padding: 8px 2px; min-height: 56px; justify-content: center; text-align: center; }
+  .hubnav a.hub .lbl { display: none; }
+  .hubnav a.hub .short { display: block; font-size: 12px; line-height: 1.2; }
+  .hubnav .tip {
+    position: absolute; left: calc(100% + 8px); top: 50%; transform: translateY(-50%); white-space: nowrap; z-index: 20;
+    background: var(--card-raise); color: var(--text); border: 1px solid var(--stroke-strong); border-radius: 8px; padding: 6px 10px; font-size: 13px; font-weight: 500;
+    box-shadow: var(--assistant-shadow);
+  }
+  /* WCAG 1.4.13: shows on hover and focus, stays while hovered (the tip is inside the link), Escape dismisses */
+  .hubnav a.hub:hover .tip, .hubnav a.hub:focus-visible .tip { display: block; }
+  .hubnav a.hub.tip-dismissed .tip { display: none; }
+}
+
+@media (max-width: 880px) { .hubnav { display: none; } }
+
+/* ---------- top bar (header landmark, §8.14, R5-11, R5-13) ---------- */
+.topbar {
+  grid-area: top; position: sticky; top: 0; z-index: 12;
+  display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 6px 24px;
+  background: color-mix(in srgb, var(--bg-raise) 92%, transparent); border-bottom: 1px solid var(--line);
+  backdrop-filter: blur(14px);
+}
+.crumb { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 13px; color: var(--text-dim); }
+.crumb ol { list-style: none; margin: 0; padding: 0; display: flex; gap: 6px; align-items: center; min-width: 0; }
+.crumb li { display: flex; gap: 6px; align-items: center; min-width: 0; }
+.crumb li + li::before { content: "/"; color: var(--text-dim); }
+.crumb a { color: var(--text-dim); }
+.crumb [aria-current] { color: var(--text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topbar .spacer { flex: 1; }
+.tb-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; min-width: 36px; padding: 6px 12px;
+  border-radius: 10px; border: 1px solid var(--stroke-strong); background: var(--card); color: var(--text); cursor: pointer; font-size: 13px; position: relative;
+}
+.tb-btn:hover { background: var(--card-raise); }
+.tb-btn[aria-expanded="true"], .tb-btn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
+.badge { display: inline-flex; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; background: var(--accent); color: var(--on-accent); }
+.only-narrow { display: none; }
+@media (max-width: 880px) {
+  .topbar { padding: 4px 12px; gap: 6px; }
+  .tb-btn { min-height: 44px; min-width: 44px; padding: 6px 10px; }
+  .only-narrow { display: inline-flex; }
+  .only-wide { display: none !important; }
+  .crumb ol li:not(:last-child) { display: none; }
+  .crumb ol li + li::before { content: none; }
+  .tb-btn .btn-text { display: none; }
+}
+
+/* inbox popover (§6.2): DOM directly after the bell */
+.inbox {
+  position: absolute; top: calc(100% + 6px); right: 24px; width: 360px; max-width: calc(100% - 24px); z-index: 25;
+  background: var(--glass-dialog); border: 1px solid var(--stroke-strong); border-radius: 14px; box-shadow: var(--dialog-shadow); padding: 14px;
+}
+@media (max-width: 880px) { .inbox { right: 8px; left: 8px; width: auto; max-width: none; } }
+.inbox-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.inbox ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.alert-row { border: 1px solid var(--line); border-radius: 10px; padding: 10px; display: grid; gap: 6px; background: var(--card); }
+.alert-row.new { border-left: 3px solid var(--accent); }
+.alert-row .open-alert { all: unset; cursor: pointer; display: grid; gap: 2px; border-radius: 6px; }
+.alert-row .open-alert:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.alert-row .rule { font-weight: 650; }
+.alert-row .meta { font-size: 12px; color: var(--text-dim); }
+.alert-row .row-actions { display: flex; gap: 8px; align-items: center; justify-content: space-between; font-size: 12px; }
+
+/* ---------- main column ---------- */
+.main { grid-area: main; min-width: 0; container-type: inline-size; container-name: main; }
+.main:focus { outline: none; }
+.content { max-width: 832px; margin: 0 auto; padding: 12px 24px 56px; display: flex; flex-direction: column; gap: 20px; }
+@container main (max-width: 559px) { .content { padding: 12px 16px 48px; } }
+
+/* hub header (§3.5) */
+.hubhead { display: flex; flex-direction: column; gap: 6px; }
+.hub-eyebrow { font-size: 13px; color: var(--text-dim); font-weight: 600; }
+.tabs ul { list-style: none; margin: 0; padding: 0; display: flex; gap: 4px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: thin; }
+.tabs ul.overflowing { mask-image: linear-gradient(90deg, transparent 0, #000 24px, #000 calc(100% - 24px), transparent 100%); }
+.tabs a { display: inline-flex; align-items: center; min-height: 40px; padding: 8px 12px; white-space: nowrap; color: var(--text-dim); text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px; font-weight: 550; }
+.tabs a:hover { color: var(--text); }
+.tabs a[aria-current="page"] { color: var(--text); border-bottom-color: var(--accent); font-weight: 650; }
+.title-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.desc { color: var(--text-dim); max-width: 72ch; }
+/* M6-8: controls are top-aligned, so every label and legend in the row starts on one line. */
+.controls { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: flex-start; margin-top: 2px; }
+.scope { font-size: 13px; color: var(--text); background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; }
+.scope .fallback { display: block; color: var(--warn); margin-top: 2px; }
+
+/* date control (§8.1) */
+.datectl { border: 0; margin: 0; padding: 0; min-width: 0; }
+.datectl legend, .field-label { font-size: 12px; color: var(--text-dim); margin-bottom: 4px; padding: 0; }
+.seg { display: inline-flex; flex-wrap: wrap; gap: 0; border: 1px solid var(--stroke-strong); border-radius: 12px; overflow: hidden; background: var(--card); }
+.seg-opt { position: relative; display: flex; flex-direction: column; justify-content: center; min-height: 44px; padding: 4px 12px; cursor: pointer; border-right: 1px solid var(--line); min-width: 84px; }
+.seg-opt:last-child { border-right: 0; }
+.seg-opt input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.seg-opt .l { font-weight: 650; font-size: 13px; }
+.seg-opt .d { font-size: 12px; color: var(--text-dim); white-space: nowrap; }
+.seg-opt:has(input:checked) { background: var(--accent-soft); box-shadow: inset 0 -2px 0 var(--accent); }
+.seg-opt:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: -2px; z-index: 1; }
+.seg-opt:has(input:disabled) { cursor: not-allowed; }
+.seg-opt:has(input:disabled) .l { color: var(--text-dim); text-decoration: none; }
+.seg-opt .reason { font-size: 12px; color: var(--text-dim); max-width: 18ch; white-space: normal; }
+.seg-div { width: 6px; background: var(--line); }
+.seg.compact .seg-opt { min-height: 40px; min-width: 0; }
+.select-wrap { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.select-wrap label { font-size: 12px; color: var(--text-dim); }
+select, .input, textarea {
+  min-height: 40px; border-radius: 10px; border: 1px solid var(--stroke-strong); background: var(--card); color: var(--text); padding: 6px 10px; font-size: 14px; max-width: 100%;
+}
+.select-wrap .opt-note { font-size: 12px; color: var(--text-dim); }
+.dc-narrow { display: none; }
+@container main (max-width: 559px) {
+  .dc-wide { display: none; }
+  .dc-narrow { display: flex; }
+  .controls { flex-direction: column; align-items: stretch; }
+  .controls select { width: 100%; }
+}
+
+/* ---------- buttons, chips, pills ---------- */
+.btn { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 6px 14px; border-radius: 10px; border: 1px solid var(--stroke-strong); background: var(--card); color: var(--text); cursor: pointer; font-size: 13px; font-weight: 600; text-decoration: none; }
+.btn:hover { background: var(--card-raise); }
+.btn.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+/* M6-6: a disabled primary reads as unavailable, like every disabled button. */
+.btn.primary:disabled, .btn.primary:disabled:hover { color: var(--text-dim); border-color: var(--line); background: transparent; cursor: not-allowed; }
+.btn.ai { background: var(--ai); color: var(--on-ai); border-color: var(--ai); }
+.btn.link { border: 0; background: none; padding: 2px 0; min-height: 24px; color: var(--accent); text-decoration: underline; font-weight: 600; }
+.btn.danger { color: var(--bad); }
+/* Disabled (M5-13): dim text, faint rule, no hover. --text-dim keeps 4.5:1 or more on --bg and --card in both themes. */
+.btn:disabled, .btn:disabled:hover, .icon-btn:disabled, .icon-btn:disabled:hover { color: var(--text-dim); border-color: var(--line); background: transparent; cursor: not-allowed; }
+.chip-link { white-space: nowrap; max-width: 100%; display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 4px 12px; border-radius: 999px; border: 1px solid var(--stroke-strong); background: var(--card); color: var(--text); text-decoration: none; font-size: 13px; font-weight: 600; cursor: pointer; }
+.chip-link:hover { border-color: var(--accent); }
+.chip-link.ask { border-color: color-mix(in srgb, var(--ai) 60%, var(--stroke-strong)); }
+.chip-link.ask .icon { color: var(--ai); }
+/* Neutral pills are a soft fill with no stroke (M5-14), so they never read as the outline buttons beside them. */
+.pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; border-radius: 999px; padding: 2px 10px; border: 1px solid transparent; color: var(--text); background: var(--pill-soft); white-space: nowrap; }
+.pill.warn { color: var(--warn); background: var(--warn-soft); border-color: transparent; }
+.pill.ai { color: var(--ai); background: var(--ai-soft); border-color: transparent; }
+.pill.accent { color: var(--accent); background: var(--accent-soft); border-color: transparent; }
+.pill.pending { border: 1px dashed var(--warn); background: transparent; color: var(--warn); }
+
+/* change chip (§8.6): tone from server sentiment, never from sign */
+.chg { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 650; border-radius: 999px; padding: 2px 8px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.chg.favourable { color: var(--good); background: var(--good-soft); }
+.chg.unfavourable { color: var(--bad); background: var(--bad-soft); }
+.chg.neutral { color: var(--text); background: var(--accent-soft); }
+.chg .icon { width: 12px; height: 12px; stroke-width: 2.4; }
+.chg-absent { font-size: 12px; color: var(--text-dim); }
+
+/* ---------- sections, tiles, cards ---------- */
+.section { display: flex; flex-direction: column; gap: 10px; }
+.section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.section-head .note { font-size: 12px; color: var(--text-dim); }
+.sec-line { color: var(--text-dim); font-size: 13px; max-width: 72ch; }
+.card { background: var(--glass-card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; box-shadow: var(--edge-shadow); }
+.tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; align-items: stretch; }
+.tiles.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.tiles.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@container main (max-width: 719px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } .tiles.three { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container main (max-width: 559px) { .tiles, .tiles.three, .tiles.two { grid-template-columns: 1fr; } }
+.tile { background: var(--card); border: 1px solid var(--line); border-radius: 13px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.tile .k { font-size: 13px; font-weight: 600; color: var(--text-dim); }
+.tile .v { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.tile .prior { font-size: 12px; color: var(--text-dim); }
+.tile .basis, .basis { font-size: 12px; color: var(--text-dim); line-height: 1.4; }
+.tile .foot { margin-top: auto; padding-top: 6px; display: flex; justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap; }
+.tile.na { border-style: dashed; border-color: var(--stroke-strong); }
+.tile.na .v { font-size: 16px; color: var(--text); }
+.tile .reason { font-size: 12px; color: var(--text); }
+.view-details { all: unset; cursor: pointer; font-size: 12px; font-weight: 650; color: var(--accent); border-radius: 6px; }
+.view-details:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@container main (max-width: 559px) { .grid2 { grid-template-columns: 1fr; } }
+.insights { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-items: stretch; }
+@container main (max-width: 719px) { .insights { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container main (max-width: 559px) { .insights { grid-template-columns: 1fr; } }
+.insight { background: var(--card); border: 1px solid var(--line); border-radius: 13px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+.insight .kind { font-size: 12px; color: var(--text-dim); display: flex; gap: 6px; align-items: center; }
+.insight h3 { font-size: 14px; line-height: 1.35; }
+.insight p { font-size: 13px; color: var(--text); }
+.insight .acts { margin-top: auto; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; padding-top: 4px; }
+
+.callout { border: 1px solid var(--stroke-strong); border-radius: 12px; padding: 12px 14px; background: var(--card); display: flex; flex-direction: column; gap: 6px; }
+.callout h2, .callout h3, .callout h4 { font-size: 14px; }
+.callout .acts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 2px; }
+.callout ul { margin: 0; padding-left: 20px; }
+.callout.paid { border-color: color-mix(in srgb, var(--ai) 55%, var(--stroke-strong)); background: linear-gradient(180deg, var(--ai-soft), transparent 70%), var(--card); }
+.callout.paid :is(h2, h3)::before { content: "◆ "; color: var(--ai); }
+.callout.live { border-left: 3px solid var(--accent); }
+.caveat { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; border: 1px solid color-mix(in srgb, var(--warn) 55%, var(--line)); background: var(--warn-soft); border-radius: 12px; padding: 10px 12px; font-size: 13px; }
+.caveat .icon { color: var(--warn); margin-top: 2px; }
+.caveat p:first-of-type { font-weight: 650; }
+.caveat > div { display: flex; flex-direction: column; gap: 3px; }
+/* Block layout, so the text around an inline link keeps its own spacing ("… New customers.", M3-18). */
+.pointer { font-size: 13px; color: var(--text); line-height: 1.7; }
+.pointer::before { content: "→"; color: var(--accent); font-weight: 700; margin-right: 8px; }
+.pointer .chip-link { margin-left: 4px; vertical-align: middle; }
+.ctx-tag { display: inline-flex; gap: 4px; align-items: center; font-size: 12px; font-weight: 650; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--accent); color: var(--accent); }
+.highlight-row th, .highlight-row td { box-shadow: inset 0 2px 0 var(--stroke-strong), inset 0 -2px 0 var(--stroke-strong); }
+.highlight-row th { box-shadow: inset 2px 2px 0 var(--stroke-strong), inset 0 -2px 0 var(--stroke-strong); }
+/* Render-more extension: the Scorecard's ranking under each attribution model sits inside the network card, under its
+   tiles. Existing tokens only. */
+.rank-block { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
+.rank-block h3 { font-size: 14px; }
+.rank-outcome { font-size: 13px; color: var(--text); }
+.rank { display: inline-block; min-width: 3ch; margin-left: 6px; font-size: 12px; font-weight: 650; color: var(--text-dim); }
+
+details.about { border-top: 1px solid var(--line); padding-top: 10px; }
+details summary { cursor: pointer; font-weight: 650; color: var(--text); min-height: 32px; display: flex; align-items: center; gap: 8px; list-style: none; }
+details summary::-webkit-details-marker { display: none; }
+/* Visible expand indicator (M-5, owner UX decision 9): a chevron that points right when closed and down when open */
+details summary::before { content: ""; flex: 0 0 auto; width: 7px; height: 7px; margin: 0 3px 0 1px; border-right: 2px solid var(--accent); border-bottom: 2px solid var(--accent); transform: rotate(-45deg); }
+details[open] > summary::before { transform: rotate(45deg); margin-top: -3px; }
+@media (prefers-reduced-motion: no-preference) { details summary::before { transition: transform .15s ease; } }
+details summary:hover { color: var(--accent); }
+details.about .body, details .body { color: var(--text); font-size: 13px; display: flex; flex-direction: column; gap: 6px; padding: 6px 0 0; max-width: 72ch; }
+
+/* ---------- data table (§8.12) ---------- */
+.dt-tools { display: flex; gap: 10px; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; }
+.fresh { font-size: 12px; color: var(--text-dim); }
+.dt-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--card);
+  background-image: linear-gradient(90deg, var(--card) 30%, transparent), linear-gradient(270deg, var(--card) 30%, transparent), radial-gradient(farthest-side at 0 50%, rgba(0,0,0,.3), transparent), radial-gradient(farthest-side at 100% 50%, rgba(0,0,0,.3), transparent);
+  background-position: left, right, left, right; background-repeat: no-repeat; background-size: 40px 100%, 40px 100%, 12px 100%, 12px 100%; background-attachment: local, local, scroll, scroll; }
+table.dt { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
+table.dt caption { caption-side: top; text-align: left; padding: 10px 12px 6px; font-size: 12px; color: var(--text-dim); }
+table.dt caption strong { color: var(--text); font-size: 13px; display: block; }
+table.dt th, table.dt td { padding: 9px 12px; text-align: right; border-bottom: 1px solid var(--line); vertical-align: top; font-variant-numeric: tabular-nums; }
+table.dt thead th { font-size: 12px; font-weight: 650; color: var(--text); background: var(--card-raise); border-bottom: 1px solid var(--stroke-strong); min-width: 9ch; }
+table.dt thead th .basis { display: block; white-space: normal; font-weight: 500; min-width: 14ch; }
+table.dt th[scope="row"], table.dt td.l, table.dt thead th.l { text-align: left; }
+table.dt th[scope="row"] { font-weight: 600; position: sticky; left: 0; background: var(--card); min-width: 180px; }
+table.dt thead th.l:first-child { position: sticky; left: 0; z-index: 1; }
+table.dt th[scope="row"] .sub { display: block; font-weight: 400; font-size: 12px; color: var(--text-dim); }
+table.dt tbody tr:last-child > * { border-bottom: 0; }
+table.dt tr.na-row th, table.dt tr.na-row td { color: var(--text); }
+table.dt .cell-sub { display: block; font-size: 12px; color: var(--text-dim); }
+/* V7-4: a fixed-width row-header column, so the numeric columns share the rest by their content (only while the table isn't stacked). */
+@container main (min-width: 800px) {
+  table.dt.fixed-first thead th:first-child { width: 160px; }
+  table.dt.fixed-first th[scope="row"] { min-width: 0; width: 160px; }
+}
+.dt-legend { font-size: 12px; color: var(--text); display: flex; flex-direction: column; gap: 2px; }
+.dt-foot { font-size: 12px; color: var(--text-dim); }
+.dt-pager { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; font-size: 13px; }
+/* RV-3 (render-more fix): data tables stack below an 800 px main container, not 560 px, so no table scrolls sideways in
+   the 560 to 799 px band (880 px, and 1008 to 1247 px with the default assistant). 1440 and 1280 keep table layout. */
+@container main (max-width: 799px) {
+  .dt-wrap.stackable { overflow: visible; border: 0; background: none; }
+  .dt-wrap.stackable table.dt, .dt-wrap.stackable table.dt tbody, .dt-wrap.stackable table.dt tr { display: block; }
+  .dt-wrap.stackable table.dt thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); }
+  .dt-wrap.stackable table.dt caption { display: block; padding: 0 0 6px; }
+  .dt-wrap.stackable table.dt tr { border: 1px solid var(--line); border-radius: 12px; background: var(--card); margin-bottom: 8px; padding: 6px 0; }
+  .dt-wrap.stackable table.dt th[scope="row"] { display: block; position: static; text-align: left; border-bottom: 1px solid var(--line); min-width: 0; }
+  .dt-wrap.stackable table.dt td { display: flex; justify-content: space-between; gap: 12px; text-align: right; border-bottom: 0; padding: 5px 12px; }
+  .dt-wrap.stackable table.dt td::before { content: attr(data-label); text-align: left; color: var(--text-dim); font-size: 12px; font-weight: 600; flex: 1 1 50%; }
+  .dt-wrap.stackable table.dt td .basis-inline { display: block; }
+  /* A long chip in a stacked text table (decisions' NextStep kinds) wraps inside its row instead of scrolling it. */
+  .dt-wrap.stackable table.dt.text td .chip-link { white-space: normal; text-align: right; }
+  /* M5-2: a value with a basis is a two-row grid: label, then its basis, on the left; the value on the right. */
+  .dt-wrap.stackable table.dt td.has-basis { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; row-gap: 0; align-items: start; }
+  .dt-wrap.stackable table.dt td.has-basis::before { grid-column: 1; grid-row: 1; }
+  .dt-wrap.stackable table.dt td.has-basis .basis-inline { grid-column: 1; grid-row: 2; text-align: left; margin-top: 2px; }
+  .dt-wrap.stackable table.dt td.has-basis .cv { grid-column: 2; grid-row: 1 / span 2; display: flex; flex-wrap: wrap; gap: 4px 8px; justify-content: flex-end; align-items: baseline; }
+}
+.basis-inline { display: none; font-size: 12px; color: var(--text-dim); }
+
+/* heat map (Retention) */
+table.heat td.h { color: var(--text); }
+table.heat td.h[data-lvl="1"] { background: color-mix(in srgb, var(--accent) 10%, var(--card)); }
+table.heat td.h[data-lvl="2"] { background: color-mix(in srgb, var(--accent) 20%, var(--card)); }
+table.heat td.h[data-lvl="3"] { background: color-mix(in srgb, var(--accent) 30%, var(--card)); }
+table.heat td.nr { background: repeating-linear-gradient(135deg, var(--hatch) 0 4px, transparent 4px 8px), var(--card); color: var(--text); font-size: 12px; }
+table.heat td.future { color: var(--text-dim); }
+
+/* ---------- charts (§8.10) ---------- */
+.chart { display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto 180px auto; gap: 4px 8px; }
+.chart .legend { grid-column: 1 / -1; display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--text); }
+.chart .legend span { display: inline-flex; gap: 6px; align-items: center; }
+.chart .sw { width: 18px; height: 0; border-top: 2px solid var(--accent); display: inline-block; }
+.chart .sw.prior { border-top: 2px dashed var(--chart-prior-strong); }
+.chart .sw.bar { height: 10px; width: 12px; border: 0; background: var(--accent); border-radius: 2px; }
+.chart .sw.alt { border-top-color: var(--ai); }
+/* V9-1: every y label sits at its own value's fraction of the plot height (set inline), centred on its gridline. The
+   labels share one grid cell, so the column is as wide as the widest label. The legend's bottom margin leaves room for
+   the top label's upper half. */
+.chart .legend { margin-bottom: 6px; }
+/* V9-1: the lowest y label is centred on the baseline, so the x labels sit 4 px lower to clear its lower half. */
+.chart .x { margin-top: 4px; }
+.chart .y { display: grid; justify-items: end; font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.chart .y span { grid-area: 1 / 1; align-self: start; position: relative; transform: translateY(-50%); line-height: 1.5; white-space: nowrap; }
+.chart .plot { position: relative; border-left: 1px solid var(--stroke-strong); border-bottom: 1px solid var(--stroke-strong); }
+/* V9-1: one gridline per tick above the baseline, at the tick's fraction (set inline); the baseline is the plot border. */
+.chart .plot .gl { position: absolute; left: 0; right: 0; height: 1px; background: var(--line); }
+.chart .plot svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.chart .x { grid-column: 2; display: flex; justify-content: space-between; font-size: 12px; color: var(--text-dim); }
+/* M5-1: bar categories sit on the bars' equal slots, centred. */
+.chart .x.bars { display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); justify-content: initial; }
+.chart .x.bars span { text-align: center; padding: 0 2px; }
+/* M6-3: line-chart labels sit on their points' fractions, centred. The first has the y-axis column's width to its left,
+   so it stays centred; the last is clamped to the plot's right edge so it never runs past the chart. */
+.chart .x.pos { display: block; position: relative; height: calc(12px * 1.5); }
+.chart .x.pos span { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; line-height: 1.5; }
+.chart .x.pos span.last { transform: translateX(-100%); }
+.chart .axis-note { grid-column: 1 / -1; font-size: 12px; color: var(--warn); }
+.chart .s-cur { stroke: var(--accent); stroke-width: 2.25; fill: none; vector-effect: non-scaling-stroke; }
+.chart .s-prior { stroke: var(--chart-prior-strong); stroke-width: 2; stroke-dasharray: 5 4; fill: none; vector-effect: non-scaling-stroke; }
+.chart .s-alt { stroke: var(--ai); stroke-width: 2.25; stroke-dasharray: 2 3; fill: none; vector-effect: non-scaling-stroke; }
+.chart .mk { stroke: var(--accent); stroke-width: 6; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.chart .band { fill: var(--accent-soft); stroke: none; }
+.chart .bar { fill: var(--accent); }
+.chart .bar.dim { fill: color-mix(in srgb, var(--accent) 45%, var(--card)); }
+.chart .range { fill: var(--line); }
+.chart .tick { stroke: var(--warn); stroke-width: 2; vector-effect: non-scaling-stroke; }
+
+.stackbar { display: flex; height: 28px; border-radius: 8px; overflow: hidden; border: 1px solid var(--stroke-strong); }
+.stackbar span { display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 650; color: var(--on-accent); white-space: nowrap; overflow: hidden; }
+.stackbar .a { background: var(--accent); }
+.stackbar .b { background: color-mix(in srgb, var(--accent) 35%, var(--card)); color: var(--text); }
+.stackbar .c { background: var(--ai); color: var(--on-ai); }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 13px; }
+.kv dt { color: var(--text-dim); }
+.kv dd { margin: 0; }
+/* The stuck plan block is opaque, so rows scrolling under it never show through its text */
+.plan-block { background: var(--card); box-shadow: var(--assistant-shadow); }
+.leaves-out { margin: 4px 0 0; padding-left: 18px; font-size: 13px; display: flex; flex-direction: column; gap: 2px; }
+
+/* ---------- assistant (§8.8) ---------- */
+.assistant {
+  grid-area: asst; position: sticky; top: 0; align-self: start; height: calc(100vh - var(--mockoff, 0px)); z-index: 8;
+  display: flex; flex-direction: column; background: var(--bg-raise); border-left: 1px solid var(--line);
+}
+.asst-resize { position: absolute; left: -4px; top: 0; bottom: 0; width: 8px; cursor: col-resize; background: transparent; border: 0; }
+.asst-resize:hover, .asst-resize:focus-visible { background: var(--accent-soft); }
+@media (max-width: 880px) { .asst-resize { display: none; } }
+.asst-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px 8px; }
+.asst-head h2 { font-size: 15px; display: flex; gap: 8px; align-items: center; }
+.asst-head h2 svg { width: 22px; height: 22px; }
+/* M5-7: Narrower and Wider, the single-pointer path to the width (WCAG 2.2 SC 2.5.7). Hidden where the panel is fixed. */
+.asst-width { margin-left: auto; display: inline-flex; gap: 6px; }
+@media (max-width: 880px) { .asst-width { display: none; } }
+.ctx { margin: 0 14px 8px; border: 1px solid color-mix(in srgb, var(--ai) 50%, var(--line)); background: var(--ai-soft); border-radius: 10px; padding: 6px 10px; font-size: 12px; display: flex; gap: 8px; align-items: flex-start; }
+.ctx .ctx-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-width: 0; }
+.ctx .btn.link { font-size: 12px; min-height: 0; padding: 0; }
+.ctx.muted { border-color: var(--line); background: var(--card); color: var(--text); }
+.thread { flex: 1; overflow-y: auto; padding: 6px 14px 10px; display: flex; flex-direction: column; gap: 10px; }
+.thread:focus-visible { outline-offset: -2px; }
+.msg { border-radius: 12px; padding: 10px 12px; font-size: 13px; display: flex; flex-direction: column; gap: 6px; max-width: 100%; }
+.msg.user { align-self: flex-end; background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line)); max-width: 88%; }
+.msg.bot { background: var(--card); border: 1px solid var(--line); }
+.msg.bot h3 { font-size: 13px; }
+.msg .ctx-status { font-size: 12px; color: var(--text); border-left: 3px solid var(--warn); padding-left: 8px; }
+.msg .tbl-scroll { overflow-x: auto; }
+.msg table { border-collapse: collapse; font-size: 12px; }
+.msg th, .msg td { border-bottom: 1px solid var(--line); padding: 4px 8px; text-align: right; white-space: nowrap; }
+.msg th:first-child, .msg td:first-child { text-align: left; }
+.msg .msg-acts { display: flex; justify-content: flex-end; }
+.icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--stroke-strong); background: var(--card); color: var(--text); cursor: pointer; }
+.icon-btn:hover { background: var(--card-raise); }
+.starters { display: flex; flex-direction: column; gap: 6px; }
+.starters button { text-align: left; border: 1px solid var(--stroke-strong); background: var(--card); color: var(--text); border-radius: 10px; padding: 8px 10px; font-size: 13px; cursor: pointer; }
+.starters button:hover { border-color: var(--ai); }
+.composer { border-top: 1px solid var(--line); padding: 10px 14px 14px; display: flex; flex-direction: column; gap: 6px; }
+.composer label { font-size: 12px; color: var(--text-dim); }
+.composer textarea { width: 100%; min-height: 64px; resize: vertical; }
+.composer .row { display: flex; justify-content: flex-end; }
+.toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--card-raise); color: var(--text); border: 1px solid var(--stroke-strong); border-radius: 10px; padding: 8px 14px; z-index: 60; box-shadow: var(--assistant-shadow); font-size: 13px; }
+/* The live region stays rendered and empty; only its text changes (M-14, SC 4.1.3) */
+.toast:empty { opacity: 0; pointer-events: none; padding: 0; border: 0; box-shadow: none; }
+
+/* ---------- dialogs and sheets ---------- */
+.scrim { position: fixed; inset: 0; background: var(--scrim); z-index: 40; display: flex; align-items: flex-start; justify-content: center; padding: 48px 16px; overflow-y: auto; }
+.dialog { width: min(760px, 100%); background: var(--glass-dialog); border: 1px solid var(--stroke-strong); border-radius: 16px; box-shadow: var(--dialog-shadow); display: flex; flex-direction: column; max-height: calc(100vh - 96px); }
+.dialog-head { position: sticky; top: 0; display: flex; align-items: flex-start; gap: 10px; padding: 14px 16px 10px; border-bottom: 1px solid var(--line); background: var(--glass-dialog); border-radius: 16px 16px 0 0; }
+.dialog-head .ttl { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.dialog-head .sub { font-size: 12px; color: var(--text-dim); }
+.dialog-body { padding: 14px 16px 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
+.raised-line { font-size: 13px; border: 1px solid var(--stroke-strong); border-radius: 8px; padding: 6px 10px; background: var(--card); }
+.statchips { display: flex; gap: 8px; flex-wrap: wrap; }
+.statchip { border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; background: var(--card); min-width: 130px; }
+.statchip .k { font-size: 12px; color: var(--text-dim); display: block; }
+.statchip .v { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.readings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+@media (max-width: 880px) { .readings { grid-template-columns: 1fr; } }
+.readings > div { border: 1px solid var(--line); border-radius: 10px; padding: 10px; background: var(--card); font-size: 13px; }
+.howto { border: 1px solid var(--stroke-strong); border-radius: 10px; padding: 10px 12px; background: var(--card-raise); font-size: 13px; display: flex; flex-direction: column; gap: 8px; }
+.sheet-scrim { position: fixed; inset: 0; background: var(--scrim); z-index: 45; }
+.sheet { position: fixed; top: 0; left: 0; bottom: 0; width: min(340px, 88vw); background: var(--bg-raise); border-right: 1px solid var(--stroke-strong); z-index: 46; padding: 14px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; box-shadow: var(--dialog-shadow); }
+.sheet.right { left: auto; right: 0; border-right: 0; border-left: 1px solid var(--stroke-strong); width: min(440px, 92vw); }
+.sheet .sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sheet .path { font-size: 12px; color: var(--text-dim); }
+.sheet nav ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.sheet nav a { display: flex; gap: 10px; align-items: center; min-height: 44px; padding: 8px 10px; border-radius: 10px; color: var(--text); text-decoration: none; }
+.sheet nav a[aria-current] { background: var(--accent-soft); font-weight: 650; }
+.sheet nav ul ul { padding-left: 30px; }
+.sheet nav ul ul a { min-height: 40px; color: var(--text-dim); }
+.sheet nav ul ul a[aria-current="page"] { color: var(--text); }
+.sheet .sheet-foot { margin-top: auto; display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--line); padding-top: 12px; }
+
+/* combobox (§7.2 item 9a) */
+.combo { position: relative; min-width: 260px; flex: 1 1 260px; max-width: 360px; }
+@container main (max-width: 559px) { .combo { max-width: none; flex-basis: 100%; } }
+.combo input { width: 100%; }
+.combo [role="listbox"] { position: absolute; z-index: 10; left: 0; right: 0; top: calc(100% + 4px); list-style: none; margin: 0; padding: 4px; background: var(--glass-dialog); border: 1px solid var(--stroke-strong); border-radius: 10px; box-shadow: var(--assistant-shadow); }
+.combo [role="option"] { padding: 8px 10px; border-radius: 8px; font-size: 13px; }
+.combo [role="option"][aria-selected="true"] { background: var(--accent-soft); outline: 1px solid var(--accent); }
+.combo .opt-sub { display: block; font-size: 12px; color: var(--text-dim); }
+.nomatch { font-size: 13px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+/* skeletons (F21) */
+.skel { background: var(--skel); border-radius: 8px; position: relative; overflow: hidden; }
+.skel::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.06), transparent); animation: sheen 1.6s infinite; }
+@media (prefers-reduced-motion: reduce) { .skel::after { animation: none; } }
+@keyframes sheen { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+.skel.line { height: 12px; }
+.skel.tile { height: 112px; border-radius: 13px; }
+.skel.card { height: 140px; border-radius: 13px; }
+.skel.row { height: 44px; }
+
+/* 404 */
+.nf { max-width: 560px; padding: 48px 0; display: flex; flex-direction: column; gap: 14px; }
+.nf ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+
+/* ---------- compare section (mockup chrome) ---------- */
+.compare { border-top: 3px solid var(--warn); background: var(--bg-raise); padding: 28px 24px 48px; }
+.compare > .inner { max-width: 1320px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+.compare .cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
+@media (max-width: 880px) { .compare .cols { grid-template-columns: 1fr; } }
+.compare .col { border: 1px solid var(--line); border-radius: 14px; padding: 16px; background: var(--card); display: flex; flex-direction: column; gap: 10px; }
+.compare h2 { font-size: 18px; }
+.compare h3 { font-size: 15px; }
+.compare ul, .compare ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+.compare code { font-size: 12px; background: var(--card-raise); padding: 1px 5px; border-radius: 5px; }
+.wire { border: 1px dashed var(--stroke-strong); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 6px; background: var(--bg); }
+.wire .blk { border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font-size: 12px; background: var(--card); color: var(--text); }
+.wire .blk.bad { border-color: var(--bad); }
+.wire .blk .f { color: var(--bad); font-weight: 650; }
+.wire .row { display: flex; gap: 6px; }
+.wire .row > .blk { flex: 1; }
+.wire .shellrow { display: grid; grid-template-columns: 70px 1fr; gap: 6px; }
+
+/* index page */
+.idx { max-width: 1180px; margin: 0 auto; padding: 24px; display: flex; flex-direction: column; gap: 22px; }
+.idx table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.idx th, .idx td { text-align: left; border-bottom: 1px solid var(--line); padding: 8px 10px; vertical-align: top; }
+.idx thead th { background: var(--card-raise); }
+.idx .lead { font-size: 15px; max-width: 80ch; }
+
+/* Simulator: the Amazon curve is secondary, violet and dashed, never the accent of our curve */
+.tone-ai .s-cur { stroke: var(--ai); stroke-dasharray: 6 4; }
+.tone-ai .mk { stroke: var(--ai); }
+.tone-ai .sw { border-top-color: var(--ai); border-top-style: dashed; }
+.curve-head { min-height: 92px; display: flex; flex-direction: column; gap: 4px; }
+/* A7-2: the curve card's chips wrap as a group; its state sentence reads as body copy. */
+.curve-head .pill-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.curve-head .curve-state { font-size: 13px; color: var(--text); }
+/* Side by side, both charts start at one height however long each card's head is (subgrid rows: head, chart). */
+.grid2.curves > .card { display: grid; grid-row: span 2; grid-template-rows: subgrid; row-gap: 8px; }
+
+.wc-sub { display: block; font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+/* "Details ›" sits in the tile foot, right-aligned beside the change chip (M-17) */
+.tile .foot .view-details { margin-left: auto; white-space: nowrap; min-height: 24px; display: inline-flex; align-items: center; }
+/* Keyboard focus is never hidden under the sticky top bar or a sticky plan block (WCAG 2.4.11, M-1).
+   mock.js raises this per page from the stuck height of any [data-sticky] block. */
+html { scroll-padding-top: var(--sticky-pad, 64px); }
+
+/* ---- round 3 (mockup-review.json M2-4, M2-10, M2-12, M2-13, M2-19) ---- */
+/* Four-across rows with a long label reserve two label lines, so every value in the row starts on one line (M2-10). */
+/* M6-12: the reserve is per page, so values sit on one baseline from row to row, not only within one row. */
+.tiles:has(.k.long) .tile .k, .content:has(.tiles .k.long) .tiles .tile .k { line-height: 1.35; min-height: 2.7em; }
+.tile .foot { flex-wrap: nowrap; align-items: center; }
+.tile .foot .view-details { flex: none; }
+/* Navigation chips in narrow containers (tiles, insight cards) use the link style, so a long target never wraps a pill (M2-13). */
+.tile .chip-link:not(.ask), .insight .chip-link:not(.ask) { white-space: normal; border: 0; background: none; padding: 2px 0; min-height: 24px; border-radius: 0; color: var(--accent); text-decoration: underline; text-underline-offset: 2px; display: inline; line-height: 1.5; }
+.tile .foot:has(.chip-link) { flex-wrap: wrap; }
+/* "Show values": a two-column (or wider) exact-values table (§8.10, M2-19). */
+details.values .body { max-width: none; }
+.vt { border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; min-width: 260px; }
+.vt th, .vt td { padding: 4px 12px 4px 0; border-bottom: 1px solid var(--line); text-align: left; font-weight: 400; }
+.vt thead th { color: var(--text-dim); font-size: 12px; font-weight: 600; }
+.vt td.num { text-align: right; }
+/* V9-3: value column headers sit over their right-aligned figures, as the data tables' numeric headers do. */
+.vt thead th:not(:first-child) { text-align: right; }
+.vt tbody th { color: var(--text); }
+.vt tr.total th, .vt tr.total td { font-weight: 700; border-top: 1px solid var(--stroke-strong); }
+/* Labelled vertical marker on a chart, for example current spend on the response curves (M2-12). */
+.chart .mk-line { stroke: var(--text); stroke-width: 1.5; stroke-dasharray: 3 3; fill: none; vector-effect: non-scaling-stroke; }
+.chart .mk-label { position: absolute; top: 2px; transform: translateX(6px); font-size: 12px; font-weight: 600; color: var(--text); background: var(--card); padding: 0 4px; border-radius: 4px; white-space: nowrap; }
+.chart .sw.marker { width: 0; height: 12px; border-top: 0; border-left: 2px dashed var(--text); }
+
+/* ---- round 4 (mockup-review.json M3-5, M3-12 to M3-15) ---- */
+/* Chips and the "Partial days. See why" state are always one line (M3-14). In a tile row where any foot holds a word
+   state or an absent change, every "Details ›" in that row moves to its own line under the chip, right-aligned, so the
+   row keeps one baseline for chips and one for "Details ›". */
+.tile .foot .chg, .chg-absent { white-space: nowrap; }
+.tiles:has(.chg.word, .chg-absent) .tile .foot { flex-wrap: wrap; row-gap: 4px; }
+.tiles:has(.chg.word, .chg-absent) .tile .foot .view-details { flex-basis: 100%; justify-content: flex-end; }
+/* Reserved two-line labels apply only while tiles sit side by side (M3-15). */
+@container main (max-width: 559px) { .tiles:has(.k.long) .tile .k, .content:has(.tiles .k.long) .tiles .tile .k { min-height: 0; } }
+/* Insight cards: the optional next-step link sits above one action row ("Read more ›", then "Ask the assistant"),
+   and that row is pinned to the card bottom, so "Read more ›" shares a baseline across a row of cards (M3-5). */
+.insight .acts { flex-direction: column; align-items: flex-start; gap: 6px; }
+.insight .acts .next { display: block; }
+.insight .acts .act-row { display: flex; gap: 8px; align-items: center; min-height: 32px; flex-wrap: wrap; }
+.insight .acts .act-row > * { white-space: nowrap; flex: none; }
+.insight .acts .act-row .chip-link.ask { padding: 3px 9px; gap: 4px; }
+/* A date token in a drill link never breaks (M3-12). */
+.nw { white-space: nowrap; }
+/* One change-chip placement in every data table: the chip sits under its value (M3-13). */
+table.dt td .chg, table.dt td .chg-absent { display: flex; width: fit-content; margin: 4px 0 0 auto; }
+.dt-wrap.stackable table.dt td .chg { margin-top: 0; }
+/* RA12-1: a withheld change in a table cell ("1 day not yet sent. See why") wraps under its value, right-aligned, so
+   the column doesn't widen the table past its region. */
+table.dt td .chg-absent { white-space: normal; flex-wrap: wrap; justify-content: flex-end; align-items: baseline; column-gap: 4px; text-align: right; }
+table.dt td.cell-link { text-align: left; }
+.detail-find { max-width: 320px; flex: none; margin-bottom: 16px; }
+/* Text-first tables (Data pipeline status) read left to right (M3-3). */
+table.dt.text th, table.dt.text td { text-align: left; }
+table.dt.text td .chg, table.dt.text td .chg-absent { margin-left: 0; }
+/* R4-5: a partial day is a hollow marker (a ring), with its own legend key. */
+.chart .mk-in { stroke: var(--card); stroke-width: 3; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.dialog .chart .mk-in { stroke: var(--glass-dialog); }
+.chart .sw.partial { width: 10px; height: 10px; border: 2px solid var(--accent); border-radius: 50%; background: transparent; }
+/* R4-9: a currency input with its unit visible on both sides. */
+.money-input { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+/* ---- round 9 (mockup-review.json round 8: A8-1, V8-1 to V8-3) ---- */
+/* V8-2: a chart that pads its end has a narrow third column past the plot, so its last x label centres on its point
+   (no clamp). The legend still spans the full width, so it wraps as before. */
+.chart.pad-end { grid-template-columns: auto 1fr 18px; }
+/* V8-1: the table legend sits the standard footnote gap (the section's 10 px) below its table. */
+.dt-wrap + .dt-legend { margin-top: 10px; }
+/* A8-1: the part of the spend axis a weak curve doesn't model is hatched and labelled in place. */
+.chart .unmod { position: absolute; top: 0; bottom: 0; right: 0;
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--stroke-strong) 40%, transparent) 0 1.5px, transparent 1.5px 8px); }
+.chart .unmod-label { position: absolute; top: 40%; left: 8px; right: 6px; font-size: 12px; font-weight: 600; line-height: 1.35; color: var(--text); background: var(--card); padding: 2px 4px; border-radius: 4px; width: fit-content; }
+/* A8-1, V9-2: the observed spend range, a bracket on the spend axis line with end ticks rising into the plot, and its
+   text key (3:1 non-text contrast from --stroke-strong). The key's swatch is the same bracket. */
+.chart .obs-range { position: absolute; bottom: -1px; height: 10px; box-sizing: border-box; border: 2px solid var(--stroke-strong); border-top: 0; border-bottom-width: 3px; }
+.chart .obs-key { grid-column: 1 / -1; margin: 0; display: inline-flex; gap: 6px; align-items: center; font-size: 12px; color: var(--text); }
+.chart .sw.obs { width: 18px; height: 8px; box-sizing: border-box; border: 2px solid var(--stroke-strong); border-top: 0; border-bottom-width: 3px; background: none; border-radius: 0; }
+.nowrap { white-space: nowrap; }
+/* A8-1: a "not modelled" values row: one text cell across the value columns. */
+.vt td.na { text-align: left; color: var(--text); }

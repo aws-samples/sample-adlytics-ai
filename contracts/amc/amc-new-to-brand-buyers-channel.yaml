@@ -1,0 +1,145 @@
+# amc-new-to-brand-buyers-channel — distinct new-to-brand and attributed buyers per ad product.
+#
+# Pack 2 of the shopper-aggregate family (ADR-099, ADR-100; design §5.2 row 2, §5.5 "NTB buyers
+# (packs 1-3)", §6.2 "Step 2 fact"). One row per complete ISO week or calendar month, marketplace
+# and ad product: how many distinct shoppers bought an advertised product with ad attribution
+# after that ad product's ads, and how many of those were new to the brand in the last 12 months.
+# Its own extraction at the channel grain set, never derived from pack 1's platform row or
+# summed into it (D-1, D-2): one shopper can buy after ads on more than one ad product.
+#
+# Pack 1's text with the ad product added to SELECT and GROUP BY. A NULL ad_product_type means
+# Amazon DSP on this table, so the pack COALESCEs it to amazon_dsp, the governed convention
+# (amc-attributed-conversion.yaml; media-taxonomy.yaml amc.ad_product_type amazon_dsp).
+contract_id: amc-new-to-brand-buyers-channel
+contract_version: 1
+source_system: amc
+source_dataset: amazon_attributed_events_by_conversion_time
+source_format: csv
+target_table: fct_new_to_brand_buyers
+source_tables:
+  - amazon_attributed_events_by_conversion_time
+# One row per period, period grain, grain set, marketplace and ad product. The ad product's
+# channel and channel group follow from it through the taxonomy, so they're columns, not grain.
+# Campaign isn't in this grain set: it's NULL with not_applicable_under_options. grain_set keeps
+# these rows apart from pack 1's platform rows in the same fact (D-1).
+#
+# rows_suppressed is not in the grain: under discard_suppressed_rows no suppressed row reaches
+# the fact (design §4.2), so the key is unique among the rows that do.
+grain:
+  - period_start
+  - period_end
+  - time_grain
+  - grain_set
+  - marketplace_key
+  - ad_product_key
+key_unique_among_unsuppressed_only: true
+partition_keys:
+  - marketplace_key
+  - period_start
+measurement_basis: ad_attributed
+source_timezone: UTC
+ecosystem_key: amazon
+platform_key: amazon_ads
+# AMC restates the attributed tables; a closed period re-pulled inside 30 days replaces itself.
+restatement_window_days: 30
+# The same weekly cadence and lag as pack 1, so the same 240 hours.
+staleness_threshold_hours: 240
+# Every OUTPUT column is NONE or LOW (conversion_event_marketplace_name and ad_product_type are
+# LOW; the two counts are derived), so the bar is 2 distinct users per row. user_id is VERY_HIGH
+# and is read only inside COUNT(DISTINCT ...); new_to_brand (LOW), conversion_event_category
+# (LOW) and purchases (NONE) are read only in the CASE and the WHERE clause.
+grain_feasibility_note: >
+  Every output column is NONE or LOW, so the bar is 2 distinct users per row.
+  conversion_event_marketplace_name and ad_product_type are LOW; both counts are
+  COUNT(DISTINCT user_id) computed in AMC, and user_id (VERY_HIGH) never appears in output.
+  new_to_brand (LOW), conversion_event_category (LOW) and purchases (NONE) are read only in the
+  CASE and the filter.
+# The cells a delivery must return (plan D8): its marketplace, one row per returned ad product.
+# The ad products expected are the spend roster serving applies (design §4.5), so they're an open
+# slice here and the load writes no not_returned cell for them.
+expected_cells:
+  cells:
+    - column: marketplace_key
+      from: delivery
+  open_slices: [ad_product_key]
+# The discriminator turns AMC's deletion of sub-threshold rows into nulled, flagged rows; under
+# discard_suppressed_rows the load drops them before the fact write. This grain set has no closed
+# enumeration at load: its expected cells are the ad-product roster (ad products with spend in
+# the period), which serving applies, so a rostered ad product with no row reads "not available"
+# (design §4.5).
+suppression:
+  discriminator_column: rows_suppressed
+  reason_column: suppression_reason
+  distinct_user_count_column: distinct_user_count
+fields:
+  # --- grain -----------------------------------------------------------------
+  - target_column: period_start
+    assigned_by_load: true
+    target_type: date
+  - target_column: period_end
+    assigned_by_load: true
+    target_type: date
+  - target_column: time_grain
+    assigned_by_load: true
+    target_type: string
+    value_domain: [week, month]
+  - target_column: grain_set
+    literal_value: channel
+    target_type: string
+    value_domain: [channel]
+  - source_path: conversion_event_marketplace_name
+    target_column: marketplace_key
+    # LOW. The pack filters on it with the governed sponsored_marketplace_name parameter, so a
+    # delivery carries one marketplace.
+  - source_path: ad_product_type
+    target_column: ad_product_key
+    # LOW. The pack COALESCEs NULL to amazon_dsp; the canonical owner resolves the label
+    # through the source pack's amc.ad_product_type media path and the taxonomy.
+  # --- media resolved from the ad product (ADR-099 point 2) --------------------
+  - target_column: channel_group_key
+    assigned_by_load: true
+    target_type: string
+  - target_column: channel_key
+    assigned_by_load: true
+    target_type: string
+  - target_column: campaign_key
+    assigned_by_load: true
+    target_type: string
+    nullable: true
+    null_meaning: not_applicable_under_options
+  # --- shopper-aggregate shape (design §4.2) ----------------------------------
+  - target_column: identity_unit
+    literal_value: amazon_user_id
+    target_type: string
+  # returned for every row AMC sent. No not_returned row is written at load: a rostered ad
+  # product with no row is "not available" at serve, from the roster (design §4.5).
+  - target_column: cell_state
+    assigned_by_load: true
+    target_type: string
+    value_domain: [returned, not_returned]
+  # --- measures: exact distinct counts ----------------------------------------
+  - source_path: COUNT(DISTINCT CASE WHEN new_to_brand THEN user_id END)
+    target_column: buyers_new_to_brand_12mo
+    target_type: bigint
+    derived_from:
+      - new_to_brand
+      - user_id
+    non_additive: true
+    nullable: true
+    null_meaning: not_returned
+    # Distinct shoppers whose attributed purchase after this ad product's ads AMC flags new to
+    # the brand over a 12-month lookback. Never summed across ad products, periods or rows.
+  - source_path: COUNT(DISTINCT user_id)
+    target_column: buyers_attributed
+    target_type: bigint
+    derived_from:
+      - user_id
+    non_additive: true
+    nullable: true
+    null_meaning: not_returned
+  # rows_suppressed, suppression_reason and distinct_user_count are requested and read by the
+  # load's bar check and discard, but not stored: no suppressed row reaches this fact.
+tags:
+  - amc
+  - shopper-aggregate
+  - new-to-brand

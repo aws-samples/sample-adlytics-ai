@@ -1,0 +1,3143 @@
+{
+ "branch": "maximum",
+ "expected": {
+  "action_count": 20,
+  "aggregate_upper_bound": 19641,
+  "outcome": "accepted",
+  "wire_json_bytes": 23828
+ },
+ "expected_request": {
+  "TransactItems": [
+   {
+    "Update": {
+     "ConditionExpression": "revision = :revision AND last_generation = :last_generation AND reserved_intent_id = :intent_id AND reserved_intent_digest = :intent_id AND reserved_generation = :claimed_generation AND attribute_not_exists(active_plan_key)",
+     "ExpressionAttributeValues": {
+      ":claimed_generation": {
+       "N": "0"
+      },
+      ":intent_id": {
+       "S": "4ddd198d4bb9ed263e50514074756ba64a734fd476d2d9ec57601f235cb1ee55"
+      },
+      ":internal_execution_id": {
+       "S": "ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+      },
+      ":last_generation": {
+       "N": "-1"
+      },
+      ":new_revision": {
+       "N": "2"
+      },
+      ":plan_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+      },
+      ":revision": {
+       "N": "1"
+      },
+      ":root_plan_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+      }
+     },
+     "Key": {
+      "partition_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b"
+      },
+      "record_key": {
+       "S": "SUCCESSOR_OWNER"
+      }
+     },
+     "TableName": "publications-fixture",
+     "UpdateExpression": "SET revision = :new_revision, root_plan_key = :root_plan_key, last_plan_key = :plan_key, last_generation = :claimed_generation, active_plan_key = :plan_key, active_intent_id = :intent_id, latest_internal_execution_id = :internal_execution_id REMOVE reserved_intent_id, reserved_intent_digest, reserved_generation"
+    }
+   },
+   {
+    "ConditionCheck": {
+     "ConditionExpression": "#state = :claimed AND intent_id = :intent_id AND claimed_generation = :claimed_generation AND roster_digest = :roster_digest",
+     "ExpressionAttributeNames": {
+      "#state": "state"
+     },
+     "ExpressionAttributeValues": {
+      ":claimed": {
+       "S": "claimed"
+      },
+      ":claimed_generation": {
+       "N": "0"
+      },
+      ":intent_id": {
+       "S": "4ddd198d4bb9ed263e50514074756ba64a734fd476d2d9ec57601f235cb1ee55"
+      },
+      ":roster_digest": {
+       "S": "36c9eafe8539e9a72e0b019d3fcdd8ddee3a604d1ac66e07ff6d14dab69bee57"
+      }
+     },
+     "Key": {
+      "partition_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#INTENT#4ddd198d4bb9ed263e50514074756ba64a734fd476d2d9ec57601f235cb1ee55"
+      },
+      "record_key": {
+       "S": "META"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Item": {
+      "admitted_count": {
+       "N": "0"
+      },
+      "attested_count": {
+       "N": "0"
+      },
+      "child_outcome_reduction_version": {
+       "N": "2"
+      },
+      "created_at": {
+       "S": "01764950400000000000"
+      },
+      "failed_count": {
+       "N": "0"
+      },
+      "generation": {
+       "N": "0"
+      },
+      "internal_execution_id": {
+       "S": "ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+      },
+      "origin_intent_id": {
+       "S": "4ddd198d4bb9ed263e50514074756ba64a734fd476d2d9ec57601f235cb1ee55"
+      },
+      "origin_kind": {
+       "S": "source_delivery"
+      },
+      "origin_member": {
+       "S": "652c43e1add22378c10deeb1e0957edf1817319415a9c371b19024271a45273f"
+      },
+      "partition_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+      },
+      "plan_digest": {
+       "S": "a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b"
+      },
+      "record_key": {
+       "S": "META"
+      },
+      "required_child_expectations": {
+       "L": [
+        {
+         "M": {
+          "child_flow_id": {
+           "S": "092f1c3b-f4eb-5d89-8529-e826f43a5862"
+          },
+          "owner_generation": {
+           "N": "0"
+          }
+         }
+        },
+        {
+         "M": {
+          "child_flow_id": {
+           "S": "0ecf3460-ad03-5db1-9353-39a8b47230a1"
+          },
+          "owner_generation": {
+           "N": "0"
+          }
+         }
+        },
+        {
+         "M": {
+          "child_flow_id": {
+           "S": "1596ba05-8925-580d-a2e7-35ddf44a99f4"
+          },
+          "owner_generation": {
+           "N": "0"
+          }
+         }
+        },
+        {
+         "M": {
+          "child_flow_id": {
+           "S": "2751a7c4-1574-5af4-8f64-bcd3c807b077"
+          },
+          "owner_generation": {
+           "N": "0"
+          }
+         }
+        },
+        {
+         "M": {
+          "child_flow_id": {
+           "S": "2881edf6-a236-5493-8472-cec536749217"
+          },
+          "owner_generation": {
+           "N": "0"
+          }
+         }
+        },
+        {
+         "M": {
+          "child_flow_id": {
+           "S": "2dfa7e90-7434-5553-8e83-2a985fa66e50"
+          },
+          "owner_generation": {
+           "N": "0"
+          }
+         }
+        },
+        {
+         "M": {
+          "child_flow_id": {
+           "S": "4779ba2a-146e-584e-ae1a-645003791a70"
+          },
+          "owner_generation": {
+           "N": "0"
+          }
+         }
+        },
+        {
+         "M": {
+          "child_flow_id": {
+           "S": "664084eb-a331-58b1-9c40-633ec64f40c9"
+          },
+          "owner_generation": {
+           "N": "0"
+          }
+         }
+        },
+        {
+         "M": {
+          "child_flow_id": {
+           "S": "83118216-6efe-5a35-b06c-75dc7ad976d7"
+          },
+          "owner_generation": {
+           "N": "0"
+          }
+         }
+        },
+        {
+         "M": {
+          "child_flow_id": {
+           "S": "9902357b-1c35-56f6-bc28-464fba0305e3"
+          },
+          "owner_generation": {
+           "N": "0"
+          }
+         }
+        },
+        {
+         "M": {
+          "child_flow_id": {
+           "S": "b1b44f36-eecc-572a-9f99-9fa777029a4b"
+          },
+          "owner_generation": {
+           "N": "0"
+          }
+         }
+        },
+        {
+         "M": {
+          "child_flow_id": {
+           "S": "b1be82c7-3fc0-5b86-af9c-a291d4385bad"
+          },
+          "owner_generation": {
+           "N": "0"
+          }
+         }
+        },
+        {
+         "M": {
+          "child_flow_id": {
+           "S": "bd39abdc-a06a-5e52-82dd-c9e2159323fc"
+          },
+          "owner_generation": {
+           "N": "0"
+          }
+         }
+        },
+        {
+         "M": {
+          "child_flow_id": {
+           "S": "c4cd5bb6-f44f-53f7-8018-b4d581fc197b"
+          },
+          "owner_generation": {
+           "N": "0"
+          }
+         }
+        },
+        {
+         "M": {
+          "child_flow_id": {
+           "S": "e45c198a-0056-5833-be75-f37ec26cfb5b"
+          },
+          "owner_generation": {
+           "N": "0"
+          }
+         }
+        }
+       ]
+      },
+      "root_plan_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+      },
+      "roster_digest": {
+       "S": "36c9eafe8539e9a72e0b019d3fcdd8ddee3a604d1ac66e07ff6d14dab69bee57"
+      },
+      "settled_attempt_count": {
+       "N": "0"
+      },
+      "status": {
+       "S": "planned"
+      },
+      "unit_count": {
+       "N": "15"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Item": {
+      "admission": {
+       "S": "pending"
+      },
+      "created_at": {
+       "S": "01764950400000000000"
+      },
+      "flow_id": {
+       "S": "b1b44f36-eecc-572a-9f99-9fa777029a4b"
+      },
+      "merge_count": {
+       "N": "1"
+      },
+      "objects": {
+       "L": [
+        {
+         "L": [
+          {
+           "S": "manifest"
+          },
+          {
+           "S": "s3://authority-fixture/db.table_00"
+          },
+          {
+           "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          },
+          {
+           "S": "pub-0001"
+          },
+          {
+           "NULL": true
+          },
+          {
+           "N": "1"
+          }
+         ]
+        }
+       ]
+      },
+      "owner_generation": {
+       "N": "0"
+      },
+      "partition_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+      },
+      "record_key": {
+       "S": "UNIT#db.table_00"
+      },
+      "status": {
+       "S": "queued"
+      },
+      "table_kind": {
+       "S": "current"
+      },
+      "unit_key": {
+       "S": "db.table_00"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Item": {
+      "admission": {
+       "S": "pending"
+      },
+      "created_at": {
+       "S": "01764950400000000000"
+      },
+      "flow_id": {
+       "S": "9902357b-1c35-56f6-bc28-464fba0305e3"
+      },
+      "merge_count": {
+       "N": "1"
+      },
+      "objects": {
+       "L": [
+        {
+         "L": [
+          {
+           "S": "manifest"
+          },
+          {
+           "S": "s3://authority-fixture/db.table_01"
+          },
+          {
+           "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          },
+          {
+           "S": "pub-0002"
+          },
+          {
+           "NULL": true
+          },
+          {
+           "N": "2"
+          }
+         ]
+        }
+       ]
+      },
+      "owner_generation": {
+       "N": "0"
+      },
+      "partition_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+      },
+      "record_key": {
+       "S": "UNIT#db.table_01"
+      },
+      "status": {
+       "S": "queued"
+      },
+      "table_kind": {
+       "S": "current"
+      },
+      "unit_key": {
+       "S": "db.table_01"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Item": {
+      "admission": {
+       "S": "pending"
+      },
+      "created_at": {
+       "S": "01764950400000000000"
+      },
+      "flow_id": {
+       "S": "2881edf6-a236-5493-8472-cec536749217"
+      },
+      "merge_count": {
+       "N": "1"
+      },
+      "objects": {
+       "L": [
+        {
+         "L": [
+          {
+           "S": "manifest"
+          },
+          {
+           "S": "s3://authority-fixture/db.table_02"
+          },
+          {
+           "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          },
+          {
+           "S": "pub-0003"
+          },
+          {
+           "NULL": true
+          },
+          {
+           "N": "3"
+          }
+         ]
+        }
+       ]
+      },
+      "owner_generation": {
+       "N": "0"
+      },
+      "partition_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+      },
+      "record_key": {
+       "S": "UNIT#db.table_02"
+      },
+      "status": {
+       "S": "queued"
+      },
+      "table_kind": {
+       "S": "current"
+      },
+      "unit_key": {
+       "S": "db.table_02"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Item": {
+      "admission": {
+       "S": "pending"
+      },
+      "created_at": {
+       "S": "01764950400000000000"
+      },
+      "flow_id": {
+       "S": "e45c198a-0056-5833-be75-f37ec26cfb5b"
+      },
+      "merge_count": {
+       "N": "1"
+      },
+      "objects": {
+       "L": [
+        {
+         "L": [
+          {
+           "S": "manifest"
+          },
+          {
+           "S": "s3://authority-fixture/db.table_03"
+          },
+          {
+           "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          },
+          {
+           "S": "pub-0004"
+          },
+          {
+           "NULL": true
+          },
+          {
+           "N": "4"
+          }
+         ]
+        }
+       ]
+      },
+      "owner_generation": {
+       "N": "0"
+      },
+      "partition_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+      },
+      "record_key": {
+       "S": "UNIT#db.table_03"
+      },
+      "status": {
+       "S": "queued"
+      },
+      "table_kind": {
+       "S": "current"
+      },
+      "unit_key": {
+       "S": "db.table_03"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Item": {
+      "admission": {
+       "S": "pending"
+      },
+      "created_at": {
+       "S": "01764950400000000000"
+      },
+      "flow_id": {
+       "S": "4779ba2a-146e-584e-ae1a-645003791a70"
+      },
+      "merge_count": {
+       "N": "1"
+      },
+      "objects": {
+       "L": [
+        {
+         "L": [
+          {
+           "S": "manifest"
+          },
+          {
+           "S": "s3://authority-fixture/db.table_04"
+          },
+          {
+           "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          },
+          {
+           "S": "pub-0005"
+          },
+          {
+           "NULL": true
+          },
+          {
+           "N": "5"
+          }
+         ]
+        }
+       ]
+      },
+      "owner_generation": {
+       "N": "0"
+      },
+      "partition_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+      },
+      "record_key": {
+       "S": "UNIT#db.table_04"
+      },
+      "status": {
+       "S": "queued"
+      },
+      "table_kind": {
+       "S": "current"
+      },
+      "unit_key": {
+       "S": "db.table_04"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Item": {
+      "admission": {
+       "S": "pending"
+      },
+      "created_at": {
+       "S": "01764950400000000000"
+      },
+      "flow_id": {
+       "S": "b1be82c7-3fc0-5b86-af9c-a291d4385bad"
+      },
+      "merge_count": {
+       "N": "1"
+      },
+      "objects": {
+       "L": [
+        {
+         "L": [
+          {
+           "S": "manifest"
+          },
+          {
+           "S": "s3://authority-fixture/db.table_05"
+          },
+          {
+           "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          },
+          {
+           "S": "pub-0006"
+          },
+          {
+           "NULL": true
+          },
+          {
+           "N": "6"
+          }
+         ]
+        }
+       ]
+      },
+      "owner_generation": {
+       "N": "0"
+      },
+      "partition_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+      },
+      "record_key": {
+       "S": "UNIT#db.table_05"
+      },
+      "status": {
+       "S": "queued"
+      },
+      "table_kind": {
+       "S": "current"
+      },
+      "unit_key": {
+       "S": "db.table_05"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Item": {
+      "admission": {
+       "S": "pending"
+      },
+      "created_at": {
+       "S": "01764950400000000000"
+      },
+      "flow_id": {
+       "S": "bd39abdc-a06a-5e52-82dd-c9e2159323fc"
+      },
+      "merge_count": {
+       "N": "1"
+      },
+      "objects": {
+       "L": [
+        {
+         "L": [
+          {
+           "S": "manifest"
+          },
+          {
+           "S": "s3://authority-fixture/db.table_06"
+          },
+          {
+           "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          },
+          {
+           "S": "pub-0007"
+          },
+          {
+           "NULL": true
+          },
+          {
+           "N": "7"
+          }
+         ]
+        }
+       ]
+      },
+      "owner_generation": {
+       "N": "0"
+      },
+      "partition_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+      },
+      "record_key": {
+       "S": "UNIT#db.table_06"
+      },
+      "status": {
+       "S": "queued"
+      },
+      "table_kind": {
+       "S": "current"
+      },
+      "unit_key": {
+       "S": "db.table_06"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Item": {
+      "admission": {
+       "S": "pending"
+      },
+      "created_at": {
+       "S": "01764950400000000000"
+      },
+      "flow_id": {
+       "S": "0ecf3460-ad03-5db1-9353-39a8b47230a1"
+      },
+      "merge_count": {
+       "N": "1"
+      },
+      "objects": {
+       "L": [
+        {
+         "L": [
+          {
+           "S": "manifest"
+          },
+          {
+           "S": "s3://authority-fixture/db.table_07"
+          },
+          {
+           "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          },
+          {
+           "S": "pub-0008"
+          },
+          {
+           "NULL": true
+          },
+          {
+           "N": "8"
+          }
+         ]
+        }
+       ]
+      },
+      "owner_generation": {
+       "N": "0"
+      },
+      "partition_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+      },
+      "record_key": {
+       "S": "UNIT#db.table_07"
+      },
+      "status": {
+       "S": "queued"
+      },
+      "table_kind": {
+       "S": "current"
+      },
+      "unit_key": {
+       "S": "db.table_07"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Item": {
+      "admission": {
+       "S": "pending"
+      },
+      "created_at": {
+       "S": "01764950400000000000"
+      },
+      "flow_id": {
+       "S": "c4cd5bb6-f44f-53f7-8018-b4d581fc197b"
+      },
+      "merge_count": {
+       "N": "1"
+      },
+      "objects": {
+       "L": [
+        {
+         "L": [
+          {
+           "S": "manifest"
+          },
+          {
+           "S": "s3://authority-fixture/db.table_08"
+          },
+          {
+           "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          },
+          {
+           "S": "pub-0009"
+          },
+          {
+           "NULL": true
+          },
+          {
+           "N": "9"
+          }
+         ]
+        }
+       ]
+      },
+      "owner_generation": {
+       "N": "0"
+      },
+      "partition_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+      },
+      "record_key": {
+       "S": "UNIT#db.table_08"
+      },
+      "status": {
+       "S": "queued"
+      },
+      "table_kind": {
+       "S": "current"
+      },
+      "unit_key": {
+       "S": "db.table_08"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Item": {
+      "admission": {
+       "S": "pending"
+      },
+      "created_at": {
+       "S": "01764950400000000000"
+      },
+      "flow_id": {
+       "S": "2dfa7e90-7434-5553-8e83-2a985fa66e50"
+      },
+      "merge_count": {
+       "N": "1"
+      },
+      "objects": {
+       "L": [
+        {
+         "L": [
+          {
+           "S": "manifest"
+          },
+          {
+           "S": "s3://authority-fixture/db.table_09"
+          },
+          {
+           "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          },
+          {
+           "S": "pub-0010"
+          },
+          {
+           "NULL": true
+          },
+          {
+           "N": "10"
+          }
+         ]
+        }
+       ]
+      },
+      "owner_generation": {
+       "N": "0"
+      },
+      "partition_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+      },
+      "record_key": {
+       "S": "UNIT#db.table_09"
+      },
+      "status": {
+       "S": "queued"
+      },
+      "table_kind": {
+       "S": "current"
+      },
+      "unit_key": {
+       "S": "db.table_09"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Item": {
+      "admission": {
+       "S": "pending"
+      },
+      "created_at": {
+       "S": "01764950400000000000"
+      },
+      "flow_id": {
+       "S": "2751a7c4-1574-5af4-8f64-bcd3c807b077"
+      },
+      "merge_count": {
+       "N": "1"
+      },
+      "objects": {
+       "L": [
+        {
+         "L": [
+          {
+           "S": "manifest"
+          },
+          {
+           "S": "s3://authority-fixture/db.table_10"
+          },
+          {
+           "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          },
+          {
+           "S": "pub-0011"
+          },
+          {
+           "NULL": true
+          },
+          {
+           "N": "11"
+          }
+         ]
+        }
+       ]
+      },
+      "owner_generation": {
+       "N": "0"
+      },
+      "partition_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+      },
+      "record_key": {
+       "S": "UNIT#db.table_10"
+      },
+      "status": {
+       "S": "queued"
+      },
+      "table_kind": {
+       "S": "current"
+      },
+      "unit_key": {
+       "S": "db.table_10"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Item": {
+      "admission": {
+       "S": "pending"
+      },
+      "created_at": {
+       "S": "01764950400000000000"
+      },
+      "flow_id": {
+       "S": "092f1c3b-f4eb-5d89-8529-e826f43a5862"
+      },
+      "merge_count": {
+       "N": "1"
+      },
+      "objects": {
+       "L": [
+        {
+         "L": [
+          {
+           "S": "manifest"
+          },
+          {
+           "S": "s3://authority-fixture/db.table_11"
+          },
+          {
+           "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          },
+          {
+           "S": "pub-0012"
+          },
+          {
+           "NULL": true
+          },
+          {
+           "N": "12"
+          }
+         ]
+        }
+       ]
+      },
+      "owner_generation": {
+       "N": "0"
+      },
+      "partition_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+      },
+      "record_key": {
+       "S": "UNIT#db.table_11"
+      },
+      "status": {
+       "S": "queued"
+      },
+      "table_kind": {
+       "S": "current"
+      },
+      "unit_key": {
+       "S": "db.table_11"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Item": {
+      "admission": {
+       "S": "pending"
+      },
+      "created_at": {
+       "S": "01764950400000000000"
+      },
+      "flow_id": {
+       "S": "664084eb-a331-58b1-9c40-633ec64f40c9"
+      },
+      "merge_count": {
+       "N": "1"
+      },
+      "objects": {
+       "L": [
+        {
+         "L": [
+          {
+           "S": "manifest"
+          },
+          {
+           "S": "s3://authority-fixture/db.table_12"
+          },
+          {
+           "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          },
+          {
+           "S": "pub-0013"
+          },
+          {
+           "NULL": true
+          },
+          {
+           "N": "13"
+          }
+         ]
+        }
+       ]
+      },
+      "owner_generation": {
+       "N": "0"
+      },
+      "partition_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+      },
+      "record_key": {
+       "S": "UNIT#db.table_12"
+      },
+      "status": {
+       "S": "queued"
+      },
+      "table_kind": {
+       "S": "current"
+      },
+      "unit_key": {
+       "S": "db.table_12"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Item": {
+      "admission": {
+       "S": "pending"
+      },
+      "created_at": {
+       "S": "01764950400000000000"
+      },
+      "flow_id": {
+       "S": "1596ba05-8925-580d-a2e7-35ddf44a99f4"
+      },
+      "merge_count": {
+       "N": "1"
+      },
+      "objects": {
+       "L": [
+        {
+         "L": [
+          {
+           "S": "manifest"
+          },
+          {
+           "S": "s3://authority-fixture/db.table_13"
+          },
+          {
+           "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          },
+          {
+           "S": "pub-0014"
+          },
+          {
+           "NULL": true
+          },
+          {
+           "N": "14"
+          }
+         ]
+        }
+       ]
+      },
+      "owner_generation": {
+       "N": "0"
+      },
+      "partition_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+      },
+      "record_key": {
+       "S": "UNIT#db.table_13"
+      },
+      "status": {
+       "S": "queued"
+      },
+      "table_kind": {
+       "S": "current"
+      },
+      "unit_key": {
+       "S": "db.table_13"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Item": {
+      "admission": {
+       "S": "pending"
+      },
+      "created_at": {
+       "S": "01764950400000000000"
+      },
+      "flow_id": {
+       "S": "83118216-6efe-5a35-b06c-75dc7ad976d7"
+      },
+      "merge_count": {
+       "N": "1"
+      },
+      "objects": {
+       "L": [
+        {
+         "L": [
+          {
+           "S": "manifest"
+          },
+          {
+           "S": "s3://authority-fixture/db.table_14"
+          },
+          {
+           "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          },
+          {
+           "S": "pub-0015"
+          },
+          {
+           "NULL": true
+          },
+          {
+           "N": "15"
+          }
+         ]
+        }
+       ]
+      },
+      "owner_generation": {
+       "N": "0"
+      },
+      "partition_key": {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+      },
+      "record_key": {
+       "S": "UNIT#db.table_14"
+      },
+      "status": {
+       "S": "queued"
+      },
+      "table_kind": {
+       "S": "current"
+      },
+      "unit_key": {
+       "S": "db.table_14"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key) OR (payload = :expected_payload AND immutable_payload_digest = :expected_digest)",
+     "ExpressionAttributeValues": {
+      ":expected_digest": {
+       "S": "63265c01530f95e13c92a5b115d9a8c3850269cb612f7282a69d29b482ca7697"
+      },
+      ":expected_payload": {
+       "S": "{\"authority\":{\"kind\":\"write_plan_meta\",\"observed_at\":\"2026-09-19T12:34:56.789012+00:00\",\"opaque_digest\":\"a1b60c5650860f87e2adaa4a59e5fa3f5117bedd6e9124a0babea037c6c3719b\"},\"causation_event_id\":null,\"clock_started_at\":\"2026-09-19T12:34:56.789012+00:00\",\"evaluation_binding\":{\"measurement_refs\":[{\"measurement_ref\":\"stage1_plan_settlement_latency\",\"measurement_version\":\"1\"}],\"mode\":\"observation_only\"},\"event_id\":\"d1d2c706-beb8-5e17-bc08-70b8665044e5\",\"execution_id\":\"0a5d66bd-06bd-58be-825e-3047acdb7c5f\",\"flow_id\":\"acaa4ea4-b442-5024-a434-95febac5560a\",\"occurred_at\":\"2026-09-19T12:34:56.789012+00:00\",\"optional_child_flow_ids\":[],\"outcome\":null,\"parent_flow_id\":null,\"predecessor_event_id\":null,\"predecessor_execution_id\":null,\"progress\":null,\"reason_code\":null,\"registry_version\":\"1\",\"required_child_flow_ids\":[\"092f1c3b-f4eb-5d89-8529-e826f43a5862\",\"0ecf3460-ad03-5db1-9353-39a8b47230a1\",\"1596ba05-8925-580d-a2e7-35ddf44a99f4\",\"2751a7c4-1574-5af4-8f64-bcd3c807b077\",\"2881edf6-a236-5493-8472-cec536749217\",\"2dfa7e90-7434-5553-8e83-2a985fa66e50\",\"4779ba2a-146e-584e-ae1a-645003791a70\",\"664084eb-a331-58b1-9c40-633ec64f40c9\",\"83118216-6efe-5a35-b06c-75dc7ad976d7\",\"9902357b-1c35-56f6-bc28-464fba0305e3\",\"b1b44f36-eecc-572a-9f99-9fa777029a4b\",\"b1be82c7-3fc0-5b86-af9c-a291d4385bad\",\"bd39abdc-a06a-5e52-82dd-c9e2159323fc\",\"c4cd5bb6-f44f-53f7-8018-b4d581fc197b\",\"e45c198a-0056-5833-be75-f37ec26cfb5b\"],\"schema_version\":\"1\",\"stage\":\"projection_plan_recorded\",\"state\":\"queued\",\"surface\":\"semantic_projection_plan\",\"transition_sequence\":1}"
+      }
+     },
+     "Item": {
+      "authority_kind": {
+       "S": "lifecycle_event"
+      },
+      "authority_time": {
+       "S": "00001789821296789012"
+      },
+      "child_outcome_reduction_version": {
+       "N": "2"
+      },
+      "consecutive_failed_delivery_attempts": {
+       "N": "0"
+      },
+      "event_id": {
+       "S": "d1d2c706-beb8-5e17-bc08-70b8665044e5"
+      },
+      "execution_id": {
+       "S": "0a5d66bd-06bd-58be-825e-3047acdb7c5f"
+      },
+      "flow_id": {
+       "S": "acaa4ea4-b442-5024-a434-95febac5560a"
+      },
+      "immutable_payload_digest": {
+       "S": "63265c01530f95e13c92a5b115d9a8c3850269cb612f7282a69d29b482ca7697"
+      },
+      "internal_execution_id": {
+       "S": "ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+      },
+      "internal_key": {
+       "L": [
+        {
+         "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+        }
+       ]
+      },
+      "lifecycle_state": {
+       "S": "queued"
+      },
+      "outbox_order": {
+       "S": "00001789821296789012#2137d83a40cfd17d1867e6cf90d3c89380d3e2d07a942c3f6fe6549ef85e1035"
+      },
+      "outbox_state": {
+       "S": "pending"
+      },
+      "outbox_status": {
+       "S": "pending"
+      },
+      "partition_key": {
+       "S": "STATUS_FLOW#acaa4ea4-b442-5024-a434-95febac5560a"
+      },
+      "payload": {
+       "S": "{\"authority\":{\"kind\":\"write_plan_meta\",\"observed_at\":\"2026-09-19T12:34:56.789012+00:00\",\"opaque_digest\":\"a1b60c5650860f87e2adaa4a59e5fa3f5117bedd6e9124a0babea037c6c3719b\"},\"causation_event_id\":null,\"clock_started_at\":\"2026-09-19T12:34:56.789012+00:00\",\"evaluation_binding\":{\"measurement_refs\":[{\"measurement_ref\":\"stage1_plan_settlement_latency\",\"measurement_version\":\"1\"}],\"mode\":\"observation_only\"},\"event_id\":\"d1d2c706-beb8-5e17-bc08-70b8665044e5\",\"execution_id\":\"0a5d66bd-06bd-58be-825e-3047acdb7c5f\",\"flow_id\":\"acaa4ea4-b442-5024-a434-95febac5560a\",\"occurred_at\":\"2026-09-19T12:34:56.789012+00:00\",\"optional_child_flow_ids\":[],\"outcome\":null,\"parent_flow_id\":null,\"predecessor_event_id\":null,\"predecessor_execution_id\":null,\"progress\":null,\"reason_code\":null,\"registry_version\":\"1\",\"required_child_flow_ids\":[\"092f1c3b-f4eb-5d89-8529-e826f43a5862\",\"0ecf3460-ad03-5db1-9353-39a8b47230a1\",\"1596ba05-8925-580d-a2e7-35ddf44a99f4\",\"2751a7c4-1574-5af4-8f64-bcd3c807b077\",\"2881edf6-a236-5493-8472-cec536749217\",\"2dfa7e90-7434-5553-8e83-2a985fa66e50\",\"4779ba2a-146e-584e-ae1a-645003791a70\",\"664084eb-a331-58b1-9c40-633ec64f40c9\",\"83118216-6efe-5a35-b06c-75dc7ad976d7\",\"9902357b-1c35-56f6-bc28-464fba0305e3\",\"b1b44f36-eecc-572a-9f99-9fa777029a4b\",\"b1be82c7-3fc0-5b86-af9c-a291d4385bad\",\"bd39abdc-a06a-5e52-82dd-c9e2159323fc\",\"c4cd5bb6-f44f-53f7-8018-b4d581fc197b\",\"e45c198a-0056-5833-be75-f37ec26cfb5b\"],\"schema_version\":\"1\",\"stage\":\"projection_plan_recorded\",\"state\":\"queued\",\"surface\":\"semantic_projection_plan\",\"transition_sequence\":1}"
+      },
+      "plan_digest": {
+       "S": "a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b"
+      },
+      "record_key": {
+       "S": "EVENT#a1b60c5650860f87e2adaa4a59e5fa3f5117bedd6e9124a0babea037c6c3719b"
+      },
+      "required_child_expectations": {
+       "L": [
+        {
+         "M": {
+          "child_flow_id": {
+           "S": "092f1c3b-f4eb-5d89-8529-e826f43a5862"
+          },
+          "owner_generation": {
+           "N": "0"
+          }
+         }
+        },
+        {
+         "M": {
+          "child_flow_id": {
+           "S": "0ecf3460-ad03-5db1-9353-39a8b47230a1"
+          },
+          "owner_generation": {
+           "N": "0"
+          }
+         }
+        },
+        {
+         "M": {
+          "child_flow_id": {
+           "S": "1596ba05-8925-580d-a2e7-35ddf44a99f4"
+          },
+          "owner_generation": {
+           "N": "0"
+          }
+         }
+        },
+        {
+         "M": {
+          "child_flow_id": {
+           "S": "2751a7c4-1574-5af4-8f64-bcd3c807b077"
+          },
+          "owner_generation": {
+           "N": "0"
+          }
+         }
+        },
+        {
+         "M": {
+          "child_flow_id": {
+           "S": "2881edf6-a236-5493-8472-cec536749217"
+          },
+          "owner_generation": {
+           "N": "0"
+          }
+         }
+        },
+        {
+         "M": {
+          "child_flow_id": {
+           "S": "2dfa7e90-7434-5553-8e83-2a985fa66e50"
+          },
+          "owner_generation": {
+           "N": "0"
+          }
+         }
+        },
+        {
+         "M": {
+          "child_flow_id": {
+           "S": "4779ba2a-146e-584e-ae1a-645003791a70"
+          },
+          "owner_generation": {
+           "N": "0"
+          }
+         }
+        },
+        {
+         "M": {
+          "child_flow_id": {
+           "S": "664084eb-a331-58b1-9c40-633ec64f40c9"
+          },
+          "owner_generation": {
+           "N": "0"
+          }
+         }
+        },
+        {
+         "M": {
+          "child_flow_id": {
+           "S": "83118216-6efe-5a35-b06c-75dc7ad976d7"
+          },
+          "owner_generation": {
+           "N": "0"
+          }
+         }
+        },
+        {
+         "M": {
+          "child_flow_id": {
+           "S": "9902357b-1c35-56f6-bc28-464fba0305e3"
+          },
+          "owner_generation": {
+           "N": "0"
+          }
+         }
+        },
+        {
+         "M": {
+          "child_flow_id": {
+           "S": "b1b44f36-eecc-572a-9f99-9fa777029a4b"
+          },
+          "owner_generation": {
+           "N": "0"
+          }
+         }
+        },
+        {
+         "M": {
+          "child_flow_id": {
+           "S": "b1be82c7-3fc0-5b86-af9c-a291d4385bad"
+          },
+          "owner_generation": {
+           "N": "0"
+          }
+         }
+        },
+        {
+         "M": {
+          "child_flow_id": {
+           "S": "bd39abdc-a06a-5e52-82dd-c9e2159323fc"
+          },
+          "owner_generation": {
+           "N": "0"
+          }
+         }
+        },
+        {
+         "M": {
+          "child_flow_id": {
+           "S": "c4cd5bb6-f44f-53f7-8018-b4d581fc197b"
+          },
+          "owner_generation": {
+           "N": "0"
+          }
+         }
+        },
+        {
+         "M": {
+          "child_flow_id": {
+           "S": "e45c198a-0056-5833-be75-f37ec26cfb5b"
+          },
+          "owner_generation": {
+           "N": "0"
+          }
+         }
+        }
+       ]
+      },
+      "surface": {
+       "S": "semantic_projection_plan"
+      },
+      "transition_id": {
+       "S": "semantic_plan_recorded"
+      },
+      "transition_sequence": {
+       "N": "1"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   },
+   {
+    "Put": {
+     "ConditionExpression": "attribute_not_exists(partition_key)",
+     "Item": {
+      "current_execution_id": {
+       "S": "0a5d66bd-06bd-58be-825e-3047acdb7c5f"
+      },
+      "current_internal_execution_id": {
+       "S": "ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+      },
+      "flow_id": {
+       "S": "acaa4ea4-b442-5024-a434-95febac5560a"
+      },
+      "head_contract_version": {
+       "N": "1"
+      },
+      "latest_authority_digest": {
+       "S": "a1b60c5650860f87e2adaa4a59e5fa3f5117bedd6e9124a0babea037c6c3719b"
+      },
+      "latest_event_id": {
+       "S": "d1d2c706-beb8-5e17-bc08-70b8665044e5"
+      },
+      "latest_state": {
+       "S": "queued"
+      },
+      "latest_transition_sequence": {
+       "N": "1"
+      },
+      "partition_key": {
+       "S": "STATUS_FLOW#acaa4ea4-b442-5024-a434-95febac5560a"
+      },
+      "record_key": {
+       "S": "HEAD"
+      },
+      "surface": {
+       "S": "semantic_projection_plan"
+      }
+     },
+     "TableName": "publications-fixture"
+    }
+   }
+  ]
+ },
+ "fixture_version": "v1",
+ "table_name": "publications-fixture",
+ "targets": [
+  {
+   "expected_pre_state_map": {
+    "last_generation": {
+     "N": "-1"
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b"
+    },
+    "record_key": {
+     "S": "SUCCESSOR_OWNER"
+    },
+    "reserved_generation": {
+     "N": "0"
+    },
+    "reserved_intent_digest": {
+     "S": "4ddd198d4bb9ed263e50514074756ba64a734fd476d2d9ec57601f235cb1ee55"
+    },
+    "reserved_intent_id": {
+     "S": "4ddd198d4bb9ed263e50514074756ba64a734fd476d2d9ec57601f235cb1ee55"
+    },
+    "revision": {
+     "N": "1"
+    }
+   },
+   "expected_result_map": {
+    "active_intent_id": {
+     "S": "4ddd198d4bb9ed263e50514074756ba64a734fd476d2d9ec57601f235cb1ee55"
+    },
+    "active_plan_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+    },
+    "last_generation": {
+     "N": "0"
+    },
+    "last_plan_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+    },
+    "latest_internal_execution_id": {
+     "S": "ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b"
+    },
+    "record_key": {
+     "S": "SUCCESSOR_OWNER"
+    },
+    "reserved_generation": {
+     "N": "0"
+    },
+    "reserved_intent_digest": {
+     "S": "4ddd198d4bb9ed263e50514074756ba64a734fd476d2d9ec57601f235cb1ee55"
+    },
+    "reserved_intent_id": {
+     "S": "4ddd198d4bb9ed263e50514074756ba64a734fd476d2d9ec57601f235cb1ee55"
+    },
+    "revision": {
+     "N": "2"
+    },
+    "root_plan_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+    }
+   },
+   "pre_state_conservative_bytes": 412,
+   "result_conservative_bytes": 1104,
+   "target_upper_bound": 1104
+  },
+  {
+   "expected_pre_state_map": {
+    "claimed_generation": {
+     "N": "0"
+    },
+    "created_at": {
+     "S": "01764950400000000000"
+    },
+    "due_at": {
+     "S": "01764950400000000000"
+    },
+    "intent_id": {
+     "S": "4ddd198d4bb9ed263e50514074756ba64a734fd476d2d9ec57601f235cb1ee55"
+    },
+    "last_transition_at": {
+     "S": "01764950400000000000"
+    },
+    "origin_kind": {
+     "S": "source_delivery"
+    },
+    "origin_member": {
+     "S": "652c43e1add22378c10deeb1e0957edf1817319415a9c371b19024271a45273f"
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#INTENT#4ddd198d4bb9ed263e50514074756ba64a734fd476d2d9ec57601f235cb1ee55"
+    },
+    "plan_digest": {
+     "S": "a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b"
+    },
+    "record_key": {
+     "S": "META"
+    },
+    "retry_count": {
+     "N": "0"
+    },
+    "roster_digest": {
+     "S": "36c9eafe8539e9a72e0b019d3fcdd8ddee3a604d1ac66e07ff6d14dab69bee57"
+    },
+    "state": {
+     "S": "claimed"
+    }
+   },
+   "expected_result_map": {
+    "claimed_generation": {
+     "N": "0"
+    },
+    "created_at": {
+     "S": "01764950400000000000"
+    },
+    "due_at": {
+     "S": "01764950400000000000"
+    },
+    "intent_id": {
+     "S": "4ddd198d4bb9ed263e50514074756ba64a734fd476d2d9ec57601f235cb1ee55"
+    },
+    "last_transition_at": {
+     "S": "01764950400000000000"
+    },
+    "origin_kind": {
+     "S": "source_delivery"
+    },
+    "origin_member": {
+     "S": "652c43e1add22378c10deeb1e0957edf1817319415a9c371b19024271a45273f"
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#INTENT#4ddd198d4bb9ed263e50514074756ba64a734fd476d2d9ec57601f235cb1ee55"
+    },
+    "plan_digest": {
+     "S": "a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b"
+    },
+    "record_key": {
+     "S": "META"
+    },
+    "retry_count": {
+     "N": "0"
+    },
+    "roster_digest": {
+     "S": "36c9eafe8539e9a72e0b019d3fcdd8ddee3a604d1ac66e07ff6d14dab69bee57"
+    },
+    "state": {
+     "S": "claimed"
+    }
+   },
+   "pre_state_conservative_bytes": 796,
+   "result_conservative_bytes": 796,
+   "target_upper_bound": 796
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "admitted_count": {
+     "N": "0"
+    },
+    "attested_count": {
+     "N": "0"
+    },
+    "child_outcome_reduction_version": {
+     "N": "2"
+    },
+    "created_at": {
+     "S": "01764950400000000000"
+    },
+    "failed_count": {
+     "N": "0"
+    },
+    "generation": {
+     "N": "0"
+    },
+    "internal_execution_id": {
+     "S": "ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+    },
+    "origin_intent_id": {
+     "S": "4ddd198d4bb9ed263e50514074756ba64a734fd476d2d9ec57601f235cb1ee55"
+    },
+    "origin_kind": {
+     "S": "source_delivery"
+    },
+    "origin_member": {
+     "S": "652c43e1add22378c10deeb1e0957edf1817319415a9c371b19024271a45273f"
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+    },
+    "plan_digest": {
+     "S": "a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b"
+    },
+    "record_key": {
+     "S": "META"
+    },
+    "required_child_expectations": {
+     "L": [
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "092f1c3b-f4eb-5d89-8529-e826f43a5862"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "0ecf3460-ad03-5db1-9353-39a8b47230a1"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "1596ba05-8925-580d-a2e7-35ddf44a99f4"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "2751a7c4-1574-5af4-8f64-bcd3c807b077"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "2881edf6-a236-5493-8472-cec536749217"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "2dfa7e90-7434-5553-8e83-2a985fa66e50"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "4779ba2a-146e-584e-ae1a-645003791a70"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "664084eb-a331-58b1-9c40-633ec64f40c9"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "83118216-6efe-5a35-b06c-75dc7ad976d7"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "9902357b-1c35-56f6-bc28-464fba0305e3"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "b1b44f36-eecc-572a-9f99-9fa777029a4b"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "b1be82c7-3fc0-5b86-af9c-a291d4385bad"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "bd39abdc-a06a-5e52-82dd-c9e2159323fc"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "c4cd5bb6-f44f-53f7-8018-b4d581fc197b"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "e45c198a-0056-5833-be75-f37ec26cfb5b"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      }
+     ]
+    },
+    "root_plan_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+    },
+    "roster_digest": {
+     "S": "36c9eafe8539e9a72e0b019d3fcdd8ddee3a604d1ac66e07ff6d14dab69bee57"
+    },
+    "settled_attempt_count": {
+     "N": "0"
+    },
+    "status": {
+     "S": "planned"
+    },
+    "unit_count": {
+     "N": "15"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 2628,
+   "target_upper_bound": 2628
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "admission": {
+     "S": "pending"
+    },
+    "created_at": {
+     "S": "01764950400000000000"
+    },
+    "flow_id": {
+     "S": "b1b44f36-eecc-572a-9f99-9fa777029a4b"
+    },
+    "merge_count": {
+     "N": "1"
+    },
+    "objects": {
+     "L": [
+      {
+       "L": [
+        {
+         "S": "manifest"
+        },
+        {
+         "S": "s3://authority-fixture/db.table_00"
+        },
+        {
+         "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        },
+        {
+         "S": "pub-0001"
+        },
+        {
+         "NULL": true
+        },
+        {
+         "N": "1"
+        }
+       ]
+      }
+     ]
+    },
+    "owner_generation": {
+     "N": "0"
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+    },
+    "record_key": {
+     "S": "UNIT#db.table_00"
+    },
+    "status": {
+     "S": "queued"
+    },
+    "table_kind": {
+     "S": "current"
+    },
+    "unit_key": {
+     "S": "db.table_00"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 666,
+   "target_upper_bound": 666
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "admission": {
+     "S": "pending"
+    },
+    "created_at": {
+     "S": "01764950400000000000"
+    },
+    "flow_id": {
+     "S": "9902357b-1c35-56f6-bc28-464fba0305e3"
+    },
+    "merge_count": {
+     "N": "1"
+    },
+    "objects": {
+     "L": [
+      {
+       "L": [
+        {
+         "S": "manifest"
+        },
+        {
+         "S": "s3://authority-fixture/db.table_01"
+        },
+        {
+         "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        },
+        {
+         "S": "pub-0002"
+        },
+        {
+         "NULL": true
+        },
+        {
+         "N": "2"
+        }
+       ]
+      }
+     ]
+    },
+    "owner_generation": {
+     "N": "0"
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+    },
+    "record_key": {
+     "S": "UNIT#db.table_01"
+    },
+    "status": {
+     "S": "queued"
+    },
+    "table_kind": {
+     "S": "current"
+    },
+    "unit_key": {
+     "S": "db.table_01"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 666,
+   "target_upper_bound": 666
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "admission": {
+     "S": "pending"
+    },
+    "created_at": {
+     "S": "01764950400000000000"
+    },
+    "flow_id": {
+     "S": "2881edf6-a236-5493-8472-cec536749217"
+    },
+    "merge_count": {
+     "N": "1"
+    },
+    "objects": {
+     "L": [
+      {
+       "L": [
+        {
+         "S": "manifest"
+        },
+        {
+         "S": "s3://authority-fixture/db.table_02"
+        },
+        {
+         "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        },
+        {
+         "S": "pub-0003"
+        },
+        {
+         "NULL": true
+        },
+        {
+         "N": "3"
+        }
+       ]
+      }
+     ]
+    },
+    "owner_generation": {
+     "N": "0"
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+    },
+    "record_key": {
+     "S": "UNIT#db.table_02"
+    },
+    "status": {
+     "S": "queued"
+    },
+    "table_kind": {
+     "S": "current"
+    },
+    "unit_key": {
+     "S": "db.table_02"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 666,
+   "target_upper_bound": 666
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "admission": {
+     "S": "pending"
+    },
+    "created_at": {
+     "S": "01764950400000000000"
+    },
+    "flow_id": {
+     "S": "e45c198a-0056-5833-be75-f37ec26cfb5b"
+    },
+    "merge_count": {
+     "N": "1"
+    },
+    "objects": {
+     "L": [
+      {
+       "L": [
+        {
+         "S": "manifest"
+        },
+        {
+         "S": "s3://authority-fixture/db.table_03"
+        },
+        {
+         "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        },
+        {
+         "S": "pub-0004"
+        },
+        {
+         "NULL": true
+        },
+        {
+         "N": "4"
+        }
+       ]
+      }
+     ]
+    },
+    "owner_generation": {
+     "N": "0"
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+    },
+    "record_key": {
+     "S": "UNIT#db.table_03"
+    },
+    "status": {
+     "S": "queued"
+    },
+    "table_kind": {
+     "S": "current"
+    },
+    "unit_key": {
+     "S": "db.table_03"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 666,
+   "target_upper_bound": 666
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "admission": {
+     "S": "pending"
+    },
+    "created_at": {
+     "S": "01764950400000000000"
+    },
+    "flow_id": {
+     "S": "4779ba2a-146e-584e-ae1a-645003791a70"
+    },
+    "merge_count": {
+     "N": "1"
+    },
+    "objects": {
+     "L": [
+      {
+       "L": [
+        {
+         "S": "manifest"
+        },
+        {
+         "S": "s3://authority-fixture/db.table_04"
+        },
+        {
+         "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        },
+        {
+         "S": "pub-0005"
+        },
+        {
+         "NULL": true
+        },
+        {
+         "N": "5"
+        }
+       ]
+      }
+     ]
+    },
+    "owner_generation": {
+     "N": "0"
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+    },
+    "record_key": {
+     "S": "UNIT#db.table_04"
+    },
+    "status": {
+     "S": "queued"
+    },
+    "table_kind": {
+     "S": "current"
+    },
+    "unit_key": {
+     "S": "db.table_04"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 666,
+   "target_upper_bound": 666
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "admission": {
+     "S": "pending"
+    },
+    "created_at": {
+     "S": "01764950400000000000"
+    },
+    "flow_id": {
+     "S": "b1be82c7-3fc0-5b86-af9c-a291d4385bad"
+    },
+    "merge_count": {
+     "N": "1"
+    },
+    "objects": {
+     "L": [
+      {
+       "L": [
+        {
+         "S": "manifest"
+        },
+        {
+         "S": "s3://authority-fixture/db.table_05"
+        },
+        {
+         "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        },
+        {
+         "S": "pub-0006"
+        },
+        {
+         "NULL": true
+        },
+        {
+         "N": "6"
+        }
+       ]
+      }
+     ]
+    },
+    "owner_generation": {
+     "N": "0"
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+    },
+    "record_key": {
+     "S": "UNIT#db.table_05"
+    },
+    "status": {
+     "S": "queued"
+    },
+    "table_kind": {
+     "S": "current"
+    },
+    "unit_key": {
+     "S": "db.table_05"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 666,
+   "target_upper_bound": 666
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "admission": {
+     "S": "pending"
+    },
+    "created_at": {
+     "S": "01764950400000000000"
+    },
+    "flow_id": {
+     "S": "bd39abdc-a06a-5e52-82dd-c9e2159323fc"
+    },
+    "merge_count": {
+     "N": "1"
+    },
+    "objects": {
+     "L": [
+      {
+       "L": [
+        {
+         "S": "manifest"
+        },
+        {
+         "S": "s3://authority-fixture/db.table_06"
+        },
+        {
+         "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        },
+        {
+         "S": "pub-0007"
+        },
+        {
+         "NULL": true
+        },
+        {
+         "N": "7"
+        }
+       ]
+      }
+     ]
+    },
+    "owner_generation": {
+     "N": "0"
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+    },
+    "record_key": {
+     "S": "UNIT#db.table_06"
+    },
+    "status": {
+     "S": "queued"
+    },
+    "table_kind": {
+     "S": "current"
+    },
+    "unit_key": {
+     "S": "db.table_06"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 666,
+   "target_upper_bound": 666
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "admission": {
+     "S": "pending"
+    },
+    "created_at": {
+     "S": "01764950400000000000"
+    },
+    "flow_id": {
+     "S": "0ecf3460-ad03-5db1-9353-39a8b47230a1"
+    },
+    "merge_count": {
+     "N": "1"
+    },
+    "objects": {
+     "L": [
+      {
+       "L": [
+        {
+         "S": "manifest"
+        },
+        {
+         "S": "s3://authority-fixture/db.table_07"
+        },
+        {
+         "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        },
+        {
+         "S": "pub-0008"
+        },
+        {
+         "NULL": true
+        },
+        {
+         "N": "8"
+        }
+       ]
+      }
+     ]
+    },
+    "owner_generation": {
+     "N": "0"
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+    },
+    "record_key": {
+     "S": "UNIT#db.table_07"
+    },
+    "status": {
+     "S": "queued"
+    },
+    "table_kind": {
+     "S": "current"
+    },
+    "unit_key": {
+     "S": "db.table_07"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 666,
+   "target_upper_bound": 666
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "admission": {
+     "S": "pending"
+    },
+    "created_at": {
+     "S": "01764950400000000000"
+    },
+    "flow_id": {
+     "S": "c4cd5bb6-f44f-53f7-8018-b4d581fc197b"
+    },
+    "merge_count": {
+     "N": "1"
+    },
+    "objects": {
+     "L": [
+      {
+       "L": [
+        {
+         "S": "manifest"
+        },
+        {
+         "S": "s3://authority-fixture/db.table_08"
+        },
+        {
+         "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        },
+        {
+         "S": "pub-0009"
+        },
+        {
+         "NULL": true
+        },
+        {
+         "N": "9"
+        }
+       ]
+      }
+     ]
+    },
+    "owner_generation": {
+     "N": "0"
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+    },
+    "record_key": {
+     "S": "UNIT#db.table_08"
+    },
+    "status": {
+     "S": "queued"
+    },
+    "table_kind": {
+     "S": "current"
+    },
+    "unit_key": {
+     "S": "db.table_08"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 666,
+   "target_upper_bound": 666
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "admission": {
+     "S": "pending"
+    },
+    "created_at": {
+     "S": "01764950400000000000"
+    },
+    "flow_id": {
+     "S": "2dfa7e90-7434-5553-8e83-2a985fa66e50"
+    },
+    "merge_count": {
+     "N": "1"
+    },
+    "objects": {
+     "L": [
+      {
+       "L": [
+        {
+         "S": "manifest"
+        },
+        {
+         "S": "s3://authority-fixture/db.table_09"
+        },
+        {
+         "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        },
+        {
+         "S": "pub-0010"
+        },
+        {
+         "NULL": true
+        },
+        {
+         "N": "10"
+        }
+       ]
+      }
+     ]
+    },
+    "owner_generation": {
+     "N": "0"
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+    },
+    "record_key": {
+     "S": "UNIT#db.table_09"
+    },
+    "status": {
+     "S": "queued"
+    },
+    "table_kind": {
+     "S": "current"
+    },
+    "unit_key": {
+     "S": "db.table_09"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 667,
+   "target_upper_bound": 667
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "admission": {
+     "S": "pending"
+    },
+    "created_at": {
+     "S": "01764950400000000000"
+    },
+    "flow_id": {
+     "S": "2751a7c4-1574-5af4-8f64-bcd3c807b077"
+    },
+    "merge_count": {
+     "N": "1"
+    },
+    "objects": {
+     "L": [
+      {
+       "L": [
+        {
+         "S": "manifest"
+        },
+        {
+         "S": "s3://authority-fixture/db.table_10"
+        },
+        {
+         "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        },
+        {
+         "S": "pub-0011"
+        },
+        {
+         "NULL": true
+        },
+        {
+         "N": "11"
+        }
+       ]
+      }
+     ]
+    },
+    "owner_generation": {
+     "N": "0"
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+    },
+    "record_key": {
+     "S": "UNIT#db.table_10"
+    },
+    "status": {
+     "S": "queued"
+    },
+    "table_kind": {
+     "S": "current"
+    },
+    "unit_key": {
+     "S": "db.table_10"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 667,
+   "target_upper_bound": 667
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "admission": {
+     "S": "pending"
+    },
+    "created_at": {
+     "S": "01764950400000000000"
+    },
+    "flow_id": {
+     "S": "092f1c3b-f4eb-5d89-8529-e826f43a5862"
+    },
+    "merge_count": {
+     "N": "1"
+    },
+    "objects": {
+     "L": [
+      {
+       "L": [
+        {
+         "S": "manifest"
+        },
+        {
+         "S": "s3://authority-fixture/db.table_11"
+        },
+        {
+         "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        },
+        {
+         "S": "pub-0012"
+        },
+        {
+         "NULL": true
+        },
+        {
+         "N": "12"
+        }
+       ]
+      }
+     ]
+    },
+    "owner_generation": {
+     "N": "0"
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+    },
+    "record_key": {
+     "S": "UNIT#db.table_11"
+    },
+    "status": {
+     "S": "queued"
+    },
+    "table_kind": {
+     "S": "current"
+    },
+    "unit_key": {
+     "S": "db.table_11"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 667,
+   "target_upper_bound": 667
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "admission": {
+     "S": "pending"
+    },
+    "created_at": {
+     "S": "01764950400000000000"
+    },
+    "flow_id": {
+     "S": "664084eb-a331-58b1-9c40-633ec64f40c9"
+    },
+    "merge_count": {
+     "N": "1"
+    },
+    "objects": {
+     "L": [
+      {
+       "L": [
+        {
+         "S": "manifest"
+        },
+        {
+         "S": "s3://authority-fixture/db.table_12"
+        },
+        {
+         "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        },
+        {
+         "S": "pub-0013"
+        },
+        {
+         "NULL": true
+        },
+        {
+         "N": "13"
+        }
+       ]
+      }
+     ]
+    },
+    "owner_generation": {
+     "N": "0"
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+    },
+    "record_key": {
+     "S": "UNIT#db.table_12"
+    },
+    "status": {
+     "S": "queued"
+    },
+    "table_kind": {
+     "S": "current"
+    },
+    "unit_key": {
+     "S": "db.table_12"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 667,
+   "target_upper_bound": 667
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "admission": {
+     "S": "pending"
+    },
+    "created_at": {
+     "S": "01764950400000000000"
+    },
+    "flow_id": {
+     "S": "1596ba05-8925-580d-a2e7-35ddf44a99f4"
+    },
+    "merge_count": {
+     "N": "1"
+    },
+    "objects": {
+     "L": [
+      {
+       "L": [
+        {
+         "S": "manifest"
+        },
+        {
+         "S": "s3://authority-fixture/db.table_13"
+        },
+        {
+         "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        },
+        {
+         "S": "pub-0014"
+        },
+        {
+         "NULL": true
+        },
+        {
+         "N": "14"
+        }
+       ]
+      }
+     ]
+    },
+    "owner_generation": {
+     "N": "0"
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+    },
+    "record_key": {
+     "S": "UNIT#db.table_13"
+    },
+    "status": {
+     "S": "queued"
+    },
+    "table_kind": {
+     "S": "current"
+    },
+    "unit_key": {
+     "S": "db.table_13"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 667,
+   "target_upper_bound": 667
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "admission": {
+     "S": "pending"
+    },
+    "created_at": {
+     "S": "01764950400000000000"
+    },
+    "flow_id": {
+     "S": "83118216-6efe-5a35-b06c-75dc7ad976d7"
+    },
+    "merge_count": {
+     "N": "1"
+    },
+    "objects": {
+     "L": [
+      {
+       "L": [
+        {
+         "S": "manifest"
+        },
+        {
+         "S": "s3://authority-fixture/db.table_14"
+        },
+        {
+         "S": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        },
+        {
+         "S": "pub-0015"
+        },
+        {
+         "NULL": true
+        },
+        {
+         "N": "15"
+        }
+       ]
+      }
+     ]
+    },
+    "owner_generation": {
+     "N": "0"
+    },
+    "partition_key": {
+     "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+    },
+    "record_key": {
+     "S": "UNIT#db.table_14"
+    },
+    "status": {
+     "S": "queued"
+    },
+    "table_kind": {
+     "S": "current"
+    },
+    "unit_key": {
+     "S": "db.table_14"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 667,
+   "target_upper_bound": 667
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "authority_kind": {
+     "S": "lifecycle_event"
+    },
+    "authority_time": {
+     "S": "00001789821296789012"
+    },
+    "child_outcome_reduction_version": {
+     "N": "2"
+    },
+    "consecutive_failed_delivery_attempts": {
+     "N": "0"
+    },
+    "event_id": {
+     "S": "d1d2c706-beb8-5e17-bc08-70b8665044e5"
+    },
+    "execution_id": {
+     "S": "0a5d66bd-06bd-58be-825e-3047acdb7c5f"
+    },
+    "flow_id": {
+     "S": "acaa4ea4-b442-5024-a434-95febac5560a"
+    },
+    "immutable_payload_digest": {
+     "S": "63265c01530f95e13c92a5b115d9a8c3850269cb612f7282a69d29b482ca7697"
+    },
+    "internal_execution_id": {
+     "S": "ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+    },
+    "internal_key": {
+     "L": [
+      {
+       "S": "WRITE_PLAN#a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b#ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+      }
+     ]
+    },
+    "lifecycle_state": {
+     "S": "queued"
+    },
+    "outbox_order": {
+     "S": "00001789821296789012#2137d83a40cfd17d1867e6cf90d3c89380d3e2d07a942c3f6fe6549ef85e1035"
+    },
+    "outbox_state": {
+     "S": "pending"
+    },
+    "outbox_status": {
+     "S": "pending"
+    },
+    "partition_key": {
+     "S": "STATUS_FLOW#acaa4ea4-b442-5024-a434-95febac5560a"
+    },
+    "payload": {
+     "S": "{\"authority\":{\"kind\":\"write_plan_meta\",\"observed_at\":\"2026-09-19T12:34:56.789012+00:00\",\"opaque_digest\":\"a1b60c5650860f87e2adaa4a59e5fa3f5117bedd6e9124a0babea037c6c3719b\"},\"causation_event_id\":null,\"clock_started_at\":\"2026-09-19T12:34:56.789012+00:00\",\"evaluation_binding\":{\"measurement_refs\":[{\"measurement_ref\":\"stage1_plan_settlement_latency\",\"measurement_version\":\"1\"}],\"mode\":\"observation_only\"},\"event_id\":\"d1d2c706-beb8-5e17-bc08-70b8665044e5\",\"execution_id\":\"0a5d66bd-06bd-58be-825e-3047acdb7c5f\",\"flow_id\":\"acaa4ea4-b442-5024-a434-95febac5560a\",\"occurred_at\":\"2026-09-19T12:34:56.789012+00:00\",\"optional_child_flow_ids\":[],\"outcome\":null,\"parent_flow_id\":null,\"predecessor_event_id\":null,\"predecessor_execution_id\":null,\"progress\":null,\"reason_code\":null,\"registry_version\":\"1\",\"required_child_flow_ids\":[\"092f1c3b-f4eb-5d89-8529-e826f43a5862\",\"0ecf3460-ad03-5db1-9353-39a8b47230a1\",\"1596ba05-8925-580d-a2e7-35ddf44a99f4\",\"2751a7c4-1574-5af4-8f64-bcd3c807b077\",\"2881edf6-a236-5493-8472-cec536749217\",\"2dfa7e90-7434-5553-8e83-2a985fa66e50\",\"4779ba2a-146e-584e-ae1a-645003791a70\",\"664084eb-a331-58b1-9c40-633ec64f40c9\",\"83118216-6efe-5a35-b06c-75dc7ad976d7\",\"9902357b-1c35-56f6-bc28-464fba0305e3\",\"b1b44f36-eecc-572a-9f99-9fa777029a4b\",\"b1be82c7-3fc0-5b86-af9c-a291d4385bad\",\"bd39abdc-a06a-5e52-82dd-c9e2159323fc\",\"c4cd5bb6-f44f-53f7-8018-b4d581fc197b\",\"e45c198a-0056-5833-be75-f37ec26cfb5b\"],\"schema_version\":\"1\",\"stage\":\"projection_plan_recorded\",\"state\":\"queued\",\"surface\":\"semantic_projection_plan\",\"transition_sequence\":1}"
+    },
+    "plan_digest": {
+     "S": "a2f5ba89f40893f114d26919c950e18c57f5bbaab2f5f0f37ea524279600063b"
+    },
+    "record_key": {
+     "S": "EVENT#a1b60c5650860f87e2adaa4a59e5fa3f5117bedd6e9124a0babea037c6c3719b"
+    },
+    "required_child_expectations": {
+     "L": [
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "092f1c3b-f4eb-5d89-8529-e826f43a5862"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "0ecf3460-ad03-5db1-9353-39a8b47230a1"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "1596ba05-8925-580d-a2e7-35ddf44a99f4"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "2751a7c4-1574-5af4-8f64-bcd3c807b077"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "2881edf6-a236-5493-8472-cec536749217"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "2dfa7e90-7434-5553-8e83-2a985fa66e50"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "4779ba2a-146e-584e-ae1a-645003791a70"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "664084eb-a331-58b1-9c40-633ec64f40c9"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "83118216-6efe-5a35-b06c-75dc7ad976d7"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "9902357b-1c35-56f6-bc28-464fba0305e3"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "b1b44f36-eecc-572a-9f99-9fa777029a4b"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "b1be82c7-3fc0-5b86-af9c-a291d4385bad"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "bd39abdc-a06a-5e52-82dd-c9e2159323fc"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "c4cd5bb6-f44f-53f7-8018-b4d581fc197b"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      },
+      {
+       "M": {
+        "child_flow_id": {
+         "S": "e45c198a-0056-5833-be75-f37ec26cfb5b"
+        },
+        "owner_generation": {
+         "N": "0"
+        }
+       }
+      }
+     ]
+    },
+    "surface": {
+     "S": "semantic_projection_plan"
+    },
+    "transition_id": {
+     "S": "semantic_plan_recorded"
+    },
+    "transition_sequence": {
+     "N": "1"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 4481,
+   "target_upper_bound": 4481
+  },
+  {
+   "expected_pre_state_map": null,
+   "expected_result_map": {
+    "current_execution_id": {
+     "S": "0a5d66bd-06bd-58be-825e-3047acdb7c5f"
+    },
+    "current_internal_execution_id": {
+     "S": "ac04600c3efcf344880576b15d2c2a458ccdf093d217c7f40fd278c87f7b23c6"
+    },
+    "flow_id": {
+     "S": "acaa4ea4-b442-5024-a434-95febac5560a"
+    },
+    "head_contract_version": {
+     "N": "1"
+    },
+    "latest_authority_digest": {
+     "S": "a1b60c5650860f87e2adaa4a59e5fa3f5117bedd6e9124a0babea037c6c3719b"
+    },
+    "latest_event_id": {
+     "S": "d1d2c706-beb8-5e17-bc08-70b8665044e5"
+    },
+    "latest_state": {
+     "S": "queued"
+    },
+    "latest_transition_sequence": {
+     "N": "1"
+    },
+    "partition_key": {
+     "S": "STATUS_FLOW#acaa4ea4-b442-5024-a434-95febac5560a"
+    },
+    "record_key": {
+     "S": "HEAD"
+    },
+    "surface": {
+     "S": "semantic_projection_plan"
+    }
+   },
+   "pre_state_conservative_bytes": 0,
+   "result_conservative_bytes": 636,
+   "target_upper_bound": 636
+  }
+ ],
+ "typed_operation": "PersistPlanRequest"
+}

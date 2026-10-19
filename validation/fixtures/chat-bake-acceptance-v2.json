@@ -1,0 +1,37 @@
+{
+  "schema_version": "chat-bake-acceptance-v2",
+  "persona_id": "probe-a",
+  "outside_list_selection": "lexically-last-served-campaign-v3",
+  "prompts": [
+    {
+      "prompt_id": "greeting_new",
+      "conversation": "a",
+      "question": "Hello. Briefly, what can you help me with here?"
+    },
+    {
+      "prompt_id": "greeting_follow_up",
+      "conversation": "a",
+      "question": "Thanks. In general terms, what does ROAS mean?"
+    },
+    {
+      "prompt_id": "catalog_new",
+      "conversation": "b",
+      "question": "Which declared metrics can this fictional workspace report? Put them in a table."
+    },
+    {
+      "prompt_id": "measurement_new",
+      "conversation": "c",
+      "question": "Report retail_revenue_shipped by product in the United States marketplace on August 11, 2026."
+    },
+    {
+      "prompt_id": "measurement_follow_up",
+      "conversation": "c",
+      "question": "Now the same for August 10, 2026."
+    },
+    {
+      "prompt_id": "outside_bounded_campaign",
+      "conversation": "d",
+      "question": "Report the accepted-generation governed spend, impressions and ROAS for the campaign {outside_list_item}."
+    }
+  ]
+}

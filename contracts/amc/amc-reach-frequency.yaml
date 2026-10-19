@@ -1,0 +1,240 @@
+# amc-reach-frequency — sponsored-ads delivery with reach, at campaign-day grain.
+#
+# The first AMC contract, and the one that exercises the privacy machinery: a VERY_HIGH
+# column used inside a CTE, a non-additive measure, the three suppression columns, and a
+# scaled monetary column. Build-order task 1.5.
+#
+# SCOPED TO sponsored_ads_traffic DELIBERATELY, and the reason is not tidiness.
+# fct_ad_exposure's declared grain includes marketplace, and dsp_impressions has no
+# marketplace column for the impression itself — only segment_marketplace_id, which
+# describes the segment rather than the event and whose semantics the page does not give
+# [unverified]. Using it would assert a fact no source document supports. sponsored_ads_traffic
+# carries marketplace_name at LOW, so it can satisfy the grain on its own.
+#
+# DSP delivery is therefore a SEPARATE contract, not a second source table here. That is
+# consistent with the model rather than a workaround: channel is a conformed dimension
+# (ADR-003), so DSP rows and sponsored-ads rows are different rows of the same fact,
+# unioned at a shared grain rather than joined. canonical-model.md section 4 says the same.
+# The DSP marketplace question remains open; see campaign_country in amc-dsp-impressions.yaml.
+
+contract_id: amc-reach-frequency
+contract_version: 1
+
+source_system: amc
+source_dataset: sponsored_ads_traffic
+source_format: csv
+
+target_table: fct_ad_exposure
+
+source_tables:
+  - sponsored_ads_traffic
+
+# rows_suppressed is in the grain because it has to be. Setting the discriminator changes
+# row semantics: sub-threshold rows are nulled and then re-aggregated with SUM, so rows
+# merge and (date, channel, campaign, ad_product, marketplace) legitimately duplicates.
+# The alternative is key_unique_among_unsuppressed_only, which accepts a collapsing key;
+# carrying the flag is the honest version because the merged row is a real, different row.
+grain:
+  - date_key
+  - channel_key
+  - campaign_key
+  - ad_product_key
+  - marketplace_key
+  - rows_suppressed
+
+partition_keys:
+  - marketplace_key
+  - date_key
+
+# Stamped as a literal. This is delivery data, so it is the ad-attributed measurement
+# system even though nothing here is a conversion — basis describes which system produced
+# the number, not whether the number is an attribution.
+measurement_basis: ad_attributed
+
+# AMC's default. Every column selected below is the _utc variant, so this is not a choice
+# left implicit: event_date_utc rather than event_date. Carried on the fact rather than
+# normalised, because a pre-aggregated day bucket cannot be re-bucketed (ADR-004).
+source_timezone: UTC
+ecosystem_key: amazon
+platform_key: amazon_ads
+
+# AMC restates. The attributed tables are documented as advertising-pipeline-sourced and
+# subject to restatement; traffic tables are not documented as restating, but the 48-hour
+# availability SLA means a window queried too early is incomplete rather than wrong. 30
+# days is the rolling re-pull the load design assumes.
+restatement_window_days: 30
+
+# 48-hour data availability SLA, and the recommendation is to query a window ending 48h
+# before today. 72 allows one missed run before alarming.
+staleness_threshold_hours: 72
+
+# Why this grain is emittable, column by column. Required on every AMC contract.
+#
+# Every OUTPUT column is NONE or LOW, so the bar is 2 distinct users per row rather than
+# 100. impressions and clicks are NONE; spend is NONE; campaign_id_string, ad_product_type,
+# event_date_utc, marketplace_name and currency_iso_code are all LOW.
+#
+# user_id is VERY_HIGH and never appears in output — it is read only inside a CTE to
+# compute reach. The threshold bar is set by the strictest column in the final SELECT, and
+# a CTE column is not in it, which is the only reason exact reach is obtainable at all.
+#
+# NOT USED, deliberately: event_dt_utc is MEDIUM and would lift the whole query to 100
+# distinct users for no gain at day grain. For an hourly grain the column is
+# event_dt_hour_utc, which is LOW — never a truncation of event_dt_utc.
+#
+# Whether 2 distinct users per row is actually cleared is a volumetric question, not a
+# structural one, and it is measured per customer from this contract's own loads rather
+# than declared here (ADR-019).
+grain_feasibility_note: >
+  Every output column is NONE or LOW, so the bar is 2 distinct users per row. user_id is
+  VERY_HIGH but is read only inside a CTE to compute reach, and the bar is set by the
+  final SELECT, so it does not escalate. event_dt_utc (MEDIUM) is deliberately not
+  selected; event_date_utc gives the same day grain at LOW.
+
+# All three, because the discriminator is what changes AMC's behaviour from DELETING
+# sub-threshold rows to nulling and flagging them. Without it there is no gap, no marker
+# and no error — just totals that quietly do not add up, and the information is destroyed
+# inside AMC before delivery, so no downstream check could ever recover it.
+suppression:
+  discriminator_column: rows_suppressed
+  reason_column: suppression_reason
+  distinct_user_count_column: distinct_user_count
+
+fields:
+  # --- grain -----------------------------------------------------------------
+  - source_path: event_date_utc
+    target_column: date_key
+    # LOW. Preferred over event_dt_utc, which is MEDIUM for the same day grain.
+
+  - source_path: ad_product_type
+    target_column: ad_product_key
+    # LOW. Filtering on it is mandatory before reporting any sponsored-ads figure,
+    # because NULL means DSP on the attributed-events tables. On this table it is always
+    # one of the sponsored values, which is part of why the contract is scoped here.
+    #
+    # The closed set is declared because this contract shares `impressions`, `clicks` and
+    # `spend` with amc-dsp-impressions and amc-dsp-clicks, which stamp `amazon_dsp`. A load
+    # withdraws its own columns across the partition it supersedes, so without a statement of
+    # which rows it owns it nulls the DSP figures too — observed on dev before ADR-033's
+    # predicate was narrowed. Disjointness from `amazon_dsp` is what makes the two safe, and
+    # check_shared_measures_are_separable is the gate.
+    value_domain:
+      - sponsored_products
+      - sponsored_brands
+      - sponsored_display
+      - sponsored_television
+
+  - source_path: ad_product_type
+    target_column: channel_key
+    # Same source column, two canonical targets: channel is the coarse split and
+    # ad_product is the fine one. Deliberate duplication of a source path, not of a
+    # target column.
+    #
+    # Same closed set, and this is the column that actually does the separating: channel_key
+    # is what a DSP contract stamps `amazon_dsp` into.
+    value_domain:
+      - sponsored_products
+      - sponsored_brands
+      - sponsored_display
+      - sponsored_television
+
+  - source_path: >-
+      CASE WHEN ad_product_type IN ('sponsored_products', 'sponsored_brands') THEN 'search'
+      WHEN ad_product_type = 'sponsored_television' THEN 'video' ELSE 'display' END
+    target_column: channel_group_key
+    target_type: string
+    derived_from: [ad_product_type]
+    value_domain: [search, display, video]
+
+  - source_path: campaign_id_string
+    target_column: campaign_key
+    # NOT campaign_id. On this table they are different identifiers from different
+    # systems — campaign_id is the Ads API ID, campaign_id_string is the ads-console ID
+    # and is not even numeric. Both are populated, so the wrong one drops rows silently
+    # rather than erroring. The registry marks campaign_id deprecated_for_use and the
+    # gate refuses it.
+
+  - source_path: marketplace_name
+    target_column: marketplace_key
+    # LOW. marketplace_id is INTERNAL and unusable, so the join to vendor data goes
+    # through the name.
+
+  # --- measures --------------------------------------------------------------
+  - source_path: impressions
+    target_column: impressions
+
+  - source_path: clicks
+    target_column: clicks
+
+  - source_path: spend
+    target_column: spend
+    scale_divisor: 100000000
+    currency_column: currency_code
+    # Microcents, ÷1e8 — and this is the ONLY monetary column on this table. DSP's
+    # total_cost is ÷1e5, so a per-platform or per-table divisor would be wrong by 1000x.
+    # The divisor is a property of the column. Fee-inclusive by default (ADR-017);
+    # spend_media_only has no sponsored-ads equivalent and is deliberately unmapped here
+    # rather than written as zero, because unsupported-by-channel is not zero.
+
+  - source_path: currency_iso_code
+    target_column: currency_code
+    # One currency column for the fact (ADR-021). This table gives one currency value, so
+    # there is nothing to assert agreement between and no currency_agreement block.
+
+  # --- reach: the reason this contract exists -------------------------------
+  - source_path: COUNT(DISTINCT user_id)
+    target_column: reach_users
+    target_type: bigint
+    derived_from:
+      - user_id
+    non_additive: true
+    # Computed inside AMC, never mapped from a column. user_id is VERY_HIGH and can never
+    # appear in output, so this is expressible only as a derived value over a CTE.
+    #
+    # AMC has NO approximate-distinct function, so reach is always an exact COUNT(DISTINCT).
+    #
+    # non_additive because summing it across rows is wrong: distinct users on Monday plus
+    # distinct users on Tuesday is not distinct users over two days. It must be computed
+    # at the exact grain asked for. avg_frequency is NOT stored here — it is impressions
+    # divided by reach, and a ratio is derived in the semantic layer.
+    #
+    # Live suppression evidence on 2026-08-27 settled the risk: when a distinct count is
+    # selected, discriminator mode can preserve duplicate fully-nulled grain rows rather than
+    # merge them. Keeping those rows violates this contract's key; folding them would sum a
+    # non-additive quantity. The governed producer pack and the load assertion therefore refuse
+    # the whole delivery whenever any row has rows_suppressed=true. Clean observed output remains
+    # usable; a suppressed reach delivery cannot publish.
+
+  # --- suppression: schema, not diagnostics ---------------------------------
+  # These three are NOT columns on sponsored_ads_traffic, or on any AMC table. They are
+  # workflow OPTIONS — filteredMetricsDiscriminatorColumn, filteredReasonColumn and
+  # distinctUserCountColumn — and AMC synthesises them into the delivered output because
+  # the workflow asked for them. The names below are ours to choose, which is the clearest
+  # sign they are not schema. Hence from_extraction_option: the registry cannot and should
+  # not resolve them.
+  - source_path: values_removed
+    target_column: rows_suppressed
+    target_type: boolean
+    from_extraction_option: true
+    # filteredMetricsDiscriminatorColumn. In the grain, because merged rows duplicate
+    # the key.
+
+  # filteredReasonColumn and distinctUserCountColumn are still REQUESTED — the suppression block
+  # above names them, the delivery carries them, and check_header proves they arrived. They are
+  # deliberately NOT mapped into fct_ad_exposure, which four contracts write.
+  #
+  # Neither has a single value at a conformed row. The reason names its own data source in its own
+  # format — `97 'dsp_impressions' users < 100 required` — so three deliveries assembling one row
+  # carry three different reasons. The count is capped per query by the strictest output column,
+  # and AMC blanks it on a row it merged. Mapping either produced erasure rather than
+  # supersession, because all three DSP contracts stamp the same channel literal and so withdraw
+  # over identical rows. See ADR-033 and G-28.
+  #
+  # A suppression rate is still computable per partition: the freshness registry counts suppressed
+  # rows per delivery at load time, keyed on contract_id, which is the grain the count belongs to.
+  # The per-row, per-dataset detail stays in the retained raw delivery, already split by dataset.
+
+tags:
+  - phase-1
+  - amc
+  - sponsored-ads

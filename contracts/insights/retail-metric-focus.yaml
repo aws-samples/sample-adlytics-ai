@@ -1,0 +1,132 @@
+id: retail-metric-focus
+version: 7
+purpose: Explain one focused retail metric using its supplied comparison, series, facts, and per-product contribution drivers.
+display_name: Why this moved (Retail health)
+output_class: perspective
+allowed_inputs:
+  - reporting and comparison window display context
+  - focused metric display label and its dictionary definition line
+  - focused metric current, prior, and server-computed change
+  - server-computed facts (peak day, trough day, largest single-day move, window total or average)
+  - per-product contribution drivers with each contributor's exact change and share of the move
+  - declared numerator and denominator movements for a ratio metric
+  - retail basis boundary and distributor-view qualifications
+  - typed window profile (window length, grain, aligned prior, horizon role)
+deterministic_findings:
+  - absolute-change
+  - percentage-change
+  - ranked-absolute-change
+  - share-of-total
+predicate:
+  required_evidence_inputs: [focused-metric]
+  required_finding_kinds: [absolute-change]
+  materiality:
+    bases:
+      retail_window:
+        per_unit:
+          currency: {operational-pulse: "1000", tactical-review: "3000", pattern-confirmation: "10000"}
+          rate_pp: {operational-pulse: "0.32", tactical-review: "0.12", pattern-confirmation: "0.32"}
+          percent: {operational-pulse: "5.4", tactical-review: "2.2", pattern-confirmation: "4.2"}
+        per_metric:
+          units_shipped: {operational-pulse: "40", tactical-review: "100", pattern-confirmation: "400"}
+          customer_returns: {operational-pulse: "3", tactical-review: "8", pattern-confirmation: "30"}
+          glance_views: {operational-pulse: "800", tactical-review: "5000", pattern-confirmation: "12000"}
+          # Render format 8 tiles (ADR-125): ordered units sized as shipped units are; the two
+          # unit prices sized as the campaign CPC row is, falling with the horizon.
+          units_ordered: {operational-pulse: "40", tactical-review: "100", pattern-confirmation: "400"}
+          asp_shipped: {operational-pulse: "1.00", tactical-review: "0.50", pattern-confirmation: "0.25"}
+          revenue_per_glance_view: {operational-pulse: "0.05", tactical-review: "0.03", pattern-confirmation: "0.02"}
+    near_zero_prior:
+      currency: "5"
+      count: "5"
+      rate_pp: "0.5"
+      unit_price:
+        asp_shipped: "1.00"
+        revenue_per_glance_view: "0.05"
+  delivery_follow_up_evidence: []
+materiality_cases:
+  - {name: shipped revenue change of 3000 clears the tactical row, horizon: tactical-review, basis: retail_window, kind: absolute-change, metric: retail_revenue_shipped, current: "23000", prior: "20000", expect: admitted}
+  - {name: shipped revenue change of 2999 is below the tactical row, horizon: tactical-review, basis: retail_window, kind: absolute-change, metric: retail_revenue_shipped, current: "22999", prior: "20000", expect: silent}
+  - {name: units shipped change of 100 clears its own row, horizon: tactical-review, basis: retail_window, kind: absolute-change, metric: units_shipped, current: "1100", prior: "1000", expect: admitted}
+  - {name: return rate up 0.4 pp clears the tactical row, horizon: tactical-review, basis: retail_window, kind: absolute-change, metric: return_rate, current: "0.054", prior: "0.050", expect: admitted}
+  - {name: glance views change of 4999 is below its own row, horizon: tactical-review, basis: retail_window, kind: absolute-change, metric: glance_views, current: "24999", prior: "20000", expect: silent}
+silence_condition: The focused metric or its required comparator is unavailable, or no supplied finding is material.
+structured_output_schema:
+  id: insight-narration-v1
+  fields: [output_class, sentences]
+initial_fictional_prompt: Interpret one material supplied retail focused-metric relationship using only delivered figures, drivers, and stated qualifications, and repeat any supplied estimate or returns-lag qualification beside the figure it qualifies.
+calibration_cases:
+  - kind: known-correct
+    input_summary: A fictional retail metric rose and one supplied product driver explains most of the move.
+    expected_outcome: Accept a perspective limited to the delivered figures and their stated shares.
+    horizon: tactical-review
+    findings:
+      - {name: Ordered revenue change, value: "5200"}
+      - {name: Product Aurora share of move, value: "61.7"}
+  - kind: exploratory
+    input_summary: A fictional broad-based rise with no dominant driver invites a hedged breadth reading.
+    expected_outcome: Accept the labeled reading of the supplied shares.
+    horizon: pattern-confirmation
+    findings:
+      - {name: Product Aurora share of move, value: "22.1"}
+      - {name: Product Birch share of move, value: "19.6"}
+  - kind: contradiction
+    input_summary: The fictional metric fell but the draft reports it as having risen.
+    expected_outcome: Reject the contradiction.
+    horizon: operational-pulse
+    findings:
+      - {name: Ordered revenue change, value: "-3100"}
+    draft:
+      sentences:
+        - Ordered revenue rose 3100 against the prior day.
+  - kind: fluent-unsupported
+    input_summary: A fluent draft attributes the move to a listing-conversion figure no input supplies.
+    expected_outcome: Reject the figure that is neither supplied nor derived from the findings.
+    horizon: tactical-review
+    findings:
+      - {name: Ordered revenue change, value: "5200"}
+    draft:
+      sentences:
+        - Ordered revenue rose 5200 after listing conversion improved to 12.8 percent.
+  - kind: derived-figure
+    input_summary: A fictional draft states the ordered revenue percentage change it derives from the supplied current and prior values.
+    expected_outcome: Accept the correctly derived percentage change.
+    horizon: tactical-review
+    findings:
+      - {name: Ordered revenue this window, value: "31200"}
+      - {name: Ordered revenue prior window, value: "26000"}
+    draft:
+      sentences:
+        - Ordered revenue rose from 26000 to 31200, up 20 percent on the prior window.
+  - kind: miscomputed-derivation
+    input_summary: A fictional draft divides the ordered revenue change by the current value instead of the prior one.
+    expected_outcome: Reject the miscomputed percentage change.
+    horizon: tactical-review
+    findings:
+      - {name: Ordered revenue this window, value: "31200"}
+      - {name: Ordered revenue prior window, value: "26000"}
+    draft:
+      sentences:
+        - Ordered revenue rose from 26000 to 31200, up about 17 percent on the prior window.
+  - kind: incompatible-basis
+    input_summary: A fictional draft computes an ordered revenue change across two marketplace currencies.
+    expected_outcome: Reject the figure that combines findings of incompatible currency.
+    horizon: operational-pulse
+    findings:
+      - {name: Ordered revenue this window in US dollars, value: "31200"}
+      - {name: Ordered revenue prior window in Canadian dollars, value: "26000"}
+    draft:
+      sentences:
+        - Ordered revenue rose 20 percent, from 26000 to 31200.
+deep:
+  allowed_inputs:
+    - sibling preset directions from the same current pointer roster, direction only with no second-window figures
+    - complete daily series for every metric this surface serves
+    - every server-computed driver and cross-metric total for the window
+    - lag, estimate, and basis qualifications carried by the artifact
+  structured_output_schema:
+    id: insight-deep-dive-v1
+    fields: [what_stands_out, candidate_readings, discriminating_evidence, cited_figures]
+# FR-11 (design 4.12): no next step is offered until the gated card-next-step prompt ships.
+next_steps:
+  allowed_kinds: []

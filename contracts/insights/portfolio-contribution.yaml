@@ -1,0 +1,114 @@
+id: contribution
+version: 8
+purpose: Explain which declared campaign changes contribute most to the portfolio movement.
+display_name: Contribution (Campaigns)
+output_class: perspective
+allowed_inputs:
+  - reporting and comparison window display context
+  - portfolio totals section (current and prior additive totals)
+  - campaign display roster with channels
+  - campaign current and prior additive metrics
+  - server-ranked campaign contribution findings
+  - typed window profile (window length, grain, aligned prior, horizon role)
+deterministic_findings:
+  - absolute-change
+  - percentage-change
+predicate:
+  required_evidence_inputs: [portfolio-totals, campaign-comparisons]
+  required_finding_kinds: [absolute-change, percentage-change]
+  materiality:
+    bases:
+      campaign_window:
+        per_unit:
+          currency: {operational-pulse: "20", tactical-review: "300", pattern-confirmation: "1500"}
+          percent: {operational-pulse: "10", tactical-review: "5", pattern-confirmation: "5"}
+        per_metric: {}
+    near_zero_prior:
+      currency: "5"
+  delivery_follow_up_evidence: []
+materiality_cases:
+  - {name: spend change of 400 clears the campaign tactical row, horizon: tactical-review, basis: campaign_window, kind: absolute-change, metric: spend, current: "1400", prior: "1000", expect: admitted}
+  - {name: spend change of 299 is below the campaign tactical row, horizon: tactical-review, basis: campaign_window, kind: absolute-change, metric: spend, current: "1299", prior: "1000", expect: silent}
+  - {name: spend up 8 percent clears the tactical percent row, horizon: tactical-review, basis: campaign_window, kind: percentage-change, metric: spend, current: "1080", prior: "1000", expect: admitted}
+  - {name: a currency prior of 2.00 is near zero, horizon: tactical-review, basis: campaign_window, kind: percentage-change, metric: spend, current: "3.00", prior: "2.00", expect: suppressed}
+  - {name: the launch campaign's zero 14D prior builds no percentage, horizon: pattern-confirmation, basis: campaign_window, kind: percentage-change, metric: spend, current: "2400", prior: "0", expect: not-built}
+silence_condition: No campaign contribution exceeds the declared materiality threshold.
+structured_output_schema:
+  id: insight-narration-v1
+  fields: [output_class, sentences]
+initial_fictional_prompt: Select one material server-computed contribution and state its portfolio implication without adding arithmetic.
+calibration_cases:
+  - kind: known-correct
+    input_summary: Fictional Campaign Aurora contributes the largest supplied spend increase.
+    expected_outcome: Accept a perspective that cites only the supplied figure.
+    horizon: tactical-review
+    findings:
+      - {name: Campaign Aurora spend change, value: "480"}
+      - {name: Campaign Aurora share of move, value: "52.6"}
+  - kind: exploratory
+    input_summary: A fictional near-even split between two contributors invites a hedged concentration reading.
+    expected_outcome: Accept the labeled reading of the supplied shares.
+    horizon: pattern-confirmation
+    findings:
+      - {name: Campaign Aurora share of move, value: "31.4"}
+      - {name: Campaign Birch share of move, value: "29.8"}
+  - kind: contradiction
+    input_summary: Fictional Campaign Aurora has a supplied decrease but the draft calls it an increase.
+    expected_outcome: Reject the contradiction.
+    horizon: operational-pulse
+    findings:
+      - {name: Campaign Aurora spend change, value: "-210"}
+    draft:
+      sentences:
+        - Campaign Aurora led the increase, adding 210 in spend on the day.
+  - kind: fluent-unsupported
+    input_summary: A fluent draft explains the contribution with an audience-size figure no finding supplies.
+    expected_outcome: Reject the figure that is neither supplied nor derived from the findings.
+    horizon: tactical-review
+    findings:
+      - {name: Campaign Aurora spend change, value: "480"}
+    draft:
+      sentences:
+        - Campaign Aurora added 480 after its audience grew to 1.2 million.
+  - kind: derived-figure
+    input_summary: A fictional draft states Campaign Aurora's spend percentage change derived from its supplied current and prior values.
+    expected_outcome: Accept the correctly derived percentage change.
+    horizon: tactical-review
+    findings:
+      - {name: Campaign Aurora spend this window, value: "1680"}
+      - {name: Campaign Aurora spend prior window, value: "1200"}
+    draft:
+      sentences:
+        - Campaign Aurora spent 1680 against 1200 in the prior window, a 40 percent increase in its own spend.
+  - kind: miscomputed-derivation
+    input_summary: A fictional draft divides Campaign Aurora's spend change by the current value instead of the prior one.
+    expected_outcome: Reject the miscomputed percentage change.
+    horizon: tactical-review
+    findings:
+      - {name: Campaign Aurora spend this window, value: "1680"}
+      - {name: Campaign Aurora spend prior window, value: "1200"}
+    draft:
+      sentences:
+        - Campaign Aurora spent 1680 against 1200 in the prior window, a 29 percent increase in its own spend.
+  - kind: incompatible-basis
+    input_summary: A fictional draft adds spend changes reported in two currencies.
+    expected_outcome: Reject the figure that combines findings of incompatible currency.
+    horizon: operational-pulse
+    findings:
+      - {name: Campaign Aurora spend change in US dollars, value: "480"}
+      - {name: Campaign Birch spend change in pounds sterling, value: "350"}
+    draft:
+      sentences:
+        - Campaign Aurora and Campaign Birch together added 830 in spend, most of the portfolio's move.
+deep:
+  allowed_inputs:
+    - sibling preset directions from the same current pointer roster, direction only with no second-window figures
+    - complete daily series for every metric this surface serves
+    - every server-computed driver and cross-metric total for the window
+    - lag, estimate, and basis qualifications carried by the artifact
+  structured_output_schema:
+    id: insight-deep-dive-v1
+    fields: [what_stands_out, candidate_readings, discriminating_evidence, cited_figures]
+# FR-11 (design 4.12): no next step is offered until the gated card-next-step prompt ships.
+next_steps:
+  allowed_kinds: []
