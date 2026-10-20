@@ -220,7 +220,7 @@ def _validate_body(name: str, body: str) -> list[str]:
 # are skipped), and a `path §N` mention must land on a real heading.
 PATH_MENTION = re.compile(
     r"(?<![\w/])((?:docs|src|contracts|validation|infra|frontend|tests|scripts|"
-    r"test-mutations|evaluation|internal|\.kiro)/[\w\-./*]*[\w*])"
+    r"evaluation|internal|\.kiro)/[\w\-./*]*[\w*])"
 )
 SECTION_MENTION = re.compile(r"\s§([0-9]+[a-z]?)")
 HEADING = re.compile(r"^#{1,6}\s+(.+)$", re.M)

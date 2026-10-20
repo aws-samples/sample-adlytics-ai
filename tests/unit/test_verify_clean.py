@@ -9,6 +9,11 @@ the operator checks by running `make verify-clean` in a scratch clone.
 
 The export is also judged without the operator's `ADLYTICS_*` deploy flags: the scrub must come
 before the first gate, and the scrub block itself is run here against a fictional flag.
+
+The frontend unit tests run through `make frontend-test`, after `make infra-test`, so the clean
+export writes a frontend-test run record as well as the pytest-unit and infra-test ones that
+`make verify` and `make infra-test` write; a script that ran `npm test` directly would leave no
+record for the publication gate to match against the tree (docs/test-run-records.md).
 """
 
 import os
@@ -30,6 +35,7 @@ ORDER = (
     "make verify",
     "make check",
     "make infra-test",
+    "make frontend-test",
 )
 REFUSAL = "verify-clean must index the export before make check"
 SCRUB_REFUSAL = "verify-clean must unset every ADLYTICS_* variable before the first gate"
@@ -74,6 +80,7 @@ def test_a_script_that_checks_before_indexing_is_refused() -> None:
             "make install",
             "make verify",
             "make infra-test",
+            "make frontend-test",
         )
     )
 
@@ -102,6 +109,7 @@ def test_a_script_that_scrubs_after_the_first_gate_is_refused() -> None:
             "make verify",
             "make check",
             "make infra-test",
+            "make frontend-test",
         )
     )
     assert _order_findings(reordered) == [SCRUB_REFUSAL]

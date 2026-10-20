@@ -61,7 +61,8 @@ pytestmark = [pytest.mark.unit, pytest.mark.covers("ADR-077")]
 RESPONSE_URL = "https://cloudformation-custom-resource-response.example/presigned?sig=abc"
 STACK_ID = "arn:aws:cloudformation:us-east-1:123456789012:stack/Adlytics-Harness-test/guid"
 LOGICAL_ID = "ManagedHarness"
-SERVICE_TOKEN = "arn:aws:lambda:us-east-1:123456789012:function:provider"
+# A-TEST-LITERALS-001: a ServiceToken ARN; see docs/security-dispositions.md
+SERVICE_TOKEN = "arn:aws:lambda:us-east-1:123456789012:function:provider"  # nosec B105
 ROLE_ARN = "arn:aws:iam::123456789012:role/harness-execution"
 MEMORY_ARN = "arn:aws:bedrock-agentcore:us-east-1:123456789012:memory/adlytics_test-AbCdEfGhIj"
 PROVIDER_ARN = (
@@ -1043,7 +1044,8 @@ class TestAgentCoreRequestShaping:
 
     def test_a_short_client_token_is_refused(self) -> None:
         with pytest.raises(ValueError, match="client token"):
-            CreateHarnessRequest(spec=parse_spec(json.dumps(spec_document())), client_token="x")
+            # A-TEST-LITERALS-001: the short token under test; see docs/security-dispositions.md
+            CreateHarnessRequest(spec=parse_spec(json.dumps(spec_document())), client_token="x")  # nosec B106
 
     def test_not_found_is_expected_control_flow(self) -> None:
         error = translated(_client_error("ResourceNotFoundException"), "GetHarness")

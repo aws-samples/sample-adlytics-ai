@@ -43,6 +43,18 @@ GitHub provides additional document on [forking a repository](https://help.githu
 
 **There is no remote CI and none is planned** ([ADR-015](docs/decisions/adr-015-no-remote-ci.md)). Nothing re-runs these after you push, so a pull request that has not been through them locally has not been through them at all. That is also why this list is short: everything on it is either checkable by a command or reviewable by a person, and nothing is here as an aspiration.
 
+### Maintainer tools
+
+The publication and release gates need these tools at exactly these versions, and refuse any
+other version; a row marked `any current` is required but not pinned. This table is the one place
+each version is pinned; `scripts/tool_versions.py` reads it.
+
+| Tool | Version | Used by |
+|---|---|---|
+| gitleaks | 8.30.1 | make publication-gate |
+| ASH (automated-security-helper) | 3.7.0 | make release-gate |
+| finch or Docker | any current | make release-gate (ASH container mode) |
+
 ### Run the gates
 
 ```bash
@@ -52,15 +64,36 @@ make lint-boundaries # the hexagonal dependency rule
 ```
 
 Changes under `infra/` also need `make infra-typecheck` and `make infra-test`. Changes under
-`frontend/` also need `make frontend-typecheck`, then `npm run lint`, `npm test` and
+`frontend/` also need `make frontend-typecheck` and `make frontend-test`, then `npm run lint` and
 `npm run build` from `frontend/`.
 
-Maintainers publishing upstream also run these before every publication push:
+Every test, acceptance and scan target (`make test`, `make verify`, `make frontend-test`,
+`make infra-test`, `make test-integration`, every `make accept-*` and the gates below) writes a
+write-once [run record](docs/test-run-records.md) under the gitignored `.runs/`, and `make check`
+refuses a target that does not. A claim that tests pass cites the record for that exact tree. `make gate-status` shows
+the runs in progress and the recent records.
+
+Maintainers publishing upstream gate in three tiers, each on a clean tree. This list owns which
+gate runs before which action; each script's section in [scripts/README.md](scripts/README.md)
+owns what it checks and its refusal codes, and [meta-delivery-git](.kiro/steering/meta-delivery-git.md#remotes-and-publication)
+owns what may reach the public remote.
 
 ```bash
-make verify-clean    # make verify and the frontend gates in a clean export of HEAD
-make check-publication BASE=<rev>  # publication boundary, links, license headers and a proven gitleaks scan of the export and of unpushed commits since <rev>
+make install-hooks                # once per clone: the commit tier (pre-commit) and the push tier (pre-push)
+make release-gate                 # release tier, once per release tree: verify-clean, the ASH container scans, the mutation summary (report only)
+make publication-gate             # push tier, before every push: the commits since BASE and the run records of HEAD's tree
+make publish                      # pushes only through the operator's local publish script
 ```
+
+- Commit tier: the [hooks](scripts/README.md#commit_gatepy-and-githooks) are a fast early warning
+  on staged changes, not the boundary; `make uninstall-hooks` removes them.
+- Release tier: `make release-gate` runs before `make publication-gate`, because the publication
+  gate requires the test records verify-clean writes ([which records](docs/test-run-records.md#which-records-the-publication-gate-accepts)).
+  It reuses a recorded verify-clean of the same tree instead of re-running it
+  ([which record](docs/test-run-records.md#which-verify-clean-record-the-release-gate-reuses)).
+- Push tier: `BASE` defaults to `public/main`; run `git fetch public` first so it names the
+  current tip. `make publish` requires a passing push-gate record of HEAD and runs the gate
+  when there is none, so a skipped or uninstalled hook never bypasses it.
 
 ### Deployed checks (maintainer-run)
 
@@ -105,13 +138,18 @@ def test_something(): ...
 
 ### Review mutants when you change the domain
 
-`src/domain/` holds the code where a surviving mutant is a wrong number rather than a wrong redirect. A change there is expected to include a mutation review of the lines it touched, recorded under [test-mutations/](test-mutations/) ([ADR-013](docs/decisions/adr-013-mutation-testing.md)):
+`src/domain/` holds the code where a surviving mutant is a wrong number rather than a wrong redirect. Mutation review has repeatedly caught what the other gates could not: a caveat that was never emitted, a frozen dataclass with no test asserting it was frozen, a total that was a sum of averages ([ADR-013](docs/decisions/adr-013-mutation-testing.md)).
+
+The [mutation steering](.kiro/steering/meta-testing-mutation.md) owns when a mutation run happens. `mutation-priorities.yaml` lists every unit by priority tier with the tests mapped to it:
 
 ```bash
-make mutate MODULE=src/domain/<module>.py TESTS=tests/unit/test_<module>.py
+make mutate UNIT=src/domain/<module>.py   # one unit: cosmic-ray for Python, StrykerJS for TypeScript
+make mutate-next N=5                      # the next missing or stale units by priority
+make mutation-status                      # current, stale, missing, untested and OPEN units per tier
+make mutation-verdict UNIT=<path> ID=S-01 VERDICT=KILLED TEST=<test id>
 ```
 
-This is the gate that has repeatedly caught what the others could not: a caveat that was never emitted, a frozen dataclass with no test asserting it was frozen, a total that was a sum of averages. It mutates source in place, so run it on a clean tree.
+Each run writes a run record and updates the local coverage map, one entry per unit with its survivor verdicts ([test run records](docs/test-run-records.md#coverage-map)). A unit whose fingerprint is unchanged is skipped, not re-run. The score is never a threshold: triage each survivor to KILLED with the test that kills it, or EQUIVALENT with the reason class. Python runs mutate source in place, so run them on a clean tree.
 
 ### Working with data and figures
 
@@ -145,6 +183,23 @@ opensource-codeofconduct@amazon.com with any additional questions or comments.
 
 ## Security issue notifications
 If you discover a potential security issue in this project we ask that you notify AWS/Amazon Security via our [vulnerability reporting page](https://aws.amazon.com/security/vulnerability-reporting/). Please do **not** create a public github issue.
+
+### If a secret is pushed
+
+`make publication-gate` exists so this never happens ([Run the gates](#run-the-gates)). If a secret
+reaches the public repository anyway, treat it as compromised from the moment it was public:
+
+1. Rotate first. Revoke or rotate the credential at its issuer, then review the issuer's access
+   log for its use since it was published. A revoked credential grants no access, so a history
+   rewrite may not be needed at all ([GitHub: removing sensitive data](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository)).
+2. Remove it from history only with the repository owner's explicit approval for that rewrite and
+   force push. A rewrite changes every later commit hash, and forks, clones and pull requests can
+   still hold the commit; follow the GitHub procedure linked above.
+3. Recommended for the repository, as a second line of defence: secret scanning with
+   [push protection](https://docs.github.com/en/code-security/secret-scanning/introduction/about-push-protection),
+   [Dependabot alerts](https://docs.github.com/en/code-security/dependabot/dependabot-alerts/about-dependabot-alerts)
+   and [Dependabot security updates](https://docs.github.com/en/code-security/dependabot/dependabot-security-updates/about-dependabot-security-updates).
+   A repository administrator enables them.
 
 
 ## Licensing

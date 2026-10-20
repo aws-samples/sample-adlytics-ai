@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: MIT-0
+#
+# Push tier: run `make publication-gate` over the pushed range before any commit leaves the clone.
+# Installed once per clone by `make install-hooks`, as a stub in the repository's own hooks
+# directory; no git configuration changes (scripts/install-hooks.sh).
+# `make publish` runs the gate itself, so an uninstalled or skipped hook never bypasses it.
+#
+# git passes the remote name and URL as arguments and one line per ref on stdin:
+#   <local ref> <local sha> <remote ref> <remote sha>
+# - The gate examines HEAD, so a pushed ref must point at HEAD's commit.
+# - BASE is the remote's current tip of that ref; a ref the remote lacks builds on <remote>/main.
+# - A ref deletion publishes nothing and is not gated.
+# - A tag is refused: meta-delivery-git never pushes one to a public remote.
+# Written for bash 3.2.
+set -euo pipefail
+
+refuse() {
+  echo "pre-push: REFUSED $1" >&2
+  exit 1
+}
+
+# True when $1 is git's all-zero object name (any hash length): the ref is absent on that side.
+is_zero() {
+  case "$1" in
+    *[!0]*) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+remote="${1:?pre-push: git passes the remote name}"
+cd "$(git rev-parse --show-toplevel)"
+head=$(git rev-parse --verify 'HEAD^{commit}')
+bases=""
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ -n "${local_ref:-}" ] || continue
+  if is_zero "$local_sha"; then
+    continue
+  fi
+  case "$remote_ref" in
+    refs/tags/*) refuse "$remote_ref: tags are never pushed to a public remote (meta-delivery-git)" ;;
+  esac
+  commit=$(git rev-parse --verify "$local_sha^{commit}") || refuse "$local_ref is not a commit"
+  [ "$commit" = "$head" ] ||
+    refuse "$local_ref is not HEAD; the gate examines HEAD, so check out what you push"
+  if is_zero "$remote_sha"; then
+    base=$(git rev-parse --verify -q "refs/remotes/$remote/main^{commit}") ||
+      refuse "$remote_ref is new on $remote and $remote/main is unknown; run git fetch $remote"
+  else
+    git cat-file -e "$remote_sha^{commit}" 2>/dev/null ||
+      refuse "$remote's $remote_ref is at a commit this clone lacks; run git fetch $remote"
+    base="$remote_sha"
+  fi
+  case " $bases " in
+    *" $base "*) ;;
+    *) bases="$bases $base" ;;
+  esac
+done
+
+for base in $bases; do
+  make publication-gate BASE="$base"
+done

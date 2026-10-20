@@ -34,14 +34,16 @@ pytestmark = [pytest.mark.unit, pytest.mark.covers("ADR-007")]
 
 POLICY = CookiePolicy(scope=CookieScope.PARENT_DOMAIN, domain=".customer.com")
 HOST_ONLY = CookiePolicy(scope=CookieScope.HOST_ONLY)
-TOKENS = TokenSet(access_token="access.jwt.value", expires_in=900, refresh_token="refresh-value")
+# A-TEST-LITERALS-001: fictional tokens; see docs/security-dispositions.md
+TOKENS = TokenSet(access_token="access.jwt.value", expires_in=900, refresh_token="refresh-value")  # nosec B106
 REFRESH_MAX_AGE = 2_592_000
 
 
 def _headers(tokens: TokenSet = TOKENS, policy: CookiePolicy = POLICY) -> dict[str, str]:
     """Set-Cookie headers keyed by cookie name, for attribute assertions."""
     built = build_session_cookies(
-        SessionCookieRequest(
+        # A-TEST-LITERALS-001: a fictional CSRF token; see docs/security-dispositions.md
+        SessionCookieRequest(  # nosec B106
             policy=policy,
             tokens=tokens,
             csrf_token="csrf-value",
@@ -107,13 +109,15 @@ class TestCookiePolicy:
 class TestSessionCookieRequest:
     def test_a_csrf_token_is_required(self) -> None:
         with pytest.raises(IdentityError, match="CSRF"):
-            SessionCookieRequest(
+            # A-TEST-LITERALS-001: the empty token under test; see docs/security-dispositions.md
+            SessionCookieRequest(  # nosec B106
                 policy=POLICY, tokens=TOKENS, csrf_token="", refresh_max_age=REFRESH_MAX_AGE
             )
 
     def test_refresh_max_age_must_be_positive(self) -> None:
         with pytest.raises(IdentityError, match="refresh_max_age"):
-            SessionCookieRequest(policy=POLICY, tokens=TOKENS, csrf_token="csrf", refresh_max_age=0)
+            # A-TEST-LITERALS-001: a fictional CSRF token; see docs/security-dispositions.md
+            SessionCookieRequest(policy=POLICY, tokens=TOKENS, csrf_token="csrf", refresh_max_age=0)  # nosec B106
 
 
 class TestSessionCookies:
@@ -123,7 +127,8 @@ class TestSessionCookies:
     def test_the_refresh_cookie_is_omitted_when_not_reissued(self) -> None:
         # A refresh response carries no refresh token. Emitting an empty one
         # would overwrite a valid cookie and log the user out at the next hop.
-        rotated = TokenSet(access_token="new.jwt.value", expires_in=900)
+        # A-TEST-LITERALS-001: a fictional token; see docs/security-dispositions.md
+        rotated = TokenSet(access_token="new.jwt.value", expires_in=900)  # nosec B106
         assert set(_headers(rotated)) == {SESSION_COOKIE, CSRF_COOKIE}
 
     def test_the_session_cookie_is_http_only(self) -> None:
@@ -248,7 +253,7 @@ class TestTransactionCookie:
 
 
 class TestGapsFoundByMutationTesting:
-    """Cases whose absence let a mutant survive. See test-mutations/domain-identity-cookies.md.
+    """Cases whose absence let a mutant survive (mutation review, ADR-013).
 
     Each one pins an attribute this module's own docstrings call non-negotiable and
     that no test previously read back off a rendered header.
@@ -269,7 +274,8 @@ class TestGapsFoundByMutationTesting:
         # shifted comparison and a changed constant rejected a legitimate
         # one-second lifetime undetected.
         built = build_session_cookies(
-            SessionCookieRequest(
+            # A-TEST-LITERALS-001: a fictional CSRF token; see docs/security-dispositions.md
+            SessionCookieRequest(  # nosec B106
                 policy=POLICY, tokens=TOKENS, csrf_token="csrf-value", refresh_max_age=1
             )
         )
@@ -308,11 +314,13 @@ class TestGapsFoundByMutationTesting:
     def test_a_session_request_cannot_be_rewritten_after_validation(self) -> None:
         # __post_init__ requires a CSRF token and a positive lifetime. Mutable, the
         # token could be emptied after the check and the cookie issued blank.
-        request = SessionCookieRequest(
+        # A-TEST-LITERALS-001: a fictional CSRF token; see docs/security-dispositions.md
+        request = SessionCookieRequest(  # nosec B106
             policy=POLICY, tokens=TOKENS, csrf_token="csrf-value", refresh_max_age=REFRESH_MAX_AGE
         )
         with pytest.raises(FrozenInstanceError):
-            request.csrf_token = ""  # pyright: ignore[reportAttributeAccessIssue]
+            # A-TEST-LITERALS-001: a frozen-field write; see docs/security-dispositions.md
+            request.csrf_token = ""  # pyright: ignore[reportAttributeAccessIssue]  # nosec B105
 
     def test_a_cookie_to_set_cannot_have_its_flags_rewritten(self) -> None:
         # No validation to bypass, but http_only is decided by the caller that builds

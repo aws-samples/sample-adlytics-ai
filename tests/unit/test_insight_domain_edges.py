@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: MIT-0
 """Boundary and immutability rules of the insight domain this branch added (ADR-076).
 
-Each test pins a rule the 2026-10-06 mutation review found unasserted
-(test-mutations/domain-presentation-insights.md): an error-code number, a threshold or
+Each test pins a rule the 2026-10-06 mutation review (ADR-013) found unasserted: an
+error-code number, a threshold or
 near-zero boundary, an immutable record, a structural next-step refusal, the canonical
 input form, or a tier rule on the generation request.
 """

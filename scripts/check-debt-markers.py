@@ -41,7 +41,7 @@ vendored directories.
 validation applies), so debt kept in code stays visible: `make report-retire-markers`.
 
 Enumerates with git, like the publication-boundary gate; without git it prints a skip line that
-`make verify-clean` and `make check-publication` refuse.
+`make verify-clean` and `make publication-gate` refuse.
 """
 
 from __future__ import annotations

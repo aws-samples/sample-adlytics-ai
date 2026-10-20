@@ -3,9 +3,8 @@
 
 Mutation review kept finding the same gap in module after module: `frozen=True` carried a
 guarantee that nothing asserted, so a mutant flipping it survived. Three reviews found it three
-times — `domain-strategy-objectives.md` S-04, `domain-measurement-figures.md` S-13,
-`domain-curation-watermarks.md` S-04 — and the remaining fifty-odd domain modules would each have
-found it again.
+times (the objectives, figures and watermarks modules; ADR-013) and the remaining fifty-odd domain
+modules would each have found it again.
 
 Asserting it here instead is the move ADR-013 asks for: when a property holds for every member of
 a set, test the set. This kills the mutant in every domain module at once, including the ones no

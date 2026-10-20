@@ -218,6 +218,15 @@ def _wrapper(lock: Lock, stub: Stub, command: list[str], **override: str) -> sub
     )
 
 
+def _run(argv: list[str], *, cwd: Path, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+    """Run a repository script to completion with its output captured; its exit code is returned."""
+    # A-SUBPROCESS-001: fixed interpreter and repository script; docs/security-dispositions.md
+    # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit
+    return subprocess.run(  # noqa: S603
+        argv, cwd=cwd, env=env, capture_output=True, text=True, check=False
+    )
+
+
 def _until(predicate: Callable[[], bool], timeout: float) -> float:
     """Wait until `predicate` holds; return the seconds it took, failing past `timeout`."""
     start = time.monotonic()
@@ -277,14 +286,7 @@ def test_deploy_locked_refuses_each_missing_input_before_any_command(
     missing: str, lock: Lock, stub: Stub
 ) -> None:
     argv = [BASH, str(SCRIPTS / "deploy-locked.sh"), *lock.args(**{missing: ""}), "--", "true"]
-    result = subprocess.run(  # noqa: S603 -- fixed interpreter and repository script
-        argv,
-        cwd=lock.repo,
-        env=stub.env(system_path=False),
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    result = _run(argv, cwd=lock.repo, env=stub.env(system_path=False))
 
     assert result.returncode == 2
     assert f"{missing} is required" in result.stderr
@@ -299,14 +301,7 @@ def test_deploy_locked_refuses_a_default_profile_and_a_missing_command(
     base = [BASH, str(SCRIPTS / "deploy-locked.sh")]
 
     def attempt(argv: list[str]) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(  # noqa: S603 -- fixed interpreter and repository script
-            [*base, *argv],
-            cwd=lock.repo,
-            env=stub.env(system_path=False),
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        return _run([*base, *argv], cwd=lock.repo, env=stub.env(system_path=False))
 
     default = attempt([*lock.args(**{"--profile": "default"}), "--", "true"])
     no_command = attempt([*lock.args(), "--"])
@@ -373,13 +368,10 @@ def _diff_args(tmp_path: Path, **override: str) -> list[str]:
 def test_diff_then_deploy_refuses_each_missing_input_before_any_command(
     missing: str, tmp_path: Path, stub: Stub
 ) -> None:
-    result = subprocess.run(  # noqa: S603 -- fixed interpreter and repository script
+    result = _run(
         [BASH, str(SCRIPTS / "diff-then-deploy.sh"), *_diff_args(tmp_path, **{missing: ""})],
         cwd=tmp_path,
         env=stub.env(system_path=False),
-        capture_output=True,
-        text=True,
-        check=False,
     )
 
     assert result.returncode == 2
@@ -388,13 +380,10 @@ def test_diff_then_deploy_refuses_each_missing_input_before_any_command(
 
 
 def test_diff_then_deploy_requires_a_mode(tmp_path: Path, stub: Stub) -> None:
-    result = subprocess.run(  # noqa: S603 -- fixed interpreter and repository script
+    result = _run(
         [BASH, str(SCRIPTS / "diff-then-deploy.sh"), *_diff_args(tmp_path)[:-1]],
         cwd=tmp_path,
         env=stub.env(system_path=False),
-        capture_output=True,
-        text=True,
-        check=False,
     )
 
     assert result.returncode == 2
@@ -414,9 +403,7 @@ def test_diff_then_deploy_outside_the_lock_exits_79_and_inside_it_passes_that_ga
         env = stub.env()
         if held is not None:
             env["ADLYTICS_DEPLOY_LOCK_HELD"] = held
-        return subprocess.run(  # noqa: S603 -- fixed interpreter and repository script
-            argv, cwd=tmp_path, env=env, capture_output=True, text=True, check=False
-        )
+        return _run(argv, cwd=tmp_path, env=env)
 
     unset = attempt(None)
     foreign = attempt(str(not_ancestor))
@@ -843,7 +830,7 @@ def _group_gone(group: int) -> bool:
 
 def _force(lock: Lock, stub: Stub, owner: int, **override: str) -> subprocess.CompletedProcess[str]:
     args = lock.args(**{"--source-sha": "", "--label": "", "--poll-seconds": "", **override})
-    return subprocess.run(  # noqa: S603 -- fixed interpreter and repository script
+    return _run(
         [
             BASH,
             str(SCRIPTS / "deploy-locked.sh"),
@@ -856,9 +843,6 @@ def _force(lock: Lock, stub: Stub, owner: int, **override: str) -> subprocess.Co
         ],
         cwd=lock.repo,
         env=stub.env(),
-        capture_output=True,
-        text=True,
-        check=False,
     )
 
 
@@ -1509,7 +1493,7 @@ class CustomerWorld:
         return [line for line in lines if line.startswith(prefix)]
 
     def run(self, name: str, *args: str, **env: str) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(  # noqa: S603 -- fixed interpreter and repository script
+        return _run(
             [BASH, str(SCRIPTS / name), *args],
             cwd=REPO_ROOT,
             env={
@@ -1521,9 +1505,6 @@ class CustomerWorld:
                 "PROFILE": "my-profile",
                 **env,
             },
-            capture_output=True,
-            text=True,
-            check=False,
         )
 
 

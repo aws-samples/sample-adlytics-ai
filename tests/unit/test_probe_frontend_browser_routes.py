@@ -37,6 +37,8 @@ def _derive(routes: list[str]) -> subprocess.CompletedProcess[str]:
         f"import {{ rosterRoutes }} from {json.dumps(_MODULE.as_uri())};"
         "process.stdout.write(JSON.stringify(rosterRoutes(JSON.parse(process.env.ADL_ROUTES))));"
     )
+    # A-SUBPROCESS-001: node and an inline test script, no shell; see docs/security-dispositions.md
+    # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit
     return subprocess.run(  # noqa: S603 -- a fixed argument list, no shell
         [node, "--input-type=module", "-e", script],
         env={**os.environ, "ADL_ROUTES": json.dumps(routes)},

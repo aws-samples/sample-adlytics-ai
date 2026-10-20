@@ -24,13 +24,15 @@ def git_path() -> str:
     return _GIT
 
 
-def run(argv: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
-    """Run one fixed argv with no shell and return its completed process."""
+def run(
+    argv: list[str], cwd: Path, *, stdin: str | None = None
+) -> subprocess.CompletedProcess[str]:
+    """Run one fixed argv with no shell, feeding `stdin` when given, and return its process."""
     # A-SUBPROCESS-001: fixed interpreter and argv; see docs/security-dispositions.md
     # The argv is bash or git plus a repository-owned script and test constants; no caller input.
     # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit
     return subprocess.run(  # noqa: S603
-        argv, cwd=cwd, capture_output=True, text=True, check=False
+        argv, cwd=cwd, input=stdin, capture_output=True, text=True, check=False
     )
 
 

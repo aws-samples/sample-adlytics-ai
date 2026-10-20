@@ -71,7 +71,8 @@ STACK_B = (
     "arn:aws:cloudformation:eu-west-1:123456789012:stack/adlytics-ingestion-development/"
     "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
 )
-SERVICE_TOKEN = (
+# A-TEST-LITERALS-001: a ServiceToken ARN; see docs/security-dispositions.md
+SERVICE_TOKEN = (  # nosec B105
     "arn:aws:lambda:eu-west-1:123456789012:function:adlytics-development-ProjectionHandoffProvider"
 )
 RESPONSE_URL = "https://cloudformation-custom-resource-response.s3.amazonaws.com/fixture"

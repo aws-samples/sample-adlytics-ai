@@ -311,6 +311,8 @@ def _land_with_twin(
         "--graph-store-stack",
         str(arguments.store_stack),
     ]
+    # A-SUBPROCESS-001: uv run of a repository module, no shell; see docs/security-dispositions.md
+    # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit
     completed = subprocess.run(  # noqa: S603 -- fixed argv, explicit inputs only
         argv, cwd=Path(arguments.worktree).resolve(), capture_output=True, text=True, check=False
     )

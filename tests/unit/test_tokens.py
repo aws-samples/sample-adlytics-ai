@@ -149,7 +149,8 @@ class TestTokenUseClaim:
         # Signed by the same pool, so the signature is genuinely valid. Only
         # token_use distinguishes it.
         with pytest.raises(IdentityError, match="token_use"):
-            _verify(minter, minter.token(token_use="id"))
+            # A-TEST-LITERALS-001: the token_use under test; see docs/security-dispositions.md
+            _verify(minter, minter.token(token_use="id"))  # nosec B106
 
     def test_a_missing_token_use_is_rejected(self, minter: TokenMinter) -> None:
         with pytest.raises(IdentityError, match="token_use"):
@@ -208,20 +209,23 @@ class TestKeySetLookup:
 class TestTokenSet:
     def test_an_access_token_is_required(self) -> None:
         with pytest.raises(IdentityError, match="access_token"):
-            TokenSet(access_token="", expires_in=900)
+            # A-TEST-LITERALS-001: the empty token under test; see docs/security-dispositions.md
+            TokenSet(access_token="", expires_in=900)  # nosec B106
 
     def test_expires_in_must_be_positive(self) -> None:
         with pytest.raises(IdentityError, match="expires_in"):
-            TokenSet(access_token="a.b.c", expires_in=0)
+            # A-TEST-LITERALS-001: a fictional token; see docs/security-dispositions.md
+            TokenSet(access_token="a.b.c", expires_in=0)  # nosec B106
 
     def test_refresh_token_defaults_to_empty(self) -> None:
         # A refresh response omits it, and an empty value must not look like a
         # real token that could overwrite a good cookie.
-        assert TokenSet(access_token="a.b.c", expires_in=900).refresh_token == ""
+        # A-TEST-LITERALS-001: an empty-token assertion; see docs/security-dispositions.md
+        assert TokenSet(access_token="a.b.c", expires_in=900).refresh_token == ""  # nosec B105, B106
 
 
 class TestGapsFoundByMutationTesting:
-    """Cases whose absence let a mutant survive. See test-mutations/domain-identity-tokens.md.
+    """Cases whose absence let a mutant survive (mutation review, ADR-013).
 
     Each one corresponds to an invariant the module's own docstrings assert and that
     no test previously exercised, so the assertion was documentation only.
@@ -271,7 +275,8 @@ class TestGapsFoundByMutationTesting:
     def test_expires_in_of_exactly_one_second_is_accepted(self) -> None:
         # The boundary of `expires_in < 1`. Nothing previously sat on it, so shifting
         # the comparison to <= rejected a legitimate one-second token undetected.
-        assert TokenSet(access_token="t", expires_in=1).expires_in == 1
+        # A-TEST-LITERALS-001: a fictional token; see docs/security-dispositions.md
+        assert TokenSet(access_token="t", expires_in=1).expires_in == 1  # nosec B106
 
     def test_a_verify_request_cannot_be_rewritten_after_validation(
         self, minter: TokenMinter
@@ -295,9 +300,11 @@ class TestGapsFoundByMutationTesting:
     def test_a_token_set_cannot_be_rewritten_after_validation(self) -> None:
         # __post_init__ rejects an empty access_token. Mutable, it could be emptied
         # afterwards and reach build_session_cookies as a valid-looking TokenSet.
-        tokens = TokenSet(access_token="a.b.c", expires_in=900)
+        # A-TEST-LITERALS-001: a fictional token; see docs/security-dispositions.md
+        tokens = TokenSet(access_token="a.b.c", expires_in=900)  # nosec B106
         with pytest.raises(FrozenInstanceError):
-            tokens.access_token = ""  # pyright: ignore[reportAttributeAccessIssue]
+            # A-TEST-LITERALS-001: a frozen-field write; see docs/security-dispositions.md
+            tokens.access_token = ""  # pyright: ignore[reportAttributeAccessIssue]  # nosec B105
 
     def test_a_key_set_cannot_be_rewritten_after_construction(self, minter: TokenMinter) -> None:
         # No validation to bypass here, but the keys a token is checked against must

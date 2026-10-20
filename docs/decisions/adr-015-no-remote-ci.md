@@ -3,7 +3,9 @@
 Date: 2026-08-18
 Status: Accepted. Amended 2026-10-01: `make deploy-all` deploys every stack in `DEPLOY_ORDER`
 ([ADR-012](adr-012-stack-composition-and-config.md), amendment of that date). A person still
-runs it and still runs the gates; nothing runs either automatically.
+runs it and still runs the gates; nothing runs either automatically. Amended 2026-10-20: public
+pushes go through local gates in three tiers, and tracked hooks add an early warning
+([amendment](#amendment-2026-10-20)).
 
 ## Context
 
@@ -73,4 +75,31 @@ the duplicate had already gone stale before it ever executed.
 **Local git hooks instead.** A pre-push hook running `make check` would enforce
 without a remote. Rejected for now because hooks are per-clone and silently absent
 for anyone who does not install them, so the guarantee is no stronger than
-remembering to run `make` — with the added cost of appearing stronger.
+remembering to run `make` — with the added cost of appearing stronger. The 2026-10-20
+amendment adds hooks as an early warning only, for that reason.
+
+## Amendment (2026-10-20)
+
+The repository is now published, so a push publishes history as well as code. The Makefile is
+still the only gate and nothing remote runs it, but publication is gated locally in three tiers.
+[CONTRIBUTING](../../CONTRIBUTING.md#run-the-gates) owns which gate runs before which action, and
+[scripts/README.md](../../scripts/README.md) owns what each gate checks.
+
+- **Commit tier: tracked hooks, as an early warning.** The rejection above still holds for the
+  boundary: a hook is per-clone and `--no-verify` skips it. So the hooks only catch a secret, a
+  denylisted literal, a forbidden path or a wrong identity before it is in history at all, and the
+  push tier repeats every one of those checks. `make install-hooks` writes stubs into the
+  repository's own hooks directory and never sets `core.hooksPath`, because a repository-level
+  hooksPath would silently replace a system-level one set by the machine's security tooling.
+- **Push tier: `make publication-gate` over the pushed range.** `make publish` requires it, so an
+  uninstalled hook never bypasses it.
+- **Release tier: `make release-gate`.** The release gate runs `make verify-clean`, the gates on
+  a clean export of HEAD. That covers, for a release, the clean-checkout failure class listed
+  above as lost. Its full ASH scan is the release security scan. A sealed external content
+  review receipt for the release tree was also required until the owner retired it on
+  2026-10-20; ASH in the release gate replaced it.
+
+Every test and gate run writes a write-once [run record](../test-run-records.md), and a gate
+accepts only a record of the exact tree it examines. That is what makes a local gate's result
+citable without a pipeline, and lets the release gate reuse a recorded verify-clean rather than
+re-run it. The trigger to reopen this decision is unchanged: the first outside contributor.

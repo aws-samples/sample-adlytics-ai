@@ -18,6 +18,7 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from git_history_support import MARKER, marker_revision, missing_history_reason
 from jwt.algorithms import RSAAlgorithm
+from run_record_report import register as register_run_record_report
 
 from domain.identity.tokens import JsonWebKey, JsonWebKeySet
 
@@ -99,6 +100,11 @@ class TokenMinter:
             for part in segments
         ]
         return ".".join([*encoded, ""])
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Register the run recorder's per-test report when scripts/run_record.py asked for one."""
+    register_run_record_report(config)
 
 
 def pytest_runtest_setup(item: pytest.Item) -> None:

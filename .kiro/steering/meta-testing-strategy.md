@@ -80,7 +80,7 @@ docs/decisions/adr-014-aws-testing-seam.md.
 
 ## What justifies a test
 
-- Before adding a test to a module a mutation report already covers, name the
+- Before adding a test to a unit whose mutation coverage-map entry is current, name the
   surviving mutant it kills. A test that kills none adds no signal; do not write it.
   A regression test that reproduces a fixed defect is exempt.
 - When a property holds for every member of a set, assert it once over the set.
@@ -136,3 +136,6 @@ finding; a percentage target is an invitation to test getters.
   bare pytest invocation as gate evidence.
 - Never let a test share mutable state with another test. Never fix an
   order-dependent failure by retrying it.
+- A claim that tests pass cites the run record that proves it, matched to the exact tree.
+  Never restate a pass from memory or from an earlier tree. docs/test-run-records.md owns the
+  record format.

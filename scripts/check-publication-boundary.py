@@ -101,7 +101,7 @@ _MIN_INNER_DIGIT_RUNS = 2
 # and also when glued to a `#`, `/`, `*`, `-` or `!` leader, which Semgrep ignores but is refused
 # for strictness (O-MARKER-LEADERS-001). Write the word in backticks or after a quote to name it.
 NOSEC = re.compile(r"#\s*nosec\b(?P<rest>[^#]*)", re.IGNORECASE)
-REVIEWED_BANDIT_IDS = frozenset({"B310", "B505", "B506", "B608"})
+REVIEWED_BANDIT_IDS = frozenset({"B105", "B106", "B310", "B505", "B506", "B608"})
 SEMGREP_MARKER = re.compile(r"(?:^|(?<=[\s#/*!-]))nosem(?:grep)?(?P<rest>[^#]*)", re.IGNORECASE)
 BLOCK_COMMENT_CLOSE = re.compile(r"\s*(?:\*/|-->).*$")
 SEMGREP_IDS = re.compile(

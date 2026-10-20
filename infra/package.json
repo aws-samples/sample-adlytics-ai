@@ -18,6 +18,8 @@
     "constructs": "10.8.1"
   },
   "devDependencies": {
+    "@stryker-mutator/core": "10.0.0",
+    "@stryker-mutator/jest-runner": "10.0.0",
     "@types/jest": "30.0.0",
     "@types/node": "24.13.3",
     "aws-cdk": "2.1145.0",
@@ -30,15 +32,19 @@
     "handlebars": "4.7.10",
     "@istanbuljs/load-nyc-config": {
       "js-yaml": "4.3.2"
+    },
+    "typed-rest-client": {
+      "qs": "6.16.0"
     }
   },
   "//pins": {
-    "aws-cdk-lib vs aws-cdk": "Different version lines by design \u2014 the library is 2.273.x and the CLI is 2.1145.x. Never pin them to the same string (ADR-005).",
+    "aws-cdk-lib vs aws-cdk": "Different version lines by design — the library is 2.273.x and the CLI is 2.1145.x. Never pin them to the same string (ADR-005).",
     "constructs": "aws-cdk-lib 2.273.0 declares a peer of ^10.5.0, so anything below 10.5 fails to install.",
     "typescript": "Held at 5.9.3 deliberately. TypeScript 7.0 is released, but ts-jest declares a peer of >=4.3 <7, so 7.x breaks the test toolchain today.",
     "@types/node": "24.x to match the Node 24 LTS runtime target, not the newest 26.x line.",
     "aws-cdk-lib 2.273.0": "First release checked that bundles brace-expansion 5.0.12, the first patched version for GHSA-qhr7-859c-m2p7, GHSA-6j4f-fj2g-mc7p and GHSA-q2hr-2g5m-vwhr (A-CVE-CDK-BUNDLED-001). A bundled dependency cannot be overridden, so the library version is the fix.",
     "overrides": "handlebars 4.7.10 is the first patched version for GHSA-8r5x-fm3f-whwj, GHSA-p8wg-vrv2-v86f and GHSA-xw65-4hp5-5hc7 (O-ASH-CVE-HANDLEBARS-001). It reaches the tree only through ts-jest (handlebars@^4.7.9), so this is test-time only. @istanbuljs/load-nyc-config's js-yaml 3 is lifted to 4.3.2, whose argparse 2 has no dependencies, so sprintf-js 1.0.3 (GHSA-hp3w-g68c-fv3c, no patched release) leaves the lockfile (O-ASH-SPRINTF-JS-001). The package calls only js-yaml's load(), which 4.x keeps with the safe schema as its default.",
-    "node": "Engine pinned to the Node 24 LTS line, enforced by engine-strict in .npmrc so a wrong runtime fails the install rather than warning. 26.x is Current, not LTS, and infra-style-cdk bans targeting it. 20.x is end-of-life."
+    "node": "Engine pinned to the Node 24 LTS line, enforced by engine-strict in .npmrc so a wrong runtime fails the install rather than warning. 26.x is Current, not LTS, and infra-style-cdk bans targeting it. 20.x is end-of-life.",
+    "@stryker-mutator/core, @stryker-mutator/jest-runner": "10.0.0, owner-approved 2026-10-19 for mutation testing (ADR-013); `make mutate` runs them. typed-rest-client 2.3.1 (Stryker's dashboard client, unused here) pins qs 6.15.1 (GHSA-q8mj-m7cp-5q26, GHSA-x5fp-wj9c-mxmx, GHSA-4mjr-xmp4-gh2g), so qs is lifted to 6.16.0, the first patched release, under it. Drop the override once Stryker depends on a typed-rest-client that resolves a patched qs on its own."
   }
 }

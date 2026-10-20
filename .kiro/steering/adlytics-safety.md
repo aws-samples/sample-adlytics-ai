@@ -14,3 +14,5 @@ description: Governs data, credential and security-control safety on every turn 
   make a deploy, test or probe pass. Stop and ask the user, naming the control and the risk.
 - Never record a CRITICAL or HIGH security finding as ACCEPTED. docs/security-dispositions.md owns
   the dispositions and their meaning.
+- Before committing any image, view it and confirm it shows only synthetic data: no email
+  address, account number, hostname or token. A scanner cannot read an image.

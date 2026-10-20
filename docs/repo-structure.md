@@ -3,13 +3,14 @@
 | | |
 |---|---|
 | **Status** | Semantic V2 is the current repository-owned analytical data path; [validation results](../validation/RESULTS.md) record dated acceptance conclusions. |
-| **Last updated** | 2026-09-26 |
+| **Last updated** | 2026-10-20 |
 | **Languages** | Python (backend, ML) · TypeScript (frontend, CDK) |
 
 ## 1. Top level
 
 ```
 adlytics-ai/
+├── .githooks/              # tracked commit and push hooks; make install-hooks activates them
 ├── .kiro/                  # reusable agent tooling; machine/session state is excluded
 ├── contracts/              # governed source, semantic, table, and tool declarations
 ├── docs/                   # current design docs and ADRs
@@ -18,7 +19,6 @@ adlytics-ai/
 ├── src/                    # Python backend, hexagonal
 ├── frontend/               # Next.js static export
 ├── tests/                  # unit, contract, integration, and evaluation tests
-├── test-mutations/         # committed mutation-review evidence
 ├── evaluation/             # scenario, report, and run assets consumed by supported evaluation workflows
 ├── validation/             # reusable probes and sanitized conclusions; raw evidence excluded
 └── scripts/                # development and operational scripts
@@ -236,7 +236,7 @@ tests/
 └── fixtures/       # schema-derived generated data and hand-built behavior/consistency traps
 ```
 
-Mutation reports live under `test-mutations/`; an absent report means unreviewed, not clean.
+`mutation-priorities.yaml` at the root lists every mutation unit by priority tier with its mapped tests. Mutation results and every other test or gate run live in gitignored [run records](test-run-records.md) under `.runs/`, with a local coverage map; a missing or stale coverage-map entry means unreviewed, not clean.
 
 ## 7. Boundary commands
 

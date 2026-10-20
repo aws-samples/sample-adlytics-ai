@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MIT-0
 #
-# Run the publication gates locally, before a publication push: make check-publication BASE=<rev>
+# The export stage of make publication-gate BASE=<rev> (scripts/publication_gate.py runs it last).
 #
-# The export gates ran only at pre-push, so a publication defect surfaced after the work was
-# done. This runs them on demand, on exactly what HEAD tracks, and proves the secret scanner can
-# fail before trusting its pass:
+# It checks exactly what HEAD tracks, in a clean export, and proves the secret scanner can fail
+# before trusting its pass:
 #
-#   P7  file classes in the export: no security-findings*, validation/findings/ holds only
-#       .gitkeep, and the only .env* file is .env.example
+#   P7  file classes in the export, in any letter case like the publication gate's forbidden
+#       paths: no security-findings*, validation/findings/ holds only .gitkeep, and the only
+#       .env* file is .env.example
 #   P1  make check-publication-boundary (custody references, account IDs, literal profiles)
 #   P2  make check-links
 #   P3  make check-license-headers
@@ -28,7 +28,7 @@
 set -euo pipefail
 
 if [ "$#" -ne 1 ] || [ -z "$1" ]; then
-  echo "usage: check-publication.sh <BASE revision>  (make check-publication BASE=<rev>)" >&2
+  echo "usage: check-publication.sh <BASE revision>  (the export stage of make publication-gate BASE=<rev>)" >&2
   exit 2
 fi
 base_arg="$1"
@@ -82,13 +82,13 @@ git archive HEAD | tar -x -C "$export_dir"
 cd "$export_dir"
 
 # P7 runs on the pristine export, before anything is installed into it.
-findings_files=$(find . -name 'security-findings*' -print)
+findings_files=$(find . -iname 'security-findings*' -print)
 [ -z "$findings_files" ] || fail P7 "security-findings files are tracked: $findings_files"
 if [ -d validation/findings ]; then
   extra=$(find validation/findings -mindepth 1 ! -name .gitkeep -print)
   [ -z "$extra" ] || fail P7 "validation/findings holds more than .gitkeep: $extra"
 fi
-env_files=$(find . -name '.env*' ! -name .env.example -print)
+env_files=$(find . -iname '.env*' ! -iname .env.example -print)
 [ -z "$env_files" ] || fail P7 ".env* files other than .env.example are tracked: $env_files"
 echo "check-publication: P7 ok (file classes)"
 

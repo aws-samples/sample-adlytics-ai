@@ -44,7 +44,7 @@ __all__ = [
 CLIENT_SECRET_UNAVAILABLE = ErrorCode("TOKENSVC", 4)
 
 # pragma: allowlist nextline secret (A-PROTOCOL-CONSTANT-001)
-CLIENT_SECRET_KEY = "client_secret"  # noqa: S105 — the JSON key name, not a value
+CLIENT_SECRET_KEY = "client_secret"  # noqa: S105 — the JSON key name, not a value  # nosec B105
 """The JSON key the deploy-time generated secret and the credential provider both use."""
 
 _UNAVAILABLE = "The token service is temporarily unavailable."

@@ -87,8 +87,14 @@ removal condition is worse than a branch.
 
 ## Remotes and publication
 
-- Remotes and push destinations are operator-local configuration, never
-  repository content. Bind them per meta-style-steering, not here.
-- The tracked tree is publication-appropriate at every commit: content unfit
-  for public publication never enters source control. Private
-  working material lives locally, gitignored.
+- Remotes and push destinations are operator-local configuration, never repository content.
+  Bind them per meta-style-steering, not here.
+- The tracked tree is publication-appropriate at every commit: content unfit for public
+  publication never enters source control. Private working material lives locally, gitignored.
+- A commit reaches a public remote only through `make publish`, after `make publication-gate`
+  and `make release-gate` have both passed on that exact tree. Never push to a public remote by
+  any other command.
+- Never push a feature branch, a tag or working history to a public remote. A public release is
+  one commit whose parent is the current public main.
+- Never rewrite or force-push public history without the owner's explicit approval. A leaked
+  secret is rotated first, then removed from history; CONTRIBUTING.md "If a secret is pushed" owns the procedure.

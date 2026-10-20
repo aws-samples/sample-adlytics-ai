@@ -116,7 +116,7 @@ def _quoted(identifier: str) -> str:
     return f'"{identifier}"'
 
 
-def compose(request: BoundQueryPlan, max_rows: int) -> ComposedQuery:
+def compose(bound: BoundQueryPlan, max_rows: int) -> ComposedQuery:
     """Build a publication-fenced aggregate query from one bound logical plan.
 
     Shape, and every part of it comes from the plan rather than from a choice made here:
@@ -143,18 +143,18 @@ def compose(request: BoundQueryPlan, max_rows: int) -> ComposedQuery:
     about. A question needing a product *attribute* — brand, parent ASIN — needs the join and
     a validity predicate with it, and that is a different plan than any built today.
     """
-    request_plan = request.logical
+    request_plan = bound.logical
     if request_plan.join is not None:
-        return _compose_drill_across(request, max_rows)
+        return _compose_drill_across(bound, max_rows)
 
     projection = _projection(request_plan)
     columns, grouped, aggregates = projection.columns, projection.grouped, projection.aggregates
 
     predicates, parameters = _time_predicates(request_plan, periodic=request_plan.periodic)
-    publication_parameters = ", ".join("?" for _ in request.primary_ids)
+    publication_parameters = ", ".join("?" for _ in bound.primary_ids)
     predicates.append(f"{_quoted('publication_id')} IN ({publication_parameters})")
-    parameters.extend(request.primary_ids)
-    _filter_predicates(request, projection.discriminator, (predicates, parameters))
+    parameters.extend(bound.primary_ids)
+    _filter_predicates(bound, projection.discriminator, (predicates, parameters))
 
     # S608 is correct that this builds a statement by interpolation, and the interpolation is
     # the point: SQL has no placeholder for an identifier. What makes it safe is upstream and

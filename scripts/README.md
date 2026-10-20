@@ -151,7 +151,7 @@ uv run python scripts/check-publication-boundary.py
 | **Profiles** | no literal value after `PROFILE=`, `AWS_PROFILE=`, or a command-line `--profile`; commands carry a placeholder |
 | **Encoded JWTs** | no encoded JWT or JWE header literal (`eyJ…` followed by a second segment); fixtures build tokens from readable parts with `tests/unit/fictional_tokens.py` |
 | **Generated-looking secrets** | no quoted literal of 20+ base64url characters (letters, digits, `-`, `_`) with letters in both cases and two or more digit runs between letters; a fictional secret is spelled as words (`Fictional-Agent-Secret-For-Tests`). A backstop for that convention, not a secrets scanner: standard-base64 (`+`, `/`, `=`), single-case and single-digit-run values, unquoted `KEY=value` or `key: value` assignments and AWS access key IDs pass it, and are left to the publication scan's secrets rules |
-| **Suppression markers** | in `.py`, `.ts`, `.tsx`, `.js` and `.mjs` files, a Bandit `nosec` names only reviewed test IDs (`B310`, `B505`, `B506`, `B608`) and a Semgrep `nosemgrep` names namespaced rule IDs; a bare or misspelt marker would suppress every finding on its line. Each reviewed marker's reason is in `docs/security-dispositions.md` |
+| **Suppression markers** | in `.py`, `.ts`, `.tsx`, `.js` and `.mjs` files, a Bandit `nosec` names only reviewed test IDs (`B105`, `B106`, `B310`, `B505`, `B506`, `B608`) and a Semgrep `nosemgrep` names namespaced rule IDs; a bare or misspelt marker would suppress every finding on its line. Each reviewed marker's reason is in `docs/security-dispositions.md` |
 
 It complements `check-links.py`, which sees only markdown links.
 
@@ -262,6 +262,150 @@ Two deliberate exemptions, both narrow:
 Run it after any change to a contract, the canonical model, or the metric dictionary.
 It catches the drift that is invisible on review: a contract and a doc that describe
 different schemas while each looks internally correct.
+
+## run_record.py
+
+Writes, verifies and finds the immutable run records under the gitignored `.runs/`;
+[docs/test-run-records.md](../docs/test-run-records.md) owns the layout and every field. `make test`,
+`make frontend-test`, `make infra-test`, `make verify` and `make verify-clean` call it with no
+command, so their records are canonical. A narrowed run passes its own command after `--`, names
+the report format, and is recorded `canonical: false`; the argv writes its report to `{staging}`,
+which the recorder replaces with its staging directory.
+
+```bash
+uv run python scripts/run_record.py run --kind scratch-pytest --format pytest -- \
+  python -m pytest -m unit tests/unit/test_run_record.py
+uv run python scripts/run_record.py run --kind scratch-vitest --format vitest-json --cwd frontend -- \
+  npx vitest run test/display-value.test.ts --reporter=json '--outputFile.json={staging}/vitest.json'
+uv run python scripts/run_record.py verify .runs/<kind>/<record>
+uv run python scripts/run_record.py find --kind pytest-unit --tree "$(git rev-parse 'HEAD^{tree}')" --passing --canonical --clean
+make gate-status RECENT=5 LINES=5   # run_record.py status: in-progress and recent records
+```
+
+`--format exit` records a command without a runner report (an acceptance probe, a report-only
+scan); the Makefile's acceptance targets use it with their own name as the kind.
+
+A record exists from the moment its run starts ([live status](../docs/test-run-records.md#live-status)):
+`make gate-status` shows what is running now, its step, progress and last log lines, and which
+records were abandoned. `run` and `gate` exit with the child's code, 3 when the record directory
+already exists, and 70 when the record cannot be created (the child never starts) or the child
+passed but the record could not be sealed. `verify` exits 0 only when the record is sealed and
+matches its manifest; `find` exits 1 when no verified record matches.
+
+## check-run-record-coverage.py
+
+`make check-run-record-coverage` (part of `make check`) refuses a Makefile target that runs tests
+or a scan without writing a run record. A target is a test or scan target when its name is `test`,
+`test-*`, `*-test`, `verify`, `verify-clean`, `accept-*`, `regress-*`, `mutate`, `mutate-*`,
+or `*-gate`, or when its recipe runs pytest, jest, vitest, `npm test`, cosmic-ray,
+Stryker, `ash scan`, gitleaks, pip-audit, `npm audit` or vulture. Its recipe must then run
+`scripts/run_record.py run|gate`, the publication or release gate, or
+`scripts/mutation.py run|next`. The script's `EXEMPT` names each matched target that writes no
+record, with its reason; a stale exemption fails too.
+
+## mutation.py
+
+Mutation coverage, one unit of the root `mutation-priorities.yaml` per run: cosmic-ray for
+python, StrykerJS for `frontend/` and `infra/` (each package's tracked `stryker.config.json`).
+The [mutation steering](../.kiro/steering/meta-testing-mutation.md) owns when it runs. Every run
+writes a `mutation` run record and updates the local coverage map;
+[docs/test-run-records.md](../docs/test-run-records.md#mutation-fingerprint) owns the
+fingerprint, the record files, the proposals format and the map. A unit whose entry is current is
+skipped, and nothing forces a rerun.
+
+```bash
+make mutate UNIT=src/domain/identity/caller.py                         # mechanical pass
+make mutate UNIT=src/domain/identity/caller.py SEMANTIC=proposals.yaml # semantic proposals
+make mutate-next N=3                                                   # next missing or stale units
+make mutation-status                                                   # per tier; report only
+make mutation-verdict UNIT=src/domain/identity/caller.py ID=S-01 VERDICT=EQUIVALENT \
+  REASON="dataclass slots argument"
+uv run python scripts/mutation.py propose > /tmp/priorities.yaml       # import-mapped proposal
+```
+
+A run refuses a dirty tracked tree and a red baseline of the mapped tests. After a python run it
+restores the unit from HEAD if cosmic-ray left it mutated, and says so; any other dirty file
+stops it with exit 4 and is left untouched. `propose` prints the D7 tiers with each unit mapped to
+the test files that import it (python: AST imports and module-name strings; TypeScript: import
+specifiers through the `@/` alias, relative paths and index files). It printed the first
+`mutation-priorities.yaml`, which is authored from then on.
+
+## publication_gate.py
+
+`make publication-gate [BASE=<rev>]` runs it before every push to the public remote; BASE defaults
+to `public/main` (`DEFAULT_BASE`). It refuses a
+dirty tree, a BASE that HEAD does not descend from, and a gitleaks other than the pinned one, then
+runs every check on BASE..HEAD whatever an earlier one found, and prints one line per check or per
+finding with its refusal code. The module docstring lists every code. The last check is
+`check-publication.sh`, the export stage. Every run writes a `publication-gate` run record. The
+gate reads two operator-local inputs: the gitignored `local-denylist.txt` (one literal per line,
+matched case-insensitively and never printed; the gate refuses with `DENYLIST_MISSING` when it is
+absent and `DENYLIST_EMPTY` when it has no entry, so a clone without one cannot pass the push
+tier) and the email allowlist
+(`git config --add publication.allowedEmail <email>`, falling back to `user.email`). The denylist
+also matches patch headers, so listing an internal tool's name there refuses a commit that adds
+its output directory on any clone; a tracked ignore rule would publish the name.
+
+The gate reads no remote and scans only `BASE..HEAD`. It proves BASE is an ancestor of HEAD, not
+that BASE is the current public main, so run `git fetch public` first (the operator's publish
+script fetches and passes the tip itself); a later BASE leaves the commits before it unscanned. Tags are outside the range and are never
+pushed to the public remote ([meta-delivery-git](../.kiro/steering/meta-delivery-git.md)).
+
+## commit_gate.py and .githooks/
+
+The tracked hooks in `.githooks/` are active only after the owner runs `make install-hooks` once
+per clone. `scripts/install-hooks.sh` writes one stub per hook into the repository's own hooks
+directory (`$(git rev-parse --git-common-dir)/hooks/`, shared by every worktree); each stub runs the
+tracked hook of the checkout it fires in. It never sets or unsets `core.hooksPath` and changes no
+git configuration, so a system-level hooksPath set by the machine's security tooling stays in force
+and runs these hooks after its own. It is idempotent, refuses to overwrite a hook it did not write
+(naming it, installing nothing), and `make uninstall-hooks` removes only its own stubs. No agent or
+gate runs it.
+
+- `pre-commit` runs `commit_gate.py` on the index, not the working tree: the pinned gitleaks on the
+  staged changes, the publication gate's forbidden-path and ignore rules on staged additions and
+  changes, `local-denylist.txt` on the staged diff, the author and committer identity git will
+  record, and `ruff check` plus `ruff format --check` on staged `.py` files under `src/` and
+  `tests/`. It reuses the publication gate's rules, so the two tiers cannot disagree on a path, a
+  denylist entry or an email. The module docstring lists every code. An absent or empty denylist
+  prints a warning here; the push tier refuses it.
+- `pre-push` runs `make publication-gate` once per distinct BASE of the pushed refs: the remote's
+  current tip of the ref, or `<remote>/main` for a ref the remote lacks. It refuses a pushed ref
+  that is not HEAD (the gate examines HEAD), a remote tip this clone has not fetched, and any tag.
+  A ref deletion is not gated.
+
+`git commit --no-verify` and `git push --no-verify` skip the hooks; [CONTRIBUTING](../CONTRIBUTING.md#run-the-gates)
+says why that never bypasses the push tier.
+
+## release_gate.py
+
+`make release-gate` runs it once per release, before `make publication-gate`, on a clean
+checkout ([CONTRIBUTING](../CONTRIBUTING.md#run-the-gates) owns the order). It refuses a dirty tree, a missing ASH pin, and a missing
+`uvx` or container runtime (finch or Docker), then runs every stage whatever an earlier one
+found: verify-clean, whose run records the publication gate requires; three ASH container
+scans of a `git archive HEAD` export (trivy-repo, ASH's default source scanners, and the templates
+`infra/scripts/export-scan-templates.ts` writes, with cdk-nag, cfn-nag, checkov and
+detect-secrets); and a check that HEAD, its tree and the working tree did not change. ASH refuses
+on a run that exits non-zero, a scanner reporting MISSING or ERROR, a requested scanner that did
+not run, a report from another ASH version, and any open CRITICAL or HIGH finding after the
+committed `.ash/` suppressions; a finding is printed as scanner, severity, rule, file and count.
+The module docstring lists every code. The verify-clean stage reuses a recorded verify-clean of HEAD's tree
+([which record](../docs/test-run-records.md#which-verify-clean-record-the-release-gate-reuses)),
+naming it on a `verify-clean reused` line, and runs `make verify-clean` only when there is none. Last, it prints `scripts/mutation.py status --summary`,
+which is report only: its failure is a warning and never changes the exit code. The scan staging
+lives under the run-record root (`.runs/.staging/`, removed afterwards) because a container
+runtime VM may share only the home directory. ASH, the template export and the mutation summary
+run without any `ADLYTICS_*` or `AWS_*` variable and without the other variables Finch forwards
+into its VM (`CONTAINER_FORWARDED`), because scanning a tree needs no AWS access; the ASH command
+mounts only the export and the output directory, never `~/.aws`. Every run writes a `release-gate` run record with
+each step, the ASH summaries, the three ASH `reports/` directories and the child records.
+
+## tool_versions.py
+
+Reads the [Maintainer tools](../CONTRIBUTING.md#maintainer-tools) table, the one place a binary
+tool's version is pinned, for the gates that refuse any other version. A row marked
+`any current` is required but not pinned, and `pinned()` refuses it.
+`uv run python scripts/tool_versions.py gitleaks` prints the pin.
 
 ## infra/scripts/check-iam-policy-size.ts
 

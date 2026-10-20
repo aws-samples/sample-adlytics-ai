@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: MIT-0
+#
+# Commit tier: refuse a commit whose staged changes the push gate would refuse.
+# Installed once per clone by `make install-hooks`, as a stub in the repository's own hooks
+# directory; no git configuration changes (scripts/install-hooks.sh).
+# scripts/commit_gate.py owns the checks: gitleaks on the staged changes, the denylist on the
+# staged diff, forbidden and ignored paths, the commit identity, and ruff on staged files.
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+exec uv run python scripts/commit_gate.py

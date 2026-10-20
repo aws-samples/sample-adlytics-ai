@@ -139,7 +139,8 @@ class TestDerivedValues:
         # The token endpoint lives on the login domain. Pointing it at the issuer
         # is a plausible mistake that fails only at the first code exchange.
         settings = _load()
-        assert settings.cognito_token_url == "https://auth.customer.com/oauth2/token"
+        # A-TEST-LITERALS-001: a token URL; see docs/security-dispositions.md
+        assert settings.cognito_token_url == "https://auth.customer.com/oauth2/token"  # nosec B105
         assert settings.cognito_revoke_url == "https://auth.customer.com/oauth2/revoke"
         assert settings.cognito_authorize_url == "https://auth.customer.com/oauth2/authorize"
 
@@ -348,7 +349,8 @@ class TestLoadingWithoutTheClientSecret:
         would mean naming a credential it is not permitted to read in order to pass
         validation.
         """
-        settings = load_settings(_with(ADL_COGNITO_CLIENT_SECRET=""), resolve_client_secret=False)
+        # A-TEST-LITERALS-001: the empty secret under test; see docs/security-dispositions.md
+        settings = load_settings(_with(ADL_COGNITO_CLIENT_SECRET=""), resolve_client_secret=False)  # nosec B106
         assert settings.environment == "dev"
 
     def test_the_secret_is_empty_rather_than_fetched(self) -> None:
@@ -358,7 +360,8 @@ class TestLoadingWithoutTheClientSecret:
         empty field after a successful load therefore means the fetch never ran.
         """
         settings = load_settings(
-            _with(ADL_COGNITO_CLIENT_SECRET="", ADL_COGNITO_CLIENT_SECRET_ID="arn:aws:secret"),
+            # A-TEST-LITERALS-001: the empty secret under test; see docs/security-dispositions.md
+            _with(ADL_COGNITO_CLIENT_SECRET="", ADL_COGNITO_CLIENT_SECRET_ID="arn:aws:secret"),  # nosec B106
             resolve_client_secret=False,
         )
         assert settings.cognito_client_secret.get_secret_value() == ""
@@ -371,7 +374,8 @@ class TestLoadingWithoutTheClientSecret:
         requirement having never been enforced.
         """
         with pytest.raises(InvariantError):
-            load_settings(_with(ADL_COGNITO_CLIENT_SECRET=""))
+            # A-TEST-LITERALS-001: the empty secret under test; see docs/security-dispositions.md
+            load_settings(_with(ADL_COGNITO_CLIENT_SECRET=""))  # nosec B106
 
     def test_skipping_the_fetch_does_not_skip_any_other_key(self) -> None:
         """Otherwise this accessor becomes a way to boot a misconfigured container.
@@ -404,7 +408,8 @@ class TestTheHarnessArnIsRequiredAtConversationComposition:
 @pytest.mark.covers("ADR-077")
 class TestTheRouteExchangeFunctionIsReadByItsDeployedName:
     def test_an_unrelated_function_starts_without_it(self) -> None:
-        assert _load().token_route_exchange_function == ""
+        # A-TEST-LITERALS-001: an empty-value assertion; see docs/security-dispositions.md
+        assert _load().token_route_exchange_function == ""  # nosec B105
 
     def test_the_deployed_arn_is_preserved(self) -> None:
         arn = "arn:aws:lambda:eu-west-1:111122223333:function:adlytics-dev-TokenRouteExchange"
@@ -443,7 +448,8 @@ def _token_service(**overrides: str) -> TokenServiceSettings:
 @pytest.mark.covers("ADR-077")
 class TestTokenServiceSettings:
     def test_every_value_is_read_from_its_deployed_name(self) -> None:
-        assert _token_service() == TokenServiceSettings(
+        # A-TEST-LITERALS-001: fictional settings; see docs/security-dispositions.md
+        assert _token_service() == TokenServiceSettings(  # nosec B106
             environment="dev",
             aws_region="eu-west-1",
             cognito_user_pool_id="eu-west-1_example",
@@ -463,7 +469,8 @@ class TestTokenServiceSettings:
 
     def test_the_agent_exchange_values_are_each_required_and_reported_together(self) -> None:
         with pytest.raises(InvariantError) as caught:
-            _token_service(
+            # A-TEST-LITERALS-001: the empty values under test; see docs/security-dispositions.md
+            _token_service(  # nosec B106
                 ADL_GATEWAY_TOKEN_AUDIENCE="", ADL_AGENT_CLIENT_ID="", ADL_AGENT_CLIENT_SECRET_ID=""
             )
 
@@ -483,7 +490,8 @@ class TestTokenServiceSettings:
 
     def test_every_missing_value_is_reported_at_once_by_name(self) -> None:
         with pytest.raises(InvariantError) as caught:
-            _token_service(ADL_TOKEN_ISSUER="", ADL_ROUTE_CLIENT_ID="")
+            # A-TEST-LITERALS-001: the empty values under test; see docs/security-dispositions.md
+            _token_service(ADL_TOKEN_ISSUER="", ADL_ROUTE_CLIENT_ID="")  # nosec B106
 
         assert caught.value.code == CONFIG_UNRESOLVED
         assert caught.value.context["missing"] == ["ADL_ROUTE_CLIENT_ID", "ADL_TOKEN_ISSUER"]

@@ -128,11 +128,13 @@ class TestToTokenSet:
             code=CODE,
             expect_refresh_token=False,
         )
-        assert tokens.refresh_token == ""
+        # A-TEST-LITERALS-001: an empty-token assertion; see docs/security-dispositions.md
+        assert tokens.refresh_token == ""  # nosec B105
 
     def test_an_absent_refresh_token_becomes_empty_not_missing(self) -> None:
         assert (
-            to_token_set({"access_token": "a.b.c", "expires_in": 900}, code=CODE).refresh_token
+            # A-TEST-LITERALS-001: an empty-token assertion; see docs/security-dispositions.md
+            to_token_set({"access_token": "a.b.c", "expires_in": 900}, code=CODE).refresh_token  # nosec B105
             == ""
         )
 

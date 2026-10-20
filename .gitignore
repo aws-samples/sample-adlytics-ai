@@ -78,16 +78,19 @@ evaluation/runs/
 project-context/
 .kiro/HANDOFF.md
 .kiro/state/
-.holmes/
-.holmesignore
-.protoshield/
 .import_linter_cache/
+# Operator-local publication inputs: the identifier denylist the publication gate reads and the
+# publish script.
+/local-denylist.txt
+/local-publish.sh
 
 # Retired browser prototypes must not re-enter the publication.
 screens/
 
 # Local test-run output.
 frontend/test-results/
+# Immutable run records written by scripts/run_record.py; docs/test-run-records.md owns the contract.
+.runs/
 
 # --- Local scratch ---
 tmp/
@@ -98,11 +101,10 @@ semantic-review/
 # never committed, because it contains cross-compiled binary wheels.
 build/
 
-# Mutation testing. The session database and generated config are per-run
-# artifacts; the reports under test-mutations/ are committed. See ADR-013.
-.cosmic-ray.toml
-.cosmic-ray.sqlite
-mutants/
+# Mutation testing. Every run's output (the cosmic-ray config and session database, the
+# StrykerJS report) lives in its run record under .runs/, with the coverage map and the
+# worksheets (docs/test-run-records.md). StrykerJS copies a package into its sandbox here.
+.stryker-tmp/
 
 # Note: docs/ is committed in full. Diagrams are hand-authored SVG files in diagrams/
 # directories beside their docs, or Mermaid inside the markdown, so there are no

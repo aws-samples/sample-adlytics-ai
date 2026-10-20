@@ -400,7 +400,7 @@ class TestSafeErrorReporting:
 
         def fail() -> None:
             # pragma: allowlist nextline secret (A-TEST-LITERALS-001)
-            secret_local = "local-secret"
+            secret_local = "local-secret"  # nosec B105
             raise RuntimeError(f"message-secret {secret_local}")
 
         try:

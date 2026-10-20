@@ -41,54 +41,33 @@ consider each of these against the module under review:
 Never propose a semantic mutation that changes a signature or fails to import.
 It must be a plausible thing a careful engineer could have written.
 
-## The report
+## Scope and tools
 
-One file per module under review, named for the module path with separators
-replaced by hyphens and the extension dropped. src/domain/measurement/figures.py
-becomes test-mutations/domain-measurement-figures.md.
+- Python is mutated with cosmic-ray, one module per run. TypeScript (frontend/, infra/) is
+  mutated with StrykerJS, one file group per run. The mechanical/semantic split above applies to
+  both languages.
+- Mutation runs only when the owner asks for one. Never add a mutation run to make verify, a
+  hook, `make publication-gate`, `make release-gate` or any automated gate.
+- `make mutate-next` runs the highest-priority unit whose coverage-map entry is missing or stale.
+  mutation-priorities.yaml owns the order. Never pick units by hand when the owner asks for "the
+  next batch".
+- Never re-run a unit whose coverage-map entry is current. An entry goes stale only when the
+  fingerprint docs/test-run-records.md defines changes.
 
-Record surviving mutants only. Never record killed mutants individually, and
-never write a report whose body is a statement that everything passed.
+## Run records and the coverage map
 
-Every report carries this structure:
-
-```markdown
-# Mutation review — <module path>
-
-- Commit: <full SHA the run was produced against>
-- Date: <YYYY-MM-DD>
-- Tool: cosmic-ray <version>
-- Command: <the exact re-runnable command>
-- Mutants: <total> generated, <n> killed, <n> survived
-- Survivors: <n> open, <n> killed since, <n> equivalent
-
-## S-01 · OPEN · <one-line summary>
-
-- Track: mechanical | semantic
-- Location: <file>:<line>
-- Mutants: <n> surviving at this location
-- Mutation: `<original>` becomes `<mutated>`
-- Survives because: <which assertion is missing or which assertion moves with the mutant>
-- Verdict: OPEN
-```
-
-Rules for the entries:
-
-- Group survivors that share one location and one cause into a single entry with
-  a count. Twenty operator substitutions on one type annotation are one finding,
-  and listing them separately buries the findings that differ.
-- Never group across locations, and never group an OPEN survivor with an
-  EQUIVALENT one.
-- Number survivors S-01 upward within a report. Never renumber an existing entry;
-  a resolved one keeps its number so a reader can follow it across dates.
-- Every survivor carries exactly one verdict: OPEN, KILLED, or EQUIVALENT.
-- A KILLED verdict names the pytest node ID that now kills it. Never write KILLED
-  without that identifier.
-- An EQUIVALENT verdict states why the mutation cannot change behaviour. Type
-  annotations under `from __future__ import annotations` and dataclass slots
-  arguments are the two known classes; name the class rather than re-deriving it.
+- Every mutation run writes a new run record through the run recorder. docs/test-run-records.md
+  owns the layout and metadata. Run records are gitignored and never edited after they are
+  written.
+- The local coverage map holds one current entry per unit: the fingerprint, the run record that
+  produced it, and the survivor verdicts. A verdict is OPEN, KILLED (naming the test ID that
+  kills it) or EQUIVALENT (naming the reason class).
 - Never mark a survivor EQUIVALENT because reproducing it is inconvenient.
-- Update the commit SHA and date on every rerun, even when nothing changed.
+- The semantic track is run like the mechanical one. Every semantic mutation is applied and
+  executed, and its result is recorded in the same run record.
+- The mutation score is never a threshold: it measures annotation density, not test quality
+  (ADR-013). `make release-gate` reports the coverage map (current, stale, missing, OPEN) and
+  never blocks on it.
 
 ## Resolving a survivor
 
@@ -99,10 +78,3 @@ Rules for the entries:
 - When a test derives its input from the constant it is checking, that test can
   never detect a change to that constant. Pin the boundary to a literal, and
   assert the constant separately against the requirement that fixed it.
-
-## What this is not
-
-- The mutation score is never a merge gate and never appears in a report as a
-  pass or fail. Report the counts and triage each survivor.
-- Never add a mutation run to make verify, to a pre-commit hook, or to any
-  automated gate that runs on every change.

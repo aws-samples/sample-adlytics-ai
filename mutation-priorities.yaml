@@ -1,0 +1,4158 @@
+# Mutation priorities: the units `make mutate-next` works through, in tier then file order.
+# Authored, not generated. `uv run python scripts/mutation.py propose` printed the first version,
+# mapping each unit to the tests that import it; review and edit it by hand from then on.
+#
+# Extend it: add `- unit: <path>` with `tests: [<test files that exercise it>]` under the tier
+# the unit belongs to (T1 domain, inbound handlers and frontend figure formatting; T2 other
+# frontend, outbound adapters and jobs; T3 infra/lib). `mutate: [<paths>]` is optional and
+# defaults to the unit itself; a python unit mutates exactly one module. `tests: []` marks a
+# unit as untested, which every mutation command reports and skips. Moving a unit between tiers
+# or reordering never makes its coverage stale; changing its mutate or tests list does.
+# docs/test-run-records.md (Mutation fingerprint) says what makes an entry stale.
+version: 1
+tiers:
+  T1:
+    description: 'Domain logic, inbound request handlers and the frontend figure-formatting library: a
+      blind spot here can show a wrong figure or admit a wrong request.'
+    units:
+    - unit: frontend/lib/change.ts
+      tests:
+      - frontend/test/change-chip.test.tsx
+    - unit: frontend/lib/display-value.ts
+      tests:
+      - frontend/test/display-value.test.ts
+    - unit: frontend/lib/exact-format.ts
+      tests:
+      - frontend/test/new-customers-view.test.tsx
+      - frontend/test/precision-primitives.test.tsx
+      - frontend/test/scorecard-view.test.tsx
+    - unit: src/adapters/inbound/auth_handlers/authorizer.py
+      tests:
+      - tests/unit/test_auth_handler_tracing.py
+      - tests/unit/test_authorizer_context.py
+      - tests/unit/test_origin_verify.py
+    - unit: src/adapters/inbound/auth_handlers/events.py
+      tests:
+      - tests/unit/test_event_routing.py
+    - unit: src/adapters/inbound/auth_handlers/handlers.py
+      tests:
+      - tests/unit/test_auth_handler_tracing.py
+      - tests/unit/test_auth_provider_failure_reporting.py
+      - tests/unit/test_origin_verify.py
+      - tests/unit/test_session_entitlements.py
+    - unit: src/adapters/inbound/auth_handlers/origin_verify.py
+      tests:
+      - tests/unit/test_origin_verify.py
+    - unit: src/adapters/inbound/auth_handlers/routing.py
+      tests:
+      - tests/unit/test_event_routing.py
+    - unit: src/adapters/inbound/conversation/block_runtime.py
+      tests:
+      - tests/unit/test_conversation_server.py
+      - tests/unit/test_managed_conversation_runtime.py
+      - tests/unit/test_relay_refusal_receipts.py
+    - unit: src/adapters/inbound/conversation/contract_codec.py
+      tests:
+      - tests/unit/test_answer_stream.py
+      - tests/unit/test_evaluation_gate_adapters.py
+      - tests/unit/test_evaluation_release.py
+    - unit: src/adapters/inbound/conversation/server.py
+      tests:
+      - tests/unit/test_conversation_server.py
+    - unit: src/adapters/inbound/conversation/sse.py
+      tests:
+      - tests/unit/test_relay_refusal_receipts.py
+      - tests/unit/test_structured_conversation_route.py
+    - unit: src/adapters/inbound/conversation/turns.py
+      tests:
+      - tests/unit/test_conversation_server.py
+      - tests/unit/test_managed_conversation_turns.py
+      - tests/unit/test_page_context_turns.py
+    - unit: src/adapters/inbound/correlation.py
+      tests:
+      - tests/unit/test_presentation_handler.py
+      - tests/unit/test_request_correlation.py
+    - unit: src/adapters/inbound/gateway_interceptor/handler.py
+      tests:
+      - tests/unit/test_gateway_interceptor.py
+      - tests/unit/test_probe_identity_latency.py
+    - unit: src/adapters/inbound/ingestion_handlers/delivery_plan.py
+      tests:
+      - tests/unit/test_ingestion_graph_materialize.py
+      - tests/unit/test_ingestion_handler.py
+      - tests/unit/test_ingestion_phase_one.py
+    - unit: src/adapters/inbound/ingestion_handlers/graph_claim.py
+      tests:
+      - tests/unit/test_execution_graph_dispatch.py
+      - tests/unit/test_graph_whole_chain.py
+      - tests/unit/test_ingestion_graph_materialize.py
+      - tests/unit/test_table_writer.py
+    - unit: src/adapters/inbound/ingestion_handlers/graph_materialize.py
+      tests:
+      - tests/unit/test_ingestion_graph_materialize.py
+      - tests/unit/test_table_writer.py
+    - unit: src/adapters/inbound/ingestion_handlers/graph_publish.py
+      tests:
+      - tests/unit/test_execution_graph_worker_composition.py
+      - tests/unit/test_graph_publish.py
+      - tests/unit/test_graph_whole_chain.py
+      - tests/unit/test_table_writer.py
+    - unit: src/adapters/inbound/ingestion_handlers/graph_unit.py
+      tests:
+      - tests/unit/test_graph_whole_chain.py
+      - tests/unit/test_table_writer.py
+    - unit: src/adapters/inbound/ingestion_handlers/ingress.py
+      tests:
+      - tests/unit/test_ingestion_authority_boundary.py
+    - unit: src/adapters/inbound/ingestion_handlers/inline_run.py
+      tests:
+      - tests/unit/test_athena_start_census.py
+      - tests/unit/test_ingestion_handler.py
+      - tests/unit/test_inline_run.py
+      - tests/unit/test_table_writer.py
+    - unit: src/adapters/inbound/ingestion_handlers/load.py
+      tests:
+      - tests/unit/test_ingestion_graph_materialize.py
+      - tests/unit/test_ingestion_handler.py
+      - tests/unit/test_new_to_brand_buyers.py
+    - unit: src/adapters/inbound/ingestion_handlers/table_attempt_protocol.py
+      tests: []
+    - unit: src/adapters/inbound/ingestion_handlers/table_writer.py
+      tests:
+      - tests/unit/test_athena_start_census.py
+      - tests/unit/test_requeue_orphan_plan_units.py
+      - tests/unit/test_table_writer.py
+    - unit: src/adapters/inbound/operational_status/explanation.py
+      tests:
+      - tests/unit/test_flow_explain.py
+      - tests/unit/test_operational_status_api.py
+    - unit: src/adapters/inbound/operational_status/handler.py
+      tests:
+      - tests/unit/test_operational_status_api.py
+    - unit: src/adapters/inbound/presentation_handlers/handler.py
+      tests:
+      - tests/unit/test_graph_whole_chain.py
+      - tests/unit/test_presentation_handler.py
+    - unit: src/adapters/inbound/presentation_handlers/insights.py
+      tests:
+      - tests/unit/test_insight_assembly.py
+      - tests/unit/test_insight_continuation_handler.py
+      - tests/unit/test_insight_precompute_handler.py
+      - tests/unit/test_insight_request_identity.py
+      - tests/unit/test_presentation_handler.py
+      - tests/unit/test_preset_insight_fill.py
+      - tests/unit/test_retained_campaign_artifact_materializer.py
+      - tests/unit/test_retained_insight_planning.py
+    - unit: src/adapters/inbound/producer_handlers/finalizer.py
+      tests:
+      - tests/unit/test_producer_finalizer.py
+    - unit: src/adapters/inbound/prompt_admin/handler.py
+      tests:
+      - tests/unit/test_prompt_admin_handler.py
+    - unit: src/adapters/inbound/quality_review/handler.py
+      tests:
+      - tests/unit/test_agent_quality_audit.py
+      - tests/unit/test_quality_review_client.py
+    - unit: src/adapters/inbound/run_requests/handler.py
+      tests:
+      - tests/unit/test_run_request_handler.py
+    - unit: src/adapters/inbound/run_requests/service.py
+      tests:
+      - tests/unit/test_execution_graph_legacy_head.py
+      - tests/unit/test_execution_graph_lineage.py
+      - tests/unit/test_execution_graph_operator.py
+      - tests/unit/test_execution_graph_protocol.py
+      - tests/unit/test_execution_graph_release.py
+      - tests/unit/test_flow_explain.py
+      - tests/unit/test_ingestion_authority_boundary.py
+      - tests/unit/test_ingestion_graph_materialize.py
+      - tests/unit/test_ingestion_root_flow.py
+      - tests/unit/test_land_fixtures.py
+      - tests/unit/test_run_request_admission.py
+      - tests/unit/test_run_request_store.py
+    - unit: src/adapters/inbound/token_service/issuer.py
+      tests:
+      - tests/unit/test_token_service_handlers.py
+    - unit: src/adapters/inbound/token_service/route_exchange.py
+      tests:
+      - tests/unit/test_token_service_handlers.py
+    - unit: src/adapters/inbound/tool_handlers/caller.py
+      tests:
+      - tests/unit/test_tool_caller.py
+      - tests/unit/test_tool_caller_gate.py
+    - unit: src/adapters/inbound/tool_handlers/catalog.py
+      tests:
+      - tests/unit/test_catalog_entrypoint.py
+      - tests/unit/test_catalog_tool.py
+      - tests/unit/test_new_to_brand_absent.py
+      - tests/unit/test_new_to_brand_buyers.py
+      - tests/unit/test_tool_caller_gate.py
+      - tests/unit/test_tool_schemas.py
+    - unit: src/adapters/inbound/tool_handlers/catalog_entrypoint.py
+      tests:
+      - tests/unit/test_catalog_entrypoint.py
+      - tests/unit/test_tool_caller_gate.py
+      - tests/unit/test_tool_schemas.py
+    - unit: src/adapters/inbound/tool_handlers/dimension_labels.py
+      tests:
+      - tests/unit/test_audience_segments.py
+      - tests/unit/test_bake_roster_names_composition.py
+      - tests/unit/test_dimension_labels.py
+      - tests/unit/test_entity_catalog.py
+      - tests/unit/test_evaluation_v4_cases.py
+      - tests/unit/test_new_to_brand_buyers_campaign.py
+      - tests/unit/test_segment_profile.py
+    - unit: src/adapters/inbound/tool_handlers/gateway.py
+      tests:
+      - tests/unit/test_agentcore_harness.py
+      - tests/unit/test_bake_page_registry.py
+      - tests/unit/test_bake_roster_names_composition.py
+      - tests/unit/test_gateway_invocation.py
+      - tests/unit/test_measurement_dispatch.py
+      - tests/unit/test_measurement_operations.py
+      - tests/unit/test_resolved_measurement.py
+      - tests/unit/test_tool_caller_gate.py
+      - tests/unit/test_turn_timing.py
+    - unit: src/adapters/inbound/tool_handlers/measurement.py
+      tests:
+      - tests/unit/test_acquisition_cohorts.py
+      - tests/unit/test_audience_segments.py
+      - tests/unit/test_d2_chat_seams.py
+      - tests/unit/test_dimension_labels.py
+      - tests/unit/test_evaluation_v4_cases.py
+      - tests/unit/test_exposure_frequency.py
+      - tests/unit/test_measurement_dispatch.py
+      - tests/unit/test_measurement_operations.py
+      - tests/unit/test_measurement_tool.py
+      - tests/unit/test_network_scorecard.py
+      - tests/unit/test_new_customers.py
+      - tests/unit/test_new_customers_source.py
+      - tests/unit/test_new_to_brand_buyers.py
+      - tests/unit/test_new_to_brand_buyers_campaign.py
+      - tests/unit/test_new_to_brand_buyers_channel.py
+      - tests/unit/test_presentation_handler.py
+      - tests/unit/test_reach_source.py
+      - tests/unit/test_resolved_measurement.py
+      - tests/unit/test_retail_health_preset_source.py
+      - tests/unit/test_retained_campaign_artifact_materializer.py
+      - tests/unit/test_retention_source.py
+      - tests/unit/test_segment_profile.py
+      - tests/unit/test_shopper_aggregate_reads.py
+      - tests/unit/test_tool_caller_gate.py
+      - tests/unit/test_tool_schemas.py
+    - unit: src/adapters/inbound/tool_handlers/measurement_dispatch.py
+      tests:
+      - tests/unit/test_measurement_dispatch.py
+    - unit: src/adapters/inbound/tool_handlers/measurement_entrypoint.py
+      tests:
+      - tests/unit/test_tool_caller_gate.py
+    - unit: src/adapters/inbound/tool_handlers/resolved_measurement.py
+      tests:
+      - tests/unit/test_measurement_dispatch.py
+      - tests/unit/test_resolved_measurement.py
+    - unit: src/adapters/inbound/tool_handlers/schemas.py
+      tests:
+      - tests/unit/test_d2_chat_seams.py
+      - tests/unit/test_measurement_tool.py
+      - tests/unit/test_tool_schemas.py
+    - unit: src/domain/capabilities/paid_features.py
+      tests:
+      - tests/unit/test_audience_segments.py
+      - tests/unit/test_audiences_parity.py
+      - tests/unit/test_catalog_tool.py
+      - tests/unit/test_paid_feature_state.py
+      - tests/unit/test_segment_profile.py
+    - unit: src/domain/catalog/answers.py
+      tests:
+      - tests/unit/test_catalog_tool.py
+    - unit: src/domain/catalog/capability.py
+      tests:
+      - tests/unit/test_audience_segments.py
+      - tests/unit/test_catalog_tool.py
+      - tests/unit/test_change_semantics.py
+      - tests/unit/test_exact_only_axes.py
+      - tests/unit/test_exposure_frequency.py
+      - tests/unit/test_exposure_groups.py
+      - tests/unit/test_figures.py
+      - tests/unit/test_measurement_dispatch.py
+      - tests/unit/test_measurement_tool.py
+      - tests/unit/test_metric_dictionary.py
+      - tests/unit/test_new_customers.py
+      - tests/unit/test_new_to_brand_buyers.py
+      - tests/unit/test_new_to_brand_buyers_campaign.py
+      - tests/unit/test_new_to_brand_buyers_channel.py
+      - tests/unit/test_periodic_presentation.py
+      - tests/unit/test_periodic_serving.py
+      - tests/unit/test_planning.py
+      - tests/unit/test_publication_selection.py
+      - tests/unit/test_resolved_analytical_request.py
+      - tests/unit/test_resolved_measurement.py
+      - tests/unit/test_segment_profile.py
+      - tests/unit/test_shopper_aggregates.py
+      - tests/unit/test_source_platforms.py
+    - unit: src/domain/catalog/freshness.py
+      tests:
+      - tests/unit/test_freshness.py
+      - tests/unit/test_measurement_operations.py
+      - tests/unit/test_measurement_tool.py
+      - tests/unit/test_network_scorecard.py
+      - tests/unit/test_presentation_handler.py
+      - tests/unit/test_temporal.py
+    - unit: src/domain/conversation/answer_stream.py
+      tests:
+      - tests/unit/test_agentcore_harness.py
+      - tests/unit/test_answer_stream.py
+      - tests/unit/test_conversation_server.py
+      - tests/unit/test_managed_conversation_runtime.py
+      - tests/unit/test_page_context_turns.py
+      - tests/unit/test_probe_agent_quality_loop.py
+      - tests/unit/test_relay_refusal_receipts.py
+      - tests/unit/test_structured_conversation_route.py
+    - unit: src/domain/conversation/audit.py
+      tests:
+      - tests/unit/test_accept_managed_harness.py
+      - tests/unit/test_agent_quality_audit.py
+      - tests/unit/test_backfill_record_expiry.py
+      - tests/unit/test_conversation_server.py
+      - tests/unit/test_evaluation_dispatch.py
+      - tests/unit/test_evaluation_outbox_dispatcher_handler.py
+      - tests/unit/test_managed_conversation_runtime.py
+      - tests/unit/test_probe_agent_quality_loop.py
+      - tests/unit/test_quality_review_client.py
+      - tests/unit/test_record_family_stores.py
+      - tests/unit/test_relay_refusal_receipts.py
+    - unit: src/domain/conversation/audit_findings.py
+      tests:
+      - tests/unit/test_probe_agent_quality_loop.py
+      - tests/unit/test_quality_review_client.py
+    - unit: src/domain/conversation/contract_common.py
+      tests: []
+    - unit: src/domain/conversation/grounded_evaluation.py
+      tests:
+      - tests/unit/test_evaluation_v4_cases.py
+      - tests/unit/test_grounded_evaluation.py
+      - tests/unit/test_managed_conversation_runtime.py
+    - unit: src/domain/conversation/managed.py
+      tests:
+      - tests/unit/test_agentcore_harness.py
+      - tests/unit/test_conversation_server.py
+      - tests/unit/test_managed_conversation_runtime.py
+      - tests/unit/test_managed_conversation_turns.py
+      - tests/unit/test_relay_refusal_receipts.py
+      - tests/unit/test_turn_timing.py
+    - unit: src/domain/conversation/page_context.py
+      tests:
+      - tests/unit/test_conversation_server.py
+      - tests/unit/test_page_context_turns.py
+    - unit: src/domain/conversation/periodic.py
+      tests:
+      - tests/unit/test_periodic_presentation.py
+    - unit: src/domain/conversation/stream.py
+      tests:
+      - tests/unit/test_conversation_server.py
+    - unit: src/domain/conversation/temporal.py
+      tests:
+      - tests/unit/test_d2_chat_seams.py
+      - tests/unit/test_periodic_presentation.py
+    - unit: src/domain/conversation/tool_custody.py
+      tests:
+      - tests/unit/test_agentcore_harness.py
+      - tests/unit/test_grounded_evaluation.py
+      - tests/unit/test_managed_conversation_runtime.py
+      - tests/unit/test_tool_custody.py
+    - unit: src/domain/curation/assertions.py
+      tests:
+      - tests/unit/test_curation_assertions.py
+      - tests/unit/test_curation_ingestion.py
+      - tests/unit/test_new_to_brand_buyers.py
+      - tests/unit/test_semantic_sidecar.py
+      - tests/unit/test_shopper_aggregates.py
+    - unit: src/domain/curation/ingestion.py
+      tests:
+      - tests/unit/test_curation_ingestion.py
+      - tests/unit/test_curation_readers.py
+      - tests/unit/test_exposure_frequency.py
+      - tests/unit/test_land_fixtures.py
+      - tests/unit/test_new_to_brand_buyers.py
+      - tests/unit/test_pack_variants.py
+      - tests/unit/test_reprocess_discard_policies.py
+      - tests/unit/test_seed_pre_landing.py
+      - tests/unit/test_semantic_sidecar.py
+      - tests/unit/test_shopper_aggregates.py
+      - tests/unit/test_withheld_residual.py
+    - unit: src/domain/curation/landing.py
+      tests:
+      - tests/unit/test_acquisition_cohorts.py
+      - tests/unit/test_audience_segments.py
+      - tests/unit/test_curation_ingestion.py
+      - tests/unit/test_curation_landing.py
+      - tests/unit/test_dsp_reach.py
+      - tests/unit/test_exposure_frequency.py
+      - tests/unit/test_exposure_groups.py
+      - tests/unit/test_ingestion_graph_materialize.py
+      - tests/unit/test_ingestion_handler.py
+      - tests/unit/test_land_fixtures.py
+      - tests/unit/test_land_settled.py
+      - tests/unit/test_new_customers.py
+      - tests/unit/test_new_to_brand_buyers.py
+      - tests/unit/test_new_to_brand_buyers_campaign.py
+      - tests/unit/test_new_to_brand_buyers_channel.py
+      - tests/unit/test_probe_pipeline_settled.py
+      - tests/unit/test_reprocess_discard_policies.py
+      - tests/unit/test_reprocess_semantic_v2.py
+      - tests/unit/test_seed_pre_landing.py
+      - tests/unit/test_semantic_sidecar.py
+      - tests/unit/test_shopper_aggregates.py
+      - tests/unit/test_system_observed_snapshot.py
+      - tests/unit/test_withheld_residual.py
+    - unit: src/domain/curation/mapping.py
+      tests:
+      - tests/unit/test_curation_assertions.py
+      - tests/unit/test_curation_ingestion.py
+      - tests/unit/test_curation_landing.py
+      - tests/unit/test_curation_readers.py
+      - tests/unit/test_curation_traps.py
+      - tests/unit/test_land_fixtures.py
+      - tests/unit/test_new_to_brand_buyers.py
+      - tests/unit/test_seed_pre_landing.py
+      - tests/unit/test_semantic_sidecar.py
+      - tests/unit/test_shopper_aggregates.py
+      - tests/unit/test_values.py
+      - tests/unit/test_withheld_residual.py
+    - unit: src/domain/curation/watermarks.py
+      tests:
+      - tests/unit/test_watermarks.py
+    - unit: src/domain/data_contracts/contract.py
+      tests:
+      - tests/unit/test_acquisition_cohorts.py
+      - tests/unit/test_amc_csv.py
+      - tests/unit/test_amc_segment_registry.py
+      - tests/unit/test_business_outcome_contract_gates.py
+      - tests/unit/test_campaign_insights.py
+      - tests/unit/test_curation_assertions.py
+      - tests/unit/test_curation_ingestion.py
+      - tests/unit/test_curation_landing.py
+      - tests/unit/test_curation_readers.py
+      - tests/unit/test_curation_traps.py
+      - tests/unit/test_data_contracts.py
+      - tests/unit/test_dsp_reach.py
+      - tests/unit/test_entity_catalog.py
+      - tests/unit/test_fixture_generation.py
+      - tests/unit/test_insight_finding_units.py
+      - tests/unit/test_insight_next_steps.py
+      - tests/unit/test_land_fixtures.py
+      - tests/unit/test_measurement_dispatch.py
+      - tests/unit/test_measurement_operations.py
+      - tests/unit/test_measurement_tool.py
+      - tests/unit/test_new_customers.py
+      - tests/unit/test_new_to_brand_buyers.py
+      - tests/unit/test_new_to_brand_buyers_campaign.py
+      - tests/unit/test_new_to_brand_buyers_channel.py
+      - tests/unit/test_planning.py
+      - tests/unit/test_publication_selection.py
+      - tests/unit/test_resolved_measurement.py
+      - tests/unit/test_retention.py
+      - tests/unit/test_retention_source.py
+      - tests/unit/test_schema_generation.py
+      - tests/unit/test_shopper_aggregates.py
+      - tests/unit/test_source_platforms.py
+      - tests/unit/test_withheld_residual.py
+    - unit: src/domain/data_contracts/schema.py
+      tests:
+      - tests/unit/test_athena_literals.py
+      - tests/unit/test_curation_readers.py
+      - tests/unit/test_d2_chat_seams.py
+      - tests/unit/test_fixture_conformance.py
+      - tests/unit/test_fixture_generation.py
+      - tests/unit/test_schema_generation.py
+    - unit: src/domain/data_contracts/validation.py
+      tests:
+      - tests/unit/test_amc_segment_registry.py
+      - tests/unit/test_business_outcome_contract_gates.py
+      - tests/unit/test_curation_ingestion.py
+      - tests/unit/test_data_contracts.py
+      - tests/unit/test_reprocess_semantic_v2.py
+    - unit: src/domain/evaluation/dispatch.py
+      tests:
+      - tests/unit/test_evaluation_dispatch.py
+    - unit: src/domain/evaluation/envelope.py
+      tests:
+      - tests/unit/test_evaluation_outbox.py
+      - tests/unit/test_record_family_stores.py
+      - tests/unit/test_sqs_receipt_attributes.py
+    - unit: src/domain/evaluation/gate.py
+      tests:
+      - tests/unit/test_evaluation_gate_adapters.py
+      - tests/unit/test_evaluation_gate_provider.py
+      - tests/unit/test_evaluation_gate_spec.py
+      - tests/unit/test_evaluation_v4_cases.py
+      - tests/unit/test_probe_evaluation_custody.py
+    - unit: src/domain/evaluation/linkage.py
+      tests:
+      - tests/unit/test_accept_managed_harness.py
+      - tests/unit/test_agent_quality_audit.py
+      - tests/unit/test_evaluation_dispatch.py
+      - tests/unit/test_evaluation_outbox_dispatcher_handler.py
+      - tests/unit/test_evaluation_result_ingress.py
+      - tests/unit/test_evaluation_result_link.py
+      - tests/unit/test_evaluation_result_linker_handler.py
+      - tests/unit/test_evaluation_writer_handler.py
+      - tests/unit/test_probe_agent_quality_loop.py
+      - tests/unit/test_quality_review_client.py
+      - tests/unit/test_record_family_stores.py
+      - tests/unit/test_run_d2_chat_acceptance.py
+    - unit: src/domain/evaluation/outbox.py
+      tests:
+      - tests/unit/test_agent_quality_audit.py
+      - tests/unit/test_evaluation_dispatch.py
+      - tests/unit/test_evaluation_outbox.py
+      - tests/unit/test_evaluation_result_ingress.py
+      - tests/unit/test_quality_review_client.py
+      - tests/unit/test_record_family_stores.py
+    - unit: src/domain/evaluation/quality.py
+      tests:
+      - tests/unit/test_errors.py
+      - tests/unit/test_evaluation_quality.py
+      - tests/unit/test_evaluation_result_linker_handler.py
+    - unit: src/domain/evaluation/release.py
+      tests:
+      - tests/unit/test_accept_managed_harness.py
+      - tests/unit/test_agent_quality_audit.py
+      - tests/unit/test_evaluation_dispatch.py
+      - tests/unit/test_evaluation_gate_adapters.py
+      - tests/unit/test_evaluation_gate_provider.py
+      - tests/unit/test_evaluation_gate_spec.py
+      - tests/unit/test_evaluation_outbox_dispatcher_handler.py
+      - tests/unit/test_evaluation_release.py
+      - tests/unit/test_evaluation_result_ingress.py
+      - tests/unit/test_evaluation_result_link.py
+      - tests/unit/test_evaluation_result_linker_handler.py
+      - tests/unit/test_probe_agent_quality_loop.py
+      - tests/unit/test_probe_evaluation_custody.py
+      - tests/unit/test_quality_review_client.py
+      - tests/unit/test_record_family_stores.py
+    - unit: src/domain/identity/authorization.py
+      tests:
+      - tests/unit/test_auth_handler_tracing.py
+      - tests/unit/test_authorization.py
+      - tests/unit/test_route_authorization.py
+      - tests/unit/test_run_request_handler.py
+    - unit: src/domain/identity/caller.py
+      tests:
+      - tests/unit/test_caller_principal.py
+      - tests/unit/test_tool_caller.py
+    - unit: src/domain/identity/cookies.py
+      tests:
+      - tests/unit/test_config.py
+      - tests/unit/test_cookies.py
+    - unit: src/domain/identity/issuance.py
+      tests:
+      - tests/unit/test_caller_principal.py
+      - tests/unit/test_issued_tokens.py
+      - tests/unit/test_token_issuance.py
+      - tests/unit/test_token_service_handlers.py
+    - unit: src/domain/identity/issued_tokens.py
+      tests:
+      - tests/unit/test_caller_principal.py
+      - tests/unit/test_issued_tokens.py
+    - unit: src/domain/identity/login_flow.py
+      tests:
+      - tests/unit/test_login_flow.py
+    - unit: src/domain/identity/operator_directory.py
+      tests:
+      - tests/unit/test_operator_email_resolver.py
+      - tests/unit/test_prompt_admin_handler.py
+      - tests/unit/test_prompt_authorship.py
+    - unit: src/domain/identity/origin_verify.py
+      tests:
+      - tests/unit/test_origin_verify.py
+      - tests/unit/test_rotate_origin_verify.py
+    - unit: src/domain/identity/session.py
+      tests:
+      - tests/unit/test_agent_quality_audit.py
+      - tests/unit/test_auth_handler_tracing.py
+      - tests/unit/test_auth_provider_failure_reporting.py
+      - tests/unit/test_authorization.py
+      - tests/unit/test_caller_principal.py
+      - tests/unit/test_cognito_translation.py
+      - tests/unit/test_conversation_server.py
+      - tests/unit/test_cookies.py
+      - tests/unit/test_event_routing.py
+      - tests/unit/test_identity.py
+      - tests/unit/test_issued_tokens.py
+      - tests/unit/test_login_flow.py
+      - tests/unit/test_managed_conversation_turns.py
+      - tests/unit/test_origin_verify.py
+      - tests/unit/test_quality_review_client.py
+      - tests/unit/test_reach_presentation.py
+      - tests/unit/test_route_authorization.py
+      - tests/unit/test_route_exchange_client.py
+      - tests/unit/test_run_request_handler.py
+      - tests/unit/test_session_entitlements.py
+      - tests/unit/test_token_issuance.py
+      - tests/unit/test_tokens.py
+    - unit: src/domain/identity/tokens.py
+      tests:
+      - tests/unit/test_authorizer_context.py
+      - tests/unit/test_caller_principal.py
+      - tests/unit/test_cookies.py
+      - tests/unit/test_issued_tokens.py
+      - tests/unit/test_route_authorization.py
+      - tests/unit/test_token_service_handlers.py
+      - tests/unit/test_tokens.py
+    - unit: src/domain/measurement/answers.py
+      tests:
+      - tests/unit/test_dimension_labels.py
+      - tests/unit/test_measurement_tool.py
+      - tests/unit/test_reach_source.py
+    - unit: src/domain/measurement/comparison.py
+      tests:
+      - tests/unit/test_audience_segments.py
+      - tests/unit/test_change_semantics.py
+      - tests/unit/test_comparison.py
+      - tests/unit/test_measurement_operations.py
+      - tests/unit/test_resolved_measurement.py
+    - unit: src/domain/measurement/figures.py
+      tests:
+      - tests/unit/test_audience_segments.py
+      - tests/unit/test_comparison.py
+      - tests/unit/test_exposure_frequency.py
+      - tests/unit/test_figures.py
+      - tests/unit/test_segment_profile.py
+    - unit: src/domain/measurement/lenses.py
+      tests:
+      - tests/unit/test_resolved_measurement.py
+    - unit: src/domain/measurement/pack_coverage.py
+      tests:
+      - tests/unit/test_dsp_reach.py
+      - tests/unit/test_measurement_tool.py
+      - tests/unit/test_new_customers.py
+      - tests/unit/test_new_customers_source.py
+      - tests/unit/test_new_to_brand_absent.py
+      - tests/unit/test_planning.py
+      - tests/unit/test_publication_selection.py
+    - unit: src/domain/measurement/periodic.py
+      tests:
+      - tests/unit/test_d2_chat_seams.py
+      - tests/unit/test_pack_variants.py
+      - tests/unit/test_periodic_serving.py
+      - tests/unit/test_retention.py
+      - tests/unit/test_source_platforms.py
+    - unit: src/domain/measurement/planning.py
+      tests:
+      - tests/unit/test_acquisition_cohorts.py
+      - tests/unit/test_athena_composition.py
+      - tests/unit/test_audience_segments.py
+      - tests/unit/test_bake_pin_certificate.py
+      - tests/unit/test_d2_chat_seams.py
+      - tests/unit/test_dimension_labels.py
+      - tests/unit/test_evaluation_v4_cases.py
+      - tests/unit/test_exact_only_axes.py
+      - tests/unit/test_exposure_frequency.py
+      - tests/unit/test_exposure_groups.py
+      - tests/unit/test_figures.py
+      - tests/unit/test_measurement_operations.py
+      - tests/unit/test_measurement_tool.py
+      - tests/unit/test_network_scorecard.py
+      - tests/unit/test_new_customers.py
+      - tests/unit/test_new_customers_presentation.py
+      - tests/unit/test_new_customers_source.py
+      - tests/unit/test_new_to_brand_absent.py
+      - tests/unit/test_new_to_brand_buyers.py
+      - tests/unit/test_new_to_brand_buyers_campaign.py
+      - tests/unit/test_new_to_brand_buyers_channel.py
+      - tests/unit/test_periodic_serving.py
+      - tests/unit/test_planning.py
+      - tests/unit/test_ports.py
+      - tests/unit/test_presentation_handler.py
+      - tests/unit/test_publication_selection.py
+      - tests/unit/test_reach_source.py
+      - tests/unit/test_resolved_measurement.py
+      - tests/unit/test_retail_health_preset_source.py
+      - tests/unit/test_retained_campaign_artifact_materializer.py
+      - tests/unit/test_retention_source.py
+      - tests/unit/test_segment_profile.py
+      - tests/unit/test_shopper_aggregate_reads.py
+      - tests/unit/test_shopper_aggregates.py
+      - tests/unit/test_source_platforms.py
+      - tests/unit/test_tool_schemas.py
+    - unit: src/domain/measurement/publications.py
+      tests:
+      - tests/unit/test_athena_composition.py
+      - tests/unit/test_audience_segments.py
+      - tests/unit/test_ports.py
+      - tests/unit/test_retention_source.py
+    - unit: src/domain/measurement/rosters.py
+      tests:
+      - tests/unit/test_athena_start_census.py
+      - tests/unit/test_audience_segments.py
+      - tests/unit/test_exposure_frequency.py
+      - tests/unit/test_new_customers.py
+      - tests/unit/test_new_customers_source.py
+      - tests/unit/test_new_to_brand_buyers_campaign.py
+      - tests/unit/test_new_to_brand_buyers_channel.py
+      - tests/unit/test_reach_source.py
+      - tests/unit/test_segment_profile.py
+    - unit: src/domain/narrative/publication.py
+      tests:
+      - tests/unit/test_agentcore_harness.py
+      - tests/unit/test_answer_publication.py
+      - tests/unit/test_audience_segments.py
+      - tests/unit/test_catalog_entrypoint.py
+      - tests/unit/test_catalog_tool.py
+      - tests/unit/test_evaluation_v4_cases.py
+      - tests/unit/test_grounded_evaluation.py
+      - tests/unit/test_measurement_dispatch.py
+      - tests/unit/test_measurement_operations.py
+      - tests/unit/test_measurement_tool.py
+      - tests/unit/test_shaped_response.py
+      - tests/unit/test_tool_custody.py
+    - unit: src/domain/narrative/shaped_response.py
+      tests:
+      - tests/unit/test_audience_segments.py
+      - tests/unit/test_campaign_attribution.py
+      - tests/unit/test_campaign_estate_acceptance.py
+      - tests/unit/test_campaign_portfolio.py
+      - tests/unit/test_catalog_tool.py
+      - tests/unit/test_change_semantics.py
+      - tests/unit/test_channel_robustness.py
+      - tests/unit/test_comparison.py
+      - tests/unit/test_d2_chat_seams.py
+      - tests/unit/test_data_health.py
+      - tests/unit/test_evaluation_v4_cases.py
+      - tests/unit/test_exposure_frequency.py
+      - tests/unit/test_figures.py
+      - tests/unit/test_focus_share_rule.py
+      - tests/unit/test_marketplace_comparison.py
+      - tests/unit/test_measurement_operations.py
+      - tests/unit/test_measurement_tool.py
+      - tests/unit/test_metric_dictionary.py
+      - tests/unit/test_metric_focus.py
+      - tests/unit/test_network_scorecard.py
+      - tests/unit/test_planning.py
+      - tests/unit/test_presentation_handler.py
+      - tests/unit/test_preset_insight_fill.py
+      - tests/unit/test_retail_health.py
+      - tests/unit/test_retail_health_product.py
+      - tests/unit/test_retention_source.py
+      - tests/unit/test_returns_context.py
+      - tests/unit/test_shaped_response.py
+      - tests/unit/test_tracing.py
+      - tests/unit/test_values.py
+    - unit: src/domain/operations/athena_start_budget.py
+      tests:
+      - tests/unit/test_athena_start_budget.py
+    - unit: src/domain/operations/bake_scheduling.py
+      tests:
+      - tests/unit/test_bake_scheduling.py
+      - tests/unit/test_graph_bake.py
+      - tests/unit/test_stuck_flow_detector.py
+    - unit: src/domain/operations/companions.py
+      tests:
+      - tests/unit/test_operational_status_companions.py
+    - unit: src/domain/operations/cutover.py
+      tests:
+      - tests/unit/test_execution_graph_cutover.py
+      - tests/unit/test_probe_ingestion_traceability_p6.py
+      - tests/unit/test_stage1_reconcile_jobs.py
+    - unit: src/domain/operations/execution_cursor.py
+      tests:
+      - tests/unit/test_execution_cursor.py
+      - tests/unit/test_flow_explain.py
+    - unit: src/domain/operations/execution_graph.py
+      tests:
+      - tests/unit/test_execution_graph_cutover.py
+      - tests/unit/test_execution_graph_dispatch.py
+      - tests/unit/test_execution_graph_instantiate.py
+      - tests/unit/test_execution_graph_legacy_head.py
+      - tests/unit/test_execution_graph_operator.py
+      - tests/unit/test_execution_graph_promoter.py
+      - tests/unit/test_execution_graph_protocol.py
+      - tests/unit/test_graph_whole_chain.py
+      - tests/unit/test_ingestion_authority_boundary.py
+      - tests/unit/test_ingestion_graph_materialize.py
+      - tests/unit/test_insight_precompute_handler.py
+      - tests/unit/test_job_cli_safety.py
+      - tests/unit/test_preset_artifact_publisher.py
+      - tests/unit/test_reprocess_semantic_v2.py
+      - tests/unit/test_run_request_admission.py
+      - tests/unit/test_run_request_store.py
+      - tests/unit/test_stage1_reconcile_jobs.py
+      - tests/unit/test_stuck_flow_detector.py
+      - tests/unit/test_table_writer.py
+    - unit: src/domain/operations/execution_graph_dispatch.py
+      tests:
+      - tests/unit/test_d2_audiences_over_bound_verdict.py
+      - tests/unit/test_d2_graph_acceptance.py
+      - tests/unit/test_delivery_cohort.py
+      - tests/unit/test_execution_graph_dispatch.py
+      - tests/unit/test_execution_graph_dispatch_store.py
+      - tests/unit/test_execution_graph_instantiate.py
+      - tests/unit/test_execution_graph_lineage.py
+      - tests/unit/test_execution_graph_promoter.py
+      - tests/unit/test_execution_graph_release.py
+      - tests/unit/test_execution_graph_release_store.py
+      - tests/unit/test_execution_graph_unit_batch_store.py
+      - tests/unit/test_execution_graph_unit_batching.py
+      - tests/unit/test_flow_obligation_root_clock.py
+      - tests/unit/test_graph_bake.py
+      - tests/unit/test_graph_bake_bound.py
+      - tests/unit/test_graph_metrics.py
+      - tests/unit/test_graph_precompute.py
+      - tests/unit/test_graph_publish.py
+      - tests/unit/test_graph_whole_chain.py
+      - tests/unit/test_ingestion_graph_materialize.py
+      - tests/unit/test_stuck_flow_detector.py
+      - tests/unit/test_table_writer.py
+    - unit: src/domain/operations/execution_graph_release.py
+      tests:
+      - tests/unit/test_bake_page_registry.py
+      - tests/unit/test_bake_pin_certificate.py
+      - tests/unit/test_bake_roster_names_composition.py
+      - tests/unit/test_bake_source_horizons.py
+      - tests/unit/test_bake_sources.py
+      - tests/unit/test_d2_audiences_over_bound_verdict.py
+      - tests/unit/test_d2_graph_acceptance.py
+      - tests/unit/test_delivery_cohort.py
+      - tests/unit/test_dev_operations.py
+      - tests/unit/test_execution_graph_fresh_election_rehearsal.py
+      - tests/unit/test_execution_graph_legacy_head.py
+      - tests/unit/test_execution_graph_lineage.py
+      - tests/unit/test_execution_graph_promoter.py
+      - tests/unit/test_execution_graph_release.py
+      - tests/unit/test_execution_graph_release_store.py
+      - tests/unit/test_flow_obligation_root_clock.py
+      - tests/unit/test_graph_bake.py
+      - tests/unit/test_graph_bake_bound.py
+      - tests/unit/test_graph_metrics.py
+      - tests/unit/test_graph_precompute.py
+      - tests/unit/test_graph_whole_chain.py
+      - tests/unit/test_insight_precompute_materializer.py
+      - tests/unit/test_presentation_graph_serving.py
+      - tests/unit/test_presentation_handler.py
+      - tests/unit/test_preset_artifact_publisher.py
+      - tests/unit/test_preset_artifact_store.py
+      - tests/unit/test_preset_bakeability.py
+      - tests/unit/test_probe_frontend_browser_routes.py
+      - tests/unit/test_probe_ingestion_traceability_gate.py
+      - tests/unit/test_probe_presentation_hydration.py
+      - tests/unit/test_probe_turn_latency.py
+      - tests/unit/test_publication_selection.py
+      - tests/unit/test_run_fresh_election_timing.py
+      - tests/unit/test_serving_election_behind_active_cohort.py
+    - unit: src/domain/operations/flow_explain.py
+      tests:
+      - tests/unit/test_flow_explain.py
+    - unit: src/domain/operations/graph_projection.py
+      tests:
+      - tests/unit/test_flow_explain.py
+      - tests/unit/test_operational_status_metrics.py
+      - tests/unit/test_operational_status_v2_store.py
+      - tests/unit/test_probe_ingestion_traceability_gate.py
+    - unit: src/domain/operations/harness_resource.py
+      tests:
+      - tests/unit/test_harness_resource.py
+    - unit: src/domain/operations/ingestion_root.py
+      tests:
+      - tests/unit/test_execution_graph_legacy_head.py
+      - tests/unit/test_execution_graph_lineage.py
+      - tests/unit/test_execution_graph_operator.py
+      - tests/unit/test_execution_graph_protocol.py
+      - tests/unit/test_execution_graph_release.py
+      - tests/unit/test_ingestion_graph_materialize.py
+      - tests/unit/test_ingestion_root_flow.py
+      - tests/unit/test_probe_ingestion_traceability_acceptance.py
+      - tests/unit/test_probe_turn_latency.py
+      - tests/unit/test_run_request_admission.py
+      - tests/unit/test_run_request_store.py
+    - unit: src/domain/operations/managed_job_timing.py
+      tests:
+      - tests/unit/test_managed_job_timing.py
+    - unit: src/domain/operations/measurement.py
+      tests:
+      - tests/unit/test_metric_reconciler.py
+      - tests/unit/test_operational_status_metrics.py
+    - unit: src/domain/operations/projection_feasibility.py
+      tests:
+      - tests/unit/test_ingestion_phase_one.py
+      - tests/unit/test_land_fixtures.py
+      - tests/unit/test_projection_feasibility.py
+    - unit: src/domain/operations/projection_handoff.py
+      tests:
+      - tests/unit/test_inline_run.py
+      - tests/unit/test_projection_coordinator_settlement.py
+      - tests/unit/test_projection_handoff.py
+    - unit: src/domain/operations/provider_fence_recovery.py
+      tests:
+      - tests/unit/test_stage1_reconcile_jobs.py
+    - unit: src/domain/operations/queue_clocks.py
+      tests:
+      - tests/unit/test_ingestion_queue_clocks.py
+    - unit: src/domain/operations/run_request.py
+      tests:
+      - tests/unit/test_d2_audiences_over_bound_verdict.py
+      - tests/unit/test_d2_graph_acceptance.py
+      - tests/unit/test_execution_graph_dispatch.py
+      - tests/unit/test_execution_graph_instantiate.py
+      - tests/unit/test_execution_graph_operator.py
+      - tests/unit/test_execution_graph_promoter.py
+      - tests/unit/test_execution_graph_release.py
+      - tests/unit/test_execution_graph_unit_batching.py
+      - tests/unit/test_historical_predicate.py
+      - tests/unit/test_ingestion_authority_boundary.py
+      - tests/unit/test_ingestion_graph_materialize.py
+      - tests/unit/test_land_fixtures.py
+      - tests/unit/test_probe_delivery_unrestated.py
+      - tests/unit/test_run_request_admission.py
+      - tests/unit/test_run_request_store.py
+      - tests/unit/test_stuck_flow_detector.py
+    - unit: src/domain/operations/source_delivery.py
+      tests:
+      - tests/unit/test_ingestion_phase_one.py
+    - unit: src/domain/operations/stage1_lifecycle_head.py
+      tests:
+      - tests/unit/test_ingestion_phase_one.py
+      - tests/unit/test_inline_run.py
+      - tests/unit/test_projection_coordinator_fence.py
+      - tests/unit/test_projection_coordinator_plan.py
+      - tests/unit/test_projection_coordinator_settlement.py
+      - tests/unit/test_stage1_lifecycle_head.py
+      - tests/unit/test_table_writer.py
+    - unit: src/domain/operations/stage1_operational_status.py
+      tests:
+      - tests/unit/test_adr_075_stage1_operational_status.py
+      - tests/unit/test_adr_075_stage1_operational_status_runtime.py
+      - tests/unit/test_ingestion_phase_one.py
+      - tests/unit/test_inline_run.py
+      - tests/unit/test_projection_coordinator_fence.py
+      - tests/unit/test_projection_coordinator_plan.py
+      - tests/unit/test_projection_coordinator_settlement.py
+      - tests/unit/test_stage1_lifecycle_head.py
+      - tests/unit/test_stage1_reconcile_jobs.py
+      - tests/unit/test_table_writer.py
+    - unit: src/domain/operations/statement_protocol.py
+      tests:
+      - tests/unit/test_athena_semantic_storage.py
+      - tests/unit/test_inline_run.py
+      - tests/unit/test_land_fixtures.py
+      - tests/unit/test_statement_protocol.py
+      - tests/unit/test_table_attempt_statements.py
+      - tests/unit/test_table_writer.py
+    - unit: src/domain/operations/status.py
+      tests:
+      - tests/unit/test_adr_075_stage1_operational_status.py
+      - tests/unit/test_adr_075_stage1_operational_status_runtime.py
+      - tests/unit/test_ash_secret_suppression_scope.py
+      - tests/unit/test_execution_graph_release.py
+      - tests/unit/test_graph_bake.py
+      - tests/unit/test_graph_precompute.py
+      - tests/unit/test_graph_whole_chain.py
+      - tests/unit/test_ingestion_phase_one.py
+      - tests/unit/test_inline_run.py
+      - tests/unit/test_operational_status_api.py
+      - tests/unit/test_operational_status_companions.py
+      - tests/unit/test_operational_status_domain.py
+      - tests/unit/test_operational_status_producers.py
+      - tests/unit/test_operational_status_reconciler.py
+      - tests/unit/test_operational_status_store.py
+      - tests/unit/test_operational_status_transport.py
+      - tests/unit/test_operational_status_v2_store.py
+      - tests/unit/test_projection_coordinator_fence.py
+      - tests/unit/test_projection_coordinator_plan.py
+      - tests/unit/test_projection_coordinator_settlement.py
+      - tests/unit/test_stage1_lifecycle_head.py
+      - tests/unit/test_table_writer.py
+    - unit: src/domain/operations/stuck_flow.py
+      tests:
+      - tests/unit/test_execution_graph_worker_composition.py
+      - tests/unit/test_flow_obligation_root_clock.py
+      - tests/unit/test_stuck_flow_detector.py
+    - unit: src/domain/operations/table_attempt.py
+      tests:
+      - tests/unit/test_byte_oracle.py
+      - tests/unit/test_ingestion_handler.py
+      - tests/unit/test_inline_run.py
+      - tests/unit/test_projection_coordinator_fence.py
+      - tests/unit/test_projection_coordinator_settlement.py
+      - tests/unit/test_stage1_reconcile_jobs.py
+      - tests/unit/test_statement_protocol.py
+      - tests/unit/test_table_attempt.py
+      - tests/unit/test_table_attempt_start.py
+      - tests/unit/test_table_attempt_terminal.py
+      - tests/unit/test_table_writer.py
+    - unit: src/domain/operations/table_lease.py
+      tests:
+      - tests/unit/test_inline_run.py
+      - tests/unit/test_projection_coordinator_fence.py
+      - tests/unit/test_projection_coordinator_settlement.py
+      - tests/unit/test_table_lease.py
+      - tests/unit/test_table_writer.py
+    - unit: src/domain/operations/write_plan.py
+      tests:
+      - tests/unit/test_execution_graph_legacy_head.py
+      - tests/unit/test_ingestion_graph_materialize.py
+      - tests/unit/test_ingestion_phase_one.py
+      - tests/unit/test_orphan_reservations_and_failed_unit.py
+      - tests/unit/test_projection_coordinator_fence.py
+      - tests/unit/test_projection_coordinator_plan.py
+      - tests/unit/test_projection_coordinator_settlement.py
+      - tests/unit/test_projection_feasibility.py
+      - tests/unit/test_requeue_orphan_plan_units.py
+      - tests/unit/test_statement_protocol.py
+      - tests/unit/test_supersede_orphan_units.py
+      - tests/unit/test_table_writer.py
+      - tests/unit/test_write_plan.py
+    - unit: src/domain/presentation/absence_copy.py
+      tests:
+      - tests/unit/test_audiences_presentation.py
+      - tests/unit/test_new_customers_presentation.py
+      - tests/unit/test_page_absence_copy.py
+      - tests/unit/test_presentation_handler.py
+      - tests/unit/test_reach_presentation.py
+      - tests/unit/test_retention_presentation.py
+      - tests/unit/test_scorecard_presentation.py
+      - tests/unit/test_temporal_v2_transport.py
+    - unit: src/domain/presentation/alert_rules.py
+      tests:
+      - tests/unit/test_alert_rules.py
+      - tests/unit/test_network_scorecard.py
+    - unit: src/domain/presentation/analytical_pages.py
+      tests:
+      - tests/unit/test_campaign_channel_filter.py
+      - tests/unit/test_campaign_preset_source.py
+      - tests/unit/test_channel_robustness.py
+      - tests/unit/test_marketplace_comparison.py
+      - tests/unit/test_presentation_handler.py
+      - tests/unit/test_retained_campaign_artifact_materializer.py
+    - unit: src/domain/presentation/artifacts.py
+      tests:
+      - tests/unit/test_dynamodb_page_context.py
+      - tests/unit/test_media_scope_catalog.py
+      - tests/unit/test_media_scope_catalog_port.py
+      - tests/unit/test_page_artifact_codec.py
+      - tests/unit/test_presentation_capability_custody.py
+      - tests/unit/test_presentation_handler.py
+      - tests/unit/test_retail_health_product.py
+      - tests/unit/test_temporal_v2_transport.py
+    - unit: src/domain/presentation/audiences.py
+      tests:
+      - tests/unit/test_audiences_parity.py
+      - tests/unit/test_audiences_presentation.py
+      - tests/unit/test_d2_audiences_over_bound_verdict.py
+      - tests/unit/test_segment_profile.py
+    - unit: src/domain/presentation/calendar_presets.py
+      tests:
+      - tests/unit/test_periodic_presentation.py
+    - unit: src/domain/presentation/campaign_attribution.py
+      tests:
+      - tests/unit/test_campaign_attribution.py
+      - tests/unit/test_campaign_insight_predicates.py
+      - tests/unit/test_campaign_insights.py
+      - tests/unit/test_campaign_portfolio.py
+      - tests/unit/test_change_semantics.py
+      - tests/unit/test_contribution_scope.py
+      - tests/unit/test_deep_insight_inputs.py
+      - tests/unit/test_dynamodb_page_context.py
+      - tests/unit/test_evidence_status.py
+      - tests/unit/test_insight_materiality_cases.py
+      - tests/unit/test_metric_focus.py
+      - tests/unit/test_page_artifact_codec.py
+      - tests/unit/test_presentation_handler.py
+      - tests/unit/test_preset_insight_fill.py
+      - tests/unit/test_publication_selection.py
+      - tests/unit/test_returns_context.py
+    - unit: src/domain/presentation/campaign_custody.py
+      tests:
+      - tests/unit/test_campaign_channel_filter.py
+      - tests/unit/test_campaign_preset_source.py
+      - tests/unit/test_insight_precompute_materializer.py
+      - tests/unit/test_presentation_handler.py
+    - unit: src/domain/presentation/campaign_portfolio.py
+      tests:
+      - tests/unit/test_campaign_channel_filter.py
+      - tests/unit/test_campaign_portfolio.py
+      - tests/unit/test_campaign_preset_source.py
+      - tests/unit/test_change_semantics.py
+      - tests/unit/test_contribution_scope.py
+      - tests/unit/test_deep_input_revision.py
+      - tests/unit/test_deep_insight_inputs.py
+      - tests/unit/test_evidence_status.py
+      - tests/unit/test_gate1_admission_band.py
+      - tests/unit/test_insight_precompute_materializer.py
+      - tests/unit/test_presentation_handler.py
+      - tests/unit/test_preset_insight_fill.py
+      - tests/unit/test_retained_campaign_artifact_materializer.py
+      - tests/unit/test_seed_serve_shapes.py
+    - unit: src/domain/presentation/campaigns.py
+      tests:
+      - tests/unit/test_campaign_attribution.py
+      - tests/unit/test_campaign_portfolio.py
+      - tests/unit/test_campaign_presentation.py
+      - tests/unit/test_dynamodb_page_context.py
+      - tests/unit/test_metric_focus.py
+      - tests/unit/test_page_artifact_codec.py
+      - tests/unit/test_presentation_capability_custody.py
+      - tests/unit/test_preset_insight_fill.py
+    - unit: src/domain/presentation/change.py
+      tests:
+      - tests/unit/test_campaign_attribution.py
+      - tests/unit/test_change_semantics.py
+    - unit: src/domain/presentation/channel_robustness.py
+      tests:
+      - tests/unit/test_channel_robustness.py
+    - unit: src/domain/presentation/compared_metrics.py
+      tests:
+      - tests/unit/test_change_semantics.py
+      - tests/unit/test_network_scorecard.py
+      - tests/unit/test_new_customers.py
+      - tests/unit/test_retail_health_preset_source.py
+      - tests/unit/test_retail_health_product.py
+    - unit: src/domain/presentation/currency_display.py
+      tests:
+      - tests/unit/test_campaign_attribution.py
+      - tests/unit/test_campaign_portfolio.py
+      - tests/unit/test_currency_display.py
+      - tests/unit/test_retail_health_preset_source.py
+    - unit: src/domain/presentation/d7_seam.py
+      tests:
+      - tests/unit/test_d7_seam.py
+    - unit: src/domain/presentation/data_health.py
+      tests:
+      - tests/unit/test_data_health.py
+    - unit: src/domain/presentation/evidence_status.py
+      tests:
+      - tests/unit/test_campaign_channel_filter.py
+      - tests/unit/test_evidence_status.py
+      - tests/unit/test_network_scorecard.py
+      - tests/unit/test_retail_health_preset_source.py
+    - unit: src/domain/presentation/graph_serving.py
+      tests:
+      - tests/unit/test_graph_whole_chain.py
+      - tests/unit/test_presentation_graph_serving.py
+      - tests/unit/test_presentation_handler.py
+      - tests/unit/test_reach_presentation.py
+    - unit: src/domain/presentation/insights.py
+      tests:
+      - tests/unit/test_alert_rules.py
+      - tests/unit/test_campaign_insight_predicates.py
+      - tests/unit/test_campaign_insights.py
+      - tests/unit/test_campaign_portfolio.py
+      - tests/unit/test_contribution_scope.py
+      - tests/unit/test_deep_input_revision.py
+      - tests/unit/test_deep_insight_inputs.py
+      - tests/unit/test_errors.py
+      - tests/unit/test_focus_share_rule.py
+      - tests/unit/test_gate1_admission_band.py
+      - tests/unit/test_graph_precompute.py
+      - tests/unit/test_graph_whole_chain.py
+      - tests/unit/test_insight_assembly.py
+      - tests/unit/test_insight_bedrock.py
+      - tests/unit/test_insight_cache.py
+      - tests/unit/test_insight_calibration_bedrock.py
+      - tests/unit/test_insight_continuation_codec.py
+      - tests/unit/test_insight_continuation_handler.py
+      - tests/unit/test_insight_domain_edges.py
+      - tests/unit/test_insight_finding_units.py
+      - tests/unit/test_insight_materiality_cases.py
+      - tests/unit/test_insight_next_steps.py
+      - tests/unit/test_insight_prompt_calibration_worker.py
+      - tests/unit/test_insight_prompt_registry.py
+      - tests/unit/test_insight_quiet_reasons.py
+      - tests/unit/test_insight_request_identity.py
+      - tests/unit/test_metric_focus.py
+      - tests/unit/test_network_scorecard.py
+      - tests/unit/test_new_customers.py
+      - tests/unit/test_new_customers_presentation.py
+      - tests/unit/test_new_customers_source.py
+      - tests/unit/test_presentation_handler.py
+      - tests/unit/test_preset_insight_fill.py
+      - tests/unit/test_prompt_admin_handler.py
+      - tests/unit/test_prompt_authorship.py
+      - tests/unit/test_prompt_registry_seed.py
+      - tests/unit/test_reach.py
+      - tests/unit/test_reach_source.py
+      - tests/unit/test_retail_health.py
+      - tests/unit/test_retail_health_preset_source.py
+      - tests/unit/test_retail_health_product.py
+      - tests/unit/test_retained_campaign_artifact_materializer.py
+      - tests/unit/test_retained_insight_planning.py
+      - tests/unit/test_retention.py
+      - tests/unit/test_retention_source.py
+      - tests/unit/test_returns_context.py
+      - tests/unit/test_segment_profile.py
+    - unit: src/domain/presentation/marketplace_comparison.py
+      tests:
+      - tests/unit/test_marketplace_comparison.py
+    - unit: src/domain/presentation/media_efficiency.py
+      tests:
+      - tests/unit/test_media_efficiency.py
+    - unit: src/domain/presentation/metric_focus.py
+      tests:
+      - tests/unit/test_deep_input_revision.py
+      - tests/unit/test_deep_insight_inputs.py
+      - tests/unit/test_focus_share_rule.py
+      - tests/unit/test_insight_finding_units.py
+      - tests/unit/test_metric_focus.py
+      - tests/unit/test_presentation_handler.py
+      - tests/unit/test_seed_serve_shapes.py
+    - unit: src/domain/presentation/new_customers.py
+      tests:
+      - tests/unit/test_new_customers.py
+      - tests/unit/test_new_customers_presentation.py
+      - tests/unit/test_new_customers_source.py
+    - unit: src/domain/presentation/next_steps.py
+      tests:
+      - tests/unit/test_campaign_channel_filter.py
+      - tests/unit/test_insight_continuation_codec.py
+      - tests/unit/test_insight_domain_edges.py
+      - tests/unit/test_insight_next_steps.py
+      - tests/unit/test_presentation_handler.py
+      - tests/unit/test_retail_health_product.py
+    - unit: src/domain/presentation/page_schemas.py
+      tests:
+      - tests/unit/test_campaign_channel_filter.py
+      - tests/unit/test_channel_robustness.py
+      - tests/unit/test_d2_chat_seams.py
+      - tests/unit/test_deep_insight_inputs.py
+      - tests/unit/test_dynamodb_page_context.py
+      - tests/unit/test_insight_next_steps.py
+      - tests/unit/test_navigation_manifest.py
+      - tests/unit/test_network_scorecard.py
+      - tests/unit/test_new_customers.py
+      - tests/unit/test_new_customers_source.py
+      - tests/unit/test_page_artifact_codec.py
+      - tests/unit/test_page_schemas.py
+      - tests/unit/test_periodic_presentation.py
+      - tests/unit/test_presentation_capability_custody.py
+      - tests/unit/test_presentation_v2_page_schemas.py
+      - tests/unit/test_preset_bakeability.py
+      - tests/unit/test_probe_presentation_hydration.py
+      - tests/unit/test_reach.py
+      - tests/unit/test_reach_source.py
+      - tests/unit/test_retained_insight_planning.py
+      - tests/unit/test_retention.py
+      - tests/unit/test_retention_source.py
+      - tests/unit/test_segment_profile.py
+      - tests/unit/test_starter_questions.py
+      - tests/unit/test_temporal.py
+      - tests/unit/test_temporal_v2_transport.py
+    - unit: src/domain/presentation/preset_artifacts.py
+      tests:
+      - tests/unit/test_audiences_presentation.py
+      - tests/unit/test_campaign_channel_filter.py
+      - tests/unit/test_campaign_estate_acceptance.py
+      - tests/unit/test_campaign_preset_source.py
+      - tests/unit/test_d2_audiences_over_bound_verdict.py
+      - tests/unit/test_d2_graph_acceptance.py
+      - tests/unit/test_deep_insight_inputs.py
+      - tests/unit/test_graph_bake.py
+      - tests/unit/test_graph_metrics.py
+      - tests/unit/test_graph_whole_chain.py
+      - tests/unit/test_insight_precompute_materializer.py
+      - tests/unit/test_network_scorecard.py
+      - tests/unit/test_new_customers_presentation.py
+      - tests/unit/test_new_customers_source.py
+      - tests/unit/test_presentation_handler.py
+      - tests/unit/test_preset_artifact_publisher.py
+      - tests/unit/test_preset_artifact_store.py
+      - tests/unit/test_preset_artifacts.py
+      - tests/unit/test_preset_insight_fill.py
+      - tests/unit/test_reach.py
+      - tests/unit/test_reach_presentation.py
+      - tests/unit/test_reach_source.py
+      - tests/unit/test_retail_health_preset_source.py
+      - tests/unit/test_retail_health_product.py
+      - tests/unit/test_retention_presentation.py
+      - tests/unit/test_retention_source.py
+      - tests/unit/test_scorecard_presentation.py
+      - tests/unit/test_segment_profile.py
+    - unit: src/domain/presentation/products.py
+      tests: []
+    - unit: src/domain/presentation/prompt_authorship.py
+      tests:
+      - tests/unit/test_insight_prompt_registry.py
+      - tests/unit/test_prompt_admin_handler.py
+      - tests/unit/test_prompt_authorship.py
+    - unit: src/domain/presentation/prompt_composition.py
+      tests:
+      - tests/unit/test_insight_prompt_registry.py
+      - tests/unit/test_prompt_composition.py
+    - unit: src/domain/presentation/question_rules.py
+      tests: []
+    - unit: src/domain/presentation/reach.py
+      tests:
+      - tests/unit/test_reach.py
+      - tests/unit/test_reach_source.py
+    - unit: src/domain/presentation/retail_health.py
+      tests:
+      - tests/unit/test_change_semantics.py
+      - tests/unit/test_deep_input_revision.py
+      - tests/unit/test_insight_precompute_materializer.py
+      - tests/unit/test_presentation_handler.py
+      - tests/unit/test_retail_health.py
+      - tests/unit/test_retail_health_preset_source.py
+      - tests/unit/test_retail_health_product.py
+      - tests/unit/test_returns_context.py
+    - unit: src/domain/presentation/retail_health_custody.py
+      tests:
+      - tests/unit/test_insight_precompute_materializer.py
+      - tests/unit/test_presentation_handler.py
+      - tests/unit/test_retail_health_preset_source.py
+      - tests/unit/test_retail_health_product.py
+    - unit: src/domain/presentation/retail_product_detail.py
+      tests:
+      - tests/unit/test_dynamodb_page_context.py
+      - tests/unit/test_presentation_capability_custody.py
+      - tests/unit/test_retail_health_product.py
+    - unit: src/domain/presentation/retention.py
+      tests:
+      - tests/unit/test_retention.py
+      - tests/unit/test_retention_legend.py
+      - tests/unit/test_retention_presentation.py
+      - tests/unit/test_retention_source.py
+    - unit: src/domain/presentation/scorecard.py
+      tests:
+      - tests/unit/test_alert_rules.py
+      - tests/unit/test_network_scorecard.py
+      - tests/unit/test_new_to_brand_absent.py
+      - tests/unit/test_scorecard_presentation.py
+    - unit: src/domain/presentation/starter_questions.py
+      tests:
+      - tests/unit/test_starter_questions.py
+    - unit: src/domain/presentation/temporal.py
+      tests:
+      - tests/unit/test_campaign_insights.py
+      - tests/unit/test_d2_audiences_over_bound_verdict.py
+      - tests/unit/test_dynamodb_page_context.py
+      - tests/unit/test_insight_assembly.py
+      - tests/unit/test_insight_bedrock.py
+      - tests/unit/test_insight_continuation_codec.py
+      - tests/unit/test_insight_continuation_handler.py
+      - tests/unit/test_insight_domain_edges.py
+      - tests/unit/test_insight_next_steps.py
+      - tests/unit/test_insight_request_identity.py
+      - tests/unit/test_page_artifact_codec.py
+      - tests/unit/test_periodic_presentation.py
+      - tests/unit/test_presentation_capability_custody.py
+      - tests/unit/test_presentation_handler.py
+      - tests/unit/test_preset_insight_fill.py
+      - tests/unit/test_retained_insight_planning.py
+      - tests/unit/test_temporal.py
+      - tests/unit/test_temporal_v2_transport.py
+    - unit: src/domain/presentation/temporal_v2.py
+      tests:
+      - tests/unit/test_periodic_presentation.py
+      - tests/unit/test_temporal_v2_transport.py
+    - unit: src/domain/producer/models.py
+      tests:
+      - tests/unit/test_acquisition_cohorts.py
+      - tests/unit/test_audience_segments.py
+      - tests/unit/test_land_fixtures.py
+      - tests/unit/test_new_to_brand_buyers.py
+      - tests/unit/test_pack_variants.py
+      - tests/unit/test_producer.py
+      - tests/unit/test_producer_finalizer.py
+      - tests/unit/test_producer_pack_fields.py
+      - tests/unit/test_segment_profile.py
+    - unit: src/domain/producer/parameters.py
+      tests:
+      - tests/unit/test_acquisition_cohorts.py
+      - tests/unit/test_new_to_brand_buyers.py
+      - tests/unit/test_producer_finalizer.py
+      - tests/unit/test_producer_pack_fields.py
+      - tests/unit/test_segment_profile.py
+    - unit: src/domain/producer/periods.py
+      tests:
+      - tests/unit/test_producer_pack_fields.py
+    - unit: src/domain/producer/planning.py
+      tests:
+      - tests/unit/test_new_to_brand_buyers.py
+      - tests/unit/test_producer.py
+      - tests/unit/test_producer_finalizer.py
+      - tests/unit/test_producer_pack_fields.py
+    - unit: src/domain/producer/status.py
+      tests:
+      - tests/unit/test_producer_finalizer.py
+    - unit: src/domain/producer/validation.py
+      tests:
+      - tests/unit/test_new_to_brand_buyers.py
+      - tests/unit/test_producer.py
+      - tests/unit/test_producer_pack_fields.py
+      - tests/unit/test_seed_pre_landing.py
+    - unit: src/domain/producer/variants.py
+      tests:
+      - tests/unit/test_land_fixtures.py
+      - tests/unit/test_new_to_brand_buyers.py
+      - tests/unit/test_pack_variants.py
+    - unit: src/domain/semantics/amc_instance.py
+      tests:
+      - tests/unit/test_reach_source.py
+    - unit: src/domain/semantics/analytical_request.py
+      tests:
+      - tests/unit/test_resolved_analytical_request.py
+      - tests/unit/test_resolved_measurement.py
+    - unit: src/domain/semantics/analytical_resolution.py
+      tests:
+      - tests/unit/test_analytical_resolution.py
+      - tests/unit/test_audiences_presentation.py
+      - tests/unit/test_bake_roster_names_composition.py
+      - tests/unit/test_campaign_channel_filter.py
+      - tests/unit/test_campaign_insight_predicates.py
+      - tests/unit/test_campaign_insights.py
+      - tests/unit/test_campaign_portfolio.py
+      - tests/unit/test_campaign_presentation.py
+      - tests/unit/test_campaign_preset_source.py
+      - tests/unit/test_contribution_scope.py
+      - tests/unit/test_d2_chat_seams.py
+      - tests/unit/test_dimension_labels.py
+      - tests/unit/test_dynamodb_page_context.py
+      - tests/unit/test_entity_catalog.py
+      - tests/unit/test_insight_finding_units.py
+      - tests/unit/test_insight_materiality_cases.py
+      - tests/unit/test_insight_precompute_materializer.py
+      - tests/unit/test_insight_request_identity.py
+      - tests/unit/test_measurement_dispatch.py
+      - tests/unit/test_measurement_operations.py
+      - tests/unit/test_media_scope_catalog.py
+      - tests/unit/test_media_scope_catalog_port.py
+      - tests/unit/test_new_customers_presentation.py
+      - tests/unit/test_new_to_brand_buyers_channel.py
+      - tests/unit/test_presentation_capability_custody.py
+      - tests/unit/test_presentation_handler.py
+      - tests/unit/test_preset_insight_fill.py
+      - tests/unit/test_publication_selection.py
+      - tests/unit/test_reach_presentation.py
+      - tests/unit/test_resolved_analytical_request.py
+      - tests/unit/test_resolved_measurement.py
+      - tests/unit/test_retail_health_preset_source.py
+      - tests/unit/test_retail_health_product.py
+      - tests/unit/test_retained_campaign_artifact_materializer.py
+      - tests/unit/test_retained_insight_planning.py
+      - tests/unit/test_retention_presentation.py
+      - tests/unit/test_returns_context.py
+      - tests/unit/test_scorecard_presentation.py
+      - tests/unit/test_seed_serve_shapes.py
+      - tests/unit/test_shaped_response.py
+    - unit: src/domain/semantics/attribution.py
+      tests:
+      - tests/unit/test_attribution_models.py
+    - unit: src/domain/semantics/audience_segments.py
+      tests:
+      - tests/unit/test_audience_segments.py
+      - tests/unit/test_evaluation_v4_cases.py
+      - tests/unit/test_segment_profile.py
+    - unit: src/domain/semantics/calendar_periods.py
+      tests:
+      - tests/unit/test_acquisition_cohorts.py
+      - tests/unit/test_audience_segments.py
+      - tests/unit/test_audiences_presentation.py
+      - tests/unit/test_bake_roster_names_composition.py
+      - tests/unit/test_bake_source_horizons.py
+      - tests/unit/test_d2_audiences_over_bound_verdict.py
+      - tests/unit/test_d2_chat_seams.py
+      - tests/unit/test_exposure_frequency.py
+      - tests/unit/test_land_fixtures.py
+      - tests/unit/test_new_customers.py
+      - tests/unit/test_new_customers_presentation.py
+      - tests/unit/test_new_customers_source.py
+      - tests/unit/test_new_to_brand_buyers.py
+      - tests/unit/test_new_to_brand_buyers_campaign.py
+      - tests/unit/test_new_to_brand_buyers_channel.py
+      - tests/unit/test_pack_variants.py
+      - tests/unit/test_periodic_presentation.py
+      - tests/unit/test_periodic_serving.py
+      - tests/unit/test_reach.py
+      - tests/unit/test_reach_source.py
+      - tests/unit/test_retention.py
+      - tests/unit/test_retention_source.py
+      - tests/unit/test_segment_profile.py
+      - tests/unit/test_source_platforms.py
+    - unit: src/domain/semantics/canonical_compiler.py
+      tests:
+      - tests/unit/test_athena_semantic_storage.py
+      - tests/unit/test_dimension_history.py
+      - tests/unit/test_entity_catalog.py
+      - tests/unit/test_identity_evidence.py
+      - tests/unit/test_ingestion_phase_one.py
+      - tests/unit/test_inline_run.py
+      - tests/unit/test_land_fixtures.py
+      - tests/unit/test_semantic_sidecar.py
+      - tests/unit/test_supersede_orphan_units.py
+      - tests/unit/test_table_writer.py
+    - unit: src/domain/semantics/commerce_identity.py
+      tests:
+      - tests/unit/test_amc_segment_registry.py
+      - tests/unit/test_commerce_identity_loader.py
+      - tests/unit/test_entity_catalog.py
+      - tests/unit/test_producer_pack_fields.py
+      - tests/unit/test_publication_selection.py
+      - tests/unit/test_semantic_identity.py
+    - unit: src/domain/semantics/compatibility.py
+      tests:
+      - tests/unit/test_catalog_tool.py
+      - tests/unit/test_exact_only_axes.py
+      - tests/unit/test_metric_dictionary.py
+      - tests/unit/test_planning.py
+      - tests/unit/test_semantic_compatibility.py
+      - tests/unit/test_shopper_aggregates.py
+      - tests/unit/test_source_platforms.py
+    - unit: src/domain/semantics/curation.py
+      tests:
+      - tests/unit/test_semantic_publication.py
+      - tests/unit/test_semantic_sidecar.py
+      - tests/unit/test_semantic_source_aligned.py
+    - unit: src/domain/semantics/dimension_history.py
+      tests:
+      - tests/unit/test_dimension_history.py
+      - tests/unit/test_land_fixtures.py
+      - tests/unit/test_scd2_observed_order.py
+    - unit: src/domain/semantics/identity.py
+      tests:
+      - tests/unit/test_amc_segment_registry.py
+      - tests/unit/test_analytical_resolution.py
+      - tests/unit/test_athena_semantic_storage.py
+      - tests/unit/test_audience_segments.py
+      - tests/unit/test_audiences_presentation.py
+      - tests/unit/test_campaign_channel_filter.py
+      - tests/unit/test_campaign_insight_predicates.py
+      - tests/unit/test_campaign_insights.py
+      - tests/unit/test_campaign_portfolio.py
+      - tests/unit/test_campaign_presentation.py
+      - tests/unit/test_campaign_preset_source.py
+      - tests/unit/test_commerce_identity_loader.py
+      - tests/unit/test_contribution_scope.py
+      - tests/unit/test_curation_ingestion.py
+      - tests/unit/test_curation_landing.py
+      - tests/unit/test_dimension_labels.py
+      - tests/unit/test_dynamodb_page_context.py
+      - tests/unit/test_entity_catalog.py
+      - tests/unit/test_inline_run.py
+      - tests/unit/test_insight_finding_units.py
+      - tests/unit/test_insight_materiality_cases.py
+      - tests/unit/test_insight_precompute_handler.py
+      - tests/unit/test_insight_precompute_materializer.py
+      - tests/unit/test_insight_request_identity.py
+      - tests/unit/test_measurement_tool.py
+      - tests/unit/test_media_scope_catalog_port.py
+      - tests/unit/test_media_taxonomy_v2.py
+      - tests/unit/test_new_customers_presentation.py
+      - tests/unit/test_new_to_brand_buyers.py
+      - tests/unit/test_new_to_brand_buyers_campaign.py
+      - tests/unit/test_page_artifact_codec.py
+      - tests/unit/test_page_context_codec.py
+      - tests/unit/test_prepublication.py
+      - tests/unit/test_presentation_capability_custody.py
+      - tests/unit/test_presentation_handler.py
+      - tests/unit/test_preset_bakeability.py
+      - tests/unit/test_preset_insight_fill.py
+      - tests/unit/test_producer.py
+      - tests/unit/test_producer_finalizer.py
+      - tests/unit/test_producer_pack_fields.py
+      - tests/unit/test_publication_selection.py
+      - tests/unit/test_reach_presentation.py
+      - tests/unit/test_reprocess_semantic_v2.py
+      - tests/unit/test_resolved_analytical_request.py
+      - tests/unit/test_resolved_measurement.py
+      - tests/unit/test_retail_health_product.py
+      - tests/unit/test_retained_campaign_artifact_materializer.py
+      - tests/unit/test_retained_insight_planning.py
+      - tests/unit/test_retention_presentation.py
+      - tests/unit/test_returns_context.py
+      - tests/unit/test_scorecard_presentation.py
+      - tests/unit/test_semantic_compatibility.py
+      - tests/unit/test_semantic_identity.py
+      - tests/unit/test_semantic_publication.py
+      - tests/unit/test_semantic_source_aligned.py
+      - tests/unit/test_semantic_source_packs.py
+      - tests/unit/test_source_platforms.py
+      - tests/unit/test_table_writer.py
+    - unit: src/domain/semantics/identity_evidence.py
+      tests:
+      - tests/unit/test_identity_evidence.py
+      - tests/unit/test_semantic_sidecar.py
+    - unit: src/domain/semantics/media_taxonomy.py
+      tests:
+      - tests/unit/test_entity_catalog.py
+      - tests/unit/test_measurement_tool.py
+      - tests/unit/test_media_taxonomy_v2.py
+      - tests/unit/test_publication_selection.py
+      - tests/unit/test_source_platforms.py
+    - unit: src/domain/semantics/page_context.py
+      tests:
+      - tests/unit/test_conversation_server.py
+      - tests/unit/test_dynamodb_page_context.py
+      - tests/unit/test_page_artifact_codec.py
+      - tests/unit/test_page_context_codec.py
+      - tests/unit/test_page_context_turns.py
+      - tests/unit/test_presentation_capability_custody.py
+      - tests/unit/test_presentation_handler.py
+    - unit: src/domain/semantics/prepublication.py
+      tests:
+      - tests/unit/test_prepublication.py
+    - unit: src/domain/semantics/product_dimension.py
+      tests: []
+    - unit: src/domain/semantics/publication.py
+      tests:
+      - tests/unit/test_acquisition_cohorts.py
+      - tests/unit/test_athena_semantic_storage.py
+      - tests/unit/test_audience_segments.py
+      - tests/unit/test_bake_pin_certificate.py
+      - tests/unit/test_bake_source_horizons.py
+      - tests/unit/test_dsp_reach.py
+      - tests/unit/test_entity_catalog.py
+      - tests/unit/test_exposure_frequency.py
+      - tests/unit/test_graph_publish.py
+      - tests/unit/test_graph_whole_chain.py
+      - tests/unit/test_inline_run.py
+      - tests/unit/test_insight_precompute_handler.py
+      - tests/unit/test_land_fixtures.py
+      - tests/unit/test_media_scope_catalog.py
+      - tests/unit/test_new_to_brand_buyers.py
+      - tests/unit/test_new_to_brand_buyers_campaign.py
+      - tests/unit/test_new_to_brand_buyers_channel.py
+      - tests/unit/test_operational_status_domain.py
+      - tests/unit/test_operational_status_producers.py
+      - tests/unit/test_pack_variants.py
+      - tests/unit/test_prepublication.py
+      - tests/unit/test_publication_selection.py
+      - tests/unit/test_retained_campaign_artifact_materializer.py
+      - tests/unit/test_retained_insight_planning.py
+      - tests/unit/test_schema_generation.py
+      - tests/unit/test_semantic_publication.py
+      - tests/unit/test_semantic_sidecar.py
+      - tests/unit/test_semantic_source_aligned.py
+      - tests/unit/test_semantic_state_generation_reader.py
+      - tests/unit/test_table_writer.py
+    - unit: src/domain/semantics/reprocessing.py
+      tests:
+      - tests/unit/test_new_customers.py
+      - tests/unit/test_reprocess_discard_policies.py
+      - tests/unit/test_reprocess_semantic_v2.py
+    - unit: src/domain/semantics/revision.py
+      tests:
+      - tests/unit/test_athena_semantic_storage.py
+      - tests/unit/test_entity_catalog.py
+      - tests/unit/test_inline_run.py
+      - tests/unit/test_land_fixtures.py
+      - tests/unit/test_prepublication.py
+      - tests/unit/test_publication_selection.py
+      - tests/unit/test_semantic_publication.py
+      - tests/unit/test_semantic_revision.py
+      - tests/unit/test_semantic_source_aligned.py
+      - tests/unit/test_semantic_version_resolution.py
+      - tests/unit/test_system_observed_snapshot.py
+      - tests/unit/test_table_writer.py
+    - unit: src/domain/semantics/source_aligned.py
+      tests:
+      - tests/unit/test_acquisition_cohorts.py
+      - tests/unit/test_athena_semantic_storage.py
+      - tests/unit/test_audience_segments.py
+      - tests/unit/test_dsp_reach.py
+      - tests/unit/test_exposure_frequency.py
+      - tests/unit/test_exposure_groups.py
+      - tests/unit/test_ingestion_handler.py
+      - tests/unit/test_new_customers.py
+      - tests/unit/test_new_to_brand_buyers.py
+      - tests/unit/test_new_to_brand_buyers_campaign.py
+      - tests/unit/test_new_to_brand_buyers_channel.py
+      - tests/unit/test_semantic_publication.py
+      - tests/unit/test_semantic_sidecar.py
+      - tests/unit/test_semantic_source_aligned.py
+      - tests/unit/test_system_observed_snapshot.py
+    - unit: src/domain/semantics/source_compiler.py
+      tests:
+      - tests/unit/test_system_observed_snapshot.py
+    - unit: src/domain/semantics/source_pack.py
+      tests:
+      - tests/unit/test_bake_pin_certificate.py
+      - tests/unit/test_entity_catalog.py
+      - tests/unit/test_prepublication.py
+      - tests/unit/test_publication_selection.py
+      - tests/unit/test_semantic_sidecar.py
+      - tests/unit/test_semantic_source_packs.py
+      - tests/unit/test_source_platforms.py
+      - tests/unit/test_system_observed_snapshot.py
+    - unit: src/domain/semantics/source_platforms.py
+      tests:
+      - tests/unit/test_source_platforms.py
+    - unit: src/domain/semantics/table_dq.py
+      tests:
+      - tests/unit/test_semantic_table_dq.py
+    - unit: src/domain/semantics/time.py
+      tests:
+      - tests/unit/test_athena_semantic_storage.py
+      - tests/unit/test_audience_segments.py
+      - tests/unit/test_audiences_presentation.py
+      - tests/unit/test_bake_pin_certificate.py
+      - tests/unit/test_bake_roster_names_composition.py
+      - tests/unit/test_bake_source_horizons.py
+      - tests/unit/test_d2_audiences_over_bound_verdict.py
+      - tests/unit/test_d2_chat_seams.py
+      - tests/unit/test_entity_catalog.py
+      - tests/unit/test_exposure_frequency.py
+      - tests/unit/test_inline_run.py
+      - tests/unit/test_new_customers.py
+      - tests/unit/test_new_customers_presentation.py
+      - tests/unit/test_new_customers_source.py
+      - tests/unit/test_new_to_brand_buyers.py
+      - tests/unit/test_new_to_brand_buyers_campaign.py
+      - tests/unit/test_new_to_brand_buyers_channel.py
+      - tests/unit/test_pack_variants.py
+      - tests/unit/test_periodic_presentation.py
+      - tests/unit/test_periodic_serving.py
+      - tests/unit/test_prepublication.py
+      - tests/unit/test_publication_selection.py
+      - tests/unit/test_reach.py
+      - tests/unit/test_reach_source.py
+      - tests/unit/test_retention_source.py
+      - tests/unit/test_segment_profile.py
+      - tests/unit/test_semantic_compatibility.py
+      - tests/unit/test_semantic_publication.py
+      - tests/unit/test_semantic_source_aligned.py
+      - tests/unit/test_semantic_source_packs.py
+      - tests/unit/test_semantic_time.py
+      - tests/unit/test_source_platforms.py
+      - tests/unit/test_system_observed_snapshot.py
+      - tests/unit/test_table_writer.py
+    - unit: src/domain/semantics/validation.py
+      tests:
+      - tests/unit/test_athena_semantic_storage.py
+      - tests/unit/test_entity_catalog.py
+      - tests/unit/test_inline_run.py
+      - tests/unit/test_new_customers.py
+      - tests/unit/test_pack_variants.py
+      - tests/unit/test_prepublication.py
+      - tests/unit/test_publication_selection.py
+      - tests/unit/test_retention_source.py
+      - tests/unit/test_semantic_publication.py
+      - tests/unit/test_semantic_sidecar.py
+      - tests/unit/test_semantic_table_dq.py
+      - tests/unit/test_table_writer.py
+    - unit: src/domain/shared_kernel/canonical.py
+      tests: []
+    - unit: src/domain/shared_kernel/errors.py
+      tests:
+      - tests/unit/test_acquisition_cohorts.py
+      - tests/unit/test_adr_075_config_and_tracing.py
+      - tests/unit/test_agent_quality_audit.py
+      - tests/unit/test_agentcore_harness.py
+      - tests/unit/test_athena_execution.py
+      - tests/unit/test_athena_query_preflight.py
+      - tests/unit/test_audience_segments.py
+      - tests/unit/test_audiences_presentation.py
+      - tests/unit/test_auth_provider_failure_reporting.py
+      - tests/unit/test_bake_pin_certificate.py
+      - tests/unit/test_bake_roster_names_composition.py
+      - tests/unit/test_bake_source_horizons.py
+      - tests/unit/test_bake_sources.py
+      - tests/unit/test_byte_oracle.py
+      - tests/unit/test_campaign_attribution.py
+      - tests/unit/test_campaign_channel_filter.py
+      - tests/unit/test_campaign_insight_predicates.py
+      - tests/unit/test_campaign_preset_source.py
+      - tests/unit/test_catalog_entrypoint.py
+      - tests/unit/test_catalog_tool.py
+      - tests/unit/test_client_secret.py
+      - tests/unit/test_cognito_translation.py
+      - tests/unit/test_comparison.py
+      - tests/unit/test_config.py
+      - tests/unit/test_conversation_server.py
+      - tests/unit/test_d2_chat_seams.py
+      - tests/unit/test_deep_insight_inputs.py
+      - tests/unit/test_dynamodb_page_context.py
+      - tests/unit/test_errors.py
+      - tests/unit/test_evaluation_gate_adapters.py
+      - tests/unit/test_evaluation_gate_provider.py
+      - tests/unit/test_evaluation_outbox_dispatcher_handler.py
+      - tests/unit/test_evaluation_release.py
+      - tests/unit/test_evaluation_writer_handler.py
+      - tests/unit/test_exact_only_axes.py
+      - tests/unit/test_execution_graph_dispatch.py
+      - tests/unit/test_execution_graph_promoter.py
+      - tests/unit/test_execution_graph_release_store.py
+      - tests/unit/test_execution_graph_unit_batch_store.py
+      - tests/unit/test_exposure_frequency.py
+      - tests/unit/test_exposure_groups.py
+      - tests/unit/test_figures.py
+      - tests/unit/test_flow_explain.py
+      - tests/unit/test_gateway_interceptor.py
+      - tests/unit/test_gateway_invocation.py
+      - tests/unit/test_graph_bake.py
+      - tests/unit/test_graph_bake_bound.py
+      - tests/unit/test_graph_metrics.py
+      - tests/unit/test_graph_precompute.py
+      - tests/unit/test_graph_publish.py
+      - tests/unit/test_graph_whole_chain.py
+      - tests/unit/test_harness_resource.py
+      - tests/unit/test_identity_evidence.py
+      - tests/unit/test_ingestion_authority_boundary.py
+      - tests/unit/test_ingestion_graph_materialize.py
+      - tests/unit/test_ingestion_handler.py
+      - tests/unit/test_ingestion_phase_one.py
+      - tests/unit/test_inline_run.py
+      - tests/unit/test_insight_assembly.py
+      - tests/unit/test_insight_bedrock.py
+      - tests/unit/test_insight_calibration_bedrock.py
+      - tests/unit/test_insight_continuation_handler.py
+      - tests/unit/test_insight_domain_edges.py
+      - tests/unit/test_insight_finding_units.py
+      - tests/unit/test_insight_next_steps.py
+      - tests/unit/test_insight_precompute_handler.py
+      - tests/unit/test_insight_prompt_registry.py
+      - tests/unit/test_insight_quiet_reasons.py
+      - tests/unit/test_land_fixtures.py
+      - tests/unit/test_managed_conversation_runtime.py
+      - tests/unit/test_managed_conversation_turns.py
+      - tests/unit/test_measurement_dispatch.py
+      - tests/unit/test_measurement_operations.py
+      - tests/unit/test_measurement_tool.py
+      - tests/unit/test_new_customers.py
+      - tests/unit/test_new_customers_presentation.py
+      - tests/unit/test_new_to_brand_absent.py
+      - tests/unit/test_new_to_brand_buyers.py
+      - tests/unit/test_new_to_brand_buyers_campaign.py
+      - tests/unit/test_new_to_brand_buyers_channel.py
+      - tests/unit/test_operational_status_metrics.py
+      - tests/unit/test_operational_status_transport.py
+      - tests/unit/test_origin_verify.py
+      - tests/unit/test_page_context_turns.py
+      - tests/unit/test_periodic_presentation.py
+      - tests/unit/test_periodic_serving.py
+      - tests/unit/test_planning.py
+      - tests/unit/test_presentation_graph_serving.py
+      - tests/unit/test_presentation_handler.py
+      - tests/unit/test_preset_artifact_publisher.py
+      - tests/unit/test_preset_artifact_store.py
+      - tests/unit/test_preset_artifacts.py
+      - tests/unit/test_producer_finalizer.py
+      - tests/unit/test_projection_coordinator_fence.py
+      - tests/unit/test_projection_coordinator_plan.py
+      - tests/unit/test_projection_coordinator_settlement.py
+      - tests/unit/test_projection_handoff.py
+      - tests/unit/test_prompt_admin_handler.py
+      - tests/unit/test_publication_selection.py
+      - tests/unit/test_reach_presentation.py
+      - tests/unit/test_reach_source.py
+      - tests/unit/test_record_family_stores.py
+      - tests/unit/test_relay_refusal_receipts.py
+      - tests/unit/test_reprocess_semantic_v2.py
+      - tests/unit/test_resolved_measurement.py
+      - tests/unit/test_retail_health_product.py
+      - tests/unit/test_retention_presentation.py
+      - tests/unit/test_retention_source.py
+      - tests/unit/test_route_exchange_client.py
+      - tests/unit/test_run_request_store.py
+      - tests/unit/test_scorecard_presentation.py
+      - tests/unit/test_segment_profile.py
+      - tests/unit/test_semantic_sidecar.py
+      - tests/unit/test_semantic_state_generation_reader.py
+      - tests/unit/test_shopper_aggregates.py
+      - tests/unit/test_source_platforms.py
+      - tests/unit/test_sqs_receipt_attributes.py
+      - tests/unit/test_stage1_operator_bootstrap.py
+      - tests/unit/test_stage1_reconcile_jobs.py
+      - tests/unit/test_stuck_flow_detector.py
+      - tests/unit/test_table_attempt.py
+      - tests/unit/test_table_attempt_statements.py
+      - tests/unit/test_table_writer.py
+      - tests/unit/test_temporal_v2_transport.py
+      - tests/unit/test_token_service_handlers.py
+      - tests/unit/test_tool_caller.py
+      - tests/unit/test_tool_caller_gate.py
+      - tests/unit/test_tracing.py
+      - tests/unit/test_verify_stage1_preswitch.py
+    - unit: src/domain/shared_kernel/provenance.py
+      tests:
+      - tests/unit/test_acquisition_cohorts.py
+      - tests/unit/test_amc_segment_registry.py
+      - tests/unit/test_audience_segments.py
+      - tests/unit/test_business_outcome_contract_gates.py
+      - tests/unit/test_campaign_attribution.py
+      - tests/unit/test_campaign_portfolio.py
+      - tests/unit/test_catalog_tool.py
+      - tests/unit/test_channel_robustness.py
+      - tests/unit/test_curation_ingestion.py
+      - tests/unit/test_curation_landing.py
+      - tests/unit/test_curation_readers.py
+      - tests/unit/test_data_contracts.py
+      - tests/unit/test_data_health.py
+      - tests/unit/test_dimension_labels.py
+      - tests/unit/test_dynamodb_page_context.py
+      - tests/unit/test_exposure_frequency.py
+      - tests/unit/test_figures.py
+      - tests/unit/test_fixture_generation.py
+      - tests/unit/test_focus_share_rule.py
+      - tests/unit/test_freshness.py
+      - tests/unit/test_marketplace_comparison.py
+      - tests/unit/test_measurement_operations.py
+      - tests/unit/test_measurement_tool.py
+      - tests/unit/test_metric_focus.py
+      - tests/unit/test_network_scorecard.py
+      - tests/unit/test_new_customers.py
+      - tests/unit/test_new_customers_source.py
+      - tests/unit/test_new_to_brand_buyers.py
+      - tests/unit/test_new_to_brand_buyers_campaign.py
+      - tests/unit/test_new_to_brand_buyers_channel.py
+      - tests/unit/test_planning.py
+      - tests/unit/test_ports.py
+      - tests/unit/test_prepublication.py
+      - tests/unit/test_presentation_capability_custody.py
+      - tests/unit/test_presentation_handler.py
+      - tests/unit/test_preset_insight_fill.py
+      - tests/unit/test_provenance.py
+      - tests/unit/test_publication_selection.py
+      - tests/unit/test_reach_source.py
+      - tests/unit/test_reprocess_semantic_v2.py
+      - tests/unit/test_resolved_measurement.py
+      - tests/unit/test_retail_health_preset_source.py
+      - tests/unit/test_retained_campaign_artifact_materializer.py
+      - tests/unit/test_retention_source.py
+      - tests/unit/test_schema_generation.py
+      - tests/unit/test_segment_profile.py
+      - tests/unit/test_semantic_compatibility.py
+      - tests/unit/test_semantic_sidecar.py
+    - unit: src/domain/shared_kernel/values.py
+      tests:
+      - tests/unit/test_analytical_resolution.py
+      - tests/unit/test_athena_composition.py
+      - tests/unit/test_athena_semantic_storage.py
+      - tests/unit/test_audience_segments.py
+      - tests/unit/test_audiences_parity.py
+      - tests/unit/test_audiences_presentation.py
+      - tests/unit/test_bake_roster_names_composition.py
+      - tests/unit/test_campaign_attribution.py
+      - tests/unit/test_campaign_channel_filter.py
+      - tests/unit/test_campaign_insights.py
+      - tests/unit/test_campaign_portfolio.py
+      - tests/unit/test_campaign_presentation.py
+      - tests/unit/test_campaign_preset_source.py
+      - tests/unit/test_change_semantics.py
+      - tests/unit/test_channel_robustness.py
+      - tests/unit/test_comparison.py
+      - tests/unit/test_contribution_scope.py
+      - tests/unit/test_curation_assertions.py
+      - tests/unit/test_d2_audiences_over_bound_verdict.py
+      - tests/unit/test_d2_chat_seams.py
+      - tests/unit/test_data_health.py
+      - tests/unit/test_deep_insight_inputs.py
+      - tests/unit/test_dimension_labels.py
+      - tests/unit/test_domain_invariants.py
+      - tests/unit/test_dsp_reach.py
+      - tests/unit/test_dynamodb_page_context.py
+      - tests/unit/test_entity_catalog.py
+      - tests/unit/test_evaluation_v4_cases.py
+      - tests/unit/test_evidence_status.py
+      - tests/unit/test_exact_only_axes.py
+      - tests/unit/test_exposure_frequency.py
+      - tests/unit/test_exposure_groups.py
+      - tests/unit/test_figures.py
+      - tests/unit/test_fixture_generation.py
+      - tests/unit/test_focus_share_rule.py
+      - tests/unit/test_freshness.py
+      - tests/unit/test_gate1_admission_band.py
+      - tests/unit/test_inline_run.py
+      - tests/unit/test_insight_assembly.py
+      - tests/unit/test_insight_materiality_cases.py
+      - tests/unit/test_insight_next_steps.py
+      - tests/unit/test_insight_request_identity.py
+      - tests/unit/test_marketplace_comparison.py
+      - tests/unit/test_measurement_operations.py
+      - tests/unit/test_measurement_tool.py
+      - tests/unit/test_media_scope_catalog.py
+      - tests/unit/test_media_scope_catalog_port.py
+      - tests/unit/test_metric_focus.py
+      - tests/unit/test_network_scorecard.py
+      - tests/unit/test_new_customers.py
+      - tests/unit/test_new_customers_presentation.py
+      - tests/unit/test_new_customers_source.py
+      - tests/unit/test_new_to_brand_absent.py
+      - tests/unit/test_new_to_brand_buyers.py
+      - tests/unit/test_new_to_brand_buyers_campaign.py
+      - tests/unit/test_new_to_brand_buyers_channel.py
+      - tests/unit/test_page_artifact_codec.py
+      - tests/unit/test_page_context_codec.py
+      - tests/unit/test_page_context_turns.py
+      - tests/unit/test_paid_feature_state.py
+      - tests/unit/test_periodic_presentation.py
+      - tests/unit/test_periodic_serving.py
+      - tests/unit/test_planning.py
+      - tests/unit/test_ports.py
+      - tests/unit/test_prepublication.py
+      - tests/unit/test_presentation_capability_custody.py
+      - tests/unit/test_presentation_handler.py
+      - tests/unit/test_preset_artifacts.py
+      - tests/unit/test_preset_insight_fill.py
+      - tests/unit/test_publication_selection.py
+      - tests/unit/test_reach_presentation.py
+      - tests/unit/test_reprocess_semantic_v2.py
+      - tests/unit/test_resolved_analytical_request.py
+      - tests/unit/test_resolved_measurement.py
+      - tests/unit/test_retail_health.py
+      - tests/unit/test_retail_health_preset_source.py
+      - tests/unit/test_retail_health_product.py
+      - tests/unit/test_retained_campaign_artifact_materializer.py
+      - tests/unit/test_retained_insight_planning.py
+      - tests/unit/test_retention_presentation.py
+      - tests/unit/test_retention_source.py
+      - tests/unit/test_returns_context.py
+      - tests/unit/test_scorecard_presentation.py
+      - tests/unit/test_seed_serve_shapes.py
+      - tests/unit/test_segment_profile.py
+      - tests/unit/test_semantic_publication.py
+      - tests/unit/test_semantic_source_aligned.py
+      - tests/unit/test_semantic_time.py
+      - tests/unit/test_shopper_aggregate_reads.py
+      - tests/unit/test_shopper_aggregates.py
+      - tests/unit/test_source_platforms.py
+      - tests/unit/test_starter_questions.py
+      - tests/unit/test_table_writer.py
+      - tests/unit/test_temporal.py
+      - tests/unit/test_temporal_v2_transport.py
+      - tests/unit/test_values.py
+    - unit: src/domain/shopper_aggregates/cells.py
+      tests: []
+    - unit: src/domain/shopper_aggregates/checks.py
+      tests: []
+    - unit: src/domain/shopper_aggregates/cohorts.py
+      tests:
+      - tests/unit/test_acquisition_cohorts.py
+      - tests/unit/test_retention_source.py
+    - unit: src/domain/shopper_aggregates/disjoint.py
+      tests: []
+    - unit: src/domain/shopper_aggregates/findings.py
+      tests: []
+    - unit: src/domain/shopper_aggregates/grain_sets.py
+      tests:
+      - tests/unit/test_new_to_brand_buyers_campaign.py
+    - unit: src/domain/shopper_aggregates/loss.py
+      tests:
+      - tests/unit/test_audience_segments.py
+      - tests/unit/test_new_customers.py
+      - tests/unit/test_new_to_brand_buyers_campaign.py
+      - tests/unit/test_new_to_brand_buyers_channel.py
+  T2:
+    description: Other frontend source, outbound adapters, jobs and the remaining adapters.
+    units:
+    - unit: frontend/app/admin/prompts/page.tsx
+      tests: []
+    - unit: frontend/app/audiences/page.tsx
+      tests: []
+    - unit: frontend/app/campaigns/page.tsx
+      tests: []
+    - unit: frontend/app/layout.tsx
+      tests: []
+    - unit: frontend/app/new-customers/page.tsx
+      tests: []
+    - unit: frontend/app/not-found.tsx
+      tests: []
+    - unit: frontend/app/page.tsx
+      tests: []
+    - unit: frontend/app/reach/page.tsx
+      tests: []
+    - unit: frontend/app/retail-health/page.tsx
+      tests: []
+    - unit: frontend/app/retention/page.tsx
+      tests: []
+    - unit: frontend/app/scorecard/page.tsx
+      tests: []
+    - unit: frontend/components/AppShell.tsx
+      tests:
+      - frontend/test/app-shell-theme.test.tsx
+      - frontend/test/not-found-page.test.tsx
+    - unit: frontend/components/AssistantPageContext.tsx
+      tests:
+      - frontend/test/chat-panel-page-context.test.tsx
+      - frontend/test/chat-panel.test.tsx
+    - unit: frontend/components/AudiencesRouteAdapter.tsx
+      tests:
+      - frontend/test/audiences-route-adapter.test.ts
+      - frontend/test/presentation-v2-route-controller.test.tsx
+    - unit: frontend/components/AudiencesView.tsx
+      tests:
+      - frontend/test/audiences-view.test.tsx
+    - unit: frontend/components/BrandMark.tsx
+      tests: []
+    - unit: frontend/components/CampaignPortfolioV2View.tsx
+      tests:
+      - frontend/test/campaign-channel-filter.test.tsx
+      - frontend/test/campaign-portfolio-view.test.tsx
+    - unit: frontend/components/CampaignRouteAdapter.tsx
+      tests:
+      - frontend/test/campaign-channel-fallback.test.tsx
+      - frontend/test/campaign-channel-filter.test.tsx
+      - frontend/test/campaign-portfolio-view.test.tsx
+      - frontend/test/campaign-route-adapter.test.ts
+      - frontend/test/page-absence-copy.test.ts
+      - frontend/test/presentation-v2-route-controller.test.tsx
+    - unit: frontend/components/ChartPrimitives.tsx
+      tests:
+      - frontend/test/change-chip.test.tsx
+    - unit: frontend/components/ChatPanel.tsx
+      tests:
+      - frontend/test/app-shell-theme.test.tsx
+      - frontend/test/chat-panel-page-context.test.tsx
+      - frontend/test/chat-panel.test.tsx
+      - frontend/test/not-found-page.test.tsx
+    - unit: frontend/components/Coverage.tsx
+      tests:
+      - frontend/test/retail-health-view.test.tsx
+    - unit: frontend/components/DataPipelineStatusView.tsx
+      tests:
+      - frontend/test/data-pipeline-status.test.tsx
+    - unit: frontend/components/DataTable.tsx
+      tests:
+      - frontend/test/data-table-basis.test.tsx
+    - unit: frontend/components/Dialog.tsx
+      tests:
+      - frontend/test/dialog.test.tsx
+      - frontend/test/insight-next-step.test.tsx
+      - frontend/test/retail-product-detail.test.tsx
+    - unit: frontend/components/EvidenceStatusSheet.tsx
+      tests: []
+    - unit: frontend/components/ExactChart.tsx
+      tests:
+      - frontend/test/precision-primitives.test.tsx
+    - unit: frontend/components/Icon.tsx
+      tests: []
+    - unit: frontend/components/InsightCard.tsx
+      tests:
+      - frontend/test/insight-next-step.test.tsx
+      - frontend/test/presentation-v2-route-controller.test.tsx
+    - unit: frontend/components/InsightDeepSection.tsx
+      tests:
+      - frontend/test/insight-deep-section.test.tsx
+    - unit: frontend/components/InsightFocusDialog.tsx
+      tests:
+      - frontend/test/insight-focus-dialog.test.tsx
+      - frontend/test/scorecard-view.test.tsx
+    - unit: frontend/components/MetricFocusDialog.tsx
+      tests:
+      - frontend/test/metric-focus-dialog.test.tsx
+    - unit: frontend/components/NewCustomersRouteAdapter.tsx
+      tests:
+      - frontend/test/new-customers-view.test.tsx
+      - frontend/test/presentation-v2-route-controller.test.tsx
+    - unit: frontend/components/NewCustomersView.tsx
+      tests:
+      - frontend/test/new-customers-view.test.tsx
+    - unit: frontend/components/NextStepContext.tsx
+      tests:
+      - frontend/test/insight-next-step.test.tsx
+      - frontend/test/new-customers-view.test.tsx
+      - frontend/test/prompt-admin-page.test.tsx
+      - frontend/test/retail-health-view.test.tsx
+      - frontend/test/retail-product-detail.test.tsx
+      - frontend/test/scorecard-view.test.tsx
+    - unit: frontend/components/NotFoundPage.tsx
+      tests:
+      - frontend/test/not-found-page.test.tsx
+    - unit: frontend/components/PageAbsence.tsx
+      tests:
+      - frontend/test/campaign-portfolio-view.test.tsx
+      - frontend/test/new-customers-view.test.tsx
+      - frontend/test/scorecard-view.test.tsx
+    - unit: frontend/components/PrecisionPrimitives.tsx
+      tests:
+      - frontend/test/precision-primitives.test.tsx
+    - unit: frontend/components/PresentationController.tsx
+      tests:
+      - frontend/test/not-found-page.test.tsx
+      - frontend/test/prompt-admin-page-edge.test.tsx
+      - frontend/test/prompt-admin-page.test.tsx
+    - unit: frontend/components/PresentationV2RouteController.tsx
+      tests:
+      - frontend/test/new-customers-view.test.tsx
+      - frontend/test/page-absence-copy.test.ts
+      - frontend/test/presentation-v2-route-controller.test.tsx
+      - frontend/test/retail-product-detail.test.tsx
+    - unit: frontend/components/PromptAdminPage.tsx
+      tests:
+      - frontend/test/prompt-admin-page-edge.test.tsx
+      - frontend/test/prompt-admin-page.test.tsx
+    - unit: frontend/components/ReachAndFunnelView.tsx
+      tests:
+      - frontend/test/reach-view.test.tsx
+    - unit: frontend/components/ReachRouteAdapter.tsx
+      tests:
+      - frontend/test/presentation-v2-route-controller.test.tsx
+      - frontend/test/reach-route-adapter.test.ts
+    - unit: frontend/components/RetailHealthRouteAdapter.tsx
+      tests:
+      - frontend/test/page-absence-copy.test.ts
+      - frontend/test/presentation-v2-route-controller.test.tsx
+      - frontend/test/retail-product-detail.test.tsx
+    - unit: frontend/components/RetailHealthView.tsx
+      tests:
+      - frontend/test/retail-health-view.test.tsx
+    - unit: frontend/components/RetailProductDetailView.tsx
+      tests:
+      - frontend/test/retail-product-detail.test.tsx
+    - unit: frontend/components/RetailTiles.tsx
+      tests: []
+    - unit: frontend/components/RetentionRouteAdapter.tsx
+      tests:
+      - frontend/test/presentation-v2-route-controller.test.tsx
+      - frontend/test/retention-route-adapter.test.ts
+    - unit: frontend/components/RetentionView.tsx
+      tests:
+      - frontend/test/retention-view.test.tsx
+    - unit: frontend/components/ScorecardRouteAdapter.tsx
+      tests:
+      - frontend/test/presentation-v2-route-controller.test.tsx
+      - frontend/test/scorecard-view.test.tsx
+    - unit: frontend/components/ScorecardView.tsx
+      tests:
+      - frontend/test/scorecard-view.test.tsx
+    - unit: frontend/components/StatePanels.tsx
+      tests: []
+    - unit: frontend/components/TemporalControl.tsx
+      tests:
+      - frontend/test/temporal-control.test.tsx
+      - frontend/test/temporal-v2.test.tsx
+    - unit: frontend/components/assistant/AssistantMarkdown.tsx
+      tests:
+      - frontend/test/assistant-markdown.test.tsx
+    - unit: frontend/components/assistant/PublicBlockStream.tsx
+      tests:
+      - frontend/test/public-block-stream.test.tsx
+    - unit: frontend/components/notFoundTitle.ts
+      tests: []
+    - unit: frontend/components/useMediaQuery.ts
+      tests: []
+    - unit: frontend/features/PresentationApp.tsx
+      tests: []
+    - unit: frontend/lib/assistant-response.ts
+      tests:
+      - frontend/test/conversation-stream.test.ts
+    - unit: frontend/lib/audiences.ts
+      tests:
+      - frontend/test/audiences-parity.test.ts
+      - frontend/test/audiences-view.test.tsx
+      - frontend/test/audiences.test.ts
+    - unit: frontend/lib/campaign-attribution.ts
+      tests:
+      - frontend/test/campaign-channel-filter.test.tsx
+      - frontend/test/campaign-portfolio-view.test.tsx
+      - frontend/test/campaign-portfolio.test.ts
+    - unit: frontend/lib/chat.ts
+      tests:
+      - frontend/test/chat-panel-page-context.test.tsx
+      - frontend/test/chat-panel.test.tsx
+      - frontend/test/chat.test.ts
+    - unit: frontend/lib/config.ts
+      tests: []
+    - unit: frontend/lib/conversation-session.ts
+      tests:
+      - frontend/test/conversation-session.test.ts
+    - unit: frontend/lib/edge-refusal.ts
+      tests: []
+    - unit: frontend/lib/evidence-status.ts
+      tests:
+      - frontend/test/campaign-portfolio-view.test.tsx
+    - unit: frontend/lib/insight-deep-dive.ts
+      tests:
+      - frontend/test/insight-deep-section.test.tsx
+    - unit: frontend/lib/insight-next-step.ts
+      tests:
+      - frontend/test/insight-next-step.test.tsx
+      - frontend/test/presentation-v2-route-controller.test.tsx
+    - unit: frontend/lib/metric-focus.ts
+      tests:
+      - frontend/test/metric-focus-dialog.test.tsx
+      - frontend/test/presentation-v2.test.ts
+    - unit: frontend/lib/new-customers.ts
+      tests:
+      - frontend/test/new-customers-view.test.tsx
+      - frontend/test/new-customers.test.ts
+    - unit: frontend/lib/page-bindings.ts
+      tests:
+      - frontend/test/audiences-route-adapter.test.ts
+      - frontend/test/new-customers-view.test.tsx
+      - frontend/test/page-bindings.test.ts
+      - frontend/test/presentation-v2-route-controller.test.tsx
+      - frontend/test/retention-route-adapter.test.ts
+      - frontend/test/scorecard-view.test.tsx
+      - frontend/test/temporal-v2.test.tsx
+    - unit: frontend/lib/page-context.ts
+      tests:
+      - frontend/test/chat-panel-page-context.test.tsx
+    - unit: frontend/lib/presentation-route-state.ts
+      tests:
+      - frontend/test/campaign-channel-fallback.test.tsx
+      - frontend/test/presentation-v2-route-controller.test.tsx
+    - unit: frontend/lib/presentation-v2.ts
+      tests:
+      - frontend/test/audiences-route-adapter.test.ts
+      - frontend/test/audiences-served.test.ts
+      - frontend/test/campaign-channel-fallback.test.tsx
+      - frontend/test/campaign-channel-filter.test.tsx
+      - frontend/test/campaign-route-adapter.test.ts
+      - frontend/test/new-customers-view.test.tsx
+      - frontend/test/new-customers.test.ts
+      - frontend/test/presentation-v2-route-controller.test.tsx
+      - frontend/test/presentation-v2.test.ts
+      - frontend/test/reach-route-adapter.test.ts
+      - frontend/test/reach-served.test.ts
+      - frontend/test/retail-product-detail.test.tsx
+      - frontend/test/retention-route-adapter.test.ts
+      - frontend/test/scorecard-view.test.tsx
+      - frontend/test/scorecard.test.ts
+      - frontend/test/session.test.ts
+      - frontend/test/temporal-control.test.tsx
+      - frontend/test/temporal-v2.test.tsx
+    - unit: frontend/lib/presentation.ts
+      tests:
+      - frontend/test/audiences-route-adapter.test.ts
+      - frontend/test/campaign-channel-fallback.test.tsx
+      - frontend/test/campaign-channel-filter.test.tsx
+      - frontend/test/presentation-v2-route-controller.test.tsx
+      - frontend/test/presentation-v2.test.ts
+      - frontend/test/reach-route-adapter.test.ts
+      - frontend/test/retention-route-adapter.test.ts
+      - frontend/test/session.test.ts
+    - unit: frontend/lib/provenance.ts
+      tests:
+      - frontend/test/retail-health-view.test.tsx
+      - frontend/test/scorecard-view.test.tsx
+    - unit: frontend/lib/reach.ts
+      tests:
+      - frontend/test/reach-view.test.tsx
+      - frontend/test/reach.test.ts
+    - unit: frontend/lib/retail-health-product.ts
+      tests:
+      - frontend/test/retail-product-detail.test.tsx
+    - unit: frontend/lib/retail-health.ts
+      tests:
+      - frontend/test/retail-health-view.test.tsx
+      - frontend/test/retail-health.test.ts
+    - unit: frontend/lib/retention.ts
+      tests:
+      - frontend/test/retention-view.test.tsx
+      - frontend/test/retention.test.ts
+    - unit: frontend/lib/route-manifest.ts
+      tests:
+      - frontend/test/data-pipeline-status.test.tsx
+      - frontend/test/insight-next-step.test.tsx
+      - frontend/test/new-customers-view.test.tsx
+      - frontend/test/prompt-admin-page.test.tsx
+      - frontend/test/retail-health-view.test.tsx
+      - frontend/test/retail-product-detail.test.tsx
+      - frontend/test/route-manifest.test.ts
+      - frontend/test/scorecard-view.test.tsx
+    - unit: frontend/lib/scorecard.ts
+      tests:
+      - frontend/test/scorecard-view.test.tsx
+      - frontend/test/scorecard.test.ts
+    - unit: frontend/lib/session.ts
+      tests:
+      - frontend/test/app-shell-theme.test.tsx
+      - frontend/test/chat.test.ts
+      - frontend/test/not-found-page.test.tsx
+      - frontend/test/prompt-admin-page.test.tsx
+      - frontend/test/session.test.ts
+    - unit: src/adapters/amc_csv.py
+      tests:
+      - tests/unit/test_amc_csv.py
+      - tests/unit/test_dsp_reach.py
+      - tests/unit/test_fixture_conformance.py
+      - tests/unit/test_land_fixtures.py
+      - tests/unit/test_semantic_sidecar.py
+    - unit: src/adapters/campaign_artifact_renderer.py
+      tests:
+      - tests/unit/test_campaign_estate_acceptance.py
+      - tests/unit/test_campaign_preset_source.py
+      - tests/unit/test_seed_serve_shapes.py
+    - unit: src/adapters/campaign_insight_requests.py
+      tests:
+      - tests/unit/test_campaign_insight_predicates.py
+      - tests/unit/test_campaign_insights.py
+      - tests/unit/test_campaign_portfolio.py
+      - tests/unit/test_contribution_scope.py
+      - tests/unit/test_insight_finding_units.py
+      - tests/unit/test_insight_materiality_cases.py
+      - tests/unit/test_insight_precompute_materializer.py
+      - tests/unit/test_preset_insight_fill.py
+      - tests/unit/test_retained_campaign_artifact_materializer.py
+      - tests/unit/test_returns_context.py
+      - tests/unit/test_seed_serve_shapes.py
+    - unit: src/adapters/campaign_measurement.py
+      tests:
+      - tests/unit/test_new_to_brand_buyers_channel.py
+      - tests/unit/test_publication_selection.py
+      - tests/unit/test_retained_campaign_artifact_materializer.py
+    - unit: src/adapters/config.py
+      tests:
+      - tests/unit/test_adr_075_config_and_tracing.py
+      - tests/unit/test_adr_075_stage1_operational_status_runtime.py
+      - tests/unit/test_agent_quality_audit.py
+      - tests/unit/test_athena_start_census.py
+      - tests/unit/test_auth_handler_tracing.py
+      - tests/unit/test_auth_provider_failure_reporting.py
+      - tests/unit/test_authorizer_context.py
+      - tests/unit/test_bake_roster_names_composition.py
+      - tests/unit/test_campaign_preset_source.py
+      - tests/unit/test_config.py
+      - tests/unit/test_conversation_server.py
+      - tests/unit/test_execution_graph_dispatch.py
+      - tests/unit/test_graph_whole_chain.py
+      - tests/unit/test_ingestion_phase_one.py
+      - tests/unit/test_managed_conversation_turns.py
+      - tests/unit/test_network_scorecard.py
+      - tests/unit/test_new_customers_source.py
+      - tests/unit/test_operational_status_api.py
+      - tests/unit/test_operational_status_producers.py
+      - tests/unit/test_operational_status_reconciler.py
+      - tests/unit/test_operational_status_v2_store.py
+      - tests/unit/test_origin_verify.py
+      - tests/unit/test_page_context_turns.py
+      - tests/unit/test_presentation_handler.py
+      - tests/unit/test_preset_artifact_publisher.py
+      - tests/unit/test_producer_finalizer.py
+      - tests/unit/test_prompt_admin_handler.py
+      - tests/unit/test_quality_review_client.py
+      - tests/unit/test_reach_source.py
+      - tests/unit/test_requeue_orphan_plan_units.py
+      - tests/unit/test_retail_health_preset_source.py
+      - tests/unit/test_run_request_handler.py
+      - tests/unit/test_segment_profile.py
+      - tests/unit/test_session_entitlements.py
+      - tests/unit/test_table_writer.py
+      - tests/unit/test_token_service_handlers.py
+      - tests/unit/test_tool_caller.py
+      - tests/unit/test_tracing_bootstrap.py
+      - tests/unit/test_verify_stage1_preswitch.py
+    - unit: src/adapters/deep_input_revision.py
+      tests:
+      - tests/unit/test_ash_secret_suppression_scope.py
+      - tests/unit/test_deep_input_revision.py
+      - tests/unit/test_insight_assembly.py
+    - unit: src/adapters/deep_insight_inputs.py
+      tests:
+      - tests/unit/test_campaign_channel_filter.py
+      - tests/unit/test_deep_input_revision.py
+      - tests/unit/test_deep_insight_inputs.py
+      - tests/unit/test_presentation_handler.py
+      - tests/unit/test_returns_context.py
+    - unit: src/adapters/graph_authority.py
+      tests:
+      - tests/unit/test_execution_graph_dispatch.py
+    - unit: src/adapters/insight_finding_units.py
+      tests:
+      - tests/unit/test_insight_finding_units.py
+    - unit: src/adapters/insight_next_steps.py
+      tests:
+      - tests/unit/test_insight_next_steps.py
+    - unit: src/adapters/insight_requests.py
+      tests:
+      - tests/unit/test_insight_assembly.py
+      - tests/unit/test_insight_request_identity.py
+      - tests/unit/test_presentation_handler.py
+    - unit: src/adapters/jobs/agent_quality_processor/handler.py
+      tests:
+      - tests/unit/test_agent_quality_audit.py
+    - unit: src/adapters/jobs/alarm_staffing/__main__.py
+      tests:
+      - tests/unit/test_alarm_staffing_verify.py
+    - unit: src/adapters/jobs/backfill_record_expiry/__main__.py
+      tests:
+      - tests/unit/test_backfill_record_expiry.py
+    - unit: src/adapters/jobs/contract_validation/__main__.py
+      tests: []
+    - unit: src/adapters/jobs/contract_validation/insight_loader.py
+      tests:
+      - tests/unit/test_alert_rules.py
+      - tests/unit/test_campaign_insight_predicates.py
+      - tests/unit/test_campaign_insights.py
+      - tests/unit/test_campaign_portfolio.py
+      - tests/unit/test_contribution_scope.py
+      - tests/unit/test_deep_insight_inputs.py
+      - tests/unit/test_gate1_admission_band.py
+      - tests/unit/test_insight_assembly.py
+      - tests/unit/test_insight_domain_edges.py
+      - tests/unit/test_insight_finding_units.py
+      - tests/unit/test_insight_materiality_cases.py
+      - tests/unit/test_insight_next_steps.py
+      - tests/unit/test_insight_precompute_materializer.py
+      - tests/unit/test_insight_quiet_reasons.py
+      - tests/unit/test_network_scorecard.py
+      - tests/unit/test_new_customers.py
+      - tests/unit/test_new_customers_presentation.py
+      - tests/unit/test_new_customers_source.py
+      - tests/unit/test_preset_insight_fill.py
+      - tests/unit/test_prompt_registry_seed.py
+      - tests/unit/test_reach_source.py
+      - tests/unit/test_retail_health_preset_source.py
+      - tests/unit/test_retained_campaign_artifact_materializer.py
+      - tests/unit/test_retention.py
+      - tests/unit/test_retention_source.py
+      - tests/unit/test_returns_context.py
+      - tests/unit/test_seed_serve_shapes.py
+      - tests/unit/test_segment_profile.py
+    - unit: src/adapters/jobs/contract_validation/loader.py
+      tests:
+      - tests/unit/test_acquisition_cohorts.py
+      - tests/unit/test_amc_segment_registry.py
+      - tests/unit/test_athena_composition.py
+      - tests/unit/test_audience_segments.py
+      - tests/unit/test_bake_pin_certificate.py
+      - tests/unit/test_bake_source_horizons.py
+      - tests/unit/test_business_outcome_contract_gates.py
+      - tests/unit/test_curation_assertions.py
+      - tests/unit/test_curation_readers.py
+      - tests/unit/test_curation_traps.py
+      - tests/unit/test_d2_chat_seams.py
+      - tests/unit/test_dimension_labels.py
+      - tests/unit/test_dsp_reach.py
+      - tests/unit/test_entity_catalog.py
+      - tests/unit/test_evaluation_v4_cases.py
+      - tests/unit/test_exact_only_axes.py
+      - tests/unit/test_exposure_frequency.py
+      - tests/unit/test_exposure_groups.py
+      - tests/unit/test_figures.py
+      - tests/unit/test_fixture_generation.py
+      - tests/unit/test_land_fixtures.py
+      - tests/unit/test_measurement_operations.py
+      - tests/unit/test_measurement_tool.py
+      - tests/unit/test_media_scope_catalog.py
+      - tests/unit/test_metric_dictionary.py
+      - tests/unit/test_network_scorecard.py
+      - tests/unit/test_new_customers.py
+      - tests/unit/test_new_customers_source.py
+      - tests/unit/test_new_to_brand_absent.py
+      - tests/unit/test_new_to_brand_buyers.py
+      - tests/unit/test_new_to_brand_buyers_campaign.py
+      - tests/unit/test_new_to_brand_buyers_channel.py
+      - tests/unit/test_pack_variants.py
+      - tests/unit/test_periodic_serving.py
+      - tests/unit/test_planning.py
+      - tests/unit/test_ports.py
+      - tests/unit/test_presentation_handler.py
+      - tests/unit/test_producer.py
+      - tests/unit/test_publication_selection.py
+      - tests/unit/test_reach_source.py
+      - tests/unit/test_reprocess_discard_policies.py
+      - tests/unit/test_reprocess_semantic_v2.py
+      - tests/unit/test_resolved_measurement.py
+      - tests/unit/test_retail_health_preset_source.py
+      - tests/unit/test_retained_campaign_artifact_materializer.py
+      - tests/unit/test_retention_source.py
+      - tests/unit/test_schema_generation.py
+      - tests/unit/test_seed_pre_landing.py
+      - tests/unit/test_segment_profile.py
+      - tests/unit/test_semantic_sidecar.py
+      - tests/unit/test_semantic_source_packs.py
+      - tests/unit/test_shopper_aggregate_reads.py
+      - tests/unit/test_shopper_aggregates.py
+      - tests/unit/test_source_platforms.py
+      - tests/unit/test_system_observed_snapshot.py
+      - tests/unit/test_trace_contract.py
+      - tests/unit/test_withheld_residual.py
+    - unit: src/adapters/jobs/curation/manifests.py
+      tests:
+      - tests/unit/test_acquisition_cohorts.py
+      - tests/unit/test_audience_segments.py
+      - tests/unit/test_curation_landing.py
+      - tests/unit/test_dsp_reach.py
+      - tests/unit/test_exposure_frequency.py
+      - tests/unit/test_exposure_groups.py
+      - tests/unit/test_land_fixtures.py
+      - tests/unit/test_new_customers.py
+      - tests/unit/test_new_to_brand_buyers.py
+      - tests/unit/test_new_to_brand_buyers_campaign.py
+      - tests/unit/test_new_to_brand_buyers_channel.py
+      - tests/unit/test_producer.py
+      - tests/unit/test_reprocess_discard_policies.py
+      - tests/unit/test_reprocess_semantic_v2.py
+      - tests/unit/test_seed_pre_landing.py
+      - tests/unit/test_semantic_sidecar.py
+      - tests/unit/test_shopper_aggregates.py
+      - tests/unit/test_system_observed_snapshot.py
+      - tests/unit/test_withheld_residual.py
+    - unit: src/adapters/jobs/curation/readers.py
+      tests:
+      - tests/unit/test_amc_csv.py
+      - tests/unit/test_curation_assertions.py
+      - tests/unit/test_curation_readers.py
+      - tests/unit/test_curation_traps.py
+      - tests/unit/test_land_fixtures.py
+      - tests/unit/test_new_to_brand_buyers.py
+      - tests/unit/test_reprocess_semantic_v2.py
+      - tests/unit/test_seed_pre_landing.py
+      - tests/unit/test_semantic_sidecar.py
+      - tests/unit/test_shopper_aggregates.py
+      - tests/unit/test_system_observed_snapshot.py
+      - tests/unit/test_withheld_residual.py
+    - unit: src/adapters/jobs/data_flow_registry/__main__.py
+      tests: []
+    - unit: src/adapters/jobs/data_flow_registry/alarm_destinations.py
+      tests:
+      - tests/unit/test_alarm_destinations_contract.py
+      - tests/unit/test_ash_secret_suppression_scope.py
+    - unit: src/adapters/jobs/data_flow_registry/contract.py
+      tests: []
+    - unit: src/adapters/jobs/data_flow_registry/execution_graphs.py
+      tests:
+      - tests/unit/test_ash_secret_suppression_scope.py
+      - tests/unit/test_execution_graph_cutover.py
+      - tests/unit/test_execution_graph_protocol.py
+    - unit: src/adapters/jobs/design_manifest/__main__.py
+      tests:
+      - tests/unit/test_design_manifest.py
+    - unit: src/adapters/jobs/evaluation_gate/handler.py
+      tests:
+      - tests/unit/test_evaluation_gate_provider.py
+    - unit: src/adapters/jobs/evaluation_gate/provider.py
+      tests:
+      - tests/unit/test_evaluation_gate_provider.py
+    - unit: src/adapters/jobs/evaluation_outbox_dispatcher/handler.py
+      tests:
+      - tests/unit/test_evaluation_outbox_dispatcher_handler.py
+    - unit: src/adapters/jobs/evaluation_result_ingress/handler.py
+      tests:
+      - tests/unit/test_evaluation_result_ingress.py
+    - unit: src/adapters/jobs/evaluation_result_ingress/subscription.py
+      tests:
+      - tests/unit/test_evaluation_result_ingress.py
+    - unit: src/adapters/jobs/evaluation_result_link/work.py
+      tests:
+      - tests/unit/test_evaluation_result_ingress.py
+      - tests/unit/test_evaluation_result_link.py
+      - tests/unit/test_evaluation_result_linker_handler.py
+    - unit: src/adapters/jobs/evaluation_result_linker/handler.py
+      tests:
+      - tests/unit/test_evaluation_result_linker_handler.py
+    - unit: src/adapters/jobs/evaluation_writer/contract.py
+      tests:
+      - tests/unit/test_evaluation_writer_contract.py
+    - unit: src/adapters/jobs/evaluation_writer/handler.py
+      tests:
+      - tests/unit/test_evaluation_writer_handler.py
+    - unit: src/adapters/jobs/evaluation_writer/span.py
+      tests:
+      - tests/unit/test_evaluation_gate_adapters.py
+      - tests/unit/test_evaluation_gate_spec.py
+      - tests/unit/test_evaluation_writer_contract.py
+    - unit: src/adapters/jobs/execution_graph/commands.py
+      tests:
+      - tests/unit/test_execution_graph_dispatch.py
+      - tests/unit/test_execution_graph_instantiate.py
+      - tests/unit/test_execution_graph_operator.py
+      - tests/unit/test_execution_graph_release.py
+    - unit: src/adapters/jobs/execution_graph/cutover.py
+      tests:
+      - tests/unit/test_execution_graph_cutover.py
+    - unit: src/adapters/jobs/execution_graph/cutover_gate.py
+      tests:
+      - tests/unit/test_insight_precompute_handler.py
+      - tests/unit/test_preset_artifact_publisher.py
+    - unit: src/adapters/jobs/execution_graph/dead_letters.py
+      tests:
+      - tests/unit/test_execution_graph_operator.py
+    - unit: src/adapters/jobs/execution_graph/dispatcher.py
+      tests:
+      - tests/unit/test_execution_graph_dispatch.py
+      - tests/unit/test_execution_graph_instantiate.py
+      - tests/unit/test_execution_graph_unit_batch_store.py
+      - tests/unit/test_execution_graph_worker_composition.py
+      - tests/unit/test_graph_precompute.py
+      - tests/unit/test_graph_whole_chain.py
+      - tests/unit/test_table_writer.py
+    - unit: src/adapters/jobs/execution_graph/fence_settler.py
+      tests:
+      - tests/unit/test_execution_graph_dispatch.py
+      - tests/unit/test_execution_graph_fresh_election_rehearsal.py
+      - tests/unit/test_execution_graph_instantiate.py
+      - tests/unit/test_execution_graph_promoter.py
+      - tests/unit/test_execution_graph_unit_batch_store.py
+      - tests/unit/test_execution_graph_worker_composition.py
+      - tests/unit/test_graph_bake.py
+      - tests/unit/test_graph_whole_chain.py
+      - tests/unit/test_run_fresh_election_timing.py
+      - tests/unit/test_table_writer.py
+    - unit: src/adapters/jobs/execution_graph/instantiate.py
+      tests:
+      - tests/unit/test_execution_graph_dispatch.py
+      - tests/unit/test_execution_graph_fresh_election_rehearsal.py
+      - tests/unit/test_execution_graph_instantiate.py
+      - tests/unit/test_execution_graph_promoter.py
+      - tests/unit/test_execution_graph_release.py
+      - tests/unit/test_execution_graph_unit_batch_store.py
+      - tests/unit/test_graph_whole_chain.py
+      - tests/unit/test_ingestion_graph_materialize.py
+      - tests/unit/test_run_request_admission.py
+      - tests/unit/test_stuck_flow_detector.py
+      - tests/unit/test_table_writer.py
+    - unit: src/adapters/jobs/execution_graph/isolation.py
+      tests: []
+    - unit: src/adapters/jobs/execution_graph/node_verifier.py
+      tests:
+      - tests/unit/test_execution_graph_dispatch.py
+      - tests/unit/test_execution_graph_unit_batch_store.py
+      - tests/unit/test_execution_graph_worker_composition.py
+      - tests/unit/test_graph_whole_chain.py
+      - tests/unit/test_ingestion_graph_materialize.py
+    - unit: src/adapters/jobs/execution_graph/operator.py
+      tests:
+      - tests/unit/test_execution_graph_cutover.py
+      - tests/unit/test_execution_graph_operator.py
+      - tests/unit/test_preset_artifact_publisher.py
+    - unit: src/adapters/jobs/execution_graph/post_grant_consumer.py
+      tests:
+      - tests/unit/test_graph_bake.py
+      - tests/unit/test_graph_bake_bound.py
+      - tests/unit/test_graph_precompute.py
+      - tests/unit/test_graph_whole_chain.py
+    - unit: src/adapters/jobs/execution_graph/promoter.py
+      tests:
+      - tests/unit/test_execution_graph_fresh_election_rehearsal.py
+      - tests/unit/test_execution_graph_instantiate.py
+      - tests/unit/test_execution_graph_lineage.py
+      - tests/unit/test_execution_graph_promoter.py
+      - tests/unit/test_execution_graph_release.py
+      - tests/unit/test_execution_graph_unit_batch_store.py
+      - tests/unit/test_execution_graph_worker_composition.py
+      - tests/unit/test_graph_whole_chain.py
+      - tests/unit/test_stuck_flow_detector.py
+      - tests/unit/test_table_writer.py
+    - unit: src/adapters/jobs/execution_graph/release.py
+      tests:
+      - tests/unit/test_delivery_cohort.py
+      - tests/unit/test_execution_graph_legacy_head.py
+      - tests/unit/test_execution_graph_lineage.py
+      - tests/unit/test_execution_graph_release.py
+      - tests/unit/test_execution_graph_release_store.py
+      - tests/unit/test_execution_graph_worker_composition.py
+      - tests/unit/test_graph_bake.py
+      - tests/unit/test_graph_whole_chain.py
+      - tests/unit/test_semantic_version_resolution.py
+      - tests/unit/test_serving_election_behind_active_cohort.py
+    - unit: src/adapters/jobs/execution_graph/resolution.py
+      tests:
+      - tests/unit/test_run_fresh_election_timing.py
+    - unit: src/adapters/jobs/execution_graph/stuck_flow.py
+      tests:
+      - tests/unit/test_stuck_flow_detector.py
+    - unit: src/adapters/jobs/execution_graph/workers.py
+      tests:
+      - tests/unit/test_execution_graph_worker_composition.py
+    - unit: src/adapters/jobs/fixture_generation/__main__.py
+      tests:
+      - tests/unit/test_fixture_generation.py
+      - tests/unit/test_land_fixtures.py
+    - unit: src/adapters/jobs/fixture_generation/audience.py
+      tests: []
+    - unit: src/adapters/jobs/fixture_generation/catalog.py
+      tests:
+      - tests/unit/test_curation_readers.py
+      - tests/unit/test_dsp_reach.py
+      - tests/unit/test_exposure_frequency.py
+      - tests/unit/test_fixture_conformance.py
+      - tests/unit/test_fixture_generation.py
+      - tests/unit/test_fixture_provenance.py
+      - tests/unit/test_land_fixtures.py
+      - tests/unit/test_new_to_brand_buyers_campaign.py
+      - tests/unit/test_probe_amc_current_invariants.py
+      - tests/unit/test_probe_vendor_seed_invariants.py
+      - tests/unit/test_semantic_sidecar.py
+    - unit: src/adapters/jobs/fixture_generation/checks.py
+      tests:
+      - tests/unit/test_fixture_generation.py
+    - unit: src/adapters/jobs/fixture_generation/cohorts.py
+      tests: []
+    - unit: src/adapters/jobs/fixture_generation/conformance.py
+      tests:
+      - tests/unit/test_fixture_conformance.py
+    - unit: src/adapters/jobs/fixture_generation/daily.py
+      tests: []
+    - unit: src/adapters/jobs/fixture_generation/exposure.py
+      tests: []
+    - unit: src/adapters/jobs/fixture_generation/frequency.py
+      tests: []
+    - unit: src/adapters/jobs/fixture_generation/periodic.py
+      tests: []
+    - unit: src/adapters/jobs/fixture_generation/profile.py
+      tests: []
+    - unit: src/adapters/jobs/fixture_generation/provenance.py
+      tests:
+      - tests/unit/test_fixture_provenance.py
+    - unit: src/adapters/jobs/fixture_generation/shape.py
+      tests:
+      - tests/unit/test_fixture_generation.py
+      - tests/unit/test_land_fixtures.py
+      - tests/unit/test_seed_pre_landing.py
+      - tests/unit/test_seed_serve_shapes.py
+    - unit: src/adapters/jobs/fixture_generation/shapes.py
+      tests:
+      - tests/unit/test_fixture_conformance.py
+      - tests/unit/test_fixture_generation.py
+      - tests/unit/test_land_fixtures.py
+    - unit: src/adapters/jobs/fixture_generation/values.py
+      tests:
+      - tests/unit/test_fixture_generation.py
+    - unit: src/adapters/jobs/fixture_generation/vendor.py
+      tests:
+      - tests/unit/test_seed_pre_landing.py
+    - unit: src/adapters/jobs/harness_resource/handler.py
+      tests:
+      - tests/unit/test_harness_resource.py
+    - unit: src/adapters/jobs/harness_resource/provider.py
+      tests:
+      - tests/unit/test_harness_resource.py
+    - unit: src/adapters/jobs/ingest_delivery/__main__.py
+      tests:
+      - tests/unit/test_athena_start_census.py
+      - tests/unit/test_job_cli_safety.py
+    - unit: src/adapters/jobs/ingest_delivery/authority_gate.py
+      tests:
+      - tests/unit/test_ingestion_authority_boundary.py
+    - unit: src/adapters/jobs/ingest_delivery/landing.py
+      tests:
+      - tests/unit/test_acquisition_cohorts.py
+      - tests/unit/test_audience_segments.py
+      - tests/unit/test_dsp_reach.py
+      - tests/unit/test_exposure_frequency.py
+      - tests/unit/test_exposure_groups.py
+      - tests/unit/test_ingestion_authority_boundary.py
+      - tests/unit/test_ingestion_graph_materialize.py
+      - tests/unit/test_ingestion_handler.py
+      - tests/unit/test_job_cli_safety.py
+      - tests/unit/test_new_customers.py
+      - tests/unit/test_new_to_brand_buyers.py
+      - tests/unit/test_new_to_brand_buyers_campaign.py
+      - tests/unit/test_new_to_brand_buyers_channel.py
+      - tests/unit/test_reprocess_discard_policies.py
+      - tests/unit/test_semantic_sidecar.py
+    - unit: src/adapters/jobs/ingest_delivery/row_validation.py
+      tests: []
+    - unit: src/adapters/jobs/ingest_delivery/semantic_ingestion.py
+      tests:
+      - tests/unit/test_acquisition_cohorts.py
+      - tests/unit/test_audience_segments.py
+      - tests/unit/test_dsp_reach.py
+      - tests/unit/test_exposure_frequency.py
+      - tests/unit/test_exposure_groups.py
+      - tests/unit/test_ingestion_graph_materialize.py
+      - tests/unit/test_ingestion_handler.py
+      - tests/unit/test_new_customers.py
+      - tests/unit/test_new_to_brand_buyers.py
+      - tests/unit/test_new_to_brand_buyers_campaign.py
+      - tests/unit/test_new_to_brand_buyers_channel.py
+      - tests/unit/test_reprocess_discard_policies.py
+      - tests/unit/test_segment_profile.py
+      - tests/unit/test_semantic_sidecar.py
+    - unit: src/adapters/jobs/ingest_delivery/semantic_sidecar.py
+      tests:
+      - tests/unit/test_acquisition_cohorts.py
+      - tests/unit/test_audience_segments.py
+      - tests/unit/test_dsp_reach.py
+      - tests/unit/test_exposure_frequency.py
+      - tests/unit/test_exposure_groups.py
+      - tests/unit/test_ingestion_graph_materialize.py
+      - tests/unit/test_ingestion_handler.py
+      - tests/unit/test_ingestion_phase_one.py
+      - tests/unit/test_land_fixtures.py
+      - tests/unit/test_new_customers.py
+      - tests/unit/test_new_to_brand_buyers.py
+      - tests/unit/test_new_to_brand_buyers_campaign.py
+      - tests/unit/test_new_to_brand_buyers_channel.py
+      - tests/unit/test_reprocess_semantic_v2.py
+      - tests/unit/test_scd2_observed_order.py
+      - tests/unit/test_segment_profile.py
+      - tests/unit/test_semantic_sidecar.py
+      - tests/unit/test_semantic_version_resolution.py
+    - unit: src/adapters/jobs/ingest_delivery/variant_evidence.py
+      tests:
+      - tests/unit/test_acquisition_cohorts.py
+      - tests/unit/test_pack_variants.py
+      - tests/unit/test_reprocess_discard_policies.py
+    - unit: src/adapters/jobs/insight_continuation/handler.py
+      tests:
+      - tests/unit/test_insight_continuation_handler.py
+    - unit: src/adapters/jobs/insight_matrix/__main__.py
+      tests: []
+    - unit: src/adapters/jobs/insight_precompute/graph_precompute.py
+      tests:
+      - tests/unit/test_graph_bake.py
+      - tests/unit/test_graph_precompute.py
+      - tests/unit/test_graph_whole_chain.py
+      - tests/unit/test_stuck_flow_detector.py
+    - unit: src/adapters/jobs/insight_precompute/handler.py
+      tests:
+      - tests/unit/test_insight_precompute_handler.py
+      - tests/unit/test_servable_trigger_rule.py
+    - unit: src/adapters/jobs/insight_precompute/materializer.py
+      tests:
+      - tests/unit/test_graph_precompute.py
+      - tests/unit/test_graph_whole_chain.py
+      - tests/unit/test_insight_precompute_handler.py
+      - tests/unit/test_insight_precompute_materializer.py
+      - tests/unit/test_retained_campaign_artifact_materializer.py
+    - unit: src/adapters/jobs/insight_precompute/planning.py
+      tests:
+      - tests/unit/test_bake_pin_certificate.py
+      - tests/unit/test_insight_precompute_handler.py
+      - tests/unit/test_publication_selection.py
+      - tests/unit/test_retained_campaign_artifact_materializer.py
+      - tests/unit/test_retained_insight_planning.py
+    - unit: src/adapters/jobs/insight_precompute/requests.py
+      tests:
+      - tests/unit/test_insight_precompute_handler.py
+      - tests/unit/test_retained_campaign_artifact_materializer.py
+      - tests/unit/test_retained_insight_planning.py
+    - unit: src/adapters/jobs/insight_prompt_calibration/handler.py
+      tests:
+      - tests/unit/test_insight_prompt_calibration_worker.py
+    - unit: src/adapters/jobs/land_fixtures/__main__.py
+      tests:
+      - tests/unit/test_job_cli_safety.py
+      - tests/unit/test_land_fixtures.py
+      - tests/unit/test_run_graph_rolling_freshness_control.py
+    - unit: src/adapters/jobs/land_fixtures/bundle.py
+      tests:
+      - tests/unit/test_dsp_reach.py
+      - tests/unit/test_exposure_frequency.py
+      - tests/unit/test_fixture_conformance.py
+      - tests/unit/test_historical_predicate.py
+      - tests/unit/test_land_fixtures.py
+      - tests/unit/test_phase_b_entities.py
+      - tests/unit/test_phase_b_overlap.py
+      - tests/unit/test_probe_delivery_unrestated.py
+      - tests/unit/test_seed_pre_landing.py
+    - unit: src/adapters/jobs/land_fixtures/job.py
+      tests:
+      - tests/unit/test_land_fixtures.py
+      - tests/unit/test_land_settled.py
+      - tests/unit/test_probe_pipeline_settled.py
+    - unit: src/adapters/jobs/land_fixtures/twin.py
+      tests:
+      - tests/unit/test_land_fixtures.py
+    - unit: src/adapters/jobs/migrate_review_groups/__main__.py
+      tests:
+      - tests/unit/test_migrate_review_groups.py
+    - unit: src/adapters/jobs/migrate_servable_pointer/__main__.py
+      tests: []
+    - unit: src/adapters/jobs/operational_status/attempts.py
+      tests:
+      - tests/unit/test_operational_status_producers.py
+    - unit: src/adapters/jobs/operational_status/attempts_failures.py
+      tests:
+      - tests/unit/test_attempts_failures.py
+    - unit: src/adapters/jobs/operational_status/graph_projection_rebuild.py
+      tests:
+      - tests/unit/test_operational_status_metrics.py
+      - tests/unit/test_operational_status_v2_store.py
+    - unit: src/adapters/jobs/operational_status/metric_reconciler.py
+      tests:
+      - tests/unit/test_metric_reconciler.py
+    - unit: src/adapters/jobs/operational_status/projector.py
+      tests:
+      - tests/unit/test_adr_075_stage1_operational_status_runtime.py
+      - tests/unit/test_operational_status_v2_store.py
+    - unit: src/adapters/jobs/operational_status/reconciler.py
+      tests:
+      - tests/unit/test_operational_status_reconciler.py
+    - unit: src/adapters/jobs/operational_status/stage1_lifecycle.py
+      tests:
+      - tests/unit/test_adr_075_stage1_operational_status_runtime.py
+    - unit: src/adapters/jobs/operational_status/stage1_outbox_recovery.py
+      tests:
+      - tests/unit/test_adr_075_stage1_operational_status_runtime.py
+    - unit: src/adapters/jobs/operational_status_cli/__main__.py
+      tests:
+      - tests/unit/test_operational_status_cli.py
+    - unit: src/adapters/jobs/operational_status_cli/client.py
+      tests:
+      - tests/unit/test_operational_status_cli.py
+    - unit: src/adapters/jobs/plan_intent_reconciler.py
+      tests:
+      - tests/unit/test_stage1_reconcile_jobs.py
+    - unit: src/adapters/jobs/presentation_release_preflight.py
+      tests:
+      - tests/unit/test_presentation_release_preflight.py
+    - unit: src/adapters/jobs/presentation_validation/__main__.py
+      tests: []
+    - unit: src/adapters/jobs/presentation_validation/bindings.py
+      tests:
+      - tests/unit/test_page_schemas.py
+      - tests/unit/test_presentation_v2_page_schemas.py
+    - unit: src/adapters/jobs/presentation_validation/generate.py
+      tests:
+      - tests/unit/test_page_schemas.py
+      - tests/unit/test_presentation_v2_page_schemas.py
+    - unit: src/adapters/jobs/presentation_validation/loader.py
+      tests:
+      - tests/unit/test_bake_pin_certificate.py
+      - tests/unit/test_campaign_preset_source.py
+      - tests/unit/test_d2_chat_seams.py
+      - tests/unit/test_insight_next_steps.py
+      - tests/unit/test_navigation_manifest.py
+      - tests/unit/test_new_customers_presentation.py
+      - tests/unit/test_new_customers_source.py
+      - tests/unit/test_page_schemas.py
+      - tests/unit/test_periodic_presentation.py
+      - tests/unit/test_presentation_handler.py
+      - tests/unit/test_presentation_v2_page_schemas.py
+      - tests/unit/test_preset_bakeability.py
+      - tests/unit/test_publication_selection.py
+      - tests/unit/test_reach_source.py
+      - tests/unit/test_retail_health_preset_source.py
+      - tests/unit/test_retention.py
+      - tests/unit/test_retention_source.py
+      - tests/unit/test_scorecard_presentation.py
+      - tests/unit/test_segment_profile.py
+      - tests/unit/test_starter_questions.py
+    - unit: src/adapters/jobs/presentation_validation/navigation.py
+      tests:
+      - tests/unit/test_navigation_manifest.py
+    - unit: src/adapters/jobs/preset_artifact_publisher/audiences_source.py
+      tests:
+      - tests/unit/test_bake_pin_certificate.py
+      - tests/unit/test_bake_roster_names_composition.py
+      - tests/unit/test_preset_bakeability.py
+      - tests/unit/test_segment_profile.py
+    - unit: src/adapters/jobs/preset_artifact_publisher/backfill.py
+      tests:
+      - tests/unit/test_preset_artifact_publisher.py
+    - unit: src/adapters/jobs/preset_artifact_publisher/bakeability.py
+      tests:
+      - tests/unit/test_bake_pin_certificate.py
+      - tests/unit/test_bake_roster_names_composition.py
+      - tests/unit/test_d2_audiences_over_bound_verdict.py
+      - tests/unit/test_preset_bakeability.py
+    - unit: src/adapters/jobs/preset_artifact_publisher/baker.py
+      tests:
+      - tests/unit/test_athena_start_census.py
+      - tests/unit/test_bake_page_registry.py
+      - tests/unit/test_bake_roster_names_composition.py
+      - tests/unit/test_graph_bake.py
+      - tests/unit/test_network_scorecard.py
+      - tests/unit/test_new_customers_source.py
+      - tests/unit/test_operational_status_companions.py
+      - tests/unit/test_preset_artifact_publisher.py
+      - tests/unit/test_preset_insight_fill.py
+      - tests/unit/test_reach_source.py
+      - tests/unit/test_retail_health_preset_source.py
+      - tests/unit/test_retention_source.py
+      - tests/unit/test_segment_profile.py
+    - unit: src/adapters/jobs/preset_artifact_publisher/campaign_source.py
+      tests:
+      - tests/unit/test_bake_roster_names_composition.py
+      - tests/unit/test_campaign_channel_filter.py
+      - tests/unit/test_campaign_preset_source.py
+      - tests/unit/test_change_semantics_render_format.py
+      - tests/unit/test_preset_bakeability.py
+    - unit: src/adapters/jobs/preset_artifact_publisher/deployment_generation.py
+      tests:
+      - tests/unit/test_presentation_v2_page_schemas.py
+    - unit: src/adapters/jobs/preset_artifact_publisher/enqueue.py
+      tests:
+      - tests/unit/test_preset_artifact_publisher.py
+      - tests/unit/test_servable_trigger_rule.py
+    - unit: src/adapters/jobs/preset_artifact_publisher/graph_bake.py
+      tests:
+      - tests/unit/test_athena_start_census.py
+      - tests/unit/test_bake_source_horizons.py
+      - tests/unit/test_execution_graph_worker_composition.py
+      - tests/unit/test_graph_bake.py
+      - tests/unit/test_graph_metrics.py
+      - tests/unit/test_graph_whole_chain.py
+      - tests/unit/test_preset_artifact_publisher.py
+      - tests/unit/test_preset_artifacts.py
+      - tests/unit/test_stuck_flow_detector.py
+    - unit: src/adapters/jobs/preset_artifact_publisher/insight_fill.py
+      tests:
+      - tests/unit/test_preset_insight_fill.py
+      - tests/unit/test_retail_health_preset_source.py
+    - unit: src/adapters/jobs/preset_artifact_publisher/new_customers_source.py
+      tests:
+      - tests/unit/test_bake_pin_certificate.py
+      - tests/unit/test_bake_roster_names_composition.py
+      - tests/unit/test_new_customers_presentation.py
+      - tests/unit/test_new_customers_source.py
+      - tests/unit/test_preset_bakeability.py
+      - tests/unit/test_publication_selection.py
+    - unit: src/adapters/jobs/preset_artifact_publisher/reach_source.py
+      tests:
+      - tests/unit/test_athena_start_census.py
+      - tests/unit/test_bake_pin_certificate.py
+      - tests/unit/test_bake_roster_names_composition.py
+      - tests/unit/test_preset_bakeability.py
+      - tests/unit/test_reach_source.py
+    - unit: src/adapters/jobs/preset_artifact_publisher/retail_source.py
+      tests:
+      - tests/unit/test_bake_pin_certificate.py
+      - tests/unit/test_change_semantics_render_format.py
+      - tests/unit/test_new_customers_presentation.py
+      - tests/unit/test_preset_bakeability.py
+      - tests/unit/test_publication_selection.py
+      - tests/unit/test_retail_health_preset_source.py
+    - unit: src/adapters/jobs/preset_artifact_publisher/retention_source.py
+      tests:
+      - tests/unit/test_bake_pin_certificate.py
+      - tests/unit/test_bake_source_horizons.py
+      - tests/unit/test_preset_bakeability.py
+      - tests/unit/test_retention_source.py
+    - unit: src/adapters/jobs/preset_artifact_publisher/scorecard_source.py
+      tests:
+      - tests/unit/test_alert_rules.py
+      - tests/unit/test_bake_pin_certificate.py
+      - tests/unit/test_network_scorecard.py
+      - tests/unit/test_new_to_brand_absent.py
+      - tests/unit/test_preset_bakeability.py
+      - tests/unit/test_publication_selection.py
+      - tests/unit/test_scorecard_presentation.py
+    - unit: src/adapters/jobs/preset_artifact_publisher/transport.py
+      tests:
+      - tests/unit/test_bake_page_registry.py
+      - tests/unit/test_graph_bake.py
+      - tests/unit/test_graph_whole_chain.py
+      - tests/unit/test_network_scorecard.py
+      - tests/unit/test_new_customers_source.py
+      - tests/unit/test_preset_artifact_publisher.py
+      - tests/unit/test_preset_artifacts.py
+      - tests/unit/test_preset_insight_fill.py
+      - tests/unit/test_reach_source.py
+      - tests/unit/test_retail_health_preset_source.py
+      - tests/unit/test_retention_source.py
+      - tests/unit/test_segment_profile.py
+    - unit: src/adapters/jobs/producer/__main__.py
+      tests:
+      - tests/unit/test_producer_cli.py
+    - unit: src/adapters/jobs/producer_pack_generation/__main__.py
+      tests: []
+    - unit: src/adapters/jobs/projection_handoff.py
+      tests:
+      - tests/unit/test_projection_handoff.py
+    - unit: src/adapters/jobs/prompt_registry_seed/handler.py
+      tests:
+      - tests/unit/test_prompt_registry_seed.py
+    - unit: src/adapters/jobs/provider_attempt_reconciler.py
+      tests:
+      - tests/unit/test_stage1_reconcile_jobs.py
+    - unit: src/adapters/jobs/provider_fence_recovery.py
+      tests:
+      - tests/unit/test_stage1_reconcile_jobs.py
+    - unit: src/adapters/jobs/quality_review_token/handler.py
+      tests:
+      - tests/unit/test_quality_review_token.py
+      - tests/unit/test_run_request_handler.py
+    - unit: src/adapters/jobs/reprocess_semantic_v2/__main__.py
+      tests:
+      - tests/unit/test_job_cli_safety.py
+      - tests/unit/test_new_customers.py
+      - tests/unit/test_reprocess_discard_policies.py
+      - tests/unit/test_reprocess_semantic_v2.py
+    - unit: src/adapters/jobs/reprocess_semantic_v2/acceptance.py
+      tests:
+      - tests/unit/test_semantic_sidecar.py
+    - unit: src/adapters/jobs/reprocess_semantic_v2/job.py
+      tests:
+      - tests/unit/test_job_cli_safety.py
+      - tests/unit/test_new_customers.py
+      - tests/unit/test_reprocess_discard_policies.py
+      - tests/unit/test_reprocess_semantic_v2.py
+    - unit: src/adapters/jobs/reprocess_semantic_v2/resources.py
+      tests: []
+    - unit: src/adapters/jobs/requeue_provider_fence/__main__.py
+      tests:
+      - tests/unit/test_stage1_operator_bootstrap.py
+    - unit: src/adapters/jobs/rotate_origin_verify/__main__.py
+      tests:
+      - tests/unit/test_rotate_origin_verify.py
+    - unit: src/adapters/jobs/schema_generation/__main__.py
+      tests: []
+    - unit: src/adapters/jobs/schema_generation/dq.py
+      tests:
+      - tests/unit/test_schema_generation.py
+    - unit: src/adapters/jobs/schema_generation/merge.py
+      tests:
+      - tests/unit/test_schema_generation.py
+      - tests/unit/test_withheld_residual.py
+    - unit: src/adapters/jobs/schema_generation/models.py
+      tests:
+      - tests/unit/test_curation_readers.py
+      - tests/unit/test_curation_traps.py
+      - tests/unit/test_schema_generation.py
+    - unit: src/adapters/jobs/schema_generation/physical_schema.py
+      tests:
+      - tests/unit/test_schema_generation.py
+    - unit: src/adapters/jobs/schema_generation/publisher_graph.py
+      tests:
+      - tests/unit/test_schema_generation.py
+      - tests/unit/test_semantic_sidecar.py
+    - unit: src/adapters/jobs/schema_generation/v2_storage.py
+      tests:
+      - tests/unit/test_schema_generation.py
+    - unit: src/adapters/jobs/span_retrieval/__main__.py
+      tests:
+      - tests/unit/test_span_retrieval.py
+    - unit: src/adapters/jobs/span_retrieval/client.py
+      tests:
+      - tests/unit/test_span_retrieval.py
+    - unit: src/adapters/jobs/span_retrieval/parse.py
+      tests:
+      - tests/unit/test_span_retrieval.py
+    - unit: src/adapters/jobs/span_retrieval/query.py
+      tests:
+      - tests/unit/test_span_retrieval.py
+    - unit: src/adapters/jobs/stage1_operator_bootstrap.py
+      tests:
+      - tests/unit/test_stage1_operator_bootstrap.py
+      - tests/unit/test_verify_stage1_preswitch.py
+    - unit: src/adapters/jobs/supersede_orphan_units/__main__.py
+      tests:
+      - tests/unit/test_orphan_reservations_and_failed_unit.py
+      - tests/unit/test_requeue_orphan_plan_units.py
+      - tests/unit/test_supersede_orphan_units.py
+    - unit: src/adapters/jobs/supersede_orphan_units/evidence.py
+      tests:
+      - tests/unit/test_orphan_reservations_and_failed_unit.py
+      - tests/unit/test_supersede_orphan_units.py
+    - unit: src/adapters/jobs/supersede_orphan_units/requeue.py
+      tests:
+      - tests/unit/test_requeue_orphan_plan_units.py
+    - unit: src/adapters/jobs/tool_schema_generation/__main__.py
+      tests: []
+    - unit: src/adapters/jobs/trace_contract/__main__.py
+      tests:
+      - tests/unit/test_trace_contract.py
+    - unit: src/adapters/jobs/trace_contract/conformance.py
+      tests: []
+    - unit: src/adapters/jobs/trace_contract/contract.py
+      tests:
+      - tests/unit/test_execution_graph_promoter.py
+      - tests/unit/test_graph_metrics.py
+    - unit: src/adapters/jobs/verify_stage1_preswitch/__main__.py
+      tests:
+      - tests/unit/test_verify_stage1_preswitch.py
+    - unit: src/adapters/jobs/verify_stage1_preswitch/checks.py
+      tests:
+      - tests/unit/test_supersede_orphan_units.py
+      - tests/unit/test_verify_stage1_preswitch.py
+    - unit: src/adapters/jobs/verify_stage1_preswitch/drain.py
+      tests:
+      - tests/unit/test_verify_stage1_preswitch.py
+    - unit: src/adapters/outbound/agentcore/harness.py
+      tests:
+      - tests/unit/test_agentcore_harness.py
+      - tests/unit/test_turn_timing.py
+    - unit: src/adapters/outbound/agentcore/harness_control.py
+      tests:
+      - tests/unit/test_harness_resource.py
+    - unit: src/adapters/outbound/agentcore/online_evaluation_control.py
+      tests:
+      - tests/unit/test_evaluation_gate_adapters.py
+      - tests/unit/test_evaluation_gate_provider.py
+    - unit: src/adapters/outbound/alert_rules.py
+      tests:
+      - tests/unit/test_alert_rules.py
+    - unit: src/adapters/outbound/amc_instance.py
+      tests:
+      - tests/unit/test_reach_source.py
+    - unit: src/adapters/outbound/athena/composition.py
+      tests:
+      - tests/unit/test_athena_composition.py
+      - tests/unit/test_audience_segments.py
+      - tests/unit/test_d2_chat_seams.py
+      - tests/unit/test_exposure_groups.py
+      - tests/unit/test_periodic_serving.py
+      - tests/unit/test_shopper_aggregate_reads.py
+    - unit: src/adapters/outbound/athena/execution.py
+      tests:
+      - tests/unit/test_athena_execution.py
+      - tests/unit/test_athena_semantic_storage.py
+      - tests/unit/test_graph_metrics.py
+    - unit: src/adapters/outbound/athena/literals.py
+      tests:
+      - tests/unit/test_athena_literals.py
+    - unit: src/adapters/outbound/athena/merge_shapes.py
+      tests:
+      - tests/unit/test_table_attempt_statements.py
+    - unit: src/adapters/outbound/athena/parameters.py
+      tests:
+      - tests/unit/test_athena_parameters.py
+      - tests/unit/test_athena_semantic_storage.py
+    - unit: src/adapters/outbound/athena/query.py
+      tests:
+      - tests/unit/test_athena_query_preflight.py
+      - tests/unit/test_audience_segments.py
+      - tests/unit/test_figures.py
+      - tests/unit/test_graph_metrics.py
+      - tests/unit/test_shopper_aggregate_reads.py
+    - unit: src/adapters/outbound/athena/semantic_storage.py
+      tests:
+      - tests/unit/test_athena_semantic_storage.py
+      - tests/unit/test_inline_run.py
+      - tests/unit/test_land_fixtures.py
+      - tests/unit/test_table_attempt_statements.py
+      - tests/unit/test_table_writer.py
+    - unit: src/adapters/outbound/athena/start_envelope.py
+      tests:
+      - tests/unit/test_athena_semantic_storage.py
+      - tests/unit/test_land_fixtures.py
+      - tests/unit/test_table_attempt_statements.py
+      - tests/unit/test_table_writer.py
+    - unit: src/adapters/outbound/athena/table_attempt_start.py
+      tests:
+      - tests/unit/test_table_attempt_start.py
+    - unit: src/adapters/outbound/athena/table_attempt_statements.py
+      tests:
+      - tests/unit/test_ingestion_phase_one.py
+      - tests/unit/test_inline_run.py
+      - tests/unit/test_table_attempt_start.py
+      - tests/unit/test_table_attempt_statements.py
+      - tests/unit/test_table_writer.py
+    - unit: src/adapters/outbound/athena/table_attempt_terminal.py
+      tests:
+      - tests/unit/test_table_attempt_terminal.py
+    - unit: src/adapters/outbound/attribution_models.py
+      tests:
+      - tests/unit/test_attribution_models.py
+      - tests/unit/test_page_schemas.py
+      - tests/unit/test_periodic_presentation.py
+    - unit: src/adapters/outbound/audience_segment_providers.py
+      tests:
+      - tests/unit/test_audience_segments.py
+    - unit: src/adapters/outbound/aws_errors.py
+      tests: []
+    - unit: src/adapters/outbound/bake_sources.py
+      tests:
+      - tests/unit/test_bake_pin_certificate.py
+      - tests/unit/test_bake_roster_names_composition.py
+      - tests/unit/test_bake_source_horizons.py
+      - tests/unit/test_bake_sources.py
+      - tests/unit/test_graph_bake_bound.py
+      - tests/unit/test_network_scorecard.py
+      - tests/unit/test_new_customers_source.py
+      - tests/unit/test_preset_artifact_publisher.py
+      - tests/unit/test_publication_selection.py
+      - tests/unit/test_reach_source.py
+      - tests/unit/test_segment_profile.py
+    - unit: src/adapters/outbound/bedrock/guardrail.py
+      tests:
+      - tests/unit/test_route_guardrails.py
+    - unit: src/adapters/outbound/bedrock/insight_calibration.py
+      tests:
+      - tests/unit/test_insight_calibration_bedrock.py
+    - unit: src/adapters/outbound/bedrock/insights.py
+      tests:
+      - tests/unit/test_insight_bedrock.py
+      - tests/unit/test_insight_calibration_bedrock.py
+      - tests/unit/test_insight_next_steps.py
+    - unit: src/adapters/outbound/catalog.py
+      tests:
+      - tests/unit/test_bake_pin_certificate.py
+      - tests/unit/test_presentation_handler.py
+      - tests/unit/test_publication_selection.py
+    - unit: src/adapters/outbound/cloudformation_response.py
+      tests:
+      - tests/unit/test_harness_resource.py
+      - tests/unit/test_projection_handoff.py
+    - unit: src/adapters/outbound/cloudformation_stack.py
+      tests:
+      - tests/unit/test_cloudformation_stack.py
+    - unit: src/adapters/outbound/cognito/identity_provider.py
+      tests:
+      - tests/unit/test_cognito_translation.py
+    - unit: src/adapters/outbound/cognito/operator_directory.py
+      tests:
+      - tests/unit/test_operator_email_resolver.py
+    - unit: src/adapters/outbound/commerce_identity.py
+      tests:
+      - tests/unit/test_acquisition_cohorts.py
+      - tests/unit/test_amc_segment_registry.py
+      - tests/unit/test_audience_segments.py
+      - tests/unit/test_bake_pin_certificate.py
+      - tests/unit/test_bake_roster_names_composition.py
+      - tests/unit/test_bake_source_horizons.py
+      - tests/unit/test_commerce_identity_loader.py
+      - tests/unit/test_dsp_reach.py
+      - tests/unit/test_entity_catalog.py
+      - tests/unit/test_measurement_tool.py
+      - tests/unit/test_media_scope_catalog.py
+      - tests/unit/test_new_customers.py
+      - tests/unit/test_new_to_brand_buyers.py
+      - tests/unit/test_new_to_brand_buyers_campaign.py
+      - tests/unit/test_new_to_brand_buyers_channel.py
+      - tests/unit/test_pack_variants.py
+      - tests/unit/test_presentation_handler.py
+      - tests/unit/test_producer_finalizer.py
+      - tests/unit/test_producer_pack_fields.py
+      - tests/unit/test_publication_selection.py
+      - tests/unit/test_retail_health_preset_source.py
+      - tests/unit/test_seed_serve_shapes.py
+      - tests/unit/test_semantic_sidecar.py
+      - tests/unit/test_source_platforms.py
+    - unit: src/adapters/outbound/dynamodb/audit.py
+      tests:
+      - tests/unit/test_agent_quality_audit.py
+      - tests/unit/test_record_family_stores.py
+    - unit: src/adapters/outbound/dynamodb/byte_oracle.py
+      tests:
+      - tests/unit/test_bake_pin_certificate.py
+      - tests/unit/test_byte_oracle.py
+      - tests/unit/test_projection_coordinator_fence.py
+      - tests/unit/test_projection_coordinator_plan.py
+      - tests/unit/test_projection_coordinator_settlement.py
+    - unit: src/adapters/outbound/dynamodb/due_shards.py
+      tests:
+      - tests/unit/test_flow_obligation_root_clock.py
+      - tests/unit/test_stuck_flow_detector.py
+    - unit: src/adapters/outbound/dynamodb/evaluation_outbox.py
+      tests:
+      - tests/unit/test_evaluation_outbox.py
+      - tests/unit/test_record_family_stores.py
+    - unit: src/adapters/outbound/dynamodb/execution_graph.py
+      tests:
+      - tests/unit/test_execution_graph_cutover.py
+      - tests/unit/test_execution_graph_dispatch.py
+      - tests/unit/test_execution_graph_dispatch_store.py
+      - tests/unit/test_execution_graph_legacy_head.py
+      - tests/unit/test_execution_graph_lineage.py
+      - tests/unit/test_execution_graph_operator.py
+      - tests/unit/test_execution_graph_promoter.py
+      - tests/unit/test_execution_graph_protocol.py
+      - tests/unit/test_execution_graph_release.py
+      - tests/unit/test_execution_graph_release_store.py
+      - tests/unit/test_graph_bake.py
+      - tests/unit/test_graph_precompute.py
+      - tests/unit/test_graph_publish.py
+      - tests/unit/test_graph_whole_chain.py
+      - tests/unit/test_ingestion_authority_boundary.py
+      - tests/unit/test_ingestion_graph_materialize.py
+      - tests/unit/test_run_request_admission.py
+      - tests/unit/test_run_request_store.py
+      - tests/unit/test_stuck_flow_detector.py
+    - unit: src/adapters/outbound/dynamodb/execution_graph_dispatch.py
+      tests:
+      - tests/unit/test_execution_graph_dispatch.py
+      - tests/unit/test_execution_graph_instantiate.py
+      - tests/unit/test_execution_graph_release.py
+      - tests/unit/test_execution_graph_unit_batch_store.py
+      - tests/unit/test_execution_graph_worker_composition.py
+      - tests/unit/test_graph_precompute.py
+      - tests/unit/test_graph_publish.py
+      - tests/unit/test_ingestion_graph_materialize.py
+      - tests/unit/test_table_writer.py
+    - unit: src/adapters/outbound/dynamodb/execution_graph_reader.py
+      tests: []
+    - unit: src/adapters/outbound/dynamodb/execution_graph_release.py
+      tests:
+      - tests/unit/test_execution_graph_lineage.py
+      - tests/unit/test_execution_graph_release.py
+      - tests/unit/test_execution_graph_release_store.py
+      - tests/unit/test_execution_graph_worker_composition.py
+      - tests/unit/test_flow_obligation_root_clock.py
+      - tests/unit/test_graph_bake.py
+      - tests/unit/test_semantic_version_resolution.py
+    - unit: src/adapters/outbound/dynamodb/graph_transaction_bytes.py
+      tests:
+      - tests/unit/test_bake_pin_certificate.py
+      - tests/unit/test_execution_graph_unit_batch_store.py
+    - unit: src/adapters/outbound/dynamodb/graph_transactions.py
+      tests:
+      - tests/unit/test_bake_pin_certificate.py
+      - tests/unit/test_dynamodb_reserved_words.py
+      - tests/unit/test_execution_graph_release_store.py
+      - tests/unit/test_graph_bake.py
+    - unit: src/adapters/outbound/dynamodb/insight_cache.py
+      tests:
+      - tests/unit/test_insight_cache.py
+      - tests/unit/test_insight_continuation_handler.py
+    - unit: src/adapters/outbound/dynamodb/insight_prompt_registry.py
+      tests:
+      - tests/unit/test_insight_continuation_handler.py
+      - tests/unit/test_insight_prompt_registry.py
+      - tests/unit/test_prompt_admin_handler.py
+    - unit: src/adapters/outbound/dynamodb/items.py
+      tests:
+      - tests/unit/test_evaluation_outbox.py
+      - tests/unit/test_preset_artifacts.py
+    - unit: src/adapters/outbound/dynamodb/legacy_families.py
+      tests:
+      - tests/unit/test_execution_graph_cutover.py
+    - unit: src/adapters/outbound/dynamodb/metric_store.py
+      tests:
+      - tests/unit/test_metric_reconciler.py
+      - tests/unit/test_operational_status_metrics.py
+    - unit: src/adapters/outbound/dynamodb/operational_status.py
+      tests:
+      - tests/unit/test_adr_075_stage1_operational_status_runtime.py
+      - tests/unit/test_operational_status_api.py
+      - tests/unit/test_operational_status_metrics.py
+      - tests/unit/test_operational_status_store.py
+      - tests/unit/test_operational_status_v2_store.py
+      - tests/unit/test_probe_ingestion_traceability_gate.py
+    - unit: src/adapters/outbound/dynamodb/page_context.py
+      tests:
+      - tests/unit/test_dynamodb_page_context.py
+    - unit: src/adapters/outbound/dynamodb/presentation_graph.py
+      tests:
+      - tests/unit/test_graph_whole_chain.py
+      - tests/unit/test_presentation_graph_serving.py
+      - tests/unit/test_presentation_handler.py
+    - unit: src/adapters/outbound/dynamodb/preset_artifacts.py
+      tests:
+      - tests/unit/test_graph_whole_chain.py
+      - tests/unit/test_preset_artifact_store.py
+      - tests/unit/test_preset_artifacts.py
+    - unit: src/adapters/outbound/dynamodb/producer_status.py
+      tests: []
+    - unit: src/adapters/outbound/dynamodb/projection_coordinator.py
+      tests:
+      - tests/unit/test_projection_coordinator_fence.py
+      - tests/unit/test_projection_coordinator_plan.py
+      - tests/unit/test_projection_coordinator_settlement.py
+      - tests/unit/test_table_writer.py
+    - unit: src/adapters/outbound/dynamodb/semantic_state.py
+      tests:
+      - tests/unit/test_bake_source_horizons.py
+      - tests/unit/test_dsp_reach.py
+      - tests/unit/test_graph_publish.py
+      - tests/unit/test_graph_whole_chain.py
+      - tests/unit/test_ingestion_graph_materialize.py
+      - tests/unit/test_probe_ingestion_traceability_gate.py
+      - tests/unit/test_semantic_sidecar.py
+      - tests/unit/test_semantic_state_generation_reader.py
+      - tests/unit/test_semantic_state_serialization.py
+      - tests/unit/test_servable_trigger_rule.py
+    - unit: src/adapters/outbound/dynamodb/stage1_discovery.py
+      tests: []
+    - unit: src/adapters/outbound/dynamodb/stage1_lifecycle_head.py
+      tests:
+      - tests/unit/test_projection_coordinator_fence.py
+      - tests/unit/test_projection_coordinator_plan.py
+      - tests/unit/test_projection_coordinator_settlement.py
+      - tests/unit/test_stage1_lifecycle_head.py
+    - unit: src/adapters/outbound/dynamodb/stage1_operational_status.py
+      tests:
+      - tests/unit/test_adr_075_stage1_operational_status_runtime.py
+      - tests/unit/test_stage1_lifecycle_head.py
+    - unit: src/adapters/outbound/dynamodb/stage1_writer_authority.py
+      tests: []
+    - unit: src/adapters/outbound/dynamodb/table_attempt.py
+      tests:
+      - tests/unit/test_byte_oracle.py
+      - tests/unit/test_projection_coordinator_settlement.py
+      - tests/unit/test_table_attempt.py
+    - unit: src/adapters/outbound/entity_catalog.py
+      tests:
+      - tests/unit/test_bake_roster_names_composition.py
+      - tests/unit/test_bake_source_horizons.py
+      - tests/unit/test_entity_catalog.py
+    - unit: src/adapters/outbound/governed_materialization.py
+      tests:
+      - tests/unit/test_ingestion_authority_boundary.py
+      - tests/unit/test_ingestion_graph_materialize.py
+    - unit: src/adapters/outbound/https.py
+      tests:
+      - tests/unit/test_deployed_api_transport.py
+      - tests/unit/test_https_boundary.py
+      - tests/unit/test_operational_status_cli.py
+      - tests/unit/test_probe_edge_entry.py
+      - tests/unit/test_projection_handoff.py
+      - tests/unit/test_validation_https_transport.py
+    - unit: src/adapters/outbound/kms/cursor_mac.py
+      tests: []
+    - unit: src/adapters/outbound/kms/token_signer.py
+      tests: []
+    - unit: src/adapters/outbound/legacy_head.py
+      tests:
+      - tests/unit/test_execution_graph_legacy_head.py
+      - tests/unit/test_execution_graph_operator.py
+    - unit: src/adapters/outbound/logs/evaluation_result_group.py
+      tests:
+      - tests/unit/test_evaluation_gate_adapters.py
+    - unit: src/adapters/outbound/logs/log_group_retention.py
+      tests:
+      - tests/unit/test_harness_resource.py
+    - unit: src/adapters/outbound/media_scope_catalog.py
+      tests:
+      - tests/unit/test_media_scope_catalog.py
+    - unit: src/adapters/outbound/media_taxonomy.py
+      tests:
+      - tests/unit/test_entity_catalog.py
+      - tests/unit/test_measurement_tool.py
+      - tests/unit/test_media_scope_catalog.py
+      - tests/unit/test_media_taxonomy_v2.py
+      - tests/unit/test_new_to_brand_buyers_channel.py
+      - tests/unit/test_preset_bakeability.py
+      - tests/unit/test_publication_selection.py
+      - tests/unit/test_semantic_sidecar.py
+      - tests/unit/test_source_platforms.py
+    - unit: src/adapters/outbound/metric_dictionary.py
+      tests:
+      - tests/unit/test_acquisition_cohorts.py
+      - tests/unit/test_athena_composition.py
+      - tests/unit/test_audience_segments.py
+      - tests/unit/test_bake_pin_certificate.py
+      - tests/unit/test_catalog_tool.py
+      - tests/unit/test_change_semantics.py
+      - tests/unit/test_d2_chat_seams.py
+      - tests/unit/test_deep_insight_inputs.py
+      - tests/unit/test_dimension_labels.py
+      - tests/unit/test_evaluation_v4_cases.py
+      - tests/unit/test_exact_only_axes.py
+      - tests/unit/test_exposure_frequency.py
+      - tests/unit/test_exposure_groups.py
+      - tests/unit/test_figures.py
+      - tests/unit/test_insight_finding_units.py
+      - tests/unit/test_insight_precompute_materializer.py
+      - tests/unit/test_measurement_operations.py
+      - tests/unit/test_measurement_tool.py
+      - tests/unit/test_metric_dictionary.py
+      - tests/unit/test_network_scorecard.py
+      - tests/unit/test_new_customers.py
+      - tests/unit/test_new_customers_source.py
+      - tests/unit/test_new_to_brand_absent.py
+      - tests/unit/test_new_to_brand_buyers.py
+      - tests/unit/test_new_to_brand_buyers_campaign.py
+      - tests/unit/test_new_to_brand_buyers_channel.py
+      - tests/unit/test_page_schemas.py
+      - tests/unit/test_periodic_presentation.py
+      - tests/unit/test_periodic_serving.py
+      - tests/unit/test_planning.py
+      - tests/unit/test_ports.py
+      - tests/unit/test_presentation_handler.py
+      - tests/unit/test_publication_selection.py
+      - tests/unit/test_reach_source.py
+      - tests/unit/test_resolved_analytical_request.py
+      - tests/unit/test_resolved_measurement.py
+      - tests/unit/test_retail_health_preset_source.py
+      - tests/unit/test_retained_campaign_artifact_materializer.py
+      - tests/unit/test_retention.py
+      - tests/unit/test_retention_source.py
+      - tests/unit/test_returns_context.py
+      - tests/unit/test_segment_profile.py
+      - tests/unit/test_semantic_sidecar.py
+      - tests/unit/test_shopper_aggregate_reads.py
+      - tests/unit/test_shopper_aggregates.py
+      - tests/unit/test_source_platforms.py
+      - tests/unit/test_tool_schemas.py
+    - unit: src/adapters/outbound/operational_companions.py
+      tests:
+      - tests/unit/test_operational_status_transport.py
+    - unit: src/adapters/outbound/preset_artifacts.py
+      tests:
+      - tests/unit/test_campaign_preset_source.py
+      - tests/unit/test_graph_metrics.py
+      - tests/unit/test_preset_artifacts.py
+    - unit: src/adapters/outbound/publication_selection.py
+      tests:
+      - tests/unit/test_acquisition_cohorts.py
+      - tests/unit/test_audience_segments.py
+      - tests/unit/test_bake_pin_certificate.py
+      - tests/unit/test_bake_source_horizons.py
+      - tests/unit/test_dsp_reach.py
+      - tests/unit/test_entity_catalog.py
+      - tests/unit/test_measurement_tool.py
+      - tests/unit/test_new_customers.py
+      - tests/unit/test_new_to_brand_buyers.py
+      - tests/unit/test_new_to_brand_buyers_campaign.py
+      - tests/unit/test_new_to_brand_buyers_channel.py
+      - tests/unit/test_pack_variants.py
+      - tests/unit/test_presentation_handler.py
+      - tests/unit/test_publication_selection.py
+      - tests/unit/test_source_platforms.py
+    - unit: src/adapters/outbound/s3/manifest_versions.py
+      tests: []
+    - unit: src/adapters/outbound/s3/preset_artifacts.py
+      tests:
+      - tests/unit/test_retail_health_product.py
+    - unit: src/adapters/outbound/s3/producer_landing.py
+      tests: []
+    - unit: src/adapters/outbound/s3/run_request_manifests.py
+      tests:
+      - tests/unit/test_ingestion_authority_boundary.py
+    - unit: src/adapters/outbound/s3/semantic_storage.py
+      tests:
+      - tests/unit/test_athena_semantic_storage.py
+      - tests/unit/test_identity_evidence.py
+      - tests/unit/test_ingestion_phase_one.py
+      - tests/unit/test_inline_run.py
+      - tests/unit/test_semantic_sidecar.py
+      - tests/unit/test_semantic_storage_composition.py
+      - tests/unit/test_supersede_orphan_units.py
+      - tests/unit/test_table_writer.py
+    - unit: src/adapters/outbound/s3/versioned_raw.py
+      tests: []
+    - unit: src/adapters/outbound/secretsmanager/client_secret.py
+      tests:
+      - tests/unit/test_client_secret.py
+    - unit: src/adapters/outbound/segment_labels.py
+      tests:
+      - tests/unit/test_audience_segments.py
+      - tests/unit/test_bake_pin_certificate.py
+      - tests/unit/test_bake_roster_names_composition.py
+    - unit: src/adapters/outbound/segment_roster.py
+      tests:
+      - tests/unit/test_audience_segments.py
+      - tests/unit/test_segment_profile.py
+    - unit: src/adapters/outbound/semantic_storage.py
+      tests:
+      - tests/unit/test_athena_semantic_storage.py
+      - tests/unit/test_semantic_sidecar.py
+      - tests/unit/test_semantic_storage_composition.py
+    - unit: src/adapters/outbound/source_pack.py
+      tests:
+      - tests/unit/test_acquisition_cohorts.py
+      - tests/unit/test_audience_segments.py
+      - tests/unit/test_bake_pin_certificate.py
+      - tests/unit/test_bake_source_horizons.py
+      - tests/unit/test_dsp_reach.py
+      - tests/unit/test_entity_catalog.py
+      - tests/unit/test_measurement_tool.py
+      - tests/unit/test_media_scope_catalog.py
+      - tests/unit/test_new_customers.py
+      - tests/unit/test_new_to_brand_buyers.py
+      - tests/unit/test_new_to_brand_buyers_campaign.py
+      - tests/unit/test_new_to_brand_buyers_channel.py
+      - tests/unit/test_pack_variants.py
+      - tests/unit/test_prepublication.py
+      - tests/unit/test_presentation_handler.py
+      - tests/unit/test_publication_selection.py
+      - tests/unit/test_reprocess_semantic_v2.py
+      - tests/unit/test_retail_health_preset_source.py
+      - tests/unit/test_schema_generation.py
+      - tests/unit/test_semantic_sidecar.py
+      - tests/unit/test_semantic_source_packs.py
+      - tests/unit/test_source_platforms.py
+      - tests/unit/test_system_observed_snapshot.py
+    - unit: src/adapters/outbound/spend_roster.py
+      tests:
+      - tests/unit/test_bake_pin_certificate.py
+      - tests/unit/test_bake_roster_names_composition.py
+      - tests/unit/test_insight_precompute_handler.py
+      - tests/unit/test_new_to_brand_buyers_campaign.py
+      - tests/unit/test_new_to_brand_buyers_channel.py
+    - unit: src/adapters/outbound/sqs/attributes.py
+      tests:
+      - tests/unit/test_sqs_receipt_attributes.py
+    - unit: src/adapters/outbound/sqs/evaluation.py
+      tests:
+      - tests/unit/test_sqs_receipt_attributes.py
+    - unit: src/adapters/outbound/sqs/graph_dispatch.py
+      tests:
+      - tests/unit/test_execution_graph_dispatch.py
+    - unit: src/adapters/outbound/sqs/insight_continuation.py
+      tests:
+      - tests/unit/test_insight_continuation_codec.py
+      - tests/unit/test_insight_continuation_handler.py
+    - unit: src/adapters/outbound/sqs/insight_prompt_calibration.py
+      tests:
+      - tests/unit/test_insight_prompt_calibration_worker.py
+    - unit: src/adapters/outbound/sqs/operational_status.py
+      tests:
+      - tests/unit/test_adr_075_stage1_operational_status_runtime.py
+      - tests/unit/test_operational_status_transport.py
+    - unit: src/adapters/outbound/ssm/evaluation_release.py
+      tests:
+      - tests/unit/test_evaluation_release.py
+    - unit: src/adapters/outbound/ssm/evaluation_release_store.py
+      tests:
+      - tests/unit/test_evaluation_gate_adapters.py
+    - unit: src/adapters/outbound/table_dq.py
+      tests:
+      - tests/unit/test_semantic_sidecar.py
+    - unit: src/adapters/outbound/telemetry/bootstrap.py
+      tests:
+      - tests/unit/test_operational_status_api.py
+      - tests/unit/test_tracing_bootstrap.py
+    - unit: src/adapters/outbound/telemetry/graph_metrics.py
+      tests:
+      - tests/unit/test_graph_metrics.py
+      - tests/unit/test_stuck_flow_detector.py
+    - unit: src/adapters/outbound/telemetry/measurement_sink.py
+      tests:
+      - tests/unit/test_operational_status_metrics.py
+    - unit: src/adapters/outbound/telemetry/reporting.py
+      tests:
+      - tests/unit/test_agent_quality_audit.py
+      - tests/unit/test_auth_handler_tracing.py
+      - tests/unit/test_auth_provider_failure_reporting.py
+      - tests/unit/test_catalog_entrypoint.py
+      - tests/unit/test_conversation_server.py
+      - tests/unit/test_deep_insight_inputs.py
+      - tests/unit/test_errors.py
+      - tests/unit/test_evaluation_outbox_dispatcher_handler.py
+      - tests/unit/test_evaluation_result_ingress.py
+      - tests/unit/test_evaluation_result_linker_handler.py
+      - tests/unit/test_evaluation_writer_handler.py
+      - tests/unit/test_execution_graph_release.py
+      - tests/unit/test_gateway_interceptor.py
+      - tests/unit/test_gateway_invocation.py
+      - tests/unit/test_graph_whole_chain.py
+      - tests/unit/test_ingestion_authority_boundary.py
+      - tests/unit/test_ingestion_handler.py
+      - tests/unit/test_job_cli_safety.py
+      - tests/unit/test_managed_conversation_runtime.py
+      - tests/unit/test_metric_reconciler.py
+      - tests/unit/test_network_scorecard.py
+      - tests/unit/test_new_customers_source.py
+      - tests/unit/test_new_to_brand_buyers.py
+      - tests/unit/test_operational_status_api.py
+      - tests/unit/test_operator_email_resolver.py
+      - tests/unit/test_preset_artifact_publisher.py
+      - tests/unit/test_probe_ingestion_traceability_gate.py
+      - tests/unit/test_producer_finalizer.py
+      - tests/unit/test_projection_handoff.py
+      - tests/unit/test_publication_selection.py
+      - tests/unit/test_scorecard_presentation.py
+      - tests/unit/test_serving_refusal_metric.py
+      - tests/unit/test_table_attempt_start.py
+      - tests/unit/test_table_attempt_terminal.py
+      - tests/unit/test_tool_caller.py
+      - tests/unit/test_tool_caller_gate.py
+      - tests/unit/test_turn_timing.py
+    - unit: src/adapters/outbound/telemetry/span_context.py
+      tests:
+      - tests/unit/test_graph_metrics.py
+      - tests/unit/test_graph_precompute.py
+      - tests/unit/test_insight_assembly.py
+      - tests/unit/test_insight_bedrock.py
+      - tests/unit/test_preset_artifacts.py
+    - unit: src/adapters/outbound/telemetry/tracing.py
+      tests:
+      - tests/unit/test_adr_075_config_and_tracing.py
+      - tests/unit/test_evaluation_gate_provider.py
+      - tests/unit/test_evaluation_outbox_dispatcher_handler.py
+      - tests/unit/test_evaluation_writer_handler.py
+      - tests/unit/test_graph_precompute.py
+      - tests/unit/test_inline_run.py
+      - tests/unit/test_insight_assembly.py
+      - tests/unit/test_insight_bedrock.py
+      - tests/unit/test_insight_continuation_handler.py
+      - tests/unit/test_insight_precompute_handler.py
+      - tests/unit/test_new_customers_source.py
+      - tests/unit/test_preset_artifact_publisher.py
+      - tests/unit/test_prompt_registry_seed.py
+      - tests/unit/test_table_writer.py
+      - tests/unit/test_trace_contract.py
+      - tests/unit/test_tracing.py
+    - unit: src/adapters/outbound/telemetry/turn_timing.py
+      tests:
+      - tests/unit/test_managed_conversation_runtime.py
+      - tests/unit/test_turn_timing.py
+    - unit: src/adapters/outbound/token_service/route_exchange_client.py
+      tests:
+      - tests/unit/test_managed_conversation_turns.py
+      - tests/unit/test_route_exchange_client.py
+    - unit: src/adapters/outbound/v2_storage_catalog.py
+      tests:
+      - tests/unit/test_athena_semantic_storage.py
+      - tests/unit/test_inline_run.py
+      - tests/unit/test_land_fixtures.py
+      - tests/unit/test_table_attempt_statements.py
+      - tests/unit/test_table_writer.py
+    - unit: src/adapters/page_artifact_codec.py
+      tests:
+      - tests/unit/test_page_artifact_codec.py
+      - tests/unit/test_temporal_v2_transport.py
+    - unit: src/adapters/page_context_codec.py
+      tests:
+      - tests/unit/test_page_context_codec.py
+    - unit: src/adapters/presentation_capability_codec.py
+      tests:
+      - tests/unit/test_presentation_capability_custody.py
+    - unit: src/adapters/producer/landing.py
+      tests:
+      - tests/unit/test_producer.py
+    - unit: src/adapters/producer/packs.py
+      tests:
+      - tests/unit/test_acquisition_cohorts.py
+      - tests/unit/test_audience_segments.py
+      - tests/unit/test_dsp_reach.py
+      - tests/unit/test_exposure_frequency.py
+      - tests/unit/test_exposure_groups.py
+      - tests/unit/test_land_fixtures.py
+      - tests/unit/test_new_customers.py
+      - tests/unit/test_new_to_brand_absent.py
+      - tests/unit/test_new_to_brand_buyers.py
+      - tests/unit/test_new_to_brand_buyers_campaign.py
+      - tests/unit/test_new_to_brand_buyers_channel.py
+      - tests/unit/test_producer.py
+      - tests/unit/test_producer_cli.py
+      - tests/unit/test_producer_finalizer.py
+      - tests/unit/test_producer_pack_fields.py
+      - tests/unit/test_reprocess_discard_policies.py
+      - tests/unit/test_reprocess_semantic_v2.py
+      - tests/unit/test_seed_pre_landing.py
+      - tests/unit/test_segment_profile.py
+      - tests/unit/test_semantic_sidecar.py
+    - unit: src/adapters/producer/registrations.py
+      tests:
+      - tests/unit/test_new_to_brand_buyers.py
+      - tests/unit/test_producer.py
+      - tests/unit/test_producer_finalizer.py
+    - unit: src/adapters/producer/results.py
+      tests:
+      - tests/unit/test_amc_csv.py
+      - tests/unit/test_new_to_brand_buyers.py
+      - tests/unit/test_producer.py
+      - tests/unit/test_seed_pre_landing.py
+    - unit: src/adapters/retail_insight_requests.py
+      tests:
+      - tests/unit/test_deep_input_revision.py
+      - tests/unit/test_insight_precompute_materializer.py
+      - tests/unit/test_retail_health_preset_source.py
+      - tests/unit/test_returns_context.py
+  T3:
+    description: CDK infrastructure under infra/lib (generated files excluded).
+    units:
+    - unit: infra/lib/bedrock-model-access.ts
+      tests:
+      - infra/test/bedrock-model-access.test.ts
+    - unit: infra/lib/config/athena-start-budget.ts
+      tests:
+      - infra/test/athena-start-budget.test.ts
+      - infra/test/athena-start-roster.test.ts
+    - unit: infra/lib/config/index.ts
+      tests:
+      - infra/test/adr-075-foundations.test.ts
+      - infra/test/agent-quality-stack.test.ts
+      - infra/test/agent-stack.test.ts
+      - infra/test/alarm-coverage.test.ts
+      - infra/test/async-failure-bounds.test.ts
+      - infra/test/athena-start-budget.test.ts
+      - infra/test/athena-start-roster.test.ts
+      - infra/test/auth-stack.test.ts
+      - infra/test/bedrock-model-access.test.ts
+      - infra/test/config.test.ts
+      - infra/test/conversation-route.test.ts
+      - infra/test/data-v2-stack.test.ts
+      - infra/test/dependencies-stack.test.ts
+      - infra/test/deploy-order.test.ts
+      - infra/test/edge-security.test.ts
+      - infra/test/evaluation-evidence-stack.test.ts
+      - infra/test/evaluation-gate.test.ts
+      - infra/test/evaluation-input-stack.test.ts
+      - infra/test/evaluation-outbox-dispatch-stack.test.ts
+      - infra/test/evaluation-quality-stack.test.ts
+      - infra/test/evaluation-result-link-v3-stack.test.ts
+      - infra/test/evaluation-v4-stack.test.ts
+      - infra/test/graph-call-inventory.test.ts
+      - infra/test/harness-proof-stack.test.ts
+      - infra/test/iam-forbidden-actions.test.ts
+      - infra/test/ingestion-stack.test.ts
+      - infra/test/insight-cache-stack.test.ts
+      - infra/test/insight-precompute-stack.test.ts
+      - infra/test/lambda-concurrency-prerequisite.test.ts
+      - infra/test/log-write-scope.test.ts
+      - infra/test/memory-stack.test.ts
+      - infra/test/no-public-endpoints.test.ts
+      - infra/test/operational-status-route.test.ts
+      - infra/test/operational-status-stacks.test.ts
+      - infra/test/presentation-route.test.ts
+      - infra/test/producer-ingestion-stack.test.ts
+      - infra/test/publisher-stacks.test.ts
+      - infra/test/quality-review-route.test.ts
+      - infra/test/record-family-storage.test.ts
+      - infra/test/record-integrity.test.ts
+      - infra/test/token-service-stack.test.ts
+    - unit: infra/lib/constructs/agent-quality/evaluation-gate.ts
+      tests:
+      - infra/test/evaluation-gate.test.ts
+      - infra/test/log-write-scope.test.ts
+    - unit: infra/lib/constructs/agent-quality/record-integrity.ts
+      tests:
+      - infra/test/record-integrity.test.ts
+    - unit: infra/lib/constructs/agent/gateway-policy.ts
+      tests: []
+    - unit: infra/lib/constructs/agent/route-guardrail.ts
+      tests:
+      - infra/test/conversation-route.test.ts
+    - unit: infra/lib/constructs/data-lake/iceberg-table.ts
+      tests: []
+    - unit: infra/lib/constructs/edge/guarded-web-acl.ts
+      tests:
+      - infra/test/edge-security.test.ts
+    - unit: infra/lib/constructs/observability/async-failure.ts
+      tests:
+      - infra/test/alarm-coverage.test.ts
+      - infra/test/async-failure-bounds.test.ts
+      - infra/test/operational-status-stacks.test.ts
+    - unit: infra/lib/constructs/observability/error-alarms.ts
+      tests:
+      - infra/test/alarm-coverage.test.ts
+      - infra/test/ingestion-stack.test.ts
+    - unit: infra/lib/constructs/observability/serving-refusal-alarm.ts
+      tests:
+      - infra/test/serving-refusal-alarm.test.ts
+    - unit: infra/lib/deploy-order.ts
+      tests:
+      - infra/test/deploy-order.test.ts
+    - unit: infra/lib/mixins/async-failure-bounds.ts
+      tests:
+      - infra/test/async-failure-bounds.test.ts
+    - unit: infra/lib/mixins/function-error-alarms.ts
+      tests:
+      - infra/test/alarm-coverage.test.ts
+    - unit: infra/lib/mixins/logging.ts
+      tests:
+      - infra/test/log-write-scope.test.ts
+    - unit: infra/lib/mixins/scan-dispositions.ts
+      tests:
+      - infra/test/scan-dispositions.test.ts
+    - unit: infra/lib/mixins/storage.ts
+      tests:
+      - infra/test/agent-stack.test.ts
+      - infra/test/data-v2-stack.test.ts
+      - infra/test/ingestion-stack.test.ts
+      - infra/test/presentation-route.test.ts
+      - infra/test/producer-ingestion-stack.test.ts
+      - infra/test/publisher-stacks.test.ts
+    - unit: infra/lib/mixins/tagging.ts
+      tests:
+      - infra/test/tagging.test.ts
+    - unit: infra/lib/stacks/agent-quality-processor-stack.ts
+      tests:
+      - infra/test/lambda-concurrency-prerequisite.test.ts
+    - unit: infra/lib/stacks/agent-quality-stack.ts
+      tests:
+      - infra/test/agent-quality-stack.test.ts
+      - infra/test/lambda-concurrency-prerequisite.test.ts
+    - unit: infra/lib/stacks/agent-stack.ts
+      tests:
+      - infra/test/agent-stack.test.ts
+      - infra/test/lambda-concurrency-prerequisite.test.ts
+    - unit: infra/lib/stacks/api-stack.ts
+      tests:
+      - infra/test/auth-stack.test.ts
+      - infra/test/bedrock-model-access.test.ts
+      - infra/test/conversation-route.test.ts
+      - infra/test/edge-security.test.ts
+      - infra/test/graph-call-inventory.test.ts
+      - infra/test/lambda-concurrency-prerequisite.test.ts
+      - infra/test/operational-status-route.test.ts
+      - infra/test/presentation-route.test.ts
+    - unit: infra/lib/stacks/auth-stack.ts
+      tests:
+      - infra/test/auth-stack.test.ts
+      - infra/test/edge-security.test.ts
+      - infra/test/lambda-concurrency-prerequisite.test.ts
+    - unit: infra/lib/stacks/control-plane-authority-store-stack.ts
+      tests: []
+    - unit: infra/lib/stacks/data-v2-stack.ts
+      tests:
+      - infra/test/data-v2-stack.test.ts
+      - infra/test/lambda-concurrency-prerequisite.test.ts
+    - unit: infra/lib/stacks/dependencies-stack.ts
+      tests:
+      - infra/test/dependencies-stack.test.ts
+      - infra/test/lambda-concurrency-prerequisite.test.ts
+    - unit: infra/lib/stacks/edge-security-stack.ts
+      tests:
+      - infra/test/edge-security.test.ts
+      - infra/test/lambda-concurrency-prerequisite.test.ts
+    - unit: infra/lib/stacks/evaluation-evidence-stack.ts
+      tests:
+      - infra/test/evaluation-evidence-stack.test.ts
+    - unit: infra/lib/stacks/evaluation-input-stack.ts
+      tests: []
+    - unit: infra/lib/stacks/evaluation-outbox-dispatch-stack.ts
+      tests: []
+    - unit: infra/lib/stacks/evaluation-quality-stack.ts
+      tests:
+      - infra/test/evaluation-quality-stack.test.ts
+    - unit: infra/lib/stacks/evaluation-result-link-v3-stack.ts
+      tests: []
+    - unit: infra/lib/stacks/evaluation-v4-stack.ts
+      tests:
+      - infra/test/bedrock-model-access.test.ts
+      - infra/test/evaluation-gate.test.ts
+      - infra/test/evaluation-quality-stack.test.ts
+      - infra/test/evaluation-v4-stack.test.ts
+    - unit: infra/lib/stacks/execution-graph-alarms.ts
+      tests:
+      - infra/test/ingestion-stack.test.ts
+    - unit: infra/lib/stacks/execution-graph-authority.ts
+      tests: []
+    - unit: infra/lib/stacks/frontend-stack.ts
+      tests:
+      - infra/test/auth-stack.test.ts
+      - infra/test/canonical-api-path.test.ts
+      - infra/test/edge-security.test.ts
+      - infra/test/lambda-concurrency-prerequisite.test.ts
+      - infra/test/static-route-rewrite.test.ts
+    - unit: infra/lib/stacks/harness-proof-stack.ts
+      tests:
+      - infra/test/bedrock-model-access.test.ts
+      - infra/test/harness-proof-stack.test.ts
+      - infra/test/lambda-concurrency-prerequisite.test.ts
+    - unit: infra/lib/stacks/ingestion-stack.ts
+      tests:
+      - infra/test/adr-075-foundations.test.ts
+      - infra/test/athena-start-budget.test.ts
+      - infra/test/graph-call-inventory.test.ts
+      - infra/test/ingestion-stack.test.ts
+      - infra/test/lambda-concurrency-prerequisite.test.ts
+      - infra/test/producer-ingestion-stack.test.ts
+    - unit: infra/lib/stacks/ingestion-stage1.ts
+      tests:
+      - infra/test/canonical-dataset-allowlist.test.ts
+      - infra/test/ingestion-stack.test.ts
+      - infra/test/producer-ingestion-stack.test.ts
+    - unit: infra/lib/stacks/insight-cache-stack.ts
+      tests:
+      - infra/test/lambda-concurrency-prerequisite.test.ts
+    - unit: infra/lib/stacks/insight-continuation-stack.ts
+      tests:
+      - infra/test/bedrock-model-access.test.ts
+      - infra/test/lambda-concurrency-prerequisite.test.ts
+    - unit: infra/lib/stacks/insight-precompute-stack.ts
+      tests:
+      - infra/test/athena-start-budget.test.ts
+      - infra/test/bedrock-model-access.test.ts
+      - infra/test/graph-call-inventory.test.ts
+      - infra/test/insight-precompute-stack.test.ts
+      - infra/test/lambda-concurrency-prerequisite.test.ts
+    - unit: infra/lib/stacks/insight-prompt-calibration-stack.ts
+      tests:
+      - infra/test/bedrock-model-access.test.ts
+      - infra/test/lambda-concurrency-prerequisite.test.ts
+    - unit: infra/lib/stacks/insight-prompt-registry-seed-stack.ts
+      tests:
+      - infra/test/insight-prompt-registry-seed-stack.test.ts
+      - infra/test/lambda-concurrency-prerequisite.test.ts
+    - unit: infra/lib/stacks/insight-prompt-registry-stack.ts
+      tests:
+      - infra/test/lambda-concurrency-prerequisite.test.ts
+    - unit: infra/lib/stacks/memory-stack.ts
+      tests:
+      - infra/test/bedrock-model-access.test.ts
+      - infra/test/lambda-concurrency-prerequisite.test.ts
+      - infra/test/memory-stack.test.ts
+    - unit: infra/lib/stacks/observability-stack.ts
+      tests:
+      - infra/test/observability-stack.test.ts
+    - unit: infra/lib/stacks/operational-status-processor-stack.ts
+      tests:
+      - infra/test/graph-call-inventory.test.ts
+      - infra/test/ingestion-stack.test.ts
+      - infra/test/operational-status-stacks.test.ts
+    - unit: infra/lib/stacks/operational-status-stage1.ts
+      tests:
+      - infra/test/canonical-dataset-allowlist.test.ts
+    - unit: infra/lib/stacks/operational-status-store-stack.ts
+      tests: []
+    - unit: infra/lib/stacks/publisher-artifact-store-stack.ts
+      tests:
+      - infra/test/lambda-concurrency-prerequisite.test.ts
+    - unit: infra/lib/stacks/publisher-stack.ts
+      tests:
+      - infra/test/athena-start-budget.test.ts
+      - infra/test/graph-call-inventory.test.ts
+      - infra/test/lambda-concurrency-prerequisite.test.ts
+      - infra/test/publisher-stacks.test.ts
+    - unit: infra/lib/stacks/record-integrity-stack.ts
+      tests:
+      - infra/test/lambda-concurrency-prerequisite.test.ts
+      - infra/test/record-integrity.test.ts
+    - unit: infra/lib/stacks/token-service-stack.ts
+      tests:
+      - infra/test/lambda-concurrency-prerequisite.test.ts
+    - unit: infra/lib/telemetry.ts
+      tests:
+      - infra/test/agent-stack.test.ts
+      - infra/test/run-request-route.test.ts
+      - infra/test/telemetry.test.ts

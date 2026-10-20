@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| **Status** | Accepted |
+| **Status** | Accepted, amended 2026-10-19 |
 | **Date** | 2026-08-18 |
-| **Decision** | **Mutation testing runs in two tracks against one shared report.** `cosmic-ray` covers the mechanical mutation space; a deliberate adversarial review covers the semantic space that no tool can generate. Surviving mutants are recorded in `test-mutations/`. **The mutation score is never a merge gate** — every survivor is triaged individually to killed or equivalent-with-a-named-reason. `mutmut` is rejected. |
+| **Decision** | **Mutation testing runs in two tracks.** A tool covers the mechanical mutation space (`cosmic-ray` for Python, StrykerJS for TypeScript); a deliberate adversarial review covers the semantic space that no tool can generate. The [mutation steering](../../.kiro/steering/meta-testing-mutation.md) owns when a run happens. Each run writes a gitignored [run record](../test-run-records.md), and a local coverage map holds the current survivor verdicts per unit. **The mutation score is never a threshold** — every survivor is triaged individually to killed or equivalent-with-a-named-reason, and `make release-gate` reports the coverage map without ever blocking on it. `mutmut` is rejected. |
 | **Related** | [repo-structure](../repo-structure.md) §6 |
 
 ## Context
@@ -56,13 +56,13 @@ So the two tracks are not belt-and-braces. They cover disjoint spaces, and the s
 
 ## Decision
 
-**Track one, mechanical.** `cosmic-ray`, scoped per module. Operators, boundaries, constants. Reproducible and re-runnable by anyone.
+**Track one, mechanical.** `cosmic-ray` for Python, scoped per module, and StrykerJS for TypeScript, scoped per file group. Operators, boundaries, constants. Reproducible and re-runnable by anyone.
 
 **Track two, semantic.** A deliberate adversarial pass proposing mutations that are domain-plausible and tool-inexpressible. Judged by whether a named test kills them.
 
-**One report per module in `test-mutations/`**, recording survivors only. A pass narrative is not a finding, and a report that says everything is fine is indistinguishable from a report nobody ran.
+**One write-once run record per run, and one coverage-map entry per unit.** The entry records survivors only, each with a verdict, and the fingerprint of the source, tests and tool it was produced against ([test run records](../test-run-records.md#coverage-map)). A pass narrative is not a finding, and a summary that says everything is fine is indistinguishable from a run nobody did.
 
-**No score threshold gates a merge.** Each survivor is triaged to *killed* by a named new or strengthened test, or *equivalent* with the reason stated. Dismissing the annotation class once, explicitly, is the point — it stops that noise being silently re-dismissed on every future run.
+**No score threshold gates a merge or a release.** Each survivor is triaged to *killed* by a named new or strengthened test, or *equivalent* with the reason stated. Dismissing the annotation class once, explicitly, is the point — it stops that noise being silently re-dismissed on every future run.
 
 ### Rejected
 
@@ -77,8 +77,18 @@ So the two tracks are not belt-and-braces. They cover disjoint spaces, and the s
 
 ## Consequences
 
-The report directory is a defect ledger with a shelf life, so every entry carries a date and the commit it was produced against. A stale report must be visibly stale rather than quietly reassuring.
+A coverage-map entry has a shelf life, so it carries the fingerprint it was produced against, and `make mutation-status` lists an entry whose fingerprint no longer matches as stale. A stale entry must be visibly stale rather than quietly reassuring.
 
-Two prohibitions carry most of the value and are enforced by review, not by script: **never change source to dodge a mutant**, and **never treat regenerating the report as remediation**. Both convert the exercise into theatre while leaving the metric looking better.
+Two prohibitions carry most of the value and are enforced by review, not by script: **never change source to dodge a mutant**, and **never treat re-running a unit as remediation**. Both convert the exercise into theatre while leaving the metric looking better.
 
-The three findings above are recorded but deliberately **not fixed in this change** — `objectives.py` is on `main` and the current branch owns the auth flow. They are the first entries in `test-mutations/`.
+The three findings above were recorded but deliberately **not fixed in this change** — `objectives.py` was on `main` and the branch owned the auth flow.
+
+## Amendment (2026-10-19)
+
+Until this amendment, every review was a committed report, one per module, under `test-mutations/`, and `make mutate MODULE=… TESTS=…` produced its input. Those 43 reports were deleted and replaced, with no dual path, by `make mutate UNIT=…` and `make mutate-next` runs, gitignored run records and a local coverage map. Three reasons decided it:
+
+- **A stale ledger in the public tree.** The repository is published, and dated reports of old commits read as current assurance about code that has since changed.
+- **Re-run waste.** A report could not say whether it still applied. A coverage-map entry carries a fingerprint, so a unit whose source, tests and tool are unchanged is skipped rather than re-run, and coverage can spread from the highest-priority units outward over time (`mutation-priorities.yaml`).
+- **Publication hygiene.** Run output stays local, like every other run record, so no tool output, path or identifier is published by accident.
+
+TypeScript joins through StrykerJS under the same rules. The score is still never a threshold, and the release gate reports the coverage map without blocking on it.

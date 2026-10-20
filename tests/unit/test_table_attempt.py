@@ -458,7 +458,8 @@ _VIOLATIONS: list[tuple[str, CoreValidityRequest]] = [
     ("stored envelope digest disagreement", _request(attempt=_attempt(envelope_digest="f" * 64))),
     (
         "stored client token disagreement",
-        _request(attempt=_attempt(client_request_token="token-other")),
+        # A-TEST-LITERALS-001: a fictional client token; see docs/security-dispositions.md
+        _request(attempt=_attempt(client_request_token="token-other")),  # nosec B106
     ),
     ("pair binding mismatch", _request(fence=_fence(lease_holder="holder-other"))),
     (

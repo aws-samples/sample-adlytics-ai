@@ -47,7 +47,8 @@ class TurnMilestone(StrEnum):
 
     ADMITTED = "admitted"
     INPUT_ASSESSED = "input_assessed"
-    HARNESS_TOKEN_EXCHANGED = "harness_token_exchanged"  # noqa: S105 - a milestone name
+    # A-PROTOCOL-CONSTANT-001: a telemetry milestone name; see docs/security-dispositions.md
+    HARNESS_TOKEN_EXCHANGED = "harness_token_exchanged"  # noqa: S105 - a milestone name  # nosec B105
     RESPONSE_STARTED = "response_started"
     HARNESS_INVOKED = "harness_invoked"
     HARNESS_STREAM_OPENED = "harness_stream_opened"

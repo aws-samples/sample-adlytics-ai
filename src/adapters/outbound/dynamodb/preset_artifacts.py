@@ -57,7 +57,8 @@ REVISION = "revision"
 BODY_KEY = "body_key"
 BODY_DIGEST = "body_digest"
 CUSTODY_DIGEST = "custody_digest"
-FORWARD_TOKEN = "forward_token"  # noqa: S105
+# A-PROTOCOL-CONSTANT-001: a DynamoDB attribute name; see docs/security-dispositions.md
+FORWARD_TOKEN = "forward_token"  # noqa: S105  # nosec B105
 SUPERSEDES = "supersedes"
 RESOLVED_START = "resolved_window_start"
 RESOLVED_END = "resolved_window_end"

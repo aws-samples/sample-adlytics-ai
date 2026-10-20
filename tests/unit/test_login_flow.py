@@ -128,10 +128,7 @@ class TestStateMatches:
 
 
 class TestGapsFoundByMutationTesting:
-    """Cases whose absence let a mutant survive.
-
-    See test-mutations/domain-identity-login-flow.md.
-    """
+    """Cases whose absence let a mutant survive (mutation review, ADR-013)."""
 
     def test_a_verifier_longer_than_the_rfc_floor_is_accepted(self) -> None:
         # The check is a floor, not an equality: RFC 7636 permits 43 to 128

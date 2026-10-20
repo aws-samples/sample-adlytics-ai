@@ -432,6 +432,8 @@ print(json.dumps({"imported": len(modules)}))
         program,
         json.dumps(modules),
     ]
+    # A-SUBPROCESS-001: the fixed docker run argv built above, no shell; see docs/security-dispositions.md
+    # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit
     result = subprocess.run(command, check=False, capture_output=True, text=True)
     cleanup = subprocess.run(
         ["docker", "rm", "-f", container_name],

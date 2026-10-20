@@ -1093,6 +1093,8 @@ class LivePorts:
         """Start one child (an argument tuple, never a shell) from the worktree root."""
         started = _now()
         log = self._log(name).open("w", encoding="utf-8")
+        # A-SUBPROCESS-001: sys.executable and repository probes, no shell; see docs/security-dispositions.md
+        # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit
         process = subprocess.Popen(argv, cwd=_ROOT, stdout=log, stderr=subprocess.STDOUT, text=True)
 
         def wait(timeout: float) -> StepResult:

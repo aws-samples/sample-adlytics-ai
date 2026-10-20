@@ -20,7 +20,8 @@ pytestmark = pytest.mark.unit
 ROOT = Path(__file__).resolve().parents[2]
 
 JWT_FINDING = "x.py:1: carries an encoded JWT literal; build it from readable parts"
-SECRET_FINDING = (
+# A-TEST-LITERALS-001: an expected gate message; see docs/security-dispositions.md
+SECRET_FINDING = (  # nosec B105
     "x.py:1: carries a generated-looking secret literal; spell a fictional value as words"
 )
 NOSEC_FINDING = "x.py:1: nosec must name only reviewed Bandit test IDs"
@@ -146,11 +147,20 @@ class TestGateESuppressionMarkers:
         ("rel", "source"),
         [
             ("x.py", "q = f'…'  # noqa: S608 — see the note above  # no" + "sec B608"),
+            ("x.py", 'T = "Bearer"  # noqa: S105 — a token_type value  # no' + "sec B105"),
+            ("x.py", 'f(token="")  # no' + "sec B105, B106"),
             ("x.py", "# no" + "semgrep: a.b.c, d.e.f  # noqa: E501"),
             ("x.ts", "// no" + "semgrep: bosco/unsafe-inline-csp-configuration"),
             ("x.md", "q = 1  # no" + "sec"),
         ],
-        ids=["reviewed-bandit-id", "two-namespaced-ids", "typescript-comment", "markdown-quote"],
+        ids=[
+            "reviewed-bandit-id",
+            "reviewed-protocol-constant-id",
+            "two-reviewed-test-literal-ids",
+            "two-namespaced-ids",
+            "typescript-comment",
+            "markdown-quote",
+        ],
     )
     def test_named_markers_and_markdown_quotes_pass(
         self, boundary: ModuleType, rel: str, source: str

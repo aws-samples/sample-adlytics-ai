@@ -1051,8 +1051,10 @@ _LOG_POLL_SECONDS = 10
 _LOG_TIMEOUT_SECONDS = 240
 _ABSENCE_SETTLE_SECONDS = 30
 _MCP_TIMEOUT_SECONDS = 30
-_TOKEN_EXCHANGE_GRANT = "urn:ietf:params:oauth:grant-type:token-exchange"  # noqa: S105
-_JWT_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:jwt"  # noqa: S105
+# A-PROTOCOL-CONSTANT-001: an RFC 8693 grant-type URN; see docs/security-dispositions.md
+_TOKEN_EXCHANGE_GRANT = "urn:ietf:params:oauth:grant-type:token-exchange"  # noqa: S105  # nosec B105
+# A-PROTOCOL-CONSTANT-001: an RFC 8693 token-type URN; see docs/security-dispositions.md
+_JWT_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:jwt"  # noqa: S105  # nosec B105
 _CALLER_UNVERIFIED = "ADLY-CALLER-0001"
 _CALLER_UNVERIFIED_REASON = re.compile(
     r"^This tool call could not be attributed to a verified user, so it was not run\.$"
@@ -1127,7 +1129,7 @@ _GATEWAY_AUTHORIZER = "gateway_authorizer"
 # The issuer answers a wrong client secret with RFC 6749 invalid_client and logs the reason.
 _TOKEN_WRONG_SECRET = _ExpectedHttpRefusal(401, re.compile(r'^\{"error":"invalid_client"\}$'))
 # pragma: allowlist nextline secret (A-PROTOCOL-CONSTANT-001)
-_TOKEN_WRONG_SECRET_REASON = "The presented client authentication does not match."  # noqa: S105
+_TOKEN_WRONG_SECRET_REASON = "The presented client authentication does not match."  # noqa: S105  # nosec B105
 
 
 def _tool_records(ctx: _Context, window: LogWindow) -> dict[str, list[Mapping[str, object]]]:

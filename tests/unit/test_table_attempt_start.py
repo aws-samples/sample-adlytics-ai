@@ -255,7 +255,8 @@ def test_an_ambiguous_reason_may_never_be_none_or_disagree_with_its_evidence() -
 
 def test_the_start_request_requires_the_64_hex_attempt_token_and_an_envelope() -> None:
     with pytest.raises(ValueError, match="lowercase hex"):
-        StartTableAttemptRequest(start_envelope=ENVELOPE, client_request_token="short")
+        # A-TEST-LITERALS-001: the short token under test; see docs/security-dispositions.md
+        StartTableAttemptRequest(start_envelope=ENVELOPE, client_request_token="short")  # nosec B106
     with pytest.raises(ValueError, match="envelope"):
         StartTableAttemptRequest(start_envelope="  ", client_request_token=TOKEN)
 

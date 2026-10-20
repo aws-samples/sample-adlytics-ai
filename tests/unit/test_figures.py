@@ -560,7 +560,7 @@ class TestADrillAcrossRowResolvesOrRefuses:
         """Every real ROAS divides unevenly, so a floored quotient would truncate all of them.
 
         The existing cases all divide exactly, which cannot tell true division from floor
-        division. Mutation review found that: `domain-measurement-figures.md` S-06.
+        division. Mutation review (ADR-013) found that.
         """
         result = measure(self._plan(catalog), (self._row(("400", 0), ("3", 0)),))
 

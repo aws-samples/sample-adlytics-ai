@@ -150,7 +150,8 @@ PARTITION_KEY = "partition_key"
 PUBLICATION_RECORD_KEY = "record_key"
 CURRENT_RECORD = "CURRENT"
 PROJECTED_PUBLICATION_ID = "projected_publication_id"
-PROJECTED_FENCING_TOKEN = "projected_fencing_token"  # noqa: S105 -- attribute name
+# A-PROTOCOL-CONSTANT-001: a DynamoDB attribute name; see docs/security-dispositions.md
+PROJECTED_FENCING_TOKEN = "projected_fencing_token"  # noqa: S105 -- attribute name  # nosec B105
 PROJECTED_AT = "projected_at"
 SERVABLE_NONE = "NONE"
 _SERVABLE_ATTRIBUTES = frozenset({PROJECTED_PUBLICATION_ID, PROJECTED_FENCING_TOKEN, PROJECTED_AT})

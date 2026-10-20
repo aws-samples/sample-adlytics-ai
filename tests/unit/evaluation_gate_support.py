@@ -36,7 +36,8 @@ from ports.outbound.evaluation_gate import (
 RESPONSE_URL = "https://cloudformation-custom-resource-response.example/presigned?sig=abc"
 STACK_ID = "arn:aws:cloudformation:us-east-1:123456789012:stack/Adlytics-EvaluationV4-test/guid"
 LOGICAL_ID = "EvaluationGateV4"
-SERVICE_TOKEN = "arn:aws:lambda:us-east-1:123456789012:function:adlytics-test-EvaluationGate"
+# A-TEST-LITERALS-001: a ServiceToken ARN; see docs/security-dispositions.md
+SERVICE_TOKEN = "arn:aws:lambda:us-east-1:123456789012:function:adlytics-test-EvaluationGate"  # nosec B105
 # pragma: allowlist nextline secret (A-ENTROPY-IDENTIFIER-001)
 SUFFIX = "AbCdE12345"
 CONFIG_NAME = "adlytics_test_released_v4"

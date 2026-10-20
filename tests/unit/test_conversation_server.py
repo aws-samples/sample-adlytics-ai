@@ -257,7 +257,8 @@ def _handler(module: Any, *, body: bytes = b"{}") -> tuple[Any, _Response]:
     return handler, response
 
 
-_SUBJECT_TOKEN = "fictional-verified-cognito-access-token"
+# A-TEST-LITERALS-001: a fictional token; see docs/security-dispositions.md
+_SUBJECT_TOKEN = "fictional-verified-cognito-access-token"  # nosec B105
 
 
 def _admitted_turn(module: Any) -> turns.AdmittedTurn:
@@ -563,7 +564,8 @@ def test_each_turn_exchanges_its_subject_once_and_invokes_with_only_the_minted_b
     assert recording.values[-1] == {"outcome": "answered"}
     assert response.began is True
     assert tooling.token_exchange.subjects == [_SUBJECT_TOKEN]
-    assert tooling.bearers == [turns.HarnessBearer(token="minted-0001")]
+    # A-TEST-LITERALS-001: a fictional token; see docs/security-dispositions.md
+    assert tooling.bearers == [turns.HarnessBearer(token="minted-0001")]  # nosec B106
     assert tooling.bearers[0].token != _SUBJECT_TOKEN
     assert len(runtime.requests) == 1
     assert runtime.requests[0].turn.actor_id == turns.actor_id_for("verified-owner")

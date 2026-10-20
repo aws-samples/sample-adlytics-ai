@@ -15,7 +15,7 @@ from domain.identity.origin_verify import ORIGIN_VERIFY_HEADER
 pytestmark = [pytest.mark.unit, pytest.mark.covers("ADR-078")]
 
 # pragma: allowlist nextline secret (A-TEST-LITERALS-001)
-_SECRET = "adlytics/dev/edge/origin-verify"
+_SECRET = "adlytics/dev/edge/origin-verify"  # nosec B105
 _OLD = "fictional-old-value"
 _TARGET = job.RotationTarget(_SECRET, "E0FICTIONAL")
 

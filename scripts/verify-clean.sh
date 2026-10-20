@@ -11,6 +11,10 @@
 #
 # The tracked-file gates (check-publication-boundary, check-links) enumerate with git and skip
 # when there is no repository, so the export is indexed first; a skip line fails the run.
+#
+# The recorded gates write their run records into the checkout's .runs/, naming the source
+# commit, and the export's tree must equal HEAD's, so a record made here matches HEAD^{tree}
+# (docs/test-run-records.md).
 set -euo pipefail
 
 root=$(git rev-parse --show-toplevel)
@@ -21,7 +25,10 @@ if [ -n "$(git status --porcelain)" ]; then
 fi
 
 tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
+# The check log lives outside the export: an untracked file there would make every later run
+# record report a dirty tree.
+check_log=$(mktemp)
+trap 'rm -rf "$tmp" "$check_log"' EXIT
 
 git archive HEAD | tar -x -C "$tmp"
 
@@ -33,6 +40,10 @@ for name in $(compgen -e); do
   case "$name" in ADLYTICS_*) unset "$name" ;; esac
 done
 test -z "$(compgen -e | grep '^ADLYTICS_' || true)" || { echo "verify-clean: an ADLYTICS_* variable survived" >&2; exit 1; }
+# Run records land in the checkout, not the throwaway export, and name the commit they verify.
+export RUN_RECORD_ROOT="$root/.runs"
+source_commit=$(git -C "$root" rev-parse HEAD)
+export RUN_RECORD_SOURCE_COMMIT="$source_commit"
 # The tracked-file gates enumerate with git; index exactly what HEAD tracked so they scan the export
 # instead of skipping. This is a throwaway repository in the temporary directory, never the checkout.
 git init -q
@@ -42,21 +53,20 @@ test "$(git ls-files | wc -l)" -gt 0 || { echo "verify-clean: the export indexed
 # identity is passed per command so a reader without a configured git identity can still run this.
 git -c user.name=verify-clean -c user.email=verify-clean@invalid -c commit.gpgsign=false \
   commit -q -m "verify-clean export"
+test "$(git rev-parse 'HEAD^{tree}')" = "$(git -C "$root" rev-parse 'HEAD^{tree}')" || {
+  echo "verify-clean: the export's tree differs from HEAD^{tree}; its run records would not match HEAD" >&2
+  exit 1
+}
 make install
 make verify
 # make check reads aws-cdk-lib and ts-node from infra/node_modules (check-construct-levels,
 # check-parameter-contract), so the infra install comes first.
 (cd infra && npm ci)
-make check 2>&1 | tee "$tmp/check.log"
-! grep -q "skipped: git is unavailable" "$tmp/check.log" || { echo "verify-clean: a tracked-file gate skipped" >&2; exit 1; }
+make check 2>&1 | tee "$check_log"
+! grep -q "skipped: git is unavailable" "$check_log" || { echo "verify-clean: a tracked-file gate skipped" >&2; exit 1; }
 make infra-test
-(
-  cd frontend
-  npm ci
-  npm run typecheck
-  npm run lint
-  npm test
-  npm run build
-)
+(cd frontend && npm ci && npm run typecheck && npm run lint)
+make frontend-test
+(cd frontend && npm run build)
 
 echo "verify-clean: passed for HEAD $(git -C "$root" rev-parse --short HEAD)"

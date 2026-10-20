@@ -22,6 +22,8 @@ from lambda_layer_packaging import (
 
 
 def _run(command: list[str], *, cwd: Path, environment: dict[str, str] | None = None) -> str:
+    # A-SUBPROCESS-001: the fixed git and ts-node argv, no shell; see docs/security-dispositions.md
+    # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit
     result = subprocess.run(
         command,
         cwd=cwd,
@@ -114,6 +116,8 @@ def _build(exported_root: Path, environment: dict[str, str]) -> Path:
     output = exported_root / "build"
     command = ["bash", str(exported_root / "scripts" / "build-lambdas.sh"), str(output)]
     print(f"BUILD_ROOT={exported_root}")
+    # A-SUBPROCESS-001: bash and the exported build script, no shell; see docs/security-dispositions.md
+    # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit
     result = subprocess.run(command, cwd=exported_root, env=environment, check=False)
     if result.returncode != 0:
         raise PackagingError(

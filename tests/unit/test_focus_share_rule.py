@@ -312,7 +312,7 @@ def test_the_revised_payload_is_null_by_grain_on_ratio_components() -> None:
     assert payload["drivers_summary"] is None
 
 
-# Mutation review (2026-10-06, test-mutations/domain-presentation-metric_focus.md) ----------
+# Mutation review (2026-10-06, ADR-013) -----------------------------------------------------
 
 
 @pytest.mark.parametrize(

@@ -260,7 +260,8 @@ class TestSettings:
 
         assert settings.token_signing_key_arn == SIGNING_KEY_ARN
         assert settings.token_signing_key_id == SIGNING_KEY_ID
-        assert settings.token_signing_key_region == "eu-west-1"
+        # A-TEST-LITERALS-001: a Region name; see docs/security-dispositions.md
+        assert settings.token_signing_key_region == "eu-west-1"  # nosec B105
 
     def test_every_missing_key_is_reported_at_once(self) -> None:
         with pytest.raises(InvariantError) as caught:

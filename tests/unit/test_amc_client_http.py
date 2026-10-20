@@ -94,7 +94,8 @@ def test_fetch_csv_preserves_http_status_and_diagnostic_body(
 def test_token_form_parses_json_response_without_network(monkeypatch: pytest.MonkeyPatch) -> None:
     session = _Session(_Response(b'{"access_token":"token"}'))
     monkeypatch.setattr(amc_client, "_HTTP", session)
-    credentials = amc_client.Credentials(
+    # A-TEST-LITERALS-001: fictional credentials; see docs/security-dispositions.md
+    credentials = amc_client.Credentials(  # nosec B106
         client_id="client",
         # pragma: allowlist nextline secret (A-TEST-LITERALS-001)
         client_secret="secret",
@@ -109,7 +110,8 @@ def test_token_form_preserves_http_status_and_diagnostic_body(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(amc_client, "_HTTP", _Session(_Response(b"bad request", status=400)))
-    credentials = amc_client.Credentials(
+    # A-TEST-LITERALS-001: fictional credentials; see docs/security-dispositions.md
+    credentials = amc_client.Credentials(  # nosec B106
         client_id="client",
         # pragma: allowlist nextline secret (A-TEST-LITERALS-001)
         client_secret="secret",
@@ -165,7 +167,8 @@ def _adhoc_body(monkeypatch: pytest.MonkeyPatch, **extra: Any) -> dict[str, Any]
 
     monkeypatch.setattr(amc_client, "access_token", token)
     api = amc_client.AdsApi(
-        amc_client.Credentials(
+        # A-TEST-LITERALS-001: fictional credentials; see docs/security-dispositions.md
+        amc_client.Credentials(  # nosec B106
             client_id="fixture-client", client_secret="fixture-secret",
             refresh_token="fixture-refresh", region="na",
             marketplace_id="fixture-mkt", amc_account_id="fixture-account",

@@ -652,16 +652,15 @@ Gate results are in the final convergence report.
 ### Rolling-freshness domain mutation review local commit receipt
 
 These are clean-tree `make mutate` runs at `4c3c7315`, one per changed domain module. Every
-run left survivors, so each module gets a no-remediation report in `test-mutations/`. Each
-report lists survivor locations and operators only; triage and remediation are pending.
+run left survivors; triage and remediation are pending.
 
-| Module | Generated | Killed | Survived | Report |
-| --- | ---: | ---: | ---: | --- |
-| `bake_scheduling.py` | 476 | 383 | 93 | `domain-operations-bake_scheduling.md` |
-| `stuck_flow.py` | 315 | 238 | 77 | `domain-operations-stuck_flow.md` |
-| `flow_explain.py` | 594 | 399 | 195 | `domain-operations-flow_explain.md` |
-| `graph_projection.py` | 222 | 141 | 81 | `domain-operations-graph_projection.md` |
-| `execution_graph_dispatch.py` | 780 | 319 | 461 | `domain-operations-execution_graph_dispatch.md` |
+| Module | Generated | Killed | Survived |
+| --- | ---: | ---: | ---: |
+| `bake_scheduling.py` | 476 | 383 | 93 |
+| `stuck_flow.py` | 315 | 238 | 77 |
+| `flow_explain.py` | 594 | 399 | 195 |
+| `graph_projection.py` | 222 | 141 | 81 |
+| `execution_graph_dispatch.py` | 780 | 319 | 461 |
 
 The source tree was clean after every run. Raw sessions and logs are ignored under
 `.agents/tasks/ingestion-traceability/evidence/graph-bake-delivery/converge-fix/mutation/`.

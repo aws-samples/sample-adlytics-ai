@@ -18,14 +18,14 @@ endef
 define require_env
 @test -n "$(ENV)" || (echo "ENV is required, e.g. make $@ ENV=my-env"; exit 1)
 endef
-.PHONY: help check check-links check-diagrams check-design-manifest require-approved-design-manifest check-model check-steering check-config-access check-prompt-text check-conformed-columns check-observability-bans check-exception-handling check-aws-pagination check-publication-boundary check-license-headers check-debt-markers check-format report-retire-markers \
+.PHONY: help check check-links check-diagrams check-design-manifest require-approved-design-manifest check-model check-steering check-config-access check-prompt-text check-conformed-columns check-observability-bans check-exception-handling check-aws-pagination check-publication-boundary check-license-headers check-debt-markers check-run-record-coverage check-format report-retire-markers \
         check-bakeability \
         install lint format typecheck lint-boundaries validate-contracts validate-page-schemas test test-integration \
-        check-lambda-layer-reproducibility verify verify-clean check-publication accept-ingestion-v2 accept-campaign-estate-local accept-evaluation-link print-deploy-flags accept-evaluation-custody regress-agent mutate dead-code dead-code-allowlist build-lambdas build-frontend \
+        check-lambda-layer-reproducibility verify verify-clean verify-clean-run gate-status publication-gate release-gate install-hooks uninstall-hooks publish accept-ingestion-v2 accept-campaign-estate-local accept-evaluation-link print-deploy-flags accept-evaluation-custody regress-agent mutate mutate-next mutation-status mutation-verdict dead-code dead-code-allowlist build-lambdas build-frontend \
         generate-design-manifest generate-schemas check-schemas generate-fixtures check-fixtures \
         generate-tool-schemas check-tool-schemas generate-trace-contract check-trace-contract generate-data-flow-registry check-data-flow-coverage generate-execution-graph-protocol check-execution-graph-protocol check-execution-graph-deployable generate-alarm-destinations check-alarm-destinations generate-producer-packs check-producer-packs \
         generate-parameter-contract check-parameter-contract \
-        frontend-typecheck create-user provision-quality-review-users accept-quality-review backfill-record-expiry supersede-orphan-units migrate-review-groups rotate-origin-verify accept-edge accept-guardrail accept-managed-harness accept-reprocess-telemetry infra-typecheck infra-test check-alarm-coverage check-probe-resource-names synth diff deploy deploy-all destroy-all \
+        frontend-typecheck frontend-test create-user provision-quality-review-users accept-quality-review backfill-record-expiry supersede-orphan-units migrate-review-groups rotate-origin-verify accept-edge accept-guardrail accept-managed-harness accept-reprocess-telemetry infra-typecheck infra-test check-alarm-coverage check-probe-resource-names synth diff deploy deploy-all destroy-all \
         dev-state check-alarm-window check-serving-refusals check-staged-tree diff-then-deploy deploy-all-locked check-source-key deploy-lock-force-release
 
 # ---------------------------------------------------------------------------
@@ -36,7 +36,7 @@ help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
 		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
 
-check: check-links check-diagrams check-design-manifest check-insight-matrix check-model check-lineage check-schemas check-fixtures check-tool-schemas check-trace-contract check-data-flow-coverage check-execution-graph-protocol check-alarm-destinations check-producer-packs check-parameter-contract validate-page-schemas check-bakeability check-steering check-coverage-matrix check-config-access check-prompt-text check-conformed-columns check-construct-levels check-observability-bans check-exception-handling check-aws-pagination check-publication-boundary check-license-headers check-debt-markers check-format ## Run every documentation check
+check: check-links check-diagrams check-design-manifest check-insight-matrix check-model check-lineage check-schemas check-fixtures check-tool-schemas check-trace-contract check-data-flow-coverage check-execution-graph-protocol check-alarm-destinations check-producer-packs check-parameter-contract validate-page-schemas check-bakeability check-steering check-coverage-matrix check-config-access check-prompt-text check-conformed-columns check-construct-levels check-observability-bans check-exception-handling check-aws-pagination check-publication-boundary check-license-headers check-debt-markers check-run-record-coverage check-format ## Run every documentation check
 
 check-links: ## Validate internal links and heading anchors in every tracked markdown file (plus local working documents when present)
 	@uv run python scripts/check-links.py
@@ -100,6 +100,9 @@ check-debt-markers: ## Refuse task markers in tracked code and retire markers wi
 
 report-retire-markers: ## List every retire marker with its file:line, removal condition and owning doc
 	@uv run python scripts/check-debt-markers.py --report
+
+check-run-record-coverage: ## Refuse a Makefile test or scan target that bypasses the run recorder
+	@uv run python scripts/check-run-record-coverage.py
 
 # Runs under uv because it reads the column list from the domain rather than restating it.
 # check-lineage cannot cover this: it walks a contract's field mappings, and these columns
@@ -209,23 +212,49 @@ typecheck: ## Pyright, strict mode
 lint-boundaries: ## import-linter — the hexagonal dependency gate
 	@uv run lint-imports --config pyproject.toml
 
-test: ## Unit tests
-	@uv run pytest -m unit
+# Every test and gate target writes an immutable run record under .runs/ (docs/test-run-records.md).
+# The canonical commands and gate steps live in scripts/run_record.py (CANONICAL, CANONICAL_GATES).
+test: ## Unit tests on bounded parallel workers, recorded; PYTEST_WORKERS=0..4 overrides the count (docs/test-run-records.md)
+	@uv run python scripts/run_record.py run --kind pytest-unit
 
 # Not part of `verify`: needs real AWS resources. Tests skip rather than fail when
 # credentials are absent, so the unit loop stays credential-free. See ADR-014.
-test-integration: ## Adapter tests against real AWS resources: make test-integration PROFILE=...
+test-integration: ## Adapter tests against real AWS resources, recorded: make test-integration PROFILE=...
 	$(call require_profile)
-	@AWS_PROFILE=$(PROFILE) uv run pytest -m integration
+	@AWS_PROFILE=$(PROFILE) uv run python scripts/run_record.py run --kind $@ --format pytest -- \
+		python -m pytest -m integration '--junitxml={staging}/junit.xml'
 
-verify: lint typecheck lint-boundaries validate-contracts test ## Everything that gates a merge on the backend
-verify-clean: ## Run make verify, make check, make infra-test and the frontend gates in a clean export of HEAD (before every publication push)
+verify: ## Everything that gates a merge on the backend, in order, stopping at the first failure; recorded
+	@uv run python scripts/run_record.py gate --kind verify
+verify-clean: ## Run make verify, make check, make infra-test and the frontend gates in a clean export of HEAD (before every publication push), recorded
+	@uv run python scripts/run_record.py gate --kind verify-clean
+# The single step of the verify-clean gate record; run make verify-clean instead.
+verify-clean-run:
 	@bash scripts/verify-clean.sh
+# Read-only: a record is written while its run is in progress (docs/test-run-records.md#live-status).
+gate-status: ## List in-progress and recent run records: state, elapsed time, heartbeat age, progress, last log lines [RECENT=5] [LINES=5]
+	@uv run python scripts/run_record.py status --recent "$(or $(RECENT),5)" --lines "$(or $(LINES),5)"
 
-# Not part of `check`: it needs gitleaks locally and a BASE revision for the unpushed-commit scan.
-check-publication: ## Run the publication gates on a clean export of HEAD and scan unpushed commits: make check-publication BASE=<rev> (before every publication push)
-	@test -n "$(BASE)" || (echo "BASE is required, e.g. make check-publication BASE=<rev>"; exit 1)
-	@bash scripts/check-publication.sh "$(BASE)"
+# Not part of `check`: it needs the pinned gitleaks and the run records of make verify-clean for this
+# tree. BASE defaults to public/main, the public main the push builds on (DEFAULT_BASE in
+# scripts/publication_gate.py); run git fetch public first.
+publication-gate: ## Refuse a public push unless every commit since BASE is publishable, recorded: make publication-gate [BASE=<rev>] (before every push; default public/main)
+	@uv run python scripts/publication_gate.py $(if $(BASE),--base "$(BASE)")
+# Not part of `check` or `verify`: about an hour, and it needs the pinned ASH, uvx and finch or
+# Docker. Run once per release, before make publication-gate; the mutation summary never refuses.
+release-gate: ## Release gate: verify-clean (reusing a sealed record of the same tree), full ASH container scan, mutation coverage summary (report only)
+	@uv run python scripts/release_gate.py
+# Run once per clone, by the owner. It writes stubs into the repository's own hooks directory and
+# changes no git configuration, so a system-level hooksPath set by the machine's security tooling
+# stays in force (scripts/install-hooks.sh). The hooks are the commit tier (scripts/commit_gate.py)
+# and the push tier (make publication-gate).
+install-hooks: ## Install the tracked commit and push hooks in .githooks/ for this clone, changing no git config
+	@bash scripts/install-hooks.sh install
+uninstall-hooks: ## Remove only the hook stubs make install-hooks wrote
+	@bash scripts/install-hooks.sh uninstall
+publish: ## Publish through the operator's local publish script (local-publish.sh)
+	@test -f local-publish.sh || (echo "publish: local-publish.sh is absent; publishing is operator-local and runs only through that gitignored script"; exit 1)
+	@bash ./local-publish.sh
 
 # Not part of `verify` or `test-integration`: this is manual deployed acceptance against synthetic
 # Vendor Central input, not AMC. It refuses every omitted target value before Python can make the
@@ -235,7 +264,7 @@ accept-ingestion-v2: ## Deployed V2 ingestion acceptance (synthetic, not AMC): P
 	$(call require_env)
 	@test -n "$(DAY)" || (echo "DAY is required, e.g. DAY=2026-08-23"; exit 1)
 	@test -n "$(GLANCE_VIEWS)" || (echo "GLANCE_VIEWS is required, e.g. GLANCE_VIEWS=85"; exit 1)
-	@uv run python validation/probe_ingestion_cutover.py \
+	@uv run python scripts/run_record.py run --kind $@ --format exit -- uv run python validation/probe_ingestion_cutover.py \
 		--profile "$(PROFILE)" --env "$(ENV)" --day "$(DAY)" --glance-views "$(GLANCE_VIEWS)"
 
 # Deterministic local falsification at the governed 1,000-campaign scale. Raw timings and body
@@ -243,7 +272,7 @@ accept-ingestion-v2: ## Deployed V2 ingestion acceptance (synthetic, not AMC): P
 accept-campaign-estate-local: ## Render and attest the governed 1,000-campaign segmented estate
 	@mkdir -p validation/evidence
 	@evidence_dir="$$(mktemp -d "$(CURDIR)/validation/evidence/campaign-estate.XXXXXX")"; rmdir "$$evidence_dir"; \
-	uv run python validation/accept_campaign_estate_local.py --evidence-dir "$$evidence_dir"
+	uv run python scripts/run_record.py run --kind $@ --format exit -- uv run python validation/accept_campaign_estate_local.py --evidence-dir "$$evidence_dir"
 
 # Manual protected-evaluation acceptance. It is dev-only and refuses omitted or production-like
 # targets before the probe can call AWS. EVALUATION_RESULT_LINK_STACK is supplied by the operator:
@@ -263,7 +292,7 @@ accept-evaluation-link: ## Protected evaluation acceptance: PROFILE=... ENV=dev 
 	@set -eu; evidence_dir="$$(mktemp -d "$(CURDIR)/validation/evidence/evaluation-link.XXXXXX")"; \
 	cleanup() { status=$$?; if [ $$status -eq 0 ] && [ "$(RETAIN_EVIDENCE)" != "1" ]; then rm -rf "$$evidence_dir"; else echo "protected evidence retained locally" >&2; fi; exit $$status; }; \
 	trap cleanup EXIT; \
-	uv run python validation/probe_agent_quality_loop.py \
+	uv run python scripts/run_record.py run --kind $@ --format exit -- uv run python validation/probe_agent_quality_loop.py \
 		--profile "$(PROFILE)" --environment "$(ENV)" --region "$(REGION)" \
 		--expected-account "$(ACCOUNT)" --result-link-stack "$(EVALUATION_RESULT_LINK_STACK)" \
 		--evidence-dir "$$evidence_dir"
@@ -311,7 +340,7 @@ accept-evaluation-custody: ## Read-only result-group custody acceptance: PROFILE
 	test "$${ADLYTICS_ONLINE_EVALUATION_V4_REQUESTED:-}" = true || { echo "ADLYTICS_ONLINE_EVALUATION_V4_REQUESTED must be true, as for the deploy under test" >&2; exit 1; }; \
 	flags="$$($(deploy_flags))"; \
 	stacks="$$(cd infra && npx cdk list --profile "$(PROFILE)" -c env="$(ENV)" | paste -sd, -)"; \
-	uv run python validation/probe_evaluation_custody.py \
+	uv run python scripts/run_record.py run --kind $@ --format exit -- uv run python validation/probe_evaluation_custody.py \
 		--profile "$(PROFILE)" --environment "$(ENV)" --region "$(REGION)" \
 		--expected-account "$(ACCOUNT)" --family v4 --stacks "$$stacks" \
 		--config-flags "$$flags" --expected-config-flags "$(EXPECTED_FLAGS)"
@@ -334,7 +363,7 @@ regress-agent: ## Agent-mode regression: PROFILE=... ENV=dev REGION=us-east-1 AC
 	cleanup() { status=$$?; if [ $$status -eq 0 ] && [ "$(RETAIN_EVIDENCE)" != "1" ]; then find "$$evidence_dir" -type f ! -name agent-regression-report.json -delete; else echo "protected evidence retained locally" >&2; fi; exit $$status; }; \
 	trap cleanup EXIT; \
 	echo "report: $${evidence_dir#$(CURDIR)/}/agent-regression-report.json" >&2; \
-	uv run python validation/regress_agent.py \
+	uv run python scripts/run_record.py run --kind $@ --format exit -- uv run python validation/regress_agent.py \
 		--profile "$(PROFILE)" --environment "$(ENV)" --region "$(REGION)" \
 		--expected-account "$(ACCOUNT)" --result-link-stack "$(EVALUATION_RESULT_LINK_STACK)" \
 		--evidence-dir "$${evidence_dir#$(CURDIR)/}" --verdict-timeout-seconds 1800 \
@@ -376,7 +405,7 @@ accept-managed-harness: ## Joined managed Harness acceptance: explicit dev profi
 	@set -eu; evidence_dir="$$(mktemp -d "$(CURDIR)/validation/evidence/managed-harness.XXXXXX")"; \
 	cleanup() { status=$$?; if [ $$status -eq 0 ] && [ "$(RETAIN_EVIDENCE)" != "1" ]; then rm -rf "$$evidence_dir"; else echo "protected managed Harness evidence retained locally" >&2; fi; exit $$status; }; \
 	trap cleanup EXIT; \
-	uv run python validation/accept_managed_harness.py \
+	uv run python scripts/run_record.py run --kind $@ --format exit -- uv run python validation/accept_managed_harness.py \
 		--profile "$(PROFILE)" --environment "$(ENV)" --region "$(REGION)" \
 		--expected-account "$(ACCOUNT)" --evidence-dir "$$evidence_dir" \
 		--harness-stack "$(HARNESS_STACK)" --api-stack "$(API_STACK)" \
@@ -411,7 +440,7 @@ accept-reprocess-telemetry: ## Reprocess telemetry acceptance: explicit dev targ
 	@test "$(OBSERVABILITY_STACK)" = "Adlytics-Observability-dev" || (echo "OBSERVABILITY_STACK must be the exact dev stack"; exit 1)
 	@mkdir -p validation/evidence
 	@set -eu; evidence_dir="$$(mktemp -d "$(CURDIR)/validation/evidence/reprocess-telemetry.XXXXXX")"; \
-	uv run python validation/probe_reprocess_telemetry.py \
+	uv run python scripts/run_record.py run --kind $@ --format exit -- uv run python validation/probe_reprocess_telemetry.py \
 		--profile "$(PROFILE)" --environment "$(ENV)" --region "$(REGION)" \
 		--expected-account "$(ACCOUNT)" --data-stack "$(DATA_STACK)" \
 		--observability-stack "$(OBSERVABILITY_STACK)" --bucket "$(BUCKET)" \
@@ -433,6 +462,9 @@ build-frontend: ## Publish the frontend: make build-frontend ENV=... PROFILE=...
 
 frontend-typecheck: ## tsc --noEmit on the frontend
 	@cd frontend && npm run typecheck
+
+frontend-test: ## Vitest unit tests for the frontend, recorded
+	@uv run python scripts/run_record.py run --kind frontend-test
 
 # Self sign-up is off, so this is the only way an account is created. Cognito
 # emails a temporary password and managed login forces a change, so the operator
@@ -463,7 +495,7 @@ accept-quality-review: ## Managed-login Quality Review matrix: PROFILE=... ENV=d
 	@test -n "$(ACCOUNT)" || (echo "ACCOUNT is required"; exit 1)
 	@test "$(ENV)" = "dev" || (echo "accept-quality-review accepts only ENV=dev"; exit 1)
 	@test "$(REGION)" = "us-east-1" || (echo "accept-quality-review accepts only REGION=us-east-1"; exit 1)
-	@uv run python validation/probe_quality_review_api.py --profile "$(PROFILE)" --environment "$(ENV)" --region "$(REGION)" --expected-account "$(ACCOUNT)"
+	@uv run python scripts/run_record.py run --kind $@ --format exit -- uv run python validation/probe_quality_review_api.py --profile "$(PROFILE)" --environment "$(ENV)" --region "$(REGION)" --expected-account "$(ACCOUNT)"
 
 # ADR-080 §5 and ADR-081 §5: the one-time expiry backfill of every record table, after TTL is
 # enabled and before the resource policies land. Refused, dry run included, once the policies are on. RETENTION_DAYS must equal the deployed
@@ -513,7 +545,7 @@ accept-edge: ## Edge WAF + origin-verify acceptance: PROFILE=... ENV=dev REGION=
 	@test "$(REGION)" = "us-east-1" || (echo "accept-edge accepts only REGION=us-east-1"; exit 1)
 	@test -n "$(ACCOUNT)" || (echo "ACCOUNT is required"; exit 1)
 	@case "$(EXPECT_MODE)" in count|block) ;; *) echo "EXPECT_MODE must be count or block" >&2; exit 1;; esac
-	@uv run python validation/probe_edge_entry.py --profile "$(PROFILE)" --environment "$(ENV)" \
+	@uv run python scripts/run_record.py run --kind $@ --format exit -- uv run python validation/probe_edge_entry.py --profile "$(PROFILE)" --environment "$(ENV)" \
 		--region "$(REGION)" --expected-account "$(ACCOUNT)" --expect-mode "$(EXPECT_MODE)" \
 		$(if $(COUNT_SINCE),--count-since "$(COUNT_SINCE)")
 
@@ -525,7 +557,7 @@ accept-guardrail: ## Deployed route Guardrail acceptance: PROFILE=... ENV=dev RE
 	@test "$(ENV)" = "dev" || (echo "accept-guardrail accepts only ENV=dev"; exit 1)
 	@test "$(REGION)" = "us-east-1" || (echo "accept-guardrail accepts only REGION=us-east-1"; exit 1)
 	@test -n "$(ACCOUNT)" || (echo "ACCOUNT is required"; exit 1)
-	@uv run python validation/probe_guardrail_calibration.py --profile "$(PROFILE)" \
+	@uv run python scripts/run_record.py run --kind $@ --format exit -- uv run python validation/probe_guardrail_calibration.py --profile "$(PROFILE)" \
 		--expected-account "$(ACCOUNT)" --accept
 
 # ADR-078: one secret write of the origin-verify rotation, coupled to a FrontendStack redeploy
@@ -543,25 +575,28 @@ MIN_CONFIDENCE ?= 60
 
 dead-code: ## Report dead-code candidates: make dead-code [MIN_CONFIDENCE=100]
 	@echo "vulture --min-confidence $(MIN_CONFIDENCE)"
-	@uv run vulture --min-confidence $(MIN_CONFIDENCE) || true
+	@uv run python scripts/run_record.py run --kind $@ --format exit -- uv run vulture --min-confidence $(MIN_CONFIDENCE) || true
 
 dead-code-allowlist: ## Regenerate the vulture allowlist from current findings
 	@uv run vulture --make-whitelist > scripts/vulture-allowlist.py || true
 	@echo "wrote scripts/vulture-allowlist.py — review every line before committing"
 
-# Deliberately not part of `verify`. This is a post-feature review activity, and
-# it mutates source in place — see ADR-013 and meta-testing-mutation steering.
-mutate: ## Mutation-test ONE module: make mutate MODULE=src/... TESTS=tests/...
-	@test -n "$(MODULE)" || (echo "MODULE is required, e.g. MODULE=src/domain/strategy/objectives.py"; exit 1)
-	@test -n "$(TESTS)" || (echo "TESTS is required, e.g. TESTS=tests/unit/test_objectives.py"; exit 1)
-	@printf '[cosmic-ray]\nmodule-path = "%s"\ntimeout = 20.0\ntest-command = "python -m pytest %s -q -x"\nexcluded-modules = []\n\n[cosmic-ray.distributor]\nname = "local"\n' \
-		"$(MODULE)" "$(TESTS)" > .cosmic-ray.toml
-	@rm -f .cosmic-ray.sqlite
-	@uv run cosmic-ray init .cosmic-ray.toml .cosmic-ray.sqlite
-	@uv run cosmic-ray exec .cosmic-ray.toml .cosmic-ray.sqlite
-	@uv run cr-report --show-pending .cosmic-ray.sqlite | tail -4
-	@echo "Survivors (operator, occurrence):"
-	@uv run cr-report .cosmic-ray.sqlite | grep -B2 'SURVIVED' | grep '$(MODULE)' || echo "  none"
+# When these run: .kiro/steering/meta-testing-mutation.md. One unit per run (ADR-013). cosmic-ray
+# mutates python source in place and restores it; scripts/mutation.py refuses a dirty tree and
+# checks it afterwards.
+mutate: ## Mutate ONE unit: make mutate UNIT=<path> [SEMANTIC=<proposals.yaml>]
+	@test -n "$(UNIT)" || (echo "UNIT is required, e.g. make mutate UNIT=src/domain/identity/caller.py"; exit 1)
+	@uv run python scripts/mutation.py run --unit "$(UNIT)" $(if $(SEMANTIC),--semantic "$(SEMANTIC)")
+mutate-next: ## Mutate the next missing or stale units by priority: make mutate-next [N=5]
+	@uv run python scripts/mutation.py next --n "$(or $(N),5)"
+mutation-status: ## Mutation coverage per priority tier: current, stale, missing, untested, OPEN (report only)
+	@uv run python scripts/mutation.py status
+mutation-verdict: ## Set one survivor's verdict: make mutation-verdict UNIT= ID= VERDICT= [TEST=] [REASON=]
+	@test -n "$(UNIT)" || (echo "UNIT is required"; exit 1)
+	@test -n "$(ID)" || (echo "ID is required, e.g. ID=S-01"; exit 1)
+	@test -n "$(VERDICT)" || (echo "VERDICT is required: KILLED, EQUIVALENT or OPEN"; exit 1)
+	@uv run python scripts/mutation.py verdict --unit "$(UNIT)" --id "$(ID)" --verdict "$(VERDICT)" \
+		$(if $(TEST),--test "$(TEST)") $(if $(REASON),--reason "$(REASON)")
 
 # ---------------------------------------------------------------------------
 # Infrastructure
@@ -573,18 +608,20 @@ infra-typecheck: ## tsc --noEmit on the CDK app
 check-lambda-layer-reproducibility: ## Build the committed Python layer twice and require identical CDK assets
 	@uv run python scripts/check-lambda-layer-reproducibility.py
 
-infra-test: check-lambda-layer-reproducibility ## CDK unit tests against reproducibly staged deployment artifacts
-	@cd infra && npm test
+infra-test: check-lambda-layer-reproducibility ## CDK unit tests against reproducibly staged deployment artifacts, recorded
+	@uv run python scripts/run_record.py run --kind infra-test
 
 # T2 (ADR-133 clause 4): a whole-app synth, so it stays in the infra tier rather than make check;
 # make infra-test runs it too. Credential-free and needs no build/ (placeholder asset).
 check-alarm-coverage: ## Fail if a function or an operation can fail without an alarm on the staffed destination
-	@cd infra && npx jest --runInBand test/alarm-coverage.test.ts
+	@uv run python scripts/run_record.py run --kind $@ --format jest-json --cwd infra -- \
+		npx jest --runInBand test/alarm-coverage.test.ts --json '--outputFile={staging}/jest.json'
 
 # S6B-1: a whole-app synth like check-alarm-coverage, so it stays in the infra tier; make infra-test
 # runs it too. Reads validation/**/*.py as text; credential-free, no AWS.
 check-probe-resource-names: ## Fail if a validation probe names a resource or token identifier no stack synthesizes
-	@cd infra && npx jest test/probe-resource-names.test.ts
+	@uv run python scripts/run_record.py run --kind $@ --format jest-json --cwd infra -- \
+		npx jest test/probe-resource-names.test.ts --json '--outputFile={staging}/jest.json'
 
 synth: ## CDK synth: make synth ENV=... PROFILE=...
 	$(call require_profile)

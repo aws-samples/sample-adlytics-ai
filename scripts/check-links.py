@@ -81,7 +81,6 @@ FALLBACK_SCAN_DIRS = [
     ROOT / "evaluation",
     ROOT / "infra",
     ROOT / "scripts",
-    ROOT / "test-mutations",
     ROOT / "tests",
     ROOT / "validation",
 ]

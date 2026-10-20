@@ -262,7 +262,8 @@ def test_repeatable_tokens_union_selected_manifests_before_parsing_unselected_by
     request, raw = _case()
     first = plan_reprocess(request).deliveries[0]
     first_token = first.manifest_key.split("/retrieved=", 1)[1].split("/", 1)[0]
-    second_token = "20260804T000000Z"
+    # A-TEST-LITERALS-001: a timestamp; see docs/security-dispositions.md
+    second_token = "20260804T000000Z"  # nosec B105
     manifest_body = raw.body(first.manifest_key, first.manifest_version_id).body
     first_manifest = read_manifest(manifest_body.decode())
     second_manifest = replace(

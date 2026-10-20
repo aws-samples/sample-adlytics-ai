@@ -3,6 +3,9 @@
 
 from __future__ import annotations
 
+import re
+import shutil
+import subprocess
 import sys
 from collections.abc import Iterable
 from pathlib import Path
@@ -31,24 +34,67 @@ EXCLUDED_DIRECTORY_NAMES = frozenset(
         ".mypy_cache",
         ".ruff_cache",
         ".import_linter_cache",
-        ".protoshield",
     }
 )
+# A bare top-level dot-directory pattern (`.<name>/`) in the operator's git exclude file names a
+# local tool's state directory; it is excluded here too, so no tool name lives in tracked files.
+LOCAL_EXCLUDE_PATTERN = re.compile(r"^(\.[A-Za-z0-9_][A-Za-z0-9_.-]*)/$")
 EXCLUDED_PREFIXES = (("validation", "findings"),)
 EXCLUDED_PATHS = frozenset({("frontend", "next-env.d.ts")})
 
 
-def _is_excluded(relative_path: Path) -> bool:
+def excluded_names_from(exclude_file: Path) -> frozenset[str]:
+    """Return the directory names of every bare `.<name>/` line of a git exclude file."""
+    try:
+        lines = exclude_file.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return frozenset()
+    return frozenset(
+        match.group(1) for line in lines if (match := LOCAL_EXCLUDE_PATTERN.match(line.strip()))
+    )
+
+
+def local_excluded_directory_names(repository_root: Path) -> frozenset[str]:
+    """Return the dot-directory names in <git-common-dir>/info/exclude; none without git.
+
+    Without git nothing extra is excluded, so the check covers more files, never fewer.
+    """
+    git = shutil.which("git")
+    if git is None:
+        return frozenset()
+    try:
+        # A-SUBPROCESS-001: fixed git argv; see docs/security-dispositions.md
+        # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit
+        result = subprocess.run(  # noqa: S603 - fixed argv on the resolved git path, no shell
+            [git, "rev-parse", "--path-format=absolute", "--git-common-dir"],
+            cwd=repository_root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return frozenset()
+    if result.returncode != 0 or not result.stdout.strip():
+        return frozenset()
+    return excluded_names_from(Path(result.stdout.strip()) / "info" / "exclude")
+
+
+def _is_excluded(relative_path: Path, extra_names: frozenset[str] = frozenset()) -> bool:
     """Return whether a repository-relative path is outside publication source scope."""
     parts = relative_path.parts
     return (
         parts in EXCLUDED_PATHS
         or any(parts[: len(prefix)] == prefix for prefix in EXCLUDED_PREFIXES)
-        or any(part in EXCLUDED_DIRECTORY_NAMES or part.endswith(".egg-info") for part in parts)
+        or any(
+            part in EXCLUDED_DIRECTORY_NAMES or part in extra_names or part.endswith(".egg-info")
+            for part in parts
+        )
     )
 
 
-def is_candidate(path: Path, repository_root: Path) -> bool:
+def is_candidate(
+    path: Path, repository_root: Path, extra_names: frozenset[str] = frozenset()
+) -> bool:
     """Return whether a file belongs to the deterministic license-header scope."""
     try:
         relative_path = path.relative_to(repository_root)
@@ -58,18 +104,19 @@ def is_candidate(path: Path, repository_root: Path) -> bool:
         path.is_file()
         and relative_path.parts[:1] in {(root,) for root in ROOT_NAMES}
         and path.suffix in ELIGIBLE_SUFFIXES
-        and not _is_excluded(relative_path)
+        and not _is_excluded(relative_path, extra_names)
     )
 
 
 def candidate_paths(repository_root: Path) -> list[Path]:
     """Return all in-scope files in stable repository-relative order."""
+    extra_names = local_excluded_directory_names(repository_root)
     candidates: list[Path] = []
     for root_name in ROOT_NAMES:
         root = repository_root / root_name
         if root.is_dir():
             candidates.extend(
-                path for path in root.rglob("*") if is_candidate(path, repository_root)
+                path for path in root.rglob("*") if is_candidate(path, repository_root, extra_names)
             )
     return sorted(candidates, key=lambda path: path.relative_to(repository_root).as_posix())
 

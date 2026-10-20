@@ -308,7 +308,8 @@ class AgentCoreOnlineEvaluationControl(OnlineEvaluationControlPort):
 
     def find_by_name(self, config_name: str) -> OnlineEvaluationConfigState | None:
         """Page ListOnlineEvaluationConfigs for the configuration with this name."""
-        token = ""
+        # A-PROTOCOL-CONSTANT-001: the empty paging cursor; see docs/security-dispositions.md
+        token = ""  # nosec B105
         for _ in range(_MAX_LIST_PAGES):
             try:
                 response = (

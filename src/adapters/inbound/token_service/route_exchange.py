@@ -58,7 +58,8 @@ KEYS = CognitoSigningKeys(SETTINGS.cognito_jwks_url)
 SIGNER: TokenSigningPort = KmsTokenSigner(SETTINGS.token_signing_key_id, region=SETTINGS.aws_region)
 LOGGER = Logger(service="adlytics-token-route-exchange")
 OPERATION = "token.route_exchange"
-TOKEN_TYPE = "Bearer"  # noqa: S105 — an OAuth token_type value, not a credential
+# A-PROTOCOL-CONSTANT-001: an OAuth token_type value; see docs/security-dispositions.md
+TOKEN_TYPE = "Bearer"  # noqa: S105 — an OAuth token_type value, not a credential  # nosec B105
 
 INVALID_GRANT: dict[str, str] = {"error": "invalid_grant"}
 """The only refusal. It never carries a reason: a reason tells a caller which check failed."""

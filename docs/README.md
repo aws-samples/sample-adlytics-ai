@@ -26,6 +26,7 @@ This is the entry point for the current design. It contains navigation only: eac
 - [Decision coverage registry](decision-coverage-registry.md) owns the G-NN gap, F-NN finding, and Q-NN question identifiers.
 - [Security dispositions](security-dispositions.md) own the register IDs that inline scanner suppressions name.
 - [Validation results](../validation/RESULTS.md) own sanitized returned acceptance conclusions.
+- [Test run records](test-run-records.md) own the local run-record format and which records a gate accepts.
 
 ## Primers
 

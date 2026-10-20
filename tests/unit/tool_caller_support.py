@@ -31,7 +31,8 @@ from adapters.config import (
 )
 from adapters.inbound.tool_handlers.caller import CallerVerifier
 
-TOKEN_ISSUER = "https://abc123.execute-api.eu-west-1.amazonaws.com/v1"
+# A-TEST-LITERALS-001: a fictional issuer URL; see docs/security-dispositions.md
+TOKEN_ISSUER = "https://abc123.execute-api.eu-west-1.amazonaws.com/v1"  # nosec B105
 SIGNING_KEY_ID = "1234abcd-12ab-34cd-56ef-1234567890ab"
 SIGNING_KEY_ARN = f"arn:aws:kms:eu-west-1:111122223333:key/{SIGNING_KEY_ID}"
 GATEWAY_AUDIENCE = "adlytics-dev-gateway"

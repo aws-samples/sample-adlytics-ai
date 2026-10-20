@@ -214,8 +214,10 @@ def test_a_windowed_horizon_reads_from_its_bound_and_never_grows_with_history() 
 
 
 def test_a_scope_horizon_declares_exactly_one_bound_and_a_canonical_token() -> None:
-    assert ScopeHorizon(newest=1).token == "newest=1"
-    assert ScopeHorizon(from_bucket_start=date(2026, 1, 2)).token == "from=2026-01-02"
+    # A-TEST-LITERALS-001: a horizon token; see docs/security-dispositions.md
+    assert ScopeHorizon(newest=1).token == "newest=1"  # nosec B105
+    # A-TEST-LITERALS-001: a horizon token; see docs/security-dispositions.md
+    assert ScopeHorizon(from_bucket_start=date(2026, 1, 2)).token == "from=2026-01-02"  # nosec B105
     for bad in (
         {},
         {"newest": 1, "from_bucket_start": date(2026, 1, 2)},

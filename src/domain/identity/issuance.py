@@ -41,16 +41,18 @@ __all__ = [
 MINIMUM_RSA_KEY_BITS = 2048
 """The smallest RSA modulus a published verification key may have (RS256 per RFC 7518 §3.3)."""
 
-TOKEN_EXCHANGE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:token-exchange"  # noqa: S105
+# A-PROTOCOL-CONSTANT-001: an RFC 8693 grant-type URN; see docs/security-dispositions.md
+TOKEN_EXCHANGE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:token-exchange"  # noqa: S105  # nosec B105
 """RFC 8693 §2.1: the one grant the agent exchange serves."""
 
 # pragma: allowlist nextline secret (A-PROTOCOL-CONSTANT-001)
-CLIENT_SECRET_POST = "client_secret_post"  # noqa: S105 — an RFC 8414 method name, not a secret
+CLIENT_SECRET_POST = "client_secret_post"  # noqa: S105 — an RFC 8414 method name, not a secret  # nosec B105
 """RFC 8414 §2 / OpenID Connect: client credentials in the form body."""
 
 _JWS_TYPE = "JWT"
 _JWKS_PATH = "/jwks.json"
-_TOKEN_PATH = "/token"  # noqa: S105 — a URL path, not a credential
+# A-PROTOCOL-CONSTANT-001: a URL path; see docs/security-dispositions.md
+_TOKEN_PATH = "/token"  # noqa: S105 — a URL path, not a credential  # nosec B105
 
 
 @dataclass(frozen=True, slots=True)

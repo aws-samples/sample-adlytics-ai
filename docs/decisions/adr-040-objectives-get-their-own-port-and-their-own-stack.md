@@ -142,8 +142,8 @@ being retrieved and sometimes missed. What this decision adds is the switch, not
 open and is not narrowed by anything here.
 
 **`resolve`'s new return type is a breaking change to a tested and mutation-reviewed module.**
-`test-mutations/domain-strategy-objectives.md` records a review of the old signature. The call sites are
-updated in the same change; the mutation report is re-run rather than assumed to still apply.
+Its mutation review ([ADR-013](adr-013-mutation-testing.md)) covered the old signature. The call sites are
+updated in the same change; the review is re-run rather than assumed to still apply.
 
 **One `BatchGetItem` is capped at 100 keys**, so a response with more campaigns than that is chunked. Not
 mentioned in ADR-011, and the alternative to chunking is a silent partial read — which would omit
