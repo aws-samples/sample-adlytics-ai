@@ -45,6 +45,7 @@ from domain.data_contracts.generated_rows import (
 from domain.measurement.lenses import LENS_DEFAULTS
 from domain.measurement.planning import MEASURE_ALIAS
 from domain.measurement.ranking import (
+    RANKED_INVARIANT,
     RankedProjection,
     RankedRestriction,
     RankedValue,
@@ -148,7 +149,7 @@ from domain.presentation.temporal import (
 from domain.semantics.identity import ChannelKey, CommerceScopeKey, MarketplaceKey, ProductKey
 from domain.semantics.media_taxonomy import MediaTaxonomy
 from domain.semantics.source_pack import PackReadiness
-from domain.shared_kernel.errors import ErrorCode, InvariantError
+from domain.shared_kernel.errors import InvariantError
 from domain.shared_kernel.provenance import MeasurementBasis
 from domain.shared_kernel.values import DateRange, Grain
 from ports.outbound.publication_selection import (
@@ -255,8 +256,6 @@ _RANKED_SECTIONS = frozenset({"ranked", "spark"})
 """The reads whose bound is semantic (the top 50, ADR-143): over it is a defect, not a refusal."""
 _SERIES_MAX_ROWS = RETAIL_HEALTH_MAX_ROWS * BAKE_LONGEST_WINDOW_DAYS
 """A ranked series read's bound: the 50 shown times the longest window's days (derived)."""
-RANKED_READ_INVARIANT = ErrorCode("RETAIL_HEALTH", 1)
-"""The ranked reads disagree with the compares' population: the SQL and the declaration differ."""
 _SHIPPED_REVENUE = "retail_revenue_shipped"
 _ASIN_NAMESPACE_PREFIX = "amazon_asin:"
 
@@ -1160,7 +1159,7 @@ def _rows(
 
 def _ranked_invariant(problem: str) -> InvariantError:
     return InvariantError(
-        RANKED_READ_INVARIANT,
+        RANKED_INVARIANT,
         "Retail health's ranked reads disagree with its compares' population.",
         context={"problem": problem},
     )
