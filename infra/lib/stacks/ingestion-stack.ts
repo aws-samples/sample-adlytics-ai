@@ -51,6 +51,7 @@ import {
   alarmingErrorsQuery,
   errorAlarmSuffix,
 } from '../constructs/observability/error-alarms';
+import { PAGE_OPERATIONS } from '../constructs/observability/page-route-alarms';
 import { applyFunctionErrorAlarms } from '../mixins/function-error-alarms';
 import { METRIC_RECONCILER_OPERATION } from './operational-status-processor-stack';
 import { grantSpanExport } from '../telemetry';
@@ -1155,7 +1156,8 @@ export class IngestionStack extends cdk.Stack {
     // operations the 101st is not named in a new notification; the runbook query lists every one
     // (owner decision 2026-10-10). The `Adlytics` namespace has no
     // environment dimension, so like the per-operation alarms it counts every environment in the
-    // account.
+    // account. ADR-148: the Presentation page operations are held by their page alarms
+    // (`ApiStack`), whose OK means an observed success, so the catch-all excludes them too.
     const catchAll = new cloudwatch.Alarm(this, 'AlarmingErrorsByOperation', {
       alarmName: `adlytics-${config.envName}-alarming-errors-by-operation`,
       alarmDescription:
@@ -1163,10 +1165,12 @@ export class IngestionStack extends cdk.Stack {
         + 'shared Errors metric (ADR-009, ADR-133). The contributor names the Operation; its log '
         + 'record carries the ErrorCode. Domain and validation refusals remain product signals. '
         + 'If the state reason reads "100+", more operations are failing than it names: run the '
-        + `query in ${CATCH_ALL_RUNBOOK} to list every one.`,
+        + `query in ${CATCH_ALL_RUNBOOK} to list every one.`
+        + ' Presentation page operations are held by their page alarms instead (ADR-148).',
       metric: new cloudwatch.MathExpression({
         expression: alarmingErrorsByOperationQuery([
           ...INGESTION_ERROR_OPERATIONS,
+          ...PAGE_OPERATIONS,
           ...(config.operationalStatus.provisioned ? [METRIC_RECONCILER_OPERATION] : []),
         ]),
         period: cdk.Duration.minutes(5),

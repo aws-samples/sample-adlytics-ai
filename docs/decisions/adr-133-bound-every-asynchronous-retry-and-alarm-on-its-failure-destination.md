@@ -4,6 +4,10 @@ Status: Proposed (2026-10-09). It rests on the owner's approval, on 2026-10-09, 
 retrospective's recommendations, which named this decision. It is not accepted: acceptance is the
 owner's review of this file. Implemented in code on `feat/hardening-no-silent-failure`
 (`8dff83dd`, `f2b1c245`, `6b91d002`) and not yet deployed, so its live checks on dev are pending.
+
+> **Amended 2026-10-18 by [ADR-148](adr-148-hold-a-page-alarm-until-an-observed-success-clears-it.md)
+> (Proposed), clause 4 refined.** Presentation page operations leave the operation catch-all and
+> reach the staffed destination through per-route page alarms instead.
 ## Context
 An asynchronous consumer that fails without a bound or an alarm fails silently: nothing pages, and
 the work it holds is lost or blocks what follows.
