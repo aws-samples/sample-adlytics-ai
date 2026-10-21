@@ -21,7 +21,7 @@ endef
 .PHONY: help check check-links check-diagrams check-design-manifest require-approved-design-manifest check-model check-steering check-config-access check-prompt-text check-conformed-columns check-observability-bans check-exception-handling check-aws-pagination check-publication-boundary check-license-headers check-debt-markers check-run-record-coverage check-format report-retire-markers \
         check-bakeability \
         install lint format typecheck lint-boundaries validate-contracts validate-page-schemas test test-integration \
-        check-lambda-layer-reproducibility verify verify-clean verify-clean-run gate-status publication-gate release-gate install-hooks uninstall-hooks publish pr accept-ingestion-v2 accept-campaign-estate-local accept-evaluation-link print-deploy-flags accept-evaluation-custody regress-agent mutate mutate-next mutation-status mutation-verdict dead-code dead-code-allowlist build-lambdas build-frontend \
+        check-lambda-layer-reproducibility verify verify-clean verify-clean-run gate-status publication-gate release-gate install-hooks uninstall-hooks publish pr merge-pr accept-ingestion-v2 accept-campaign-estate-local accept-evaluation-link print-deploy-flags accept-evaluation-custody regress-agent mutate mutate-next mutation-status mutation-verdict dead-code dead-code-allowlist build-lambdas build-frontend \
         generate-design-manifest generate-schemas check-schemas generate-fixtures check-fixtures \
         generate-tool-schemas check-tool-schemas generate-trace-contract check-trace-contract generate-data-flow-registry check-data-flow-coverage generate-execution-graph-protocol check-execution-graph-protocol check-execution-graph-deployable generate-alarm-destinations check-alarm-destinations generate-producer-packs check-producer-packs \
         generate-parameter-contract check-parameter-contract \
@@ -257,6 +257,12 @@ publish: ## Push the current feature branch to the public remote after make publ
 	@uv run python scripts/pr_flow.py publish $(if $(DRY_RUN),--dry-run)
 pr: ## Open or update the pull request of the pushed feature branch, its body the commits and gate records: make pr [TITLE=...] [DRY_RUN=1]
 	@uv run python scripts/pr_flow.py pr $(if $(TITLE),--title "$(TITLE)") $(if $(DRY_RUN),--dry-run)
+# The owner's go: CONFIRM and DELETE_BRANCH count only when given on the make command line, never
+# from the environment, so no exported variable can stand in for it.
+from_command_line = $(if $(filter command line,$(origin $(1))),$($(1)))
+merge-pr: ## Squash-merge PR into main after make release-gate passed on its head, with the owner's go: make merge-pr PR=<n> CONFIRM=yes [DELETE_BRANCH=yes] [DRY_RUN=1]
+	@uv run python scripts/pr_flow.py merge-pr --pr "$(PR)" --confirm "$(call from_command_line,CONFIRM)" \
+		--delete-branch "$(call from_command_line,DELETE_BRANCH)" $(if $(DRY_RUN),--dry-run)
 
 # Not part of `verify` or `test-integration`: this is manual deployed acceptance against synthetic
 # Vendor Central input, not AMC. It refuses every omitted target value before Python can make the

@@ -25,6 +25,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import shutil
 import sys
 from collections.abc import Iterator
 from pathlib import Path
@@ -467,3 +468,265 @@ def test_pr_refuses_an_empty_denylist(checkout: Checkout) -> None:
     code, output = _flow(checkout, "pr", "--dry-run")
     assert code == 1
     assert "REFUSED DENYLIST_EMPTY" in output
+
+
+# --------------------------------------------------------------------------------------------
+# merge-pr
+# --------------------------------------------------------------------------------------------
+
+READY = "--pr", "7", "--confirm", "yes"
+
+
+def _ready(flow: ModuleType, checkout: Checkout, **view: Any) -> None:
+    """Push the branch, seal a passing release-gate record and serve a mergeable PR view."""
+    checkout.push_branch()
+    checkout.record(flow, "release-gate")
+    checkout.serve(
+        "view.json",
+        {
+            "number": 7,
+            "url": "https://github.com/example/fixture/pull/7",
+            "state": "OPEN",
+            "isDraft": False,
+            "title": "feat: add the fixture feature",
+            "body": "## Commits\n",
+            "baseRefName": "main",
+            "baseRefOid": checkout.tip,
+            "headRefName": BRANCH,
+            "headRefOid": checkout.head,
+            "mergeable": "MERGEABLE",
+            "mergeStateStatus": "CLEAN",
+            **view,
+        },
+    )
+
+
+def _merge_line(checkout: Checkout) -> str:
+    return f"pr merge 7 --repo {SLUG} --squash --match-head-commit {checkout.head}"
+
+
+def _land(checkout: Checkout, *, tree: str | None = None) -> str:
+    """Do on the bare remote what GitHub's squash merge does: one commit of `tree` on main."""
+    sha = git(
+        checkout.bare,
+        "-c",
+        "user.name=fixture",
+        "-c",
+        f"user.email={EMAIL}",
+        "commit-tree",
+        tree or checkout.tree,
+        "-p",
+        checkout.tip,
+        "-m",
+        "feat: add the fixture feature (#7)",
+    )
+    git(checkout.bare, "update-ref", "refs/heads/main", sha)
+    return sha
+
+
+def test_merge_pr_dry_run_prints_the_squash_merge_and_the_fast_forward(
+    flow: ModuleType, checkout: Checkout
+) -> None:
+    _ready(flow, checkout)
+    code, output = _flow(checkout, "merge-pr", *READY, "--dry-run")
+    assert code == 0, output
+    assert f"dry-run: gh {_merge_line(checkout)}" in output
+    assert "dry-run: git fetch --quiet --no-tags public main" in output
+    assert (
+        f"dry-run: git update-ref refs/heads/main refs/remotes/public/main {checkout.tip}" in output
+    )
+    assert "--delete" not in output
+    assert f"public's {BRANCH} is kept" in output
+    # Only the read-only view reached the stub.
+    assert [call.split()[:2] for call in checkout.gh_calls()] == [["pr", "view"]]
+    assert git(checkout.path, "rev-parse", "main") == checkout.tip
+
+
+def test_merge_pr_dry_run_deletes_the_branch_only_when_asked(
+    flow: ModuleType, checkout: Checkout
+) -> None:
+    _ready(flow, checkout)
+    code, output = _flow(checkout, "merge-pr", *READY, "--delete-branch", "yes", "--dry-run")
+    assert code == 0, output
+    assert f"dry-run: git push --quiet public --delete refs/heads/{BRANCH}" in output
+    assert f"refs/heads/{BRANCH}" in checkout.remote_branches()
+
+
+@pytest.mark.parametrize("confirm", [None, "", "no", "YES", "y"])
+def test_merge_pr_refuses_without_an_explicit_yes(
+    flow: ModuleType, checkout: Checkout, confirm: str | None
+) -> None:
+    _ready(flow, checkout)
+    args = ["--pr", "7", *([] if confirm is None else ["--confirm", confirm])]
+    code, output = _flow(checkout, "merge-pr", *args, "--dry-run")
+    assert code == 1
+    assert "merge-pr: REFUSED NOT_CONFIRMED" in output
+    assert checkout.gh_calls() == []
+
+
+@pytest.mark.parametrize("args", [("--pr", "abc"), ("--pr", ""), (*READY, "--delete-branch", "no")])
+def test_merge_pr_refuses_a_malformed_request(checkout: Checkout, args: tuple[str, ...]) -> None:
+    code, output = _flow(checkout, "merge-pr", *args, "--dry-run")
+    assert code == 1
+    assert "merge-pr: REFUSED USAGE" in output
+    assert checkout.gh_calls() == []
+
+
+def test_the_make_target_reads_the_go_from_the_command_line_alone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    make = shutil.which("make")
+    assert make is not None
+    monkeypatch.setenv("CONFIRM", "yes")
+    monkeypatch.setenv("DELETE_BRANCH", "yes")
+    root = SCRIPTS.parent
+    # Dry runs: make prints the recipe and runs nothing.
+    from_env = run([make, "-n", "--no-print-directory", "merge-pr", "PR=7"], root)
+    given = run([make, "-n", "--no-print-directory", "merge-pr", "PR=7", "CONFIRM=yes"], root)
+    assert from_env.returncode == 0, from_env.stderr
+    assert '--confirm ""' in from_env.stdout
+    assert '--delete-branch ""' in from_env.stdout
+    assert '--confirm "yes"' in given.stdout
+    assert '--delete-branch ""' in given.stdout
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        ({"state": "MERGED"}, "PR_NOT_OPEN"),
+        ({"state": "CLOSED"}, "PR_NOT_OPEN"),
+        ({"baseRefName": "develop"}, "WRONG_BASE"),
+        ({"mergeable": "CONFLICTING"}, "NOT_MERGEABLE"),
+        ({"mergeable": "UNKNOWN"}, "NOT_MERGEABLE"),
+        ({"isDraft": True}, "NOT_MERGEABLE"),
+        ({"mergeStateStatus": "BLOCKED"}, "NOT_MERGEABLE"),
+        ({"mergeStateStatus": "BEHIND"}, "NOT_MERGEABLE"),
+        ({"baseRefOid": "f" * 40}, "NOT_UP_TO_DATE"),
+        ({"title": f"feat: {DENYLISTED}"}, "DENYLIST_HIT"),
+        ({"body": f"uses {DENYLISTED}"}, "DENYLIST_HIT"),
+    ],
+)
+def test_merge_pr_refuses_a_pull_request_that_is_not_ready(
+    flow: ModuleType, checkout: Checkout, case: tuple[dict[str, Any], str]
+) -> None:
+    view, code = case
+    _ready(flow, checkout, **view)
+    exit_code, output = _flow(checkout, "merge-pr", *READY, "--dry-run")
+    assert exit_code == 1
+    assert f"merge-pr: REFUSED {code}" in output
+    assert DENYLISTED.casefold() not in output.casefold()
+    assert "gh pr merge" not in output
+
+
+def test_merge_pr_refuses_a_head_other_than_local_head(
+    flow: ModuleType, checkout: Checkout
+) -> None:
+    _ready(flow, checkout)
+    checkout.commit("feat: a change the pull request does not hold")
+    checkout.record(flow, "release-gate")
+    exit_code, output = _flow(checkout, "merge-pr", *READY, "--dry-run")
+    assert exit_code == 1
+    assert "merge-pr: REFUSED HEAD_MISMATCH" in output
+    assert "gh pr merge" not in output
+
+
+def test_merge_pr_refuses_main_on_github_that_head_lacks(
+    flow: ModuleType, checkout: Checkout
+) -> None:
+    git(checkout.path, "checkout", "-q", "main")
+    newer = checkout.commit("fix: move main on", name="main.txt")
+    git(checkout.path, "checkout", "-q", BRANCH)
+    _ready(flow, checkout, baseRefOid=newer)
+    exit_code, output = _flow(checkout, "merge-pr", *READY, "--dry-run")
+    assert exit_code == 1
+    assert "merge-pr: REFUSED NOT_UP_TO_DATE" in output
+
+
+@pytest.mark.parametrize("record", ["none", "failing", "unsealed", "not-clean"])
+def test_merge_pr_refuses_without_a_sealed_passing_release_gate_record(
+    flow: ModuleType, checkout: Checkout, record: str
+) -> None:
+    _ready(flow, checkout)
+    _make_writable(checkout.path / ".runs")
+    shutil.rmtree(checkout.path / ".runs")
+    if record == "failing":
+        checkout.record(flow, "release-gate", exit_code=1)
+    elif record == "not-clean":
+        checkout.record(flow, "release-gate", clean=False)
+    elif record == "unsealed":
+        run_fields = {"canonical": True, "clean": True, "tree": checkout.tree}
+        flow.run_record.LiveRecord.begin(
+            "release-gate", run_fields, root=checkout.path / ".runs", heartbeat=False
+        )
+    exit_code, output = _flow(checkout, "merge-pr", *READY, "--dry-run")
+    assert exit_code == 1
+    assert "merge-pr: REFUSED RELEASE_GATE_MISSING" in output
+    assert "gh pr merge" not in output
+
+
+def test_merge_pr_refuses_a_dirty_tree(flow: ModuleType, checkout: Checkout) -> None:
+    _ready(flow, checkout)
+    (checkout.path / "stray.txt").write_text("stray\n")
+    exit_code, output = _flow(checkout, "merge-pr", *READY, "--dry-run")
+    assert exit_code == 1
+    assert "merge-pr: REFUSED DIRTY_TREE" in output
+
+
+def test_merge_pr_verifies_the_tree_then_fast_forwards_local_main(
+    flow: ModuleType, checkout: Checkout
+) -> None:
+    # Not a dry run: the stub accepts the merge, and _land does what GitHub would. Nothing pushes.
+    _ready(flow, checkout)
+    landed = _land(checkout)
+    (checkout.gh / "merge.ok").write_text("")
+    exit_code, output = _flow(checkout, "merge-pr", *READY)
+    assert exit_code == 0, output
+    assert checkout.gh_calls()[-1] == _merge_line(checkout)
+    assert f"with the head's tree {checkout.tree[:12]}" in output
+    assert git(checkout.path, "rev-parse", "refs/heads/main") == landed
+    assert f"refs/heads/{BRANCH}" in checkout.remote_branches()
+
+
+def test_merge_pr_fast_forwards_main_in_the_worktree_that_has_it(
+    flow: ModuleType, checkout: Checkout, tmp_path: Path
+) -> None:
+    _ready(flow, checkout)
+    main_worktree = tmp_path / "main-worktree"
+    git(checkout.path, "worktree", "add", "-q", str(main_worktree), "main")
+    landed = _land(checkout)
+    (checkout.gh / "merge.ok").write_text("")
+    exit_code, output = _flow(checkout, "merge-pr", *READY)
+    assert exit_code == 0, output
+    assert f"git -C {main_worktree}" in output
+    assert git(main_worktree, "rev-parse", "HEAD") == landed
+    assert (main_worktree / "feature.txt").is_file()
+
+
+def test_merge_pr_refuses_a_merge_whose_tree_is_not_the_head_tree(
+    flow: ModuleType, checkout: Checkout
+) -> None:
+    _ready(flow, checkout)
+    before = checkout.tip
+    _land(checkout, tree=git(checkout.path, "rev-parse", f"{before}^{{tree}}"))
+    (checkout.gh / "merge.ok").write_text("")
+    exit_code, output = _flow(checkout, "merge-pr", *READY)
+    assert exit_code == 1
+    assert "merge-pr: REFUSED MERGE_TREE_MISMATCH" in output
+    assert git(checkout.path, "rev-parse", "refs/heads/main") == before
+
+
+def test_merge_pr_refuses_a_merge_that_did_not_land(flow: ModuleType, checkout: Checkout) -> None:
+    _ready(flow, checkout)
+    (checkout.gh / "merge.ok").write_text("")
+    exit_code, output = _flow(checkout, "merge-pr", *READY)
+    assert exit_code == 1
+    assert "merge-pr: REFUSED MERGE_NOT_LANDED" in output
+    assert git(checkout.path, "rev-parse", "refs/heads/main") == checkout.tip
+
+
+def test_merge_pr_refuses_a_failed_merge(flow: ModuleType, checkout: Checkout) -> None:
+    _ready(flow, checkout)
+    exit_code, output = _flow(checkout, "merge-pr", *READY)
+    assert exit_code == 1
+    assert "merge-pr: REFUSED MERGE_FAILED" in output
+    assert "git fetch" not in output

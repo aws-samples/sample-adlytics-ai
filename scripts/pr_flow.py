@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT-0
-"""Push the current feature branch and open its pull request, each behind its gate.
+"""Push the current feature branch, open its pull request and squash-merge it, each gated.
 
     make publish [DRY_RUN=1]                (uv run python scripts/pr_flow.py publish [--dry-run])
     make pr [TITLE=<subject>] [DRY_RUN=1]   (uv run python scripts/pr_flow.py pr [--title ...])
+    make merge-pr PR=<n> CONFIRM=yes [DELETE_BRANCH=yes] [DRY_RUN=1]
+                                            (uv run python scripts/pr_flow.py merge-pr --pr <n> ...)
 
 The remote and its main come from the publication gate's DEFAULT_BASE (`public/main`). The
 remote's URL is the operator's git configuration and never appears in this repository; the
@@ -45,10 +47,38 @@ the branch guards above:
                                the title or body is not fit to publish; the output names the
                                denylist line, never the literal
 
---dry-run runs every read-only query (git status, rev-parse, ls-remote, gh pr list) and every check,
-and prints each command that would change something (git fetch, make publication-gate, git push,
-gh pr create, gh pr edit) instead of running it. ADLYTICS_* and AWS_* are removed from the
-environment first: nothing here needs AWS.
+merge-pr squash-merges pull request PR into main with
+`gh pr merge <n> --squash --match-head-commit <local HEAD>`, so GitHub refuses the merge if the
+head moved after these checks. It refuses, before anything changes:
+
+    USAGE                      PR is not a pull request number, or DELETE_BRANCH is not yes
+    NOT_CONFIRMED              CONFIRM is not exactly yes: the owner's go has no default, and
+                               `make merge-pr` reads it from the command line alone
+    DIRTY_TREE                 uncommitted or untracked changes
+    PR_NOT_OPEN                the pull request is closed or merged
+    WRONG_BASE                 the pull request does not merge into main
+    HEAD_MISMATCH              the pull request's head is not local HEAD
+    NOT_MERGEABLE              GitHub does not report it MERGEABLE, it is a draft, or its merge
+                               state is BEHIND, BLOCKED, DIRTY, DRAFT or UNKNOWN
+    NOT_UP_TO_DATE             main on GitHub is not in HEAD's history, so the squash tree would
+                               not be the head's tree
+    RELEASE_GATE_MISSING       no sealed, passing, canonical, clean release-gate record of the
+                               head's tree
+    DENYLIST_MISSING, DENYLIST_EMPTY, DENYLIST_HIT
+                               the title, the body or a commit message of the squash is not fit
+                               to publish
+
+After the merge it fetches main and refuses MERGE_NOT_LANDED when main did not move and
+MERGE_TREE_MISMATCH when main's new commit tree is not the head's tree; local main is then left as
+it is. Otherwise it fast-forwards local main (in the worktree that has it checked out, else the
+ref alone) and refuses MAIN_NOT_FAST_FORWARD when local main has diverged. It deletes the remote
+branch only with DELETE_BRANCH=yes, after those checks.
+
+--dry-run runs every read-only query (git status, rev-parse, ls-remote, gh pr list, gh pr view) and
+every check, and prints each command that would change something (git fetch, make
+publication-gate, git push, gh pr create, gh pr edit, gh pr merge, the fast-forward of main)
+instead of running it. ADLYTICS_* and AWS_* are removed from the environment first: nothing here
+needs AWS.
 """
 
 from __future__ import annotations
@@ -76,6 +106,15 @@ PUBLICATION_KIND = "publication-gate"
 RELEASE_KIND = "release-gate"
 # The gate records a pull request body reports, in the order they run for a merge.
 GATE_KINDS = ("verify-clean", PUBLICATION_KIND, RELEASE_KIND)
+PR_NUMBER = re.compile(r"^[1-9][0-9]*$")
+PR_FIELDS = (
+    "number,url,state,isDraft,title,body,baseRefName,baseRefOid,headRefName,headRefOid,"
+    "mergeable,mergeStateStatus"
+)
+MERGEABLE = "MERGEABLE"
+# Merge states in which a squash merge would not land now, or would land a tree other than the
+# head's: behind main, blocked by a rule, conflicting, a draft, or not yet computed.
+NOT_READY_STATES = frozenset({"BEHIND", "BLOCKED", "DIRTY", "DRAFT", "UNKNOWN"})
 GITHUB_URL = re.compile(
     r"^(?:https://github\.com/|ssh://git@github\.com/|git@github\.com:)"
     r"(?P<slug>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(?:\.git)?/?$"
@@ -143,8 +182,19 @@ class Commands:
     """Runs read-only queries always, and changes only outside a dry run, printing each change."""
 
     root: Path
+    target: Target
     dry_run: bool
     out: Callable[[str], None] = print
+
+    @property
+    def remote(self) -> str:
+        """The public remote's name."""
+        return self.target.remote
+
+    @property
+    def main(self) -> str:
+        """The public remote's main branch."""
+        return self.target.main
 
     def _run(self, argv: Sequence[str], *, capture: bool) -> subprocess.CompletedProcess[bytes]:
         try:
@@ -277,9 +327,9 @@ def relative(cmd: Commands, path: Path) -> str:
 # --------------------------------------------------------------------------------------------
 
 
-def publish(cmd: Commands, target: Target) -> None:
+def publish(cmd: Commands) -> None:
     """Push HEAD to its own branch on the remote after every guard and the push gate pass."""
-    remote, main = target.remote, target.main
+    remote, main = cmd.remote, cmd.main
     require_clean(cmd)
     branch = feature_branch(cmd, main)
     if cmd.status("git", "remote", "get-url", remote) != 0:
@@ -432,9 +482,9 @@ def pr_body(cmd: Commands, span: Span, commits: Sequence[tuple[str, str]]) -> st
     return "\n".join(lines) + "\n"
 
 
-def open_pr(cmd: Commands, target: Target, title: str | None) -> None:
+def open_pr(cmd: Commands, title: str | None) -> None:
     """Open or update the pull request of the pushed current branch."""
-    remote, main = target.remote, target.main
+    remote, main = cmd.remote, cmd.main
     branch = feature_branch(cmd, main)
     slug = repository(cmd, remote)
     span = head_span(cmd, remote_tip(cmd, remote, main))
@@ -506,6 +556,181 @@ def open_pr(cmd: Commands, target: Target, title: str | None) -> None:
 
 
 # --------------------------------------------------------------------------------------------
+# merge-pr
+# --------------------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class MergeRequest:
+    """The operator's merge-pr arguments, exactly as given."""
+
+    number: str
+    confirm: str
+    delete_branch: str
+
+
+def check_request(request: MergeRequest) -> None:
+    """Refuse a malformed request, and any CONFIRM other than exactly yes."""
+    if not PR_NUMBER.match(request.number):
+        raise RefusedError("USAGE", "PR=<number> is required, e.g. make merge-pr PR=12 CONFIRM=yes")
+    if request.confirm != "yes":
+        raise RefusedError("NOT_CONFIRMED", "CONFIRM=yes records the owner's go; it has no default")
+    if request.delete_branch not in {"", "yes"}:
+        raise RefusedError("USAGE", "DELETE_BRANCH is yes or unset")
+
+
+def pr_refusals(cmd: Commands, view: dict[str, object], span: Span) -> list[RefusedError]:
+    """Refuse a pull request that is not open into main, at HEAD, mergeable and up to date."""
+    found: list[RefusedError] = []
+    if view.get("state") != "OPEN":
+        found.append(RefusedError("PR_NOT_OPEN", f"the pull request is {view.get('state')}"))
+    if view.get("baseRefName") != cmd.main:
+        found.append(RefusedError("WRONG_BASE", f"it merges into {view.get('baseRefName')}"))
+    if view.get("headRefOid") != span.head:
+        head = str(view.get("headRefOid"))[:12]
+        found.append(RefusedError("HEAD_MISMATCH", f"its head {head} is not HEAD {span.head[:12]}"))
+    state = view.get("mergeStateStatus")
+    if view.get("mergeable") != MERGEABLE or view.get("isDraft") or state in NOT_READY_STATES:
+        detail = f"mergeable {view.get('mergeable')}, draft {view.get('isDraft')}, state {state}"
+        found.append(RefusedError("NOT_MERGEABLE", detail))
+    base = span.base
+    if (
+        cmd.status("git", "cat-file", "-e", f"{base}^{{commit}}") != 0
+        or cmd.status("git", "merge-base", "--is-ancestor", base, span.head) != 0
+    ):
+        found.append(
+            RefusedError(
+                "NOT_UP_TO_DATE",
+                f"{cmd.main} on GitHub ({base[:12]}) is not in HEAD's history; fetch, integrate "
+                "it and re-run the gates",
+            )
+        )
+    return found
+
+
+def release_refusals(cmd: Commands, span: Span) -> list[RefusedError]:
+    """Refuse a head tree without a sealed, passing, canonical, clean release-gate record."""
+    runs = run_record.record_root(None, cwd=cmd.root)
+    if run_record.find_records(
+        runs, RELEASE_KIND, tree=span.tree, passing=True, canonical=True, clean=True
+    ):
+        return []
+    detail = (
+        f"no sealed passing release-gate record of tree {span.tree[:12]}; run make release-gate"
+    )
+    return [RefusedError("RELEASE_GATE_MISSING", detail)]
+
+
+def squash_sources(cmd: Commands, view: dict[str, object], span: Span) -> list[tuple[str, str]]:
+    """Return what GitHub may compose the squash message from: title, body, commit messages."""
+    sources = [
+        ("the title", str(view.get("title") or "")),
+        ("the body", str(view.get("body") or "")),
+    ]
+    if cmd.status("git", "merge-base", "--is-ancestor", span.base, span.head) == 0:
+        log = cmd.query("git", "log", "--format=%H%x1f%B%x1e", f"{span.base}..{span.head}")
+        for entry in log.split("\x1e"):
+            sha, _, message = entry.strip().partition("\x1f")
+            if sha:
+                sources.append((f"commit {sha[:12]} message", message))
+    return sources
+
+
+def worktree_of(cmd: Commands, branch: str) -> str | None:
+    """Return the worktree that has `branch` checked out, or None."""
+    path: str | None = None
+    for line in cmd.query("git", "worktree", "list", "--porcelain").splitlines():
+        if line.startswith("worktree "):
+            path = line.removeprefix("worktree ")
+        elif line == f"branch refs/heads/{branch}":
+            return path
+    return None
+
+
+def fast_forward_main(cmd: Commands, new: str | None) -> None:
+    """Fast-forward local main to the merged remote main; refuse when local main diverged."""
+    ref = f"refs/remotes/{cmd.remote}/{cmd.main}"
+    local_ref = f"refs/heads/{cmd.main}"
+    if cmd.status("git", "rev-parse", "--verify", "-q", local_ref) != 0:
+        cmd.out(f"merge-pr: there is no local {cmd.main} to fast-forward")
+        return
+    local = cmd.query("git", "rev-parse", "--verify", local_ref)
+    if new is not None and cmd.status("git", "merge-base", "--is-ancestor", local, new) != 0:
+        raise RefusedError(
+            "MAIN_NOT_FAST_FORWARD", f"local {cmd.main} {local[:12]} is not in {new[:12]}'s history"
+        )
+    path = worktree_of(cmd, cmd.main)
+    if path is not None:
+        cmd.change(
+            "git", "-C", path, "merge", "--ff-only", "--quiet", ref, code="MAIN_NOT_FAST_FORWARD"
+        )
+    else:
+        cmd.change("git", "update-ref", local_ref, new or ref, local, code="MAIN_NOT_FAST_FORWARD")
+
+
+def land(cmd: Commands, span: Span) -> str | None:
+    """Fetch main and return its new commit once its tree is the head's; None in a dry run."""
+    if not cmd.change("git", "fetch", "--quiet", "--no-tags", cmd.remote, cmd.main):
+        return None
+    new = remote_tip(cmd, cmd.remote, cmd.main)
+    if new == span.base:
+        raise RefusedError(
+            "MERGE_NOT_LANDED",
+            f"{cmd.remote}/{cmd.main} is still {new[:12]}; check the pull request on GitHub",
+        )
+    tree = cmd.query("git", "rev-parse", f"{new}^{{tree}}")
+    if tree != span.tree:
+        raise RefusedError(
+            "MERGE_TREE_MISMATCH",
+            f"{cmd.remote}/{cmd.main} {new[:12]} has tree {tree[:12]}, not the head's "
+            f"{span.tree[:12]}; local {cmd.main} is left as it is",
+        )
+    cmd.out(f"merge-pr: {cmd.remote}/{cmd.main} is {new[:12]} with the head's tree {tree[:12]}")
+    return new
+
+
+def merge_pr(cmd: Commands, request: MergeRequest) -> None:
+    """Squash-merge the pull request once every guard holds, then verify and fast-forward main."""
+    check_request(request)
+    require_clean(cmd)
+    slug = repository(cmd, cmd.remote)
+    view = json.loads(
+        cmd.query("gh", "pr", "view", request.number, "--repo", slug, "--json", PR_FIELDS)
+    )
+    if not isinstance(view, dict):
+        raise RefusedError("COMMAND_FAILED", "gh pr view returned no pull request")
+    view = {str(k): v for k, v in view.items()}
+    span = head_span(cmd, str(view.get("baseRefOid") or ""))
+    head_ref = str(view.get("headRefName") or "")
+    refusals = pr_refusals(cmd, view, span)
+    refusals += release_refusals(cmd, span)
+    refusals += text_refusals(cmd.root, squash_sources(cmd, view, span))
+    if request.delete_branch == "yes" and head_ref in {"", cmd.main}:
+        refusals.append(RefusedError("USAGE", f"the head branch {head_ref!r} is never deleted"))
+    raise_first(cmd, "merge-pr", refusals)
+    cmd.out(f"merge-pr: pull request {request.number} at {span.head[:12]} passed every guard")
+
+    cmd.change(
+        "gh",
+        "pr",
+        "merge",
+        request.number,
+        "--repo",
+        slug,
+        "--squash",
+        "--match-head-commit",
+        span.head,
+        code="MERGE_FAILED",
+    )
+    new = land(cmd, span)
+    fast_forward_main(cmd, new)
+    if request.delete_branch == "yes":
+        cmd.change("git", "push", "--quiet", cmd.remote, "--delete", f"refs/heads/{head_ref}")
+    else:
+        cmd.out(f"merge-pr: {cmd.remote}'s {head_ref} is kept; DELETE_BRANCH=yes deletes it")
+
+
+# --------------------------------------------------------------------------------------------
 # Command line
 # --------------------------------------------------------------------------------------------
 
@@ -519,6 +744,11 @@ def main(argv: list[str] | None = None) -> int:
     pr_parser = sub.add_parser("pr", help="open or update the branch's pull request")
     pr_parser.add_argument("--title", help="the pull request title; default the branch summary")
     pr_parser.add_argument("--dry-run", action="store_true")
+    merge_parser = sub.add_parser("merge-pr", help="squash-merge a pull request into main")
+    merge_parser.add_argument("--pr", default="", help="the pull request number")
+    merge_parser.add_argument("--confirm", default="", help="exactly yes: the owner's go")
+    merge_parser.add_argument("--delete-branch", default="", help="yes deletes the remote branch")
+    merge_parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
     kept = scrubbed_environment(dict(os.environ))
     os.environ.clear()
@@ -527,13 +757,14 @@ def main(argv: list[str] | None = None) -> int:
     if top is None:
         sys.stderr.write(f"{args.command}: not in a git repository\n")
         return EXIT_USAGE
-    cmd = Commands(top, dry_run=args.dry_run)
-    target = default_target()
+    cmd = Commands(top, default_target(), dry_run=args.dry_run)
     try:
         if args.command == "publish":
-            publish(cmd, target)
+            publish(cmd)
+        elif args.command == "pr":
+            open_pr(cmd, args.title)
         else:
-            open_pr(cmd, target, args.title)
+            merge_pr(cmd, MergeRequest(args.pr, args.confirm, args.delete_branch))
     except RefusedError as refusal:
         sys.stderr.write(f"{args.command}: REFUSED {refusal.code} {refusal.detail}\n")
         return EXIT_REFUSED
