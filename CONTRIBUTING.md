@@ -107,7 +107,8 @@ make merge-pr PR=<n> CONFIRM=yes  # after the owner's go: squash-merges, then fa
   re-running it ([which record](docs/test-run-records.md#which-verify-clean-record-the-release-gate-reuses)).
   A new commit on the branch changes the tree, so the push and merge tiers run again for it.
 - The owner's go: `CONFIRM=yes` on the make command line is the owner's go for that merge. It has
-  no default, and a `CONFIRM` set in the environment does not count. `make merge-pr` keeps the
+  no default, and a `CONFIRM` set in the environment or carried in an inherited `MAKEFLAGS` does
+  not count. `make merge-pr` keeps the
   remote branch unless `DELETE_BRANCH=yes` is given the same way.
 - `DRY_RUN=1` on `make publish`, `make pr` or `make merge-pr` runs every check and prints each
   command that would change something instead of running it.

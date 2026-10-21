@@ -256,13 +256,15 @@ uninstall-hooks: ## Remove only the hook stubs make install-hooks wrote
 publish: ## Push the current feature branch to the public remote after make publication-gate passes for it: make publish [DRY_RUN=1]
 	@uv run python scripts/pr_flow.py publish $(if $(DRY_RUN),--dry-run)
 pr: ## Open or update the pull request of the pushed feature branch, its body the commits and gate records: make pr [TITLE=...] [DRY_RUN=1]
-	@uv run python scripts/pr_flow.py pr $(if $(TITLE),--title "$(TITLE)") $(if $(DRY_RUN),--dry-run)
-# The owner's go: CONFIRM and DELETE_BRANCH count only when given on the make command line, never
-# from the environment, so no exported variable can stand in for it.
+	@uv run python scripts/pr_flow.py pr $(if $(TITLE),--title "$$TITLE") $(if $(DRY_RUN),--dry-run)
+# The owner's go (CONTRIBUTING.md "Run the gates"). $(origin) drops an exported CONFIRM, and
+# pr_flow.py checks make's own argv ($$PPID is make), since an inherited MAKEFLAGS assignment
+# also has the origin "command line".
 from_command_line = $(if $(filter command line,$(origin $(1))),$($(1)))
 merge-pr: ## Squash-merge PR into main after make release-gate passed on its head, with the owner's go: make merge-pr PR=<n> CONFIRM=yes [DELETE_BRANCH=yes] [DRY_RUN=1]
-	@uv run python scripts/pr_flow.py merge-pr --pr "$(PR)" --confirm "$(call from_command_line,CONFIRM)" \
-		--delete-branch "$(call from_command_line,DELETE_BRANCH)" $(if $(DRY_RUN),--dry-run)
+	@uv run python scripts/pr_flow.py merge-pr --pr "$$PR" --confirm "$(call from_command_line,CONFIRM)" \
+		--delete-branch "$(call from_command_line,DELETE_BRANCH)" \
+		--make-argv "$$(ps -ww -o args= -p $$PPID 2>/dev/null)" $(if $(DRY_RUN),--dry-run)
 
 # Not part of `verify` or `test-integration`: this is manual deployed acceptance against synthetic
 # Vendor Central input, not AMC. It refuses every omitted target value before Python can make the

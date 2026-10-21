@@ -443,8 +443,9 @@ make merge-pr PR=<n> CONFIRM=yes [DELETE_BRANCH=yes] [DRY_RUN=1]
   tree, and needs the squash's title, body and commit messages to pass the denylist. After the
   merge it fetches main and refuses when main did not move or its new commit's tree is not the
   head's tree. Otherwise it fast-forwards local main, and deletes the remote branch only with
-  `DELETE_BRANCH=yes`. `make merge-pr` passes `CONFIRM` and `DELETE_BRANCH` only when they are
-  given on the make command line, so an exported variable is never the owner's go.
+  `DELETE_BRANCH=yes`. CONTRIBUTING [Run the gates](../CONTRIBUTING.md#run-the-gates) owns what
+  counts as the owner's go; `make merge-pr` passes make's own command line as `--make-argv` so
+  the script can check it.
 - `DRY_RUN=1` still runs the read-only queries (`git status`, `rev-parse`, `ls-remote`,
   `gh pr list`, `gh pr view`) and every check, so it reports the refusals a real run would. It
   prints each command that would change something (the fetch, the gate, the push, `gh pr create`,

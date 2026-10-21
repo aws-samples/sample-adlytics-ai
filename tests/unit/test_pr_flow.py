@@ -615,6 +615,92 @@ def test_the_make_target_reads_the_go_from_the_command_line_alone(
 @pytest.mark.parametrize(
     "case",
     [
+        ("/usr/bin/make merge-pr PR=7", ()),
+        ("", ()),
+        ("make merge-pr PR=7 CONFIRM=no", ()),
+        ("make merge-pr PR=7 CONFIRM=yes", ("--delete-branch", "yes")),
+    ],
+)
+def test_merge_pr_refuses_a_go_that_is_not_on_makes_own_command_line(
+    flow: ModuleType, checkout: Checkout, case: tuple[str, tuple[str, ...]]
+) -> None:
+    make_argv, extra = case
+    _ready(flow, checkout)
+    args = (*READY, *extra, "--make-argv", make_argv, "--dry-run")
+    code, output = _flow(checkout, "merge-pr", *args)
+    assert code == 1
+    assert "merge-pr: REFUSED NOT_CONFIRMED" in output
+    assert checkout.gh_calls() == []
+
+
+def test_merge_pr_accepts_a_go_typed_on_makes_command_line(
+    flow: ModuleType, checkout: Checkout
+) -> None:
+    _ready(flow, checkout)
+    make_argv = "/usr/bin/make -s merge-pr PR=7 CONFIRM=yes DELETE_BRANCH=yes"
+    args = (*READY, "--delete-branch", "yes", "--make-argv", make_argv, "--dry-run")
+    code, output = _flow(checkout, "merge-pr", *args)
+    assert code == 0, output
+    assert f"dry-run: gh {_merge_line(checkout)}" in output
+
+
+# Records the argv make's recipe gives uv, NUL-separated, instead of running anything.
+UV_STUB = """#!/bin/sh
+printf '%s\\0' "$@" > "$UV_STUB_LOG"
+"""
+
+
+def _recipe_argv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *make_args: str) -> list[str]:
+    """Run a Makefile recipe for real with a uv stub first on PATH; return the argv uv got."""
+    make = shutil.which("make")
+    assert make is not None
+    stub = tmp_path / "uv-bin"
+    stub.mkdir(exist_ok=True)
+    (stub / "uv").write_text(UV_STUB)
+    (stub / "uv").chmod(0o755)
+    log = tmp_path / "uv-argv"
+    monkeypatch.setenv("UV_STUB_LOG", str(log))
+    monkeypatch.setenv("PATH", f"{stub}{os.pathsep}{os.environ['PATH']}")
+    result = run([make, "--no-print-directory", *make_args], SCRIPTS.parent)
+    assert result.returncode == 0, result.stderr
+    return log.read_text().split("\0")[:-1]
+
+
+def _option(argv: list[str], name: str) -> str:
+    return argv[argv.index(name) + 1]
+
+
+def test_the_make_target_refuses_a_go_carried_in_an_inherited_makeflags(
+    flow: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for name in ("MAKEFLAGS", "MFLAGS", "GNUMAKEFLAGS", "MAKELEVEL", "CONFIRM", "DELETE_BRANCH"):
+        monkeypatch.delenv(name, raising=False)
+    typed = _recipe_argv(tmp_path, monkeypatch, "merge-pr", "PR=7", "CONFIRM=yes")
+    flow.check_request(flow.MergeRequest("7", "yes", "", _option(typed, "--make-argv")))
+
+    monkeypatch.setenv("MAKEFLAGS", "CONFIRM=yes DELETE_BRANCH=yes")
+    inherited = _recipe_argv(tmp_path, monkeypatch, "merge-pr", "PR=7")
+    # make itself hands the inherited go on as if typed: the script's argv check must refuse it.
+    assert _option(inherited, "--confirm") == "yes"
+    assert _option(inherited, "--delete-branch") == "yes"
+    request = flow.MergeRequest("7", "yes", "yes", _option(inherited, "--make-argv"))
+    with pytest.raises(flow.RefusedError) as refused:
+        flow.check_request(request)
+    assert refused.value.code == "NOT_CONFIRMED"
+
+
+def test_the_make_target_passes_a_title_without_shell_expansion(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("MAKEFLAGS", raising=False)
+    title = 'fix: handle `null` ids; keep "quotes"'
+    argv = _recipe_argv(tmp_path, monkeypatch, "pr", f"TITLE={title}", "DRY_RUN=1")
+    assert _option(argv, "--title") == title
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
         ({"state": "MERGED"}, "PR_NOT_OPEN"),
         ({"state": "CLOSED"}, "PR_NOT_OPEN"),
         ({"baseRefName": "develop"}, "WRONG_BASE"),

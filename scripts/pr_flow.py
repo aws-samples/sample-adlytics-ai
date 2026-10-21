@@ -53,8 +53,9 @@ merge-pr squash-merges pull request PR into main with
 head moved after these checks. It refuses, before anything changes:
 
     USAGE                      PR is not a pull request number, or DELETE_BRANCH is not yes
-    NOT_CONFIRMED              CONFIRM is not exactly yes: the owner's go has no default, and
-                               `make merge-pr` reads it from the command line alone
+    NOT_CONFIRMED              CONFIRM is not exactly yes, or under `make merge-pr` CONFIRM=yes
+                               or DELETE_BRANCH=yes is not a word of make's own command line
+                               (CONTRIBUTING.md "Run the gates" owns the owner's go)
     DIRTY_TREE                 uncommitted or untracked changes
     PR_NOT_OPEN                the pull request is closed or merged
     WRONG_BASE                 the pull request does not merge into main
@@ -572,21 +573,39 @@ def open_pr(cmd: Commands, title: str | None) -> None:
 
 @dataclass(frozen=True)
 class MergeRequest:
-    """The operator's merge-pr arguments, exactly as given."""
+    """The operator's merge-pr arguments, exactly as given.
+
+    `make_argv` is the command line of the make that ran the recipe, which `make merge-pr` passes;
+    None when the script is run directly, whose own arguments are then the go.
+    """
 
     number: str
     confirm: str
     delete_branch: str
+    make_argv: str | None = None
 
 
 def check_request(request: MergeRequest) -> None:
-    """Refuse a malformed request, and any CONFIRM other than exactly yes."""
+    """Refuse a malformed request, and any go that is not exactly yes on the command line."""
     if not PR_NUMBER.match(request.number):
         raise RefusedError("USAGE", "PR=<number> is required, e.g. make merge-pr PR=12 CONFIRM=yes")
     if request.confirm != "yes":
         raise RefusedError("NOT_CONFIRMED", "CONFIRM=yes records the owner's go; it has no default")
     if request.delete_branch not in {"", "yes"}:
         raise RefusedError("USAGE", "DELETE_BRANCH is yes or unset")
+    if request.make_argv is None:
+        return
+    # make gives an assignment inherited through MAKEFLAGS the origin "command line" too, so the
+    # go counts only when it is a word of make's own argv. An empty argv (no ps) refuses.
+    words = request.make_argv.split()[1:]
+    given = [("CONFIRM", True), ("DELETE_BRANCH", request.delete_branch == "yes")]
+    for name, needed in given:
+        if needed and f"{name}=yes" not in words:
+            raise RefusedError(
+                "NOT_CONFIRMED",
+                f"{name}=yes reached make through MAKEFLAGS, not its command line; "
+                "the owner's go is typed for each merge",
+            )
 
 
 def pr_refusals(cmd: Commands, view: dict[str, object], span: Span) -> list[RefusedError]:
@@ -759,6 +778,7 @@ def main(argv: list[str] | None = None) -> int:
     merge_parser.add_argument("--pr", default="", help="the pull request number")
     merge_parser.add_argument("--confirm", default="", help="exactly yes: the owner's go")
     merge_parser.add_argument("--delete-branch", default="", help="yes deletes the remote branch")
+    merge_parser.add_argument("--make-argv", help="the running make's command line (make merge-pr)")
     merge_parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
     kept = scrubbed_environment(dict(os.environ))
@@ -782,7 +802,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "pr":
             open_pr(cmd, args.title)
         else:
-            merge_pr(cmd, MergeRequest(args.pr, args.confirm, args.delete_branch))
+            merge_pr(cmd, MergeRequest(args.pr, args.confirm, args.delete_branch, args.make_argv))
     except RefusedError as refusal:
         line = f"{args.command}: REFUSED {refusal.code} {refusal.detail}"
         sys.stderr.write(f"{publication_gate.redact(line, denylist)}\n")
