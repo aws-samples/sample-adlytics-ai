@@ -3,13 +3,23 @@
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from decimal import Decimal
 from time import monotonic
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
+from test_athena_execution import (
+    _CSV,  # pyright: ignore[reportPrivateUsage]
+    _LOCATION,  # pyright: ignore[reportPrivateUsage]
+    _PAGED,  # pyright: ignore[reportPrivateUsage]
+    _paged_athena,  # pyright: ignore[reportPrivateUsage]
+    _s3_with,  # pyright: ignore[reportPrivateUsage]
+)
 
 from adapters.outbound.athena import query as athena_query
 from adapters.outbound.athena.deadline import (
@@ -231,3 +241,132 @@ def test_a_bake_statement_without_a_deadline_is_an_invariant_before_any_start(
 def test_a_target_without_a_wait_does_not_construct() -> None:
     with pytest.raises(TypeError):
         AthenaQueryTarget("unit-workgroup", "unit-current", 0)  # type: ignore[call-arg]  # pyright: ignore[reportCallIssue]
+
+
+# --- ADR-143: a fold streams the rows `run` holds, on both transports -------------------------
+
+_STREAMED_ROWS: tuple[dict[str, object], ...] = (
+    {"marketplace_key": "amazon_us", "note": None, "value_0": Decimal("1.50")},
+    {"marketplace_key": "amazon_us", "note": "", "value_0": Decimal(2)},
+    {
+        "marketplace_key": "amazon_us",
+        "note": 'line one\nline two, with "quotes"',
+        "value_0": Decimal(3),
+    },
+    {"marketplace_key": "amazon_us", "note": "café", "value_0": None},
+)
+"""`_CSV` (or `_PAGED`) as rows: the selected columns as strings, the aggregate a `Decimal`."""
+
+
+class _Collected:
+    """A sink that keeps what it is handed, so a fold's rows compare to a held read's."""
+
+    def __init__(self) -> None:
+        self.rows: list[object] = []
+
+    def add(self, row: object) -> None:
+        self.rows.append(row)
+
+
+def _streaming_adapter(
+    monkeypatch: pytest.MonkeyPatch, transport: ResultTransport
+) -> AthenaQueryAdapter:
+    """Build an adapter with a stubbed composition, start and completion and a real reader."""
+    _stub_statement(monkeypatch)
+    target = AthenaQueryTarget("unit-workgroup", "unit-current", 0, INTERACTIVE_WAIT, transport)
+    if transport is ResultTransport.OBJECT:
+        s3, _ = _s3_with(_CSV)
+        return AthenaQueryAdapter(target, cast("AthenaClient", object()), s3=s3)
+    return AthenaQueryAdapter(target, _paged_athena(_PAGED))
+
+
+def _stub_statement(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Stub the preflight, composition, start and completion; leave the reader real."""
+
+    def nothing(*_arguments: object) -> None:
+        return None
+
+    def composed(*_arguments: object) -> object:
+        return SimpleNamespace(sql="SELECT 1", parameters=())
+
+    def started(*_arguments: object, **_keywords: object) -> StartedStatement:
+        return StartedStatement("execution-1", 0)
+
+    def completed(*_arguments: object, **_keywords: object) -> StatementOutcome:
+        return StatementOutcome(output_location=_LOCATION)
+
+    monkeypatch.setattr(athena_query, "_refuse_withheld_only", nothing)
+    monkeypatch.setattr(athena_query, "_refuse_unreadable_suppression", nothing)
+    monkeypatch.setattr(athena_query, "compose", composed)
+    monkeypatch.setattr(athena_query, "start_counted", started)
+    monkeypatch.setattr(athena_query, "await_completion", completed)
+    monkeypatch.setattr(athena_query, "_SuppressionAccumulator", _NoWithholding)
+
+
+def _streamed_request(max_rows: int) -> Any:
+    logical = SimpleNamespace(
+        metric=SimpleNamespace(name="spend"),
+        facts_read=("ads",),
+        selected_columns=("marketplace_key", "note"),
+        result_aliases=("value_0",),
+    )
+    return SimpleNamespace(plan=SimpleNamespace(logical=logical), max_rows=max_rows, ranked=None)
+
+
+@pytest.mark.parametrize("transport", [ResultTransport.PAGED, ResultTransport.OBJECT])
+def test_a_fold_hands_its_sink_the_rows_run_holds_on_either_transport(
+    monkeypatch: pytest.MonkeyPatch, transport: ResultTransport
+) -> None:
+    """Paired: `run` over the same result holds exactly the rows the fold's sink was handed."""
+    sink = _Collected()
+    read = _streaming_adapter(monkeypatch, transport).fold(_streamed_request(10), sink)
+    assert tuple(sink.rows) == _STREAMED_ROWS
+    assert (read.rows_read, read.truncated) == (4, False)
+
+    held = _streaming_adapter(monkeypatch, transport).run(_streamed_request(10))
+    assert held.rows == _STREAMED_ROWS and held.truncated is False
+
+
+@pytest.mark.parametrize("transport", [ResultTransport.PAGED, ResultTransport.OBJECT])
+def test_a_fold_past_its_rows_counts_the_extra_row_and_hands_on_none_of_it(
+    monkeypatch: pytest.MonkeyPatch, transport: ResultTransport
+) -> None:
+    """At `max_rows` 3 of 4 rows the sink gets 3, the read counts 4 and is truncated."""
+    sink = _Collected()
+    read = _streaming_adapter(monkeypatch, transport).fold(_streamed_request(3), sink)
+    assert tuple(sink.rows) == _STREAMED_ROWS[:3]
+    assert (read.rows_read, read.truncated) == (4, True)
+
+
+def test_an_object_target_makes_its_s3_client_once_at_construction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Never on a worker thread: a fold run on one makes no client.
+
+    Paired control: a paged target makes no S3 client at all.
+    """
+    s3, _ = _s3_with(_CSV)
+    made: list[tuple[str, str]] = []
+
+    def client(service: str) -> object:
+        made.append((service, threading.current_thread().name))
+        return s3
+
+    _stub_statement(monkeypatch)
+    monkeypatch.setattr(athena_query, "boto3", SimpleNamespace(client=client))
+    target = AthenaQueryTarget(
+        "unit-workgroup", "unit-current", 0, INTERACTIVE_WAIT, ResultTransport.OBJECT
+    )
+    adapter = AthenaQueryAdapter(target, cast("AthenaClient", object()))
+    assert made == [("s3", threading.current_thread().name)]
+    sink = _Collected()
+    with ThreadPoolExecutor(max_workers=1, thread_name_prefix="measurement-query") as pool:
+        pool.submit(adapter.fold, _streamed_request(10), sink).result()
+    assert tuple(sink.rows) == _STREAMED_ROWS
+    assert len(made) == 1
+
+    paged = AthenaQueryTarget(
+        "unit-workgroup", "unit-current", 0, INTERACTIVE_WAIT, ResultTransport.PAGED
+    )
+    AthenaQueryAdapter(paged, cast("AthenaClient", object()))
+    assert len(made) == 1

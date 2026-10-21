@@ -191,7 +191,11 @@ class AthenaQueryAdapter:
     ) -> None:
         self._target = target
         self._client = client or boto3.client("athena")
-        # The result-object reader's client, made only for a target that reads objects.
+        # The result-object reader's client, made only for a target that reads objects, and made
+        # here: reads run on the batch's worker threads, and boto3's shared default session
+        # isn't safe to create clients from concurrently.
+        if s3 is None and target.results is ResultTransport.OBJECT:
+            s3 = boto3.client("s3")
         self._s3 = s3
         # The throttled start's full jitter; injectable so a test fixes the sleeps.
         self._random = random_source or random.Random()  # noqa: S311 -- jitter, not a secret
@@ -266,8 +270,8 @@ class AthenaQueryAdapter:
     ) -> Iterator[list[str | None]]:
         """Read a completed statement's rows through the target's one transport."""
         if self._target.results is ResultTransport.OBJECT:
-            if self._s3 is None:
-                self._s3 = boto3.client("s3")
+            if self._s3 is None:  # pragma: no cover - built in __init__ for an OBJECT target
+                raise AssertionError("an object-reading target lost its S3 client")
             return stream_result_rows(self._s3, outcome, execution_id=execution_id, cells=cells)
         # Page by page, held or folded: one page is resident while the sink takes its rows.
         return iter_pages(self._client, execution_id)
