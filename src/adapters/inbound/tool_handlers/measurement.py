@@ -1124,6 +1124,11 @@ def execute_presentation_batch(
     worker returns and at most `query_batch_max_concurrency` slots' raw rows exist at once. The
     answers are the ones shaping after the whole batch gave: shaping was already per slot and
     pure.
+
+    Whether a request is held or folded is each slot's own declaration, never its leader's: a
+    request any slot folds is streamed once, every fold slot sharing it gets its own fresh fold
+    of that one stream, and a held slot sharing it keeps the same rows `run` would have held. So
+    one distinct request is always one statement, whatever mix of slots shares it.
     """
     requests = _presentation_requests(prepared, inspection)
     aligned = tuple(
@@ -1139,16 +1144,13 @@ def execute_presentation_batch(
         request = requests[leader]
         if request is None:  # pragma: no cover - a leader is always a present request
             raise AssertionError("a fan-in leader has no request")
-        operation = aligned[leader][0]
-        if operation.request.reduction is not None:
-            return tuple(
-                (index, _folded_slot(aligned[index], request, inspection.slots[index], tooling))
-                for index in followers[leader]
-            )
+        group = followers[leader]
+        if any(aligned[index][0].request.reduction is not None for index in group):
+            return _folded_group(group, request, aligned, inspection, tooling)
         result = tooling.queries.run(request)
         return tuple(
             (index, _shaped_slot(aligned[index], inspection.slots[index], tooling, result))
-            for index in followers[leader]
+            for index in group
         )
 
     with _execution_phase(tooling.queries, "query"):
@@ -1230,27 +1232,76 @@ def _slot_answer_request(  # noqa: PLR0913, PLR0917 -- one slot's operation, evi
     )
 
 
-def _folded_slot(  # noqa: PLR0913, PLR0917 -- one slot, its request, evidence and tooling
-    aligned: tuple[PreparedMeasurementOperation, PreparedMeasurementPlan],
+class _HeldRows:
+    """A held slot's share of a streamed read: every row it is handed, as `run` holds them."""
+
+    def __init__(self) -> None:
+        self.rows: list[dict[str, str | int | Decimal | None]] = []
+
+    def add(self, row: dict[str, str | int | Decimal | None]) -> None:
+        self.rows.append(row)
+
+
+@dataclass(frozen=True, slots=True)
+class _EverySink:
+    """Hand each streamed row to every slot sharing the read, in slot order."""
+
+    sinks: tuple[FoldingAnswer | _HeldRows, ...]
+
+    def add(self, row: dict[str, str | int | Decimal | None]) -> None:
+        for sink in self.sinks:
+            sink.add(row)
+
+
+def _folded_group(  # noqa: PLR0913, PLR0917 -- one shared request, its slots, evidence and tooling
+    group: list[int],
     request: QueryRequest,
-    inspected: PresentationEvidenceInspectionSlot,
+    aligned: tuple[tuple[PreparedMeasurementOperation, PreparedMeasurementPlan], ...],
+    inspection: PresentationEvidenceInspectionResult,
     tooling: MeasurementExecutionTooling,
-) -> PresentationMeasurementAnswerSlot:
-    """Stream one reduction slot through a fresh fold; only its bounded summary survives."""
-    operation, expected = aligned
-    factory = operation.request.reduction
+) -> tuple[tuple[int, PresentationMeasurementAnswerSlot], ...]:
+    """Stream one request any slot folds, once; shape each sharing slot as it declared.
+
+    Each fold slot gets a fresh fold, so only its bounded summary survives. A held slot sharing
+    the request keeps the rows the stream handed it, at most `max_rows`, which are the rows
+    `run` would have held, with the same truncation and suppression.
+    """
     queries = tooling.queries
-    if factory is None or not isinstance(queries, FoldingQueryPort):
+    if not isinstance(queries, FoldingQueryPort):
         raise InvariantError(PUBLISH_TIME_ONLY, "a folded read needs a folding query port.")
-    ready = _slot_operation(operation, expected, inspected, tooling)
-    sink = FoldingAnswer(expected.logical, factory())
-    read = queries.fold(request, sink)
-    folded = sink.finish(
-        _slot_answer_request(ready, inspected, (), read),
-        rows_read=read.rows_read,
-        bytes_scanned=read.bytes_scanned,
-    )
-    return PresentationMeasurementAnswerSlot(expected.role, expected.logical, None, folded)
+    sinks: dict[int, FoldingAnswer | _HeldRows] = {}
+    for index in group:
+        factory = aligned[index][0].request.reduction
+        sinks[index] = (
+            _HeldRows() if factory is None else FoldingAnswer(aligned[index][1].logical, factory())
+        )
+    read = queries.fold(request, _EverySink(tuple(sinks[index] for index in group)))
+    shaped: list[tuple[int, PresentationMeasurementAnswerSlot]] = []
+    for index in group:
+        sink, inspected = sinks[index], inspection.slots[index]
+        if isinstance(sink, _HeldRows):
+            result = QueryResult(
+                rows=tuple(sink.rows),
+                bytes_scanned=read.bytes_scanned,
+                truncated=read.truncated,
+                suppression=read.suppression,
+            )
+            shaped.append((index, _shaped_slot(aligned[index], inspected, tooling, result)))
+            continue
+        operation, expected = aligned[index]
+        ready = _slot_operation(operation, expected, inspected, tooling)
+        folded = sink.finish(
+            _slot_answer_request(ready, inspected, (), read),
+            rows_read=read.rows_read,
+            bytes_scanned=read.bytes_scanned,
+        )
+        shaped.append(
+            (
+                index,
+                PresentationMeasurementAnswerSlot(expected.role, expected.logical, None, folded),
+            )
+        )
+    return tuple(shaped)
 
 
 def handle(request: MeasurementToolRequest, tooling: MeasurementTooling) -> ShapedResponse:
