@@ -3,8 +3,10 @@ Date: 2026-10-18
 Status: Proposed (2026-10-18). The owner approved fixing gap G1 as an alarm-only `infra/` change on
 2026-10-18. This decision also enables route-level API Gateway metrics on the 17 page routes, a
 monitoring setting that costs at most $30.60 a month per environment, plus $5.10 a month for the 17
-three-metric alarms (Consequences). The owner's confirmation of that cost is pending and gates implementation; acceptance is the owner's review of
-this file. Not yet implemented.
+three-metric alarms (Consequences). On 2026-10-21 the owner confirmed that cost and chose per-route
+detailed metrics on the 17 page routes, not stage-wide. It is not accepted: acceptance is the
+owner's review of this file. Implemented in code on `fix/g1-error-alarm-v2` (`f138651f`) and not
+yet deployed, so its live checks on dev are pending.
 
 ## Context
 On 2026-10-18 (UTC) the Reach page returned 500 `ADLY-PAGE_CONTEXT-0004` to every caller from about
@@ -60,13 +62,17 @@ signal. Item (2) chose built-in AWS metrics, a standard metric-math alarm and a 
 missing-data treatment over a new emitter.
 
 ## Enforced by
-Planned with the implementation: a stack test asserts each page route's alarm shape, its
-route setting, and both actions; `infra/test/alarm-coverage.test.ts` counts a page alarm as its
-operation's own alarm, so the catch-all must exclude exactly those operations. The live acceptance
-on dev proves every page alarm reaches `OK` after one successful probe, so a wrong dimension cannot
-leave one in `INSUFFICIENT_DATA` unnoticed. That probe runs after the page alarms deploy and before
-the catch-all drops the page operations, so a page is never unalarmed if the route metrics are not
-published as designed.
+`infra/test/page-route-alarms.test.ts` asserts each page route's alarm shape against a literal
+oracle, its route setting, the stage's dependency on each page route, and both actions.
+`infra/test/alarm-coverage.test.ts` counts a page alarm as its operation's own alarm only in that
+exact shape (check 2), so the catch-all must exclude exactly those operations. It also requires the
+page routes to equal the routed `TELEMETRY_OPERATIONS` (check 8), and each page route to have
+exactly one page alarm (check 9). The probe completeness test
+(`tests/unit/test_probe_presentation_hydration.py`) requires the acceptance probes to serve every
+routed page. The live acceptance on dev, still pending, must show every page alarm reaching `OK`
+after one successful probe, so a wrong dimension cannot leave one in `INSUFFICIENT_DATA` unnoticed.
+That probe runs after the page alarms deploy and before the catch-all drops the page operations, so
+a page is never unalarmed if the route metrics are not published as designed.
 
 ## Consequences
 - The current page-alarm rule, the page alarms and the catch-all's exclusions are owned by
@@ -76,9 +82,10 @@ published as designed.
   returned no 5xx, subject to the publication-skew residual below. A broken page with no callers,
   or whose only callers were refused, stays in `ALARM`.
 - Accepted residual: if, within one period, a route's `Count` point is published before its `5xx`
-  or `4xx` point, one evaluation can read a served, clean period and notify `OK`; the next
-  evaluation returns to `ALARM` and pages if the late point is a 5xx, and if it is not re-evaluated
-  the false `OK` stands until the page next fails. No AWS page states the relative timing of HTTP
+  or `4xx` point, one evaluation can read a served, clean period and notify `OK`; a late 5xx point
+  returns the alarm to `ALARM` and pages on the next evaluation, if that period is re-evaluated; a
+  late 4xx point does not, because the corrected period yields no data point. Otherwise the false
+  `OK` stands until the page next fails. No AWS page states the relative timing of HTTP
   API route metrics [unverified], and dev cannot test it without breaking a page. A served-success
   emitter from `src/` removes it.
 - A page alarm starts in `INSUFFICIENT_DATA` and stays there until its page first serves a request

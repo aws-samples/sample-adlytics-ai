@@ -7,6 +7,9 @@
  * pointer are written out here, independently of the module that builds the alarms, so a change to
  * that module that also changed what it exports could not pass by agreeing with itself.
  */
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
 import {
   PAGE_ALARM_EXPRESSION,
   PAGE_ALARM_RUNBOOK,
@@ -207,6 +210,16 @@ describe('page route alarms (ADR-148)', () => {
       // The key is a synthesized route's RouteKey, so it names a route that exists.
       expect(routeIdFor(page.path)).toBeDefined();
     }
+  });
+
+  it('names a runbook section that exists, by the alarm-coverage anchor rule', () => {
+    const [file, anchor] = PAGE_ALARM_RUNBOOK.split('#') as [string, string];
+    const markdown = fs.readFileSync(path.join(__dirname, '..', '..', file), 'utf8');
+    const anchors = (text: string): string[] => [...text.matchAll(/^## (.+)$/gm)].map((match) =>
+      String(match[1]).toLowerCase().replace(/[^a-z0-9 -]/g, '').replace(/ /g, '-'));
+    expect(anchors(markdown)).toContain(anchor);
+    // Positive control: a renamed heading no longer yields the anchor.
+    expect(anchors(markdown.replace('## Page alarms:', '## Page alarm runbook:'))).not.toContain(anchor);
   });
 
   describe('positive controls: the module-load roster guard', () => {
