@@ -73,27 +73,44 @@ write-once [run record](docs/test-run-records.md) under the gitignored `.runs/`,
 refuses a target that does not. A claim that tests pass cites the record for that exact tree. `make gate-status` shows
 the runs in progress and the recent records.
 
-Maintainers publishing upstream gate in three tiers, each on a clean tree. This list owns which
-gate runs before which action; each script's section in [scripts/README.md](scripts/README.md)
-owns what it checks and its refusal codes, and [meta-delivery-git](.kiro/steering/meta-delivery-git.md#remotes-and-publication)
-owns what may reach the public remote.
+Maintainers publishing upstream gate in three tiers, each on a clean tree, and change main only
+through a pull request. This section owns which gate runs before which action; each script's
+section in [scripts/README.md](scripts/README.md) owns what it checks and its refusal codes, and
+[meta-delivery-git](.kiro/steering/meta-delivery-git.md#remotes-and-publication) owns what may
+reach the public remote.
+
+| Tier | Before | Gate |
+|---|---|---|
+| Commit | every commit | the pre-commit hook, `scripts/commit_gate.py` on the staged changes |
+| Push | every push | `make publication-gate` over the pushed range, which `make publish` runs |
+| Merge | every merge to main | `make release-gate` on the exact tree being merged, which `make merge-pr` requires |
+
+A change reaches main from a feature branch based on the current public main:
 
 ```bash
 make install-hooks                # once per clone: the commit tier (pre-commit) and the push tier (pre-push)
-make release-gate                 # release tier, once per release tree: verify-clean, the ASH container scans, the mutation summary (report only)
-make publication-gate             # push tier, before every push: the commits since BASE and the run records of HEAD's tree
-make publish                      # pushes only through the operator's local publish script
+make verify-clean                 # the test records of HEAD's tree that the push gate requires
+make publish                      # push tier: pushes the current feature branch, never main and never a tag
+make pr                           # opens or updates the branch's pull request: its commits and gate records
+make release-gate                 # merge tier, on the pull request's head; run make pr again to list its record
+make merge-pr PR=<n> CONFIRM=yes  # after the owner's go: squash-merges, then fast-forwards local main
 ```
 
 - Commit tier: the [hooks](scripts/README.md#commit_gatepy-and-githooks) are a fast early warning
   on staged changes, not the boundary; `make uninstall-hooks` removes them.
-- Release tier: `make release-gate` runs before `make publication-gate`, because the publication
-  gate requires the test records verify-clean writes ([which records](docs/test-run-records.md#which-records-the-publication-gate-accepts)).
-  It reuses a recorded verify-clean of the same tree instead of re-running it
-  ([which record](docs/test-run-records.md#which-verify-clean-record-the-release-gate-reuses)).
-- Push tier: `BASE` defaults to `public/main`; run `git fetch public` first so it names the
-  current tip. `make publish` requires a passing push-gate record of HEAD and runs the gate
-  when there is none, so a skipped or uninstalled hook never bypasses it.
+- Push tier: `make publish` fetches `public`, reuses a passing push-gate record of HEAD on that
+  tip or runs `make publication-gate` itself, so a skipped or uninstalled hook never bypasses it.
+  Run `make publication-gate` alone to check without pushing; `BASE` defaults to `public/main`, so
+  run `git fetch public` first. The gate requires the test records verify-clean writes
+  ([which records](docs/test-run-records.md#which-records-the-publication-gate-accepts)).
+- Merge tier: `make release-gate` reuses a recorded verify-clean of the same tree instead of
+  re-running it ([which record](docs/test-run-records.md#which-verify-clean-record-the-release-gate-reuses)).
+  A new commit on the branch changes the tree, so the push and merge tiers run again for it.
+- The owner's go: `CONFIRM=yes` on the make command line is the owner's go for that merge. It has
+  no default, and a `CONFIRM` set in the environment does not count. `make merge-pr` keeps the
+  remote branch unless `DELETE_BRANCH=yes` is given the same way.
+- `DRY_RUN=1` on `make publish`, `make pr` or `make merge-pr` runs every check and prints each
+  command that would change something instead of running it.
 
 ### Deployed checks (maintainer-run)
 
