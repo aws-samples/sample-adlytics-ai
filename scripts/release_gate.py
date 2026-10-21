@@ -4,8 +4,8 @@
 
     make release-gate    (uv run python scripts/release_gate.py)
 
-Run once per release on a clean checkout, before `make publication-gate`: the publication gate
-accepts only the run records the verify-clean stage writes here. It takes about an hour. Every
+Run on a clean checkout of a pull request's head, before `make merge-pr`, which refuses a merge
+without this gate's sealed passing record of the head's tree. It takes about an hour. Every
 stage prints one line per result, and a refusal names its code:
 
     preconditions (stop the gate)

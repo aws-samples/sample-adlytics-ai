@@ -241,7 +241,7 @@ gate-status: ## List in-progress and recent run records: state, elapsed time, he
 publication-gate: ## Refuse a public push unless every commit since BASE is publishable, recorded: make publication-gate [BASE=<rev>] (before every push; default public/main)
 	@uv run python scripts/publication_gate.py $(if $(BASE),--base "$(BASE)")
 # Not part of `check` or `verify`: about an hour, and it needs the pinned ASH, uvx and finch or
-# Docker. Run once per release, before make publication-gate; the mutation summary never refuses.
+# Docker. Run on a pull request's head before make merge-pr; the mutation summary never refuses.
 release-gate: ## Release gate: verify-clean (reusing a sealed record of the same tree), full ASH container scan, mutation coverage summary (report only)
 	@uv run python scripts/release_gate.py
 # Run once per clone, by the owner. It writes stubs into the repository's own hooks directory and
