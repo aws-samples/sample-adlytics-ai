@@ -839,6 +839,23 @@ def test_merge_pr_fast_forwards_main_in_the_worktree_that_has_it(
     assert (main_worktree / "feature.txt").is_file()
 
 
+def test_merge_pr_never_moves_a_diverged_local_main_sideways(
+    flow: ModuleType, checkout: Checkout
+) -> None:
+    # The ref-only path: no worktree has main, so only the ancestry guard keeps local commits.
+    git(checkout.path, "checkout", "-q", "main")
+    local = checkout.commit("chore: a local commit on main", name="local.txt")
+    git(checkout.path, "checkout", "-q", BRANCH)
+    _ready(flow, checkout)
+    _land(checkout)
+    (checkout.gh / "merge.ok").write_text("")
+    exit_code, output = _flow(checkout, "merge-pr", *READY)
+    assert exit_code == 1
+    assert "merge-pr: REFUSED MAIN_NOT_FAST_FORWARD" in output
+    assert "update-ref" not in output
+    assert git(checkout.path, "rev-parse", "refs/heads/main") == local
+
+
 def test_merge_pr_refuses_a_merge_whose_tree_is_not_the_head_tree(
     flow: ModuleType, checkout: Checkout
 ) -> None:
