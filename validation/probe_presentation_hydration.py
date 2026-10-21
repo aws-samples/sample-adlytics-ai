@@ -11,6 +11,10 @@ outcomes with reason codes, ``silent`` insight slots) from stranding
 (``unavailable`` insight slots on a populated page, missing declared metrics,
 an empty roster where data exists, or any non-200 response).
 
+It also serves one request to every page the walks above don't reach (``UNROSTERED_PAGES`` and
+the retail-health product child), so each page route's alarm can observe a served success
+(ADR-148); with ``probe_insight_deep_dive.py`` that is every routed presentation page.
+
 Evidence is one JSON report under ``validation/evidence/reports/`` (ignored);
 stdout carries only bounded counts. Requires ``ADL_BASE_URL``/``ADL_REFRESH``/
 ``ADL_CSRF`` in ``validation/.env.local``; credential values are never printed.
@@ -280,12 +284,16 @@ def _refresh_once(session: ApiSession) -> None:
     session.csrf = cookies.get("adl_csrf", session.csrf)
 
 
-def _post_once(session: ApiSession, path: str, body: JsonObject) -> tuple[int, JsonObject]:
+def _post_once(
+    session: ApiSession, path: str, body: JsonObject, *, accept: str = _MEDIA_TYPE
+) -> tuple[int, JsonObject]:
     with within(_CALL_DEADLINE_SECONDS, f"POST {path}"):
-        return _post_unbounded(session, path, body)
+        return _post_unbounded(session, path, body, accept=accept)
 
 
-def _post_unbounded(session: ApiSession, path: str, body: JsonObject) -> tuple[int, JsonObject]:
+def _post_unbounded(
+    session: ApiSession, path: str, body: JsonObject, *, accept: str = _MEDIA_TYPE
+) -> tuple[int, JsonObject]:
     payload = json.dumps(body).encode()
     with _HTTP.post(
         require_https(f"{session.base_url}{path}"),
@@ -295,7 +303,7 @@ def _post_unbounded(session: ApiSession, path: str, body: JsonObject) -> tuple[i
             "x-adl-csrf": session.csrf,
             "Sec-Fetch-Site": "same-origin",
             "Content-Type": "application/json",
-            "Accept": _MEDIA_TYPE,
+            "Accept": accept,
         },
         timeout=_TIMEOUT_SECONDS,
         allow_redirects=False,
@@ -312,12 +320,14 @@ def _json_or_empty(response: requests.Response) -> JsonObject:
     return decoded if decoded is not None else {}
 
 
-def _post(session: ApiSession, path: str, body: JsonObject) -> tuple[int, JsonObject]:
+def _post(
+    session: ApiSession, path: str, body: JsonObject, *, accept: str = _MEDIA_TYPE
+) -> tuple[int, JsonObject]:
     """POST with one refresh-and-retry on an expired-session 403, per the session rules."""
-    status, decoded = _post_once(session, path, body)
+    status, decoded = _post_once(session, path, body, accept=accept)
     if status == _HTTP_FORBIDDEN:
         _refresh(session)
-        status, decoded = _post_once(session, path, body)
+        status, decoded = _post_once(session, path, body, accept=accept)
     return status, decoded
 
 
@@ -776,8 +786,14 @@ def _walk_campaigns(
             )
 
 
-def _walk_retail(session: ApiSession, state: WalkState, session_id: str) -> None:
+def _walk_retail(session: ApiSession, state: WalkState, session_id: str) -> str | None:
+    """Walk retail-health and its focuses; return one served product row's selection reference.
+
+    The reference comes from the `_FOCUS_SAMPLE_PRESET` page's `rows[]`. None served is a
+    failure, not a skip: the retail-health-product page could otherwise go unprobed.
+    """
     focus_metrics: list[str] = []
+    product_reference: str | None = None
     for preset in _PRESETS:
         where: JsonObject = {"page": "retail-health", "preset": preset}
         status, decoded = _post(
@@ -824,6 +840,22 @@ def _walk_retail(session: ApiSession, state: WalkState, session_id: str) -> None
                 for item in totals
                 if item["metric"] is not None and str(item["metric"]) not in absent_metrics
             ][:_RETAIL_FOCUS_SAMPLE_LIMIT]
+            product_reference = next(
+                (
+                    reference
+                    for row in map(_object, _items(artifact.get("rows")))
+                    if row is not None
+                    and isinstance(reference := row.get("selection_reference"), str)
+                    and reference
+                ),
+                None,
+            )
+    if product_reference is None:
+        state.fail(
+            "missing_product_row",
+            {"page": "retail-health", "preset": _FOCUS_SAMPLE_PRESET},
+            "no served row carries a selection_reference for retail-health-product",
+        )
     for metric in focus_metrics:
         _focus_record(
             session=session,
@@ -836,6 +868,7 @@ def _walk_retail(session: ApiSession, state: WalkState, session_id: str) -> None
                 "temporal_selection": {"kind": "preset", "preset_id": _FOCUS_SAMPLE_PRESET},
             },
         )
+    return product_reference
 
 
 _WALKED_IN_DEPTH: Final = frozenset(
@@ -914,6 +947,91 @@ def _walk_roster_pages(session: ApiSession, state: WalkState, session_id: str) -
                 "temporal": _temporal_summary(envelope),
             }
         )
+
+
+_LEGACY_MEDIA_TYPE: Final = "application/json"
+_RETAIL_PRODUCT_PATH: Final = "/api/presentation/retail-health-product"
+UNROSTERED_PAGES: Final = (
+    # Overview is legacy-only: a v2 Accept is refused before it is served (`handler.py`
+    # `_v2_parent_request`, "The versioned presentation operation is not available.", asserted by
+    # `test_v2_accept_refuses_legacy_only_operations_without_v1_fallback`). Its legacy
+    # representation is what it serves today, so it is probed over that.
+    ("overview", "legacy"),
+    ("amazon-channel-performance", "v2"),
+    ("marketplace-comparison", "v2"),
+    ("data-health", "v2"),
+)
+"""The pages no walk above reaches, each with the representation it serves.
+
+No frontend fetch exists for any of them, so each gets the server's default-selection body,
+`{session_id}` (`handler.py` `_request_shape`). ADR-148: one served, non-refused request is
+what moves each page alarm from `INSUFFICIENT_DATA` to `OK`.
+"""
+
+
+def _walk_unrostered_pages(
+    session: ApiSession, state: WalkState, session_id: str, product_reference: str | None
+) -> None:
+    """Serve every page outside the other walks once, and the retail-health product child.
+
+    A v2 page passes on 200 with a built page or its designed window_unavailable, as in
+    `_walk_roster_pages`; legacy overview passes only on 200 with a non-empty `page`. The
+    product child is skipped only when `_walk_retail` already failed for want of a row.
+    """
+    for page_id, representation in UNROSTERED_PAGES:
+        where: JsonObject = {"page": page_id, "representation": representation}
+        path = f"/api/presentation/{page_id}"
+        body: JsonObject = {"session_id": session_id}
+        if representation == "legacy":
+            status, decoded = _post(session, path, body, accept=_LEGACY_MEDIA_TYPE)
+            page = _object(decoded.get("page"))
+            state.records.append({**where, "http_status": status, "kind": "legacy_page"})
+            if status != _HTTP_OK:
+                state.fail("non_200_response", where, f"status {status} code {decoded.get('code')}")
+            elif not page:
+                state.fail("malformed_envelope", where, "legacy page body is absent or empty")
+            else:
+                state.parents += 1
+            continue
+        _served_page_record(session, state, where=where, path=path, body=body)
+    if product_reference is None:
+        return
+    _served_page_record(
+        session,
+        state,
+        where={"page": "retail-health-product", "preset": _FOCUS_SAMPLE_PRESET},
+        path=_RETAIL_PRODUCT_PATH,
+        body={
+            "selection_reference": product_reference,
+            "session_id": session_id,
+            "temporal_selection": {"kind": "preset", "preset_id": _FOCUS_SAMPLE_PRESET},
+        },
+    )
+
+
+def _served_page_record(
+    session: ApiSession, state: WalkState, *, where: JsonObject, path: str, body: JsonObject
+) -> None:
+    """POST one v2 page and record it in the `_walk_roster_pages` record shape."""
+    status, decoded = _post(session, path, body)
+    envelope = _envelope(where=where, state=state, status=status, decoded=decoded)
+    if envelope is None:
+        return
+    located = _page_artifact(where=where, state=state, envelope=envelope)
+    if located is None:
+        return
+    page, artifact = located
+    state.parents += 1
+    state.records.append(
+        {
+            **where,
+            "http_status": status,
+            "kind": "page",
+            "outcome": artifact.get("outcome"),
+            "artifact_revision": page.get("artifact_revision"),
+            "temporal": _temporal_summary(envelope),
+        }
+    )
 
 
 _ZERO_DELIVERY_FOCUS_METRICS: Final = ("attributed_roas", "ctr", "spend")
@@ -1089,8 +1207,9 @@ def _run_bounded(request: ProbeRequest) -> tuple[WalkState, Path]:
         _walk_zero_delivery(session, state, session_id)
         return state, _write_report(request, state)
     _walk_campaigns(session, state, session_id, sample=request.sample)
-    _walk_retail(session, state, session_id)
+    product_reference = _walk_retail(session, state, session_id)
     _walk_roster_pages(session, state, session_id)
+    _walk_unrostered_pages(session, state, session_id, product_reference)
     return state, _write_report(request, state)
 
 
