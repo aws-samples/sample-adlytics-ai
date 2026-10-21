@@ -6,17 +6,24 @@ means a push that bypasses a guard: main pushed directly, a detached or release 
 branch that is not based on the current public main, a push without a passing push gate, a tag,
 or a force.
 
+`make pr` opens the pull request whose body reports the gate records. A failure there means a
+pull request for a branch that was never pushed, or a title or body carrying a denylisted name to
+a public page.
+
 No test reaches GitHub or pushes anywhere. Each builds a throwaway repository whose `public` remote
 is a GitHub-shaped URL that a repository-local `insteadOf` rewrites to a bare repository under
 `tmp_path`; the bare repository is filled by fetching into it, never by a push. Every run that
 could push is a refusal before the push or a dry run, and each test then asserts that the bare
-repository holds no branch it did not hold before. Global and system git configuration are
-replaced with an empty file, so no operator hook, identity or URL rewrite decides a test.
+repository holds no branch it did not hold before. `gh` is a stub first on PATH that logs each
+call, serves canned JSON for `pr list` and `pr view`, and fails every other call, with an empty
+GH_CONFIG_DIR so no real login could be used. Global and system git configuration are replaced
+with an empty file, so no operator hook, identity or URL rewrite decides a test.
 """
 
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import sys
 from collections.abc import Iterator
@@ -35,7 +42,18 @@ DENYLISTED = "AcmeInternalTool"
 DENYLIST = f"# fixture entries\n{DENYLISTED}\n"
 GITIGNORE = ".runs/\nlocal-denylist.txt\n"
 URL = "https://github.com/example/fixture.git"
+SLUG = "example/fixture"
 BRANCH = "feat/fixture"
+# Logs every call; serves list.json and view.json; any other call fails unless merge.ok exists.
+GH_STUB = r"""#!/bin/sh
+printf '%s\n' "$*" >> "$GH_STUB_DIR/calls.log"
+case "$1 $2" in
+  "pr list") cat "$GH_STUB_DIR/list.json" ;;
+  "pr view") cat "$GH_STUB_DIR/view.json" ;;
+  "pr merge") [ -f "$GH_STUB_DIR/merge.ok" ] || exit 3 ;;
+  *) echo "gh stub: unexpected call: $*" >&2; exit 3 ;;
+esac
+"""
 
 
 def _load(name: str) -> ModuleType:
@@ -74,6 +92,12 @@ class Checkout:
         self.path = tmp_path / "repo"
         self.path.mkdir()
         self.bare = tmp_path / "public.git"
+        self.gh = tmp_path / "gh"
+        (self.gh / "bin").mkdir(parents=True)
+        (self.gh / "bin" / "gh").write_text(GH_STUB)
+        (self.gh / "bin" / "gh").chmod(0o755)
+        (self.gh / "config").mkdir()
+        self.serve("list.json", [])
         git(self.path, "init", "-q", "-b", "main")
         git(self.path, "config", "publication.allowedEmail", EMAIL)
         commit(self.path, ".gitignore", GITIGNORE)
@@ -104,6 +128,19 @@ class Checkout:
             message,
         )
         return self.head
+
+    def serve(self, name: str, data: object) -> None:
+        """Make the gh stub answer with `data` as JSON."""
+        (self.gh / name).write_text(json.dumps(data))
+
+    def gh_calls(self) -> list[str]:
+        """Every call the gh stub received, in order."""
+        log = self.gh / "calls.log"
+        return log.read_text().splitlines() if log.exists() else []
+
+    def push_branch(self) -> None:
+        """Give the bare remote HEAD's branch by fetching into it: a push in effect, not in fact."""
+        git(self.bare, "fetch", "-q", str(self.path), f"{BRANCH}:{BRANCH}")
 
     @property
     def head(self) -> str:
@@ -154,6 +191,11 @@ def checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Checko
     monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
     monkeypatch.delenv("RUN_RECORD_ROOT", raising=False)
     fixture = Checkout(tmp_path)
+    monkeypatch.setenv("PATH", f"{fixture.gh / 'bin'}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("GH_STUB_DIR", str(fixture.gh))
+    monkeypatch.setenv("GH_CONFIG_DIR", str(fixture.gh / "config"))
+    for name in ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GH_HOST"):
+        monkeypatch.delenv(name, raising=False)
     yield fixture
     _make_writable(fixture.path / ".runs")
 
@@ -318,3 +360,110 @@ def test_the_make_target_is_the_only_push_path() -> None:
     assert "scripts/pr_flow.py publish" in recipe
     assert "local-publish.sh" not in makefile
     assert "--force" not in (SCRIPTS / "pr_flow.py").read_text()
+
+
+# --------------------------------------------------------------------------------------------
+# pr
+# --------------------------------------------------------------------------------------------
+
+
+def _create_line(output: str) -> str:
+    lines = [line for line in output.splitlines() if line.startswith("dry-run: gh pr create")]
+    assert len(lines) == 1, output
+    return lines[0]
+
+
+def test_pr_dry_run_prints_the_create_with_the_branch_summary_and_gate_records(
+    flow: ModuleType, checkout: Checkout
+) -> None:
+    checkout.push_branch()
+    record = _publication_record(flow, checkout)
+    code, output = _flow(checkout, "pr", "--dry-run")
+    assert code == 0, output
+    create = _create_line(output)
+    assert f"--repo {SLUG} --base main --head {BRANCH}" in create
+    assert "--title 'feat: add the fixture feature'" in create
+    assert "--body-file " in create
+    assert f"pr: | - `{checkout.head[:12]}` feat: add the fixture feature" in output
+    assert f"| `make publication-gate` | pass | `.runs/publication-gate/{record.name}` |" in output
+    assert "| `make release-gate` | not run on this tree | |" in output
+    assert str(checkout.path) not in output
+    # Only the read-only lookup reached the stub: the create was printed, not run.
+    assert checkout.gh_calls() == [
+        f"pr list --repo {SLUG} --head {BRANCH} --state open --json number,url"
+    ]
+
+
+def test_pr_dry_run_edits_the_open_pull_request(checkout: Checkout) -> None:
+    checkout.push_branch()
+    checkout.serve("list.json", [{"number": 7, "url": "https://github.com/example/fixture/pull/7"}])
+    code, output = _flow(checkout, "pr", "--dry-run")
+    assert code == 0, output
+    assert f"dry-run: gh pr edit 7 --repo {SLUG} --title" in output
+    assert "gh pr create" not in output
+    assert [call.split()[:2] for call in checkout.gh_calls()] == [["pr", "list"]]
+
+
+def test_pr_titles_a_branch_of_several_commits_from_its_name(checkout: Checkout) -> None:
+    checkout.commit("test: cover the fixture feature")
+    checkout.push_branch()
+    _, output = _flow(checkout, "pr", "--dry-run")
+    assert "--title 'feat: fixture'" in _create_line(output)
+    _, output = _flow(checkout, "pr", "--dry-run", "--title", "feat: ship the fixture")
+    assert "--title 'feat: ship the fixture'" in _create_line(output)
+
+
+def test_pr_refuses_a_branch_that_is_not_pushed(checkout: Checkout) -> None:
+    code, output = _flow(checkout, "pr", "--dry-run")
+    assert code == 1
+    assert "pr: REFUSED NOT_PUSHED" in output
+    assert checkout.gh_calls() == []
+
+
+def test_pr_refuses_a_pushed_branch_behind_head(checkout: Checkout) -> None:
+    checkout.push_branch()
+    checkout.commit("feat: a later change")
+    code, output = _flow(checkout, "pr", "--dry-run")
+    assert code == 1
+    assert "pr: REFUSED NOT_PUSHED" in output
+
+
+def test_pr_refuses_main(checkout: Checkout) -> None:
+    git(checkout.path, "checkout", "-q", "main")
+    code, output = _flow(checkout, "pr", "--dry-run")
+    assert code == 1
+    assert "pr: REFUSED ON_MAIN" in output
+
+
+def test_pr_refuses_a_remote_that_is_not_github(checkout: Checkout) -> None:
+    git(checkout.path, "remote", "set-url", "public", checkout.bare.as_uri())
+    code, output = _flow(checkout, "pr", "--dry-run")
+    assert code == 1
+    assert "pr: REFUSED REMOTE_NOT_GITHUB" in output
+    assert checkout.bare.as_uri() not in output
+
+
+def test_pr_refuses_a_denylisted_title_without_printing_it(checkout: Checkout) -> None:
+    checkout.push_branch()
+    code, output = _flow(checkout, "pr", "--dry-run", "--title", f"feat: {DENYLISTED}")
+    assert code == 1
+    assert "pr: REFUSED DENYLIST_HIT local-denylist.txt line 2 in the title" in output
+    assert DENYLISTED.casefold() not in output.casefold()
+    assert checkout.gh_calls() == []
+
+
+def test_pr_refuses_a_denylisted_commit_subject_in_the_body(checkout: Checkout) -> None:
+    checkout.commit(f"fix: drop {DENYLISTED}")
+    checkout.push_branch()
+    code, output = _flow(checkout, "pr", "--dry-run", "--title", "fix: tidy")
+    assert code == 1
+    assert "REFUSED DENYLIST_HIT local-denylist.txt line 2 in the body" in output
+    assert DENYLISTED.casefold() not in output.casefold()
+
+
+def test_pr_refuses_an_empty_denylist(checkout: Checkout) -> None:
+    checkout.push_branch()
+    (checkout.path / "local-denylist.txt").write_text("# no entries\n")
+    code, output = _flow(checkout, "pr", "--dry-run")
+    assert code == 1
+    assert "REFUSED DENYLIST_EMPTY" in output

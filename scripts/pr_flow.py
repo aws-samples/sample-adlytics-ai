@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT-0
-"""Push the current feature branch to the public remote, behind the push gate.
+"""Push the current feature branch and open its pull request, each behind its gate.
 
-    make publish [DRY_RUN=1]    (uv run python scripts/pr_flow.py publish [--dry-run])
+    make publish [DRY_RUN=1]                (uv run python scripts/pr_flow.py publish [--dry-run])
+    make pr [TITLE=<subject>] [DRY_RUN=1]   (uv run python scripts/pr_flow.py pr [--title ...])
 
 The remote and its main come from the publication gate's DEFAULT_BASE (`public/main`). The
-remote's URL is the operator's git configuration and never appears in this repository.
+remote's URL is the operator's git configuration and never appears in this repository; the
+GitHub OWNER/REPO that gh is given is read from it at run time.
 
 publish pushes HEAD to refs/heads/<current branch> on the remote with no tags and no force (no
 `+` in the refspec, no force option), so the remote accepts only a fast-forward. It never pushes
@@ -27,9 +29,26 @@ main. It refuses with a named code, before anything leaves the clone:
     VERIFY_FAILED              after the push, the remote branch is not HEAD or the remote has tags
 
 A passing, canonical, clean publication-gate record of this HEAD on this BASE is reused; without
-one, publish runs the gate. --dry-run runs every read-only query and every check, and prints each
-command that would change something (git fetch, make publication-gate, git push) instead of
-running it. ADLYTICS_* and AWS_* are removed from the environment first: nothing here needs AWS.
+one, publish runs the gate.
+
+pr opens a pull request into main for the current branch with `gh pr create`, or updates the open
+one with `gh pr edit`. The title is TITLE when given, else the subject of the branch's only commit,
+else the branch name read as `<type>: <slug words>`. The body lists the commits after <remote>/main
+and the newest sealed verify-clean, publication-gate and release-gate record of HEAD's tree: its
+path under the checkout and its outcome, never a local directory or host name. It refuses, besides
+the branch guards above:
+
+    NOT_PUSHED                 the remote branch is absent or not HEAD: run make publish first
+    REMOTE_NOT_GITHUB          the remote's configured URL names no GitHub OWNER/REPO
+    NO_COMMITS                 the branch has no commit after <remote>/main
+    DENYLIST_MISSING, DENYLIST_EMPTY, DENYLIST_HIT
+                               the title or body is not fit to publish; the output names the
+                               denylist line, never the literal
+
+--dry-run runs every read-only query (git status, rev-parse, ls-remote, gh pr list) and every check,
+and prints each command that would change something (git fetch, make publication-gate, git push,
+gh pr create, gh pr edit) instead of running it. ADLYTICS_* and AWS_* are removed from the
+environment first: nothing here needs AWS.
 """
 
 from __future__ import annotations
@@ -38,6 +57,7 @@ import argparse
 import importlib.util
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -53,6 +73,13 @@ EXIT_USAGE = 2
 SCRUBBED_PREFIXES = ("ADLYTICS_", "AWS_")
 RELEASE_PREFIX = "release/"
 PUBLICATION_KIND = "publication-gate"
+RELEASE_KIND = "release-gate"
+# The gate records a pull request body reports, in the order they run for a merge.
+GATE_KINDS = ("verify-clean", PUBLICATION_KIND, RELEASE_KIND)
+GITHUB_URL = re.compile(
+    r"^(?:https://github\.com/|ssh://git@github\.com/|git@github\.com:)"
+    r"(?P<slug>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(?:\.git)?/?$"
+)
 
 
 def _sibling(name: str) -> ModuleType:
@@ -88,10 +115,18 @@ def scrubbed_environment(environ: dict[str, str]) -> dict[str, str]:
     return {k: v for k, v in environ.items() if not k.startswith(SCRUBBED_PREFIXES)}
 
 
-def remote_and_main() -> tuple[str, str]:
-    """Return the remote and its main branch, both named by the publication gate's DEFAULT_BASE."""
+@dataclass(frozen=True)
+class Target:
+    """The public remote and its main branch."""
+
+    remote: str
+    main: str
+
+
+def default_target() -> Target:
+    """Return the remote and main the publication gate's DEFAULT_BASE names (`public/main`)."""
     remote, _, main = str(publication_gate.DEFAULT_BASE).partition("/")
-    return remote, main
+    return Target(remote, main)
 
 
 @dataclass(frozen=True)
@@ -242,8 +277,9 @@ def relative(cmd: Commands, path: Path) -> str:
 # --------------------------------------------------------------------------------------------
 
 
-def publish(cmd: Commands, remote: str, main: str) -> None:
+def publish(cmd: Commands, target: Target) -> None:
     """Push HEAD to its own branch on the remote after every guard and the push gate pass."""
+    remote, main = target.remote, target.main
     require_clean(cmd)
     branch = feature_branch(cmd, main)
     if cmd.status("git", "remote", "get-url", remote) != 0:
@@ -273,12 +309,7 @@ def publish(cmd: Commands, remote: str, main: str) -> None:
     else:
         cmd.out("publish: dry-run: the push needs that run's passing record")
 
-    refusals = range_refusals(cmd, span)
-    for refusal in refusals:
-        cmd.out(f"publish: REFUSED {refusal.code} {refusal.detail}")
-    if refusals:
-        codes = sorted({r.code for r in refusals})
-        raise RefusedError(codes[0], f"{len(refusals)} finding(s): {' '.join(codes)}")
+    raise_first(cmd, "publish", range_refusals(cmd, span))
     cmd.out("publish: denylist and identity ok")
 
     if cmd.query("git", "rev-parse", "HEAD") != head:
@@ -305,6 +336,176 @@ def require_clean_after(cmd: Commands) -> None:
 
 
 # --------------------------------------------------------------------------------------------
+# pr
+# --------------------------------------------------------------------------------------------
+
+
+def repository(cmd: Commands, remote: str) -> str:
+    """Return the remote's GitHub OWNER/REPO, read from its configured (unrewritten) URL."""
+    key = f"remote.{remote}.url"
+    if cmd.status("git", "config", "--get", key) != 0:
+        raise RefusedError("NO_REMOTE", f"the remote {remote!r} is not configured")
+    found = GITHUB_URL.match(cmd.query("git", "config", "--get", key))
+    if found is None:
+        raise RefusedError("REMOTE_NOT_GITHUB", f"the remote {remote!r} names no GitHub repository")
+    return found["slug"]
+
+
+def text_refusals(root: Path, sources: Sequence[tuple[str, str]]) -> list[RefusedError]:
+    """Refuse an absent or empty denylist, and every denylisted literal in `sources`."""
+    denylist = publication_gate.load_denylist(root)
+    name = publication_gate.DENYLIST
+    if not (root / name).is_file():
+        return [RefusedError("DENYLIST_MISSING", f"{name} is absent from the checkout root")]
+    if not denylist:
+        return [RefusedError("DENYLIST_EMPTY", f"{name} holds no entry")]
+    return [
+        RefusedError("DENYLIST_HIT", f"{name} line {number} in {where}")
+        for where, text in sources
+        for number, literal in denylist
+        if literal in text.casefold()
+    ]
+
+
+def raise_first(cmd: Commands, label: str, refusals: Sequence[RefusedError]) -> None:
+    """Print every refusal, then raise one naming all their codes."""
+    for refusal in refusals:
+        cmd.out(f"{label}: REFUSED {refusal.code} {refusal.detail}")
+    if refusals:
+        codes = sorted({r.code for r in refusals})
+        raise RefusedError(codes[0], f"{len(refusals)} finding(s): {' '.join(codes)}")
+
+
+def branch_commits(cmd: Commands, span: Span) -> list[tuple[str, str]]:
+    """Return (commit, subject) for every commit after BASE up to HEAD, oldest first."""
+    log = cmd.query("git", "log", "--reverse", "--format=%H%x1f%s", f"{span.base}..{span.head}")
+    return [
+        (sha, subject) for sha, _, subject in (line.partition("\x1f") for line in log.splitlines())
+    ]
+
+
+def summary(branch: str, commits: Sequence[tuple[str, str]]) -> str:
+    """Return the branch's summary: its only commit's subject, else `<type>: <slug words>`."""
+    if len(commits) == 1:
+        return commits[0][1]
+    kind, _, slug = branch.partition("/")
+    words = re.sub(r"[-_/]+", " ", slug).strip()
+    return f"{kind}: {words}" if words else kind
+
+
+def gate_rows(cmd: Commands, tree: str) -> list[str]:
+    """Return one table row per gate: the newest sealed record of HEAD's tree and its outcome."""
+    runs = run_record.record_root(None, cwd=cmd.root)
+    rows: list[str] = []
+    for kind in GATE_KINDS:
+        found = run_record.find_records(runs, kind, tree=tree)
+        if not found:
+            rows.append(f"| `make {kind}` | not run on this tree | |")
+            continue
+        run = json.loads((found[0] / "run.json").read_text(encoding="utf-8"))
+        outcome = str(run.get("outcome", "unknown"))
+        refused = [str(code) for code in run.get("refused") or []]
+        notes = [*refused]
+        notes += [] if run.get("canonical") else ["not canonical"]
+        notes += [] if run.get("clean") else ["not clean"]
+        detail = f"{outcome} ({', '.join(notes)})" if notes else outcome
+        rows.append(f"| `make {kind}` | {detail} | `{relative(cmd, found[0])}` |")
+    return rows
+
+
+def pr_body(cmd: Commands, span: Span, commits: Sequence[tuple[str, str]]) -> str:
+    """Return the pull request body: the commits and the gate records of HEAD's tree."""
+    lines = ["## Commits", ""]
+    lines += [f"- `{sha[:12]}` {subject}" for sha, subject in commits]
+    lines += [
+        "",
+        f"## Gate records for tree `{span.tree[:12]}`",
+        "",
+        "| Gate | Outcome | Record |",
+        "| --- | --- | --- |",
+        *gate_rows(cmd, span.tree),
+        "",
+        "Records are local to the checkout that ran them (docs/test-run-records.md). This pull",
+        "request merges only through `make merge-pr`, after `make release-gate` passes on this",
+        "tree and with the owner's go.",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def open_pr(cmd: Commands, target: Target, title: str | None) -> None:
+    """Open or update the pull request of the pushed current branch."""
+    remote, main = target.remote, target.main
+    branch = feature_branch(cmd, main)
+    slug = repository(cmd, remote)
+    span = head_span(cmd, remote_tip(cmd, remote, main))
+    listed = cmd.query("git", "ls-remote", remote, f"refs/heads/{branch}").split()
+    if not listed or listed[0] != span.head:
+        raise RefusedError(
+            "NOT_PUSHED", f"{remote}'s {branch} is not HEAD {span.head[:12]}; run make publish"
+        )
+    commits = branch_commits(cmd, span)
+    if not commits:
+        raise RefusedError("NO_COMMITS", f"{branch} has no commit after {remote}/{main}")
+    subject = title.strip() if title else summary(branch, commits)
+    body = pr_body(cmd, span, commits)
+    raise_first(cmd, "pr", text_refusals(cmd.root, [("the title", subject), ("the body", body)]))
+
+    cmd.out(f"pr: title: {subject}")
+    for line in body.splitlines():
+        cmd.out(f"pr: | {line}")
+    found = json.loads(
+        cmd.query(
+            "gh",
+            "pr",
+            "list",
+            "--repo",
+            slug,
+            "--head",
+            branch,
+            "--state",
+            "open",
+            "--json",
+            "number,url",
+        )
+        or "[]"
+    )
+    with tempfile.TemporaryDirectory(prefix="pr-flow-") as work:
+        body_file = Path(work) / "body.md"
+        body_file.write_text(body, encoding="utf-8")
+        if found:
+            number = str(found[0]["number"])
+            cmd.change(
+                "gh",
+                "pr",
+                "edit",
+                number,
+                "--repo",
+                slug,
+                "--title",
+                subject,
+                "--body-file",
+                str(body_file),
+            )
+            cmd.out(f"pr: updated {found[0]['url']}")
+        else:
+            cmd.change(
+                "gh",
+                "pr",
+                "create",
+                "--repo",
+                slug,
+                "--base",
+                main,
+                "--head",
+                branch,
+                "--title",
+                subject,
+                "--body-file",
+                str(body_file),
+            )
+
+
+# --------------------------------------------------------------------------------------------
 # Command line
 # --------------------------------------------------------------------------------------------
 
@@ -315,6 +516,9 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     publish_parser = sub.add_parser("publish", help="push the current feature branch")
     publish_parser.add_argument("--dry-run", action="store_true")
+    pr_parser = sub.add_parser("pr", help="open or update the branch's pull request")
+    pr_parser.add_argument("--title", help="the pull request title; default the branch summary")
+    pr_parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
     kept = scrubbed_environment(dict(os.environ))
     os.environ.clear()
@@ -324,9 +528,12 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.write(f"{args.command}: not in a git repository\n")
         return EXIT_USAGE
     cmd = Commands(top, dry_run=args.dry_run)
-    remote, main_branch = remote_and_main()
+    target = default_target()
     try:
-        publish(cmd, remote, main_branch)
+        if args.command == "publish":
+            publish(cmd, target)
+        else:
+            open_pr(cmd, target, args.title)
     except RefusedError as refusal:
         sys.stderr.write(f"{args.command}: REFUSED {refusal.code} {refusal.detail}\n")
         return EXIT_REFUSED
