@@ -252,9 +252,9 @@ install-hooks: ## Install the tracked commit and push hooks in .githooks/ for th
 	@bash scripts/install-hooks.sh install
 uninstall-hooks: ## Remove only the hook stubs make install-hooks wrote
 	@bash scripts/install-hooks.sh uninstall
-publish: ## Publish through the operator's local publish script (local-publish.sh)
-	@test -f local-publish.sh || (echo "publish: local-publish.sh is absent; publishing is operator-local and runs only through that gitignored script"; exit 1)
-	@bash ./local-publish.sh
+# The only push path: the current feature branch, never main, after the push gate (scripts/pr_flow.py).
+publish: ## Push the current feature branch to the public remote after make publication-gate passes for it: make publish [DRY_RUN=1]
+	@uv run python scripts/pr_flow.py publish $(if $(DRY_RUN),--dry-run)
 
 # Not part of `verify` or `test-integration`: this is manual deployed acceptance against synthetic
 # Vendor Central input, not AMC. It refuses every omitted target value before Python can make the
