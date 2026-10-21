@@ -224,7 +224,10 @@ def test_publish_dry_run_prints_a_feature_branch_push_with_no_tags_and_no_force(
     code, output = _flow(checkout, "publish", "--dry-run")
     assert code == 0, output
     assert "dry-run: git fetch --quiet --no-tags public" in output
-    assert f"dry-run: git push --no-follow-tags public HEAD:refs/heads/{BRANCH}" in output
+    # The checked commit is pushed, never the symbolic HEAD.
+    assert (
+        f"dry-run: git push --no-follow-tags public {checkout.head}:refs/heads/{BRANCH}" in output
+    )
     assert f"publish: publication-gate .runs/publication-gate/{record.name}" in output
     assert "--force" not in output
     assert " +HEAD" not in output
@@ -280,6 +283,31 @@ def test_publish_refuses_a_release_branch(checkout: Checkout) -> None:
     code, output = _flow(checkout, "publish", "--dry-run")
     assert code == 1
     assert "publish: REFUSED RELEASE_BRANCH" in output
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        ("publish", "main", "ON_MAIN"),
+        ("publish", "release/2026-10-21", "RELEASE_BRANCH"),
+        ("pr", "main", "ON_MAIN"),
+        ("pr", "release/2026-10-21", "RELEASE_BRANCH"),
+    ],
+)
+def test_a_tag_of_the_same_name_never_hides_main_or_a_release_branch(
+    checkout: Checkout, case: tuple[str, str, str]
+) -> None:
+    command, branch, code = case
+    # A same-named tag makes `git symbolic-ref --short HEAD` print heads/<branch>.
+    git(checkout.path, "checkout", "-q", *(["-b"] if branch != "main" else []), branch)
+    git(checkout.path, "tag", branch)
+    assert git(checkout.path, "symbolic-ref", "--short", "HEAD") == f"heads/{branch}"
+    before = checkout.remote_branches()
+    exit_code, output = _flow(checkout, command, "--dry-run")
+    assert exit_code == 1
+    assert f"{command}: REFUSED {code}" in output
+    assert "git push" not in output
+    assert checkout.remote_branches() == before
 
 
 def test_publish_refuses_a_branch_not_based_on_public_main(

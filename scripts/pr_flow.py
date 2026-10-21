@@ -11,9 +11,9 @@ The remote and its main come from the publication gate's DEFAULT_BASE (`public/m
 remote's URL is the operator's git configuration and never appears in this repository; the
 GitHub OWNER/REPO that gh is given is read from it at run time.
 
-publish pushes HEAD to refs/heads/<current branch> on the remote with no tags and no force (no
-`+` in the refspec, no force option), so the remote accepts only a fast-forward. It never pushes
-main. It refuses with a named code, before anything leaves the clone:
+publish pushes HEAD's checked commit to refs/heads/<current branch> on the remote with no tags and
+no force (no `+` in the refspec, no force option), so the remote accepts only a fast-forward. It
+never pushes main. It refuses with a named code, before anything leaves the clone:
 
     DIRTY_TREE                 uncommitted or untracked changes: the gates judged HEAD alone
     DETACHED_HEAD              HEAD is not a branch, so there is no branch to push
@@ -253,7 +253,12 @@ def feature_branch(cmd: Commands, main: str) -> str:
     """Return HEAD's branch, refusing a detached HEAD, main and any release/* branch."""
     if cmd.status("git", "symbolic-ref", "-q", "HEAD") != 0:
         raise RefusedError("DETACHED_HEAD", "check out the feature branch to push")
-    branch = cmd.query("git", "symbolic-ref", "--short", "HEAD")
+    # The full ref, never --short: a tag of the same name turns the short name into heads/<name>,
+    # which would slip past the main and release/* guards.
+    ref = cmd.query("git", "symbolic-ref", "-q", "HEAD")
+    if not ref.startswith("refs/heads/"):
+        raise RefusedError("DETACHED_HEAD", "HEAD names no branch; check out the feature branch")
+    branch = ref.removeprefix("refs/heads/")
     if branch == main:
         raise RefusedError(
             "ON_MAIN", f"{main} changes only by merging a pull request (make merge-pr)"
@@ -376,7 +381,8 @@ def publish(cmd: Commands) -> None:
     require_clean_after(cmd)
 
     # No '+' in the refspec and no force option: the remote accepts only a fast-forward. No tags.
-    if not cmd.change("git", "push", "--no-follow-tags", remote, f"HEAD:refs/heads/{branch}"):
+    # The checked commit, not HEAD: a HEAD that moves after the checks is never what is pushed.
+    if not cmd.change("git", "push", "--no-follow-tags", remote, f"{head}:refs/heads/{branch}"):
         return
     listed = cmd.query("git", "ls-remote", remote, f"refs/heads/{branch}").split()
     if not listed or listed[0] != head:

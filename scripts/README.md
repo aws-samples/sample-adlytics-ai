@@ -423,9 +423,10 @@ make pr [TITLE=<subject>] [DRY_RUN=1]
 make merge-pr PR=<n> CONFIRM=yes [DELETE_BRANCH=yes] [DRY_RUN=1]
 ```
 
-- `publish` pushes HEAD to `refs/heads/<current branch>` with no tags and no force, so the remote
-  accepts only a fast-forward. It refuses a dirty tree, a detached HEAD, main, any `release/*`
-  branch, and a branch whose history does not contain the freshly fetched `public/main`. It reuses
+- `publish` pushes HEAD's checked commit to `refs/heads/<current branch>` with no tags and no
+  force, so the remote accepts only a fast-forward. It refuses a dirty tree, a detached HEAD,
+  main, any `release/*` branch (read from the full ref, so a same-named tag hides neither), and a
+  branch whose history does not contain the freshly fetched `public/main`. It reuses
   a passing, canonical, clean `publication-gate` record of HEAD on that tip, or runs
   `make publication-gate` with it as BASE. It then runs the gate's denylist and identity checks
   again on the range, and the denylist on the branch name, because a pushed branch name is public.
