@@ -5,7 +5,9 @@ Status: Accepted. Amended 2026-10-01: `make deploy-all` deploys every stack in `
 ([ADR-012](adr-012-stack-composition-and-config.md), amendment of that date). A person still
 runs it and still runs the gates; nothing runs either automatically. Amended 2026-10-20: public
 pushes go through local gates in three tiers, and tracked hooks add an early warning
-([amendment](#amendment-2026-10-20)).
+([amendment](#amendment-2026-10-20)). Amended 2026-10-21: feature branches are pushed, and main
+changes only by squash-merging a pull request after the release gate passed on its head
+([amendment](#amendment-2026-10-21)).
 
 ## Context
 
@@ -103,3 +105,32 @@ Every test and gate run writes a write-once [run record](../test-run-records.md)
 accepts only a record of the exact tree it examines. That is what makes a local gate's result
 citable without a pipeline, and lets the release gate reuse a recorded verify-clean rather than
 re-run it. The trigger to reopen this decision is unchanged: the first outside contributor.
+
+## Amendment (2026-10-21)
+
+The owner replaced squash-only releases with the common open-source flow. Before, a public release
+was one commit whose parent was the current public main, pushed straight to main, and no feature
+branch was ever published. Now feature branches are pushed to the public repository and reach
+main through pull requests. The rules are in
+[meta-delivery-git](../../.kiro/steering/meta-delivery-git.md#remotes-and-publication), and
+[CONTRIBUTING](../../CONTRIBUTING.md#run-the-gates) owns the tiers and the order of the workflow.
+
+- **Each tier keeps its gate; the third now guards the merge.** The commit and push tiers are
+  unchanged, and `make publish` now pushes only the current feature branch, never main. The
+  third tier, `make release-gate`, moves from before a push to before a merge, because a push no
+  longer changes main.
+- **The merge runs from the maintainer's clone and is gated.** `make merge-pr` squash-merges only
+  a pull request whose head is local HEAD and whose tree has a sealed passing release-gate
+  record, and only with the owner's explicit go. It then checks that main's new tree is the
+  head's tree, so the merged tree is the one the gate judged.
+- **Still no remote CI.** A pull request is now where a change is reviewed, but nothing remote runs
+  a gate on it. The rejection of "Keep it running on pull requests only" above still holds. The
+  repository's GitHub settings are managed outside this project, which neither changes nor relies
+  on them: `make merge-pr` and the owner's go are the enforcement.
+
+Rejected alternatives:
+
+- **Keep the single-commit push to main.** A change could then be read in public only once it was
+  already on main, with no pull request to review it against.
+- **Merge with GitHub's own merge control.** It checks neither the release-gate record of the head's
+  tree nor that the head is the commit the gates judged.
