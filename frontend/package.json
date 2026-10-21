@@ -48,7 +48,8 @@
     "source-map-js": "1.2.2",
     "typed-rest-client": {
       "qs": "6.16.0"
-    }
+    },
+    "vite": "8.2.4"
   },
   "//pins": {
     "no component library": "Deliberate. The production shell uses semantic React components and CSS variables without a runtime UI dependency.",
@@ -56,6 +57,7 @@
     "typescript": "5.9.3 to match infra/, where ts-jest forbids 7.x.",
     "overrides": "@next/eslint-plugin-next's fast-glob 3.3.1 is aliased to tinyglobby 0.2.17, already in the lockfile, so fast-glob, micromatch and braces 3.0.3 (GHSA-vfj7-8cjw-p6xm, no patched release) leave the lockfile (A-CVE-BRACES-DEV-001). The plugin calls it only when ESLint settings.next.rootDir is set, which test/eslint-config.test.ts keeps unset. Drop the alias once a patched braces ships. sharp 0.35.5 (GHSA-wq5f-xc86-pv6w, O-ASH-CVE-SHARP-001) and source-map-js 1.2.2 (GHSA-68fv-2mgg-jv7q, O-ASH-CVE-SOURCEMAP-001) are the first patched versions; sharp is next's optional dependency and unused by the unoptimized static export, and source-map-js is build-time CSS tooling. Drop each once every parent's range resolves to a patched version on its own.",
     "@stryker-mutator/core, @stryker-mutator/vitest-runner": "10.0.0, owner-approved 2026-10-19 for mutation testing (ADR-013); `make mutate` runs them. typed-rest-client 2.3.1 (Stryker's dashboard client, unused here) pins qs 6.15.1 (GHSA-q8mj-m7cp-5q26, GHSA-x5fp-wj9c-mxmx, GHSA-4mjr-xmp4-gh2g), so qs is lifted to 6.16.0, the first patched release, under it. Drop the override once Stryker depends on a typed-rest-client that resolves a patched qs on its own.",
+    "vite": "Overridden to 8.2.4 (owner-approved 2026-10-20), the first patched 8.2.x release for GHSA-698v-4r3x-3vcv, GHSA-r825-w8mm-5pxw and GHSA-587h-7wmj-h5pm (O-CVE-VITE-LAUNCH-EDITOR-DEV-001). Vite is dev-only, pulled in by vitest 4.1.11 (^6 || ^7 || ^8), and bundles launch-editor: 8.2.2 shipped 2.14.1, 8.2.4 ships 2.14.2. The advisories need Windows or WSL, and the built site contains no Vite code. vitest's range admits the vulnerable 8.x releases, so the override keeps a lockfile regeneration from resolving one; drop it once vitest's range excludes them.",
     "next": "16.3.8 is the first patched version for GHSA-cjq9-62q9-8jv4 and the five lower-rated advisories against 16.3.6 (O-ASH-CVE-NEXT-001).",
     "@types/node": "24.x to match the Node 24 LTS target.",
     "node": "Engine pinned to the Node 24 LTS line, enforced by engine-strict in .npmrc so a wrong runtime fails the install rather than warning. 26.x is Current, not LTS, and infra-style-cdk bans targeting it. 20.x is end-of-life."
