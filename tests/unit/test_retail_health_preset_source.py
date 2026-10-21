@@ -57,7 +57,7 @@ from adapters.retail_insight_requests import (
     retail_payload_without_ephemera,
 )
 from domain.measurement.planning import measure_alias
-from domain.measurement.ranking import RankedProjection
+from domain.measurement.ranking import RANKED_INVARIANT, RankedProjection
 from domain.narrative.shaped_response import UnitKind
 from domain.presentation.compared_metrics import presentation_labels
 from domain.presentation.currency_display import without_display_values
@@ -675,7 +675,7 @@ def test_a_ranked_read_that_disagrees_with_the_population_is_an_invariant(drift:
         _ranked_renderer(products, queries).render_retail_health(
             RetailHealthRenderInput(PERIOD, PRIOR)
         )
-    assert raised.value.code == retail_source_module.RANKED_READ_INVARIANT
+    assert raised.value.code == RANKED_INVARIANT
 
 
 @pytest.mark.covers("ADR-119")
