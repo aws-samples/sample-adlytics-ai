@@ -80,8 +80,8 @@ crashed dev on 2026-08-22, so a ceiling must stay finite.
    per read, at any catalog size.
 
 8. **`BAKE_MAX_ROWS` = 10,000, a memory-sized defect guard, not a product bound.** Measured by
-   the row-ceiling probe on dev on 2026-10-18 (09:08Z), on `feat/scale-limits` at the commit
-   carrying the probe:
+   the row-ceiling probe on dev on 2026-10-18 (09:08Z), at the commit that added the probe, before
+   any bake read switched to the result object:
    - P1, local `tracemalloc`, the maximum over 3 runs at 10,000, 30,000 and 50,000 rows of the two
      widest held shapes: B_raw 987 B, B_shaped 930 B, B_kept 241 B per row; B_render 10,467 B per
      product (the Retail render's own structures). With W = 4,096,000 B and Q = 10, every roster
@@ -112,6 +112,9 @@ for real catalogs because of a rule written for chat.
   identical rows from both transports, and a mid-stream failure as a dependency error.
 - `tests/unit/test_fold_answer_parity.py`: folds give the same figures, units, suppression and
   truncation as a held answer; a fold on an ineligible plan is refused.
+- `tests/unit/test_presentation_batch.py` and `tests/unit/test_athena_query_preflight.py`: a fold
+  slot keeps only its summary; slots over one request run one statement, each shaped as it
+  declared, whichever leads; a fold hands its sink the rows a held read keeps, on both transports.
 - Each bake source's tests: requests carry a bake kind; a 600-product catalog bakes its top 50 with
   the total; Retail runs 47 plans at every preset, its ranked order equals the order captured
   before the change, and its series reads return at most 50 × days rows; a truncated answer maps

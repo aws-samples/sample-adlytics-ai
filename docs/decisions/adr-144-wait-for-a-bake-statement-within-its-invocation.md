@@ -2,8 +2,8 @@
 Date: 2026-10-18
 Status: Proposed (2026-10-18). The owner approved on 2026-10-18 (UTC) a baker batch wait bounded by
 the remaining Lambda time, replacing the 30 s interactive abandon, plus a start-time retry on Athena
-throttling. Chat's Athena throttling is a separate owner decision; until it's made, chat is
-unchanged and the README lists it as a known limit.
+throttling. On the same date the owner approved chat's throttling separately (option 1): a chat
+or presentation start that Athena throttles retries for up to 10 s, inside chat's 30 s wait.
 
 ## Context
 The baker builds the same Athena adapter chat uses. That adapter abandons a statement after 30 s, a
@@ -48,7 +48,9 @@ project's dev environment can provision, and the legacy entry, which every other
    of the invocation timing out.
 3. **Throttled starts wait, briefly.** Under the bake policy, a `TooManyRequestsException` at start
    is retried with full-jitter exponential backoff (0.5 s base, 8 s cap) for up to 60 s, and never
-   past the deadline. Every other start error fails at once, as today. Each task's summary counts
+   past the deadline. Under the interactive policy the same backoff retries for up to 10 s. The
+   30 s deadline is fixed before the start, so the retries come out of it and at least 20 s remain
+   for the statement. Every other start error fails at once, as today. Each task's summary counts
    its throttled attempts.
 4. **A deadline timeout is the page's absence at once.** The timeout carries the policy name. On
    whichever receive it occurs, it's the page's isolated refusal (ADR-142), not a retry: the
@@ -62,7 +64,8 @@ on a batch caller fails correct work, and the cost of the fix is one parameter.
 ## Will be enforced by
 - `tests/unit/test_athena_execution.py`: throttled starts retried within the jitter bounds; past
   60 s or the deadline, a typed dependency error; another error fails at once; no retry without a
-  throttle window (the interactive control).
+  throttle window; the interactive window retries for 10 s and the bake's for 60 s, and a throttle
+  outlasting chat's 10 s fails (the inverted control).
 - `tests/unit/test_athena_query_preflight.py`: each policy's limit; the policy in the timeout
   context; no deadline is an invariant; a target without a policy doesn't construct.
 - `tests/unit/test_baker_composition.py`: the baker composes the bake policy.
@@ -83,7 +86,8 @@ on a batch caller fails correct work, and the cost of the fix is one parameter.
   publish together, so every page's publication waits for the slowest lane; past the 7,200 s
   protocol ceiling the existing stuck-flow alarm fires. On the legacy entry it delays only that
   page. No page's content is cut.
-- Chat's behaviour is unchanged until the owner decides chat's throttling.
+- A chat question whose statement start is throttled waits up to 10 s for a start instead of
+  failing at once. A sustained overload still fails the question within the 30 s, as before.
 
 ## Alternatives considered
 - **Keep 30 s and rely on retries and result reuse.** Rejected by (4): it's nondeterministic, and
