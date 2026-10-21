@@ -331,6 +331,18 @@ def test_publish_refuses_a_denylisted_message_without_printing_the_literal(
     assert "git push" not in output
 
 
+def test_publish_refuses_a_denylisted_branch_name_and_never_prints_it(
+    flow: ModuleType, checkout: Checkout
+) -> None:
+    git(checkout.path, "checkout", "-q", "-b", f"feat/{DENYLISTED.casefold()}")
+    _publication_record(flow, checkout)
+    code, output = _flow(checkout, "publish", "--dry-run")
+    assert code == 1
+    assert "REFUSED DENYLIST_HIT local-denylist.txt line 2 in the branch name" in output
+    assert DENYLISTED.casefold() not in output.casefold()
+    assert "git push" not in output
+
+
 def test_publish_refuses_an_absent_denylist(flow: ModuleType, checkout: Checkout) -> None:
     (checkout.path / "local-denylist.txt").unlink()
     _publication_record(flow, checkout)
@@ -391,7 +403,7 @@ def test_pr_dry_run_prints_the_create_with_the_branch_summary_and_gate_records(
     assert str(checkout.path) not in output
     # Only the read-only lookup reached the stub: the create was printed, not run.
     assert checkout.gh_calls() == [
-        f"pr list --repo {SLUG} --head {BRANCH} --state open --json number,url"
+        f"pr list --repo {SLUG} --head {BRANCH} --state open --json number,url,isCrossRepository"
     ]
 
 
@@ -403,6 +415,16 @@ def test_pr_dry_run_edits_the_open_pull_request(checkout: Checkout) -> None:
     assert f"dry-run: gh pr edit 7 --repo {SLUG} --title" in output
     assert "gh pr create" not in output
     assert [call.split()[:2] for call in checkout.gh_calls()] == [["pr", "list"]]
+
+
+def test_pr_never_edits_a_fork_pull_request_of_the_same_branch_name(checkout: Checkout) -> None:
+    checkout.push_branch()
+    fork = {"number": 9, "url": "https://github.com/fork/fixture/pull/9", "isCrossRepository": True}
+    checkout.serve("list.json", [fork])
+    code, output = _flow(checkout, "pr", "--dry-run")
+    assert code == 0, output
+    assert "gh pr edit" not in output
+    _create_line(output)
 
 
 def test_pr_titles_a_branch_of_several_commits_from_its_name(checkout: Checkout) -> None:
@@ -654,10 +676,11 @@ def test_merge_pr_refuses_without_a_sealed_passing_release_gate_record(
     elif record == "not-clean":
         checkout.record(flow, "release-gate", clean=False)
     elif record == "unsealed":
-        run_fields = {"canonical": True, "clean": True, "tree": checkout.tree}
-        flow.run_record.LiveRecord.begin(
-            "release-gate", run_fields, root=checkout.path / ".runs", heartbeat=False
-        )
+        # A passing record without its manifest: what a run still in progress, or a record
+        # edited after it was sealed, looks like to the recorder.
+        sealed = checkout.record(flow, "release-gate")
+        _make_writable(sealed)
+        (sealed / "manifest.json").unlink()
     exit_code, output = _flow(checkout, "merge-pr", *READY, "--dry-run")
     assert exit_code == 1
     assert "merge-pr: REFUSED RELEASE_GATE_MISSING" in output

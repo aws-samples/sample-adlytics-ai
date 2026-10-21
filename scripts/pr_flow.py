@@ -26,7 +26,8 @@ main. It refuses with a named code, before anything leaves the clone:
     PUBLICATION_GATE_FAILED    make publication-gate BASE=<remote>/main refused or wrote no record
     DENYLIST_MISSING, DENYLIST_EMPTY, DENYLIST_HIT, IDENTITY_NOT_ALLOWED
                                the publication gate's own denylist and identity checks, run again
-                               on the range: a reused gate record is no older than these checks
+                               on the range, and the denylist on the branch name: a reused gate
+                               record is no older than these checks
     CHECKOUT_CHANGED           HEAD or the working tree changed while the checks ran
     VERIFY_FAILED              after the push, the remote branch is not HEAD or the remote has tags
 
@@ -359,7 +360,14 @@ def publish(cmd: Commands) -> None:
     else:
         cmd.out("publish: dry-run: the push needs that run's passing record")
 
-    raise_first(cmd, "publish", range_refusals(cmd, span))
+    # The branch name is published with the push, so it passes the denylist like a message.
+    refusals = range_refusals(cmd, span)
+    refusals += [
+        r
+        for r in text_refusals(cmd.root, [("the branch name", branch)])
+        if r.code == "DENYLIST_HIT"
+    ]
+    raise_first(cmd, "publish", refusals)
     cmd.out("publish: denylist and identity ok")
 
     if cmd.query("git", "rev-parse", "HEAD") != head:
@@ -515,10 +523,12 @@ def open_pr(cmd: Commands, title: str | None) -> None:
             "--state",
             "open",
             "--json",
-            "number,url",
+            "number,url,isCrossRepository",
         )
         or "[]"
     )
+    # A fork's pull request from a branch of the same name is never this branch's.
+    found = [pr for pr in found if not pr.get("isCrossRepository")]
     with tempfile.TemporaryDirectory(prefix="pr-flow-") as work:
         body_file = Path(work) / "body.md"
         body_file.write_text(body, encoding="utf-8")
@@ -657,7 +667,8 @@ def fast_forward_main(cmd: Commands, new: str | None) -> None:
     local = cmd.query("git", "rev-parse", "--verify", local_ref)
     if new is not None and cmd.status("git", "merge-base", "--is-ancestor", local, new) != 0:
         raise RefusedError(
-            "MAIN_NOT_FAST_FORWARD", f"local {cmd.main} {local[:12]} is not in {new[:12]}'s history"
+            "MAIN_NOT_FAST_FORWARD",
+            f"the merge landed, but local {cmd.main} {local[:12]} is not in {new[:12]}'s history",
         )
     path = worktree_of(cmd, cmd.main)
     if path is not None:
@@ -757,7 +768,14 @@ def main(argv: list[str] | None = None) -> int:
     if top is None:
         sys.stderr.write(f"{args.command}: not in a git repository\n")
         return EXIT_USAGE
-    cmd = Commands(top, default_target(), dry_run=args.dry_run)
+    denylist = publication_gate.load_denylist(top)
+
+    def out(line: str) -> None:
+        # Every line passes the denylist redaction: a git or gh message may echo a branch or title.
+        sys.stdout.write(f"{publication_gate.redact(line, denylist)}\n")
+        sys.stdout.flush()
+
+    cmd = Commands(top, default_target(), dry_run=args.dry_run, out=out)
     try:
         if args.command == "publish":
             publish(cmd)
@@ -766,7 +784,8 @@ def main(argv: list[str] | None = None) -> int:
         else:
             merge_pr(cmd, MergeRequest(args.pr, args.confirm, args.delete_branch))
     except RefusedError as refusal:
-        sys.stderr.write(f"{args.command}: REFUSED {refusal.code} {refusal.detail}\n")
+        line = f"{args.command}: REFUSED {refusal.code} {refusal.detail}"
+        sys.stderr.write(f"{publication_gate.redact(line, denylist)}\n")
         return EXIT_REFUSED
     return 0
 
