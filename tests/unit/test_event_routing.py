@@ -6,9 +6,13 @@ without a deployed environment. The handlers they feed are not — those resolve
 settings at import and are verified in the integration tier, per ADR-014.
 
 The recurring theme: nothing here defaults a missing value into a permissive one.
-A malformed event must not become a GET, because GET is exempt from CSRF.
+A malformed event must not become a GET, because GET is exempt from CSRF. An entitlement
+reader grants only on its own claim reading exactly "true", so a wrong or absent claim can
+never grant prompt administration or operational status.
 """
 
+import json
+from collections.abc import Callable
 from typing import Any
 
 import pytest
@@ -102,6 +106,64 @@ class TestAuthorizerSubject:
         )
         with pytest.raises(IdentityError, match="subject"):
             events.authorizer_subject(event)
+
+
+_PROMPTS = "can_manage_prompts"
+_STATUS = "can_read_operational_status"
+_READERS = [
+    pytest.param(events.authorizer_can_manage_prompts, _PROMPTS, _STATUS, id="prompt-admin"),
+    pytest.param(
+        events.authorizer_can_read_operational_status, _STATUS, _PROMPTS, id="operational-status"
+    ),
+]
+_Reader = Callable[[dict[str, Any]], bool]
+
+
+def _authorized(context_json: str) -> dict[str, Any]:
+    """Build an event whose authorizer context arrives JSON-decoded, as API Gateway sends it.
+
+    Decoded strings are fresh objects, never the interned literal, so an identity comparison
+    against "true" cannot pass for the equality the readers must make.
+    """
+    return _event(
+        requestContext={
+            "http": {"method": "GET", "path": "/api/me"},
+            "authorizer": {"lambda": json.loads(context_json)},
+        }
+    )
+
+
+class TestAuthorizerEntitlements:
+    @pytest.mark.parametrize(("reader", "claim", "_other"), _READERS)
+    def test_its_own_claim_true_grants(self, reader: _Reader, claim: str, _other: str) -> None:
+        assert reader(_authorized(f'{{"subject": "sub-123", "{claim}": "true"}}')) is True
+
+    @pytest.mark.parametrize(("reader", "claim", "_other"), _READERS)
+    def test_its_own_claim_false_does_not_grant(
+        self, reader: _Reader, claim: str, _other: str
+    ) -> None:
+        assert reader(_authorized(f'{{"subject": "sub-123", "{claim}": "false"}}')) is False
+
+    @pytest.mark.parametrize(("reader", "_claim", "_other"), _READERS)
+    def test_an_absent_claim_does_not_grant(
+        self, reader: _Reader, _claim: str, _other: str
+    ) -> None:
+        assert reader(_authorized('{"subject": "sub-123"}')) is False
+
+    @pytest.mark.parametrize(("reader", "_claim", "other"), _READERS)
+    def test_the_other_entitlements_claim_does_not_grant(
+        self, reader: _Reader, _claim: str, other: str
+    ) -> None:
+        # Holding one entitlement must never grant the other.
+        assert reader(_authorized(f'{{"subject": "sub-123", "{other}": "true"}}')) is False
+
+    @pytest.mark.parametrize(("reader", "_claim", "_other"), _READERS)
+    def test_an_event_without_an_authorizer_context_raises(
+        self, reader: _Reader, _claim: str, _other: str
+    ) -> None:
+        # A malformed event is refused, never read as a plain "not entitled".
+        with pytest.raises(IdentityError, match="entitlement"):
+            reader(_event())
 
 
 class TestRouting:

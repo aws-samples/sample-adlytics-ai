@@ -628,6 +628,25 @@ def test_failure_a_validation_mismatch_is_an_invariant_with_zero_effect(
     assert seeded.world.metrics == [PUBLISH_INVARIANT]
 
 
+def test_failure_one_failed_pre_grant_unit_beside_succeeded_ones_is_an_invariant_with_zero_effect(
+    errors: list[BaseException],
+) -> None:
+    """Publish needs every pre-grant node succeeded; one success must not publish a partial run."""
+    seeded = _seeded(errors)
+    node = seeded.fake.items[(f"RUN#{seeded.world.run}", "NODE#write_unit:db.table_b")]
+    node["state"] = {"S": "FAILED"}  # materialize_raw and write_unit:db.table_a stay SUCCEEDED
+    writes = len(seeded.fake.publication_writes())
+    result = seeded.world.publish()
+    assert (result.acknowledge, result.outcome) == (False, "graph_publish_invariant")
+    (error,) = errors
+    assert isinstance(error, PublishInvariantError)
+    assert (str(error.code), error.reason) == ("ADLY-GRAPH_PUBLISH-0001", "pre_grant_not_succeeded")
+    assert len(seeded.fake.publication_writes()) == writes
+    assert all(_staged(seeded.fake, item) == [] for item in seeded.targets)
+    assert seeded.fake.pointer() is None
+    assert seeded.world.metrics == [PUBLISH_INVARIANT]
+
+
 def test_failure_bounded_frontier_conflicts_retry_without_parking(
     errors: list[BaseException],
 ) -> None:

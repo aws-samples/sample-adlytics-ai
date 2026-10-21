@@ -14,7 +14,7 @@ import { VisibleTabsContext } from '@/components/NextStepContext';
 import { PageAbsence } from '@/components/PageAbsence';
 import { scorecardRouteAdapter } from '@/components/ScorecardRouteAdapter';
 import { ScorecardControlsSkeleton, ScorecardSkeleton, ScorecardView } from '@/components/ScorecardView';
-import { formatCurrency, formatRatePercent, formatRatio } from '@/lib/exact-format';
+import { formatCurrency, formatRatio } from '@/lib/exact-format';
 import { bindingByRoute } from '@/lib/page-bindings';
 import { parsePresentationResultCalendarV2, scorecardPresentationV2 } from '@/lib/presentation-v2';
 import { PROVENANCE_READINGS } from '@/lib/provenance';
@@ -395,13 +395,31 @@ function servedStrings(fixture: unknown): Set<string> {
   return served;
 }
 
+/**
+ * The percent text each served rate in these fixtures must show: the rate times 100 at one
+ * place (ADR-121). Literals, never `formatRatePercent` itself, so a wrong scaling or rounding in
+ * the formatter shows up as stray text instead of being accepted as its own expectation.
+ */
+const RATE_PERCENT_TEXT: Readonly<Record<string, string>> = {
+  '0.0300': '3.0%',
+  '0.0450': '4.5%',
+  '0.0500': '5.0%',
+  '0.0550': '5.5%',
+  '0.0650': '6.5%',
+  '0.0750': '7.5%',
+};
+function ratePercentText(value: string): string {
+  const text = RATE_PERCENT_TEXT[value];
+  if (text === undefined) throw new Error(`no literal percent text for the served rate ${value}`);
+  return text;
+}
 /** The figure texts one decoded body may show, each from a served display value (or a served rate). */
 function servedFigures(artifact: NetworkScorecardArtifact | null): Set<string> {
   const shown = new Set<string>();
   const add = (figure: ScorecardFigure) => {
     for (const [value, display] of [[figure.value, figure.display_value], [figure.prior_value, figure.prior_display_value]] as const) {
       if (value === null) continue;
-      if (figure.format === 'percent') shown.add(formatRatePercent(value, 1));
+      if (figure.format === 'percent') shown.add(ratePercentText(value));
       else if (display !== null && figure.format === 'currency' && figure.currency_code !== null) shown.add(formatCurrency(display, figure.currency_code));
       else if (display !== null) shown.add(formatRatio(display));
     }

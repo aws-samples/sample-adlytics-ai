@@ -27,8 +27,10 @@ import {
   formatIsoDateRange,
   formatIsoInstant,
   formatPercent,
+  formatRatePercent,
   formatRatio,
 } from '@/lib/exact-format';
+import type * as ExactFormat from '@/lib/exact-format';
 
 async function expectNoAxeViolations(): Promise<void> {
   const results = await axeCore.run(document.body, {
@@ -59,6 +61,85 @@ test('exact formatters preserve every analytical digit and reject noncanonical i
   assert.throws(() => formatIsoDateRange('2026-08-17', '2026-08-11'), RangeError);
 });
 
+/**
+ * exact-format's month table and input patterns are module constants, built once at import. The
+ * tests that pin them read a fresh import, so they check the module as it loads in that test
+ * rather than a copy evaluated before the test began; a change switched on at test start (as the
+ * mutation runner does) would otherwise never reach them.
+ */
+async function freshExactFormat(): Promise<typeof ExactFormat> {
+  vi.resetModules();
+  return import('@/lib/exact-format');
+}
+// Gregorian months under their English three-letter labels, read from the calendar rather than
+// from exact-format's own table: first day, last day, and the day after the last (refused).
+const CALENDAR_2023 = [
+  ['2023-01-01', 'Jan 1, 2023', '2023-01-31', 'Jan 31, 2023', '2023-01-32'],
+  ['2023-02-01', 'Feb 1, 2023', '2023-02-28', 'Feb 28, 2023', '2023-02-29'],
+  ['2023-03-01', 'Mar 1, 2023', '2023-03-31', 'Mar 31, 2023', '2023-03-32'],
+  ['2023-04-01', 'Apr 1, 2023', '2023-04-30', 'Apr 30, 2023', '2023-04-31'],
+  ['2023-05-01', 'May 1, 2023', '2023-05-31', 'May 31, 2023', '2023-05-32'],
+  ['2023-06-01', 'Jun 1, 2023', '2023-06-30', 'Jun 30, 2023', '2023-06-31'],
+  ['2023-07-01', 'Jul 1, 2023', '2023-07-31', 'Jul 31, 2023', '2023-07-32'],
+  ['2023-08-01', 'Aug 1, 2023', '2023-08-31', 'Aug 31, 2023', '2023-08-32'],
+  ['2023-09-01', 'Sep 1, 2023', '2023-09-30', 'Sep 30, 2023', '2023-09-31'],
+  ['2023-10-01', 'Oct 1, 2023', '2023-10-31', 'Oct 31, 2023', '2023-10-32'],
+  ['2023-11-01', 'Nov 1, 2023', '2023-11-30', 'Nov 30, 2023', '2023-11-31'],
+  ['2023-12-01', 'Dec 1, 2023', '2023-12-31', 'Dec 31, 2023', '2023-12-32'],
+] as const;
+test('every month renders under its own three-letter label', async () => {
+  const fresh = await freshExactFormat();
+  for (const [first, label] of CALENDAR_2023) assert.equal(fresh.formatIsoDate(first), label, first);
+});
+test('every month accepts its last day and refuses the day after it', async () => {
+  const fresh = await freshExactFormat();
+  for (const [, , last, label, after] of CALENDAR_2023) {
+    assert.equal(fresh.formatIsoDate(last), label, last);
+    assert.throws(() => fresh.formatIsoDate(after), RangeError, after);
+  }
+});
+test('29 February exists only in Gregorian leap years', () => {
+  assert.equal(formatIsoDate('2024-02-29'), 'Feb 29, 2024'); // divisible by 4
+  assert.equal(formatIsoDate('2000-02-29'), 'Feb 29, 2000'); // divisible by 400
+  assert.throws(() => formatIsoDate('2100-02-29'), RangeError); // by 100 and not by 400
+  assert.throws(() => formatIsoDate('2023-02-29'), RangeError); // not divisible by 4
+});
+test('formatRatePercent shows a served rate times 100 at the asked places', () => {
+  // A served rate is a fraction: 0.0450 is 4.5%, never 0.0450%.
+  assert.equal(formatRatePercent('0.0450', 1), '4.5%');
+  assert.equal(formatRatePercent('1', 0), '100%');
+  assert.equal(formatRatePercent('0.5', 2), '50.00%'); // more places shown than served
+  assert.equal(formatRatePercent('0', 2), '0.00%');
+});
+test('formatRatePercent rounds half up for display only', () => {
+  // 0.0725% at three places: exactly half rounds up, just under half rounds down.
+  assert.equal(formatRatePercent('0.000725', 3), '0.073%');
+  assert.equal(formatRatePercent('0.000724', 3), '0.072%');
+  assert.equal(formatRatePercent('12.3456', 0), '1,235%'); // 1,234.56% to a grouped whole percent
+});
+test('formatRatePercent keeps a served sign unless the shown figure rounds to zero', () => {
+  assert.equal(formatRatePercent('-0.0450', 1), '-4.5%');
+  assert.equal(formatRatePercent('+0.0450', 1), '+4.5%');
+  assert.equal(formatRatePercent('-0.0000004', 1), '0.0%');
+});
+test('decimal, date and instant inputs must match whole: nothing before or after is ignored', async () => {
+  const fresh = await freshExactFormat();
+  // Controls: the same values without the extra characters are accepted.
+  assert.equal(fresh.formatCanonicalDecimal('1234'), '1,234');
+  assert.equal(fresh.formatCanonicalDecimal('-10.25'), '-10.25');
+  assert.equal(fresh.formatIsoDate('2024-01-05'), 'Jan 5, 2024');
+  assert.equal(fresh.formatIsoInstant('2026-10-09T21:06:31Z'), '2026-10-09 21:06:31 UTC');
+  for (const [format, value] of [
+    [fresh.formatCanonicalDecimal, 'x1234'],
+    [fresh.formatCanonicalDecimal, '1234x'],
+    [fresh.formatIsoDate, 'x2024-01-05'],
+    [fresh.formatIsoDate, '2024-01-05x'],
+    [fresh.formatIsoInstant, 'x2026-10-09T21:06:31Z'],
+    [fresh.formatIsoInstant, '2026-10-09T21:06:31Zx'],
+  ] as const) {
+    assert.throws(() => format(value), RangeError, value);
+  }
+});
 test('formatIsoInstant prints a whole-second UTC instant and refuses anything else', () => {
   assert.equal(formatIsoInstant('2026-10-09T21:06:31Z'), '2026-10-09 21:06:31 UTC');
   assert.equal(formatIsoInstant('2028-02-29T00:00:00Z'), '2028-02-29 00:00:00 UTC');
