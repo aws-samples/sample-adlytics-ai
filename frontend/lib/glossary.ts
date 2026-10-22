@@ -8,6 +8,8 @@
 const METRIC_LABELS: Readonly<Record<string, string>> = {
   ad_spend: 'Ad spend',
   amazon_margin_proxy: "Amazon's margin on your products (not yours)",
+  // UX sweep fix 7 (T1L-9): the curve is cumulative, so it reads "by then", unlike the cohort grid.
+  cumulative_repeat_rate_account_ids: 'Bought again by then · signed-in shoppers',
   glance_views: 'Product page views',
   portfolio_roas_attributed_14d: 'Return on ad spend',
   purchaser_rate_index_vs_sponsored_only: 'Purchase rate compared with sponsored-only shoppers',

@@ -73,7 +73,7 @@ the shared chart pattern.
 |---|---|
 | Standard-path grid | "{group} · ad-touched repeat only. Understates true repeat. Month 0 repeats are excluded." |
 | Paid-path grid | "All Amazon purchases · Amazon account IDs only" |
-| Curve | "Cumulative repeat rate · Amazon account IDs" |
+| Curve | "Cumulative repeat rate · Amazon account IDs" (served); rendered as "Bought again by then · signed-in shoppers" through the glossary by its metric id (UI refresh, UX sweep fix 7, T1L-9). Since then the curve renders first, above the cohort grid, whose heading reads "By cohort: bought again in that period" with one line: "Each cell counts repeat buyers in that period only; the curve above adds up every period so far." The scope band and the quarterly grain note read as one plain line |
 | Scope band | "Cohorts as of {vintage}, grouped by {month or quarter}: acquired {first} to {last}, with repeat {months or quarters} through {last}." (revised at `2026-10-09.2` to name the cohort grain) |
 | Pointer | "For all repeat purchases per product, reported by Amazon Brand Analytics, see Repeat purchase by product." |
 

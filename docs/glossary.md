@@ -114,6 +114,7 @@ The words customer pages show for a governed metric whose served label is jargon
 | `roas_attributed_14d`, `portfolio_roas_attributed_14d` | Return on ad spend |
 | `roas_attributed_incl_halo_14d` | Return incl. other products of your brand |
 | `tacos` | Ad spend as a share of shipped sales |
+| `cumulative_repeat_rate_account_ids` (Retention curve heading) | Bought again by then · signed-in shoppers |
 | `glance_views` | Product page views |
 | `revenue_per_glance_view` | Revenue per product page view |
 | `amazon_margin_proxy` | Amazon's margin on your products (not yours) |

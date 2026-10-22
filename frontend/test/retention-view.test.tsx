@@ -123,7 +123,7 @@ test('two markets each lead with their marketplace heading and distinct landmark
   const regions = screen.getAllByRole('region').map((region) => region.getAttribute('aria-label') ?? '');
   assert.equal(new Set(regions.filter((name) => name.startsWith('Share of each cohort'))).size, 2);
   for (const market of ['US', 'UK'] as const) {
-    for (const section of ['Repeat purchase by cohort', 'Insights']) assert.ok(screen.getByRole('region', { name: `${market} marketplace ${section}` }));
+    for (const section of ['By cohort: bought again in that period', 'Insights']) assert.ok(screen.getByRole('region', { name: `${market} marketplace ${section}` }));
     assert.ok(screen.getByRole('region', { name: `Share of each cohort that bought again, by period after acquisition · ${market} marketplace` }));
   }
   view.unmount();
@@ -131,5 +131,5 @@ test('two markets each lead with their marketplace heading and distinct landmark
   render(<RetentionView artifact={parseRetentionCohortArtifact(retentionFixture())} />);
   assert.equal(screen.queryByRole('heading', { name: /marketplace$/ }), null);
   assert.ok(screen.getByRole('region', { name: 'Share of each cohort that bought again, by period after acquisition' }));
-  assert.ok(screen.getByRole('region', { name: 'Repeat purchase by cohort' }));
+  assert.ok(screen.getByRole('region', { name: 'By cohort: bought again in that period' }));
 });
