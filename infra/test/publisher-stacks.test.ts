@@ -5,7 +5,7 @@ import * as path from 'node:path';
 
 import * as cdk from 'aws-cdk-lib';
 import { Template } from 'aws-cdk-lib/assertions';
-import { OPERATOR_ONLY_DENIED_ACTIONS, ROUTES } from '../lib/generated/execution-graph-protocol';
+import { OPERATOR_ONLY_DENIED_ACTIONS, PROTOCOL_VERSION, ROUTES } from '../lib/generated/execution-graph-protocol';
 import { dataBucketName } from '../lib/mixins/storage';
 import {
   PublisherStack,
@@ -13,10 +13,16 @@ import {
   publisherDeploymentGeneration,
 } from '../lib/stacks/publisher-stack';
 import { paramPath, semanticV2AthenaWorkgroupName, semanticV2DatabaseName } from '../lib/config';
+import { BAKE_ALARMS, BAKE_ALARM_PERIOD_SECONDS } from '../lib/stacks/execution-graph-alarms';
 import { everyTemplate, resourcesOfType } from './support/templates';
 import { TEST_CONFIG, configWith } from './support/config';
 import { grantsOfRoleLogicalId, listBucketPrefixes, resultPrefixGrants } from './support/iam';
-import { alarmsOnQueue, expectArrivalAlarm, expectBoundedStreamConsumer } from './support/async-failure';
+import {
+  alarmsOnQueue,
+  expectArrivalAlarm,
+  expectBoundedStreamConsumer,
+  staffedActionIn,
+} from './support/async-failure';
 
 type Props = Record<string, unknown>;
 const store = everyTemplate().PublisherArtifactStoreStack as Record<string, unknown>;
@@ -624,5 +630,77 @@ describe('preset artifact publisher failure paths (ADR-133)', () => {
       queueName: 'adlytics-dev-preset-bake-dlq.fifo',
       staffed: { arm: 'published' },
     });
+  });
+});
+
+describe('ADR-142 bake alarms in the publisher stack (A1)', () => {
+  type Resource = { Type: string; Properties: Record<string, unknown> };
+  function alarmsNamed(template: Record<string, unknown>, name: string): Resource[] {
+    const resources = template.Resources as Record<string, Resource>;
+    return Object.values(resources).filter(
+      (resource) => resource.Type === 'AWS::CloudWatch::Alarm' && resource.Properties.AlarmName === name,
+    );
+  }
+  function expectBakeAlarms(template: Record<string, unknown>): void {
+    for (const spec of BAKE_ALARMS) {
+      const { Tags: tags, ...alarm } = only(
+        alarmsNamed(template, `adlytics-dev-${spec.suffix}`),
+        spec.id,
+      ).Properties;
+      expect(Array.isArray(tags)).toBe(true); // the standard tags, applied stack-wide
+      const staffed = staffedActionIn(template, { arm: 'published' });
+      expect(alarm).toEqual({
+        AlarmName: `adlytics-dev-${spec.suffix}`,
+        AlarmDescription: spec.description,
+        Namespace: 'Adlytics',
+        MetricName: spec.metricName,
+        Dimensions: [
+          { Name: 'AuthorityScope', Value: 'live' },
+          { Name: 'Protocol', Value: PROTOCOL_VERSION },
+        ],
+        Statistic: 'Maximum',
+        Period: BAKE_ALARM_PERIOD_SECONDS,
+        Threshold: 1,
+        ComparisonOperator: 'GreaterThanOrEqualToThreshold',
+        EvaluationPeriods: 1,
+        DatapointsToAlarm: 1,
+        TreatMissingData: 'notBreaching',
+        AlarmActions: [staffed],
+        OKActions: [staffed],
+      });
+    }
+  }
+
+  it('declares exactly the two approved alarms, with the backfill and re-bake texts', () => {
+    expect(BAKE_ALARMS.map((spec) => [spec.id, spec.metricName])).toEqual([
+      ['BakeIsolatedRefusalLimit', 'BakeIsolatedRefusalLimit'],
+      ['BakeTaskOverBudget', 'BakeTaskOverBudget'],
+    ]);
+    const [limit] = BAKE_ALARMS;
+    expect(limit?.description).toContain('declarative re-bake');
+    expect(limit?.description).toContain('quarter-manifest backfill');
+  });
+
+  it('builds both in a synth without the graph authority (an adopter deployment)', () => {
+    expect(graphStatementsOf(publisher, 'adapters.jobs.preset_artifact_publisher.baker.handler')).toEqual([]);
+    expectBakeAlarms(publisher);
+  });
+
+  it("builds both in dev's synth with the graph authority", () => {
+    expectBakeAlarms(provisionedPublisher());
+  });
+
+  it('control: the data-class refusal metric is counted, never alarmed', () => {
+    const resources = Object.values(publisher.Resources as Record<string, Resource>);
+    expect(
+      resources.filter(
+        (resource) => resource.Type === 'AWS::CloudWatch::Alarm'
+          && resource.Properties.MetricName === 'BakeIsolatedRefusalData',
+      ),
+    ).toEqual([]);
+    // And a changed field is caught: the same alarm with another threshold fails the shape.
+    const spec = BAKE_ALARMS[0]!;
+    const alarm = only(alarmsNamed(publisher, `adlytics-dev-${spec.suffix}`), spec.id).Properties;
+    expect({ ...alarm, Threshold: 2 }).not.toEqual(alarm);
   });
 });
