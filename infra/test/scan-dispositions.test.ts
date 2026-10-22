@@ -73,6 +73,23 @@ describe('scan dispositions', () => {
     expect(all.filter((d) => !/^[A-Z]-[A-Z0-9-]+-\d{3}\b/.test(d.reason))).toEqual([]);
   });
 
+  it('exempts the ADR-149 staging bucket from versioning by path, not by type', () => {
+    const checkovSkips = (entry: Json): { id: string; comment: string }[] =>
+      (((entry.Metadata ?? {}) as Json).checkov as Json | undefined)?.skip as never ?? [];
+    const staging = resources.filter((r) => r.key === 'DataV2Stack:SemanticV2StagingBucket/Resource');
+    expect(staging).toHaveLength(1);
+    const entry = staging[0]!.entry;
+    expect((entry.Properties as Json).VersioningConfiguration).toBeUndefined();
+    expect(checkovSkips(entry)).toContainEqual({
+      id: 'CKV_AWS_21',
+      comment: BY_PATH['DataV2Stack:SemanticV2Bucket/Resource']![0]!.reason,
+    });
+    // Control: the versioned raw bucket carries no CKV_AWS_21 skip, so the rule is not by type.
+    const raw = resources.filter((r) => r.key === 'DataV2Stack:SemanticV2RawBucket/Resource');
+    expect(raw).toHaveLength(1);
+    expect((raw[0]!.entry.Properties as Json).VersioningConfiguration).toEqual({ Status: 'Enabled' });
+    expect(checkovSkips(raw[0]!.entry).map((skip) => skip.id)).not.toContain('CKV_AWS_21');
+  });
   it('writes metadata only, with a paired control', () => {
     const build = (withAspect: boolean): Json => {
       const app = new cdk.App();

@@ -272,6 +272,14 @@ export interface DataConfig {
    * this is purely a cost dial.
    */
   readonly athenaResultsExpireAfterDays: number;
+  /**
+   * Days before an ADR-149 staged table unit is deleted (owner decision ING-RETENTION, R1: 7).
+   *
+   * A derived transport copy, re-rendered from the immutable objects on any later receive and
+   * read only seconds to minutes after its write; not authority, so the indefinite Stage-1
+   * retention does not apply.
+   */
+  readonly stagingExpireAfterDays: number;
 }
 
 /** AgentCore Runtime model configuration and per-turn resource ceilings. */
@@ -1205,6 +1213,7 @@ export function defaultConfig(envName: string): AppConfig {
       rawExpireNoncurrentVersionsAfterDays: 90,
       abortIncompleteUploadsAfterDays: 7,
       athenaResultsExpireAfterDays: 30,
+      stagingExpireAfterDays: 7,
     },
 
     landing: envFlag('ADLYTICS_PRODUCER_ONBOARDING_ENABLED')
@@ -1649,6 +1658,16 @@ export const PARAMS = {
     name: 'v2/canonical-current-glue-database',
     producedBy: 'DataV2Stack',
   },
+  semanticV2StagingBucketName: {
+    area: 'data',
+    name: 'v2/staging-bucket',
+    producedBy: 'DataV2Stack',
+  },
+  semanticV2StagingDatabase: {
+    area: 'data',
+    name: 'v2/staging-glue-database',
+    producedBy: 'DataV2Stack',
+  },
   publisherArtifactBucketName: {
     area: 'publisher',
     name: 'artifact-bucket-name',
@@ -2065,6 +2084,17 @@ export function semanticV2DatabaseName(
   const normalized = envName.replace(/-/g, '_');
   const suffix = layer === 'source-aligned' ? 'source_aligned' : layer;
   return `adlytics_${normalized}_v2_${suffix}`;
+}
+
+/**
+ * ADR-149: the one Glue database holding the generated staging tables.
+ *
+ * A separate function rather than a fourth `SemanticV2DatabaseLayer`, so no code that enumerates
+ * the layers grants it by accident: only `grantStagingStorage` names it.
+ */
+export function semanticV2StagingDatabaseName(envName: string): string {
+  assertValidEnvName(envName);
+  return `adlytics_${envName.replace(/-/g, '_')}_v2_staging`;
 }
 
 /**

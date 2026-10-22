@@ -166,6 +166,16 @@
       "name": "v2/canonical-current-glue-database",
       "producedBy": "DataV2Stack"
     },
+    "semanticV2StagingBucketName": {
+      "area": "data",
+      "name": "v2/staging-bucket",
+      "producedBy": "DataV2Stack"
+    },
+    "semanticV2StagingDatabase": {
+      "area": "data",
+      "name": "v2/staging-glue-database",
+      "producedBy": "DataV2Stack"
+    },
     "publisherArtifactBucketName": {
       "area": "publisher",
       "name": "artifact-bucket-name",

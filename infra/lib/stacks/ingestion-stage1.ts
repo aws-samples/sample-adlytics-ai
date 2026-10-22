@@ -18,10 +18,12 @@ import {
   paramPath,
   semanticV2AthenaWorkgroupName,
   semanticV2DatabaseName,
+  semanticV2StagingDatabaseName,
   semanticV2StateTableName,
   validateIngestionConfig,
 } from '../config';
 import { PROVIDER_ATTEMPT_RECONCILER_RESERVED_CONCURRENCY } from '../config/athena-start-budget';
+import { STAGING_TABLE_NAMES } from '../constructs/data-lake/staging-table';
 import { ROUTES } from '../generated/execution-graph-protocol';
 import { dataBucketName } from '../mixins/storage';
 import { grantSpanExport, tracingEnvironment } from '../telemetry';
@@ -193,6 +195,64 @@ export function stage1LimitsEnvironment(config: AppConfig): Record<string, strin
   };
 }
 
+/**
+ * ADR-149 (ING-IAM): the staging grants of one principal, written into its own
+ * `<Principal>StagingPolicy` so no existing policy's size moves.
+ *
+ * `write: true` adds `s3:PutObject` (the stager; a 412 HEAD needs only `s3:GetObject`). Athena
+ * reads staged rows with the caller's credentials, so every principal that starts or replays a
+ * MERGE or verification also lists `<table>/<key>/` (conditioned on exactly the 54 table prefixes),
+ * resolves the bucket region and plans the staging table. No `s3:DeleteObject` (the lifecycle
+ * expires objects), no KMS (SSE-S3), no workgroup and no Glue write. No reader role calls this.
+ */
+export function grantStagingStorage(
+  config: AppConfig,
+  principal: iam.IGrantable,
+  options: { readonly write: boolean },
+  into: iam.ManagedPolicy,
+): void {
+  const stack = cdk.Stack.of(into);
+  const bucket = `arn:${stack.partition}:s3:::${dataBucketName(config, 'v2-staging')}`;
+  const database = semanticV2StagingDatabaseName(config.envName);
+  const glueArn = (resource: string): string =>
+    `arn:${stack.partition}:glue:${stack.region}:${stack.account}:${resource}`;
+  into.addStatements(
+    new iam.PolicyStatement({
+      actions: options.write ? ['s3:PutObject', 's3:GetObject'] : ['s3:GetObject'],
+      resources: [`${bucket}/*`],
+    }),
+    new iam.PolicyStatement({
+      actions: ['s3:ListBucket'],
+      resources: [bucket],
+      conditions: {
+        StringLike: { 's3:prefix': STAGING_TABLE_NAMES.map((table) => `${table}/*`) },
+      },
+    }),
+    new iam.PolicyStatement({ actions: ['s3:GetBucketLocation'], resources: [bucket] }),
+    new iam.PolicyStatement({
+      actions: ['glue:GetDatabase', 'glue:GetTable'],
+      resources: [glueArn('catalog'), glueArn(`database/${database}`), glueArn(`table/${database}/*`)],
+    }),
+  );
+  const role = principal.grantPrincipal;
+  if (!(role instanceof iam.Role)) {
+    throw new Error('grantStagingStorage attaches its policy to the principal\'s own role.');
+  }
+  into.attachToRole(role);
+}
+
+/**
+ * ADR-149: the staging bucket and database, for the two runtimes that stage and verify (the
+ * TableWriter and the delivery function). Every other function resolves `Settings` with both
+ * blank, so none of them gains a name it has no grant for.
+ */
+export function stagingEnvironment(config: AppConfig): Record<string, string> {
+  return {
+    ADL_SEMANTIC_V2_STAGING_BUCKET: dataBucketName(config, 'v2-staging'),
+    ADL_SEMANTIC_V2_STAGING_DATABASE: semanticV2StagingDatabaseName(config.envName),
+  };
+}
+
 /** The handoff custom resources and the provider subtree `orderHandoff` excludes. */
 interface HandoffResources {
   readonly prepare: cdk.CfnResource;
@@ -268,6 +328,7 @@ export class IngestionStage1 extends Construct {
       reservedConcurrency: ingestion.tableWriterConcurrency,
       environment: {
         ...this.semanticEnvironment(config),
+        ...stagingEnvironment(config),
         ...this.stage1Limits(config),
         ADL_SEMANTIC_WRITE_QUEUE_URL: this.semanticWriteQueue.queueUrl,
         ...this.graphEnvironment(props),
@@ -287,6 +348,11 @@ export class IngestionStage1 extends Construct {
     });
     this.grantSemanticStorage(config, this.tableWriter, writerStorage);
     this.tableWriter.node.addDependency(writerStorage);
+    const writerStaging = new iam.ManagedPolicy(this, 'TableWriterStagingPolicy', {
+      description: 'ADR-149 staged table units: write once, read, list and plan for TableWriter.',
+    });
+    grantStagingStorage(config, this.tableWriter, { write: true }, writerStaging);
+    this.tableWriter.node.addDependency(writerStaging);
     this.addDirectReads(this.tableWriter, publicationsArn, ['TABLE_ATTEMPT#*', 'WRITE_PLAN#*', 'STATUS_FLOW#*', ...this.datasetKeys()]);
     this.addDirectReads(this.tableWriter, leasesArn, ['TABLE#*']);
     this.addFlowRootClockQuery(this.tableWriter, publicationsArn);
@@ -359,6 +425,12 @@ export class IngestionStage1 extends Construct {
     // replay's Glue/S3 grants, on the same typed resources as the table writer (§5).
     this.grantSemanticStorage(config, this.providerAttemptReconciler);
     this.grantReplayPersistedBatchEnvelopes(config, this.providerAttemptReconciler);
+    // ADR-149: a replayed MERGE or verification reads staged rows; the reconciler never stages.
+    const reconcilerStaging = new iam.ManagedPolicy(this, 'ProviderAttemptReconcilerStagingPolicy', {
+      description: 'ADR-149 staged table units: read, list and plan for a replayed statement.',
+    });
+    grantStagingStorage(config, this.providerAttemptReconciler, { write: false }, reconcilerStaging);
+    this.providerAttemptReconciler.node.addDependency(reconcilerStaging);
 
     this.planIntentReconciler = this.functionWithLogs(props, {
       id: 'PlanIntentReconciler',
@@ -1059,6 +1131,11 @@ export class IngestionStage1 extends Construct {
       ),
     }));
     this.grantSemanticStorage(config, role);
+    // ADR-149 (D7): the operator jobs write through the same staged path as the TableWriter.
+    const operatorStaging = new iam.ManagedPolicy(this, 'SemanticProjectionOperatorStagingPolicy', {
+      description: 'ADR-149 staged table units for the semantic projection operators.',
+    });
+    grantStagingStorage(config, role, { write: true }, operatorStaging);
     this.addDirectReads(role, publicationsArn, [
       'TABLE_ATTEMPT#*',
       'STATUS_FLOW#*',

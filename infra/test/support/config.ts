@@ -42,6 +42,7 @@ export const TEST_CONFIG: AppConfig = {
     rawExpireNoncurrentVersionsAfterDays: 90,
     abortIncompleteUploadsAfterDays: 7,
     athenaResultsExpireAfterDays: 30,
+    stagingExpireAfterDays: 7,
   },
   landing: {
     enabled: true,

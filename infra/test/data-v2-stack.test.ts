@@ -10,8 +10,11 @@ import {
   paramPath,
   semanticV2AthenaWorkgroupName,
   semanticV2DatabaseName,
+  semanticV2StagingDatabaseName,
   semanticV2StateTableName,
 } from '../lib/config';
+import { loadGeneratedV2Storage } from '../lib/constructs/data-lake/generated-tables';
+import { STAGING_TABLE_NAMES, stagingTables } from '../lib/constructs/data-lake/staging-table';
 import { dataBucketName } from '../lib/mixins/storage';
 import { DataV2Stack } from '../lib/stacks/data-v2-stack';
 import { TEST_CONFIG } from './support/config';
@@ -109,11 +112,17 @@ describe('isolated retained Semantic V2 storage', () => {
     }
   });
 
-  it('creates exactly every generated source, candidate and current table', () => {
+  it('creates exactly every generated source, candidate and current table, and their staging twins', () => {
+    const staging = new Set([
+      ...generated.sourceAlignedTables.map((table) => table.name),
+      ...generated.canonicalCandidateTables.map((table) => table.name),
+    ]).size;
+    expect(staging).toBe(54);
     const expected =
       generated.sourceAlignedTables.length +
       generated.canonicalCandidateTables.length +
-      generated.canonicalCurrentTables.length;
+      generated.canonicalCurrentTables.length +
+      staging;
     synth().resourceCountIs('AWS::Glue::Table', expected);
   });
 
@@ -159,8 +168,13 @@ describe('isolated retained Semantic V2 storage', () => {
     }
   });
 
-  it('uses isolated raw, semantic, and Athena-results buckets', () => {
-    synth().resourceCountIs('AWS::S3::Bucket', 3);
+  it('uses isolated raw, semantic, Athena-results and staging buckets', () => {
+    synth().resourceCountIs('AWS::S3::Bucket', 4);
+    const staging = Object.values(synth().findResources('AWS::S3::Bucket', {
+      Properties: { BucketName: `adlytics-dev-v2-staging-${TEST_CONFIG.account}` },
+    })) as Record<string, any>[];
+    expect(staging).toHaveLength(1);
+    expect(staging[0]?.Properties.VersioningConfiguration).toBeUndefined();
     synth().hasResourceProperties('AWS::S3::Bucket', {
       BucketName: `adlytics-dev-semantic-v2-raw-${TEST_CONFIG.account}`,
       VersioningConfiguration: { Status: 'Enabled' },
@@ -301,6 +315,8 @@ describe('isolated retained Semantic V2 storage', () => {
       'semanticV2SourceDatabase',
       'semanticV2CandidateDatabase',
       'semanticV2CurrentDatabase',
+      'semanticV2StagingBucketName',
+      'semanticV2StagingDatabase',
     ] as const;
     synth().resourceCountIs('AWS::SSM::Parameter', keys.length);
     for (const key of keys) {
@@ -334,5 +350,120 @@ describe('isolated retained Semantic V2 storage', () => {
         expect(resource.UpdateReplacePolicy).toBe('Retain');
       }
     }
+  });
+});
+
+describe('ADR-149 staging storage (ING-INFRA, T-14)', () => {
+  const bucket = `adlytics-dev-v2-staging-${TEST_CONFIG.account}`;
+  const database = semanticV2StagingDatabaseName('dev');
+  const stagingTablesOf = (template: Template): Props[] =>
+    Object.values(template.findResources('AWS::Glue::Table'))
+      .map((resource) => (resource as Props).Properties as Props)
+      .filter((properties) => properties.DatabaseName === database);
+
+  it('creates one all-string external table per distinct physical table name', () => {
+    const template = synth();
+    template.hasResourceProperties('AWS::Glue::Database', {
+      DatabaseInput: { Name: database, LocationUri: `s3://${bucket}/` },
+    });
+    const tables = stagingTablesOf(template);
+    expect(tables.map((table) => table.TableInput.Name).sort()).toEqual([...STAGING_TABLE_NAMES]);
+    const byName = new Map(
+      [...generated.sourceAlignedTables, ...generated.canonicalCandidateTables].map((table) => [
+        table.name,
+        table,
+      ]),
+    );
+    for (const table of tables) {
+      const input = table.TableInput as Props;
+      const source = byName.get(input.Name as string)!;
+      expect(input.TableType).toBe('EXTERNAL_TABLE');
+      expect(input.PartitionKeys).toEqual([{ Name: 'staging_key', Type: 'string' }]);
+      expect(input.Parameters).toEqual({
+        classification: 'json',
+        'projection.enabled': 'true',
+        'projection.staging_key.type': 'injected',
+        'storage.location.template': `s3://${bucket}/${input.Name}/\${staging_key}/`,
+      });
+      const descriptor = input.StorageDescriptor as Props;
+      expect(descriptor.Columns).toEqual([
+        ...source.columns.map((column) => ({ Name: column.name, Type: 'string' })),
+        { Name: 'stg_ordinal', Type: 'string' },
+      ]);
+      expect(descriptor.Location).toBe(`s3://${bucket}/${input.Name}/`);
+      expect(descriptor.InputFormat).toBe('org.apache.hadoop.mapred.TextInputFormat');
+      expect(descriptor.OutputFormat).toBe('org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat');
+      expect(descriptor.SerdeInfo).toEqual({
+        SerializationLibrary: 'org.openx.data.jsonserde.JsonSerDe',
+        Parameters: { 'ignore.malformed.json': 'false' },
+      });
+    }
+  });
+
+  it('keeps staged units in a private, encrypted, TLS-only bucket that expires them', () => {
+    const template = synth();
+    template.hasResourceProperties('AWS::S3::Bucket', {
+      BucketName: bucket,
+      BucketEncryption: {
+        ServerSideEncryptionConfiguration: [
+          { ServerSideEncryptionByDefault: { SSEAlgorithm: 'AES256' } },
+        ],
+      },
+      PublicAccessBlockConfiguration: {
+        BlockPublicAcls: true,
+        BlockPublicPolicy: true,
+        IgnorePublicAcls: true,
+        RestrictPublicBuckets: true,
+      },
+      LifecycleConfiguration: {
+        Rules: [
+          {
+            Id: 'expire-staged-units',
+            Status: 'Enabled',
+            ExpirationInDays: TEST_CONFIG.data.stagingExpireAfterDays,
+          },
+          {
+            Id: 'abort-incomplete-multipart-uploads',
+            Status: 'Enabled',
+            AbortIncompleteMultipartUpload: {
+              DaysAfterInitiation: TEST_CONFIG.data.abortIncompleteUploadsAfterDays,
+            },
+          },
+        ],
+      },
+    });
+    expect(TEST_CONFIG.data.stagingExpireAfterDays).toBe(7);
+    const policies = Object.values(template.findResources('AWS::S3::BucketPolicy')).filter((policy) =>
+      JSON.stringify(policy).includes(bucket) || JSON.stringify(policy).includes('SemanticV2StagingBucket'),
+    );
+    expect(policies).toHaveLength(1);
+    expect(JSON.stringify(policies[0])).toContain('aws:SecureTransport');
+    expect(JSON.stringify(policies[0])).toContain('s3:TlsVersion');
+  });
+
+  it('refuses at synth a candidate/current pair whose columns differ', () => {
+    const drifted = JSON.parse(fs.readFileSync(TABLES, 'utf-8')) as Props;
+    const current = drifted.canonicalCurrentTables as Props[];
+    current[0]!.columns = [...(current[0]!.columns as Props[]), { ...(current[0]!.columns as Props[])[0], fieldId: 999, name: 'drifted' }];
+    const loaded = {
+      ...loadGeneratedV2Storage(TABLES),
+      canonicalCurrentTables: current as never,
+    };
+    expect(() => stagingTables(loaded)).toThrow(/candidate and current columns differ/);
+    // Control: the committed catalog stages cleanly.
+    expect(stagingTables(loadGeneratedV2Storage(TABLES))).toHaveLength(54);
+  });
+
+  it('refuses at synth a catalog column named like a staging column', () => {
+    const storage = loadGeneratedV2Storage(TABLES);
+    const [first, ...rest] = storage.sourceAlignedTables;
+    const reserved = {
+      ...storage,
+      sourceAlignedTables: [
+        { ...first!, columns: [...first!.columns, { ...first!.columns[0]!, fieldId: 999, name: 'stg_ordinal' }] },
+        ...rest,
+      ],
+    };
+    expect(() => stagingTables(reserved)).toThrow(/reserved staging column name/);
   });
 });

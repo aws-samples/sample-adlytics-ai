@@ -14,6 +14,7 @@ import {
   paramPath,
   semanticV2AthenaWorkgroupName,
   semanticV2DatabaseName,
+  semanticV2StagingDatabaseName,
   SemanticStateTableKind,
   semanticV2StateTableName,
 } from '../config';
@@ -23,11 +24,13 @@ import {
   loadGeneratedV2Storage,
 } from '../constructs/data-lake/generated-tables';
 import { cfnTableProps } from '../constructs/data-lake/iceberg-table';
+import { stagingCfnTableProps, stagingTables } from '../constructs/data-lake/staging-table';
 import {
   athenaResultsLifecycle,
   createDataBucket,
   dataBucketName,
   rawZoneLifecycle,
+  stagingLifecycle,
 } from '../mixins/storage';
 import { applyRemovalPolicy, applyStandardTags } from '../mixins/tagging';
 
@@ -68,6 +71,8 @@ export class DataV2Stack extends cdk.Stack {
   public readonly rawBucket: s3.Bucket;
   public readonly bucket: s3.Bucket;
   public readonly resultsBucket: s3.Bucket;
+  /** ADR-149: staged table units, a derived transport copy that expires (ING-RETENTION). */
+  public readonly stagingBucket: s3.Bucket;
   public readonly interactiveWorkgroup: athena.CfnWorkGroup;
   public readonly batchWorkgroup: athena.CfnWorkGroup;
   public readonly bakeWorkgroup: athena.CfnWorkGroup;
@@ -75,9 +80,11 @@ export class DataV2Stack extends cdk.Stack {
   public readonly sourceDatabase: glue.CfnDatabase;
   public readonly candidateDatabase: glue.CfnDatabase;
   public readonly currentDatabase: glue.CfnDatabase;
+  public readonly stagingDatabase: glue.CfnDatabase;
   public readonly sourceTables: readonly glue.CfnTable[];
   public readonly candidateTables: readonly glue.CfnTable[];
   public readonly currentTables: readonly glue.CfnTable[];
+  public readonly stagingTables: readonly glue.CfnTable[];
   public readonly attemptsTable: dynamodb.Table;
   public readonly leasesTable: dynamodb.Table;
   public readonly publicationsTable: dynamodb.Table;
@@ -107,6 +114,15 @@ export class DataV2Stack extends cdk.Stack {
       versioned: false,
       lifecycleRules: athenaResultsLifecycle(config),
     });
+    // ADR-149 decision 4: a dedicated bucket, not a prefix of the Semantic V2 bucket, so no
+    // lifecycle rule sits one prefix filter away from authority and no reader's IAM resource set
+    // overlaps it. Unversioned: a staged object is re-rendered byte for byte from authority.
+    this.stagingBucket = createDataBucket(this, 'SemanticV2StagingBucket', {
+      config,
+      purpose: 'v2-staging',
+      versioned: false,
+      lifecycleRules: stagingLifecycle(config),
+    });
     this.interactiveWorkgroup = this.workgroup(config, 'interactive');
     this.batchWorkgroup = this.workgroup(config, 'batch');
     this.bakeWorkgroup = this.workgroup(config, 'bake');
@@ -129,6 +145,30 @@ export class DataV2Stack extends cdk.Stack {
       'current',
       'V2CanonicalCurrentDatabase',
     );
+
+    const stagingBucketName = dataBucketName(config, 'v2-staging');
+    this.stagingDatabase = new glue.CfnDatabase(this, 'V2StagingDatabase', {
+      catalogId: this.account,
+      databaseInput: {
+        name: semanticV2StagingDatabaseName(config.envName),
+        description: 'ADR-149 staged table units: generated all-string external tables.',
+        locationUri: `s3://${stagingBucketName}/`,
+      },
+    });
+    this.stagingTables = stagingTables(generated).map((table) => {
+      const created = new glue.CfnTable(
+        this,
+        `V2StagingTable${pascal(table.name)}`,
+        stagingCfnTableProps({
+          table,
+          catalogId: this.account,
+          databaseName: semanticV2StagingDatabaseName(config.envName),
+          bucketName: stagingBucketName,
+        }),
+      );
+      created.addResourceDependency(this.stagingDatabase);
+      return created;
+    });
 
     this.sourceTables = this.tables(
       generated.sourceAlignedTables,
@@ -368,6 +408,12 @@ export class DataV2Stack extends cdk.Stack {
         'ParamV2CurrentDatabase',
         'semanticV2CurrentDatabase',
         semanticV2DatabaseName(config.envName, 'current'),
+      ],
+      ['ParamV2StagingBucket', 'semanticV2StagingBucketName', this.stagingBucket.bucketName],
+      [
+        'ParamV2StagingDatabase',
+        'semanticV2StagingDatabase',
+        semanticV2StagingDatabaseName(config.envName),
       ],
     ];
     for (const [logicalId, key, value] of values) {

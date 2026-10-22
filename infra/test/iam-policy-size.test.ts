@@ -69,6 +69,8 @@ describe('IAM policy size (P3, R041-2)', () => {
     expect(ingestion?.inlineTotal).toBeLessThanOrEqual(ROLE_INLINE_THRESHOLD);
     // GraphRunNodesPolicy is the provisioned graph's `QueryGraphRunNodes` (S6 part 2, row 3).
     expect(ingestion?.managed.map((item) => item.policy.replace(/[0-9A-F]{8}$/, '')).sort()).toStrictEqual([
+      // ADR-149: the inline composition's staging grants (the test app composes inline).
+      'IngestionStack/DeliveryStagingPolicy',
       'IngestionStack/GraphRunNodesPolicy',
       'IngestionStack/IdentityEvidencePolicy',
       'IngestionStack/SemanticPublicationKeysPolicy',
