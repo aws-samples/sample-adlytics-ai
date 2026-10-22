@@ -992,8 +992,9 @@ class PresetArtifactBakeApplication:
             return None
         durations = _BakeStageDurations(source_ms, int((monotonic() - persist_started) * 1_000))
         if isinstance(published, IsolatedRefusal):
-            # ADR-145: the write deadline came first. `publish` wrote no pointer, so the page
-            # keeps its last good legacy pointer; its one page group replaces the item notes.
+            # ADR-145: the write deadline came first, or a sibling the stream rendered refused
+            # the page. `publish` wrote no pointer, so the page keeps its last good legacy
+            # pointer; its one page group replaces the item notes.
             absence = page_absence(intent)
             _report_bake(_BakeResultReport(intent, "unavailable", durations, context, observed))
             self._settled(group_refusals((published,)), intent, window, (started, context))
@@ -1001,7 +1002,9 @@ class PresetArtifactBakeApplication:
         if self.insight_fill is not None and published.pointer.outcome.value == "advanced":
             # §5.3: enqueued strictly after the pointer advanced; best-effort by contract.
             self.insight_fill.warm(request)
-        _report_bake(_BakeResultReport(intent, "published", durations, context, observed))
+        _report_bake(
+            _BakeResultReport(intent, "published", durations, context, observed, published)
+        )
         self._settled(page.groups, intent, window, (started, context))
         return published
 
@@ -1100,6 +1103,8 @@ class _BakeResultReport:
     context: _BakeReportContext | None
     observed: _PageReport | None = None
     """A roster page's render; None for a declared page with no bake source (no render)."""
+    published: PresetArtifactPublicationResult | None = None
+    """A published page's stage result: its write chains and bytes (ADR-145), as on the graph."""
 
 
 def _report_bake(request: _BakeResultReport) -> None:
@@ -1134,6 +1139,12 @@ def _report_bake(request: _BakeResultReport) -> None:
             "total": context.total,
         }
     )
+    published = request.published
+    written = (
+        {}
+        if published is None
+        else {"pairs": published.pairs, "written_bytes": published.written_bytes}
+    )
     report_operation(
         OperationLog(
             operation=_OPERATION,
@@ -1148,6 +1159,7 @@ def _report_bake(request: _BakeResultReport) -> None:
                 "persist_ms": durations.persist_ms,
                 "total_ms": durations.source_ms + durations.persist_ms,
                 **page,
+                **written,
                 **lineage,
             },
         ),

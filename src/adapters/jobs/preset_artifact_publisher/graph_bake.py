@@ -322,15 +322,17 @@ def task_node_name(key: str) -> str:
 def granted_request(
     request: PresetArtifactPublicationRequest, grant_id: str, written_at: str
 ) -> PresetArtifactPublicationRequest:
-    """Bind a source's publication to this grant: `grant_id`, its generation and `written_at`."""
-    advance = request.pointer_advance
-    pointer = replace(
-        advance.pointer,
+    """Bind a source's publication to this grant: `grant_id`, its generation and `written_at`.
+
+    Only the template is bound: the stage completes the pointer with its custody's digest.
+    """
+    template = replace(
+        request.pointer_template,
         grant_id=grant_id,
         serving_generation=serving_generation(grant_id),
         written_at=written_at,
     )
-    return replace(request, pointer_advance=replace(advance, pointer=pointer))
+    return replace(request, pointer_template=template)
 
 
 def _owner(run: RunRecord, cohort_revision: str) -> dict[str, str]:
@@ -916,27 +918,11 @@ def _is_fatal(error: BaseException) -> bool:
 
 
 def _output_manifest_digest(staged: PresetArtifactStageResult) -> str:
+    """Digest the staged parent: its custody binds every sibling through the index (ADR-145)."""
     return bake_v3_digest(
         _OUTPUT_MANIFEST,
-        [
-            staged.body.key,
-            staged.body.digest,
-            None if staged.custody is None else staged.custody.digest,
-            [item.digest for item in staged.sibling_bodies],
-            [item.digest for item in staged.sibling_custody],
-        ],
+        [staged.body.key, staged.body.digest, staged.custody_digest],
     )
-
-
-def _request_bytes(request: PresetArtifactPublicationRequest) -> int:
-    """Return the encoded size of every object one stage call writes (body, custody, siblings)."""
-    payloads = [
-        request.body.payload_json,
-        *(() if request.custody is None else (request.custody.payload_json,)),
-        *(item.payload_json for item in request.sibling_bodies),
-        *(item.payload_json for item in request.sibling_custody),
-    ]
-    return sum(len(payload.encode()) for payload in payloads)
 
 
 def _candidate(advance: PresetArtifactPointerAdvanceRequest) -> dict[str, object]:
@@ -1142,12 +1128,14 @@ class GraphBakeTaskWork:
         with _phase(inputs.observation, "write"):
             staged = stage_page(self.runtime.stage.stage, request, window)
         if isinstance(staged, IsolatedRefusal):
-            # ADR-145: the write deadline came first. No parent was written, so no custody
-            # names the pairs already written; the page settles its designed absence.
+            # ADR-145: the write deadline came first, or a sibling the stream rendered refused
+            # the page. No parent was written, so no custody names the pairs already written;
+            # the page settles its designed absence.
             return self._refused(inputs, source_digest, staged, window)
-        inputs.observation.pairs = 1 + len(request.sibling_bodies)
-        inputs.observation.written_bytes = _request_bytes(request)
-        candidate = _candidate(request.pointer_advance)
+        # ADR-145: what the stage wrote, as written (every chain and its bytes, index included).
+        inputs.observation.pairs = staged.pairs
+        inputs.observation.written_bytes = staged.written_bytes
+        candidate = _candidate(request.pointer_template.complete(staged.custody_digest))
         effect = DurableBakeEffectV3(
             **fields,
             effect_kind=BakeEffectKind.WRITTEN,
