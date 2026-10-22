@@ -2047,7 +2047,7 @@ def test_a_stored_list_that_does_not_validate_is_reported_and_acknowledged(
     item["effect_record"] = {"S": json.dumps(parsed, sort_keys=True, separators=(",", ":"))}
     replay = bake.task(run, key, receive_count=2)
     assert (replay.acknowledge, replay.outcome) == (True, "graph_already_settled")
-    assert bake.invariants == ["STORED_REFUSAL_INVALID"]
+    assert bake.invariants == [BAKE_INTENT_INVARIANT]  # the alarmed baker invariant signal
     assert telemetry.spans == []
 
 
