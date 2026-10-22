@@ -75,6 +75,23 @@ the whole seal with `--classes seal` and a fresh settled report; the new generat
 fresh prefixes. The seal is this seam's application of
 [write-discipline §2.1](../capabilities/load-path/write-discipline.md) rule 3.
 
+**Reloading one corrected feed at an unchanged span** (added 2026-10-22). A delivery's keys
+follow from its declaration's `retrieved_at`, which follows from `last_day`, so a corpus corrected
+without a new `last_day` plans to keys dev already holds with the old bytes, and the immutable put
+refuses them. The deduplicated-attribution feed therefore carries its own retrieval generation,
+`shape.deduplicated_retrieval_generation` (0 to 3) in the catalog. Generation `g` puts each run's
+chunk `i` at second `g × 16 + i` of the run's 64-second stride: the same rows, windows and
+watermarks at fresh keys, on the same run slot, so the replay band classifies each delivery as
+before. Generation 1 carries the corrected corpus (§2, every model on every day); generation 0's
+keys keep the rotating rows. The reload selects that feed alone with `--classes cadence
+--fixtures generated/amc-deduplicated-temporal-attribution.csv --run-days-from <last_day − 55>`
+under a new operation id. Each day's final run ties the watermark already CURRENT, and ties
+publish, so the newer delivery replaces it. Earlier runs carry an older watermark and are skipped,
+except on the retired-floor days (ADR-086 §15), where every run ties. This feed's rows don't mature
+between runs, so either way each day ends on the corrected rows. Days before
+`last_day − 55` keep generation 0's rows, because a phase-B delivery is refused
+(`FULL_HISTORY_NOT_ENABLED`).
+
 ## 2. Declared per-entity scenario shapes
 
 Every seeded entity carries a **declared scenario shape** in the governed synthetic entity

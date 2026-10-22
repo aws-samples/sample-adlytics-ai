@@ -31,6 +31,7 @@ from adapters.jobs.fixture_generation.provenance import (
 )
 from adapters.jobs.land_fixtures.bundle import (
     AMC_FIXTURE_CONTRACTS,
+    LANDABLE,
     DeliveryClass,
     LandedDelivery,
     PlanSelection,
@@ -209,6 +210,10 @@ def _parse_args(argv: tuple[str, ...]) -> _Arguments:
     )
     parser.add_argument("--run-days-from", type=date.fromisoformat)
     parser.add_argument("--run-days-to", type=date.fromisoformat)
+    parser.add_argument(
+        "--fixtures",
+        help="with --classes: comma-separated enumerated fixtures to land, for one feed's reload",
+    )
     parser.add_argument(
         "--settled-report",
         type=pathlib.Path,
@@ -434,10 +439,20 @@ def _selection(parser: argparse.ArgumentParser, parsed: argparse.Namespace) -> P
     run_from = cast("date | None", parsed.run_days_from)
     run_to = cast("date | None", parsed.run_days_to)
     raw = cast("str | None", parsed.classes)
+    raw_fixtures = cast("str | None", parsed.fixtures)
     if raw is None:
-        if run_from is not None or run_to is not None:
-            parser.error("--run-days-from and --run-days-to require --classes")
+        if run_from is not None or run_to is not None or raw_fixtures is not None:
+            parser.error("--run-days-from, --run-days-to and --fixtures require --classes")
         return None
+    fixtures: frozenset[str] | None = None
+    if raw_fixtures is not None:
+        fixtures = frozenset(item.strip() for item in raw_fixtures.split(",") if item.strip())
+        unknown_fixtures = sorted(fixtures - set(LANDABLE))
+        if not fixtures or unknown_fixtures:
+            parser.error(
+                "--fixtures names an unknown fixture: "
+                f"{', '.join(unknown_fixtures) or '(none)'}; expected enumerated landable fixtures"
+            )
     names = [item.strip() for item in raw.split(",") if item.strip()]
     known = {item.value for item in DeliveryClass}
     unknown = sorted(set(names) - known)
@@ -448,7 +463,9 @@ def _selection(parser: argparse.ArgumentParser, parsed: argparse.Namespace) -> P
         )
     if run_from is not None and run_to is not None and run_from > run_to:
         parser.error("--run-days-from is after --run-days-to")
-    return PlanSelection(frozenset(DeliveryClass(name) for name in names), run_from, run_to)
+    return PlanSelection(
+        frozenset(DeliveryClass(name) for name in names), run_from, run_to, fixtures
+    )
 
 
 def _earliest_landing(deliveries: tuple[LandedDelivery, ...]) -> datetime:

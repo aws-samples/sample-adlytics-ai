@@ -1460,6 +1460,16 @@ _LOADER_RULES: tuple[tuple[str, Callable[[_Raw], None], str], ...] = (
     ),
     ("seal generation", _set("seal_generation", -1), "seal_generation: must be an integer >= 0"),
     (
+        "deduplicated retrieval generation past the stride",
+        _set("deduplicated_retrieval_generation", 4),
+        "deduplicated_retrieval_generation: must be an integer from 0 to 3",
+    ),
+    (
+        "deduplicated retrieval generation negative",
+        _set("deduplicated_retrieval_generation", -1),
+        "deduplicated_retrieval_generation: must be an integer from 0 to 3",
+    ),
+    (
         "deduplicated shared share not below 1",
         _set("amc.deduplicated_attribution.shared_purchase_share", "1"),
         "shared_purchase_share: must lie in (0, 1)",

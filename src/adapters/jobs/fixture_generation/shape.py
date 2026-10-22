@@ -554,6 +554,9 @@ class CatalogShape:
     retail: RetailShape
     events: tuple[ShapeEvent, ...]
     seal_generation: int
+    deduplicated_retrieval_generation: int
+    """The deduplicated-attribution feed's own retrieval generation, 0..3 (dev-seeding §1): a
+    corrected corpus at an unchanged span lands at fresh keys one generation up."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -698,8 +701,11 @@ _TOP_KEYS = frozenset(
         "retail",
         "events",
         "seal_generation",
+        "deduplicated_retrieval_generation",
     }
 )
+_MAX_RETRIEVAL_GENERATION = 3
+"""Four 16-second generations fill a run's 64-second retrieval stride (land_fixtures.bundle)."""
 _SPREAD_KEYS = frozenset(CampaignSpread.__dataclass_fields__)
 _RETAIL_KEYS = frozenset(RetailShape.__dataclass_fields__)
 _EVENT_KEYS: dict[str, frozenset[str]] = {
@@ -1147,7 +1153,19 @@ def load_catalog_shape(value: object, context: ShapeContext) -> CatalogShape:
         retail=_retail(raw["retail"], frozenset(context.product_scenarios.values())),
         events=events,
         seal_generation=seal_generation,
+        deduplicated_retrieval_generation=_retrieval_generation(
+            raw["deduplicated_retrieval_generation"]
+        ),
     )
+
+
+def _retrieval_generation(value: object) -> int:
+    """Narrow `deduplicated_retrieval_generation` to the four generations a stride holds."""
+    path = "deduplicated_retrieval_generation"
+    generation = _integer(value, path)
+    if not 0 <= generation <= _MAX_RETRIEVAL_GENERATION:
+        raise _fail(path, f"must be an integer from 0 to {_MAX_RETRIEVAL_GENERATION}.")
+    return generation
 
 
 def _new_to_brand_buyers(

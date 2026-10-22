@@ -145,6 +145,8 @@ a real put, the keys written.
   are refused with zero puts (`FULL_HISTORY_NOT_ENABLED` for historical input).
 - `--no-twin` is accepted only with `--probe-retrieval`: the key is put and no `on_demand` twin
   request is sent.
+- `--fixtures <FIXTURE>[,...]` narrows a `--classes` selection to the named enumerated fixtures,
+  for reloading one feed ([dev seeding](../../concepts/dev-seeding.md) §1).
 - Always read the `--dry-run` report first; it must name exactly one delivery.
 - A probe copy stays in the raw zone as the newest retrieval of its window. Copy only a delivery
   no later planned delivery restates.

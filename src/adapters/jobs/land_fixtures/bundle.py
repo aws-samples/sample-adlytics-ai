@@ -140,6 +140,14 @@ _RUN_RETRIEVAL_STRIDE_SECONDS = 64
 """Retrieval-second stride between runs: every chunk gets a distinct, strictly increasing
 retrieval instant (chunks per run stay far below the stride), so prefixes never collide and
 provenance order encodes the oldest-first series order."""
+
+DEDUPLICATED_ATTRIBUTION_FIXTURE: Final = "generated/amc-deduplicated-temporal-attribution.csv"
+"""The one cadence fixture with its own retrieval generation (catalog
+`deduplicated_retrieval_generation`)."""
+_GENERATION_SECONDS: Final = 16
+"""Retrieval seconds per generation inside a run's stride: generation g's chunk i of a run sits at
+second `g x 16 + i` of the run's stride, so it stays on the run's slot (the historical predicate
+reads only the slot) and above generation g - 1's same chunk. A run then holds at most 16 chunks."""
 AMC_DAILY_DATE_COLUMNS: dict[str, str] = {
     "generated/amc-campaign-dsp.csv": "source_observed_on",
     "generated/amc-campaign-sponsored.csv": "source_observed_on",
@@ -479,10 +487,17 @@ class PlanSelection:
     classes: frozenset[DeliveryClass]
     run_days_from: date | None = None
     run_days_to: date | None = None
+    fixtures: frozenset[str] | None = None
+    """When given, only these enumerated fixtures' deliveries (one feed's reload, dev-seeding
+    §1)."""
 
     def __post_init__(self) -> None:
         if not self.classes:
             raise LandingError("a plan selection names at least one delivery class.")
+        if self.fixtures is not None and (
+            not self.fixtures or not self.fixtures <= frozenset(LANDABLE)
+        ):
+            raise LandingError("a plan selection's fixtures must be enumerated landable fixtures.")
         if (
             self.run_days_from is not None
             and self.run_days_to is not None
@@ -493,6 +508,8 @@ class PlanSelection:
     def selects(self, delivery: LandedDelivery) -> bool:
         """Whether this selection includes the delivery."""
         if delivery.delivery_class not in self.classes:
+            return False
+        if self.fixtures is not None and delivery.fixture.partition("#")[0] not in self.fixtures:
             return False
         if delivery.delivery_class in {DeliveryClass.TRAP, DeliveryClass.SEAL}:
             return True
@@ -1129,6 +1146,11 @@ def _source_runs(
         retrieved = datetime.fromisoformat(str(declaration["retrieved_at"]).replace("Z", "+00:00"))
     except KeyError, ValueError:
         raise LandingError(f"{fixture}: cadence dates or retrieval instant are invalid.") from None
+    generation = (
+        request.shape.deduplicated_retrieval_generation
+        if fixture == DEDUPLICATED_ATTRIBUTION_FIXTURE
+        else 0
+    )
     runs: list[tuple[str, str, dict[str, object], date | None]] = []
     for run_index, run_day in enumerate(days):
         first_day = max(days[0], run_day - timedelta(days=restatement_window_days - 1))
@@ -1153,6 +1175,11 @@ def _source_runs(
         # owned per-derived-table populated-bucket bound; the generator is the dev landing
         # seam that applies it (dev-seeding §1). Maturation stays as-of the run day.
         populated_days = tuple(sorted({date.fromisoformat(row[date_column]) for row in selected}))
+        if generation and -(-len(populated_days) // MAX_POPULATED_BUCKETS_PER_DELIVERY) > (
+            _GENERATION_SECONDS
+        ):
+            # A generation's chunks must fit its 16 seconds, or they would reach the next one.
+            raise LandingError(f"{fixture}: a run's chunks exceed one retrieval generation.")
         for chunk_index in range(0, len(populated_days), MAX_POPULATED_BUCKETS_PER_DELIVERY):
             chunk = populated_days[chunk_index : chunk_index + MAX_POPULATED_BUCKETS_PER_DELIVERY]
             chunk_days = frozenset(chunk)
@@ -1160,8 +1187,10 @@ def _source_runs(
                 row for row in selected if date.fromisoformat(row[date_column]) in chunk_days
             ]
             body = write_rows(fieldnames, _windowed(chunk_rows, chunk[0], chunk[-1]))
-            offset = run_index * _RUN_RETRIEVAL_STRIDE_SECONDS + (
-                chunk_index // MAX_POPULATED_BUCKETS_PER_DELIVERY
+            offset = (
+                run_index * _RUN_RETRIEVAL_STRIDE_SECONDS
+                + generation * _GENERATION_SECONDS
+                + chunk_index // MAX_POPULATED_BUCKETS_PER_DELIVERY
             )
             run_declaration = {
                 **declaration,
