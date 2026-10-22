@@ -569,6 +569,95 @@ def test_the_ranking_is_insufficient_rather_than_concluded_from_a_partial_set() 
     assert [row.spend for row in partial.rows] == [sp]
 
 
+def test_a_channel_a_model_credits_nothing_keeps_its_zero_and_takes_no_rank() -> None:
+    """Owner decision 2026-10-22: a spending channel at 0 credit isn't a tied last place."""
+    models = (("first_touch_v1", "First touch"), ("linear_v1", "Linear"))
+    zero, one, two, four, five = (Decimal(n) for n in (0, 1, 2, 4, 5))
+    ranking = scorecard_ranking(
+        (
+            (DSP, "Amazon DSP", Decimal(40), {"first_touch_v1": zero, "linear_v1": two}),
+            (SP, "Sponsored Products", Decimal(60), {"first_touch_v1": five, "linear_v1": four}),
+            (SB, "Sponsored Brands", Decimal(20), {"first_touch_v1": zero, "linear_v1": one}),
+        ),
+        models,
+        None,
+    )
+    cells = {
+        row.channel_key: [(item.value, item.rank) for item in row.values] for row in ranking.rows
+    }
+    # The zeros keep their governed value and take no rank; the credited channels rank densely.
+    assert cells == {
+        DSP: [(zero, None), (two, 2)],
+        SP: [(five, 1), (four, 1)],
+        SB: [(zero, None), (one, 3)],
+    }
+    assert ranking.outcome is ScorecardRankingOutcome.ROBUST_LEADER
+    assert ranking.agreed_leader_key == SP
+    # A stated ranking can't rank a zero, nor leave a credited value unranked.
+    sb_row = ranking.rows[2]
+    tied = replace(sb_row, values=(replace(sb_row.values[0], rank=4), sb_row.values[1]))
+    with pytest.raises(ValueError, match="ranks every credited value and no zero"):
+        replace(ranking, rows=(*ranking.rows[:2], tied))
+
+
+NO_CREDIT_REASON = "No channel received deduplicated credit in this window."
+
+
+@pytest.mark.parametrize(
+    "channels",
+    [
+        pytest.param(((SP, "Sponsored Products", Decimal(60)),), id="one-channel"),
+        pytest.param(
+            (
+                (DSP, "Amazon DSP", Decimal(40)),
+                (SP, "Sponsored Products", Decimal(60)),
+                (SB, "Sponsored Brands", Decimal(20)),
+            ),
+            id="several-channels",
+        ),
+    ],
+)
+def test_a_ranking_with_no_credited_channel_names_no_leader(
+    channels: tuple[tuple[str, str, Decimal], ...],
+) -> None:
+    """Owner decision 2026-10-22: zero credit takes no rank, so all zeros rank nothing."""
+    models = (("first_touch_v1", "First touch"), ("linear_v1", "Linear"))
+    zero = Decimal(0)
+    ranking = scorecard_ranking(
+        tuple(
+            (key, label, spend, {"first_touch_v1": zero, "linear_v1": zero})
+            for key, label, spend in channels
+        ),
+        models,
+        None,
+    )
+    assert ranking.outcome is ScorecardRankingOutcome.INSUFFICIENT
+    assert (ranking.agreed_leader_key, ranking.absence_reason) == (None, NO_CREDIT_REASON)
+    # Each governed zero stays the cell's value; no cell ranks.
+    assert [[(item.value, item.rank) for item in row.values] for row in ranking.rows] == [
+        [(zero, None), (zero, None)] for _ in channels
+    ]
+    assert [row.spend for row in ranking.rows] == [spend for _, _, spend in channels]
+    # The outcome sentence is pinned on the served body (test_scorecard_presentation.py).
+    # Paired: one channel credited under every model is ranked, and leads.
+    one = Decimal(1)
+    credited = scorecard_ranking(
+        (
+            (*channels[0][:3], {"first_touch_v1": one, "linear_v1": one}),
+            *(
+                (key, label, spend, {"first_touch_v1": zero, "linear_v1": zero})
+                for key, label, spend in channels[1:]
+            ),
+        ),
+        models,
+        None,
+    )
+    assert (credited.outcome, credited.agreed_leader_key) == (
+        ScorecardRankingOutcome.ROBUST_LEADER,
+        channels[0][0],
+    )
+
+
 # --- Materializer ------------------------------------------------------------------------
 
 
@@ -1060,6 +1149,63 @@ def test_a_spending_channel_with_no_deduplicated_ratio_names_the_deduplicated_ho
     assert ranked.ranking.outcome is ScorecardRankingOutcome.ROBUST_LEADER
 
 
+@dataclass
+class _DisagreeingHeadlineQueries(ScorecardQueries):
+    """Last touch's complete network-grain answer credits 500 more than the other models.
+
+    Every model credits each deduplicated purchase once, so the real AMC pack can't produce
+    this; malformed input (the 2026-10-22 rotating dev feed) can.
+    """
+
+    def _value(  # noqa: PLR0913 — the parent's signature
+        self,
+        metric: str,
+        model: str | None,
+        *,
+        channel: str | None,
+        current: bool,
+        marketplace: str = MARKETPLACE,
+    ) -> Decimal:
+        value = super()._value(
+            metric, model, channel=channel, current=current, marketplace=marketplace
+        )
+        if (
+            metric == "attributed_revenue_deduplicated_incl_halo_14d"
+            and channel is None
+            and model == "last_touch_v1"
+        ):
+            return value + Decimal(500)
+        return value
+
+
+MODELS_DISAGREE_REASON = (
+    "The attribution models credited different deduplicated totals for this window."
+)
+MODELS_DISAGREE_TEXT = (
+    "Not available: the attribution models credited different deduplicated totals for this "
+    "window, so channels can't be ranked under each model."
+)
+
+
+def test_a_headline_that_differs_by_model_never_bakes_a_robust_leader() -> None:
+    """Report §5.4: the bake checks the invariant its own model note asserts."""
+    result = _renderer(_DisagreeingHeadlineQueries(PERIOD)).render_scorecard(
+        ScorecardRenderInput(PERIOD, PRIOR)
+    )
+    assert result.artifact is not None
+    (card,) = result.artifact.cards
+    assert len({item.value for item in card.headline.values}) == 2
+    assert card.ranking.outcome is ScorecardRankingOutcome.INSUFFICIENT
+    assert card.ranking.agreed_leader_key is None
+    assert card.ranking.absence_reason == MODELS_DISAGREE_REASON
+    assert ranking_outcome_text(card) == MODELS_DISAGREE_TEXT
+    assert {item.rank for row in card.ranking.rows for item in row.values} == {None}
+    # Paired: the same bake with equal model totals names Sponsored Products the leader.
+    (agreed,) = _rendered().cards
+    assert len({item.value for item in agreed.headline.values}) == 1
+    assert agreed.ranking.outcome is ScorecardRankingOutcome.ROBUST_LEADER
+
+
 _SCORECARD_BAKED_SEMANTICS: tuple[tuple[int, str], ...] = (
     # (Scorecard render format, Scorecard compared-roster digest), oldest first; append only.
     # pragma: allowlist nextline secret (A-ENTROPY-IDENTIFIER-001)
@@ -1076,6 +1222,9 @@ _SCORECARD_BAKED_SEMANTICS: tuple[tuple[int, str], ...] = (
     # Slice 9a round 5: channel rows in the governed taxonomy's order, as the mockups draw them.
     # pragma: allowlist nextline secret (A-ENTROPY-IDENTIFIER-001)
     (6, "b8edba16df38e92d5999f775e49e78264c85ef24be3659d30613bd409c78ed5e"),
+    # 2026-10-22: "No deduplicated credit" cells and the model-disagreement ranking guard.
+    # pragma: allowlist nextline secret (A-ENTROPY-IDENTIFIER-001)
+    (7, "b8edba16df38e92d5999f775e49e78264c85ef24be3659d30613bd409c78ed5e"),
 )
 
 

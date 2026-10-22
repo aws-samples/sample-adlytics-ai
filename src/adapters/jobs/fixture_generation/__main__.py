@@ -40,6 +40,12 @@ from adapters.jobs.fixture_generation.conformance import (
     run_conformance,
 )
 from adapters.jobs.fixture_generation.daily import DAILY_BOUNDS, DailyInputs, build_daily
+from adapters.jobs.fixture_generation.deduplicated import (
+    DEDUPLICATED_BOUND,
+    DEDUPLICATED_CONTRACT,
+    DeduplicatedInputs,
+    build_deduplicated,
+)
 from adapters.jobs.fixture_generation.exposure import (
     DSP_CORPUS,
     EXPOSURE_CONTRACT,
@@ -308,6 +314,17 @@ def build_fixtures(root: pathlib.Path) -> tuple[Fixture, ...]:
                 packs[contract_id],
                 (contract, suppression_output, options),
                 PeriodicCorpus(by_id[BUYER_BOUNDS[contract_id].corpus_contract].rows),
+            )
+        if contract_id == DEDUPLICATED_CONTRACT:
+            # Every model on every day, splitting one day total of the attributed corpus
+            # (dev-seeding §2).
+            return build_deduplicated(
+                by_id[contract_id],
+                DeduplicatedInputs(
+                    contract,
+                    by_id[DEDUPLICATED_BOUND.corpus_contract].rows,
+                    entity_catalog.shape.deduplicated_attribution,
+                ),
             )
         if contract_id in DAILY_BOUNDS:
             return build_daily(

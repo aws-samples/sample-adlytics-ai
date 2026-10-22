@@ -40,6 +40,7 @@ from adapters.jobs.curation.manifests import (
     read_manifest,
     write_manifest,
 )
+from adapters.jobs.fixture_generation import shape as shape_module
 from adapters.jobs.fixture_generation.catalog import load_synthetic_entity_catalog
 from adapters.jobs.fixture_generation.shape import AttributionMaturity, CampaignDay
 from adapters.jobs.fixture_generation.shapes import WINDOW_COLUMNS
@@ -896,6 +897,123 @@ def test_generated_amc_results_expand_into_chunked_daily_lookback_runs() -> None
     assert len(set(retrievals)) == len(retrievals)
 
 
+_DEDUPLICATED = bundle_module.DEDUPLICATED_ATTRIBUTION_FIXTURE
+
+
+@functools.cache
+def _generation_plan(fixture: str, generation: int) -> tuple[LandedDelivery, ...]:
+    shape = replace(
+        load_synthetic_entity_catalog(ROOT).shape, deduplicated_retrieval_generation=generation
+    )
+    context = bundle_module._plan_context(ROOT, shape)  # pyright: ignore[reportPrivateUsage]
+    return tuple(bundle_module._plan_fixture(context, fixture))  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.covers("ADR-086")
+def test_the_deduplicated_feed_lands_one_generation_up_at_fresh_keys_on_its_run_slots() -> None:
+    # 2026-10-22: dev holds generation 0's keys with the rotating one-row-per-day rows, and a
+    # landed key is immutable, so the corrected corpus lands under generation 1 (dev-seeding §1):
+    # the same rows, windows and watermarks, each retrieval 16 s higher on its run's stride slot,
+    # so the replay band classifies every delivery as before and no key equals a generation-0 key.
+    assert load_synthetic_entity_catalog(ROOT).shape.deduplicated_retrieval_generation == 1
+    committed = tuple(item for item in _plan() if item.fixture.startswith(f"{_DEDUPLICATED}#"))
+    old, new = _generation_plan(_DEDUPLICATED, 0), _generation_plan(_DEDUPLICATED, 1)
+    assert new == committed
+    assert len(old) == len(new) == _AMC_DAILY_DELIVERIES
+    _, policy = plan_with_backfill(ROOT)
+
+    def slot(item: LandedDelivery) -> int:
+        return (item.manifest.retrieved_at - policy.replay_base) // timedelta(seconds=64)
+
+    for before, after in zip(old, new, strict=True):
+        assert (after.fixture, after.run_day, after.delivery_class) == (
+            before.fixture,
+            before.run_day,
+            before.delivery_class,
+        )
+        assert after.data[0].body == before.data[0].body
+        assert after.manifest.retrieved_at == before.manifest.retrieved_at + timedelta(seconds=16)
+        assert slot(after) == slot(before)
+        assert replace(after.manifest, retrieved_at=before.manifest.retrieved_at).prefix == (
+            before.manifest.prefix
+        )
+        assert bundle_module.window_prefix(after.manifest) == bundle_module.window_prefix(
+            before.manifest
+        )
+        assert (after.manifest.period_start, after.manifest.period_end) == (
+            before.manifest.period_start,
+            before.manifest.period_end,
+        )
+        assert after.manifest.source_watermark == before.manifest.source_watermark
+        assert is_historical(bundle_module.manifest_facts(after.manifest), policy) == (
+            is_historical(bundle_module.manifest_facts(before.manifest), policy)
+        )
+    old_keys = {key.key for item in old for key in item.ordered}
+    assert old_keys.isdisjoint(key.key for item in new for key in item.ordered)
+
+
+@pytest.mark.covers("ADR-086")
+def test_the_deduplicated_generation_moves_no_other_landable_fixture() -> None:
+    # Every other path (AMC daily, Vendor, periodic, whole, trap, seal) plans identically.
+    others = [fixture for fixture in LANDABLE if fixture != _DEDUPLICATED]
+    assert len(others) == len(LANDABLE) - 1
+    for fixture in others:
+        assert _generation_plan(fixture, 0) == _generation_plan(fixture, 1), fixture
+
+
+def test_four_generations_span_exactly_one_run_stride() -> None:
+    # A generation past the stride would move a delivery onto the next run's slot and change
+    # its historical class, so the loader's bound and the bundle's spacing must fill it exactly.
+    assert (shape_module._MAX_RETRIEVAL_GENERATION + 1) * (  # pyright: ignore[reportPrivateUsage]
+        bundle_module._GENERATION_SECONDS  # pyright: ignore[reportPrivateUsage]
+    ) == bundle_module._RUN_RETRIEVAL_STRIDE_SECONDS  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize(("window", "refused"), [(48, False), (51, True)])
+def test_a_run_whose_chunks_exceed_one_generation_is_refused(window: int, refused: bool) -> None:
+    # 48 trailing days are 16 three-day chunks, the most one generation holds (positive
+    # control); 51 days are 17 chunks, which would reach the next generation's seconds.
+    path = ROOT / "tests/fixtures" / _DEDUPLICATED
+    request = bundle_module._SourceRunsRequest(  # pyright: ignore[reportPrivateUsage]
+        _DEDUPLICATED,
+        path.read_text(),
+        bundle_module._declaration(  # pyright: ignore[reportPrivateUsage]
+            path.with_suffix("").with_suffix(".manifest.json")
+        ),
+        window,
+        load_synthetic_entity_catalog(ROOT).shape,
+    )
+    if refused:
+        with pytest.raises(LandingError, match="exceed one retrieval generation"):
+            bundle_module._source_runs(request)  # pyright: ignore[reportPrivateUsage]
+    else:
+        assert bundle_module._source_runs(request)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_a_fixtures_selection_lands_only_the_named_feed() -> None:
+    selection = PlanSelection(
+        frozenset({DeliveryClass.CADENCE}), date(2026, 8, 12), None, frozenset({_DEDUPLICATED})
+    )
+    selected = plan_landings(ROOT, selection)
+    assert selected == tuple(
+        item
+        for item in _plan()
+        if item.fixture.startswith(f"{_DEDUPLICATED}#")
+        and item.delivery_class is DeliveryClass.CADENCE
+        and item.run_day is not None
+        and item.run_day >= date(2026, 8, 12)
+    )
+    assert len(selected) == 560  # runs 2026-08-12..2026-10-06, 10 chunks each
+    with pytest.raises(LandingError, match="enumerated landable fixtures"):
+        PlanSelection(frozenset({DeliveryClass.CADENCE}), fixtures=frozenset({"traps/none.csv"}))
+    parsed = land_cli._parse_args(  # pyright: ignore[reportPrivateUsage]
+        _cli_arguments("--classes", "cadence", "--fixtures", _DEDUPLICATED)
+    )
+    assert parsed.selection == PlanSelection(
+        frozenset({DeliveryClass.CADENCE}), fixtures=frozenset({_DEDUPLICATED})
+    )
+
+
 @pytest.mark.covers("ADR-030", "ADR-051")
 def test_daily_attribution_runs_restate_recent_dates_as_the_lookback_matures() -> None:
     # The maturation mechanism, under a fictional {0.70, 0.90} declaration (design §3.3): the
@@ -1746,6 +1864,12 @@ def _cli_arguments(*extra: str) -> tuple[str, ...]:
         (("--classes", ""), "names an unknown delivery class"),
         (("--run-days-from", "2026-10-01"), "require --classes"),
         (("--run-days-to", "2026-10-01"), "require --classes"),
+        (("--fixtures", "generated/amc-retail-purchases.csv"), "require --classes"),
+        (
+            ("--classes", "cadence", "--fixtures", "generated/amc-nonsense.csv"),
+            "--fixtures names an unknown fixture: generated/amc-nonsense.csv",
+        ),
+        (("--classes", "cadence", "--fixtures", ","), "--fixtures names an unknown fixture"),
         (
             (
                 "--classes",

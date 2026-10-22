@@ -195,6 +195,8 @@ export interface ScorecardRankingRow {
   readonly channel_label: string;
   readonly spend_display_value: string;
   readonly values: readonly {
+    /** "No deduplicated credit" for a spending channel the model credited nothing; it takes no rank. */
+    readonly credit_text: string | null;
     /** The server's two-place multiplier, the only form a ranking value renders in. */
     readonly display_value: string | null;
     readonly model: string;
@@ -317,20 +319,26 @@ function card(value: unknown): ScorecardCard {
     // A ranking row carries its own channel row's spend, so the two tables never disagree.
     if (spendByChannel.get(channel) !== spendDisplay) return fail();
     const values = list(row.values).map((raw) => {
-      const value = record(raw, ['display_value', 'model', 'rank', 'rank_text', 'value']);
+      const value = record(raw, ['credit_text', 'display_value', 'model', 'rank', 'rank_text', 'value']);
       const rank = value.rank === null ? null : Number.isSafeInteger(value.rank) && (value.rank as number) > 0 ? value.rank as number : fail();
       const rankText = nullableText(value.rank_text);
       if ((rank === null) !== (rankText === null)) return fail();
       const exact = nullableDecimal(value.value);
       if (exact === null ? value.display_value !== null : !isTwoPlace(value.display_value)) return fail();
-      return { display_value: exact === null ? null : value.display_value as string, model: text(value.model), rank, rank_text: rankText, value: exact };
+      // The no-credit text names exactly a served zero, so it never hides a figure.
+      const creditText = nullableText(value.credit_text);
+      if ((creditText !== null) !== (exact !== null && sameDecimal(exact, '0'))) return fail();
+      return {
+        credit_text: creditText, display_value: exact === null ? null : value.display_value as string, model: text(value.model), rank, rank_text: rankText, value: exact,
+      };
     });
     if (values.map((value) => value.model).join() !== models.map((model) => model.model).join()) return fail();
-    // A stated ranking ranks every channel on a value; an insufficient one ranks none (G9A-10),
-    // so a bare "Not available" with no reason, or a rank beside no value, can't be decoded.
+    // A stated ranking ranks every credited channel on a value and no zero one; an insufficient
+    // one ranks none (G9A-10), so a bare "Not available" with no reason, or a rank beside no
+    // value, can't be decoded.
     if (outcome === 'insufficient'
       ? values.some((value) => value.rank !== null)
-      : values.some((value) => value.rank === null || value.value === null)) return fail();
+      : values.some((value) => value.value === null || (value.rank === null) !== (value.credit_text !== null))) return fail();
     return { channel, channel_label: text(row.channel_label), spend_display_value: spendDisplay, values };
   });
   if (rankingRows.map((row) => row.channel).join() !== rows.map((row) => row.channel).join()) return fail();

@@ -107,6 +107,7 @@ from domain.presentation.scorecard import (
     CHANNEL_FIGURE_MISSING_REASON,
     CHANNEL_RETURN_NO_SPEND_REASON,
     DEDUPLICATED_MISSING_REASON,
+    DEDUPLICATED_MODELS_DISAGREE_REASON,
     DEDUPLICATED_WITHHELD_REASON,
     HEADLINE_LABEL,
     SCORECARD_ALERT_FINDINGS,
@@ -207,7 +208,7 @@ __all__ = [
 ]
 
 SCORECARD_PAGE_ID = "scorecard"
-SCORECARD_PRESET_RENDER_FORMAT = 6
+SCORECARD_PRESET_RENDER_FORMAT = 7
 """The Scorecard renderer's output generation (ADR-070 render format). Bump on byte changes.
 
 2 (UI slice 9a): the browser-shaped body with display values, change blocks, server texts and
@@ -215,7 +216,10 @@ the coverage block. No format-1 body was ever baked (the source failed closed wi
 entry), so a stray one can't decode as format 2.
 4 (slice 9a round 3): two-place multiplier display values, the short marketplace name, the
 retail rows' marketplace identity, and no ranked ratio over zero spend.
-5 (slice 9a round 4): insight cards and Also changed rows carry their marketplace and name."""
+5 (slice 9a round 4): insight cards and Also changed rows carry their marketplace and name.
+7 (2026-10-22): a ranking cell with no deduplicated credit says so and takes no rank, and a
+headline that differs by model, or no credited channel under any model, makes the ranking
+insufficient."""
 
 _CHANNEL_GRAINS = ("ecosystem", "platform", "channel", "marketplace")
 _NETWORK_GRAINS = ("ecosystem", "platform", "marketplace")
@@ -774,8 +778,14 @@ def _card(context: _CardContext) -> NetworkCard | None:
     # that spent but whose deduplicated ROAS is served null is a hole in the deduplicated
     # figure the ranking ranks, not in the channel table's attributed figures (which still
     # render), so it takes the deduplicated reason (SC9A-GATE-005).
+    # Every model credits each deduplicated purchase once, so complete headlines that differ by
+    # model are malformed input (the rotating dev feed of 2026-10-22): the ranking names that
+    # rather than conclude a leader from it, and the bake still publishes the rest of the page.
+    disagree = absence is None and len({item.value for item in headline_values}) > 1
     ranking_absence = absence or (
-        None
+        DEDUPLICATED_MODELS_DISAGREE_REASON
+        if disagree
+        else None
         if not unranked
         else CHANNEL_RETURN_NO_SPEND_REASON
         if not any(spent[channel] for channel in unranked)

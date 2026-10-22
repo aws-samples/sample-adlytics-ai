@@ -75,6 +75,25 @@ the whole seal with `--classes seal` and a fresh settled report; the new generat
 fresh prefixes. The seal is this seam's application of
 [write-discipline §2.1](../capabilities/load-path/write-discipline.md) rule 3.
 
+**Reloading one corrected feed at an unchanged span** (added 2026-10-22). A delivery's keys
+follow from its declaration's `retrieved_at`, which follows from `last_day`, so a corpus corrected
+without a new `last_day` plans to keys dev already holds with the old bytes, and the immutable put
+refuses them. The deduplicated-attribution feed therefore carries its own retrieval generation,
+`shape.deduplicated_retrieval_generation` (0 to 3) in the catalog. Generation `g` puts each run's
+chunk `i` at second `g × 16 + i` of the run's 64-second stride: the same rows, windows and
+watermarks at fresh keys, on the same run slot, so the replay band classifies each delivery as
+before. Generation 1 carries the corrected corpus (§2, every model on every day); generation 0's
+keys keep the rotating rows. The reload selects that feed alone with `--classes cadence
+--fixtures generated/amc-deduplicated-temporal-attribution.csv --run-days-from <last_day − 55>`
+under a new operation id. Each day's final run ties the watermark already CURRENT, and ties
+publish, so the newer delivery replaces it. Earlier runs carry an older watermark and are skipped,
+except on the retired-floor days (ADR-086 §15), where every run ties. This feed's rows don't mature
+between runs, so either way each day ends on the corrected rows. The first selected run re-emits
+its trailing restatement window, so the reload covers every day from `last_day − 55 −
+(restatement_window_days − 1)` (2026-07-14 at the 2026-10-06 span and the contract's 30 days).
+Only days before that keep generation 0's rows, because a phase-B delivery is refused
+(`FULL_HISTORY_NOT_ENABLED`); dev holds no dedup day before 2026-07-14 (read 2026-10-22).
+
 ## 2. Declared per-entity scenario shapes
 
 Every seeded entity carries a **declared scenario shape** in the governed synthetic entity
@@ -99,7 +118,7 @@ Shape invariants, each falsifiable against the lake. The three the 2026-10-04 UX
 broken on the earlier generation (returns above shipped units, an implausibly small day, one CTR
 on every campaign) are also pinned over the committed fixtures by
 `tests/unit/test_display_data_invariants.py`, because the page shows no data-quality notes
-(ADR-086 §17):
+(ADR-086 §17); so is the deduplicated-attribution invariant, the last below:
 
 - **A campaign active in a window has a row for every day of that window.** A zero-delivery
   day (before the launch, or a pause day) is a present row with every measure 0, never an
@@ -113,6 +132,30 @@ on every campaign) are also pinned over the committed fixtures by
   margin-pressure scenario says otherwise.
 - **Product names are valid from the hierarchy's first dev observation** (2026-08-28, read
   2026-10-05), because the hierarchy is a system-first-observed snapshot (ADR-086 §16).
+- **Deduplicated attribution credits every model on every day** (added 2026-10-22, after the
+  Scorecard showed DSP and Sponsored Brands at 0.00× because the feed held one row per day,
+  rotating its one model and one channel). The governed query credits each matched purchase
+  once under each model from one ranked set
+  (`contracts/amc/query-packs/amc-deduplicated-temporal-attribution.sql`), so:
+  every covered day carries every model registered in `contracts/shared/attribution-models.yaml`;
+  per day, `matched_purchase_credit` and revenue are equal across models; every channel with
+  attributed purchases that day has linear credit above 0; and the day's deduplicated revenue
+  never exceeds the sum of the channels' halo-inclusive attributed revenue. Two consistency
+  clauses keep the feed one the query could produce (added 2026-10-22, review): no model credits
+  a channel more than its own attributed purchases or halo-inclusive sales that day, since it
+  credits only purchases the channel touched; and on a day where models credit a channel
+  different revenue, the deduplicated revenue sits below the attributed sum, since only a
+  purchase several channels touched moves between models and the attributed sum counts it once
+  per channel. The generator reads each channel's measures from the attributed-conversion
+  corpus and declares, in `shape.amc.deduplicated_attribution` of the synthetic catalog, the
+  share of each measure that comes from purchases several channels touched and how many
+  channels each touched. The day total counts those purchases once, so it is below the
+  attributed sum and the same under every model. Every model credits a channel its unshared
+  measure and a part of the shared purchases weighted by the channel's shared measure and the
+  model's declared channel weight. Linear's equal weights split each shared purchase evenly
+  across its channels, so its credit sits below each channel's own measure; first and last touch
+  credit whole purchases. A campaign on its declared coverage-gap day contributes nothing, as on
+  every other contract.
 
 ## 3. Two population tiers
 

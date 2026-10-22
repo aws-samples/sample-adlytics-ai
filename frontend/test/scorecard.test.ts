@@ -21,6 +21,7 @@ import modelSensitive from './fixtures/scorecard-model-sensitive-v2.json';
 import noDsp from './fixtures/scorecard-no-dsp-v2.json';
 import needsVendor from './fixtures/scorecard-tacos-needs-vendor-v2.json';
 import twoAlsoChanged from './fixtures/scorecard-two-marketplaces-also-changed-v2.json';
+import noCredit from './fixtures/scorecard-no-deduplicated-credit-v2.json';
 
 type Json = Record<string, unknown>;
 
@@ -276,6 +277,49 @@ test('a version-2 preset renders the label the server serves (G9A-8)', () => {
   assert.throws(() => parsePresentationResultCalendarV2(relabelled, 'scorecard'));
 });
 
+test('a channel a model credits nothing decodes with its served text, its zero and no rank', () => {
+  const sb = (artifact: Json) => (((cardOf(artifact).ranking as Json).rows as Json[]).find((row) => row.channel === 'amazon_sponsored_brands') as Json).values as Json[];
+  const decoded = parseNetworkScorecardArtifact(artifactOf(noCredit)).cards[0]?.ranking;
+  assert.equal(decoded?.outcome, 'robust_leader');
+  const cells = decoded?.rows.find((row) => row.channel === 'amazon_sponsored_brands')?.values;
+  assert.deepEqual(cells?.[0], {
+    credit_text: 'No deduplicated credit', display_value: '0.00', model: 'first_touch_v1', rank: null, rank_text: null, value: '0.0000',
+  });
+  assert.deepEqual(cells?.slice(1).map((cell) => [cell.credit_text, cell.rank_text]), [[null, '2nd'], [null, '2nd']]);
+  const edits: ((artifact: Json) => void)[] = [
+    // The text beside a credited value would hide a figure.
+    (artifact) => { sb(artifact)[1] = { ...sb(artifact)[1] as Json, credit_text: 'No deduplicated credit', rank: null, rank_text: null }; },
+    // A zero with a rank and the text both: "No deduplicated credit 3rd".
+    (artifact) => { sb(artifact)[0] = { ...sb(artifact)[0] as Json, rank: 4, rank_text: '4th' }; },
+    // A zero with neither, in a stated ranking: the unexplained gap the text replaces.
+    (artifact) => { sb(artifact)[0] = { ...sb(artifact)[0] as Json, credit_text: null }; },
+  ];
+  for (const edit of edits) {
+    const artifact = artifactOf(noCredit);
+    edit(artifact);
+    assert.throws(() => parseNetworkScorecardArtifact(artifact), /invalid/, edit.toString());
+  }
+});
+
+test('a ranking no model credits decodes as insufficient with every zero named and unranked', () => {
+  const zeroed = (artifact: Json, rank: number | null) => {
+    const ranking = cardOf(artifact).ranking as Json;
+    ranking.outcome = 'insufficient';
+    ranking.outcome_text = "Not available: no channel received deduplicated credit in this window, so channels can't be ranked under each model.";
+    for (const row of ranking.rows as Json[]) {
+      row.values = (row.values as Json[]).map((cell) => ({
+        ...cell, credit_text: 'No deduplicated credit', display_value: '0.00', rank, rank_text: rank === null ? null : '1st', value: '0.0000',
+      }));
+    }
+    return artifact;
+  };
+  const decoded = parseNetworkScorecardArtifact(zeroed(artifactOf(noCredit), null)).cards[0]?.ranking;
+  assert.equal(decoded?.outcome, 'insufficient');
+  assert.equal(decoded?.outcome_text, "Not available: no channel received deduplicated credit in this window, so channels can't be ranked under each model.");
+  assert.deepEqual([...new Set(decoded?.rows.flatMap((row) => row.values.map((cell) => [cell.credit_text, cell.rank, cell.value].join('|'))))], ['No deduplicated credit||0.0000']);
+  // Paired: an insufficient ranking that ranks a zero can't be decoded.
+  assert.throws(() => parseNetworkScorecardArtifact(zeroed(artifactOf(noCredit), 1)), /invalid/);
+});
 test('every round-5 served state decodes: SC-1, model-sensitive, no DSP, no Vendor Central, two marketplaces with Also changed', () => {
   const governed = ['amazon_dsp', 'amazon_sponsored_products', 'amazon_sponsored_brands', 'amazon_sponsored_display'];
   const sc1 = parseNetworkScorecardArtifact(artifactOf(defaultBody));

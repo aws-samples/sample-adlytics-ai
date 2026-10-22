@@ -243,6 +243,28 @@ shape:
     # that day's delivery. Only the reach-side row is shaped; that day's impressions corpus isn't,
     # so the bound holds but the implied frequency isn't realistic. The other two days are clean.
     dsp_reach: {day_offsets: [-3, -2, -1], suppressed: {day_offset: -3, campaign: campaign:northstar-dsp-05}}
+    # amc-deduplicated-temporal-attribution (dev-seeding §2): one row per day x registered model
+    # x ad product with attributed purchases that day, from the attributed corpus's purchases
+    # (credit) and halo-inclusive sales (revenue) per ad product. A shared_purchase_share of each
+    # ad product's measure comes from purchases that channels_per_shared_purchase ad products
+    # touched, so the channels' attributed sum counts them that many times and the deduplicated
+    # day total once: the total is the attributed sum x (1 - share + share / channels), the same
+    # under every model. Every model credits an ad product its unshared measure whole; the shared
+    # purchases' deduplicated value is split by the ad products' shared measures x the model's
+    # weight below. Linear weighs each equally, so it splits every shared purchase evenly across
+    # the ad products it touched; first touch leans to DSP, whose upper-funnel impressions tend to
+    # come first; last touch to Sponsored Products, the search ad nearest the purchase. No model
+    # credits an ad product more than its own measure (the generator fails closed otherwise).
+    deduplicated_attribution:
+      shared_purchase_share: "0.30"
+      channels_per_shared_purchase: 2
+      channel_weights:
+        first_touch_v1: {amazon_dsp: "1.50", sponsored_products: "0.80", sponsored_brands: "1.00"}
+        last_touch_v1: {amazon_dsp: "0.70", sponsored_products: "1.25", sponsored_brands: "1.00"}
+        linear_v1: {amazon_dsp: "1.00", sponsored_products: "1.00", sponsored_brands: "1.00"}
+      # First and last touch credit each purchase whole to one touch, so their purchase credit per
+      # ad product is a whole number; linear's equal fractions are not.
+      whole_credit_models: [first_touch_v1, last_touch_v1]
     # Pack 5 (amc-exposure-groups, ADR-101): one delivery of the 3 x 2 grid (exposure source set x
     # identity space) per complete ISO week and calendar month. A period's DSP and sponsored
     # impressions and raw costs come from the amc-dsp-impressions and amc-reach-frequency corpora
@@ -372,4 +394,9 @@ shape:
     # quarantines the whole day's Vendor delivery, which would drop that day's retail rows from
     # every window (task evidence mismatch_reachability.out; test_seed_pre_landing.py).
     - {kind: price_shift, product: B0FIXTUR06, first_offset: -8, pct: "-10"}
+  # The deduplicated-attribution feed's own retrieval generation (0..3; dev-seeding §1). 1: the
+  # 2026-10-22 corrected corpus (every model, every channel, every day) at the unchanged
+  # 2026-10-06 span; generation 0's keys already hold the rotating one-row-per-day rows in dev and
+  # a landed key is immutable, so the corrected runs land 16 retrieval seconds higher on each run.
+  deduplicated_retrieval_generation: 1
   seal_generation: 2                   # 1: tail seal lost to the missing ReportBatchItemFailures (O-SEMANTIC-WRITE-ACK-001); 2: 600 s guard stopped before a 960 s redelivery (both 2026-10-06); the dimension seal's offset generation; a re-land after a diagnosed failure uses + 1

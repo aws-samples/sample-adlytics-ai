@@ -358,6 +358,26 @@ class DspReachShape:
 
 
 @dataclass(frozen=True, slots=True)
+class DeduplicatedAttributionShape:
+    """How each model splits one day's deduplicated total across channels (dev-seeding §2).
+
+    `shared_purchase_share` of each ad product's attributed measure comes from purchases that
+    `channels_per_shared_purchase` ad products touched, so the deduplicated day total, the same
+    under every model, is the attributed sum x (1 - share + share / channels). Every model
+    credits an ad product its unshared measure whole and splits the shared purchases'
+    deduplicated value by each ad product's shared measure x `channel_weights[model][ad_product]`;
+    equal (linear) weights split each shared purchase evenly across the ad products it touched.
+    A `whole_credit_models` model credits each purchase whole to one touch (first or last), so its
+    purchase credit per ad product is a whole number.
+    """
+
+    shared_purchase_share: Decimal
+    channels_per_shared_purchase: int
+    channel_weights: dict[str, dict[str, Decimal]]
+    whole_credit_models: frozenset[str]
+
+
+@dataclass(frozen=True, slots=True)
 class CampaignSpread:
     """Per-campaign constant bands, one independent draw per campaign and field."""
 
@@ -516,6 +536,7 @@ class CatalogShape:
     new_to_brand_buyers_channel: NewToBrandBuyersChannelShape
     new_to_brand_buyers_campaign: NewToBrandBuyersCampaignShape
     dsp_reach: DspReachShape
+    deduplicated_attribution: DeduplicatedAttributionShape
     exposure_groups: ExposureGroupsShape
     exposure_frequency: ExposureFrequencyShape
     audience_segments: AudienceSegmentsShape
@@ -533,6 +554,9 @@ class CatalogShape:
     retail: RetailShape
     events: tuple[ShapeEvent, ...]
     seal_generation: int
+    deduplicated_retrieval_generation: int
+    """The deduplicated-attribution feed's own retrieval generation, 0..3 (dev-seeding §1): a
+    corrected corpus at an unchanged span lands at fresh keys one generation up."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -677,8 +701,11 @@ _TOP_KEYS = frozenset(
         "retail",
         "events",
         "seal_generation",
+        "deduplicated_retrieval_generation",
     }
 )
+_MAX_RETRIEVAL_GENERATION = 3
+"""Four 16-second generations fill a run's 64-second retrieval stride (land_fixtures.bundle)."""
 _SPREAD_KEYS = frozenset(CampaignSpread.__dataclass_fields__)
 _RETAIL_KEYS = frozenset(RetailShape.__dataclass_fields__)
 _EVENT_KEYS: dict[str, frozenset[str]] = {
@@ -1006,6 +1033,7 @@ def load_catalog_shape(value: object, context: ShapeContext) -> CatalogShape:
                 "new_to_brand_buyers_channel",
                 "new_to_brand_buyers_campaign",
                 "dsp_reach",
+                "deduplicated_attribution",
                 "exposure_groups",
                 "exposure_frequency",
                 "audience_segments",
@@ -1105,6 +1133,7 @@ def load_catalog_shape(value: object, context: ShapeContext) -> CatalogShape:
         new_to_brand_buyers_channel=channel,
         new_to_brand_buyers_campaign=campaign,
         dsp_reach=dsp_reach,
+        deduplicated_attribution=_deduplicated_attribution(amc["deduplicated_attribution"]),
         exposure_groups=exposure_groups,
         exposure_frequency=exposure_frequency,
         audience_segments=audience_segments,
@@ -1124,7 +1153,19 @@ def load_catalog_shape(value: object, context: ShapeContext) -> CatalogShape:
         retail=_retail(raw["retail"], frozenset(context.product_scenarios.values())),
         events=events,
         seal_generation=seal_generation,
+        deduplicated_retrieval_generation=_retrieval_generation(
+            raw["deduplicated_retrieval_generation"]
+        ),
     )
+
+
+def _retrieval_generation(value: object) -> int:
+    """Narrow `deduplicated_retrieval_generation` to the four generations a stride holds."""
+    path = "deduplicated_retrieval_generation"
+    generation = _integer(value, path)
+    if not 0 <= generation <= _MAX_RETRIEVAL_GENERATION:
+        raise _fail(path, f"must be an integer from 0 to {_MAX_RETRIEVAL_GENERATION}.")
+    return generation
 
 
 def _new_to_brand_buyers(
@@ -1216,6 +1257,56 @@ def _positive_decimal(value: object, path: str) -> Decimal:
     if number <= 0:
         raise _fail(path, "must be a positive decimal.")
     return number
+
+
+def _deduplicated_attribution(value: object) -> DeduplicatedAttributionShape:
+    """Narrow `amc.deduplicated_attribution`.
+
+    A shared share in (0, 1), at least two channels per shared purchase, positive weights and
+    the same channels per model.
+    """
+    path = "amc.deduplicated_attribution"
+    raw = _mapping(
+        value,
+        path,
+        frozenset(
+            {
+                "shared_purchase_share",
+                "channels_per_shared_purchase",
+                "channel_weights",
+                "whole_credit_models",
+            }
+        ),
+    )
+    share = _open_interval(
+        _decimal(raw["shared_purchase_share"], f"{path}.shared_purchase_share"),
+        (Decimal(0), Decimal(1)),
+        f"{path}.shared_purchase_share",
+    )
+    touched = _positive(raw["channels_per_shared_purchase"], f"{path}.channels_per_shared_purchase")
+    if touched < 2:  # noqa: PLR2004 -- a shared purchase touched more than one ad product
+        raise _fail(f"{path}.channels_per_shared_purchase", "must be at least 2.")
+    models = raw["channel_weights"]
+    if not isinstance(models, dict) or not models:
+        raise _fail(f"{path}.channel_weights", "must be a non-empty mapping of models.")
+    weights: dict[str, dict[str, Decimal]] = {}
+    for model, channels in cast("RawMapping", models).items():
+        model_path = f"{path}.channel_weights.{model}"
+        if not isinstance(channels, dict) or not channels:
+            raise _fail(model_path, "must be a non-empty mapping of ad products.")
+        weights[_text(model, model_path)] = {
+            _text(channel, model_path): _positive_decimal(weight, f"{model_path}.{channel}")
+            for channel, weight in cast("RawMapping", channels).items()
+        }
+    if len({frozenset(channels) for channels in weights.values()}) != 1:
+        raise _fail(f"{path}.channel_weights", "every model must weigh the same ad products.")
+    whole = frozenset(
+        _text(item, f"{path}.whole_credit_models")
+        for item in _list(raw["whole_credit_models"], f"{path}.whole_credit_models")
+    )
+    if not whole <= set(weights):
+        raise _fail(f"{path}.whole_credit_models", "must name models with channel weights.")
+    return DeduplicatedAttributionShape(share, touched, weights, whole)
 
 
 def _exposure_cell(value: object, path: str, period_start: date) -> ExposureCellShape:
