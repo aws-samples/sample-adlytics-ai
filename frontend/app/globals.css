@@ -746,6 +746,19 @@ details.exact th { color: var(--text-faint); font-weight: 600; }
 .assistant .msg.agent[data-assistant-tone] { border-color: color-mix(in srgb, var(--warn) 45%, var(--line)); color: var(--text-dim); }
 .assistant .msg .scope { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 4px; }
 .assistant .msg .msg-reference { margin: 8px 0 0; font-size: 12px; color: var(--text-dim); }
+/* OD-UX-8: the turn's governed tool steps, collapsed under the answer. */
+.assistant .msg .msg-trace { margin: 8px 0 0; font-size: 12px; color: var(--text-dim); }
+.assistant .msg .msg-trace summary { cursor: pointer; font-weight: 650; }
+.assistant .msg .msg-trace ol { margin: 6px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 2px; }
+.assistant .msg .msg-trace code { font-size: 11px; color: var(--text-faint); }
+/* views/chat.md fix 2: a wide answer table shows a visible edge shadow while more columns scroll. */
+.public-block-stream__table-scroll, .assistant-markdown__table-scroll {
+  background:
+    linear-gradient(to right, var(--card) 30%, transparent) left center / 24px 100% no-repeat local,
+    linear-gradient(to left, var(--card) 30%, transparent) right center / 24px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, color-mix(in srgb, var(--text) 22%, transparent), transparent) left center / 10px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, color-mix(in srgb, var(--text) 22%, transparent), transparent) right center / 10px 100% no-repeat scroll;
+}
 .assistant .empty { color: var(--text-dim); font-size: 13px; padding: 6px 2px; }
 .assistant .empty strong { display: block; color: var(--text); margin-bottom: 4px; }
 .assistant .progress { font-size: 12px; color: var(--text-dim); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 0; padding: 0; list-style: none; }

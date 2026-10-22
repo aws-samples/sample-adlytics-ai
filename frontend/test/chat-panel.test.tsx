@@ -18,6 +18,8 @@ import {
   renderedAssistantWidth,
   seedAssistantQuestion,
   toggleAssistant,
+  TOOL_STEP_LABELS,
+  toolStepLabel,
 } from '@/components/ChatPanel';
 import type { AssistantPage } from '@/components/AssistantPageContext';
 
@@ -35,6 +37,13 @@ const paragraph = {
   sequence: 2,
   block: Object.freeze({ kind: 'paragraph' as const, text: 'The governed result is available.' }),
 };
+
+/** Press the last "Copy reference" and read what it copied (user-event's clipboard stub). */
+async function copyReference(user: ReturnType<typeof userEvent.setup>): Promise<string> {
+  const buttons = await screen.findAllByRole('button', { name: 'Copy reference' });
+  await user.click(buttons[buttons.length - 1]!);
+  return navigator.clipboard.readText();
+}
 
 test('appends validated public blocks as they arrive and exposes friendly activity without an Answer heading', async () => {
   let releaseSecondBlock: (() => void) | undefined;
@@ -88,7 +97,7 @@ test('page Ask seeding dispatches only the supplied scope text', () => {
   assert.equal((received as { readonly question: string }).question, 'Ask about Ad spend for the visible campaign.');
   assert.equal(streamChat.mock.calls.length, callsBeforeSeed);
 });
-test('shows the support reference as plain text once a turn ends (ADR-081)', async () => {
+test('offers the support reference behind Copy reference once a turn ends, never printed raw (ADR-081)', async () => {
   streamChat.mockImplementationOnce(async (
     _question: string,
     _sessionId: string,
@@ -106,15 +115,18 @@ test('shows the support reference as plain text once a turn ends (ADR-081)', asy
   const box = screen.getByRole('textbox', { name: 'Ask the workspace' });
   await user.type(box, 'What changed?');
   await user.click(screen.getByRole('button', { name: 'Submit' }));
-  assert.ok(await screen.findByText('Reference: 01JABCDEFGHJKMNPQRSTVWXYZ0'));
+  // pragma: allowlist nextline secret (A-ENTROPY-IDENTIFIER-001)
+  assert.equal(await copyReference(user), '01JABCDEFGHJKMNPQRSTVWXYZ0');
+  assert.equal(screen.queryByText(/01JABCDEFGHJKMNPQRSTVWXYZ0/), null);
   assert.ok(await screen.findByText('The governed result is available.'));
   await user.type(box, 'And the week before?');
   await user.click(screen.getByRole('button', { name: 'Submit' }));
-  assert.ok(await screen.findByText('Reference: 01JZYXWVTSRQPNMKJHGFEDCBA9'));
+  // pragma: allowlist nextline secret (A-ENTROPY-IDENTIFIER-001)
+  assert.equal(await copyReference(user), '01JZYXWVTSRQPNMKJHGFEDCBA9');
   await user.type(box, 'And the month?');
   await user.click(screen.getByRole('button', { name: 'Submit' }));
   assert.ok(await screen.findByText('The assistant is temporarily unavailable.'));
-  assert.equal(screen.getAllByText(/^Reference: /).length, 2);
+  assert.equal(screen.getAllByRole('button', { name: 'Copy reference' }).length, 2);
 });
 
 type TextHandlers = {
@@ -157,7 +169,7 @@ test('renders a streamed V4 Markdown answer incrementally and safely, then the r
   assert.ok(await within(answer).findByRole('heading', { name: 'Summary' }));
   assert.equal(within(answer).queryByRole('table'), null);
   assert.match(screen.getByRole('status', { name: 'Assistant progress' }).textContent ?? '', /Understanding the question/);
-  assert.equal(screen.queryByText(/^Reference: /), null);
+  assert.equal(screen.queryByRole('button', { name: 'Copy reference' }), null);
 
   gates[1]!.release();
   assert.ok(await within(answer).findByText('chart'));
@@ -187,8 +199,14 @@ test('renders a streamed V4 Markdown answer incrementally and safely, then the r
   ]);
   assert.deepEqual(within(table).getAllByRole('cell').map((cell) => cell.textContent), ['Spring', '10', 'Summer', '12']);
 
-  assert.ok(await screen.findByText('Reference: 01JABCDEFGHJKMNPQRSTVWXYZ0'));
-  assert.equal(screen.getByText('Reference: 01JABCDEFGHJKMNPQRSTVWXYZ0').className, 'msg-reference');
+  // pragma: allowlist nextline secret (A-ENTROPY-IDENTIFIER-001)
+  assert.equal(await copyReference(user), '01JABCDEFGHJKMNPQRSTVWXYZ0');
+  assert.equal(screen.getByRole('button', { name: 'Copy reference' }).closest('p')?.className, 'msg-reference');
+  // OD-UX-8: the turn's governed tool calls, collapsed, each with its plain step and its tool name.
+  const trace = view.container.querySelector('details.msg-trace') as HTMLDetailsElement;
+  assert.equal(trace.open, false);
+  assert.equal(trace.querySelector('summary')?.textContent, 'How this was answered');
+  assert.deepEqual([...trace.querySelectorAll('li')].map((item) => item.textContent), ['Read governed data campaign_performance']);
   assert.equal(screen.queryByRole('status', { name: 'Assistant progress' }), null);
   assert.ok(screen.getByText('Assistant response ready.'));
   assert.equal(view.container.querySelectorAll('[aria-live]').length, 1);
@@ -207,7 +225,7 @@ test('renders the final V4 text exactly when the turn ends, even inside one fram
   const answer = await screen.findByRole('article', { name: 'Assistant response' });
   assert.equal(answer.textContent, 'Sales rose 12%.');
   assert.equal(answer.querySelector('strong')?.textContent, '12%');
-  assert.equal(screen.queryByText(/^Reference: /), null);
+  assert.equal(screen.queryByRole('button', { name: 'Copy reference' }), null);
 });
 
 test('keeps streamed V4 text on screen when the turn is refused after it, with the reference', async () => {
@@ -223,7 +241,7 @@ test('keeps streamed V4 text on screen when the turn is refused after it, with t
   await user.click(screen.getByRole('button', { name: 'Submit' }));
   const refusal = await screen.findByText('The data service is unavailable.');
   assert.equal(refusal.closest('.msg')?.getAttribute('data-assistant-tone'), 'refusal');
-  assert.ok(within(refusal.closest('.msg') as HTMLElement).getByText('Reference: 01JZYXWVTSRQPNMKJHGFEDCBA9'));
+  assert.ok(within(refusal.closest('.msg') as HTMLElement).getByRole('button', { name: 'Copy reference' }));
   const answer = screen.getByRole('article', { name: 'Assistant response' });
   assert.equal(answer.textContent, 'Partial answer so far.');
   assert.equal(answer.closest('.msg')?.querySelector('.msg-reference'), null);
@@ -314,4 +332,13 @@ test('the assistant is docked and open by default, its thread is a labelled log,
   assert.equal(screen.queryByRole('complementary', { name: 'Assistant' }), null);
   assert.equal(screen.getAllByRole('button').length, 1);
   assert.equal(localStorage.getItem('adlytics.chat-open'), 'false');
+});
+
+test('every governed tool has its plain trace step, keyed by its declared name (OD-UX-8)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const catalog = JSON.parse(readFileSync(join(__dirname, '..', '..', 'contracts', 'generated', 'tools.json'), 'utf8')) as { tools: Array<{ name: string }> };
+  assert.deepEqual(Object.keys(TOOL_STEP_LABELS).sort(), catalog.tools.map((tool) => tool.name).sort());
+  assert.equal(toolStepLabel('measurement_top_n'), 'Ranked a metric');
+  assert.equal(toolStepLabel('an_undeclared_tool'), 'Read governed data');
 });

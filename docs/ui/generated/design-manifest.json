@@ -510,7 +510,7 @@
       "members": [
         {
           "path": "docs/ui/workspace-assistant.md",
-          "sha256": "cf90e31d9f5decc8fd364bb720867f6f66592d17f949bd6a09b93c0f7f86c9f6"
+          "sha256": "c1bd663edf7a8ac6f785eea6ee3320bfd5d63a3d5bc48531438312fd334fc78f"
         }
       ],
       "revision": "2026-10-09.2"

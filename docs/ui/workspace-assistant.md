@@ -44,6 +44,17 @@ Cards remain inside their assistant message in the conversation transcript. They
 
 A public evidence card is a bounded server-side projection of a recognized, valid shaped tool result. It may contain safe display labels, exact metric/value pairs, a declared period/grain, source/basis, qualification, a compact trend series where the artifact permits it, and an existing generated action. It never exposes raw tool names, tool IDs, database labels, timings, query plans, canonical identifiers, arbitrary JSON, or browser-provided page context. Unknown or malformed result content fails closed and produces no card.
 
+Readability (UI refresh 2.6, OD-UX-8, presentation only; no prompt change and no parsing of model text):
+- Under each finished answer, a collapsed "How this was answered" lists the turn's V4 `tool` events
+  in order, each as a plain step mapped from its declared governed tool name
+  (`TOOL_STEP_LABELS` in `frontend/components/ChatPanel.tsx`, pinned to
+  `contracts/generated/tools.json` by a test) followed by that tool name. Evidence cards still never
+  show tool names; the names appear only inside this trace, as ADR-065 allows.
+- The turn's support reference (`done.audit_id`, ADR-081 §2) sits behind one "Copy reference"
+  button instead of printing the raw token.
+- Answer tables keep their keyboard-scrollable region and show an edge shadow while columns remain
+  out of view, so a 360 px column signals that it scrolls.
+
 Visual cards follow the workspace [visual-evidence policy](README.md#4-visual-evidence-and-temporal-controls): an observation remains prose, while the card makes the supporting trend or comparison easy to scan. Perspective and Hypothesis are visually and semantically separate from observed facts.
 
 ## 5. Page-owned visual narration
