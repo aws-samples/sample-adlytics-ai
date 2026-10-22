@@ -805,7 +805,7 @@ def test_an_injected_page_entry_bakes_a_publication_equal_to_the_planned_answers
     result = baker.bake(BakeIntent(RETENTION_PAGE_ID, LATEST_VINTAGE_VARIANT))
     assert isinstance(result, BakePublication)
     body = json.loads(result.request.body.payload_json)
-    assert result.request.pointer_advance.pointer.resolved_window == VINTAGE.window
+    assert result.request.pointer_template.complete(None).pointer.resolved_window == VINTAGE.window
     assert body == _baked()
     assert (body["type"], body["version"], body["outcome"]) == (
         "RetentionCohortArtifact",

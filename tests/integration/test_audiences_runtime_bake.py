@@ -564,7 +564,7 @@ def test_full_roster_phase_trace_and_over_bound_render(  # noqa: PLR0915 -- one 
         assert rendered_a.artifact is not None
         payload_a = _payload(request_a)
         assert payload_a["type"] == AUDIENCES_ARTIFACT_TYPE
-        assert request_a.pointer_advance.pointer.resolved_window == month_a.window
+        assert request_a.pointer_template.complete(None).pointer.resolved_window == month_a.window
         rows_a, bytes_a = _body_rows(payload_a), len(request_a.body.payload_json.encode())
         assert rows_a <= registered and bytes_a <= MAX_PRESET_ARTIFACT_BYTES
         shown_a = rendered_a.artifact.markets[0].campaigns.shown
@@ -597,7 +597,7 @@ def test_full_roster_phase_trace_and_over_bound_render(  # noqa: PLR0915 -- one 
         assert request_b.body.revision == PresetArtifactRevision.from_publication_identities(
             (*rendered_b.publication_identities, identity), render_format=AUDIENCES_RENDER_FORMAT
         )
-        assert request_b.pointer_advance.pointer.resolved_window == window
+        assert request_b.pointer_template.complete(None).pointer.resolved_window == window
         bytes_b = len(
             canonical_preset_artifact_json(audiences_artifact_payload(rendered_b.artifact)).encode()
         )

@@ -137,8 +137,7 @@ from domain.presentation.page_schemas import (
 from domain.presentation.preset_artifacts import (
     PresetArtifactBody,
     PresetArtifactPage,
-    PresetArtifactPointer,
-    PresetArtifactPointerAdvanceRequest,
+    PresetArtifactPointerTemplate,
     PresetArtifactPublicationRequest,
     PresetArtifactRevision,
     PresetArtifactVariant,
@@ -959,26 +958,21 @@ class RetainedNewCustomersPresetArtifactSource:
             revision,
             capped_preset_artifact_json(new_customers_artifact_payload(rendered.artifact)),
         )
-        pointer = PresetArtifactPointer(
-            self.page,
-            variant,
-            revision,
-            body.digest,
-            1 if current is None else current.forward_token + 1,
-            None if current is None else current.revision,
-            None,
-            # The window this body serves and its prior (ADR-116 decision 4), as every other
-            # baker writes them, so the date control names each preset's dates.
-            resolved_window=resolved.period,
-            comparison_window=resolved.prior_period,
-        )
         return PresetArtifactPublicationRequest(
             body,
-            PresetArtifactPointerAdvanceRequest(
-                pointer,
+            PresetArtifactPointerTemplate(
+                self.page,
+                variant,
+                revision,
+                body.digest,
+                1 if current is None else current.forward_token + 1,
+                None if current is None else current.revision,
                 None if current is None else self.clock() + SUPERSEDED_HISTORY_RETENTION,
+                # The window this body serves and its prior (ADR-116 decision 4), as every other
+                # baker writes them, so the date control names each preset's dates.
+                resolved_window=resolved.period,
+                comparison_window=resolved.prior_period,
             ),
-            None,
         )
 
     def _resolved(self, variant: PresetArtifactVariant) -> NewCustomersRenderInput | None:
