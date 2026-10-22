@@ -234,8 +234,9 @@ The stage reports every write chain (each pair, each shard, the parent) and its 
 task's `pairs` and `written_bytes` on both entries. Every sibling of every source is indexed, and a
 sibling-free page writes no custody. A serve reads a sibling in two levels: pointer, parent custody,
 the shard whose range covers the identity (checked against the parent's digest), the descriptor, then
-the body and custody (each checked against it). An identity no shard lists, or a shard or sibling
-whose bytes don't match, is the malformed-artifact refusal, never a fallback.
+the body and custody (each checked against it). An identity no shard lists, a listed shard or sibling
+that S3 doesn't hold, or one whose bytes don't match, is the malformed-artifact refusal, never a
+fallback.
 Superseded history receives retention TTL; current records do not expire. Baked bodies are
 capability-free, and the serve path mints session custody.
 
