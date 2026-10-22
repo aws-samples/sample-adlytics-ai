@@ -3,11 +3,13 @@ import assert from 'node:assert/strict';
 import { test } from 'vitest';
 
 import {
+  adProductChannels,
   bindingByPath,
   bindingByRoute,
   declaredPageIds,
   generatedActionById,
   pageBindings,
+  parseAdProductChannels,
   parsePageBindings,
   renderedBindings,
   routeNames,
@@ -15,6 +17,7 @@ import {
 
 function fictionalDocument(): Record<string, unknown> {
   return {
+    ad_product_channels: { amazon_dsp: 'amazon_dsp' },
     metric_display: { ctr: { ratio_scale: 'rate', units: 'ratio' } },
     pages: structuredClone(pageBindings),
     presentation_result_version: 2,
@@ -202,4 +205,14 @@ test('generated V2 binding parser rejects malformed browser compatibility fields
   const malformedAction = fictionalDocument();
   pages(malformedAction)[0]!.actions = [{ action_id: 'fictional-action', target_route: '/fictional/' }];
   assert.throws(() => parsePageBindings(malformedAction), TypeError);
+});
+
+test('ad products join their Scorecard channel on the governed taxonomy keys, one product per channel', () => {
+  // contracts/shared/media-taxonomy.yaml ad_products[].channel, projected by the generator.
+  assert.equal(adProductChannels.get('amazon_dsp'), 'amazon_dsp');
+  assert.equal(adProductChannels.get('sponsored_products'), 'amazon_sponsored_products');
+  assert.equal(adProductChannels.get('sponsored_brands'), 'amazon_sponsored_brands');
+  const shared = { ...fictionalDocument(), ad_product_channels: { a: 'amazon_dsp', b: 'amazon_dsp' } };
+  assert.throws(() => parseAdProductChannels(shared), /exactly one ad product/);
+  assert.throws(() => parseAdProductChannels({ ...fictionalDocument(), ad_product_channels: {} }), /nonempty/);
 });

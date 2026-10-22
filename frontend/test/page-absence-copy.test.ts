@@ -10,6 +10,7 @@ import {
   CAMPAIGN_ABSENCE_TITLE,
 } from '@/components/CampaignRouteAdapter';
 import { OVERVIEW_NO_SPEND_TREND, sourceIssueText } from '@/components/OverviewView';
+import { CHANNEL_NEW_CUSTOMERS_ABSENT } from '@/components/ScorecardView';
 import { PI_DOMAIN_FALLBACK } from '@/components/PresentationV2RouteController';
 import {
   RETAIL_HEALTH_ABSENCE_NO_PERIOD,
@@ -51,4 +52,5 @@ test('ABS-CAMP-1/2 and ABS-RH-1/2 in docs/ui/page-absence-copy.md are the adapte
 test('ABS-OV-1 and ABS-OV-2 in docs/ui/page-absence-copy.md are the Overview band absences', () => {
   assert.equal(row('ABS-OV-1').text, sourceIssueText('{tab}'));
   assert.equal(row('ABS-OV-2').text, OVERVIEW_NO_SPEND_TREND);
+  assert.equal(row('ABS-SC-CH').text, CHANNEL_NEW_CUSTOMERS_ABSENT);
 });

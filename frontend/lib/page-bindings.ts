@@ -453,7 +453,7 @@ function parseBinding(value: unknown, expectedPageId: DeclaredPageId): PageBindi
 export function parsePageBindings(value: unknown): readonly PageBinding[] {
   const document = record(
     value,
-    ['metric_display', 'pages', 'presentation_result_version', 'temporal_control_version', 'version'],
+    ['ad_product_channels', 'metric_display', 'pages', 'presentation_result_version', 'temporal_control_version', 'version'],
     'page bindings',
   );
   if (
@@ -505,7 +505,7 @@ export interface MetricDisplay {
 
 /** Decode the generated `metric_display` block: one unit per metric, a scale exactly on ratios. */
 export function parseMetricDisplay(value: unknown): ReadonlyMap<string, MetricDisplay> {
-  const document = record(value, ['metric_display', 'pages', 'presentation_result_version', 'temporal_control_version', 'version'], 'page bindings');
+  const document = record(value, ['ad_product_channels', 'metric_display', 'pages', 'presentation_result_version', 'temporal_control_version', 'version'], 'page bindings');
   const block = document.metric_display;
   if (typeof block !== 'object' || block === null || Array.isArray(block) || Object.keys(block).length === 0) {
     throw new TypeError('Metric display must be a nonempty object.');
@@ -523,6 +523,27 @@ export function parseMetricDisplay(value: unknown): ReadonlyMap<string, MetricDi
   return displays;
 }
 
+/**
+ * Decode the generated `ad_product_channels` block (UI refresh 2.3): each governed ad product's
+ * channel from `contracts/shared/media-taxonomy.yaml`, one ad product per channel, so a New
+ * customers row joins its Scorecard channel row on governed keys and never by name.
+ */
+export function parseAdProductChannels(value: unknown): ReadonlyMap<string, string> {
+  const document = record(value, ['ad_product_channels', 'metric_display', 'pages', 'presentation_result_version', 'temporal_control_version', 'version'], 'page bindings');
+  const block = document.ad_product_channels;
+  if (typeof block !== 'object' || block === null || Array.isArray(block) || Object.keys(block).length === 0) {
+    throw new TypeError('Ad product channels must be a nonempty object.');
+  }
+  const channels = new Map<string, string>();
+  for (const [product, channel] of Object.entries(block as UnknownRecord)) {
+    if (typeof channel !== 'string' || !channel.trim() || !product.trim()) throw new TypeError(`Ad product ${product} has no channel.`);
+    channels.set(product, channel);
+  }
+  if (new Set(channels.values()).size !== channels.size) throw new TypeError('Each channel has exactly one ad product.');
+  return channels;
+}
+/** Each governed ad product's channel, keyed by ad product. */
+export const adProductChannels = parseAdProductChannels(generatedDocument as unknown);
 /** Every governed metric's display rule, keyed by metric id. */
 export const metricDisplay = parseMetricDisplay(generatedDocument as unknown);
 

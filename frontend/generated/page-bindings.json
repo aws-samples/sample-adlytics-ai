@@ -1,4 +1,11 @@
 {
+  "ad_product_channels": {
+    "amazon_dsp": "amazon_dsp",
+    "sponsored_brands": "amazon_sponsored_brands",
+    "sponsored_display": "amazon_sponsored_display",
+    "sponsored_products": "amazon_sponsored_products",
+    "sponsored_television": "amazon_sponsored_television"
+  },
   "metric_display": {
     "ad_spend": {
       "ratio_scale": null,

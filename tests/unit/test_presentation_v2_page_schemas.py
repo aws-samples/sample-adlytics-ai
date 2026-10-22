@@ -131,6 +131,20 @@ def test_v2_generator_projects_each_metric_unit_and_ratio_scale(tmp_path: Path) 
             load_v2_page_bindings(tmp_path, path=Path(path.name))
 
 
+def test_v2_generator_projects_each_ad_products_governed_channel(tmp_path: Path) -> None:
+    """UI refresh 2.3: New customers rows join Scorecard channel rows on taxonomy keys only."""
+    document = generated_document(ROOT, schema_version=2)
+    channels = cast("dict[str, str]", document["ad_product_channels"])
+    assert channels["amazon_dsp"] == "amazon_dsp"
+    assert channels["sponsored_products"] == "amazon_sponsored_products"
+    assert channels["sponsored_brands"] == "amazon_sponsored_brands"
+    path = tmp_path / "v2-bindings.json"
+    channels["sponsored_brands"] = "amazon_sponsored_products"
+    path.write_text(json.dumps(document))
+    with pytest.raises(PageSchemaError, match="each ad product to its own channel"):
+        load_v2_page_bindings(tmp_path, path=Path(path.name))
+
+
 def test_v2_section_role_projection_is_exhaustive_for_every_declared_section() -> None:
     schemas = load_v2_page_schemas(ROOT)
 

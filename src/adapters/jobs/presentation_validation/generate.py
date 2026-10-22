@@ -10,10 +10,12 @@ from pathlib import Path
 from adapters.jobs.presentation_validation.bindings import PAGE_BINDINGS_PATH
 from adapters.jobs.presentation_validation.loader import load_page_schemas, load_v2_page_schemas
 from adapters.outbound.attribution_models import load_attribution_models
+from adapters.outbound.media_taxonomy import load_media_taxonomy
 from adapters.outbound.metric_dictionary import load_catalog
 from domain.presentation.page_schemas import (
     AnalyticalPageSchema,
     MetricRole,
+    PageSchemaError,
     PresentationPageSchema,
     PresentationSectionRole,
     PresentationTemporalPolicy,
@@ -346,12 +348,30 @@ def _v2_generated_document(root: Path) -> dict[str, object]:
             }
         )
     return {
+        "ad_product_channels": _v2_ad_product_channels(root),
         "metric_display": _v2_metric_display(root),
         "pages": pages,
         "presentation_result_version": schemas.presentation_result_version,
         "temporal_control_version": schemas.temporal_control_version,
         "version": schemas.version,
     }
+
+
+def _v2_ad_product_channels(root: Path) -> dict[str, str]:
+    """Project each governed ad product's channel from `media-taxonomy.yaml`.
+
+    The browser joins a New customers ad-product row to its Scorecard channel row on these
+    governed keys, never by name (UI refresh 2.3). One ad product per channel, so the join is
+    exact both ways.
+    """
+    pairs = {
+        str(term.ad_product): str(term.channel)
+        for term in load_media_taxonomy(root).terms
+        if term.ad_product is not None and term.channel is not None and term.key == term.ad_product
+    }
+    if not pairs or len(set(pairs.values())) != len(pairs):
+        raise PageSchemaError("Each governed channel must have exactly one ad product to join on.")
+    return dict(sorted(pairs.items()))
 
 
 def _v2_metric_display(root: Path) -> dict[str, dict[str, str | None]]:

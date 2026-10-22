@@ -372,6 +372,18 @@ def _metric_display(raw: object) -> None:
             raise PageSchemaError(f"V2 metric_display {name!s} must scale exactly a ratio.")
 
 
+def _ad_product_channels(raw: object) -> None:
+    """Refuse an ad-product channel projection that isn't nonblank text, one product per channel."""
+    if not isinstance(raw, dict) or not raw:
+        raise PageSchemaError("V2 page bindings ad_product_channels must be a nonempty object.")
+    pairs = cast("dict[object, object]", raw)
+    if not all(
+        isinstance(key, str) and key and isinstance(value, str) and value
+        for key, value in pairs.items()
+    ) or len(set(pairs.values())) != len(pairs):
+        raise PageSchemaError("V2 ad_product_channels must map each ad product to its own channel.")
+
+
 def load_v2_page_bindings(  # noqa: PLR0912, PLR0915 -- exact wire-shape validation
     root: Path,
     *,
@@ -388,6 +400,7 @@ def load_v2_page_bindings(  # noqa: PLR0912, PLR0915 -- exact wire-shape validat
     top = _record(
         document,
         {
+            "ad_product_channels",
             "metric_display",
             "pages",
             "presentation_result_version",
@@ -396,6 +409,7 @@ def load_v2_page_bindings(  # noqa: PLR0912, PLR0915 -- exact wire-shape validat
         },
         "V2 page bindings",
     )
+    _ad_product_channels(top["ad_product_channels"])
     _metric_display(top["metric_display"])
     pages_raw = top["pages"]
     if (

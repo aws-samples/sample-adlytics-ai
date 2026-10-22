@@ -219,6 +219,10 @@ Activate buttons, primary only in the confirmation; no overflow; a wrapped promp
 | Alerts | Deferred: "Also changed" per tab and the Overview's "What changed" card |
 | Budget simulator | Plan › Budget simulator, listed when it ships. Plan totals and modelled ROAS show per channel only, and the budget change is totalled across channels, as the owner chose on 2026-10-07. The Amazon DSP forecast curve sits beside the custom curve, labelled and outside totals |
 
+(OD-UX-4, 2026-10-22: the Scorecard's channel cards show each channel's served new-to-brand share and
+cost per first-time-buyer purchase beside its return, reversing the "new-to-brand moves to New
+customers" amendment below for those two figures; New customers still owns them, and the cards read
+its served rows. [Scorecard LLD](../scorecard/low-level-design.md#channel-cards-ui-refresh-23-readout-a3-od-ux-4).)
 The business outcomes design's owner applies its amendments: new-to-brand moves to New customers, the
 Scorecard reach band and channel-group subtotal rows go, Repeat purchase by product joins navigation,
 the Reach slot moves to campaign detail, alerts gain `filter_id`, baked findings ship either way, and

@@ -135,7 +135,7 @@
         },
         {
           "path": "docs/ui/scorecard/low-level-design.md",
-          "sha256": "61ec4e6e3e5ca94a7dafe7f8b85ea0626b6c83585e5b5cfdbee7b66707ed653e"
+          "sha256": "c5b01d9974cd40f24c879c7c03a4c097521be6c072db742000bc49925df71920"
         },
         {
           "path": "docs/ui/scorecard/mockup.html",
@@ -540,7 +540,7 @@
       "members": [
         {
           "path": "docs/ui/information-architecture/README.md",
-          "sha256": "deaac0e2344f8ece467f118301785b4abdfa94a1a2271e179d7964abb0d45787"
+          "sha256": "ceb5617717379efd319d804d5615ef039459ebe6d7fc7ef7392898e92a670765"
         },
         {
           "path": "docs/ui/information-architecture/delivery-slices.md",
