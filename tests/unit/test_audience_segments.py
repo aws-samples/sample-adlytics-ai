@@ -101,6 +101,7 @@ from domain.measurement.rosters import (
 )
 from domain.narrative.publication import RenderingKind
 from domain.narrative.shaped_response import NonAdditivity, ShapedResponse
+from domain.operations.bake_refusals import IsolatedRefusal, IsolatedRefusalReason, RefusalScope
 from domain.producer.models import AccessTier, SuppressionPolicy
 from domain.semantics.audience_segments import (
     ASI_NEEDS_PAID_FEATURE_TEXT,
@@ -131,7 +132,14 @@ from domain.shared_kernel.values import DateRange
 from domain.shopper_aggregates.loss import DEGRADED_NOTE, LossGrade
 from ports.outbound.canonical import CanonicalDestination
 from ports.outbound.publication_selection import PublicationSelection, PublicationSelectionRequest
-from ports.outbound.query import MAX_ROWS_CEILING, PeriodSeriesRequest, QueryRequest, QueryResult
+from ports.outbound.query import (
+    MAX_ROWS_CEILING,
+    PeriodSeriesRequest,
+    QueryRequest,
+    QueryResult,
+    RowCeiling,
+    row_ceiling,
+)
 from ports.outbound.rosters import RosterRequest
 from ports.outbound.segment_labels import SegmentLabelRequest
 from ports.outbound.served_periods import ServedPeriods, ServedPeriodsRequest
@@ -1590,6 +1598,25 @@ def test_a_truncated_history_read_proves_observation_but_never_absence() -> None
     )
     # Control: the same empty read, untruncated, is this campaign's first month.
     assert reader({}, cut=False).roster(_roster_request()) == FIRST_MONTH
+
+
+def test_a_truncated_bake_roster_read_refuses_its_page_and_chat_keeps_its_answer() -> None:
+    """ADR-142: at the bake ceiling the cut read is rows_over_ceiling with its width."""
+    older = _months_before(AUGUST, 3)
+    built = _history_reader((*older, _MONTHS[1]), {})
+    cut = replace(built, queries=_History({}, series_truncated=True))
+    bake = replace(_roster_request(), ceiling=RowCeiling.BAKE)
+    with pytest.raises(IsolatedRefusal) as refused:
+        cut.roster(bake)
+    assert (refused.value.reason, refused.value.scope) == (
+        IsolatedRefusalReason.ROWS_OVER_CEILING,
+        RefusalScope.PAGE,
+    )
+    assert dict(refused.value.refusal_context) == {"max_rows": row_ceiling(RowCeiling.BAKE)}
+    # Paired: chat's read (the narration ceiling) keeps its own ROSTER_REFUSED answer.
+    with pytest.raises(DomainError) as chat:
+        cut.roster(_roster_request())
+    assert chat.value.code == ROSTER_REFUSED and not isinstance(chat.value, IsolatedRefusal)
 
 
 def test_history_past_the_selection_bound_is_refused_as_the_rosters_own_answer() -> None:

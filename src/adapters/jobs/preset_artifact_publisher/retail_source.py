@@ -24,6 +24,7 @@ from adapters.jobs.preset_artifact_publisher.campaign_source import (
     SUPERSEDED_HISTORY_RETENTION,
     representative_windows,
 )
+from adapters.jobs.preset_artifact_publisher.isolated_refusals import capped_preset_artifact_json
 from adapters.outbound.catalog import PageWindowCatalog
 from adapters.outbound.commerce_identity import load_commerce_identity_bridge
 from adapters.outbound.entity_catalog import LATEST_ONLY
@@ -51,6 +52,7 @@ from domain.measurement.ranking import (
     RankedValue,
 )
 from domain.narrative.shaped_response import UnitKind, Units
+from domain.operations.bake_refusals import IsolatedRefusal, IsolatedRefusalReason, RefusalScope
 from domain.presentation.change import ChangeSemantics
 from domain.presentation.compared_metrics import presentation_change_semantics, presentation_labels
 from domain.presentation.currency_display import CurrencyTextStyle, currency_display_text
@@ -83,7 +85,6 @@ from domain.presentation.preset_artifacts import (
     PresetArtifactSiblingCustody,
     PresetArtifactVariant,
     SourceUnchanged,
-    canonical_preset_artifact_json,
 )
 from domain.presentation.retail_health import (
     RETAIL_HEALTH_INSIGHT_IDS,
@@ -1556,10 +1557,20 @@ def _answer_rows(  # noqa: PLR0913, PLR0917
     *,
     basis: MeasurementBasis = MeasurementBasis.RETAIL_ACTUAL,
 ) -> _ParsedAnswer | None:
-    """Parse one complete grouped answer of one basis, or none when incoherent."""
+    """Parse one complete grouped answer of one basis, or none when incoherent.
+
+    A read cut at its declared width refuses the page (`rows_over_ceiling`, ADR-142): Retail
+    declares no section a refusal may own, so the page is the read's smallest grain.
+    """
     shaped = answer.answer
     if shaped is None:
         return None
+    if shaped.metadata.truncated:
+        raise IsolatedRefusal(
+            IsolatedRefusalReason.ROWS_OVER_CEILING,
+            RefusalScope.PAGE,
+            max_rows=shaped.metadata.row_count,
+        )
     if basis is not MeasurementBasis.RETAIL_ACTUAL and _covered_empty(answer, period):
         # A covered window in which Amazon credits nothing to ads is a legitimate empty set.
         return {}, Units(kind), ()
@@ -1662,7 +1673,7 @@ class RetainedRetailHealthPresetArtifactSource:
             self.page,
             variant,
             revision,
-            canonical_preset_artifact_json(retail_health_artifact_payload(rendered.artifact)),
+            capped_preset_artifact_json(retail_health_artifact_payload(rendered.artifact)),
         )
         children = _child_bodies(self.page, variant, revision, rendered.children)
         custody = (
@@ -1672,7 +1683,7 @@ class RetainedRetailHealthPresetArtifactSource:
                 self.page,
                 variant,
                 revision,
-                canonical_preset_artifact_json(
+                capped_preset_artifact_json(
                     retail_health_custody_manifest_payload(
                         RetailHealthCustodyManifest(
                             body.digest,
@@ -1775,14 +1786,14 @@ def _child_bodies(  # noqa: PLR0913, PLR0917 -- one parent identity and its chil
             variant,
             revision,
             identity,
-            canonical_preset_artifact_json(retail_product_detail_payload(child.artifact)),
+            capped_preset_artifact_json(retail_product_detail_payload(child.artifact)),
         )
         private = PresetArtifactSiblingCustody(
             page,
             variant,
             revision,
             identity,
-            canonical_preset_artifact_json(
+            capped_preset_artifact_json(
                 retail_product_child_custody_payload(
                     RetailProductChildCustody(child.product_ref, child.product, public.digest)
                 )

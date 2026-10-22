@@ -90,6 +90,7 @@ from domain.measurement.rosters import (
     coarser_grain_set,
     roster_lines,
 )
+from domain.operations.bake_refusals import IsolatedRefusal, IsolatedRefusalReason, RefusalScope
 from domain.semantics.analytical_resolution import AuthorizedAnalyticalScope
 from domain.semantics.calendar_periods import CalendarPeriod
 from domain.semantics.publication import publication_lens_for
@@ -101,7 +102,7 @@ from domain.shared_kernel.values import DateRange
 from domain.shopper_aggregates.loss import DEGRADED_NOTE, LossGrade
 from ports.outbound.canonical import CanonicalDestination
 from ports.outbound.publication_selection import PublicationSelectionRequest
-from ports.outbound.query import QueryRequest, QueryResult
+from ports.outbound.query import QueryRequest, QueryResult, RowCeiling, row_ceiling
 from ports.outbound.rosters import RosterRequest
 from ports.outbound.served_periods import ServedPeriods, ServedPeriodsRequest
 
@@ -991,13 +992,14 @@ def test_the_campaign_measurement_service_insights_use_reads_the_roster_like_cha
 @dataclass
 class _Spend:
     rows: tuple[dict[str, object], ...]
+    truncated: bool = False
 
     def run(self, request: QueryRequest) -> QueryResult:
         del request
         return QueryResult(
             rows=self.rows,  # type: ignore[arg-type]
             bytes_scanned=1,
-            truncated=False,
+            truncated=self.truncated,
             suppression=Suppression(rows_suppressed=False),
         )
 
@@ -1100,3 +1102,21 @@ def test_the_fixture_has_one_rostered_ad_product_with_no_row_in_its_declared_wee
         if row["time_window_start"] == "2026-09-21T00:00:00.000Z"
     }
     assert before == {"amazon_dsp", "sponsored_brands", "sponsored_products"}
+
+
+def test_a_truncated_bake_spend_roster_refuses_its_page_and_chat_keeps_its_answer(
+    contracts: tuple[DataContract, ...],
+) -> None:
+    """ADR-142: at the bake ceiling the cut read is rows_over_ceiling with its width."""
+    reader = replace(_reader(contracts, _Current(), _SPEND), queries=_Spend(_SPEND, truncated=True))
+    with pytest.raises(IsolatedRefusal) as refused:
+        reader.roster(replace(_REQUEST, ceiling=RowCeiling.BAKE))
+    assert (refused.value.reason, refused.value.scope) == (
+        IsolatedRefusalReason.ROWS_OVER_CEILING,
+        RefusalScope.PAGE,
+    )
+    assert dict(refused.value.refusal_context) == {"max_rows": row_ceiling(RowCeiling.BAKE)}
+    # Paired: chat's read keeps its own ROSTER_REFUSED answer.
+    with pytest.raises(DomainError) as chat:
+        reader.roster(_REQUEST)
+    assert chat.value.code == ROSTER_REFUSED and not isinstance(chat.value, IsolatedRefusal)

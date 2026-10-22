@@ -9,6 +9,10 @@ binds before the pinned render) is discarded by design: that render is replayed 
 
 The same pattern as `collecting()` for Athena statistics: one list per open scope, shared by the
 statement threads, which copy the caller's context.
+
+`capped_preset_artifact_json` is every source's body-size check before staging (02 §3.4): a body
+over `MAX_PRESET_ARTIFACT_BYTES` refuses the page (`body_over_cap`) before any object is built,
+so the D18 ceiling stays a last-line invariant a source never reaches.
 """
 
 from __future__ import annotations
@@ -22,8 +26,12 @@ from domain.operations.bake_refusals import (
     IsolatedRefusalReason,
     RefusalScope,
 )
+from domain.presentation.preset_artifacts import (
+    MAX_PRESET_ARTIFACT_BYTES,
+    canonical_preset_artifact_json,
+)
 
-__all__ = ["collecting_refusals", "note_isolated_refusal"]
+__all__ = ["capped_preset_artifact_json", "collecting_refusals", "note_isolated_refusal"]
 
 _NOTES: ContextVar[list[IsolatedRefusal] | None] = ContextVar(
     "bake_isolated_refusals", default=None
@@ -60,3 +68,21 @@ def note_isolated_refusal(  # noqa: PLR0913 -- the closed reason, scope, count a
     notes = _NOTES.get()
     if notes is not None:
         notes.append(refusal)
+
+
+def capped_preset_artifact_json(value: dict[str, object]) -> str:
+    """Render a body's canonical JSON, refusing the page when it exceeds the artifact cap.
+
+    The encoded size is checked before the body (or custody) object is constructed, so an
+    over-cap body is the page's `body_over_cap` absence, never the D18 defect.
+    """
+    payload = canonical_preset_artifact_json(value)
+    size = len(payload.encode())
+    if size > MAX_PRESET_ARTIFACT_BYTES:
+        raise IsolatedRefusal(
+            IsolatedRefusalReason.BODY_OVER_CAP,
+            RefusalScope.PAGE,
+            encoded_bytes=size,
+            max_bytes=MAX_PRESET_ARTIFACT_BYTES,
+        )
+    return payload

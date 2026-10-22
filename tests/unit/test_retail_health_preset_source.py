@@ -59,6 +59,7 @@ from adapters.retail_insight_requests import (
 from domain.measurement.planning import measure_alias
 from domain.measurement.ranking import RANKED_INVARIANT, RankedProjection
 from domain.narrative.shaped_response import UnitKind
+from domain.operations.bake_refusals import IsolatedRefusal, IsolatedRefusalReason, RefusalScope
 from domain.presentation.compared_metrics import presentation_labels
 from domain.presentation.currency_display import without_display_values
 from domain.presentation.evidence_status import CoverageState, write_evidence_status
@@ -585,12 +586,18 @@ def test_a_600_product_catalog_bakes_its_top_50_with_the_stated_total(
         for item in series
     )
 
-    # Control: the compares at chat's 500-row bound truncate, and the page bakes nothing.
+    # Control: the compares at chat's 500-row bound truncate, and the page bakes nothing: its
+    # designed absence, refused at the read's width (ADR-142).
     monkeypatch.setattr(retail_source_module, "BAKE_MAX_ROWS", DEFAULT_MAX_ROWS)
-    refused = _ranked_renderer(products, RetailQueries(products, PERIOD)).render_retail_health(
-        RetailHealthRenderInput(PERIOD, PRIOR)
+    with pytest.raises(IsolatedRefusal) as refused:
+        _ranked_renderer(products, RetailQueries(products, PERIOD)).render_retail_health(
+            RetailHealthRenderInput(PERIOD, PRIOR)
+        )
+    assert (refused.value.reason, refused.value.scope) == (
+        IsolatedRefusalReason.ROWS_OVER_CEILING,
+        RefusalScope.PAGE,
     )
-    assert refused.artifact is None
+    assert dict(refused.value.refusal_context) == {"max_rows": DEFAULT_MAX_ROWS}
 
 
 @pytest.mark.covers("ADR-143")
@@ -1607,20 +1614,37 @@ def _bake_and_persist(products: int) -> tuple[_RecordingPersistence, int]:
 
 
 @pytest.mark.covers("ADR-125")
-def test_d18_an_over_cap_retail_parent_fails_closed_before_any_persistence_call() -> None:
-    """Paired: 45 products render under the cap and persist; 50 raise the typed D18 error.
+def test_an_over_cap_retail_parent_is_the_pages_body_over_cap_before_any_persistence_call() -> None:
+    """Paired: 45 products render under the cap and persist; 50 refuse the page (ADR-142 §3.4).
 
-    The parent body is constructed while the source renders, before the baker returns, so an
-    over-cap body never reaches persistence and no content is dropped.
+    The source checks the encoded parent before it builds the body, so an over-cap body is the
+    page's `body_over_cap` absence (alarmed) and never reaches persistence; D18 stays the
+    last-line invariant behind it.
     """
     written, observed = _bake_and_persist(45)
     assert len(written.calls) == 1
     assert observed == 254_046 <= MAX_PRESET_ARTIFACT_BYTES  # the audit's 45-product census
 
-    with pytest.raises(PresetArtifactBodyCeilingError) as refused:
+    with pytest.raises(IsolatedRefusal) as refused:
         _bake_and_persist(RETAIL_HEALTH_MAX_ROWS)
-    assert refused.value.reason == RETAIL_BODY_CEILING
-    assert refused.value.observed_bytes == 279_577 > MAX_PRESET_ARTIFACT_BYTES  # 50 products
+    assert (refused.value.reason, refused.value.scope) == (
+        IsolatedRefusalReason.BODY_OVER_CAP,
+        RefusalScope.PAGE,
+    )
+    assert dict(refused.value.refusal_context) == {
+        "encoded_bytes": 279_577,  # 50 products
+        "max_bytes": MAX_PRESET_ARTIFACT_BYTES,
+    }
+    # The last line: an over-cap body built directly is still the typed D18 defect.
+    revision = PresetArtifactRevision.from_publication_identities(("publication-1",))
+    with pytest.raises(PresetArtifactBodyCeilingError) as ceiling:
+        PresetArtifactBody(
+            PresetArtifactPage("retail-health"),
+            PresetArtifactVariant("7d"),
+            revision,
+            '{"k":"' + "x" * MAX_PRESET_ARTIFACT_BYTES + '"}',
+        )
+    assert ceiling.value.reason == RETAIL_BODY_CEILING
 
 
 @pytest.mark.covers("ADR-125")

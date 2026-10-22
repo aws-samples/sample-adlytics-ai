@@ -50,6 +50,7 @@ from adapters.jobs.presentation_validation.loader import load_v2_page_schemas
 from adapters.jobs.preset_artifact_publisher.campaign_source import (
     SUPERSEDED_HISTORY_RETENTION,
 )
+from adapters.jobs.preset_artifact_publisher.isolated_refusals import capped_preset_artifact_json
 from adapters.jobs.preset_artifact_publisher.scorecard_source import (
     MARKETPLACE_SELECTOR,
     GroupedAnswer,
@@ -96,7 +97,6 @@ from domain.presentation.preset_artifacts import (
     PresetArtifactRevision,
     PresetArtifactVariant,
     SourceUnchanged,
-    canonical_preset_artifact_json,
 )
 from domain.presentation.retention import (
     ARP_PATH,
@@ -602,7 +602,7 @@ class RetainedRetentionPresetArtifactSource:
             self.page,
             variant,
             revision,
-            canonical_preset_artifact_json(retention_artifact_payload(rendered.artifact)),
+            capped_preset_artifact_json(retention_artifact_payload(rendered.artifact)),
         )
         pointer = PresetArtifactPointer(
             self.page,
