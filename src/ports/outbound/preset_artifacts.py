@@ -150,7 +150,7 @@ class PresetArtifactStagePort(Protocol):
         remaining_ms: Callable[[], int],
         tail_seconds: float,
     ) -> PresetArtifactStageResult:
-        """Write siblings (bounded body->custody pairs), then the parent body and custody.
+        """Stream siblings (bounded body->custody pairs), the index, then the parent (ADR-145).
 
         Refuses the page (`bodies_over_invocation`) when its write deadline is reached first.
         """
