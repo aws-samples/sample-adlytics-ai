@@ -480,12 +480,14 @@ class TestPermanentSemanticRuntime:
         from adapters.inbound.ingestion_handlers import load  # noqa: PLC0415
         from adapters.outbound.s3.unit_staging import S3UnitStager  # noqa: PLC0415
 
-        inline = load._inline_runtime(load.RUNTIME.coordinator, load.RUNTIME.reads)
-        assert isinstance(inline.stager, S3UnitStager)
+        # The fixture's INLINE_ACTIVE composition builds the inline runtime with its stager.
+        assert load.COMPOSITION is load.ProjectionComposition.INLINE
+        assert load.RUNTIME.inline is not None
+        assert isinstance(load.RUNTIME.inline.stager, S3UnitStager)
         # Control: the shipped queued composition builds no inline runtime, so nothing stages
         # in the delivery function.
-        assert load.COMPOSITION is not load.ProjectionComposition.INLINE
-        assert load.RUNTIME.inline is None
+        monkeypatch.setattr(load, "COMPOSITION", load.ProjectionComposition.QUEUED)
+        assert load._runtime().inline is None
 
     def test_execution_uses_exact_fetch_and_semantic_ingestion(
         self, monkeypatch: pytest.MonkeyPatch
