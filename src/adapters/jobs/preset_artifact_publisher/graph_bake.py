@@ -1655,8 +1655,9 @@ def _replay_settled(  # noqa: PLR0913, PLR0917 -- the ports, delivery, observati
     one) and after the claim (the node in hand). A SUCCEEDED node's stored groups and over-budget
     report are rebuilt through the refusal's own validation; any other node emits nothing. A
     stored list that doesn't validate is a defect (`STORED_REFUSAL_INVALID`), reported and
-    counted, and the receive is still acknowledged. A `DependencyError` from the node read
-    raises: the record retries and, on its last receive, dead-letters.
+    counted on the alarmed `bake_intent_invariant` signal, and the receive is still
+    acknowledged. A `DependencyError` from the node read raises: the record retries and, on its
+    last receive, dead-letters.
     """
     body = delivery.body
     found = node if node is not None else _node(ports.store, body.run_id, body.node_id)
@@ -1679,7 +1680,8 @@ def _replay_settled(  # noqa: PLR0913, PLR0917 -- the ports, delivery, observati
         )
         invalid.__cause__ = error
         _report(ports, delivery, invalid)
-        ports.invariant_metric("STORED_REFUSAL_INVALID")
+        # The baker's alarmed per-intent invariant signal; the report names STORED_REFUSAL_INVALID.
+        ports.invariant_metric(BAKE_INTENT_INVARIANT)
         return
     if groups or over_budget is not None:
         observation.replayed = _Stored(groups, over_budget)
