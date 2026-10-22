@@ -4,8 +4,8 @@
 |---|---|
 | **Level** | L2 — concept |
 | **Status** | Current telemetry, investigation, audit, and evaluation policy. |
-| **Last updated** | 2026-10-13 |
-| **Owns** | Telemetry planes, structured-log projections, locator custody, tracing boundaries, error reporting, evaluation-evidence locality rules, evaluation result custody, and the reviewer access log. |
+| **Last updated** | 2026-10-21 |
+| **Owns** | Telemetry planes, structured-log projections, locator custody, tracing boundaries, error reporting, failure-alarm state semantics (when an alarm's `OK` means recovery), evaluation-evidence locality rules, evaluation result custody, and the reviewer access log. |
 | **Applied by** | [Conversational Runtime](../capabilities/conversational-runtime/README.md) · [Agent Quality Loop](../capabilities/agent-quality-loop/README.md) · [Protected Quality Review API](../capabilities/protected-quality-review-api/README.md) · [Load Path](../capabilities/load-path/README.md) |
 | **Conventions** | [Documentation conventions](../conventions.md) |
 
@@ -99,12 +99,32 @@ that reports a `dependency` or `invariant` error through `report_error` reaches 
 `Errors` EMF metric: the operations validation probes name have their own alarm, and
 `adlytics-<env>-alarming-errors-by-operation` covers every other operation, including the dynamic
 ones, with one contributor per `Operation`. The catch-all excludes exactly the operations that have
-their own alarm, so one failure pages once. What to run when it names only 100 contributors is in
+their own alarm, either an `Errors` alarm or a page alarm (below), so one failure pages once. What
+to run when it names only 100 contributors is in
 [operator-tools.md](../capabilities/operational-data-flow-status/operator-tools.md#operation-catch-all-alarm-alarming-errors-by-operation).
 `infra/test/alarm-coverage.test.ts`
 (`make check-alarm-coverage`) fails on an uncovered function, an exempt function that something
-other than its custom resource can invoke, a wrong exclusion, a second alarm for one operation, or
-an alarm without an enabled action. Ingestion counts each decided contract on `IngestPartitions` by `Action`: `published`,
+other than its custom resource can invoke, a wrong exclusion, a second alarm for one operation, an
+alarm without an enabled action, a page route list that differs from the routed
+`TELEMETRY_OPERATIONS` in `handler.py` (check 8), or a page route without exactly one page alarm
+(check 9).
+
+A standing condition of a synchronous surface, one that recurs on every call until fixed, holds its
+alarm until an observed success clears it. A per-item or per-delivery failure keeps arrival
+semantics: its alarm's `OK` means only that no new failure arrived. Each of the 17 Presentation page
+routes has an `adlytics-<env>-page-<page>-server-errors` alarm on the route's detailed
+`AWS/ApiGateway` `Count`, `4xx` and `5xx` (detailed metrics are enabled on those routes only). Its
+value is `IF((m_count - FILL(m_4xx, 0)) > 0, FILL(m_5xx, 0))` over 5 minutes, at least 1, missing
+data `ignore`, and it acts on the staffed destination on `ALARM` and `OK`. So `ALARM` means a
+served request got a 5xx, and `OK` means a period served at least one request without a 4xx
+refusal and with no 5xx. With no requests, or only refused ones, the state holds, and
+`INSUFFICIENT_DATA` means the page has not been served since the alarm was created. The catch-all
+excludes the 17 page operations. Why, and which synchronous surfaces still clear on silence, is in
+[ADR-148](../decisions/adr-148-hold-a-page-alarm-until-an-observed-success-clears-it.md); what to do
+in each state is in
+[operator-tools.md](../capabilities/operational-data-flow-status/operator-tools.md#page-alarms-page-page-server-errors).
+
+Ingestion counts each decided contract on `IngestPartitions` by `Action`: `published`,
 `source_only`, `superseded` (every bucket older than its `CURRENT`, a product signal) and `blocked`,
 the only one that alarms.
 

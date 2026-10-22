@@ -281,6 +281,42 @@ aws cloudwatch get-metric-data --profile <PROFILE> --region <REGION> \
 - 500 lines from the first query means more than 500 operations failed and the query was capped
   too. Narrow the window and run it again.
 
+## Page alarms: `page-<page>-server-errors`
+
+**Purpose.** `adlytics-<ENV>-page-<page>-server-errors` holds one Presentation page's broken state
+until an observed success clears it
+([ADR-148](../../decisions/adr-148-hold-a-page-alarm-until-an-observed-success-clears-it.md)). There
+are 17, one per page route, and they act on the staffed destination on `ALARM` and `OK`. What each
+state means is in [observability §3.2](../../concepts/observability.md#32-application-spans-and-metrics).
+The catch-all excludes the page operations, so a page failure pages here, not there.
+
+**What to do in each state.**
+
+- **`ALARM`:** the page answered a request with a 5xx. Run the catch-all's drill-down query above
+  with `<OPERATION>` set to the page's operation (named in the alarm description, for example
+  `presentation.reach`) to read the `ErrorClass` and `ErrorCode`. The alarm stays in `ALARM` while
+  nobody calls the page, so a quiet page is not a fixed one. After a fix deploys, serve the page
+  once (below) and wait for `OK`.
+- **`OK`:** a 5-minute period served at least one request without a 4xx refusal and with no 5xx.
+  The `OK` notification is that recovery. Nothing to do.
+- **`INSUFFICIENT_DATA`:** the page has not been served since its alarm was created. That is not
+  a failure, and it is not a recovery. Its disposition is the route's acceptance probe, run once:
+  `validation/probe_presentation_hydration.py`, or `validation/probe_insight_deep_dive.py` for
+  `insight-deep-dive`. A new page route's acceptance calls it once. Until it has run, this entry
+  names that page alarm as never called.
+
+**Deploy order.** Never `deploy-all` this change onto an environment that already has the
+catch-all. `deploy-all` deploys `IngestionStack` before `ApiStack`, so the catch-all would stop
+counting the pages before their page alarms exist. Deploy `ApiStack` first, per stack under the
+deploy lock ([Shared-environment deploy and state tools](#shared-environment-deploy-and-state-tools)).
+Run the acceptance probes and confirm every page alarm reads `OK`. Then deploy `IngestionStack`.
+On a new environment, `deploy-all` is safe.
+
+**Safety notes.**
+
+- The drill-down is read-only. The probes are read-only and run only against `dev` with
+  synthetic data.
+
 ## Serving alarms: `GraphServingWithheld` and `PresentationServingRefused`
 
 Both come from [ADR-139](../../decisions/adr-139-serve-designed-absence-and-advance-pages-only-with-a-grantable-cohort.md);

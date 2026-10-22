@@ -43,6 +43,12 @@ import { executionGraphAuthority } from './execution-graph-authority';
 import { grantOwnLogWrites, lambdaRole } from '../mixins/logging';
 import { dataBucketName } from '../mixins/storage';
 import { staffedAlarmAction } from '../constructs/observability/async-failure';
+import {
+  PAGE_ROUTES,
+  PageRoute,
+  buildPageRouteAlarm,
+  pageRouteKey,
+} from '../constructs/observability/page-route-alarms';
 import { buildServingRefusalAlarm } from '../constructs/observability/serving-refusal-alarm';
 import { applyFunctionErrorAlarms } from '../mixins/function-error-alarms';
 import { applyStandardTags } from '../mixins/tagging';
@@ -691,7 +697,7 @@ export class ApiStack extends cdk.Stack {
       grantSpanExport(fn);
     }
 
-    this.addRoutes(
+    const pageRoutes = this.addRoutes(
       authFunction,
       authorizerFunction,
       presentationFunction,
@@ -700,6 +706,14 @@ export class ApiStack extends cdk.Stack {
       promptAdminFunctions,
       config,
     );
+    // ADR-148: detailed route metrics on exactly the page routes, which the page alarms read. The
+    // stage depends on each page route, so an update never names a route key that does not exist.
+    defaultStage.routeSettings = Object.fromEntries(
+      pageRoutes.map(([page]) => [pageRouteKey(page.path), { DetailedMetricsEnabled: true }]),
+    );
+    for (const [, route] of pageRoutes) {
+      defaultStage.addResourceDependency(route.node.defaultChild as apigwv2.CfnRoute);
+    }
     if (runRequestsFunction !== undefined) {
       this.addRunRequestRoutes(runRequestsFunction, config);
     }
@@ -709,6 +723,8 @@ export class ApiStack extends cdk.Stack {
     applyFunctionErrorAlarms(this, config, staffed);
     // ADR-139 layer 4: a grant-serving refusal past the settle bound is a write-side defect.
     buildServingRefusalAlarm(this, config, staffed);
+    // ADR-148: each page's alarm holds until an observed success clears it.
+    for (const route of PAGE_ROUTES) buildPageRouteAlarm(this, config, this.api, route, staffed);
   }
 
   /**
@@ -1378,7 +1394,7 @@ export class ApiStack extends cdk.Stack {
     qualityReviewFunction: lambda.Function,
     promptAdminFunctions: { create: lambda.Function; calibrate: lambda.Function; activate: lambda.Function; retire: lambda.Function; slots: lambda.Function; versions: lambda.Function },
     config: AppConfig,
-  ): void {
+  ): ReadonlyArray<[PageRoute, apigwv2.HttpRoute]> {
     const authIntegration = new integrations.HttpLambdaIntegration(
       'AuthIntegration',
       authFunction,
@@ -1525,42 +1541,17 @@ export class ApiStack extends cdk.Stack {
       'PresentationIntegration',
       presentationFunction,
     );
-    for (const path of [
-      `${API_PREFIX}/presentation/overview`,
-      `${API_PREFIX}/presentation/amazon-channel-performance`,
-      `${API_PREFIX}/presentation/campaigns`,
-      `${API_PREFIX}/presentation/campaign-detail`,
-      `${API_PREFIX}/presentation/campaign-metric-focus`,
-      `${API_PREFIX}/presentation/portfolio-metric-focus`,
-      `${API_PREFIX}/presentation/retail-metric-focus`,
-      `${API_PREFIX}/presentation/insight-deep-dive`,
-      `${API_PREFIX}/presentation/marketplace-comparison`,
-      `${API_PREFIX}/presentation/data-health`,
-      `${API_PREFIX}/presentation/retail-health`,
-      // ADR-125: Retail health product detail, a baked child of retail-health. It replaces the
-      // retired request-time retail-product route, so there is never a second path.
-      `${API_PREFIX}/presentation/retail-health-product`,
-      // UI slice 9a: the Scorecard, owner-approved for dev 2026-10-10. Its metric focus route
-      // moved to slice 9b with the focus itself.
-      `${API_PREFIX}/presentation/scorecard`,
-      // UI slice 9, New customers sub-slice: the Customers hub's first tab, owner-approved for
-      // dev 2026-10-09 (S-9). It reads only its own baked bodies and pointers.
-      `${API_PREFIX}/presentation/new-customers`,
-      // Reach and funnel is a parent-only calendar page (D3, O3). Its metric focus route is
-      // separate work, so it has none yet.
-      `${API_PREFIX}/presentation/reach`,
-      // Retention is a parent-only vintage page. It deliberately has no metric-focus route.
-      `${API_PREFIX}/presentation/retention`,
-      // Audiences is a parent-only single-month page. It deliberately has no metric-focus route.
-      `${API_PREFIX}/presentation/audiences`,
-    ]) {
-      this.api.addRoutes({
-        path,
+    // ADR-148: the page roster, with each route's ADR comment, lives with the page alarms.
+    return PAGE_ROUTES.map((page): [PageRoute, apigwv2.HttpRoute] => {
+      const [route] = this.api.addRoutes({
+        path: page.path,
         methods: [apigwv2.HttpMethod.POST],
         integration: presentationIntegration,
         authorizer,
       });
-    }
+      if (route === undefined) throw new Error(`No HTTP API route was created for ${page.path}.`);
+      return [page, route];
+    });
   }
 
 

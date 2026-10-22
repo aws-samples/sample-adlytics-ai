@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -218,3 +219,169 @@ def test_a_roster_page_fails_only_on_a_non_200_or_an_unbuilt_page(  # noqa: PLR0
         ),
         ("/api/presentation/retention", {"session_id": "s"}),
     ]
+
+
+_HANDLER = _ROOT / "src" / "adapters" / "inbound" / "presentation_handlers" / "handler.py"
+_UNROUTED = frozenset(
+    {"/api/presentation/media-efficiency/scopes", "/api/presentation/media-efficiency/artifact"}
+)
+_WALKED_IN_DEPTH_PATHS = frozenset(
+    f"/api/presentation/{page}"
+    for page in (
+        "campaigns",
+        "campaign-detail",
+        "campaign-metric-focus",
+        "portfolio-metric-focus",
+        "retail-health",
+        "retail-metric-focus",
+    )
+)
+
+
+def _routed_presentation_paths() -> frozenset[str]:
+    """Return the routed `TELEMETRY_OPERATIONS` paths, parsed from handler.py as text."""
+    source = _HANDLER.read_text(encoding="utf-8")
+    paths = dict(re.findall(r'^([A-Z_]+_PATH) = "(/api/[^"]+)"$', source, re.MULTILINE))
+    block = re.search(r"^TELEMETRY_OPERATIONS = \{\n(.*?)^\}$", source, re.MULTILINE | re.DOTALL)
+    assert block is not None
+    names = re.findall(r'^ {4}([A-Z_]+): "[^"]+",$', block.group(1), re.MULTILINE)
+    assert names, "TELEMETRY_OPERATIONS did not parse"
+    return frozenset(paths[name] for name in names) - _UNROUTED
+
+
+def _deep_dive_path() -> str:
+    source = (_ROOT / "validation" / "probe_insight_deep_dive.py").read_text(encoding="utf-8")
+    found = re.search(r'^_DEEP_PATH: Final = "([^"]+)"$', source, re.MULTILINE)
+    assert found is not None
+    return found.group(1)
+
+
+def _probed_paths(unrostered: tuple[tuple[str, str], ...]) -> frozenset[str]:
+    return frozenset(
+        {
+            *(f"/api/presentation/{page}" for page, _ in unrostered),
+            probe._RETAIL_PRODUCT_PATH,  # pyright: ignore[reportPrivateUsage]
+            *_WALKED_IN_DEPTH_PATHS,
+            *(f"/api/presentation/{page}" for page, _ in probe.roster_page_requests()),
+            _deep_dive_path(),
+        }
+    )
+
+
+def test_the_probes_serve_every_routed_presentation_page_once() -> None:
+    """ADR-148: the premise gate needs one served request per page alarm, so none is missed."""
+    source = (_ROOT / "validation" / "probe_presentation_hydration.py").read_text(encoding="utf-8")
+    # The walked-in-depth literal is not an oracle by itself: each path is posted by the probe.
+    for path in _WALKED_IN_DEPTH_PATHS | {probe._RETAIL_PRODUCT_PATH}:  # pyright: ignore[reportPrivateUsage]
+        assert f'"{path}"' in source
+    routed = _routed_presentation_paths()
+    assert len(routed) == 17
+    assert _probed_paths(probe.UNROSTERED_PAGES) == routed
+    # Paired control: a page dropped from the unrostered list goes unprobed.
+    assert _probed_paths(probe.UNROSTERED_PAGES[1:]) != routed
+
+
+def _recording_post(
+    sent: list[tuple[str, dict[str, object], str]], status: int, body: dict[str, object]
+) -> object:
+    def post(
+        _session: object,
+        path: str,
+        request: dict[str, object],
+        *,
+        accept: str = probe._MEDIA_TYPE,  # pyright: ignore[reportPrivateUsage]
+    ) -> tuple[int, dict[str, object]]:
+        sent.append((path, request, accept))
+        return status, body
+
+    return post
+
+
+def test_each_unrostered_page_gets_its_own_request_shape(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Overview over its legacy representation; the rest over v2; the product child by row."""
+    sent: list[tuple[str, dict[str, object], str]] = []
+    served: dict[str, object] = {
+        "kind": "page",
+        "page": {"artifact": {"outcome": "complete"}, "page_id": "x"},
+    }
+    monkeypatch.setattr(probe, "_post", _recording_post(sent, 200, served))
+    state = probe.WalkState()
+    probe._walk_unrostered_pages(None, state, "s", "ref-1")  # pyright: ignore[reportPrivateUsage, reportArgumentType]
+    v2 = "application/vnd.adlytics.presentation-v2+json"
+    assert sent == [
+        ("/api/presentation/overview", {"session_id": "s"}, "application/json"),
+        ("/api/presentation/amazon-channel-performance", {"session_id": "s"}, v2),
+        ("/api/presentation/marketplace-comparison", {"session_id": "s"}, v2),
+        ("/api/presentation/data-health", {"session_id": "s"}, v2),
+        (
+            "/api/presentation/retail-health-product",
+            {
+                "selection_reference": "ref-1",
+                "session_id": "s",
+                "temporal_selection": {"kind": "preset", "preset_id": "7d"},
+            },
+            v2,
+        ),
+    ]
+    assert state.failures == []
+    assert state.parents == 5
+
+
+@pytest.mark.parametrize(
+    ("status", "body", "fails"),
+    [
+        (200, {"page": {"page_id": "decision-overview"}}, False),
+        (200, {"page": {}}, True),  # a 200 without a page body is no served page
+        (200, {}, True),
+        (400, {"code": "ADLY-PRESENTATION-0001"}, True),  # the v2 refusal shape
+        (500, {}, True),
+    ],
+)
+def test_legacy_overview_passes_only_on_200_with_a_page_body(  # noqa: PLR0913, PLR0917
+    monkeypatch: pytest.MonkeyPatch, status: int, body: dict[str, object], fails: bool
+) -> None:
+    sent: list[tuple[str, dict[str, object], str]] = []
+    monkeypatch.setattr(probe, "_post", _recording_post(sent, status, body))
+    monkeypatch.setattr(probe, "UNROSTERED_PAGES", (("overview", "legacy"),))
+    state = probe.WalkState()
+    probe._walk_unrostered_pages(None, state, "s", None)  # pyright: ignore[reportPrivateUsage, reportArgumentType]
+    assert bool(state.failures) is fails
+    assert [path for path, _, _ in sent] == ["/api/presentation/overview"]
+
+
+def test_a_non_200_unrostered_page_is_a_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    sent: list[tuple[str, dict[str, object], str]] = []
+    monkeypatch.setattr(probe, "_post", _recording_post(sent, 500, {"code": "ADLY-X-0001"}))
+    state = probe.WalkState()
+    probe._walk_unrostered_pages(None, state, "s", "ref-1")  # pyright: ignore[reportPrivateUsage, reportArgumentType]
+    assert {failure["page"] for failure in state.failures} == {
+        "overview",
+        "amazon-channel-performance",
+        "marketplace-comparison",
+        "data-health",
+        "retail-health-product",
+    }
+    assert {failure["check"] for failure in state.failures} == {"non_200_response"}
+
+
+@pytest.mark.parametrize(
+    ("rows", "reference"),
+    [
+        ([{"selection_reference": None}, {"selection_reference": "ref-2"}], "ref-2"),
+        ([{"selection_reference": None}], None),
+        ([], None),
+    ],
+)
+def test_the_retail_walk_returns_a_product_row_or_fails(
+    monkeypatch: pytest.MonkeyPatch, rows: list[dict[str, object]], reference: str | None
+) -> None:
+    served: dict[str, object] = {
+        "kind": "page",
+        "page": {"artifact": {"outcome": "empty", "rows": rows}},
+    }
+    monkeypatch.setattr(probe, "_post", _recording_post([], 200, served))
+    state = probe.WalkState()
+    found = probe._walk_retail(None, state, "s")  # pyright: ignore[reportPrivateUsage, reportArgumentType]
+    assert found == reference
+    missing = [failure for failure in state.failures if failure["check"] == "missing_product_row"]
+    assert bool(missing) is (reference is None)

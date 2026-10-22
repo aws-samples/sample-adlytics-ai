@@ -26,6 +26,14 @@
  * 7. The catch-all names its runbook entry, which tells the operator to run an uncapped query over
  *    the same `Errors` source, one series per Operation, whenever the state reason shows the
  *    100-contributor cap.
+ * 8. `PAGE_ROUTES` is exactly the routed Presentation operations: the `{path, operation}` pairs of
+ *    `TELEMETRY_OPERATIONS` (`src/adapters/inbound/presentation_handlers/handler.py`), each `*_PATH`
+ *    name resolved to its value, minus `UNROUTED_PRESENTATION_PATHS`.
+ * 9. Every `PAGE_ROUTES` entry has exactly one page alarm (ADR-148).
+ *
+ * In check 2, a page alarm (ADR-148) owns its route's operation only in its exact shape: the route's
+ * `AWS/ApiGateway` `Count`, `4xx` and `5xx` under `PAGE_ALARM_EXPRESSION`, missing data `ignore`,
+ * and the staffed switch on both `ALARM` and `OK`. A `Resource` that is not a page path owns nothing.
  *
  * Each check is a function returning its violations, and a positive control proves each one fails
  * on the departure it exists to catch and passes once corrected.
@@ -48,6 +56,12 @@ import {
   alarmingErrorsQuery,
 } from '../lib/constructs/observability/error-alarms';
 import {
+  PAGE_ALARM_EXPRESSION,
+  PAGE_ROUTES,
+  PageRoute,
+  UNROUTED_PRESENTATION_PATHS,
+} from '../lib/constructs/observability/page-route-alarms';
+import {
   FUNCTION_ERROR_EXEMPTIONS,
   FunctionErrorExemption,
   applyFunctionErrorAlarms,
@@ -66,6 +80,9 @@ import { everyStack } from './support/templates';
 type Json = Record<string, any>;
 
 const ERRORS_PY = path.join(__dirname, '..', '..', 'src', 'domain', 'shared_kernel', 'errors.py');
+const HANDLER_PY = path.join(
+  __dirname, '..', '..', 'src', 'adapters', 'inbound', 'presentation_handlers', 'handler.py',
+);
 const RUNBOOK = path.join(__dirname, '..', '..', String(CATCH_ALL_RUNBOOK.split('#')[0]));
 const CATCH_ALL_SUFFIX = 'alarming-errors-by-operation';
 const SINGLETON_ID = `AWS${cr.AwsCustomResource.PROVIDER_FUNCTION_UUID.replace(/-/g, '')}`;
@@ -157,6 +174,117 @@ function functionCoverage(stack: cdk.Stack, template: Json, config: AppConfig): 
 const expressionOf = (alarm: Json): string =>
   ((alarm.Metrics ?? []) as Json[]).map((query) => String(query.Expression ?? '')).join(' ');
 
+const PAGE_ALARM_METRICS = [['m_count', 'Count'], ['m_4xx', '4xx'], ['m_5xx', '5xx']] as const;
+
+/**
+ * The operation a page alarm owns (ADR-148): only in its exact shape. That is the route's
+ * `AWS/ApiGateway` `Count`, `4xx` and `5xx` Sums over 300 s with one set of dimensions (`ApiId` a
+ * `Ref` to the template's only HTTP API, `Method` POST, `Stage` `$default`, a string `Resource`),
+ * `expr_1` exactly `PAGE_ALARM_EXPRESSION`, 1 of 1 at ≥ 1, missing data `ignore`, actions enabled,
+ * and one staffed action on both `ALARM` and `OK`. The owned operation is the `PAGE_ROUTES` entry
+ * whose path is the `Resource`; any other `Resource` owns nothing.
+ */
+function pageAlarmOperation(template: Json, alarm: Json, config: AppConfig): string | undefined {
+  const apis = resourcesOf(template, 'AWS::ApiGatewayV2::Api');
+  const metrics = (alarm.Metrics ?? []) as Json[];
+  if (apis.length !== 1 || metrics.length !== 4) return undefined;
+  const [[apiId]] = apis as [[string, Json]];
+  const byId = new Map(metrics.map((query) => [String(query.Id), query]));
+  const expression = byId.get('expr_1');
+  if (expression === undefined || Object.keys(expression).length !== 3
+    || expression.Expression !== PAGE_ALARM_EXPRESSION || expression.ReturnData !== true) {
+    return undefined;
+  }
+  const dimensionSets = new Set<string>();
+  let resource: unknown;
+  for (const [id, metricName] of PAGE_ALARM_METRICS) {
+    const query = byId.get(id);
+    const stat = query?.MetricStat as Json | undefined;
+    const metric = stat?.Metric as Json | undefined;
+    if (query === undefined || Object.keys(query).length !== 3 || query.ReturnData !== false
+      || stat === undefined || stat.Stat !== 'Sum' || stat.Period !== 300
+      || metric?.Namespace !== 'AWS/ApiGateway' || metric.MetricName !== metricName) {
+      return undefined;
+    }
+    const dimensions = Object.fromEntries(
+      ((metric.Dimensions ?? []) as Json[]).map((dimension) => [String(dimension.Name), dimension.Value]),
+    );
+    if (JSON.stringify(Object.keys(dimensions).sort()) !== JSON.stringify(['ApiId', 'Method', 'Resource', 'Stage'])
+      || JSON.stringify(dimensions.ApiId) !== JSON.stringify({ Ref: apiId })
+      || dimensions.Method !== 'POST' || dimensions.Stage !== '$default'
+      || typeof dimensions.Resource !== 'string') {
+      return undefined;
+    }
+    dimensionSets.add(JSON.stringify(Object.entries(dimensions).sort()));
+    resource = dimensions.Resource;
+  }
+  const shape = {
+    EvaluationPeriods: 1,
+    DatapointsToAlarm: 1,
+    Threshold: 1,
+    ComparisonOperator: 'GreaterThanOrEqualToThreshold',
+    TreatMissingData: 'ignore',
+    ActionsEnabled: undefined,
+  };
+  const matches = dimensionSets.size === 1 && Object.entries(shape).every(
+    ([key, value]) => JSON.stringify(alarm[key]) === JSON.stringify(value),
+  );
+  const staffedOn = (key: string): boolean => {
+    const actions = (alarm[key] ?? []) as unknown[];
+    return actions.length === 1 && isStaffedAction(template, actions[0], config);
+  };
+  return matches && staffedOn('AlarmActions') && staffedOn('OKActions')
+    ? PAGE_ROUTES.find((route) => route.path === resource)?.operation
+    : undefined;
+}
+
+/**
+ * Check 8: `routes` is exactly the routed `{path, operation}` pairs of `handler.py`'s
+ * `TELEMETRY_OPERATIONS`, with each `*_PATH` name resolved to its assigned value, minus `unrouted`.
+ */
+function pageRosterViolations(
+  source: string,
+  routes: readonly PageRoute[] = PAGE_ROUTES,
+  unrouted: readonly string[] = UNROUTED_PRESENTATION_PATHS,
+): string[] {
+  const paths = new Map(
+    [...source.matchAll(/^([A-Z_]+_PATH) = "(\/api\/[^"]+)"$/gm)].map(
+      (match) => [String(match[1]), String(match[2])] as const,
+    ),
+  );
+  const block = /^TELEMETRY_OPERATIONS = \{\n([\s\S]*?)^\}$/m.exec(source)?.[1];
+  if (block === undefined || paths.size === 0) {
+    throw new Error('handler.py TELEMETRY_OPERATIONS or its *_PATH constants not found');
+  }
+  const telemetry = [...block.matchAll(/^ {4}([A-Z_]+): "([^"]+)",$/gm)].map((match) => {
+    const resolved = paths.get(String(match[1]));
+    if (resolved === undefined) throw new Error(`handler.py ${match[1]} has no *_PATH assignment`);
+    return `${resolved} -> ${match[2]}`;
+  });
+  if (telemetry.length === 0) throw new Error('handler.py TELEMETRY_OPERATIONS did not parse');
+  const routed = new Set(telemetry.filter((entry) => !unrouted.includes(entry.split(' -> ')[0] as string)));
+  const declared = new Set(routes.map((route) => `${route.path} -> ${route.operation}`));
+  return [
+    ...[...routed].filter((entry) => !declared.has(entry)).sort()
+      .map((entry) => `handler.py routes ${entry}, which PAGE_ROUTES does not declare`),
+    ...[...declared].filter((entry) => !routed.has(entry)).sort()
+      .map((entry) => `PAGE_ROUTES declares ${entry}, which handler.py does not route`),
+  ];
+}
+
+/** Check 9 over every template: each `PAGE_ROUTES` operation has exactly one page alarm. */
+function pageAlarmViolations(templates: Json[], config: AppConfig): string[] {
+  const counts = new Map(PAGE_ROUTES.map((route) => [route.operation, 0]));
+  for (const template of templates) {
+    for (const [, alarm] of resourcesOf(template, 'AWS::CloudWatch::Alarm')) {
+      const operation = pageAlarmOperation(template, alarm, config);
+      if (operation !== undefined) counts.set(operation, (counts.get(operation) ?? 0) + 1);
+    }
+  }
+  return [...counts].filter(([, count]) => count !== 1)
+    .map(([operation, count]) => `${operation} has ${count} page alarms, not 1`);
+}
+
 /**
  * The operation one alarm owns: only when it is exactly the page-capable shape of
  * `alarmingErrorsQuery(operation)` (≥ 1 paging error in one 5-minute period, actions enabled,
@@ -165,7 +293,7 @@ const expressionOf = (alarm: Json): string =>
  */
 function ownedOperation(template: Json, alarm: Json, config: AppConfig): string | undefined {
   const operation = /Operation = '([^']+)'$/.exec(expressionOf(alarm))?.[1];
-  if (operation === undefined) return undefined;
+  if (operation === undefined) return pageAlarmOperation(template, alarm, config);
   const shape = {
     Metrics: [{ Expression: alarmingErrorsQuery(operation), Id: 'expr_1', Period: 300, ReturnData: true }],
     EvaluationPeriods: 1,
@@ -578,6 +706,16 @@ describe('T2 alarm coverage (ADR-133 clause 4)', () => {
     expect(runbookViolations(fs.readFileSync(RUNBOOK, 'utf8'), catchAllAlarm())).toStrictEqual([]);
   });
 
+  it('declares exactly the routed Presentation operations as page routes', () => {
+    expect(pageRosterViolations(fs.readFileSync(HANDLER_PY, 'utf8'))).toStrictEqual([]);
+    // Not vacuous: 17 routed pages, each owned by its page alarm in check 2.
+    expect(PAGE_ROUTES).toHaveLength(17);
+  });
+
+  it('gives every page route exactly one page alarm', () => {
+    expect(pageAlarmViolations(Object.values(templates), TEST_CONFIG)).toStrictEqual([]);
+  });
+
   describe('positive controls', () => {
     it('check 1 fails on a function without the mixin and passes once it is applied', () => {
       const bare = fixtureStack('Bare');
@@ -947,6 +1085,80 @@ describe('T2 alarm coverage (ADR-133 clause 4)', () => {
       expect(withOwner((p) => {
         p.AlarmActions = ['arn:aws:sns:us-east-1:111111111111:somewhere-else'];
       })).toStrictEqual(silent);
+    });
+
+    const reachPageAlarm = (copy: Json[]): [Json, string, Json] => {
+      const name = 'adlytics-dev-page-reach-server-errors';
+      const owner = copy.find((template) =>
+        resourcesOf(template, 'AWS::CloudWatch::Alarm').some(([, alarm]) => alarm.AlarmName === name),
+      ) as Json;
+      const [id, alarm] = resourcesOf(owner, 'AWS::CloudWatch::Alarm').find(
+        ([, candidate]) => candidate.AlarmName === name,
+      ) as [string, Json];
+      return [owner, id, alarm];
+    };
+
+    it('check 2 lets only an exact page alarm on a page path own a page operation', () => {
+      const silent = ['the catch-all excludes presentation.reach, which has no alarm of its own (silent)'];
+      const withReach = (change: (alarm: Json) => void): string[] => {
+        const copy = JSON.parse(JSON.stringify(Object.values(templates))) as Json[];
+        change(reachPageAlarm(copy)[2]);
+        return catchAllViolations(copy, TEST_CONFIG);
+      };
+      // Paired control: the unmodified page alarm owns presentation.reach.
+      expect(withReach(() => undefined)).toStrictEqual([]);
+      // Negative control: the exact shape on a Resource that is not a page path owns nothing.
+      expect(withReach((alarm) => {
+        for (const query of alarm.Metrics as Json[]) {
+          for (const dimension of (query.MetricStat?.Metric?.Dimensions ?? []) as Json[]) {
+            if (dimension.Name === 'Resource') dimension.Value = '/api/presentation/not-a-page';
+          }
+        }
+      })).toStrictEqual(silent);
+      // Silence read as good, so a broken page with no callers would clear.
+      expect(withReach((alarm) => { alarm.TreatMissingData = 'notBreaching'; })).toStrictEqual(silent);
+      // No OK action, so a recovery is never announced.
+      expect(withReach((alarm) => { delete alarm.OKActions; })).toStrictEqual(silent);
+      // The 5xx alone, which a refusal-only period clears.
+      expect(withReach((alarm) => {
+        (alarm.Metrics as Json[]).find((query) => query.Id === 'expr_1')!.Expression = 'FILL(m_5xx, 0)';
+      })).toStrictEqual(silent);
+    });
+
+    it('check 8 fails on a renamed page path or a media path no longer unrouted', () => {
+      const source = fs.readFileSync(HANDLER_PY, 'utf8');
+      expect(pageRosterViolations(source)).toStrictEqual([]);
+      const renamed = source.replace(
+        'REACH_PATH = "/api/presentation/reach"',
+        'REACH_PATH = "/api/presentation/reach-and-funnel"',
+      );
+      expect(renamed).not.toBe(source);
+      expect(pageRosterViolations(renamed)).toStrictEqual([
+        'handler.py routes /api/presentation/reach-and-funnel -> presentation.reach, which PAGE_ROUTES '
+        + 'does not declare',
+        'PAGE_ROUTES declares /api/presentation/reach -> presentation.reach, which handler.py does not route',
+      ]);
+      expect(pageRosterViolations(source, PAGE_ROUTES, UNROUTED_PRESENTATION_PATHS.slice(1))).toStrictEqual([
+        'handler.py routes /api/presentation/media-efficiency/scopes -> '
+        + 'presentation.media_efficiency.scopes, which PAGE_ROUTES does not declare',
+      ]);
+    });
+
+    it('check 9 fails on a deleted or a duplicated page alarm and passes once corrected', () => {
+      const copy = JSON.parse(JSON.stringify(Object.values(templates))) as Json[];
+      const [owner, id] = reachPageAlarm(copy);
+      const original = owner.Resources[id] as Json;
+      delete owner.Resources[id];
+      expect(pageAlarmViolations(copy, TEST_CONFIG)).toStrictEqual([
+        'presentation.reach has 0 page alarms, not 1',
+      ]);
+      owner.Resources[id] = original;
+      owner.Resources.DuplicatePageAlarm = JSON.parse(JSON.stringify(original)) as Json;
+      expect(pageAlarmViolations(copy, TEST_CONFIG)).toStrictEqual([
+        'presentation.reach has 2 page alarms, not 1',
+      ]);
+      delete owner.Resources.DuplicatePageAlarm;
+      expect(pageAlarmViolations(copy, TEST_CONFIG)).toStrictEqual([]);
     });
 
     it('check 7 fails on a runbook query over another source, a lost instruction or a lost pointer', () => {

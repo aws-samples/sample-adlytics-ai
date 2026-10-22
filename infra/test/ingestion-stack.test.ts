@@ -39,6 +39,7 @@ import {
   alarmingErrorsByOperationQuery,
   alarmingErrorsQuery,
 } from '../lib/constructs/observability/error-alarms';
+import { PAGE_OPERATIONS } from '../lib/constructs/observability/page-route-alarms';
 import { METRIC_RECONCILER_OPERATION } from '../lib/stacks/operational-status-processor-stack';
 
 /** One typed-error alarm per fixed ingestion operation (Metrics Insights has no IN or OR). */
@@ -55,6 +56,29 @@ type Handler = typeof INGESTION_HANDLER;
 type Props = Record<string, any>;
 
 const DISABLED_CONFIG: AppConfig = configWith({ landing: { enabled: false } });
+/**
+ * ADR-148: the 17 Presentation page operations, pinned independently of the implementation. Each
+ * is held by its own page alarm, so the catch-all excludes it.
+ */
+const PAGE_OPERATIONS_PINNED = [
+  'presentation.overview',
+  'presentation.channel_performance',
+  'presentation.campaigns',
+  'presentation.campaign_detail',
+  'presentation.campaign_metric_focus',
+  'presentation.portfolio_metric_focus',
+  'presentation.retail_metric_focus',
+  'presentation.insight_deep_dive',
+  'presentation.marketplace_comparison',
+  'presentation.data_health',
+  'presentation.retail_health',
+  'presentation.retail_health_product',
+  'presentation.scorecard',
+  'presentation.new_customers',
+  'presentation.reach',
+  'presentation.retention',
+  'presentation.audiences',
+] as const;
 
 function synth(config: AppConfig = DISABLED_CONFIG): Template {
   const app = new cdk.App();
@@ -928,9 +952,14 @@ describe('tracing report I2 alarms', () => {
       landing: { enabled: false },
       operationalStatus: { ...TEST_CONFIG.operationalStatus, provisioned: true },
     });
+    // The exported page operations are exactly the pinned literal, in roster order.
+    expect([...PAGE_OPERATIONS]).toEqual(PAGE_OPERATIONS_PINNED);
     for (const [config, excluded] of [
-      [DISABLED_CONFIG, [...INGESTION_ERROR_OPERATIONS]],
-      [provisioned, [...INGESTION_ERROR_OPERATIONS, METRIC_RECONCILER_OPERATION]],
+      [DISABLED_CONFIG, [...INGESTION_ERROR_OPERATIONS, ...PAGE_OPERATIONS_PINNED]],
+      [
+        provisioned,
+        [...INGESTION_ERROR_OPERATIONS, ...PAGE_OPERATIONS_PINNED, METRIC_RECONCILER_OPERATION],
+      ],
     ] as const) {
       const template = synth(config);
       const topic = only(
@@ -951,9 +980,12 @@ describe('tracing report I2 alarms', () => {
         + excluded.map((operation) => `Operation != '${operation}'`).join(' AND ')
         + ' GROUP BY Operation ORDER BY SUM() DESC';
       expect(alarmingErrorsByOperationQuery(excluded)).toBe(expression);
+      // The documented MetricDataQuery `Expression` maximum.
+      expect(expression.length).toBeLessThanOrEqual(2048);
       expect(alarm).toEqual({
         AlarmName: 'adlytics-dev-alarming-errors-by-operation',
-        AlarmDescription: alarm.AlarmDescription,
+        // ADR-148: page operations are held by their page alarms, and the description says so.
+        AlarmDescription: expect.stringContaining('ADR-148'),
         AlarmActions: [{ Ref: topic }],
         Tags: alarm.Tags,
         Metrics: [{ Expression: expression, Id: 'expr_1', Period: 300, ReturnData: true }],
