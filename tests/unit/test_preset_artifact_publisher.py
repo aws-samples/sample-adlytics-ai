@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import json
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime
@@ -17,6 +18,7 @@ from bake_application_support import apply_with_deadline, legacy_application, re
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from preset_artifact_support import published_result, template_of
 from publication_support import PublicationSpec, successful_publication
 
 from adapters.config import (
@@ -62,6 +64,7 @@ from adapters.jobs.preset_artifact_publisher.transport import (
     DeclaredBakeIntents,
 )
 from adapters.outbound.bake_sources import BakeQueryCapture
+from adapters.outbound.preset_artifacts import S3_CHAINS_PER_BAKER, PresetArtifactPersistence
 from adapters.outbound.telemetry import tracing
 from adapters.outbound.telemetry.reporting import OperationLog
 from adapters.outbound.telemetry.tracing import (
@@ -76,19 +79,44 @@ from domain.operations.bake_refusals import (
 from domain.operations.execution_graph import AuthorityMode
 from domain.operations.execution_graph_release import BakeRoster
 from domain.presentation.preset_artifacts import (
+    MAX_PRESET_ARTIFACT_BYTES,
+    MAX_PRESET_SIBLING_SEGMENT_INDEX,
+    SIBLING_DESCRIPTOR_MAX_BYTES,
+    SIBLING_INDEX_SHARD_ENTRIES,
     ArtifactBodyWriteResult,
+    CustodyManifestWriteResult,
     PresetArtifactBody,
+    PresetArtifactChildIdentity,
+    PresetArtifactCustodyHeader,
+    PresetArtifactCustodyManifest,
+    PresetArtifactIndexShardIdentity,
     PresetArtifactPage,
     PresetArtifactPointer,
     PresetArtifactPointerAdvanceOutcome,
     PresetArtifactPointerAdvanceRequest,
-    PresetArtifactPointerAdvanceResult,
+    PresetArtifactPointerTemplate,
+    PresetArtifactProductChildIdentity,
     PresetArtifactPublicationRequest,
     PresetArtifactPublicationResult,
     PresetArtifactRevision,
+    PresetArtifactSiblingBody,
+    PresetArtifactSiblingCustody,
+    PresetArtifactSiblingCustodyWriteResult,
+    PresetArtifactSiblingDescriptor,
+    PresetArtifactSiblingIdentity,
+    PresetArtifactSiblingIndexEntry,
+    PresetArtifactSiblingPair,
+    PresetArtifactSiblingReadRequest,
+    PresetArtifactSiblingStream,
+    PresetArtifactSiblingWriteResult,
+    PresetArtifactStageResult,
     PresetArtifactVariant,
     SourceUnchanged,
     canonical_preset_artifact_json,
+    index_shard_descriptors,
+    sibling_descriptor_bytes,
+    sibling_index_shards,
+    split_parent_custody,
 )
 from domain.shared_kernel.errors import InvariantError
 from ports.outbound.preset_artifacts import (
@@ -180,18 +208,7 @@ class Persistence:
         if self.fail:
             raise RuntimeError("persistence unavailable")
         self.results.append(request)
-        body = request.body
-        return PresetArtifactPublicationResult(
-            ArtifactBodyWriteResult(
-                body.page,
-                body.variant,
-                body.revision,
-                body.key,
-                body.digest,
-                None,
-            ),
-            PresetArtifactPointerAdvanceResult(PresetArtifactPointerAdvanceOutcome.ADVANCED),
-        )
+        return published_result(request, PresetArtifactPointerAdvanceOutcome.ADVANCED)
 
 
 def _stream_record(
@@ -225,7 +242,9 @@ def _request() -> PresetArtifactPublicationRequest:
         canonical_preset_artifact_json({"kind": "real"}),
     )
     pointer = PresetArtifactPointer(PAGE, PERSISTED_VARIANT, revision, body.digest, 1)
-    return PresetArtifactPublicationRequest(body, PresetArtifactPointerAdvanceRequest(pointer))
+    return PresetArtifactPublicationRequest(
+        body, template_of(PresetArtifactPointerAdvanceRequest(pointer))
+    )
 
 
 def test_campaign_baker_publishes_only_a_retained_source_request_for_the_declared_variant() -> None:
@@ -1027,7 +1046,7 @@ def test_agg3_6_a_legacy_write_refused_across_the_cas_is_acknowledged_and_counte
         def publish(
             self, request: PresetArtifactPublicationRequest, **_deadline: object
         ) -> PresetArtifactPublicationResult:
-            raise LegacyPointerAfterCutoverError(request.pointer_advance.pointer.partition_key)
+            raise LegacyPointerAfterCutoverError(request.pointer_template.partition_key)
 
     persisted = BakeIntent("campaigns", "seven-days")
     application = legacy_application(
@@ -1282,3 +1301,379 @@ def test_stage_and_publish_require_the_deadline_keywords() -> None:
         cast("Any", persistence).stage(_sibling_request(1))
     with pytest.raises(TypeError):
         cast("Any", persistence).publish(_sibling_request(1), remaining_ms=lambda: 1)
+
+
+# --- streamed writes and the sharded sibling index (ADR-145, design 04 §4) -----------------
+
+
+def _stream_parent() -> PresetArtifactBody:
+    revision = PresetArtifactRevision.from_publication_identities(("publication-stream",))
+    return PresetArtifactBody(
+        PAGE, PERSISTED_VARIANT, revision, canonical_preset_artifact_json({"parent": "stream"})
+    )
+
+
+def _pair(
+    parent: PresetArtifactBody, identity: PresetArtifactChildIdentity
+) -> PresetArtifactSiblingPair:
+    payload = canonical_preset_artifact_json({"sibling": identity.path})
+    custody = canonical_preset_artifact_json({"custody": identity.path})
+    return (
+        PresetArtifactSiblingBody(parent.page, parent.variant, parent.revision, identity, payload),
+        PresetArtifactSiblingCustody(
+            parent.page, parent.variant, parent.revision, identity, custody
+        ),
+    )
+
+
+def _stream_request(
+    parent: PresetArtifactBody,
+    stream: PresetArtifactSiblingStream,
+    closed: frozenset[PresetArtifactProductChildIdentity] | None = None,
+) -> PresetArtifactPublicationRequest:
+    return PresetArtifactPublicationRequest(
+        parent,
+        PresetArtifactPointerTemplate(
+            parent.page, parent.variant, parent.revision, parent.digest, 1
+        ),
+        PresetArtifactCustodyHeader(canonical_preset_artifact_json({"header": "fictional"})),
+        stream,
+        closed,
+    )
+
+
+@dataclass
+class _IndexStores:
+    """Thread-safe body and custody stores that keep every object a stage writes, in order."""
+
+    written: list[str] = field(default_factory=list[str])
+    objects: dict[str, str] = field(default_factory=dict[str, str])
+    lock: Lock = field(default_factory=Lock)
+    fail_after: int | None = None
+
+    def _keep(self, key: str, payload: str) -> None:
+        with self.lock:
+            if self.fail_after is not None and len(self.written) >= self.fail_after:
+                raise RuntimeError("a fictional write failed")
+            self.written.append(key)
+            self.objects[key] = payload
+
+    def write(self, item: Any) -> Any:
+        self._keep(item.key, item.payload_json)
+        kind = (
+            ArtifactBodyWriteResult
+            if isinstance(item, PresetArtifactBody)
+            else CustodyManifestWriteResult
+        )
+        return kind(item.page, item.variant, item.revision, item.key, item.digest, "v1")
+
+    def write_sibling(self, item: Any) -> Any:
+        self._keep(item.key, item.payload_json)
+        kind = (
+            PresetArtifactSiblingWriteResult
+            if isinstance(item, PresetArtifactSiblingBody)
+            else PresetArtifactSiblingCustodyWriteResult
+        )
+        return kind(
+            item.page, item.variant, item.revision, item.identity, item.key, item.digest, "v1"
+        )
+
+
+def _stage(
+    stores: _IndexStores, request: PresetArtifactPublicationRequest
+) -> PresetArtifactStageResult:
+    persistence = PresetArtifactPersistence(
+        cast("Any", stores), cast("Any", object()), cast("Any", stores)
+    )
+    return persistence.stage(request, remaining_ms=lambda: 600_000, tail_seconds=30.0)
+
+
+@pytest.mark.covers("ADR-145")
+def test_the_stage_draws_the_stream_lazily_holding_at_most_eight_pairs_in_flight() -> None:
+    """Memory is bounded by the pairs in flight: a pair is drawn only as another completes."""
+    parent = _stream_parent()
+    drawn: list[int] = []
+    stores = _IndexStores()
+
+    def pairs() -> Iterator[PresetArtifactSiblingPair]:
+        for index in range(40):
+            # Pairs drawn, less the pairs whose custody (the second write) has landed.
+            with stores.lock:
+                landed = sum(1 for key in stores.written if "/custody/" in f"/{key}")
+            drawn.append(index - landed)
+            yield _pair(parent, PresetArtifactSiblingIdentity(f"order{index:02d}", 0, "all"))
+
+    staged = _stage(stores, _stream_request(parent, PresetArtifactSiblingStream(pairs, 40)))
+
+    assert max(drawn) <= S3_CHAINS_PER_BAKER
+    assert staged.pairs == 40 + 1 + 1  # every sibling pair, the one shard and the parent
+    # Paired: a stage that held every pair before writing would have drawn all 40 first.
+    assert drawn[S3_CHAINS_PER_BAKER:] != list(range(S3_CHAINS_PER_BAKER, 40))
+
+
+@pytest.mark.covers("ADR-145")
+def test_index_shards_cut_at_800_sorted_by_identity_and_the_parent_lists_their_digests() -> None:
+    parent = _stream_parent()
+    identities = [PresetArtifactSiblingIdentity("name-asc", index, "all") for index in range(1_601)]
+    # The stream yields out of identity order; the index is sorted by identity path.
+    shuffled = [*identities[800:], *identities[:800]]
+    stores = _IndexStores()
+    request = _stream_request(
+        parent, PresetArtifactSiblingStream.of(_pair(parent, item) for item in shuffled)
+    )
+
+    staged = _stage(stores, request)
+
+    assert staged.custody is not None
+    header, index = split_parent_custody(
+        PresetArtifactCustodyManifest(
+            parent.page, parent.variant, parent.revision, stores.objects[staged.custody.key]
+        )
+    )
+    assert header == {"header": "fictional"}
+    assert len(index) == 3
+    descriptors: list[PresetArtifactSiblingDescriptor] = []
+    for position, entry in enumerate(index):
+        key = (
+            f"custody/{parent.page.value}/{parent.variant.value}/{parent.revision.value}/"
+            f"index/segment-{position:04d}.json"
+        )
+        shard = PresetArtifactSiblingCustody(
+            parent.page,
+            parent.variant,
+            parent.revision,
+            PresetArtifactIndexShardIdentity(position),
+            stores.objects[key],
+        )
+        assert shard.digest == entry.digest
+        descriptors.extend(index_shard_descriptors(shard, entry))
+    assert [
+        len(index_shard_descriptors(s, e)) for s, e in staged_shards(stores, parent, index)
+    ] == [
+        800,
+        800,
+        1,
+    ]
+    assert [item.identity.path for item in descriptors] == sorted(item.path for item in identities)
+    # The shards follow every pair and precede the parent body, then its custody.
+    shard_writes = [key for key in stores.written if "/index/" in key]
+    assert stores.written[-5:] == [*shard_writes, parent.key, staged.custody.key]
+    # The stage's chains and bytes are what it wrote (the artifact.write spans' sums).
+    assert staged.pairs == 1_601 + 3 + 1
+    assert staged.written_bytes == sum(len(value.encode()) for value in stores.objects.values())
+    # Paired: 800 siblings fit one shard.
+    one = _IndexStores()
+    _stage(
+        one,
+        _stream_request(
+            parent, PresetArtifactSiblingStream.of(_pair(parent, item) for item in identities[:800])
+        ),
+    )
+    assert sum(1 for key in one.written if "/index/" in key) == 1
+
+
+def staged_shards(
+    stores: _IndexStores,
+    parent: PresetArtifactBody,
+    index: tuple[PresetArtifactSiblingIndexEntry, ...],
+) -> list[tuple[PresetArtifactSiblingCustody, PresetArtifactSiblingIndexEntry]]:
+    """Return each written shard with the parent entry that binds it."""
+    return [
+        (
+            PresetArtifactSiblingCustody(
+                parent.page,
+                parent.variant,
+                parent.revision,
+                PresetArtifactIndexShardIdentity(position),
+                stores.objects[
+                    f"custody/{parent.page.value}/{parent.variant.value}/"
+                    f"{parent.revision.value}/index/segment-{position:04d}.json"
+                ],
+            ),
+            entry,
+        )
+        for position, entry in enumerate(index)
+    ]
+
+
+@pytest.mark.covers("ADR-145")
+def test_a_tampered_shard_is_refused_against_its_parent_entry() -> None:
+    parent = _stream_parent()
+    pair = _pair(parent, PresetArtifactSiblingIdentity("name-asc", 0, "all"))
+    descriptor = PresetArtifactSiblingDescriptor(pair[0].identity, pair[0].digest, pair[1].digest)
+    ((shard, entry),) = sibling_index_shards(parent, (descriptor,))
+    assert index_shard_descriptors(shard, entry) == (descriptor,)
+    payload = json.loads(shard.payload_json)
+    payload["descriptors"][0]["body_digest"] = "0" * 64
+    tampered = replace(shard, payload_json=canonical_preset_artifact_json(payload))
+    with pytest.raises(ValueError, match="does not match its parent custody entry"):
+        index_shard_descriptors(tampered, entry)
+    # Paired: an entry over the tampered bytes still refuses a range it doesn't name.
+    with pytest.raises(ValueError, match="ordered range"):
+        index_shard_descriptors(
+            tampered,
+            replace(entry, digest=tampered.digest, last_identity="segments/zz/a/segment-0000"),
+        )
+
+
+@pytest.mark.covers("ADR-145")
+def test_of_wraps_a_finite_tuple_unchanged_and_is_re_iterable() -> None:
+    parent = _stream_parent()
+    pairs = tuple(
+        _pair(parent, PresetArtifactProductChildIdentity(f"{index:032x}")) for index in range(3)
+    )
+    stream = PresetArtifactSiblingStream.of(pairs)
+    assert stream.count == 3
+    assert tuple(stream) == pairs
+    assert tuple(stream) == pairs  # a second iteration draws the same pairs again
+    assert stream == PresetArtifactSiblingStream.of(pairs)
+    with pytest.raises(TypeError, match="a body and its custody"):
+        PresetArtifactSiblingStream.of(cast("Any", ((pairs[0][0],),)))
+
+
+@pytest.mark.covers("ADR-125", "ADR-145")
+def test_children_other_than_the_served_rows_are_refused_before_any_write() -> None:
+    parent = _stream_parent()
+    served = [PresetArtifactProductChildIdentity(f"{index:032x}") for index in range(2)]
+    stranger = PresetArtifactProductChildIdentity("f" * 32)
+    for streamed in ((served[0], stranger), (served[0],), (served[0], served[0], served[1])):
+        stores = _IndexStores()
+        request = _stream_request(
+            parent,
+            PresetArtifactSiblingStream.of(_pair(parent, item) for item in streamed),
+            frozenset(served),
+        )
+        with pytest.raises(InvariantError, match="exactly the served rows"):
+            _stage(stores, request)
+        assert stores.written == []
+    # Paired: exactly the served rows stage every pair, the index and the parent.
+    stores = _IndexStores()
+    _stage(
+        stores,
+        _stream_request(
+            parent,
+            PresetArtifactSiblingStream.of(_pair(parent, item) for item in served),
+            frozenset(served),
+        ),
+    )
+    assert len(stores.written) == 2 * 2 + 1 + 2
+
+
+@pytest.mark.covers("ADR-145")
+def test_a_stream_that_breaks_its_count_or_raises_stops_and_writes_no_parent() -> None:
+    parent = _stream_parent()
+    identities = [
+        PresetArtifactSiblingIdentity(f"order{index:02d}", 0, "all") for index in range(3)
+    ]
+    for declared, yielded in ((3, 2), (2, 3)):
+        stores = _IndexStores()
+        stream = PresetArtifactSiblingStream.of(
+            _pair(parent, item) for item in identities[:yielded]
+        )
+        with pytest.raises(InvariantError, match="declared count"):
+            _stage(stores, _stream_request(parent, replace(stream, count=declared)))
+        assert parent.key not in stores.written
+    # A sibling the source renders lazily may refuse the page; the stage stops and re-raises.
+    refusal = IsolatedRefusal(
+        IsolatedRefusalReason.BODY_OVER_CAP, RefusalScope.PAGE, encoded_bytes=1, max_bytes=0
+    )
+
+    def refusing() -> Iterator[PresetArtifactSiblingPair]:
+        yield _pair(parent, identities[0])
+        raise refusal
+
+    stores = _IndexStores()
+    with pytest.raises(IsolatedRefusal) as raised:
+        _stage(stores, _stream_request(parent, PresetArtifactSiblingStream(refusing, 3)))
+    assert raised.value is refusal
+    assert not [key for key in stores.written if "/index/" in key or key == parent.key]
+    # Paired: a pair that fails to write stops submission too.
+    failing = _IndexStores(fail_after=1)
+    with pytest.raises(RuntimeError, match="fictional write failed"):
+        _stage(
+            failing,
+            _stream_request(
+                parent, PresetArtifactSiblingStream.of(_pair(parent, item) for item in identities)
+            ),
+        )
+    assert parent.key not in failing.written
+
+
+@pytest.mark.covers("ADR-145")
+def test_the_widest_campaigns_descriptor_fits_its_byte_bound_and_one_wider_is_refused() -> None:
+    """`SIBLING_DESCRIPTOR_MAX_BYTES` holds the widest real identity: 800 of them fit a shard."""
+    from adapters.outbound.media_taxonomy import load_media_taxonomy  # noqa: PLC0415
+    from domain.presentation.campaign_portfolio import CampaignPortfolioSortField  # noqa: PLC0415
+    from domain.semantics.identity import ChannelKey  # noqa: PLC0415
+
+    root = Path(__file__).resolve().parents[2]
+    filters = [
+        "all",
+        "sponsored",
+        *(
+            term.key.value
+            for term in load_media_taxonomy(root).terms
+            if isinstance(term.key, ChannelKey)
+        ),
+    ]
+    orderings = [
+        f"{field.value}-{direction}"
+        for field in CampaignPortfolioSortField
+        for direction in ("asc", "desc")
+    ]
+    widest = PresetArtifactSiblingDescriptor(
+        PresetArtifactSiblingIdentity(
+            max(orderings, key=len), MAX_PRESET_SIBLING_SEGMENT_INDEX, max(filters, key=len)
+        ),
+        "a" * 64,
+        "b" * 64,
+    )
+    assert sibling_descriptor_bytes(widest) <= SIBLING_DESCRIPTOR_MAX_BYTES
+    assert SIBLING_INDEX_SHARD_ENTRIES * SIBLING_DESCRIPTOR_MAX_BYTES < MAX_PRESET_ARTIFACT_BYTES
+    # Paired: a descriptor past the bound is a defect the index refuses to build.
+    wider = replace(
+        widest,
+        identity=PresetArtifactSiblingIdentity(
+            "o" * 80, MAX_PRESET_SIBLING_SEGMENT_INDEX, "f" * 64
+        ),
+    )
+    assert sibling_descriptor_bytes(wider) > SIBLING_DESCRIPTOR_MAX_BYTES
+    with pytest.raises(ValueError, match="exceeds its byte bound"):
+        sibling_index_shards(_stream_parent(), (wider,))
+
+
+@pytest.mark.covers("ADR-145")
+def test_the_s3_body_store_refuses_to_read_an_index_shard_as_a_public_body() -> None:
+    from adapters.outbound.s3.preset_artifacts import (  # noqa: PLC0415
+        S3PresetArtifactBodyStore,
+        S3PresetArtifactCustodyStore,
+    )
+
+    parent = _stream_parent()
+    pair = _pair(parent, PresetArtifactSiblingIdentity("name-asc", 0, "all"))
+    ((shard, entry),) = sibling_index_shards(
+        parent,
+        (PresetArtifactSiblingDescriptor(pair[0].identity, pair[0].digest, pair[1].digest),),
+    )
+    gets: list[str] = []
+
+    class _Client:
+        def get_object(self, *, Bucket: str, Key: str) -> dict[str, Any]:  # noqa: N803
+            del Bucket
+            gets.append(Key)
+            return {"Body": SimpleNamespace(read=shard.payload_json.encode)}
+
+    request = PresetArtifactSiblingReadRequest(
+        parent.page,
+        parent.variant,
+        parent.revision,
+        PresetArtifactSiblingDescriptor(PresetArtifactIndexShardIdentity(0), None, entry.digest),
+    )
+    with pytest.raises(InvariantError, match="no public body"):
+        S3PresetArtifactBodyStore("fictional-bucket", cast("Any", _Client())).read_sibling(request)
+    assert gets == []
+    # Paired: the custody store reads the shard at its custody key and attests its digest.
+    read = S3PresetArtifactCustodyStore("fictional-bucket", cast("Any", _Client())).read_sibling(
+        request
+    )
+    assert (read, gets) == (shard, [shard.key])

@@ -14,6 +14,8 @@ from adapters.outbound.s3.preset_artifacts import (
     S3PresetArtifactCustodyStore,
 )
 from domain.presentation.preset_artifacts import (
+    PresetArtifactBody,
+    PresetArtifactIndexShardIdentity,
     PresetArtifactPage,
     PresetArtifactRevision,
     PresetArtifactSiblingBody,
@@ -23,6 +25,8 @@ from domain.presentation.preset_artifacts import (
     PresetArtifactSiblingReadRequest,
     PresetArtifactVariant,
     canonical_preset_artifact_json,
+    index_shard_descriptors,
+    sibling_index_shards,
 )
 from domain.shared_kernel.errors import InvariantError
 
@@ -109,3 +113,55 @@ def test_sibling_public_and_custody_create_replay_conflict_and_read_attestation(
     finally:
         for key in (public.key, custody.key):
             s3.delete_object(Bucket=artifact_bucket, Key=key)
+
+
+@pytest.mark.covers("ADR-145")
+def test_an_index_shard_is_a_custody_only_object_read_by_its_parent_entry(
+    artifact_bucket: str,
+    request: pytest.FixtureRequest,
+) -> None:
+    """The sharded sibling index (ADR-145): written and read in the custody namespace only."""
+    node_id = pytest_node_id(request)
+    page = PresetArtifactPage(f"{PROBE_PREFIX}-{hashlib.sha256(node_id.encode()).hexdigest()[:12]}")
+    variant = PresetArtifactVariant("7d")
+    revision = PresetArtifactRevision.from_publication_identities((node_id,))
+    parent = PresetArtifactBody(
+        page, variant, revision, canonical_preset_artifact_json({"kind": "fictional-parent"})
+    )
+    sibling = PresetArtifactSiblingDescriptor(
+        PresetArtifactSiblingIdentity("name-asc", 0, "all"),
+        hashlib.sha256(b"fictional-public").hexdigest(),
+        hashlib.sha256(b"fictional-custody").hexdigest(),
+    )
+    ((shard, entry),) = sibling_index_shards(parent, (sibling,))
+    assert shard.key == f"custody/{page.value}/7d/{revision.value}/index/segment-0000.json"
+    read_request = PresetArtifactSiblingReadRequest(
+        page,
+        variant,
+        revision,
+        PresetArtifactSiblingDescriptor(PresetArtifactIndexShardIdentity(0), None, entry.digest),
+    )
+    public_store = S3PresetArtifactBodyStore(artifact_bucket)
+    custody_store = S3PresetArtifactCustodyStore(artifact_bucket)
+    s3 = boto3.client("s3")
+    try:
+        assert custody_store.write_sibling(shard).digest == entry.digest
+        read = custody_store.read_sibling(read_request)
+        assert index_shard_descriptors(read, entry) == (sibling,)
+        # Paired: an index shard has no public body, and a shard of other bytes is refused.
+        with pytest.raises(InvariantError, match="no public body"):
+            public_store.read_sibling(read_request)
+        substituted = PresetArtifactSiblingReadRequest(
+            page,
+            variant,
+            revision,
+            PresetArtifactSiblingDescriptor(
+                PresetArtifactIndexShardIdentity(0),
+                None,
+                hashlib.sha256(b"substituted-shard").hexdigest(),
+            ),
+        )
+        with pytest.raises(InvariantError, match="checksum"):
+            custody_store.read_sibling(substituted)
+    finally:
+        s3.delete_object(Bucket=artifact_bucket, Key=shard.key)

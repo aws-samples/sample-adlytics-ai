@@ -359,7 +359,7 @@ def test_a_render_that_raises_still_advanced_the_ledger() -> None:
     assert (first.entry.process_bake_ordinal, first.entry.process_baseline_mb) == (1, 50.0)
 
 
-def test_stage_page_passes_the_window_and_catches_only_the_write_deadline() -> None:
+def test_stage_page_passes_the_window_and_catches_only_page_refusals() -> None:
     written: list[tuple[object, int, float]] = []
 
     def write(request: Any, *, remaining_ms: Any, tail_seconds: float) -> str:
@@ -372,21 +372,26 @@ def test_stage_page_passes_the_window_and_catches_only_the_write_deadline() -> N
     deadline = IsolatedRefusal(
         IsolatedRefusalReason.BODIES_OVER_INVOCATION, RefusalScope.PAGE, written=3, bodies=9
     )
+    # ADR-145: the stage draws the sibling stream as it writes, so a sibling the source renders
+    # then refuses the page as it would at render: the page's absence, returned, not raised.
+    over_cap = IsolatedRefusal(IsolatedRefusalReason.BODY_OVER_CAP, RefusalScope.PAGE, max_bytes=1)
 
-    def expired(_request: Any, *, remaining_ms: Any, tail_seconds: float) -> str:
-        del remaining_ms, tail_seconds
-        raise deadline
+    def refusing(refusal: IsolatedRefusal) -> Any:
+        def stage(_request: Any, *, remaining_ms: Any, tail_seconds: float) -> str:
+            del remaining_ms, tail_seconds
+            raise refusal
 
-    assert stage_page(expired, request, _window(CAMPAIGNS)) is deadline
-    # Paired: any other stage error, a refusal of another reason included, propagates.
-    other = IsolatedRefusal(IsolatedRefusalReason.BODY_OVER_CAP, RefusalScope.PAGE, max_bytes=1)
+        return stage
 
-    def refused(_request: Any, *, remaining_ms: Any, tail_seconds: float) -> str:
-        del remaining_ms, tail_seconds
-        raise other
-
+    assert stage_page(refusing(deadline), request, _window(CAMPAIGNS)) is deadline
+    assert stage_page(refusing(over_cap), request, _window(CAMPAIGNS)) is over_cap
+    # Paired: an item-scope refusal is a source defect when raised, and any other stage error
+    # propagates.
+    item = IsolatedRefusal(
+        IsolatedRefusalReason.BODY_OVER_CAP, RefusalScope.ITEM, section="fictional", max_bytes=1
+    )
     with pytest.raises(IsolatedRefusal):
-        stage_page(refused, request, _window(CAMPAIGNS))
+        stage_page(refusing(item), request, _window(CAMPAIGNS))
 
     def failing(_request: Any, *, remaining_ms: Any, tail_seconds: float) -> str:
         del remaining_ms, tail_seconds

@@ -15,7 +15,9 @@ and writes it through `stage_page`. So what a page's render is held to lives her
   absence with one page group and the render's item notes discarded. Anything else propagates.
 - **The stage's write deadline** (ADR-145). `stage_page` hands the stage the invocation's time
   and the contract's tail; a stage that runs out before every pair is submitted refuses the page
-  (`bodies_over_invocation`), and that is the only stage error caught here.
+  (`bodies_over_invocation`). The stage draws the sibling stream as it writes, so a sibling the
+  source renders then may refuse the page too (`body_over_cap`). A page-scope refusal is the
+  only stage error caught here.
 - **The one emitter.** `emit_isolated_refusals` produces exactly one span, one line and one
   datapoint per `(scope, reason)` group, and `report_over_budget` the over-budget alarm, for
   both entries; telemetry runs through `guarded`, so it never changes the business result.
@@ -317,16 +319,15 @@ def stage_page[T](
 
     `write` is the legacy entry's `publish` or the graph entry's `stage`. A stage that reaches
     its deadline (`remaining_ms() / 1000 < tail_seconds`) before every pair is submitted refuses
-    the page with `bodies_over_invocation`: that refusal is returned, so the caller settles the
-    page's absence (no parent, index or pointer was written). Any other error propagates.
+    the page with `bodies_over_invocation`; a sibling the stream renders while the stage writes
+    may refuse it as at render (`body_over_cap`). Either page-scope refusal is returned, so the
+    caller settles the page's absence (no parent, index or pointer was written). Any other error
+    propagates.
     """
     try:
         return write(request, remaining_ms=window.remaining_ms, tail_seconds=window.tail_seconds)
     except IsolatedRefusal as refusal:
-        if (
-            refusal.reason is IsolatedRefusalReason.BODIES_OVER_INVOCATION
-            and refusal.scope is RefusalScope.PAGE
-        ):
+        if refusal.scope is RefusalScope.PAGE:
             return refusal
         raise
 
