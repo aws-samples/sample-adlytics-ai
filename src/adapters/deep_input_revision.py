@@ -104,6 +104,8 @@ DEEP_INPUT_REVISIONS: Final[tuple[tuple[str, str], ...]] = (
     ("2026-10-18.2", "1b7e0f9421fc6138ee794b7de115e4598a761740f1e79e05d7dfbf27dac48f9c"),
     # dsp-cpc-derive: CPC derived from accepted spend and clicks, not a planned quotient.
     ("2026-10-19.1", "c3316551d07ffb2cb480e4b48a54e1319fc92860a275aced749af9c961dcc63c"),
+    # ui-refresh 1.1: resolve_temporal gives a calendar default no day-count default window.
+    ("2026-10-22.1", "371b804b7a9c3821226d37e353c53fc5b8c47edf02c486b5ac19821a17d8a4a1"),
 )
 DEEP_INPUT_REVISION: Final[str] = DEEP_INPUT_REVISIONS[-1][0]
 """The revision every deep cache key carries (``#DEEPINPUT#<revision>``)."""

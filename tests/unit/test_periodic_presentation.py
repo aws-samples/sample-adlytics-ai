@@ -171,7 +171,8 @@ def _v2_page(
         visuals=(),
         sections=sections,
         actions=(),
-        compatibility_routes=(),
+        # The Scorecard owns `/` since OD-UX-3 (2026-10-22), so a synthetic Scorecard keeps it.
+        compatibility_routes=("/",) if page_id == "scorecard" else (),
     )
 
 
