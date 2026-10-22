@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT-0
 'use client';
 
+import { displayFigure } from '@/lib/exact-format';
 import { useId, useMemo, useState } from 'react';
 
 import type { AudienceDelivery, AudienceMarket, AudienceProfileArtifact, AudienceSegmentNames, AudienceView, AudienceViewId } from '@/lib/audiences';
@@ -60,7 +61,7 @@ function SegmentTable({ buyerMode, delivery, view }: {
             <DtRowHeader><SegmentName row={row} /></DtRowHeader>
             <DtCell label={metricLabels(buyerMode)[0]}>{buyerMode === 'all' ? row.segment_buyer_share?.text ?? row.text : row.segment_buyers_new_to_brand_text}</DtCell>
             <DtCell label="Share of reached shoppers">{row.segment_exposed_share?.text ?? row.text}</DtCell>
-            <DtCell label="Index">{row.segment_index_text ?? row.text}</DtCell>
+            <DtCell label="Index">{row.segment_index === null ? row.text : displayFigure('segment_index', row.segment_index, 'ratio', null).text}</DtCell>
           </DtRow>)}
         {unavailable.map((row) => <UnavailableSegmentRow buyerMode={buyerMode} key={`${row.profile_path}:${row.segment_id}`} reason={row.text} row={row} />)}
       </DtBody>
@@ -127,7 +128,7 @@ function CampaignSection({ market }: { readonly market: AudienceMarket }) {
         <DtRowHeader><SegmentName row={row} /></DtRowHeader>
         <DtCell label="Impressions">{row.segment_impressions_text}</DtCell>
         <DtCell label="CPM">{row.segment_cpm?.text ?? row.cpm_text}</DtCell>
-        <DtCell label="ROAS">{row.segment_roas_attributed_text ?? row.roas_text}</DtCell>
+        <DtCell label="ROAS">{row.segment_roas_attributed === null ? row.roas_text : displayFigure('segment_roas_attributed', row.segment_roas_attributed, 'ratio', null).text}</DtCell>
       </DtRow>)}</DtBody>
     </DataTable>}
     <p className="footnote">{campaigns.segment_ids_sentence}</p>

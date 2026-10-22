@@ -44,9 +44,10 @@ test('renders DSP profile, campaign figures and server text without browser form
   assert.ok(screen.getByText('Showing September 2026 (Latest measured month).'));
   const profile = screen.getByRole('region', { name: /Segments your buyers belong to.*DSP-exposed buyers only/ });
   assert.ok(within(profile).getByText('40.0%'));
-  assert.ok(within(profile).getByText('1.33x'));
+  // Plan D4: the segment index reads as a governed multiplier.
+  assert.ok(within(profile).getByText('1.33×'));
   assert.ok(screen.getByText('7.00 USD'));
-  assert.ok(screen.getByText('0.59x'));
+  assert.ok(screen.getByText('0.59×'));
   assert.equal(container.textContent?.includes('0.4000'), false);
   assert.equal(container.textContent?.includes('30000'), true);
 });

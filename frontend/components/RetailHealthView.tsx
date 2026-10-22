@@ -146,6 +146,7 @@ function RetailTrend({ artifact }: { readonly artifact: RetailHealthArtifact }) 
       dates={artifact.trend.map((point) => point.date)}
       kind={kind}
       prior={trendSeries(artifact, selected, 'prior')}
+      zeroBased
     />
     <ChartLegend prior />
   </section>;

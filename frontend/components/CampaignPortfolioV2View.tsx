@@ -70,8 +70,16 @@ function campaignName(row: Pick<CampaignPortfolioRow, 'signature'>): string {
   return row.signature.effective_name ?? 'Name unavailable';
 }
 
-function metric(value: CampaignMetricValue | null, kind: ValueKind): string {
-  return value === null ? 'Not available for this reporting window' : displayValueText(value, kind);
+/** A campaign slot's governed metric id, for its dictionary display rule (plan D4). */
+function governedMetric(slot: string): string {
+  if (slot === 'spend') return 'ad_spend';
+  if (slot === 'attributed_roas') return 'roas_attributed_14d';
+  return slot;
+}
+function metric(value: CampaignMetricValue | null, kind: ValueKind, slot?: string): string {
+  return value === null
+    ? 'Not available for this reporting window'
+    : displayValueText(value, kind, slot === undefined ? undefined : governedMetric(slot));
 }
 
 /** Why a portfolio ratio is typed absent: its denominator is zero in the window (ADR-087). */
@@ -93,7 +101,7 @@ export function PortfolioValue({ metric: metricName, value }: {
     const description = `Not applicable: ${reason} in this window`;
     return <span className="not-applicable" role="img" aria-label={description} title={description}>—</span>;
   }
-  return <>{displayValueText({ ...value, value: value.value }, value.units.kind)}</>;
+  return <>{displayValueText({ ...value, value: value.value }, value.units.kind, governedMetric(metricName))}</>;
 }
 
 /** Whether both sides are defined; an undefined comparison has no change (ADR-087). */
@@ -376,12 +384,13 @@ function PortfolioTrend({ artifact }: { readonly artifact: CampaignPortfolioArti
       current={values}
       dates={trend.points.map((point) => point.date)}
       kind={kind}
+      zeroBased={kind !== 'ratio'}
     />
     <ChartLegend prior={false} />
     {absent ? <div className="dt-legend"><span>— {NO_SPEND_DAY}.</span></div> : null}
     {artifact.channel_view === null ? null : <p className="section-line">{artifact.channel_view.trend_line}</p>}
     <details className="exact">
-      <summary>Exact returned values</summary>
+      <summary>Show exact values</summary>
       <div className="scroll">
         <table>
           <caption className="sr-only">Exact returned {label(selected)} values for {formatIsoDateRange(trend.period.start, trend.period.end)}</caption>
@@ -740,7 +749,7 @@ function ChannelCell({ comparison, figure, roles, slot }: {
     <strong>{value.value === null
       // The same words as the delivery legend's line for this "—" (server-served).
       ? <span className="not-applicable" role="img" aria-label={`Not applicable: ${undefinedRatioReason[comparison.metric] ?? 'no denominator'} in this window`}>—</span>
-      : displayValueText({ ...value, value: value.value }, value.units.kind)}</strong>{' '}
+      : displayValueText({ ...value, value: value.value }, value.units.kind, governedMetric(comparison.metric))}</strong>{' '}
     {comparison.current.value !== null && comparison.prior.value !== null
       ? <FigureChange change={comparison.change} figure={figure} slot={slot} {...(roles === undefined ? {} : { roles })} />
       : null}
@@ -912,8 +921,8 @@ function DetailTiles({ detail, focusSelectionReference, focusSessionId }: { read
           <p className="k">{label(metricName)}</p>
           <div className="row">
             <div>
-              <p className="v">{metric(value, valueKind(metricName))}</p>
-              <p className="prior">Prior: {metric(focusValue(detail, metricName, true), valueKind(metricName))}</p>
+              <p className="v">{metric(value, valueKind(metricName), metricName)}</p>
+              <p className="prior">Prior: {metric(focusValue(detail, metricName, true), valueKind(metricName), metricName)}</p>
             </div>
             <ChangeChip change={focusChange(detail, metricName)} />
           </div>
@@ -975,7 +984,7 @@ function deliverySeries(
 function ExactValues({ detail, metricName, series }: { readonly detail: CampaignAttributionDetailV2; readonly metricName: CampaignDeliverySlot; readonly series: { readonly current: readonly (number | string)[]; readonly dates: readonly string[]; readonly prior: readonly (number | string)[] } }) {
   const currencyCode = detail.delivery.summary.find((item) => item.slot === metricName)?.value?.units.currency_code ?? null;
   return <details className="exact" open>
-    <summary>Exact returned values</summary>
+    <summary>Show exact values</summary>
     <div className="scroll" tabIndex={0}>
       <table>
         <caption className="sr-only">Exact returned current and aligned-prior values for {label(metricName)} from {formatIsoDateRange(detail.period.start, detail.period.end)}</caption>
@@ -1037,6 +1046,7 @@ function DetailChart({ detail }: { readonly detail: CampaignAttributionDetailV2 
           dates={series.dates}
           kind={valueKind(activeMetric)}
           prior={series.prior}
+          zeroBased={valueKind(activeMetric) !== 'ratio'}
         />
         <ChartLegend prior />
         <p className="footnote">Aligned prior values are returned by the server.</p>
@@ -1058,8 +1068,8 @@ function DeliveryValues({ detail }: { readonly detail: CampaignAttributionDetail
       <DtHead><DtRow><DtColumn>Metric</DtColumn><DtColumn>Current</DtColumn><DtColumn>Aligned prior</DtColumn></DtRow></DtHead>
       <DtBody>{deliveryMetrics.map((metricName) => <DtRow key={metricName}>
         <DtRowHeader>{label(metricName)}</DtRowHeader>
-        <DtCell label="Current">{metric(deliveryMetricValue(detail, metricName), valueKind(metricName))}</DtCell>
-        <DtCell label="Aligned prior">{metric(deliveryMetricValue(detail, metricName, true), valueKind(metricName))}</DtCell>
+        <DtCell label="Current">{metric(deliveryMetricValue(detail, metricName), valueKind(metricName), metricName)}</DtCell>
+        <DtCell label="Aligned prior">{metric(deliveryMetricValue(detail, metricName, true), valueKind(metricName), metricName)}</DtCell>
       </DtRow>)}</DtBody>
     </DataTable>
     {detail.delivery.dsp_quality.outcome === 'unavailable' ? <p className="footnote">DSP quality values are not available for this campaign type in this reporting window.</p> : null}

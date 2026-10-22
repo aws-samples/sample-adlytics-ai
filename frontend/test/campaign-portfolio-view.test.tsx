@@ -1061,8 +1061,8 @@ test('A typed-absent ratio renders an em dash with its reason and no change chip
   // Additive control: zero spend renders 0.00 with its chip.
   assert.match(cells[0]?.textContent ?? '', /0\.00/);
   assert.notEqual(cells[0]?.querySelector('.chg'), null);
-  // Positive control: CTR with a real denominator still renders its value and chip.
-  assert.match(cells[3]?.textContent ?? '', /0\.1/);
+  // Positive control: CTR with a real denominator still renders its value and chip, as a rate (D4).
+  assert.match(cells[3]?.textContent ?? '', /10\.00%/);
   assert.notEqual(cells[3]?.querySelector('.chg'), null);
 });
 

@@ -5,7 +5,7 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { afterEach, test } from 'vitest';
 
-import { ReachAndFunnelView } from '../components/ReachAndFunnelView';
+import { ReachAndFunnelView, reachDisplayText } from '../components/ReachAndFunnelView';
 import { parseReachAndFunnelArtifact } from '../lib/reach';
 import {
   cloneReachFixture,
@@ -58,12 +58,13 @@ test('renders the complete surface in section order using only served display te
   assert.ok(container.textContent?.includes('30.00%'));
   assert.ok(container.textContent?.includes('2000 served'));
   assert.ok(container.textContent?.includes('2.50 USD'));
-  assert.ok(container.textContent?.includes('2.50x'));
+  // Plan D4: the served "2.50x" reads in the shared multiplier style; its rounding is the server's.
+  assert.ok(container.textContent?.includes('2.50×'));
+  assert.equal(container.textContent?.includes('2.50x'), false);
   assert.ok(container.textContent?.includes('4.00%'));
   assert.equal(container.textContent?.includes('0.9876'), false);
   assert.equal(container.textContent?.includes('9.8765'), false);
   assert.equal(container.textContent?.includes('$'), false);
-  assert.equal(container.textContent?.includes('×'), false);
 
   const notes = container.querySelectorAll('.reach-caveat');
   assert.equal(notes.length, 2);
@@ -209,6 +210,8 @@ const BROWSER_COPY = new Set([
 test('a same-response copy walk refuses invented or borrowed visible text', () => {
   const fixture = cloneReachFixture(reachCompleteFineFixture);
   const allowed = responseStrings(fixture);
+  // The served text in the shared figure style (plan D4) is the same served string, regrouped.
+  for (const line of [...allowed]) for (const unit of ['count', 'multiplier'] as const) allowed.add(reachDisplayText(line, unit));
   for (const line of BROWSER_COPY) allowed.add(line);
   const { container } = view(fixture);
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
@@ -236,3 +239,12 @@ test('complete and absence surfaces are axe-clean in narrow and wide containers 
   delete document.documentElement.dataset.theme;
   // Eight full-page axe runs exceed vitest's 5 s default when the gates share the machine.
 }, 20_000);
+
+test('served counts read grouped and served multipliers with a times sign, nothing recomputed (plan D4)', () => {
+  assert.equal(reachDisplayText('438444', 'count'), '438,444');
+  assert.equal(reachDisplayText('1.75x', 'multiplier'), '1.75×');
+  // Anything else stays exactly as served.
+  assert.equal(reachDisplayText('2000 served', 'count'), '2000 served');
+  assert.equal(reachDisplayText('25.93%', 'share'), '25.93%');
+  assert.equal(reachDisplayText('2.50 USD', 'currency'), '2.50 USD');
+});

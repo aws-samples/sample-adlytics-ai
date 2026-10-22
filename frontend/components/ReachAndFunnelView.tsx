@@ -13,6 +13,7 @@ import type {
   ReachInsightSlot,
   ReachMarket,
 } from '@/lib/reach';
+import { formatCanonicalDecimal, formatCount } from '@/lib/exact-format';
 import { DataTable, DtBody, DtCell, DtColumn, DtHead, DtRow, DtRowHeader } from './DataTable';
 import { InsightFocusDialog, type InsightDialogSlot, type InsightFocusSurface } from './InsightFocusDialog';
 
@@ -23,9 +24,21 @@ const INSIGHT_LABELS: Readonly<Record<ReachInsightId, string>> = {
   'reach-overlap': 'Overlap between DSP and sponsored ads',
 };
 
+const SERVED_COUNT = /^(0|[1-9][0-9]*)$/;
+const SERVED_MULTIPLIER = /^(0|[1-9][0-9]*)\.([0-9]+)x$/;
+/**
+ * The served display text in the shared figure style (plan D4): a count's digits grouped and a
+ * multiplier's "x" read as "×". It regroups the server's own string and never reads `value`, so
+ * the server's rounding stands.
+ */
+export function reachDisplayText(text: string, unit: ReachFigure['unit']): string {
+  if (unit === 'count' && SERVED_COUNT.test(text)) return formatCount(text);
+  if (unit === 'multiplier' && SERVED_MULTIPLIER.test(text)) return `${formatCanonicalDecimal(text.slice(0, -1))}×`;
+  return text;
+}
 function Figure({ figure }: { readonly figure: ReachFigure }) {
   return <span className={figure.absence === null ? 'reach-figure' : 'reach-figure absent'}>
-    <span className="reach-value">{figure.display_text ?? NOT_AVAILABLE}</span>
+    <span className="reach-value">{figure.display_text === null ? NOT_AVAILABLE : reachDisplayText(figure.display_text, figure.unit)}</span>
     {figure.absence === null ? null : <span className="reach-absence">{figure.absence.text}</span>}
   </span>;
 }

@@ -7,7 +7,7 @@
  * server's; the browser only shifts a decimal point to show a rate as a percentage or per 1,000.
  */
 
-import { formatCanonicalDecimal, formatCount, formatCurrency } from '@/lib/exact-format';
+import { formatCanonicalDecimal, formatCount, formatCurrency, formatRatePercent } from '@/lib/exact-format';
 import type { Metric, RetailComparison, RetailMetricValue } from '@/lib/retail-health';
 import { TileAbsence, TileChange, useWithheld } from './Coverage';
 
@@ -82,7 +82,8 @@ const PERCENT_RATES: readonly Metric[] = ['return_rate', 'fulfilment_rate'];
 /** Render one served value: money from its server display value, rates by a point shift. */
 export function retailValue(metric: Metric, value: Pick<RetailMetricValue, 'units' | 'value'> & { readonly display_value?: string | null }): string {
   const source = typeof value.value === 'number' ? String(value.value) : value.value;
-  if (PERCENT_RATES.includes(metric)) return `${shiftDecimal(source, 2)}%`;
+  // Plan D4: a governed rate reads as a 2-place percentage, rounded only for display.
+  if (PERCENT_RATES.includes(metric)) return formatRatePercent(source, 2);
   if (metric === 'conversion_rate_retail') return formatCanonicalDecimal(shiftDecimal(source, 3));
   if (value.units.kind === 'currency' && value.units.currency_code !== null && value.display_value != null) {
     return formatCurrency(value.display_value, value.units.currency_code);
