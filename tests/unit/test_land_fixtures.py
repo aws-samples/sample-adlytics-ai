@@ -40,6 +40,7 @@ from adapters.jobs.curation.manifests import (
     read_manifest,
     write_manifest,
 )
+from adapters.jobs.fixture_generation import shape as shape_module
 from adapters.jobs.fixture_generation.catalog import load_synthetic_entity_catalog
 from adapters.jobs.fixture_generation.shape import AttributionMaturity, CampaignDay
 from adapters.jobs.fixture_generation.shapes import WINDOW_COLUMNS
@@ -949,9 +950,44 @@ def test_the_deduplicated_feed_lands_one_generation_up_at_fresh_keys_on_its_run_
         )
     old_keys = {key.key for item in old for key in item.ordered}
     assert old_keys.isdisjoint(key.key for item in new for key in item.ordered)
-    # Positive control: the generation moves only its own feed.
-    other = "generated/amc-attributed-conversion.csv"
-    assert _generation_plan(other, 0) == _generation_plan(other, 1)
+
+
+@pytest.mark.covers("ADR-086")
+def test_the_deduplicated_generation_moves_no_other_landable_fixture() -> None:
+    # Every other path (AMC daily, Vendor, periodic, whole, trap, seal) plans identically.
+    others = [fixture for fixture in LANDABLE if fixture != _DEDUPLICATED]
+    assert len(others) == len(LANDABLE) - 1
+    for fixture in others:
+        assert _generation_plan(fixture, 0) == _generation_plan(fixture, 1), fixture
+
+
+def test_four_generations_span_exactly_one_run_stride() -> None:
+    # A generation past the stride would move a delivery onto the next run's slot and change
+    # its historical class, so the loader's bound and the bundle's spacing must fill it exactly.
+    assert (shape_module._MAX_RETRIEVAL_GENERATION + 1) * (  # pyright: ignore[reportPrivateUsage]
+        bundle_module._GENERATION_SECONDS  # pyright: ignore[reportPrivateUsage]
+    ) == bundle_module._RUN_RETRIEVAL_STRIDE_SECONDS  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize(("window", "refused"), [(48, False), (51, True)])
+def test_a_run_whose_chunks_exceed_one_generation_is_refused(window: int, refused: bool) -> None:
+    # 48 trailing days are 16 three-day chunks, the most one generation holds (positive
+    # control); 51 days are 17 chunks, which would reach the next generation's seconds.
+    path = ROOT / "tests/fixtures" / _DEDUPLICATED
+    request = bundle_module._SourceRunsRequest(  # pyright: ignore[reportPrivateUsage]
+        _DEDUPLICATED,
+        path.read_text(),
+        bundle_module._declaration(  # pyright: ignore[reportPrivateUsage]
+            path.with_suffix("").with_suffix(".manifest.json")
+        ),
+        window,
+        load_synthetic_entity_catalog(ROOT).shape,
+    )
+    if refused:
+        with pytest.raises(LandingError, match="exceed one retrieval generation"):
+            bundle_module._source_runs(request)  # pyright: ignore[reportPrivateUsage]
+    else:
+        assert bundle_module._source_runs(request)  # pyright: ignore[reportPrivateUsage]
 
 
 def test_a_fixtures_selection_lands_only_the_named_feed() -> None:

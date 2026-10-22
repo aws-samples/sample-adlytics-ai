@@ -88,9 +88,11 @@ keys keep the rotating rows. The reload selects that feed alone with `--classes 
 under a new operation id. Each day's final run ties the watermark already CURRENT, and ties
 publish, so the newer delivery replaces it. Earlier runs carry an older watermark and are skipped,
 except on the retired-floor days (ADR-086 §15), where every run ties. This feed's rows don't mature
-between runs, so either way each day ends on the corrected rows. Days before
-`last_day − 55` keep generation 0's rows, because a phase-B delivery is refused
-(`FULL_HISTORY_NOT_ENABLED`).
+between runs, so either way each day ends on the corrected rows. The first selected run re-emits
+its trailing restatement window, so the reload covers every day from `last_day − 55 −
+(restatement_window_days − 1)` (2026-07-14 at the 2026-10-06 span and the contract's 30 days).
+Only days before that keep generation 0's rows, because a phase-B delivery is refused
+(`FULL_HISTORY_NOT_ENABLED`); dev holds no dedup day before 2026-07-14 (read 2026-10-22).
 
 ## 2. Declared per-entity scenario shapes
 
