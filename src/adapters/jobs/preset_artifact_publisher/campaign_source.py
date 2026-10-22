@@ -68,17 +68,16 @@ from domain.presentation.campaign_portfolio import (
 from domain.presentation.campaigns import EffectiveNameStatus
 from domain.presentation.preset_artifacts import (
     PresetArtifactBody,
-    PresetArtifactCustodyManifest,
+    PresetArtifactCustodyHeader,
     PresetArtifactFilterIdentity,
     PresetArtifactPage,
-    PresetArtifactPointer,
-    PresetArtifactPointerAdvanceRequest,
+    PresetArtifactPointerTemplate,
     PresetArtifactPublicationRequest,
     PresetArtifactRevision,
     PresetArtifactSiblingBody,
     PresetArtifactSiblingCustody,
-    PresetArtifactSiblingDescriptor,
     PresetArtifactSiblingIdentity,
+    PresetArtifactSiblingStream,
     PresetArtifactVariant,
     SourceUnchanged,
 )
@@ -111,12 +110,13 @@ from ports.outbound.source_coverage import (
 )
 
 if TYPE_CHECKING:  # pragma: no cover
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
     from pathlib import Path
 
     from adapters.config import PresetArtifactBakeSettings
     from adapters.outbound.bake_sources import BakeSourceReads
     from domain.presentation.page_schemas import PresentationTemporalPolicy
+    from domain.presentation.preset_artifacts import PresetArtifactSiblingPair
     from domain.semantics.commerce_identity import CommerceIdentityBridge
     from ports.outbound.query import PeriodSeriesQueryPort
     from ports.outbound.semantic_state import CurrentPublicationInspectionPort
@@ -153,8 +153,10 @@ SUPERSEDED_HISTORY_RETENTION = timedelta(days=30)
 # health format 8, whose three new tiles changed the compared-metric roster (ADR-125); the
 # body bytes are format 9's. Format 11 bakes the channel filter siblings under one pointer, each
 # with its own segments keyed by filter, and the multi-channel By channel and Delivery per
-# channel content (ADR-127).
-CAMPAIGN_PRESET_RENDER_FORMAT = 11
+# channel content (ADR-127). Format 12 writes every segment and filter sibling through the
+# streamed stage and finds each through the parent custody's sharded sibling index (ADR-145):
+# the parent and filter custody carry only their own rows; the body bytes are format 11's.
+CAMPAIGN_PRESET_RENDER_FORMAT = 12
 
 
 _COUNTER_INSTANT = datetime(2026, 3, 2, tzinfo=UTC)
@@ -176,29 +178,102 @@ class CampaignPortfolioCompiler(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
-class _CampaignSegmentPublicationsRequest:
-    population: CampaignPortfolioArtifact
-    by_signature: dict[SafeCampaignDisplaySignature, CampaignMeasurementSelection]
-    variant: PresetArtifactVariant
-    revision: PresetArtifactRevision
-
-
-@dataclass(frozen=True, slots=True)
 class _CampaignFilterPublication:
-    """One channel filter's canonical first segment, its custody rows and its segments."""
+    """One channel filter's canonical first segment, its custody rows and its population."""
 
     filter_id: str
     payload_json: str
     custody_rows: tuple[CampaignCustodyRow, ...]
-    segments: tuple[_CampaignSegmentPublication, ...]
+    population: CampaignPortfolioArtifact
+    """The filter's whole ordered estate, from which its segments render as the stage draws them."""
+
+    @property
+    def segment_count(self) -> int:
+        """Every ordering's segments, less the canonical first one (the filter's own parent)."""
+        pagination = self.population.pagination
+        return 0 if pagination is None else _ORDERING_COUNT * pagination.segment_count - 1
+
+
+_ORDERING_COUNT = 2 * len(CampaignPortfolioSortField)
+"""Each sort field ascending and descending: the orderings a filter's segments are baked in."""
 
 
 @dataclass(frozen=True, slots=True)
-class _CampaignSegmentPublication:
-    artifact: CampaignPortfolioArtifact
-    body: PresetArtifactSiblingBody
-    custody: PresetArtifactSiblingCustody
-    descriptor: PresetArtifactSiblingDescriptor
+class _CampaignSiblingPairs:
+    """The Campaigns sibling stream (ADR-145): every filter's segments, then each filter sibling.
+
+    Each segment renders, with its custody of only its rows, as the stage draws it, so a bake
+    holds the pairs in flight rather than every body. A filter sibling's custody carries only its
+    own rows: every sibling is found through the parent custody's index.
+    """
+
+    page: PresetArtifactPage
+    variant: PresetArtifactVariant
+    revision: PresetArtifactRevision
+    filters: tuple[_CampaignFilterPublication, ...]
+    by_signature: dict[SafeCampaignDisplaySignature, CampaignMeasurementSelection]
+
+    def __call__(self) -> Iterator[PresetArtifactSiblingPair]:
+        for publication in self.filters:
+            yield from self._segments(publication.population)
+        for publication in self.filters[1:]:
+            identity = PresetArtifactFilterIdentity(publication.filter_id)
+            yield self._pair(identity, publication.payload_json, publication.custody_rows)
+
+    def stream(self) -> PresetArtifactSiblingStream:
+        """Return the stream with its declared count."""
+        count = sum(item.segment_count for item in self.filters) + len(self.filters) - 1
+        return PresetArtifactSiblingStream(self, count)
+
+    def _segments(
+        self, population: CampaignPortfolioArtifact
+    ) -> Iterator[PresetArtifactSiblingPair]:
+        """Render every noncanonical ordering segment and each canonical tail segment."""
+        if population.pagination is None:
+            return
+        for sort_field in CampaignPortfolioSortField:
+            for direction in ("asc", "desc"):
+                sort = CampaignPortfolioSort(sort_field, direction)
+                for segment_index in range(population.pagination.segment_count):
+                    if (
+                        sort_field is CampaignPortfolioSortField.SPEND
+                        and direction == "desc"
+                        and segment_index == 0
+                    ):
+                        continue
+                    artifact = campaign_portfolio_segment(population, sort, segment_index)
+                    if artifact is None:
+                        raise ValueError("declared campaign segment is unavailable.")
+                    rows = _custody_rows(artifact, self.by_signature)
+                    if rows is None:
+                        raise ValueError("campaign segment custody is unavailable.")
+                    yield self._pair(
+                        PresetArtifactSiblingIdentity(
+                            f"{sort_field.value}-{direction}", segment_index, population.filter_id
+                        ),
+                        capped_preset_artifact_json(campaign_portfolio_segment_payload(artifact)),
+                        rows,
+                    )
+
+    def _pair(
+        self,
+        identity: PresetArtifactSiblingIdentity | PresetArtifactFilterIdentity,
+        payload_json: str,
+        rows: tuple[CampaignCustodyRow, ...],
+    ) -> PresetArtifactSiblingPair:
+        body = PresetArtifactSiblingBody(
+            self.page, self.variant, self.revision, identity, payload_json
+        )
+        custody = PresetArtifactSiblingCustody(
+            self.page,
+            self.variant,
+            self.revision,
+            identity,
+            capped_preset_artifact_json(
+                campaign_custody_manifest_payload(CampaignCustodyManifest(body.digest, rows))
+            ),
+        )
+        return body, custody
 
 
 @dataclass(frozen=True, slots=True)
@@ -266,108 +341,63 @@ class RetainedCampaignPresetArtifactSource:
         if len(by_signature) != len(selections):
             return None
         # Every channel filter is a render-only sibling of this one batch (ADR-127 decision 2):
-        # All channels is the pointer's body; each other filter is bound by digest in its custody.
+        # All channels is the pointer's body; each other filter is a sibling the index binds.
         filters: list[_CampaignFilterPublication] = []
         for artifact in (rendered.portfolio, *rendered.siblings):
-            publication = self._filter_publication(artifact, by_signature, variant, revision)
+            publication = self._filter_publication(artifact, by_signature)
             if publication is None:
                 return None
             filters.append(publication)
-        everything, *others = filters
+        everything = filters[0]
         if everything.filter_id != ALL_CHANNELS_FILTER_ID:
             return None
         body = PresetArtifactBody(self.page, variant, revision, everything.payload_json)
-        sibling_bodies: list[PresetArtifactSiblingBody] = []
-        sibling_custody: list[PresetArtifactSiblingCustody] = []
-        filter_descriptors: list[PresetArtifactSiblingDescriptor] = []
-        for publication in filters:
-            sibling_bodies.extend(item.body for item in publication.segments)
-            sibling_custody.extend(item.custody for item in publication.segments)
-        for publication in others:
-            identity = PresetArtifactFilterIdentity(publication.filter_id)
-            filter_body = PresetArtifactSiblingBody(
-                self.page, variant, revision, identity, publication.payload_json
-            )
-            filter_custody = PresetArtifactSiblingCustody(
-                self.page,
-                variant,
-                revision,
-                identity,
-                capped_preset_artifact_json(
-                    campaign_custody_manifest_payload(
-                        CampaignCustodyManifest(
-                            filter_body.digest,
-                            publication.custody_rows,
-                            tuple(item.descriptor for item in publication.segments),
-                            (),
-                        )
-                    )
-                ),
-            )
-            sibling_bodies.append(filter_body)
-            sibling_custody.append(filter_custody)
-            filter_descriptors.append(
-                PresetArtifactSiblingDescriptor(identity, filter_body.digest, filter_custody.digest)
-            )
-        custody = PresetArtifactCustodyManifest(
-            self.page,
-            variant,
-            revision,
+        # The parent custody's header is All channels' own rows; the stage adds the sibling
+        # index, through which every segment and filter sibling is found (ADR-145).
+        header = PresetArtifactCustodyHeader(
             capped_preset_artifact_json(
                 campaign_custody_manifest_payload(
-                    CampaignCustodyManifest(
-                        body.digest,
-                        everything.custody_rows,
-                        tuple(item.descriptor for item in everything.segments),
-                        tuple(filter_descriptors),
-                    )
+                    CampaignCustodyManifest(body.digest, everything.custody_rows)
                 )
-            ),
-        )
-        pointer = PresetArtifactPointer(
-            self.page,
-            variant,
-            revision,
-            body.digest,
-            1 if current is None else current.forward_token + 1,
-            None if current is None else current.revision,
-            custody.digest,
-            resolved_window=window,
-            comparison_window=prior,
+            )
         )
         return PresetArtifactPublicationRequest(
             body,
-            PresetArtifactPointerAdvanceRequest(
-                pointer,
+            PresetArtifactPointerTemplate(
+                self.page,
+                variant,
+                revision,
+                body.digest,
+                1 if current is None else current.forward_token + 1,
+                None if current is None else current.revision,
                 None if current is None else self.clock() + SUPERSEDED_HISTORY_RETENTION,
+                resolved_window=window,
+                comparison_window=prior,
             ),
-            custody,
-            tuple(sibling_bodies),
-            tuple(sibling_custody),
+            header,
+            _CampaignSiblingPairs(
+                self.page, variant, revision, tuple(filters), by_signature
+            ).stream(),
         )
 
-    def _filter_publication(  # noqa: PLR0913, PLR0917 -- one filter and its bake identity
-        self,
+    @staticmethod
+    def _filter_publication(
         population: CampaignPortfolioArtifact,
         by_signature: dict[SafeCampaignDisplaySignature, CampaignMeasurementSelection],
-        variant: PresetArtifactVariant,
-        revision: PresetArtifactRevision,
     ) -> _CampaignFilterPublication | None:
-        """Bake one filter's canonical first segment, its custody rows and its segments."""
+        """Bake one filter's canonical first segment and its custody rows; keep its estate."""
         canonical_sort = CampaignPortfolioSort(CampaignPortfolioSortField.SPEND, "desc")
         parent_artifact = campaign_portfolio_segment(population, canonical_sort, 0)
         if parent_artifact is None:
             return None
-        custody_rows = self._custody_rows(parent_artifact, by_signature)
+        custody_rows = _custody_rows(parent_artifact, by_signature)
         if custody_rows is None:
             return None
         return _CampaignFilterPublication(
             population.filter_id,
             capped_preset_artifact_json(campaign_portfolio_artifact_payload(parent_artifact)),
             custody_rows,
-            self._segment_publications(
-                _CampaignSegmentPublicationsRequest(population, by_signature, variant, revision)
-            ),
+            population,
         )
 
     def _resolved_windows(
@@ -429,82 +459,26 @@ class RetainedCampaignPresetArtifactSource:
         except TypeError, ValueError:
             return ()
 
-    def _segment_publications(
-        self,
-        request: _CampaignSegmentPublicationsRequest,
-    ) -> tuple[_CampaignSegmentPublication, ...]:
-        """Render every noncanonical ordering segment and each canonical tail segment."""
-        population = request.population
-        if population.pagination is None:
-            return ()
-        siblings: list[_CampaignSegmentPublication] = []
-        for sort_field in CampaignPortfolioSortField:
-            for direction in ("asc", "desc"):
-                sort = CampaignPortfolioSort(sort_field, direction)
-                for segment_index in range(population.pagination.segment_count):
-                    if (
-                        sort_field is CampaignPortfolioSortField.SPEND
-                        and direction == "desc"
-                        and segment_index == 0
-                    ):
-                        continue
-                    artifact = campaign_portfolio_segment(population, sort, segment_index)
-                    if artifact is None:
-                        raise ValueError("declared campaign segment is unavailable.")
-                    identity = PresetArtifactSiblingIdentity(
-                        f"{sort_field.value}-{direction}", segment_index, population.filter_id
-                    )
-                    body = PresetArtifactSiblingBody(
-                        self.page,
-                        request.variant,
-                        request.revision,
-                        identity,
-                        capped_preset_artifact_json(campaign_portfolio_segment_payload(artifact)),
-                    )
-                    rows = self._custody_rows(artifact, request.by_signature)
-                    if rows is None:
-                        raise ValueError("campaign segment custody is unavailable.")
-                    custody = PresetArtifactSiblingCustody(
-                        self.page,
-                        request.variant,
-                        request.revision,
-                        identity,
-                        capped_preset_artifact_json(
-                            campaign_custody_manifest_payload(
-                                CampaignCustodyManifest(body.digest, rows, (), ())
-                            )
-                        ),
-                    )
-                    siblings.append(
-                        _CampaignSegmentPublication(
-                            artifact,
-                            body,
-                            custody,
-                            PresetArtifactSiblingDescriptor(identity, body.digest, custody.digest),
-                        )
-                    )
-        return tuple(siblings)
 
-    @staticmethod
-    def _custody_rows(
-        portfolio: CampaignPortfolioArtifact,
-        by_signature: dict[SafeCampaignDisplaySignature, CampaignMeasurementSelection],
-    ) -> tuple[CampaignCustodyRow, ...] | None:
-        """Bind one public segment's row order to its canonical selectors."""
-        rows: list[CampaignCustodyRow] = []
-        for row in portfolio.rows:
-            selection = by_signature.get(row.signature)
-            if selection is None:
-                return None
-            rows.append(
-                CampaignCustodyRow(
-                    selection.campaign,
-                    selection.channel,
-                    selection.marketplace,
-                    row.signature,
-                )
+def _custody_rows(
+    portfolio: CampaignPortfolioArtifact,
+    by_signature: dict[SafeCampaignDisplaySignature, CampaignMeasurementSelection],
+) -> tuple[CampaignCustodyRow, ...] | None:
+    """Bind one public segment's row order to its canonical selectors."""
+    rows: list[CampaignCustodyRow] = []
+    for row in portfolio.rows:
+        selection = by_signature.get(row.signature)
+        if selection is None:
+            return None
+        rows.append(
+            CampaignCustodyRow(
+                selection.campaign,
+                selection.channel,
+                selection.marketplace,
+                row.signature,
             )
-        return tuple(rows)
+        )
+    return tuple(rows)
 
 
 def _baked_placeholder_capabilities(count: int) -> tuple[CampaignSelectionCapability, ...]:
