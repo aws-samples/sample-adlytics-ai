@@ -33,13 +33,14 @@ from domain.measurement.rosters import (
     RosterKind,
     roster_column,
 )
+from domain.operations.bake_refusals import IsolatedRefusal, IsolatedRefusalReason, RefusalScope
 from domain.semantics.identity import AdProductKey
 from domain.shared_kernel.errors import DomainError, ValidationError
 from ports.outbound.publication_selection import (
     PublicationSelectionPort,
     PublicationSelectionRequest,
 )
-from ports.outbound.query import QueryPort, QueryRequest, row_ceiling
+from ports.outbound.query import QueryPort, QueryRequest, RowCeiling, row_ceiling
 
 if TYPE_CHECKING:  # pragma: no cover
     from datetime import datetime
@@ -169,6 +170,14 @@ class SpendRosterReader:
                 ceiling=request.ceiling,
             )
         )
+        if result.truncated and request.ceiling is not RowCeiling.NARRATION:
+            # ADR-142: a bake's spend roster cut at the bake width refuses the page it feeds;
+            # chat's read keeps its ROSTER_REFUSED answer below.
+            raise IsolatedRefusal(
+                IsolatedRefusalReason.ROWS_OVER_CEILING,
+                RefusalScope.PAGE,
+                max_rows=row_ceiling(request.ceiling),
+            )
         if (
             result.truncated
             or result.suppression.rows_suppressed

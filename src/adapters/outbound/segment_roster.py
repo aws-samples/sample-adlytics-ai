@@ -37,6 +37,7 @@ from domain.measurement.rosters import (
     RosterEntry,
     RosterKind,
 )
+from domain.operations.bake_refusals import IsolatedRefusal, IsolatedRefusalReason, RefusalScope
 from domain.semantics.audience_segments import (
     SEGMENT_FACT_NAMESPACES,
     SEGMENT_ID_COLUMN,
@@ -56,6 +57,7 @@ from ports.outbound.query import (
     PeriodSeriesQueryPort,
     PeriodSeriesRequest,
     QueryRequest,
+    RowCeiling,
     row_ceiling,
 )
 from ports.outbound.rosters import RosterPort, RosterRequest
@@ -267,6 +269,7 @@ class SegmentRosterReader:
             raise self._refused(request, month, error) from error
         selection = self._select(request, (logical,), month)
         result = self.queries.run(_roster_query(request, selection.plans[0]))
+        _refuse_bake_truncation(request, result.truncated)
         if result.truncated or not selection.coverage.covers_all((month,)):
             raise self._unreadable(request, month)
         return tuple(
@@ -331,6 +334,7 @@ class SegmentRosterReader:
         observed = bool(measure(bound[0].logical, result.rows).figures)
         # A truncated result still proves a returned segment; only an empty page would mislead.
         if result.truncated and not observed:
+            _refuse_bake_truncation(request, truncated=True)
             raise self._unreadable(
                 request, DateRange(bound[-1].logical.window.start, bound[0].logical.window.end)
             )
@@ -341,6 +345,7 @@ class SegmentRosterReader:
         logical = self._plan_month(request, month)
         selection = self._select(request, (logical,), month)
         result = self.queries.run(_roster_query(request, selection.plans[0]))
+        _refuse_bake_truncation(request, result.truncated)
         if result.truncated or not selection.coverage.covers_all((month,)):
             raise self._unreadable(request, month)
         return tuple(
@@ -444,3 +449,17 @@ class RosterReaders(RosterPort):
                 context={"roster": request.kind.value},
             )
         return self.segments.roster(request)
+
+
+def _refuse_bake_truncation(request: RosterRequest, truncated: bool) -> None:
+    """Refuse a bake's page when its roster read was cut at the bake width (ADR-142).
+
+    A bake read (`ceiling` not `NARRATION`) is `rows_over_ceiling` at page scope, with the
+    width it asked for. Chat's read keeps its `ROSTER_REFUSED` answer, which it narrates.
+    """
+    if truncated and request.ceiling is not RowCeiling.NARRATION:
+        raise IsolatedRefusal(
+            IsolatedRefusalReason.ROWS_OVER_CEILING,
+            RefusalScope.PAGE,
+            max_rows=row_ceiling(request.ceiling),
+        )

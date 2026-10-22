@@ -25,6 +25,7 @@ from adapters.inbound.tool_handlers.measurement import MeasurementTooling
 from adapters.jobs.contract_validation.loader import load_contracts
 from adapters.jobs.insight_precompute.planning import campaign_coverage_requirements
 from adapters.jobs.presentation_validation.loader import load_page_schemas, load_v2_page_schemas
+from adapters.jobs.preset_artifact_publisher.isolated_refusals import capped_preset_artifact_json
 from adapters.outbound.catalog import PageWindowCatalog
 from adapters.outbound.commerce_identity import load_commerce_identity_bridge
 from adapters.outbound.entity_catalog import CanonicalEntityCatalog, EntityCatalogTooling
@@ -80,7 +81,6 @@ from domain.presentation.preset_artifacts import (
     PresetArtifactSiblingIdentity,
     PresetArtifactVariant,
     SourceUnchanged,
-    canonical_preset_artifact_json,
 )
 from domain.presentation.temporal import (
     TemporalComparisonStatus,
@@ -293,7 +293,7 @@ class RetainedCampaignPresetArtifactSource:
                 variant,
                 revision,
                 identity,
-                canonical_preset_artifact_json(
+                capped_preset_artifact_json(
                     campaign_custody_manifest_payload(
                         CampaignCustodyManifest(
                             filter_body.digest,
@@ -313,7 +313,7 @@ class RetainedCampaignPresetArtifactSource:
             self.page,
             variant,
             revision,
-            canonical_preset_artifact_json(
+            capped_preset_artifact_json(
                 campaign_custody_manifest_payload(
                     CampaignCustodyManifest(
                         body.digest,
@@ -363,7 +363,7 @@ class RetainedCampaignPresetArtifactSource:
             return None
         return _CampaignFilterPublication(
             population.filter_id,
-            canonical_preset_artifact_json(campaign_portfolio_artifact_payload(parent_artifact)),
+            capped_preset_artifact_json(campaign_portfolio_artifact_payload(parent_artifact)),
             custody_rows,
             self._segment_publications(
                 _CampaignSegmentPublicationsRequest(population, by_signature, variant, revision)
@@ -459,9 +459,7 @@ class RetainedCampaignPresetArtifactSource:
                         request.variant,
                         request.revision,
                         identity,
-                        canonical_preset_artifact_json(
-                            campaign_portfolio_segment_payload(artifact)
-                        ),
+                        capped_preset_artifact_json(campaign_portfolio_segment_payload(artifact)),
                     )
                     rows = self._custody_rows(artifact, request.by_signature)
                     if rows is None:
@@ -471,7 +469,7 @@ class RetainedCampaignPresetArtifactSource:
                         request.variant,
                         request.revision,
                         identity,
-                        canonical_preset_artifact_json(
+                        capped_preset_artifact_json(
                             campaign_custody_manifest_payload(
                                 CampaignCustodyManifest(body.digest, rows, (), ())
                             )

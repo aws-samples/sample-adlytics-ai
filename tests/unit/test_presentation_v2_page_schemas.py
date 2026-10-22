@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import pytest
 
@@ -27,7 +27,15 @@ from adapters.jobs.preset_artifact_publisher.deployment_generation import (
     PUBLISHER_INPUT_ROOTS,
     publisher_runtime_generation,
 )
+from domain.operations.bake_refusals import (
+    ISOLATABLE_SECTIONS,
+    IsolatedRefusal,
+    IsolatedRefusalReason,
+    RefusalScope,
+    check_refusal_scope,
+)
 from domain.presentation.page_schemas import PageSchemaError, PresentationSectionRole
+from domain.shared_kernel.errors import InvariantError
 
 pytestmark = pytest.mark.unit
 ROOT = Path(__file__).resolve().parents[2]
@@ -522,3 +530,38 @@ def test_publisher_runtime_generation_changes_for_every_consumed_input_root(
 
     publisher_input.write_text("outer hash owns this change")
     assert publisher_runtime_generation(tmp_path, publisher_input) == baseline
+
+
+def _non_anchor_sections(pages: object) -> dict[str, frozenset[str]]:
+    """Each page's sections that declare `period_anchor: false` (the only non-anchor kind)."""
+    found: dict[str, frozenset[str]] = {}
+    for page in cast("Any", pages):
+        ids = frozenset(
+            section.section_id for section in page.sections if section.period_anchor is False
+        )
+        if ids:
+            found[page.page_id] = ids
+    return found
+
+
+def test_the_sections_a_bake_may_refuse_at_section_scope_are_exactly_the_non_anchor_ones() -> None:
+    """ADR-142 §3.1: only `period_anchor: false` is non-anchor; undeclared means anchor."""
+    declared = _non_anchor_sections(load_v2_page_schemas(ROOT).pages)
+    assert declared == dict(ISOLATABLE_SECTIONS)
+    assert declared == {
+        "audiences": frozenset({"campaign-audiences"}),
+        "new-customers": frozenset({"new-to-brand-step-2"}),
+        "reach": frozenset({"frequency"}),
+    }
+    # Paired control: a section that declares no anchor key (New customers' gateway-products)
+    # is an anchor, so a section-scope refusal there is an invariant, not a refusal.
+    assert "gateway-products" not in declared["new-customers"]
+    with pytest.raises(InvariantError):
+        check_refusal_scope(
+            IsolatedRefusal(
+                IsolatedRefusalReason.ROWS_OVER_CEILING,
+                RefusalScope.SECTION,
+                section="gateway-products",
+            ),
+            "new-customers",
+        )

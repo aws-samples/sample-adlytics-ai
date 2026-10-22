@@ -48,6 +48,7 @@ from domain.catalog.capability import Catalog
 from domain.data_contracts.contract import DataContract, FieldMapping
 from domain.measurement.pack_coverage import PackDayVersions
 from domain.measurement.planning import FactShape, FactShapes, PlanRequest, QueryPlan, plan
+from domain.operations.bake_refusals import IsolatedRefusalReason, classify_refusal
 from domain.semantics.commerce_identity import CommerceIdentityBridge
 from domain.semantics.identity import (
     EcosystemKey,
@@ -612,6 +613,13 @@ def test_inspection_enforces_partition_limit_before_current_read(
 
     assert str(raised.value.code) == "ADLY-PUBLICATION_SELECTION-0002"
     assert current.exact_calls == []
+    # ADR-142: at a bake this is its page's partitions_over_bound, carrying both figures.
+    refusal = classify_refusal(raised.value)
+    assert refusal.reason is IsolatedRefusalReason.PARTITIONS_OVER_BOUND
+    assert dict(refusal.refusal_context) == {
+        "maximum_partitions": MAX_EXACT_CURRENT_PARTITIONS,
+        "required_partitions": MAX_EXACT_CURRENT_PARTITIONS + 1,
+    }
 
 
 def test_selection_remains_all_or_none_when_one_inspection_partition_is_absent(
@@ -1362,6 +1370,11 @@ def test_per_pack_snapshot_beyond_the_transaction_bound_refuses_before_any_read(
     assert str(refused.value.code) == "ADLY-PUBLICATION_SELECTION-0003"
     assert refused.value.context["required_partitions"] == 2 * days
     assert current.exact_calls == []
+    # ADR-142: the pack's figures, and not its scope, reach the page's refusal.
+    assert dict(classify_refusal(refused.value).refusal_context) == {
+        "maximum_partitions": MAX_PRESET_SNAPSHOT_PARTITIONS,
+        "required_partitions": 2 * days,
+    }
 
 
 @pytest.mark.covers("ADR-070")

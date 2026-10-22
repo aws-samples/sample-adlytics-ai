@@ -52,6 +52,7 @@ from adapters.jobs.presentation_validation.loader import load_v2_page_schemas
 from adapters.jobs.preset_artifact_publisher.campaign_source import (
     SUPERSEDED_HISTORY_RETENTION,
 )
+from adapters.jobs.preset_artifact_publisher.isolated_refusals import capped_preset_artifact_json
 from adapters.outbound.alert_rules import load_alert_rules
 from adapters.outbound.attribution_models import load_attribution_models
 from adapters.outbound.bake_sources import source_closed
@@ -68,6 +69,7 @@ from adapters.outbound.telemetry.reporting import Report, report_error
 from domain.catalog.freshness import FreshnessStatus
 from domain.measurement.planning import GRAIN_COLUMNS, MEASURE_ALIAS
 from domain.narrative.shaped_response import UnitKind, Units
+from domain.operations.bake_refusals import IsolatedRefusal, IsolatedRefusalReason, RefusalScope
 from domain.presentation.alert_rules import AlertRule, validate_alert_rules
 from domain.presentation.change import (
     Change,
@@ -100,7 +102,6 @@ from domain.presentation.preset_artifacts import (
     PresetArtifactRevision,
     PresetArtifactVariant,
     SourceUnchanged,
-    canonical_preset_artifact_json,
 )
 from domain.presentation.scorecard import (
     CHANNEL_FIGURE_MISSING_REASON,
@@ -453,7 +454,12 @@ class GroupedAnswer:
 def parse_grouped_answer(
     answer: PresentationMeasurementAnswerSlot, period: DateRange, grains: tuple[str, ...]
 ) -> GroupedAnswer | None:
-    """Parse one grouped answer, or none when it's incoherent (truncated, wrong grain)."""
+    """Parse one grouped answer, or none when it's incoherent (wrong grain, misaligned).
+
+    A bake read cut at its declared width refuses the page it feeds (`rows_over_ceiling`,
+    ADR-142): every caller bakes nothing from a partial answer, so the page is its designed
+    absence, and the refusal carries the width (`max_rows`, the rows the read kept).
+    """
     shaped = answer.answer
     group = tuple(GRAIN_COLUMNS[name] for name in grains)
     if shaped is None:
@@ -461,9 +467,12 @@ def parse_grouped_answer(
             {}, None, suppressed=False, never_loaded=True, holes=(period,), covered=()
         )
     metadata, data = shaped.metadata, shaped.data
+    if metadata.truncated:
+        raise IsolatedRefusal(
+            IsolatedRefusalReason.ROWS_OVER_CEILING, RefusalScope.PAGE, max_rows=metadata.row_count
+        )
     if (
-        metadata.truncated
-        or data.grain.dimensions != group
+        data.grain.dimensions != group
         or metadata.requested_coverage_intervals != (period,)
         or metadata.row_count != len(data.values)
     ):
@@ -1242,7 +1251,7 @@ class RetainedScorecardPresetArtifactSource:
             self.page,
             variant,
             revision,
-            canonical_preset_artifact_json(network_scorecard_artifact_payload(rendered.artifact)),
+            capped_preset_artifact_json(network_scorecard_artifact_payload(rendered.artifact)),
         )
         pointer = PresetArtifactPointer(
             self.page,
