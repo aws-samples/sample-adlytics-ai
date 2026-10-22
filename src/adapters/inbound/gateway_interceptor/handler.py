@@ -18,6 +18,10 @@ For every request it echoes `transformedGatewayRequest` with the request body. F
 Every other method passes through unchanged with no headers set. The transformation is a pure
 function of its input, so a retried or repeated interception produces the same output.
 
+`require_bearer_handler` is the external MCP gateway's entry point (ADR-150): the same rules, but
+every JSON-RPC method needs the bearer and is forwarded with it, so an anonymous `initialize` or
+`tools/list` is refused here too if the gateway's own authorizer ever admits one.
+
 Nothing logged or traced here carries a header value, the bearer, or an argument value: the one
 terminal record names only the JSON-RPC method, whether a bearer was present, and the outcome.
 """
@@ -45,6 +49,7 @@ from adapters.outbound.telemetry.reporting import (
 )
 from adapters.outbound.telemetry.tracing import (
     GATEWAY_INTERCEPTOR,
+    GATEWAY_INTERCEPTOR_REQUIRE_BEARER,
     Recording,
     span,
     trace_boundary,
@@ -57,6 +62,7 @@ __all__ = [
     "InterceptionOutcome",
     "handler",
     "intercept",
+    "require_bearer_handler",
 ]
 
 _TRACING_SETTINGS = tracing_settings()
@@ -122,12 +128,17 @@ class Interception:
     outcome: InterceptionOutcome
 
 
-def intercept(event: object) -> Interception:
-    """Transform one Gateway REQUEST interceptor input, or raise for an unsupported shape."""
+def intercept(event: object, *, require_bearer_for_every_method: bool = False) -> Interception:
+    """Transform one Gateway REQUEST interceptor input, or raise for an unsupported shape.
+
+    By default only `tools/call` needs a bearer and every other method passes through. In strict
+    mode, the external MCP gateway's (ADR-150), every method needs one and is forwarded with it,
+    so the terminal record states whether a bearer arrived for `initialize` and `tools/list` too.
+    """
     body, headers = _gateway_request(event)
     method = body.get("method")
     label = _method_label(method)
-    if method != TOOLS_CALL:
+    if method != TOOLS_CALL and not require_bearer_for_every_method:
         return Interception(
             output=_output({"body": body}),
             jsonrpc_method=label,
@@ -249,22 +260,7 @@ def _method_label(method: object) -> str:
 def handler(event: dict[str, Any], context: object) -> dict[str, Any]:  # noqa: ARG001
     """Intercept one Gateway request; refuse an unsupported input by raising."""
     with span(GATEWAY_INTERCEPTOR, operation=OPERATION) as process_span:
-        report = Report(operation=OPERATION, correlation_id="", logger=LOGGER)
-        try:
-            result = intercept(event)
-        except Exception as exc:
-            _report_failure(exc, report, process_span)
-            _report_terminal(
-                Interception(
-                    output={},
-                    jsonrpc_method=_UNREADABLE_METHOD,
-                    bearer_present=False,
-                    outcome=InterceptionOutcome.FAILED,
-                )
-            )
-            raise
-        if result.outcome is InterceptionOutcome.UNAUTHORIZED:
-            report_denial("A tools/call request carried no bearer credential.", report)
+        result = _serve(event, process_span, strict=False)
         process_span.record(
             outcome=result.outcome.value,
             jsonrpc_method=result.jsonrpc_method,
@@ -272,6 +268,49 @@ def handler(event: dict[str, Any], context: object) -> dict[str, Any]:  # noqa: 
         )
         _report_terminal(result)
         return result.output
+
+
+@trace_boundary(GATEWAY_INTERCEPTOR_REQUIRE_BEARER)
+@flushes_traces
+@flushes_metrics
+@LOGGER.inject_lambda_context
+def require_bearer_handler(event: dict[str, Any], context: object) -> dict[str, Any]:  # noqa: ARG001
+    """Intercept one external MCP gateway request, requiring a bearer on every method (ADR-150)."""
+    with span(GATEWAY_INTERCEPTOR_REQUIRE_BEARER, operation=OPERATION) as process_span:
+        result = _serve(event, process_span, strict=True)
+        process_span.record(
+            outcome=result.outcome.value,
+            jsonrpc_method=result.jsonrpc_method,
+            bearer_present=result.bearer_present,
+        )
+        _report_terminal(result)
+        return result.output
+
+
+def _serve(event: dict[str, Any], process_span: Recording, *, strict: bool) -> Interception:
+    """Intercept, reporting a failure or a denial once; the caller records the terminal result."""
+    report = Report(operation=OPERATION, correlation_id="", logger=LOGGER)
+    try:
+        result = intercept(event, require_bearer_for_every_method=strict)
+    except Exception as exc:
+        _report_failure(exc, report, process_span)
+        _report_terminal(
+            Interception(
+                output={},
+                jsonrpc_method=_UNREADABLE_METHOD,
+                bearer_present=False,
+                outcome=InterceptionOutcome.FAILED,
+            )
+        )
+        raise
+    if result.outcome is InterceptionOutcome.UNAUTHORIZED:
+        report_denial(
+            "A request carried no bearer credential."
+            if strict
+            else "A tools/call request carried no bearer credential.",
+            report,
+        )
+    return result
 
 
 def _report_terminal(result: Interception) -> None:

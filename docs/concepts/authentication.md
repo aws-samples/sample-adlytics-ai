@@ -4,7 +4,7 @@
 |---|---|
 | **Level** | L2 — concept |
 | **Status** | Current crosscutting identity boundary. End-to-end identity chain by [ADR-077](../decisions/adr-077-carry-the-end-user-identity-to-every-hop-through-token-exchange.md), implemented at every hop. |
-| **Last updated** | 2026-09-26 |
+| **Last updated** | 2026-10-22 |
 | **Owns** | Browser-to-API session authority, cookie custody, verified request identity, the identity-chain rule, and the mandated credential binding, dev validation password flows, and edge entry (including both web ACLs and origin-verify rotation). |
 | **Applied by** | [Conversational Runtime](../capabilities/conversational-runtime/README.md) · [Protected Quality Review API](../capabilities/protected-quality-review-api/README.md) |
 | **Conventions** | [Documentation conventions](../conventions.md) |
@@ -37,9 +37,14 @@ fixed route set. Every check fails closed.
 |---|---|---|
 | `adl_session` cookie | The confidential BFF client | Every authorized route |
 | `Authorization: Bearer` access token | The public PKCE client | `POST /api/quality-review/turn` and `POST /api/quality-review/turns` |
+| `Authorization: Bearer` access token carrying `mcp_tool_use` | The Amazon Quick MCP client (dev only, behind its flag) | The external MCP gateway; every app route refuses it ([ADR-150](../decisions/adr-150-expose-the-governed-tools-to-amazon-quick-through-a-user-authorized-mcp-gateway.md)) |
 
 - Every other combination is denied: a BFF-client token as a bearer, a public-client token in the
   cookie, and a bearer on any other route.
+- The MCP client mirrors the public client: authorization code with PKCE, `openid` only, no secret
+  and no explicit auth flow in any environment. Its one callback is Amazon Quick's Region callback.
+  The external MCP gateway's own checks and the tools' are owned by the
+  [caller identity contract](../capabilities/conversational-runtime/low-level-design.md#caller-identity-contract-mandated-by-adr-077-deployed-end-to-end).
 - A request that carries an `adl_session` cookie and a bearer is denied, as is one with neither.
   Cookie presence means an `adl_session` cookie, so an unrelated cookie does not trip the rule.
 - Both credentials pass the same verification before the client and route check: signature by
@@ -194,6 +199,14 @@ accepted 2026-09-29, with every rule on both web ACLs blocking ([validation resu
   ([ADR-077](../decisions/adr-077-carry-the-end-user-identity-to-every-hop-through-token-exchange.md) §3);
   and the AWS-managed Cognito endpoints the PKCE login calls, which sit outside this edge behind
   the user pool's own web ACL.
+- The external MCP gateway, dev only behind its flag, is its own public endpoint and has its own
+  regional web ACL, associated with the gateway, with `FAIL_CLOSE` if WAF cannot be reached
+  ([ADR-150](../decisions/adr-150-expose-the-governed-tools-to-amazon-quick-through-a-user-authorized-mcp-gateway.md)).
+  Its rules follow the distribution's order: the same three managed groups, the 8,192-byte body
+  ceiling on every request (the gateway has no exempt route), and a per-source-IP rate rule from
+  `ADLYTICS_EXTERNAL_MCP_WAF_RATE_LIMIT_PER_FIVE_MINUTES`. The same count-then-block rule applies, and
+  synth refuses its tool targets while any rule counts. It logs to
+  `aws-waf-logs-adlytics-<env>-external-mcp` under the same logging and redaction rules.
 
 ### Identity chain — ADR-077
 
@@ -265,6 +278,7 @@ path, and records only route, credential class, and status counts:
 | Streaming conversation transport | [ADR-038](../decisions/adr-038-the-conversation-route-streams-from-a-function-url.md) |
 | End-to-end identity chain through token exchange | [ADR-077](../decisions/adr-077-carry-the-end-user-identity-to-every-hop-through-token-exchange.md) |
 | Credential binding, the review-route bearer credential, and CloudFront edge entry | [ADR-078](../decisions/adr-078-serve-quality-review-to-programmatic-callers-through-the-cloudfront-edge.md) |
+| The Amazon Quick MCP client credential and the external MCP gateway's web ACL | [ADR-150](../decisions/adr-150-expose-the-governed-tools-to-amazon-quick-through-a-user-authorized-mcp-gateway.md) |
 
 ## 6. Open items
 

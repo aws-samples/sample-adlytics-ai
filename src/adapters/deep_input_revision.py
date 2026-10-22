@@ -104,6 +104,9 @@ DEEP_INPUT_REVISIONS: Final[tuple[tuple[str, str], ...]] = (
     ("2026-10-18.2", "1b7e0f9421fc6138ee794b7de115e4598a761740f1e79e05d7dfbf27dac48f9c"),
     # dsp-cpc-derive: CPC derived from accepted spend and clicks, not a planned quotient.
     ("2026-10-19.1", "c3316551d07ffb2cb480e4b48a54e1319fc92860a275aced749af9c961dcc63c"),
+    # ADR-150: the external MCP interceptor's span constant in the generated spans and tracing
+    # re-export, and the mcp_tool_use access level in domain.identity.session.
+    ("2026-10-22.1", "fc76846bd2d1a3a43eb686ae45ded0e666e7154de755bca58f4f3c3b483691cc"),
 )
 DEEP_INPUT_REVISION: Final[str] = DEEP_INPUT_REVISIONS[-1][0]
 """The revision every deep cache key carries (``#DEEPINPUT#<revision>``)."""

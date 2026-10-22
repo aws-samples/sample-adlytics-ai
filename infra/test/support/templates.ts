@@ -124,6 +124,11 @@ export function everyStack(): Record<string, cdk.Stack> {
       sessionTimeoutMinutes: 1,
     },
   });
+  // ADR-150: the external MCP gateway on, in its pass-1 shape, so every repo-wide gate covers the
+  // client, group, gateway, interceptor and web ACL it adds. TEST_CONFIG itself ships it off.
+  const externalMcpConfig = configWith({
+    externalMcp: { enabled: true, targetsAttached: false, wafRateLimitPerFiveMinutes: 1000 },
+  });
   const env = { account: config.account, region: config.region };
   const app = new cdk.App();
   // As bin/app.ts applies it: a violating stack throws at Template.fromStack.
@@ -169,7 +174,7 @@ export function everyStack(): Record<string, cdk.Stack> {
       env: { account: config.account, region: 'us-east-1' },
     }),
     FrontendStack: new FrontendStack(app, 'Frontend', { config, env, routeAllowlistPath: ROUTE_ALLOWLIST }),
-    AuthStack: new AuthStack(app, 'Auth', { config, env }),
+    AuthStack: new AuthStack(app, 'Auth', { config: externalMcpConfig, env }),
     TokenServiceStack: new TokenServiceStack(app, 'TokenService', {
       config,
       env,
@@ -177,7 +182,7 @@ export function everyStack(): Record<string, cdk.Stack> {
     }),
     ObservabilityStack: new ObservabilityStack(app, 'Observability', { config, env }),
     AgentStack: new AgentStack(app, 'Agent', {
-      config,
+      config: externalMcpConfig,
       env,
       sourceAssetPath: ASSET,
       toolSchemaPath: path.join(GENERATED_CONTRACTS, 'tools.json'),

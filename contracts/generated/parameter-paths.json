@@ -41,6 +41,11 @@
       "name": "public-client-id",
       "producedBy": "AuthStack"
     },
+    "mcpClientId": {
+      "area": "auth",
+      "name": "mcp-client-id",
+      "producedBy": "AuthStack"
+    },
     "userPoolClientSecretName": {
       "area": "auth",
       "name": "user-pool-client-secret-name",
@@ -419,6 +424,11 @@
     "gatewayUrl": {
       "area": "agent",
       "name": "gateway-url",
+      "producedBy": "AgentStack"
+    },
+    "externalMcpGatewayUrl": {
+      "area": "agent",
+      "name": "external-mcp-gateway-url",
       "producedBy": "AgentStack"
     },
     "evaluationInputQueueUrl": {

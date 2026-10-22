@@ -47,15 +47,20 @@ export interface ExactRoute {
 }
 
 /**
- * A request-body size ceiling, scoped to one exact route (`only`) or to every request but that
- * route (`except`). A body over the ACL's inspection limit matches (`oversizeHandling: MATCH`),
- * so the ceiling never fails open (ADR-078 §1, path-scoped body-size exclusion).
+ * A request-body size ceiling, scoped to one exact route (`only`), to every request but that
+ * route (`except`), or to every request (`all`, for a resource with no route to exempt, such as
+ * the external MCP gateway, ADR-150). A body over the ACL's inspection limit matches
+ * (`oversizeHandling: MATCH`), so the ceiling never fails open (ADR-078 §1, path-scoped body-size
+ * exclusion).
  */
 export interface BodySizeWebAclRule {
   readonly kind: 'body-size';
   readonly name: string;
   readonly maxBodyBytes: number;
-  readonly route: { readonly only: ExactRoute } | { readonly except: ExactRoute };
+  readonly route:
+    | { readonly only: ExactRoute }
+    | { readonly except: ExactRoute }
+    | { readonly all: true };
   readonly mode: WebAclRuleMode;
 }
 
@@ -238,6 +243,7 @@ function checkBodySizeRule(rule: BodySizeWebAclRule, inspectionBytes: number): v
         `the body inspection limit, ${inspectionBytes} bytes.`,
     );
   }
+  if ('all' in rule.route) return;
   checkCanonicalRoutePath('only' in rule.route ? rule.route.only.path : rule.route.except.path);
 }
 
@@ -317,7 +323,9 @@ function renderRule(
   if (rule.kind === 'body-size') {
     const size = sizeRenderer(rule.maxBodyBytes);
     const statement: wafv2.CfnWebACL.StatementProperty =
-      'only' in rule.route
+      'all' in rule.route
+        ? size
+        : 'only' in rule.route
         ? { andStatement: { statements: [...exactRouteStatements(rule.route.only), size] } }
         : {
             andStatement: {

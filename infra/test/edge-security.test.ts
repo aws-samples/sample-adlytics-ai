@@ -6,6 +6,7 @@
  * web ACL ARN read is a plain parameter in us-east-1 and a custom resource pinned to us-east-1 in
  * any other application region.
  */
+import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
@@ -100,6 +101,12 @@ function rule(acl: Props, name: string): Props {
   if (found === undefined) throw new Error(`no rule ${name}`);
   return found;
 }
+
+/** sha256 of each ACL's rendered `Rules` under TEST_CONFIG, read from the 438b7edd renderer. */
+// pragma: allowlist nextline secret (A-ENTROPY-IDENTIFIER-001)
+const EDGE_RULES_SHA256 = '7494630e05620069a48c776da9e0137484791c6a9e108521a6a1c09b584ff1c5';
+// pragma: allowlist nextline secret (A-ENTROPY-IDENTIFIER-001)
+const USER_POOL_RULES_SHA256 = '5b74b5fe1e1687504b93ce00882cbf7a72cfd9b0d56e0c8f1810a00920cf680e';
 
 const NONE = [{ Priority: 0, Type: 'NONE' }];
 const EXEMPT_ROUTE = {
@@ -393,6 +400,42 @@ describe('the path-scoped body-size exclusion (ADR-078 §1, refined 2026-10-05)'
       { kind: 'body-size', name: 'Ceiling', maxBodyBytes: 32_768, route: { only: PROMPT_CREATE_VERSION_ROUTE }, mode: 'block' },
     ];
     expect(() => guardedAcl({ rules, bodyInspectionLimit: 'KB_32' })).not.toThrow();
+  });
+
+  it('renders an all-requests ceiling as one bare size statement on the body (ADR-150)', () => {
+    const stack = new cdk.Stack(new cdk.App(), 'AllRequests', { env: { account: '111122223333', region: 'us-east-1' } });
+    new GuardedWebAcl(stack, 'Acl', {
+      name: 'all-requests',
+      scope: 'REGIONAL',
+      logRetention: logs.RetentionDays.ONE_DAY,
+      rules: [{ kind: 'body-size', name: 'BodySizeAll', maxBodyBytes: 8192, route: { all: true }, mode: 'count' }],
+    });
+    const [acl] = acls(Template.fromStack(stack));
+    const ceiling = rule(acl!, 'BodySizeAll');
+    expect(ceiling.Action).toEqual({ Count: {} });
+    expect(ceiling.Statement).toEqual(bodySize(8192));
+    expect(JSON.stringify(ceiling)).not.toMatch(/AndStatement|NotStatement|ByteMatchStatement/);
+  });
+
+  it('still refuses an all-requests ceiling whose body field drops OversizeHandling MATCH', () => {
+    const ceiling: WebAclRule = { kind: 'body-size', name: 'BodySizeAll', maxBodyBytes: 1024, route: { all: true }, mode: 'block' };
+    const withoutField = (size: number) => {
+      const rendered = renderBodySize(size).sizeConstraintStatement as unknown as Props;
+      return { sizeConstraintStatement: { ...rendered, fieldToMatch: { body: {} } } } as never;
+    };
+    // Positive control: the production renderer passes the same guard.
+    expect(() => guardedAcl({ rules: [ceiling] })).not.toThrow();
+    expect(() => guardedAcl({ rules: [ceiling], bodySizeRenderOverride: withoutField })).toThrow(
+      /rule BodySizeAll: a body size constraint must set fieldToMatch\.body\.oversizeHandling to MATCH/,
+    );
+  });
+
+  it('renders the edge and user pool rules byte-for-byte as before the all-requests scope (ADR-150)', () => {
+    // Pinned against the renderer at 438b7edd, before the `{ all: true }` scope existed.
+    const digest = (acl: Props): string =>
+      crypto.createHash('sha256').update(JSON.stringify(acl.Rules)).digest('hex');
+    expect(acls(edge).map(digest)).toEqual([EDGE_RULES_SHA256]);
+    expect(acls(auth).map(digest)).toEqual([USER_POOL_RULES_SHA256]);
   });
 
   it('refuses at synth a body inspection limit on a REGIONAL ACL', () => {

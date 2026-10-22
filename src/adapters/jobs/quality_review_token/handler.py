@@ -11,6 +11,8 @@ _GROUP_LEVELS: dict[str, tuple[str, ...]] = {
     "prompt-admin": ("prompt_admin",),
     "operations-status-read": ("operations_status_read",),
     "operations-run-requesters": ("operations_run_request",),
+    # ADR-150: the external MCP gateway's entitlement; no app route requires it.
+    "mcp-tool-users": ("mcp_tool_use",),
 }
 
 

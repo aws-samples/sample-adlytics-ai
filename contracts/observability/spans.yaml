@@ -924,6 +924,13 @@ spans:
     allowed_attributes: [operation, outcome, jsonrpc_method, bearer_present, error_type, error_class, error_code, alarms]
     propagation: remote_boundary
     purpose: Trace one Gateway REQUEST interception by JSON-RPC method and outcome without header, bearer, or argument content.
+  - constant: GATEWAY_INTERCEPTOR_REQUIRE_BEARER
+    name: gateway.interceptor.require_bearer
+    parent: root
+    required_attributes: [operation]
+    allowed_attributes: [operation, outcome, jsonrpc_method, bearer_present, error_type, error_class, error_code, alarms]
+    propagation: remote_boundary
+    purpose: Trace one external MCP gateway REQUEST interception, which requires a bearer on every JSON-RPC method (ADR-150), by method and outcome without header, bearer, or argument content.
   - constant: CONVERSATION_ROUTE_EXCHANGE
     name: conversation.route_exchange
     parent: current

@@ -85,6 +85,14 @@ describes as current.
 > `attribution`, will return it, only to callers in both `quality-reviewer` and `audit-attribution`,
 > and every such read will be logged with its reviewer. The principal stays out of logs, metrics,
 > traces, index attributes, and every other section.
+> **Amended 2026-10-22 by [ADR-150](adr-150-expose-the-governed-tools-to-amazon-quick-through-a-user-authorized-mcp-gateway.md)
+> — a second credential at the tools (§5; demo slice, dev only).** With the external MCP gateway
+> on, each tool also verifies an Amazon Quick user's own Cognito access token, issued to one public
+> client and carrying `mcp_tool_use`. For that client only, ADR-150 relaxes three §5 rules, plus one
+> statement about the actor: the key comes from Cognito's AWS-managed key set rather than our
+> issuer; an unknown `kid` triggers one refresh rather than a refusal; the token is confined by
+> `client_id` rather than `aud`; and the actor is the configured client the signed `client_id`
+> must equal, with no `act` claim. The token-service path is unchanged.
 
 Amends: [ADR-006](adr-006-agentcore-agentic-layer.md) (identity ownership: the verified identity is
 no longer confined to the Conversation API), [ADR-007](adr-007-auth-cookie-bff.md) (current identity

@@ -8,7 +8,14 @@ import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as wafv2 from 'aws-cdk-lib/aws-wafv2';
 import * as cr from 'aws-cdk-lib/custom-resources';
 import { Construct } from 'constructs';
-import { AppConfig, clientSecretName, paramPath } from '../config';
+import {
+  AppConfig,
+  MCP_TOOL_USERS_GROUP,
+  clientSecretName,
+  mcpClientName,
+  paramPath,
+  quickOauthCallbackUrl,
+} from '../config';
 import { GuardedWebAcl, WebAclRule } from '../constructs/edge/guarded-web-acl';
 import { grantOwnLogWrites, lambdaRole } from '../mixins/logging';
 import { staffedAlarmAction } from '../constructs/observability/async-failure';
@@ -225,8 +232,23 @@ export class AuthStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
+    // ADR-150: Amazon Quick's sign-in client and the group whose members may use it. Nothing is
+    // added while the flag is off, which is every environment as shipped.
+    let mcpClient: cognito.UserPoolClient | undefined;
+    if (config.externalMcp.enabled) {
+      mcpClient = this.externalMcpClient(config);
+      // Managed login v2 needs a style per client, or the sign-in page 403s.
+      const mcpBranding = new cognito.CfnManagedLoginBranding(this, 'McpClientManagedLoginBranding', {
+        userPoolId: this.userPool.userPoolId,
+        clientId: mcpClient.userPoolClientId,
+        useCognitoProvidedValues: true,
+      });
+      mcpBranding.node.addDependency(domain);
+      this.userPool.addGroup('McpToolUsers', { groupName: MCP_TOOL_USERS_GROUP });
+    }
+
     this.attachWebAcl(config);
-    this.publishParameters(config, domain, clientSecret, publicClient);
+    this.publishParameters(config, domain, clientSecret, publicClient, mcpClient);
     this.publishOutputs(domain, origin);
     applyFunctionErrorAlarms(this, config, staffedAlarmAction(this, config));
   }
@@ -323,6 +345,42 @@ export class AuthStack extends cdk.Stack {
     });
   }
 
+  /**
+   * ADR-150: the public PKCE client Amazon Quick signs each user in with, through 3-legged OAuth.
+   * Its access tokens are admitted only by the external MCP gateway; every app route refuses them
+   * (credential binding, `docs/concepts/authentication.md`).
+   *
+   * Mirrors `reviewCliClient`. No secret, because a person would have to paste it into Quick and
+   * we would have to store and rotate it. Authorization code only, `openid` only, and one callback,
+   * Quick's Region-wide OAuth callback. No explicit auth flow at all, in any environment, including
+   * the dev validation password flag: a token comes only from managed login. Refresh at 12 hours
+   * so a connected Quick user re-authorizes daily.
+   */
+  private externalMcpClient(config: AppConfig): cognito.UserPoolClient {
+    return this.userPool.addClient('ExternalMcpClient', {
+      userPoolClientName: mcpClientName(config.envName),
+      generateSecret: false,
+      authFlows: {
+        userSrp: false,
+        userPassword: false,
+        custom: false,
+        user: false,
+        adminUserPassword: false,
+      },
+      oAuth: {
+        flows: { authorizationCodeGrant: true, implicitCodeGrant: false, clientCredentials: false },
+        scopes: [cognito.OAuthScope.OPENID],
+        // Stated, because the L2 defaults an OAuth client's callback to https://example.com.
+        callbackUrls: [quickOauthCallbackUrl(config.region)],
+      },
+      preventUserExistenceErrors: true,
+      enableTokenRevocation: true,
+      accessTokenValidity: cdk.Duration.minutes(15),
+      idTokenValidity: cdk.Duration.minutes(15),
+      refreshTokenValidity: cdk.Duration.hours(12),
+    });
+  }
+
 
   /**
    * Human-facing values for `aws cloudformation describe-stacks`.
@@ -364,6 +422,7 @@ export class AuthStack extends cdk.Stack {
     domain: cognito.UserPoolDomain,
     clientSecret: secretsmanager.Secret,
     publicClient: cognito.UserPoolClient,
+    mcpClient: cognito.UserPoolClient | undefined,
   ): void {
     const put = (key: Parameters<typeof paramPath>[1], value: string): void => {
       new ssm.StringParameter(this, `Param${key}`, {
@@ -377,5 +436,6 @@ export class AuthStack extends cdk.Stack {
     put('userPoolPublicClientId', publicClient.userPoolClientId);
     put('userPoolClientSecretName', clientSecret.secretName);
     put('authDomain', `${domain.domainName}.auth.${config.region}.amazoncognito.com`);
+    if (mcpClient !== undefined) put('mcpClientId', mcpClient.userPoolClientId);
   }
 }

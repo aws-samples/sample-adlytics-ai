@@ -23,6 +23,11 @@ import {
   semanticV2StateTableName,
   toolGatewayName,
 } from '../config';
+import {
+  TargetDescriptions,
+  buildExternalMcpGateway,
+  externalMcpWebAclRules,
+} from '../constructs/agent/external-mcp-gateway';
 import { loadGeneratedTools } from '../constructs/agent/generated-tools';
 import { attachGatewayPolicyEngine } from '../constructs/agent/gateway-policy';
 import { routeGuardrail } from '../constructs/agent/route-guardrail';
@@ -35,6 +40,12 @@ import { grantSpanExport, tracingEnvironment } from '../telemetry';
 
 /** `ApplyGuardrail` accepts `DRAFT`; see `routeGuardrail` for why no version resource exists. */
 const GUARDRAIL_VERSION = 'DRAFT';
+
+/** The tool targets' descriptions, one home for both gateways (ADR-150). */
+const TARGET_DESCRIPTIONS: TargetDescriptions = {
+  catalog: 'What can be asked. Reads no business data; writes transient grounding.',
+  measurement: 'Figures from the curated lake, with everything that qualifies them.',
+};
 
 /**
  * The tool functions an AgentCore Gateway invokes, one per domain.
@@ -100,6 +111,12 @@ export class AgentStack extends cdk.Stack {
 
   /** The MCP surface an agent reaches the tools through. */
   public readonly gateway: agentcore.Gateway;
+
+  /** ADR-150: the external MCP gateway's interceptor, or `undefined` with the flag off. */
+  public readonly externalMcpInterceptorFunction: lambda.Function | undefined;
+
+  /** ADR-150: the gateway Amazon Quick connects to, or `undefined` with the flag off. */
+  public readonly externalMcpGateway: agentcore.Gateway | undefined;
 
   /**
    * The Cedar engine evaluating every call across the gateway, when layer 2 is enabled.
@@ -174,6 +191,12 @@ export class AgentStack extends cdk.Stack {
       ADL_AGENT_CLIENT_ID: agentClientId(config.envName),
     };
 
+    // ADR-150: with the external MCP gateway on, each tool also verifies an Amazon Quick user's
+    // own Cognito access token, issued to this one client. Absent, that branch does not exist.
+    const mcpClientId = config.externalMcp.enabled
+      ? ssm.StringParameter.valueForStringParameter(this, paramPath(config.envName, 'mcpClientId'))
+      : undefined;
+
     const environment = {
       ...this.toolEnvironment(
         config,
@@ -183,6 +206,7 @@ export class AgentStack extends cdk.Stack {
         semanticV2CurrentDatabase,
       ),
       ...callerEnvironment,
+      ...(mcpClientId === undefined ? {} : { ADL_MCP_CLIENT_ID: mcpClientId }),
     };
 
     this.measurementFunction = this.pythonFunction('MeasurementTool', {
@@ -237,10 +261,29 @@ export class AgentStack extends cdk.Stack {
       timeoutSeconds: 5,
     });
 
+    // ADR-150: the external MCP gateway's own interceptor, the stricter entry point of the same
+    // module, so the in-app interceptor's behaviour and records stay exactly as they are.
+    this.externalMcpInterceptorFunction = config.externalMcp.enabled
+      ? this.pythonFunction('ExternalMcpInterceptor', {
+          config,
+          dependencies,
+          sourceAssetPath: props.sourceAssetPath,
+          handler: 'adapters.inbound.gateway_interceptor.handler.require_bearer_handler',
+          environment: tracingEnvironment(config),
+          // As the in-app interceptor: on the path of every request, one bounded JSON
+          // transformation with no I/O, sized for a fast cold start.
+          memoryMb: 512,
+          timeoutSeconds: 5,
+        })
+      : undefined;
+
     for (const fn of [
       this.measurementFunction,
       this.catalogFunction,
       this.interceptorFunction,
+      ...(this.externalMcpInterceptorFunction === undefined
+        ? []
+        : [this.externalMcpInterceptorFunction]),
     ]) {
       grantSpanExport(fn);
     }
@@ -273,6 +316,23 @@ export class AgentStack extends cdk.Stack {
     });
     this.alarmOnGuardrailInterventions(config);
     this.gateway = this.buildGateway(config, props.toolSchemaPath);
+
+    // ADR-150: a second gateway over the same two functions, for Amazon Quick. Nothing is built
+    // while the flag is off.
+    this.externalMcpGateway =
+      this.externalMcpInterceptorFunction === undefined || mcpClientId === undefined
+        ? undefined
+        : buildExternalMcpGateway(this, {
+            config,
+            rules: externalMcpWebAclRules(config),
+            tools: loadGeneratedTools(props.toolSchemaPath),
+            targetDescriptions: TARGET_DESCRIPTIONS,
+            catalogFunction: this.catalogFunction,
+            measurementFunction: this.measurementFunction,
+            interceptorFunction: this.externalMcpInterceptorFunction,
+            userPoolId: authParam('userPoolId'),
+            mcpClientId,
+          }).gateway;
 
     // Layer 2, after the gateway and both its targets exist. A policy is evaluated against a
     // deployed gateway rather than against the construct, which is why AWS's own walkthrough
@@ -523,7 +583,7 @@ export class AgentStack extends cdk.Stack {
     agentcore.GatewayTarget.forLambda(this, 'CatalogTarget', {
       gateway,
       gatewayTargetName: 'catalog',
-      description: 'What can be asked. Reads no business data; writes transient grounding.',
+      description: TARGET_DESCRIPTIONS.catalog,
       lambdaFunction: this.catalogFunction,
       toolSchema: agentcore.ToolSchema.fromInline(tools.catalog),
     });
@@ -531,7 +591,7 @@ export class AgentStack extends cdk.Stack {
     agentcore.GatewayTarget.forLambda(this, 'MeasurementTarget', {
       gateway,
       gatewayTargetName: 'measurement',
-      description: 'Figures from the curated lake, with everything that qualifies them.',
+      description: TARGET_DESCRIPTIONS.measurement,
       lambdaFunction: this.measurementFunction,
       toolSchema: agentcore.ToolSchema.fromInline(tools.measurement),
     });
@@ -655,6 +715,20 @@ export class AgentStack extends cdk.Stack {
       stringValue: gatewayUrl,
       description: 'MCP endpoint. Requires a token-service JWT for the Gateway audience (ADR-077).',
     });
+    if (this.externalMcpGateway !== undefined) {
+      const externalUrl = this.externalMcpGateway.gatewayUrl;
+      if (externalUrl === undefined) {
+        throw new Error(
+          'The external MCP gateway synthesised without a URL, which a created gateway always has. ' +
+            'The construct has changed shape; do not publish an empty parameter.',
+        );
+      }
+      new ssm.StringParameter(this, 'ParamExternalMcpGatewayUrl', {
+        parameterName: paramPath(config.envName, 'externalMcpGatewayUrl'),
+        stringValue: externalUrl,
+        description: 'Amazon Quick MCP endpoint. Requires an mcp-tool-users Cognito token (ADR-150).',
+      });
+    }
   }
 
   /**
@@ -737,6 +811,12 @@ export class AgentStack extends cdk.Stack {
       value: this.gateway.gatewayUrl ?? '(unavailable)',
       description: 'MCP endpoint an agent connects to. Custom JWT auth: a token-service Gateway token.',
     });
+    if (this.externalMcpGateway !== undefined) {
+      new cdk.CfnOutput(this, 'OutExternalMcpGatewayUrl', {
+        value: this.externalMcpGateway.gatewayUrl ?? '(unavailable)',
+        description: 'Amazon Quick MCP endpoint (ADR-150). Custom JWT auth: an mcp-tool-users user.',
+      });
+    }
     // Stated either way. An operator asking "is layer 2 running" should get an answer rather than
     // inferring one from a missing output, and "not enabled" is a different fact from "enabled and
     // broken". ADR-041.

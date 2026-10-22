@@ -27,6 +27,7 @@ __all__ = [
     "EXECUTION_GRAPH_PROMOTER_DOMAIN",
     "EXECUTION_GRAPH_PROMOTER_PASS",
     "GATEWAY_INTERCEPTOR",
+    "GATEWAY_INTERCEPTOR_REQUIRE_BEARER",
     "GRAPH_PUBLISH",
     "INGEST_DELIVERY",
     "INGEST_FETCH",
@@ -121,6 +122,7 @@ AUTH_REQUEST: Final = "auth.request"
 ROUTE_EXCHANGE_PROCESS: Final = "token_service.route_exchange"
 ISSUER_REQUEST: Final = "token_service.issuer"
 GATEWAY_INTERCEPTOR: Final = "gateway.interceptor"
+GATEWAY_INTERCEPTOR_REQUIRE_BEARER: Final = "gateway.interceptor.require_bearer"
 CONVERSATION_ROUTE_EXCHANGE: Final = "conversation.route_exchange"
 PRODUCER_REGISTRATION_FINALIZE: Final = "producer.registration.finalize"
 EVALUATION_RESULT_INGRESS: Final = "evaluation_result.ingress"

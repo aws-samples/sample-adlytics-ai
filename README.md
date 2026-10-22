@@ -254,6 +254,7 @@ All are off by default and are set in `.env`.
 | Producer onboarding: a cross-account role your extraction pipeline assumes to land data | `ADLYTICS_PRODUCER_ONBOARDING_ENABLED` with the role ARN and external ID | [Source acquisition](docs/capabilities/source-acquisition/README.md) |
 | Searchable traces (CloudWatch Transaction Search). An account-wide setting with its own charges. The agent runtime's span diagnostics need it | `ADLYTICS_TRANSACTION_SEARCH` | [Observability](docs/concepts/observability.md) |
 | Online answer evaluation | `ADLYTICS_EVALUATION_INPUT_PROVISIONED` and related settings; parts are accepted only for an environment named `dev` | [Agent quality loop](docs/capabilities/agent-quality-loop/README.md) |
+| The governed tools in Amazon Quick chat, per signed-in user (a demo; accepted only for an environment named `dev`) | `ADLYTICS_EXTERNAL_MCP_GATEWAY` and two related settings | [Use Adlytics in Amazon Quick](docs/amazon-quick.md) |
 
 ## Load your data
 

@@ -442,6 +442,32 @@ export interface GatewayGuardrailConfig {
   readonly enforcement: 'LOG_ONLY' | 'ENFORCE';
 }
 
+/**
+ * The external MCP gateway that exposes the governed tools to Amazon Quick (ADR-150).
+ *
+ * A demo flag, off in every environment and refused outside dev by `assertExternalMcp`. Removal
+ * condition: remove the flag when the owner promotes the integration from demo, or delete the
+ * feature if not. Two passes: the gate with no targets and a counting web ACL, then the targets
+ * once anonymous denial and WAF coverage are proven and every rule is committed to `block`.
+ * Named `externalMcp` rather than `quick*`, because `agent.quickChat` already names an unrelated
+ * Runtime bootstrap model in this config.
+ */
+export interface ExternalMcpConfig {
+  /** `ADLYTICS_EXTERNAL_MCP_GATEWAY`. Off everywhere as shipped; synth refuses it outside dev. */
+  readonly enabled: boolean;
+  /**
+   * `ADLYTICS_EXTERNAL_MCP_TARGETS_ATTACHED`: the second pass. The tool targets attach only after
+   * pass 1 proved denial and WAF coverage, and synth refuses them while any rule still counts.
+   */
+  readonly targetsAttached: boolean;
+  /**
+   * `ADLYTICS_EXTERNAL_MCP_WAF_RATE_LIMIT_PER_FIVE_MINUTES`: per-source-IP requests per five minutes
+   * the gateway's web ACL admits. `NaN` is the typed unset, with no default; required only when
+   * `enabled`.
+   */
+  readonly wafRateLimitPerFiveMinutes: number;
+}
+
 /** Shared provisioning and sampling settings for the online-evaluation control plane. */
 export interface OnlineEvaluationConfig {
   /**
@@ -835,6 +861,9 @@ export interface AppConfig {
 
   /** ADR-041: layer 2, a Cedar policy engine evaluating the tool gateway. */
   readonly gatewayGuardrails: GatewayGuardrailConfig;
+
+  /** ADR-150: the dev-only external MCP gateway for Amazon Quick. */
+  readonly externalMcp: ExternalMcpConfig;
 
   /** Optional automatic AgentCore evaluation; disabled and unprovisioned as shipped. */
   readonly onlineEvaluation: OnlineEvaluationConfig;
@@ -1315,6 +1344,16 @@ export function defaultConfig(envName: string): AppConfig {
       enforcement: 'LOG_ONLY',
     },
 
+    // ADR-150. Off unless set; `getConfig` refuses it outside dev, and refuses an unset rate only
+    // when it is on.
+    externalMcp: {
+      enabled: envFlag('ADLYTICS_EXTERNAL_MCP_GATEWAY'),
+      targetsAttached: envFlag('ADLYTICS_EXTERNAL_MCP_TARGETS_ATTACHED'),
+      wafRateLimitPerFiveMinutes: envRequiredRateLimit(
+        'ADLYTICS_EXTERNAL_MCP_WAF_RATE_LIMIT_PER_FIVE_MINUTES',
+      ),
+    },
+
     onlineEvaluation: onlineEvaluationConfig(envName),
     // One worst label in five verdicts over six hours is a trend worth a look, not a gate
     // (agent-evaluation-validity steering: a soft score never gates a release).
@@ -1527,6 +1566,9 @@ export const PARAMS = {
   // ADR-078: the public PKCE client whose access tokens the authorizer admits as a bearer on the
   // two review routes only.
   userPoolPublicClientId: { area: 'auth', name: 'public-client-id', producedBy: 'AuthStack' },
+  // ADR-150: the public PKCE client Amazon Quick signs a user in with; its access tokens are valid
+  // only at the external MCP gateway. Written only while `externalMcp.enabled`.
+  mcpClientId: { area: 'auth', name: 'mcp-client-id', producedBy: 'AuthStack' },
   userPoolClientSecretName: {
     area: 'auth',
     name: 'user-pool-client-secret-name',
@@ -1881,6 +1923,13 @@ export const PARAMS = {
   // The MCP endpoint an agent connects to. Published alongside the id because a consumer needs the
   // URL and deriving it from the id would encode the service's own hostname format here.
   gatewayUrl: { area: 'agent', name: 'gateway-url', producedBy: 'AgentStack' },
+  // ADR-150: the external MCP gateway's endpoint, the one URL Amazon Quick connects to. Written
+  // only while `externalMcp.enabled`.
+  externalMcpGatewayUrl: {
+    area: 'agent',
+    name: 'external-mcp-gateway-url',
+    producedBy: 'AgentStack',
+  },
   evaluationInputQueueUrl: {
     area: 'evaluation',
     name: 'input-queue-url',
@@ -2203,6 +2252,33 @@ export function routeClientId(envName: string): string {
 export function gatewayTokenAudience(envName: string): string {
   assertValidEnvName(envName);
   return `adlytics-${envName}-gateway`;
+}
+/** The external MCP gateway's name, which also names its web ACL and that ACL's log group (ADR-150). */
+export function externalMcpGatewayName(envName: string): string {
+  assertValidEnvName(envName);
+  return `adlytics-${envName}-external-mcp`;
+}
+/** The public PKCE Cognito client Amazon Quick signs a user in with (ADR-150). */
+export function mcpClientName(envName: string): string {
+  assertValidEnvName(envName);
+  return `adlytics-mcp-client-${envName}`;
+}
+/**
+ * The Cognito group whose members may call the governed tools through the external MCP gateway.
+ * The pre-token trigger maps it to `MCP_TOOL_USE_LEVEL` (`quality_review_token/handler.py`).
+ */
+export const MCP_TOOL_USERS_GROUP = 'mcp-tool-users';
+/** The access level the gateway's custom claim check and the tool both require (ADR-150). */
+export const MCP_TOOL_USE_LEVEL = 'mcp_tool_use';
+/** The closed access-token claim the pre-token trigger projects levels into (ADR-078 §3). */
+export const ENTITLEMENT_CLAIM = 'quality_review_levels';
+/**
+ * Amazon Quick's OAuth callback for a Region, shared by every Quick account there. Read for the
+ * Jira and Salesforce connectors; for an MCP connector it is recorded at connector creation and
+ * fixed forward here if Quick shows another (ADR-150).
+ */
+export function quickOauthCallbackUrl(region: string): string {
+  return `https://${region}.quicksight.aws.amazon.com/sn/oauthcallback`;
 }
 
 /**
@@ -2793,6 +2869,10 @@ const UNSET_HINTS: Readonly<Record<string, string>> = {
   'auth.wafRateLimitPerFiveMinutes':
     'comes from ADLYTICS_USER_POOL_WAF_RATE_LIMIT_PER_FIVE_MINUTES; per-source-IP requests per ' +
     'five minutes the user pool web ACL admits (ADR-078), with no default',
+  'externalMcp.wafRateLimitPerFiveMinutes':
+    'comes from ADLYTICS_EXTERNAL_MCP_WAF_RATE_LIMIT_PER_FIVE_MINUTES; per-source-IP requests per ' +
+    'five minutes the external MCP gateway web ACL admits (ADR-150), required only while ' +
+    'ADLYTICS_EXTERNAL_MCP_GATEWAY=true, with no default',
   account: 'comes from CDK_DEFAULT_ACCOUNT, i.e. the profile passed to the CLI',
   region: 'comes from CDK_DEFAULT_REGION, i.e. the profile passed to the CLI',
 };
@@ -2940,6 +3020,19 @@ function assertOnlineEvaluation(config: AppConfig): void {
   }
 }
 
+/** ADR-150: the external MCP gateway is a dev-only demo, and its targets need the gateway. */
+function assertExternalMcp(config: AppConfig): void {
+  const { enabled, targetsAttached } = config.externalMcp;
+  if (enabled && config.envName !== 'dev') {
+    throw new Error('ADLYTICS_EXTERNAL_MCP_GATEWAY may be enabled only for ENV=dev (ADR-150).');
+  }
+  if (targetsAttached && !enabled) {
+    throw new Error(
+      'ADLYTICS_EXTERNAL_MCP_TARGETS_ATTACHED requires ADLYTICS_EXTERNAL_MCP_GATEWAY=true (ADR-150).',
+    );
+  }
+}
+
 function assertQualityReviewValidationAuth(config: AppConfig): void {
   if (config.auth.qualityReviewValidationPasswordAuthEnabled && config.envName !== 'dev') {
     throw new Error(
@@ -2983,6 +3076,12 @@ export function getConfig(envName: string): AppConfig {
     legitimatelyEmpty.push('auth.cookieDomain');
   }
 
+  // ADR-150: the external MCP gateway's rate limit has no default, and nothing reads it while the
+  // gateway is off, which is how every adopter's checkout ships.
+  if (!config.externalMcp.enabled) {
+    legitimatelyEmpty.push('externalMcp.wafRateLimitPerFiveMinutes');
+  }
+
   // Scoped to `unset` deliberately. A key being allowed to be empty never makes it
   // allowed to hold a localhost value.
   const remaining = problems.filter(
@@ -2997,5 +3096,6 @@ export function getConfig(envName: string): AppConfig {
   assertOnlineEvaluation(config);
   assertQualityReviewValidationAuth(config);
   assertOriginVerifyCache(config);
+  assertExternalMcp(config);
   return config;
 }

@@ -16,6 +16,12 @@ a refresh: a flood on the public key-set route cannot reach a tool's cold start,
 a new key, a new `kid`, and a redeploy. A key that cannot be read is not cached, so the next call
 retries it; every call until then is refused.
 
+**A second credential class, only when configured (ADR-150).** With `ADL_MCP_CLIENT_ID` set, the
+external MCP gateway forwards an Amazon Quick user's own Cognito access token through the same
+header channel. A token whose `kid` is not the token service's is then verified against the user
+pool's AWS-managed key set (`exp`, `iss`, `client_id`, `token_use`), and its user must hold
+`mcp_tool_use`. Unset, such a token is refused like any other foreign token.
+
 Nothing here logs the bearer or any claim. A refusal is reported with a closed cause, and the
 terminal record carries only whether the caller verified.
 """
@@ -23,20 +29,27 @@ terminal record carries only whether the caller verified.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import StrEnum
 from typing import Final, Protocol, cast
 
 from adapters.config import ToolCallerSettings
 from adapters.inbound.tool_handlers import gateway
+from adapters.outbound.cognito.identity_provider import CognitoSigningKeys
 from adapters.outbound.kms.token_signer import KmsTokenSigner
 from adapters.outbound.telemetry.reporting import Report, report_error
 from domain.identity.caller import CallerPrincipal, verify_caller
 from domain.identity.issuance import jwk_from_der_public_key
 from domain.identity.issued_tokens import VerifyIssuedTokenRequest
-from domain.identity.session import IdentityError, utc_now
-from domain.identity.tokens import JsonWebKeySet
+from domain.identity.session import IdentityError, ReviewAccessLevel, utc_now
+from domain.identity.tokens import (
+    JsonWebKeySet,
+    UnknownSigningKeyError,
+    VerifyAccessTokenRequest,
+    signing_key_id,
+    verify_access_token,
+)
 from domain.shared_kernel.errors import (
     AdlyticsError,
     DependencyError,
@@ -54,6 +67,7 @@ __all__ = [
     "CallerUnverifiedError",
     "CallerVerifier",
     "PublicKeySource",
+    "SigningKeySource",
     "bearer_token",
     "kms_caller_verifier",
 ]
@@ -85,6 +99,8 @@ class CallerRefusalCause(StrEnum):
     """The bearer parsed but did not verify. Not named `token_*`: the shared diagnostic redactor
     erases any word containing `token`, which would erase the cause."""
     KEY_SET_UNAVAILABLE = "key_set_unavailable"
+    ENTITLEMENT_MISSING = "entitlement_missing"
+    """A verified external MCP client caller whose user is not in `mcp-tool-users` (ADR-150)."""
 
 
 class CallerUnverifiedError(IdentityError):
@@ -107,6 +123,18 @@ class PublicKeySource(Protocol):
 
     def public_key_der(self) -> bytes:
         """Return the DER SubjectPublicKeyInfo of the token signing key."""
+        ...
+
+
+class SigningKeySource(Protocol):
+    """The user pool's published key set, cached: `CognitoSigningKeys` in production (ADR-150)."""
+
+    def signing_keys(self) -> JsonWebKeySet:
+        """Return the pool's public keys, from cache while fresh."""
+        ...
+
+    def refresh_signing_keys(self) -> JsonWebKeySet:
+        """Return the pool's public keys, bypassing the cache."""
         ...
 
 
@@ -151,21 +179,73 @@ class CallerAdmission:
 class CallerVerifier:
     """Verify each Gateway call's caller against the configured issuer. One per container."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - two key sources and a clock, each keyword-only beyond the first
         self,
         settings: ToolCallerSettings,
         public_key: PublicKeySource,
         *,
+        cognito_keys: SigningKeySource | None = None,
         now: Callable[[], datetime] = utc_now,
     ) -> None:
         self._settings = settings
         self._public_key = public_key
+        self._cognito_keys = cognito_keys
         self._now = now
         self._keys: JsonWebKeySet | None = None
 
     def verify(self, context: object) -> CallerPrincipal:
-        """Return the verified principal, or raise `CallerUnverifiedError`."""
+        """Return the verified principal, or raise `CallerUnverifiedError`.
+
+        Without a configured external MCP client this is exactly the token-service check. With
+        one (ADR-150), the unverified header's `kid` only selects which check runs: the token
+        service's pinned key id runs that check, and any other `kid` runs the Cognito check.
+        Either check fully verifies before anything about the call is read.
+        """
         token = bearer_token(context)
+        if self._cognito_keys is None or not self._settings.mcp_client_id:
+            return self._verify_issued(token)
+        try:
+            kid = signing_key_id(token)
+        except IdentityError:
+            raise CallerUnverifiedError(CallerRefusalCause.ASSERTION_REFUSED) from None
+        if kid == self._settings.token_signing_key_id:
+            return self._verify_issued(token)
+        return self._verify_mcp_client(token, self._cognito_keys)
+
+    def _verify_mcp_client(self, token: str, cognito_keys: SigningKeySource) -> CallerPrincipal:
+        """Verify an external MCP client's Cognito access token and its entitlement (ADR-150).
+
+        Signature against the pool's key set, `exp`, `iss`, `client_id` and `token_use=access`,
+        then the `mcp_tool_use` level. An unknown `kid` refreshes the key set once, because the
+        pool rotates its keys on its own schedule. The actor is the configured client, which the
+        signed `client_id` was just checked to equal; no `act` claim exists on this path.
+        """
+        try:
+            request = VerifyAccessTokenRequest(
+                token=token,
+                keys=cognito_keys.signing_keys(),
+                expected_issuer=self._settings.mcp_cognito_issuer,
+                expected_client_id=self._settings.mcp_client_id,
+                now=self._now(),
+            )
+            try:
+                identity = verify_access_token(request)
+            except UnknownSigningKeyError:
+                identity = verify_access_token(
+                    replace(request, keys=cognito_keys.refresh_signing_keys())
+                )
+        except DependencyError as error:
+            raise CallerUnverifiedError(
+                CallerRefusalCause.KEY_SET_UNAVAILABLE, dependency=error
+            ) from None
+        except IdentityError:
+            raise CallerUnverifiedError(CallerRefusalCause.ASSERTION_REFUSED) from None
+        if ReviewAccessLevel.MCP_TOOL_USE not in identity.review_levels:
+            raise CallerUnverifiedError(CallerRefusalCause.ENTITLEMENT_MISSING)
+        return CallerPrincipal(subject=identity.subject, actor=self._settings.mcp_client_id)
+
+    def _verify_issued(self, token: str) -> CallerPrincipal:
+        """Verify a token-service Gateway token, exactly as before ADR-150."""
         keys = self._key_set()
         try:
             return verify_caller(
@@ -228,9 +308,14 @@ def kms_caller_verifier(settings: ToolCallerSettings) -> CallerVerifier:
     """Compose the production verifier: the key set is read from the signing key in KMS.
 
     Constructing the client makes no call; the first verification does. The key is addressed by
-    its ARN, which is the one resource the tool role may call `kms:GetPublicKey` on.
+    its ARN, which is the one resource the tool role may call `kms:GetPublicKey` on. The user
+    pool's key set is composed only when an external MCP client is configured (ADR-150); it is
+    public HTTPS, so the tool role gains no grant for it.
     """
     return CallerVerifier(
         settings,
         KmsTokenSigner(settings.token_signing_key_arn, region=settings.token_signing_key_region),
+        cognito_keys=(
+            CognitoSigningKeys(settings.mcp_cognito_jwks_url) if settings.mcp_client_id else None
+        ),
     )

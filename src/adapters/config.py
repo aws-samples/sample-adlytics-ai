@@ -1446,6 +1446,23 @@ class ToolCallerSettings:
     token_signing_key_arn: str
     gateway_token_audience: str
     agent_client_id: str
+    mcp_client_id: str = ""
+    """The external MCP gateway's public Cognito client (ADR-150). Empty when the feature is off,
+    which disables the tool's Cognito branch: a call bearing such a token is refused."""
+    cognito_user_pool_id: str = ""
+    """Read only when `mcp_client_id` is set; the pool whose issuer the Cognito branch expects."""
+    aws_region: str = ""
+    """Read only when `mcp_client_id` is set; the pool's Region."""
+
+    @property
+    def mcp_cognito_issuer(self) -> str:
+        """Return the user pool issuer an external MCP client's access token must carry."""
+        return cognito_issuer_for(self.aws_region, self.cognito_user_pool_id)
+
+    @property
+    def mcp_cognito_jwks_url(self) -> str:
+        """Return the user pool key set the Cognito branch verifies against."""
+        return cognito_jwks_url_for(self.mcp_cognito_issuer)
 
     @property
     def token_signing_key_id(self) -> str:
@@ -1471,6 +1488,9 @@ _TOOL_CALLER_ENV = (
     "AGENT_CLIENT_ID",
 )
 
+_MCP_CALLER_ENV = ("COGNITO_USER_POOL_ID", "AWS_REGION")
+"""Read only beside a configured `MCP_CLIENT_ID` (ADR-150)."""
+
 
 def read_tool_caller_settings(source: Mapping[str, str] | None = None) -> ToolCallerSettings:
     """Resolve a tool's caller-verification configuration, reporting every problem at once."""
@@ -1483,6 +1503,14 @@ def read_tool_caller_settings(source: Mapping[str, str] | None = None) -> ToolCa
     key_arn = values["TOKEN_SIGNING_KEY_ARN"]
     if key_arn and _KMS_KEY_ARN.fullmatch(key_arn) is None:
         problems.append(f"{ENV_PREFIX}TOKEN_SIGNING_KEY_ARN (must be a KMS key ARN)")
+    # ADR-150: the external MCP client's pool is required only when that client is configured.
+    mcp_client_id = read.get(f"{ENV_PREFIX}MCP_CLIENT_ID", "").strip()
+    mcp_values = {
+        name: read.get(f"{ENV_PREFIX}{name}", "").strip() if mcp_client_id else ""
+        for name in _MCP_CALLER_ENV
+    }
+    if mcp_client_id:
+        problems.extend(f"{ENV_PREFIX}{name}" for name, value in mcp_values.items() if not value)
     if problems:
         raise InvariantError(
             CONFIG_UNRESOLVED,
@@ -1494,6 +1522,9 @@ def read_tool_caller_settings(source: Mapping[str, str] | None = None) -> ToolCa
         token_signing_key_arn=key_arn,
         gateway_token_audience=values["GATEWAY_TOKEN_AUDIENCE"],
         agent_client_id=values["AGENT_CLIENT_ID"],
+        mcp_client_id=mcp_client_id,
+        cognito_user_pool_id=mcp_values["COGNITO_USER_POOL_ID"],
+        aws_region=mcp_values["AWS_REGION"],
     )
 
 

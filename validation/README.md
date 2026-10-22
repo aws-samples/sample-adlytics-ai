@@ -48,6 +48,7 @@ requires an explicit target environment.
 | Deployed Agent Quality chain | `probe_agent_quality_loop.py` | Controlled authenticated turns whose receipt, findings, and evaluation chain are read through `POST /api/quality-review/turn` under the `reviewer` persona's bearer, with deterministic processor-output and aggregate reads; raw SSE stays under ignored `evidence/` |
 | Joined managed Harness acceptance | `accept_managed_harness.py` | Exact-stack deployment, custom-resource Harness and route-minted-token authorizer, and API-role attestation; every declared tool, one same-turn multi-tool question, and one no-tool turn through `/api/chat` as the `probe-a` persona with each tool call verified; BFF-session same-origin turns with bounded log/trace joins, receipt and evaluation reads through the review API, and distinct F-23 custody status; raw protected evidence stays ignored |
 | Identity-chain probe (ADR-077) | `probe_identity_chain.py` | Case-table probe run as the `probe-a`/`probe-b` personas: `--case p1` proves the route-minted token, reached through `/api/chat`, is the only working Harness path (the persona's own Cognito access token, an ID token, a token signed by an unpublished key, and SigV4 on the Harness and its runtime refused, each after its positive control and with no Memory side effect), and that the route exchange refuses an administrator-class operator by its resource-policy Deny; `--case p5` proves cross-conversation Memory recall for one user and none for another; `--case s5` proves a persona tool turn's every tool call verified its caller, then that the Gateway authorizer refuses a missing, Cognito, foreign-key, or Harness-audience bearer with no tool invoked, that each tool Lambda invoked directly with a fabricated Gateway context refuses `ADLY-CALLER-0001` before routing, that the route exchange and the agent client secret refuse the operator by their resource-policy Denies, and that `/token` refuses a wrong client secret. Prints expected vs observed per case; sanitized evidence stays under ignored `evidence/identity-probes/` |
+| External MCP gateway for Amazon Quick (ADR-150) | `probe_external_mcp.py`, `mcp_managed_login.mjs` | Dev-only case table for the gateway Amazon Quick connects to: `--case pass1` (no targets, counting ACL) proves WAF coverage and `FAIL_CLOSE`, signs `probe-a` in through managed login with PKCE and `resource`, and names the layer refusing each of no bearer, a malformed or foreign-key bearer, a BFF-client token and `probe-b`; `--case pass2` (targets, blocking ACL) adds the block, the governed fields of each demo answer, and the entitlement at the gateway, the tool and an app route. See [Running the external MCP gateway probe](#running-the-external-mcp-gateway-probe) |
 | Identity-chain latency (ADR-077 P4) | `probe_identity_latency.py` | Drives sequential persona tool turns through `/api/chat`, then reads the route exchange's, `/token`'s, and the Gateway interceptor's `REPORT` lines in the run window and judges warm p50 and cold max against the budgets the file declares; PASS/FAIL/NO-SAMPLE per budget, non-zero exit on any FAIL; sanitized evidence stays under ignored `evidence/identity-probes/` |
 | Turn latency breakdown | `probe_turn_latency.py` | Runs the committed six-prompt `fixtures/chat-bake-acceptance-v2.json` manifest, filled from the execution's `--outside-selection-receipt` (new-conversation and follow-up turns, with and without a governed tool, plus the out-of-list campaign control) through `/api/chat`, spaced apart; joins each turn's client arrival times, route timing line, route-trace and tool-window spans, the Harness runtime's own spans from `aws/spans`, kept only when they carry the turn's trace ID and the Harness's service name, its metrics and session start-up lines, and Lambda `REPORT` lines into a per-hop breakdown; prints milestones, durations, and token counts only; correlations and released text stay under ignored `evidence/turn-latency.*/`. With `--phase`, it also writes a D8 six-row paired-chat draft that `--bind-draft` binds into `ChatLatencySampleV1` after the bake |
 | Route Guardrail calibration and acceptance | `probe_guardrail_calibration.py` | Replays the fictional question set in `guardrail-calibration-cases.json` through `ApplyGuardrail` with `source=INPUT`. Default mode compares the deployed guardrail with a temporary Standard-tier copy it creates and deletes, deriving each case's verdict at every prompt-attack strength. `--accept` (`make accept-guardrail`) replays the deployed guardrail only and fails unless it is Standard tier, ran all 54 cases, blocks no benign case, and misses at most one attack, a jailbreak. Prints verdicts, filter names, confidences, and case families only; never the matched text |
@@ -1400,6 +1401,36 @@ The guardrail profile's destination Regions are hard-coded in
 `infra/lib/constructs/agent/route-guardrail.ts` from the AWS page it cites. A destination AWS adds
 later is not in the Conversation function's grant, so a route assessment sent there would be
 denied. Re-read that page when this acceptance is run after a long gap.
+
+## Running the external MCP gateway probe
+
+ADR-150's live acceptance for Amazon Quick, dev only and only with `ADLYTICS_EXTERNAL_MCP_GATEWAY=true`
+deployed. `probe-a` must be in `mcp-tool-users` and `probe-b` must not; the managed-login step
+reuses the frontend's installed Playwright (`npm ci` in `frontend/` first):
+
+```bash
+uv run python validation/probe_external_mcp.py --profile <profile> --environment dev \
+  --region us-east-1 --expected-account <account> --case pass1
+uv run python validation/probe_external_mcp.py --profile <profile> --environment dev \
+  --region us-east-1 --expected-account <account> --case pass2
+```
+
+`pass1` runs against the gate with no targets and every web ACL rule counting: the ACL and
+`FAIL_CLOSE` read back, a fictional Log4J request answered non-2xx with exactly one COUNT record
+(case 1), the protected-resource metadata (case 2), `probe-a`'s `initialize` and empty
+`tools/list` (case 3, positive control, with `resource` on `/oauth2/token` recorded as 3b), the
+refusals with the layer that refused each (case 4), and the demo calls matching no rule (case 5).
+`pass2` repeats case 4, then proves the block (Proof 1), the five tools and each demo answer's
+governed fields on parsed JSON, case G included (Proof 2), and the entitlement at the gateway, at
+the tool on a direct invoke with `probe-a` as the control, and on an app route (Proof 3).
+
+Before any network call the demo arguments are checked against `contracts/generated/tools.json`,
+the environment must be `dev`, and the profile's account must be the expected one. A FAIL in any
+case but 2 stops the run; a case-2 FAIL, and Cognito refusing `resource` at `/oauth2/token`, are
+printed as `QUICK HOP PENDING` reasons instead. A WAF record that is not the control is printed by
+rule id and matched component only, for the owner's scoping decision: no rule is ever relaxed to
+make this probe pass. Output and the sanitized evidence under ignored `evidence/external-mcp/` hold
+statuses, JSON-RPC codes, rule ids, labels and counts, never a token, code, header value or record.
 
 ## Retired Runtime observability probes
 

@@ -17,7 +17,12 @@ from aws_lambda_powertools import Logger
 from fictional_tokens import fictional_jwt
 
 import adapters.inbound.gateway_interceptor.handler as interceptor
-from adapters.inbound.gateway_interceptor.handler import BAD_INTERCEPTOR_INPUT, handler, intercept
+from adapters.inbound.gateway_interceptor.handler import (
+    BAD_INTERCEPTOR_INPUT,
+    handler,
+    intercept,
+    require_bearer_handler,
+)
 from adapters.outbound.telemetry.reporting import OperationLog
 from domain.shared_kernel.errors import ValidationError
 
@@ -196,6 +201,129 @@ class TestAnyOtherMethod:
             "interceptorOutputVersion": "1.0",
             "mcp": {"transformedGatewayRequest": {"body": body}},
         }
+
+
+_STRICT_METHODS = ("initialize", "tools/list", "tools/call")
+
+
+def _strict_body(method: str) -> dict[str, Any]:
+    return {
+        "jsonrpc": "2.0",
+        "id": 11,
+        "method": method,
+        "params": {"arguments": {"metric_name": ARGUMENT_VALUE, "_adl_caller_assertion": "forged"}},
+    }
+
+
+def _stripped(body: dict[str, Any]) -> dict[str, Any]:
+    return {**body, "params": {"arguments": {"metric_name": ARGUMENT_VALUE}}}
+
+
+@pytest.mark.covers("ADR-150")
+class TestTheExternalMcpEntryPoint:
+    """`require_bearer_handler`: every JSON-RPC method needs a bearer (ADR-150).
+
+    The refusing layer is the interceptor itself: its own 401 JSON-RPC `-32001 "unauthorized"`
+    in `transformedGatewayResponse`, and a terminal record of outcome `unauthorized` with
+    `bearer_present` false. The control in each test is the same method with a bearer.
+    """
+
+    @pytest.fixture
+    def terminal(self, monkeypatch: pytest.MonkeyPatch) -> list[OperationLog]:
+        captured: list[OperationLog] = []
+
+        def capture(event: OperationLog, _logger: Logger) -> None:
+            captured.append(event)
+
+        monkeypatch.setattr(interceptor, "report_operation", capture)
+        return captured
+
+    @pytest.mark.parametrize("method", _STRICT_METHODS)
+    def test_a_bearer_less_request_is_refused_by_the_interceptor(
+        self, terminal: list[OperationLog], method: str
+    ) -> None:
+        body = _strict_body(method)
+        forwarded = require_bearer_handler(_event(body, {"Authorization": BEARER}), _context())
+        assert forwarded == {
+            "interceptorOutputVersion": "1.0",
+            "mcp": {
+                "transformedGatewayRequest": {
+                    "headers": {"Authorization": BEARER},
+                    "body": _stripped(body),
+                }
+            },
+        }
+        terminal.clear()
+
+        refused = require_bearer_handler(_event(body, {"Accept": "x"}), _context())
+
+        response = refused["mcp"]["transformedGatewayResponse"]
+        assert response["statusCode"] == 401
+        assert response["body"]["error"] == {"code": -32001, "message": "unauthorized"}
+        assert refused == _unauthorized(_stripped(body), request_id=11)
+        assert [(record.outcome, dict(record.details)) for record in terminal] == [
+            ("unauthorized", {"jsonrpc_method": method, "bearer_present": False})
+        ]
+
+    @pytest.mark.parametrize("method", _STRICT_METHODS)
+    def test_a_request_with_a_bearer_is_forwarded_with_it_and_recorded_as_present(
+        self, terminal: list[OperationLog], method: str
+    ) -> None:
+        body = _strict_body(method)
+        output = require_bearer_handler(_event(body, {"authorization": BEARER}), _context())
+
+        request = output["mcp"]["transformedGatewayRequest"]
+        assert request == {"headers": {"Authorization": BEARER}, "body": _stripped(body)}
+        assert "transformedGatewayResponse" not in output["mcp"]
+        assert [
+            (record.operation, record.phase, record.outcome, dict(record.details))
+            for record in terminal
+        ] == [
+            (
+                "gateway.interceptor",
+                "terminal",
+                "forwarded",
+                {"jsonrpc_method": method, "bearer_present": True},
+            )
+        ]
+
+    def test_headers_not_passed_are_a_refusal_on_initialize(self) -> None:
+        """The gateway omits headers unless `passRequestHeaders` is on: strict mode fails closed."""
+        body = _strict_body("initialize")
+        assert (
+            "transformedGatewayResponse"
+            not in (
+                require_bearer_handler(_event(body, {"Authorization": BEARER}), _context())["mcp"]
+            )
+        )
+
+        refused = require_bearer_handler(_event(body), _context())
+        assert refused["mcp"]["transformedGatewayResponse"]["statusCode"] == 401
+
+    def test_the_default_entry_point_still_passes_initialize_through(self) -> None:
+        body = _strict_body("initialize")
+        assert handler(_event(body), _context()) == {
+            "interceptorOutputVersion": "1.0",
+            "mcp": {"transformedGatewayRequest": {"body": body}},
+        }
+        assert intercept(_event(body)).bearer_present is False
+        assert intercept(_event(body), require_bearer_for_every_method=True).outcome.value == (
+            "unauthorized"
+        )
+
+    def test_no_bearer_or_argument_value_reaches_any_log_record(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        caplog.set_level("DEBUG")
+        require_bearer_handler(
+            _event(_strict_body("tools/list"), {"Authorization": BEARER}), _context()
+        )
+        require_bearer_handler(_event(_strict_body("initialize"), {}), _context())
+
+        logged = "".join(repr(vars(record)) for record in caplog.records)
+        assert "authorization denied" in logged
+        for secret in (BEARER, BEARER.split(" ")[1], ARGUMENT_VALUE):
+            assert secret not in logged
 
 
 class TestAnUnsupportedInput:
