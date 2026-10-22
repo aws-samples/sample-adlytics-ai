@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import boto3
 from botocore.exceptions import ClientError
@@ -28,6 +28,8 @@ from ports.outbound.preset_artifacts import (
 
 if TYPE_CHECKING:  # pragma: no cover
     from types_boto3_s3.client import S3Client
+
+    from domain.presentation.preset_artifacts import PresetArtifactChildIdentity
 
 __all__ = ["S3PresetArtifactBodyStore", "S3PresetArtifactCustodyStore"]
 
@@ -145,6 +147,12 @@ class S3PresetArtifactBodyStore(PresetArtifactBodyStorePort):
 
     def read_sibling(self, request: PresetArtifactSiblingReadRequest) -> PresetArtifactSiblingBody:
         """Read and attest exactly one public sibling selected by the parent index."""
+        if request.descriptor.body_digest is None:
+            raise InvariantError(
+                PRESET_ARTIFACT_BODY_CONFLICT,
+                "An index shard has no public body.",
+                context={"identity": request.descriptor.identity.path},
+            )
         key = (
             f"pages/{request.page.value}/{request.variant.value}/{request.revision.value}/"
             f"{request.descriptor.identity.path}.json"
@@ -154,7 +162,7 @@ class S3PresetArtifactBodyStore(PresetArtifactBodyStorePort):
                 request.page,
                 request.variant,
                 request.revision,
-                request.descriptor.identity,
+                cast("PresetArtifactChildIdentity", request.descriptor.identity),
                 self._read_bytes(key).decode(),
             )
         except UnicodeDecodeError, ValueError:
@@ -312,7 +320,7 @@ class S3PresetArtifactCustodyStore(PresetArtifactCustodyStorePort):
     def read_sibling(
         self, request: PresetArtifactSiblingReadRequest
     ) -> PresetArtifactSiblingCustody:
-        """Read and attest exactly one custody sibling selected by the parent index."""
+        """Read and attest one custody sibling or index shard the parent custody binds."""
         key = (
             f"custody/{request.page.value}/{request.variant.value}/{request.revision.value}/"
             f"{request.descriptor.identity.path}.json"

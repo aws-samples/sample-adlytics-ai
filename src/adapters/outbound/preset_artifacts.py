@@ -1,29 +1,37 @@
 # SPDX-License-Identifier: MIT-0
 """Body-first composition of independently owned preset-artifact persistence ports.
 
-Plan 4.5 (DB20): siblings are written as ordered body->custody pairs, at most
-`BAKE_TASKS["s3_chains_per_baker"]` pairs in flight. Each pair writes and attests its public body,
-then writes and attests its private custody. On the first failure no further pair is submitted,
-every in-flight pair is observed, and the first error is raised. The parent body, then its
-custody, are written only after every sibling pair attests. `stage` stops there (a GRAPH bake
-task has no pointer capability); `publish` stages and then advances the pointer.
+Plan 4.5 (DB20) and ADR-145 (streamed writes and the sharded sibling index): `stage` draws a
+publication's sibling stream one pair at a time and writes each as an ordered body->custody
+pair, at most `BAKE_TASKS["s3_chains_per_baker"]` pairs in flight, keeping only each pair's
+descriptor (identity, body digest, custody digest). On the first failure (a write, or the
+stream's own refusal or defect) no further pair is submitted, every in-flight pair is observed,
+and the first error is raised. Then the descriptors, sorted by identity path, are cut into index
+shards of `SIBLING_INDEX_SHARD_ENTRIES` written at `custody/{page}/{variant}/{revision}/index/
+segment-NNNN.json`; the parent custody is the source's header plus one `sibling_index` entry
+per shard; the parent body, then that custody, are written last. `stage` stops there (a GRAPH
+bake task has no pointer capability); `publish` stages and then advances the pointer, completed
+from the request's template with the staged custody's digest.
+
+Retail's closed child set (ADR-125 as amended by ADR-145): a request's `closed_children` must
+equal the stream's identities, checked before any write.
 
 The runtime write deadline (ADR-145, ADR-142): `stage` and `publish` take the invocation's
 `remaining_ms` and the contract's `tail_seconds` as required keywords. Before each pair is
 submitted, `remaining_ms() / 1000 < tail_seconds` stops submission, every in-flight pair is
 observed, and the stage raises `IsolatedRefusal(bodies_over_invocation, scope=page, written=k,
-bodies=n)`: no parent, custody or pointer is written, so the pairs already written are
-unreferenced objects under a revision no custody names.
+bodies=n)`: no index shard, parent, custody or pointer is written, so the pairs already written
+are unreferenced objects under a revision no custody names.
 """
 
 from __future__ import annotations
 
-from collections import deque
 from collections.abc import Callable, Generator
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from contextlib import contextmanager
 from contextvars import copy_context
-from typing import TYPE_CHECKING, Final
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Final, cast
 
 from adapters.outbound.telemetry.span_context import correlation
 from adapters.outbound.telemetry.tracing import ARTIFACT_WRITE, span, trace_boundary
@@ -37,11 +45,16 @@ from domain.presentation.preset_artifacts import (
     PRESET_ARTIFACT_POINTER_CONFLICT,
     ArtifactBodyWriteResult,
     CustodyManifestWriteResult,
+    PresetArtifactCustodyManifest,
     PresetArtifactPublicationRequest,
     PresetArtifactPublicationResult,
     PresetArtifactSiblingCustodyWriteResult,
+    PresetArtifactSiblingDescriptor,
+    PresetArtifactSiblingIndexEntry,
     PresetArtifactSiblingWriteResult,
     PresetArtifactStageResult,
+    parent_custody_manifest,
+    sibling_index_shards,
 )
 from domain.shared_kernel.errors import InvariantError
 from ports.outbound.preset_artifacts import (
@@ -56,6 +69,7 @@ if TYPE_CHECKING:
     from domain.presentation.preset_artifacts import (
         PresetArtifactSiblingBody,
         PresetArtifactSiblingCustody,
+        PresetArtifactSiblingPair,
     )
 
 __all__ = ["S3_CHAINS_PER_BAKER", "PresetArtifactPersistence"]
@@ -91,18 +105,16 @@ class PresetArtifactPersistence(PresetArtifactPersistencePort, PresetArtifactSta
         remaining_ms: Callable[[], int],
         tail_seconds: float,
     ) -> PresetArtifactPublicationResult:
-        """Attest every sibling before parent bytes and expose only the complete revision.
+        """Stage the whole revision, then advance the pointer completed with its custody digest.
 
         A stage refused by its write deadline raises before the pointer: no pointer moves.
         """
         staged = self.stage(request, remaining_ms=remaining_ms, tail_seconds=tail_seconds)
-        pointer_result = self._pointers.advance(request.pointer_advance)
+        pointer_result = self._pointers.advance(
+            request.pointer_template.complete(staged.custody_digest)
+        )
         return PresetArtifactPublicationResult(
-            staged.body,
-            pointer_result,
-            staged.custody,
-            staged.sibling_bodies,
-            staged.sibling_custody,
+            staged.body, pointer_result, staged.custody, staged.pairs, staged.written_bytes
         )
 
     def stage(
@@ -114,146 +126,205 @@ class PresetArtifactPersistence(PresetArtifactPersistencePort, PresetArtifactSta
     ) -> PresetArtifactStageResult:
         """Write and attest every immutable object of one revision; never touch a pointer.
 
-        Before each pair is submitted, a deadline reached refuses the page (module docstring).
+        In order (ADR-145): the closed-child check, the sibling stream (deadline before each
+        pair), the index shards, the parent body, then the parent custody built from the
+        header and the index (module docstring).
         """
-        pointer = request.pointer_advance.pointer
-        if request.sibling_custody and self._custody is None:
+        context = _context(request)
+        if request.custody_header is not None and self._custody is None:
             raise InvariantError(
                 PRESET_ARTIFACT_POINTER_CONFLICT,
-                "Sibling-bearing publication requires a composed custody store.",
-                context={"partition": pointer.partition_key, "revision": pointer.revision.value},
+                "A custody-bearing publication requires a composed custody store.",
+                context=context,
             )
-        pairs = self._write_siblings(
-            tuple(zip(request.sibling_bodies, request.sibling_custody, strict=True)),
-            _Deadline(remaining_ms, tail_seconds),
+        _require_closed_children(request)
+        descriptors, sibling_bytes = self._write_siblings(
+            request, _Deadline(remaining_ms, tail_seconds)
+        )
+        index, index_bytes = self._write_index(request, descriptors)
+        custody = (
+            None
+            if request.custody_header is None
+            else parent_custody_manifest(request.body, request.custody_header, index)
         )
         size = _size(request.body.payload_json) + (
-            0 if request.custody is None else _size(request.custody.payload_json)
+            0 if custody is None else _size(custody.payload_json)
         )
         with _artifact_chain("parent", size):
-            body, custody = self._write_parent(request)
+            body, custody_result = self._write_parent(request, custody)
         return PresetArtifactStageResult(
             body,
-            custody,
-            tuple(public for public, _ in pairs),
-            tuple(private for _, private in pairs),
+            custody_result,
+            len(descriptors) + len(index) + 1,
+            sibling_bytes + index_bytes + size,
         )
 
     def _write_parent(
-        self, request: PresetArtifactPublicationRequest
+        self,
+        request: PresetArtifactPublicationRequest,
+        custody: PresetArtifactCustodyManifest | None,
     ) -> tuple[ArtifactBodyWriteResult, CustodyManifestWriteResult | None]:
-        """Write and attest the parent body, then its custody, after every sibling pair."""
-        pointer = request.pointer_advance.pointer
+        """Write and attest the parent body, then its custody, after the siblings and index."""
+        template = request.pointer_template
         body = self._bodies.write(request.body)
         if (body.page, body.variant, body.revision, body.key, body.digest) != (
-            pointer.page,
-            pointer.variant,
-            pointer.revision,
-            pointer.body_key,
-            pointer.body_digest,
+            template.page,
+            template.variant,
+            template.revision,
+            request.body.key,
+            template.body_digest,
         ):
             raise InvariantError(
                 PRESET_ARTIFACT_POINTER_CONFLICT,
                 "Preset artifact body persistence did not attest the requested pointer evidence.",
-                context={"partition": pointer.partition_key, "revision": pointer.revision.value},
+                context=_context(request),
             )
-        custody = None
-        if request.custody is not None:
-            if self._custody is None:
-                raise InvariantError(
-                    PRESET_ARTIFACT_POINTER_CONFLICT,
-                    "A custody-bearing publication requires a composed custody store.",
-                    context={
-                        "partition": pointer.partition_key,
-                        "revision": pointer.revision.value,
-                    },
-                )
-            custody = self._custody.write(request.custody)
-            if (
-                custody.page,
-                custody.variant,
-                custody.revision,
-                custody.key,
-                custody.digest,
-            ) != (
-                pointer.page,
-                pointer.variant,
-                pointer.revision,
-                pointer.custody_key,
-                pointer.custody_digest,
-            ):
-                raise InvariantError(
-                    PRESET_ARTIFACT_POINTER_CONFLICT,
-                    "Preset artifact custody persistence did not attest the requested "
-                    "pointer evidence.",
-                    context={
-                        "partition": pointer.partition_key,
-                        "revision": pointer.revision.value,
-                    },
-                )
-        return body, custody
+        if custody is None:
+            return body, None
+        store = self._custody
+        if store is None:  # checked before any write; held for the type
+            raise InvariantError(
+                PRESET_ARTIFACT_POINTER_CONFLICT,
+                "A custody-bearing publication requires a composed custody store.",
+                context=_context(request),
+            )
+        written = store.write(custody)
+        if (written.page, written.variant, written.revision, written.key, written.digest) != (
+            custody.page,
+            custody.variant,
+            custody.revision,
+            custody.key,
+            custody.digest,
+        ):
+            raise InvariantError(
+                PRESET_ARTIFACT_POINTER_CONFLICT,
+                "Preset artifact custody persistence did not attest the requested "
+                "pointer evidence.",
+                context=_context(request),
+            )
+        return body, written
 
     def _write_siblings(
-        self,
-        pairs: tuple[tuple[PresetArtifactSiblingBody, PresetArtifactSiblingCustody], ...],
-        deadline: _Deadline,
-    ) -> tuple[_Pair, ...]:
-        """Run the bounded body->custody pair jobs; join every one before the parent writes.
+        self, request: PresetArtifactPublicationRequest, deadline: _Deadline
+    ) -> tuple[tuple[PresetArtifactSiblingDescriptor, ...], int]:
+        """Stream the bounded body->custody pair jobs, keeping only each pair's descriptor.
 
-        Each submission first checks the write deadline; once it is reached nothing more is
-        submitted, the in-flight pairs are observed, and the page is refused.
+        Each submission first checks the write deadline, then draws the stream's next pair; once
+        the deadline is reached, a pair fails, or the stream raises, nothing more is submitted,
+        every in-flight pair is observed, and the first error (or the refusal) is raised.
         """
-        if not pairs:
-            return ()
-        results: dict[int, _Pair] = {}
-        first_error: BaseException | None = None
-        expired = False
-        pending = deque(enumerate(pairs))
+        stream = request.siblings
+        pairs = iter(stream)
+        descriptors: list[PresetArtifactSiblingDescriptor] = []
+        written_bytes = 0
+        seen: set[str] = set()
+        state = _StreamState()
         with ThreadPoolExecutor(
-            max_workers=min(self._width, len(pairs)), thread_name_prefix="preset-artifact-write"
+            max_workers=min(self._width, max(1, stream.count)),
+            thread_name_prefix="preset-artifact-write",
         ) as executor:
-            in_flight: dict[Future[_Pair], int] = {}
+            in_flight: set[Future[tuple[PresetArtifactSiblingDescriptor, int]]] = set()
 
             def submit_next() -> None:
-                nonlocal expired
-                if pending and not expired and deadline.reached():
-                    expired = True
-                if pending and not expired:
-                    index, (public, private) = pending.popleft()
-                    # A copy of the caller's context parents each chain's span (plan A2).
-                    job = executor.submit(copy_context().run, self._write_pair, public, private)
-                    in_flight[job] = index
+                if state.stopped():
+                    return
+                if state.submitted == stream.count:
+                    if next(pairs, None) is not None:
+                        state.first_error = _stream_mismatch(request)
+                    state.exhausted = True
+                    return
+                if deadline.reached():
+                    state.expired = True
+                    return
+                try:
+                    pair = next(pairs, None)
+                    public, private = _admitted(request, pair, seen)
+                except Exception as error:  # the stream's own refusal or defect, raised after
+                    state.first_error = error
+                    return
+                state.submitted += 1
+                # A copy of the caller's context parents each chain's span (plan A2).
+                in_flight.add(
+                    executor.submit(copy_context().run, self._write_pair, public, private)
+                )
 
             for _ in range(self._width):
                 submit_next()
             while in_flight:
                 done, _ = wait(in_flight, return_when=FIRST_COMPLETED)
                 for future in done:
-                    index = in_flight.pop(future)
+                    in_flight.discard(future)
                     try:
-                        results[index] = future.result()
+                        descriptor, size = future.result()
                     except Exception as error:  # observe every in-flight pair before raising
-                        if first_error is None:
-                            first_error = error
-                    if first_error is None:
-                        submit_next()
-        if first_error is not None:
-            raise first_error
-        if expired:
+                        if state.first_error is None:
+                            state.first_error = error
+                        continue
+                    descriptors.append(descriptor)
+                    written_bytes += size
+                    submit_next()
+            if not state.stopped() and state.submitted == stream.count:
+                submit_next()  # a stream with nothing left to submit still proves its count
+        if state.first_error is not None:
+            raise state.first_error
+        if state.expired:
             raise IsolatedRefusal(
                 IsolatedRefusalReason.BODIES_OVER_INVOCATION,
                 RefusalScope.PAGE,
-                written=len(results),
-                bodies=len(pairs),
+                written=len(descriptors),
+                bodies=stream.count,
             )
-        return tuple(results[index] for index in range(len(pairs)))
+        return tuple(descriptors), written_bytes
+
+    def _write_index(
+        self,
+        request: PresetArtifactPublicationRequest,
+        descriptors: tuple[PresetArtifactSiblingDescriptor, ...],
+    ) -> tuple[tuple[PresetArtifactSiblingIndexEntry, ...], int]:
+        """Write the sorted sibling index, 800 descriptors per shard, each its own chain."""
+        if request.custody_header is None:
+            return (), 0
+        body = request.body
+        try:
+            shards = sibling_index_shards(body, descriptors)
+        except ValueError as error:
+            raise InvariantError(
+                PRESET_ARTIFACT_POINTER_CONFLICT,
+                "A preset artifact sibling index cannot be built.",
+                context={**_context(request), "cause": str(error)},
+            ) from None
+        written = 0
+        store = cast("PresetArtifactCustodyStorePort", self._custody)
+        for shard, _ in shards:
+            size = _size(shard.payload_json)
+            with _artifact_chain("index", size):
+                result = store.write_sibling(shard)
+                if (result.identity, result.key, result.digest) != (
+                    shard.identity,
+                    shard.key,
+                    shard.digest,
+                ):
+                    raise InvariantError(
+                        PRESET_ARTIFACT_POINTER_CONFLICT,
+                        "Sibling index persistence did not attest requested evidence.",
+                        context=_context(request),
+                    )
+            written += size
+        return tuple(entry for _, entry in shards), written
 
     def _write_pair(
         self, public: PresetArtifactSiblingBody, private: PresetArtifactSiblingCustody
-    ) -> _Pair:
+    ) -> tuple[PresetArtifactSiblingDescriptor, int]:
         """Write and attest one sibling's body->custody chain inside its `artifact.write` span."""
-        with _artifact_chain("sibling", _size(public.payload_json) + _size(private.payload_json)):
-            return self._attested_pair(public, private)
+        size = _size(public.payload_json) + _size(private.payload_json)
+        with _artifact_chain("sibling", size):
+            public_result, private_result = self._attested_pair(public, private)
+        return (
+            PresetArtifactSiblingDescriptor(
+                public.identity, public_result.digest, private_result.digest
+            ),
+            size,
+        )
 
     def _attested_pair(
         self, public: PresetArtifactSiblingBody, private: PresetArtifactSiblingCustody
@@ -306,6 +377,82 @@ class PresetArtifactPersistence(PresetArtifactPersistencePort, PresetArtifactSta
                 "Sibling custody persistence did not attest requested evidence.",
             )
         return public_result, private_result
+
+
+@dataclass(slots=True)
+class _StreamState:
+    """What one stage's stream loop has submitted, and why it stopped, if it has."""
+
+    submitted: int = 0
+    expired: bool = False
+    exhausted: bool = False
+    first_error: BaseException | None = None
+
+    def stopped(self) -> bool:
+        return self.expired or self.exhausted or self.first_error is not None
+
+
+def _context(request: PresetArtifactPublicationRequest) -> dict[str, str]:
+    template = request.pointer_template
+    return {"partition": template.partition_key, "revision": template.revision.value}
+
+
+def _stream_mismatch(request: PresetArtifactPublicationRequest) -> InvariantError:
+    return InvariantError(
+        PRESET_ARTIFACT_POINTER_CONFLICT,
+        "A preset artifact sibling stream yielded other than its declared count.",
+        context={**_context(request), "declared": str(request.siblings.count)},
+    )
+
+
+def _admitted(
+    request: PresetArtifactPublicationRequest,
+    pair: PresetArtifactSiblingPair | None,
+    seen: set[str],
+) -> PresetArtifactSiblingPair:
+    """Admit one drawn pair: aligned, of the parent revision and not yet seen; else invariant."""
+    if pair is None:
+        raise _stream_mismatch(request)
+    public, private = pair
+    parent = request.body
+    identity = public.identity
+    if (
+        private.identity != identity
+        or any(
+            (item.page, item.variant, item.revision)
+            != (parent.page, parent.variant, parent.revision)
+            for item in (public, private)
+        )
+        or identity.path in seen
+    ):
+        raise InvariantError(
+            PRESET_ARTIFACT_POINTER_CONFLICT,
+            "Preset artifact siblings are unique, aligned pairs of their parent revision.",
+            context=_context(request),
+        )
+    seen.add(identity.path)
+    return public, private
+
+
+def _require_closed_children(request: PresetArtifactPublicationRequest) -> None:
+    """Retail's closed child set (ADR-125, ADR-145): the stream's identities are its rows.
+
+    Checked before any write, so a mismatch writes nothing.
+    """
+    expected = request.closed_children
+    if expected is None:
+        return
+    identities = [public.identity for public, _ in request.siblings]
+    if (
+        len(identities) != request.siblings.count
+        or len(set(identities)) != len(identities)
+        or {identity.path for identity in identities} != {item.path for item in expected}
+    ):
+        raise InvariantError(
+            PRESET_ARTIFACT_POINTER_CONFLICT,
+            "Product-detail children are exactly the served rows.",
+            context=_context(request),
+        )
 
 
 class _Deadline:

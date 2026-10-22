@@ -6,11 +6,12 @@ from __future__ import annotations
 import threading
 import time
 from collections.abc import Generator
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, cast
 
 import pytest
+from preset_artifact_support import template_of
 
 from adapters.outbound.dynamodb.items import ItemError
 from adapters.outbound.dynamodb.preset_artifacts import (
@@ -29,6 +30,7 @@ from domain.presentation.preset_artifacts import (
     CustodyManifestWriteResult,
     PresetArtifactBody,
     PresetArtifactBodyCeilingError,
+    PresetArtifactCustodyHeader,
     PresetArtifactCustodyManifest,
     PresetArtifactPage,
     PresetArtifactPointer,
@@ -44,6 +46,7 @@ from domain.presentation.preset_artifacts import (
     PresetArtifactSiblingCustodyWriteResult,
     PresetArtifactSiblingIdentity,
     PresetArtifactSiblingReadRequest,
+    PresetArtifactSiblingStream,
     PresetArtifactSiblingWriteResult,
     PresetArtifactVariant,
     canonical_preset_artifact_json,
@@ -219,8 +222,7 @@ class RecordingPointers:
 def test_persistence_writes_body_before_attempting_the_conditional_pointer() -> None:
     body = _body()
     request = PresetArtifactPublicationRequest(
-        body,
-        PresetArtifactPointerAdvanceRequest(_pointer(body)),
+        body, template_of(PresetArtifactPointerAdvanceRequest(_pointer(body)))
     )
     events: list[str] = []
     persistence = PresetArtifactPersistence(RecordingBodies(events), RecordingPointers(events))
@@ -243,12 +245,12 @@ def test_d28_a_grant_bearing_replay_of_its_own_write_is_a_no_op() -> None:
 
     body = _body()
     legacy = PresetArtifactPublicationRequest(
-        body, PresetArtifactPointerAdvanceRequest(_pointer(body))
+        body, template_of(PresetArtifactPointerAdvanceRequest(_pointer(body)))
     )
-    granted = granted_request(legacy, GRANT, "2026-08-29T12:00:00Z")
-    pointer = granted.pointer_advance.pointer
+    granted = granted_request(legacy, GRANT, "2026-08-29T12:00:00Z").pointer_template.complete(None)
+    pointer = granted.pointer
 
-    result = classify_conditional_pointer_failure(granted.pointer_advance, pointer, pointer)
+    result = classify_conditional_pointer_failure(granted, pointer, pointer)
 
     assert result.outcome is PresetArtifactPointerAdvanceOutcome.NO_OP
     assert (pointer.revision, pointer.body_digest) == (body.revision, body.digest)
@@ -263,13 +265,15 @@ def test_d28_control_a_legacy_history_of_the_same_revision_is_a_conflict_not_a_n
     body = _body()
     legacy_pointer = _pointer(body)
     granted = granted_request(
-        PresetArtifactPublicationRequest(body, PresetArtifactPointerAdvanceRequest(legacy_pointer)),
+        PresetArtifactPublicationRequest(
+            body, template_of(PresetArtifactPointerAdvanceRequest(legacy_pointer))
+        ),
         GRANT,
         "2026-08-29T12:00:00Z",
-    )
+    ).pointer_template.complete(None)
 
     with pytest.raises(InvariantError) as refused:
-        classify_conditional_pointer_failure(granted.pointer_advance, legacy_pointer, None)
+        classify_conditional_pointer_failure(granted, legacy_pointer, None)
 
     assert refused.value.code == PRESET_ARTIFACT_POINTER_CONFLICT
 
@@ -352,7 +356,13 @@ class _SiblingStores:
     def custody_write_sibling(
         self, manifest: PresetArtifactSiblingCustody
     ) -> PresetArtifactSiblingCustodyWriteResult:
-        name = cast("PresetArtifactSiblingIdentity", manifest.identity).ordering
+        identity = manifest.identity
+        # A sibling is named by its ordering; an index shard by its path (`index/segment-NNNN`).
+        name = (
+            identity.ordering
+            if isinstance(identity, PresetArtifactSiblingIdentity)
+            else identity.path
+        )
         self._record(f"custody:{name}")
         digest = "0" * 64 if name == self.wrong_custody else manifest.digest
         return PresetArtifactSiblingCustodyWriteResult(
@@ -408,12 +418,11 @@ def _sibling_request(count: int) -> PresetArtifactPublicationRequest:
         )
         for name in names
     )
-    custody = PresetArtifactCustodyManifest(
-        body.page, body.variant, body.revision, canonical_preset_artifact_json({"parent": "c"})
-    )
-    pointer = replace(_pointer(body), custody_digest=custody.digest)
     return PresetArtifactPublicationRequest(
-        body, PresetArtifactPointerAdvanceRequest(pointer), custody, publics, privates
+        body,
+        template_of(PresetArtifactPointerAdvanceRequest(_pointer(body))),
+        PresetArtifactCustodyHeader(canonical_preset_artifact_json({"parent": "c"})),
+        PresetArtifactSiblingStream.of(zip(publics, privates, strict=True)),
     )
 
 
@@ -449,11 +458,10 @@ def test_stage_writes_at_most_eight_pairs_at_once_and_custody_never_precedes_its
         assert stores.events.index(f"body:{name}") < stores.events.index(f"custody:{name}")
     siblings = [event for event in stores.events if event.startswith(("body:", "custody:"))]
     assert stores.events[: len(siblings)] == siblings
-    assert stores.events[-2:] == ["parent-body", "parent-custody"]
+    # ADR-145: the one index shard after every pair, then the parent body and its custody.
+    assert stores.events[-3:] == ["custody:index/segment-0000", "parent-body", "parent-custody"]
     assert "pointer" not in stores.events
-    assert [item.identity for item in staged.sibling_bodies] == [
-        PresetArtifactSiblingIdentity(f"order{index:02d}", 0) for index in range(20)
-    ]
+    assert staged.pairs == 20 + 1 + 1
 
 
 def test_control_a_width_nine_writer_is_refused_by_the_occupancy_helper() -> None:
@@ -475,7 +483,12 @@ def test_publish_stages_every_object_before_the_pointer_advances() -> None:
         _sibling_request(3), remaining_ms=lambda: 600_000, tail_seconds=30.0
     )
 
-    assert stores.events[-3:] == ["parent-body", "parent-custody", "pointer"]
+    assert stores.events[-4:] == [
+        "custody:index/segment-0000",
+        "parent-body",
+        "parent-custody",
+        "pointer",
+    ]
     assert result.pointer.outcome is PresetArtifactPointerAdvanceOutcome.ADVANCED
 
 
