@@ -600,6 +600,64 @@ def test_a_channel_a_model_credits_nothing_keeps_its_zero_and_takes_no_rank() ->
         replace(ranking, rows=(*ranking.rows[:2], tied))
 
 
+NO_CREDIT_REASON = "No channel received deduplicated credit in this window."
+
+
+@pytest.mark.parametrize(
+    "channels",
+    [
+        pytest.param(((SP, "Sponsored Products", Decimal(60)),), id="one-channel"),
+        pytest.param(
+            (
+                (DSP, "Amazon DSP", Decimal(40)),
+                (SP, "Sponsored Products", Decimal(60)),
+                (SB, "Sponsored Brands", Decimal(20)),
+            ),
+            id="several-channels",
+        ),
+    ],
+)
+def test_a_ranking_with_no_credited_channel_names_no_leader(
+    channels: tuple[tuple[str, str, Decimal], ...],
+) -> None:
+    """Owner decision 2026-10-22: zero credit takes no rank, so all zeros rank nothing."""
+    models = (("first_touch_v1", "First touch"), ("linear_v1", "Linear"))
+    zero = Decimal(0)
+    ranking = scorecard_ranking(
+        tuple(
+            (key, label, spend, {"first_touch_v1": zero, "linear_v1": zero})
+            for key, label, spend in channels
+        ),
+        models,
+        None,
+    )
+    assert ranking.outcome is ScorecardRankingOutcome.INSUFFICIENT
+    assert (ranking.agreed_leader_key, ranking.absence_reason) == (None, NO_CREDIT_REASON)
+    # Each governed zero stays the cell's value; no cell ranks.
+    assert [[(item.value, item.rank) for item in row.values] for row in ranking.rows] == [
+        [(zero, None), (zero, None)] for _ in channels
+    ]
+    assert [row.spend for row in ranking.rows] == [spend for _, _, spend in channels]
+    # The outcome sentence is pinned on the served body (test_scorecard_presentation.py).
+    # Paired: one channel credited under every model is ranked, and leads.
+    one = Decimal(1)
+    credited = scorecard_ranking(
+        (
+            (*channels[0][:3], {"first_touch_v1": one, "linear_v1": one}),
+            *(
+                (key, label, spend, {"first_touch_v1": zero, "linear_v1": zero})
+                for key, label, spend in channels[1:]
+            ),
+        ),
+        models,
+        None,
+    )
+    assert (credited.outcome, credited.agreed_leader_key) == (
+        ScorecardRankingOutcome.ROBUST_LEADER,
+        channels[0][0],
+    )
+
+
 # --- Materializer ------------------------------------------------------------------------
 
 

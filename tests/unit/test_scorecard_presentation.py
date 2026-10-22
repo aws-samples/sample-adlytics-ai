@@ -668,6 +668,30 @@ def test_a_spending_channel_with_no_deduplicated_credit_names_it_and_takes_no_ra
     assert None not in {cell["rank"] for cell in cells}
 
 
+def test_a_ranking_with_no_credited_channel_serves_no_leader(
+    presentation_module: _PresentationModule,  # noqa: F811
+) -> None:
+    """Owner decision 2026-10-22: when no model credits any channel, nothing ranks."""
+    table = scorecard_tests._DEDUPLICATED  # pyright: ignore[reportPrivateUsage]
+    nothing = {model: dict.fromkeys(channels, Decimal(0)) for model, channels in table.items()}
+    with _sc1(), _deduplicated_patched(nothing):
+        stores = _Stores(_bake("7d"))
+    (card,) = _ok(_serve(presentation_module, stores, {}))["page"]["artifact"]["cards"]
+    ranking = card["ranking"]
+    assert (ranking["outcome"], ranking["outcome_text"]) == (
+        "insufficient",
+        "Not available: no channel received deduplicated credit in this window, so channels "
+        "can't be ranked under each model.",
+    )
+    cells = [cell for row in ranking["rows"] for cell in row["values"]]
+    assert len(cells) == len(table) * len(ranking["rows"]) > len(table)
+    # Every governed zero stays the cell's value, names its absence of credit and ranks nothing.
+    assert {
+        (cell["value"], cell["display_value"], cell["rank"], cell["rank_text"], cell["credit_text"])
+        for cell in cells
+    } == {("0.0000", "0.00", None, None, "No deduplicated credit")}
+
+
 def browser_fixture_responses(module: _PresentationModule) -> dict[str, dict[str, Any]]:
     """Serve the Scorecard responses the browser tests decode (SC-1, SC-4, SC-11)."""
     baked = _bake("7d", "30d", "last_complete_week", "last_complete_month")

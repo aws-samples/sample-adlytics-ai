@@ -42,7 +42,7 @@ from adapters.jobs.fixture_generation.catalog import (
     load_synthetic_entity_catalog,
 )
 from adapters.jobs.fixture_generation.checks import check_ties
-from adapters.jobs.fixture_generation.deduplicated import split
+from adapters.jobs.fixture_generation.deduplicated import credit, deduplicated_total, split
 from adapters.jobs.fixture_generation.shape import (
     BudgetShift,
     CampaignDay,
@@ -495,16 +495,25 @@ class TestClosedValueDomains:
         }
         assert declared.whole_credit_models == {"first_touch_v1", "last_touch_v1"}
         for row in rows:
-            credit = Decimal(row["matched_purchase_credit"])
+            purchases = Decimal(row["matched_purchase_credit"])
             if row["attribution_model_key"] in declared.whole_credit_models:
-                assert credit == credit.to_integral_value(), row
-        # Equal weights credit each ad product its own measure; unequal ones keep the total.
-        assert split((Decimal(3), Decimal(5)), (Decimal(1), Decimal(1))) == (
-            Decimal("3.0000"),
-            Decimal("5.0000"),
+                assert purchases == purchases.to_integral_value(), row
+        # 30% of each measure is shared by two ad products, so the day keeps 85% of the
+        # attributed sum. Equal weights credit each ad product 85% of its own measure; unequal
+        # ones move only the shared part and keep the whole total, each within its own measure.
+        assert (declared.shared_purchase_share, declared.channels_per_shared_purchase) == (
+            Decimal("0.30"),
+            2,
         )
-        shares = split((Decimal(3), Decimal(5)), (Decimal("1.5"), Decimal("0.7")), Decimal(1))
-        assert (sum(shares), shares) == (Decimal(8), (Decimal("4.0000"), Decimal("4.0000")))
+        measures = (Decimal(3), Decimal(5))
+        total = deduplicated_total(measures, declared, Decimal("0.0001"))
+        linear = split(total, credit(measures, (Decimal(1), Decimal(1)), declared))
+        assert (total, linear) == (Decimal("6.8000"), (Decimal("2.5500"), Decimal("4.2500")))
+        whole = deduplicated_total(measures, declared, Decimal(1))
+        first = split(
+            whole, credit(measures, (Decimal("1.5"), Decimal("0.7")), declared), Decimal(1)
+        )
+        assert (whole, first) == (Decimal(7), (Decimal("3.0000"), Decimal("4.0000")))
 
 
 class TestOneDeliveryCoversOneMarketplace:
@@ -1450,6 +1459,16 @@ _LOADER_RULES: tuple[tuple[str, Callable[[_Raw], None], str], ...] = (
         "must be first_report or final",
     ),
     ("seal generation", _set("seal_generation", -1), "seal_generation: must be an integer >= 0"),
+    (
+        "deduplicated shared share not below 1",
+        _set("amc.deduplicated_attribution.shared_purchase_share", "1"),
+        "shared_purchase_share: must lie in (0, 1)",
+    ),
+    (
+        "deduplicated shared purchase touches one ad product",
+        _set("amc.deduplicated_attribution.channels_per_shared_purchase", 1),
+        "channels_per_shared_purchase: must be at least 2",
+    ),
     (
         "deduplicated weight not positive",
         _set("amc.deduplicated_attribution.channel_weights.linear_v1.amazon_dsp", "0"),

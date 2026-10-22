@@ -361,13 +361,18 @@ class DspReachShape:
 class DeduplicatedAttributionShape:
     """How each model splits one day's deduplicated total across channels (dev-seeding §2).
 
-    `channel_weights[model][ad_product]` weighs a channel's own attributed measure for that
-    model. Every model splits the same day total, so a channel's credit is the total times its
-    weighted measure over the sum of weighted measures; equal weights credit each channel its
-    own measure, as linear credit does. A `whole_credit_models` model credits each purchase
-    whole to one touch (first or last), so its purchase credit per ad product is a whole number.
+    `shared_purchase_share` of each ad product's attributed measure comes from purchases that
+    `channels_per_shared_purchase` ad products touched, so the deduplicated day total, the same
+    under every model, is the attributed sum x (1 - share + share / channels). Every model
+    credits an ad product its unshared measure whole and splits the shared purchases'
+    deduplicated value by each ad product's shared measure x `channel_weights[model][ad_product]`;
+    equal (linear) weights split each shared purchase evenly across the ad products it touched.
+    A `whole_credit_models` model credits each purchase whole to one touch (first or last), so its
+    purchase credit per ad product is a whole number.
     """
 
+    shared_purchase_share: Decimal
+    channels_per_shared_purchase: int
     channel_weights: dict[str, dict[str, Decimal]]
     whole_credit_models: frozenset[str]
 
@@ -1237,9 +1242,32 @@ def _positive_decimal(value: object, path: str) -> Decimal:
 
 
 def _deduplicated_attribution(value: object) -> DeduplicatedAttributionShape:
-    """Narrow `amc.deduplicated_attribution`: positive weights, the same channels per model."""
+    """Narrow `amc.deduplicated_attribution`.
+
+    A shared share in (0, 1), at least two channels per shared purchase, positive weights and
+    the same channels per model.
+    """
     path = "amc.deduplicated_attribution"
-    raw = _mapping(value, path, frozenset({"channel_weights", "whole_credit_models"}))
+    raw = _mapping(
+        value,
+        path,
+        frozenset(
+            {
+                "shared_purchase_share",
+                "channels_per_shared_purchase",
+                "channel_weights",
+                "whole_credit_models",
+            }
+        ),
+    )
+    share = _open_interval(
+        _decimal(raw["shared_purchase_share"], f"{path}.shared_purchase_share"),
+        (Decimal(0), Decimal(1)),
+        f"{path}.shared_purchase_share",
+    )
+    touched = _positive(raw["channels_per_shared_purchase"], f"{path}.channels_per_shared_purchase")
+    if touched < 2:  # noqa: PLR2004 -- a shared purchase touched more than one ad product
+        raise _fail(f"{path}.channels_per_shared_purchase", "must be at least 2.")
     models = raw["channel_weights"]
     if not isinstance(models, dict) or not models:
         raise _fail(f"{path}.channel_weights", "must be a non-empty mapping of models.")
@@ -1260,7 +1288,7 @@ def _deduplicated_attribution(value: object) -> DeduplicatedAttributionShape:
     )
     if not whole <= set(weights):
         raise _fail(f"{path}.whole_credit_models", "must name models with channel weights.")
-    return DeduplicatedAttributionShape(weights, whole)
+    return DeduplicatedAttributionShape(share, touched, weights, whole)
 
 
 def _exposure_cell(value: object, path: str, period_start: date) -> ExposureCellShape:

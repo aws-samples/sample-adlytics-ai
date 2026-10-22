@@ -297,3 +297,101 @@ def test_deduplicated_revenue_never_exceeds_the_channels_halo_inclusive_attribut
     assert days_above_attributed_revenue(
         rows, [_attributed_day(day, "sponsored_products", (100, "2999.99"))]
     ) == [(day, "linear_v1")]
+
+
+def credit_above_own_attributed(rows: Rows, attributed: Rows) -> list[tuple[date, str, str]]:
+    """(day, model, channel) whose credit exceeds that channel's own attributed measure that day.
+
+    A model credits a channel only for purchases it touched, and the channel's attributed
+    purchases and halo-inclusive sales count each of those whole.
+    """
+    purchases = _attributed_by_day(attributed, "purchases")
+    sales = _attributed_by_day(attributed, "total_product_sales")
+    found: set[tuple[date, str, str]] = set()
+    for row in rows:
+        day, channel = date.fromisoformat(row["event_date_utc"]), row["ad_product_type"]
+        if (
+            Decimal(row["matched_purchase_credit"]) > purchases[day][channel]
+            or Decimal(row["revenue_attributed_deduplicated_incl_halo"]) > sales[day][channel]
+        ):
+            found.add((day, row["attribution_model_key"], channel))
+    return sorted(found)
+
+
+def days_split_by_model_without_overlap(rows: Rows, attributed: Rows) -> list[date]:
+    """Days whose models credit a channel different revenue, yet dedup equals the attributed sum.
+
+    A model moves a channel's credit only through a purchase that touched more than one channel,
+    which the channels' attributed sum counts once per channel and the deduplicated total once,
+    so on such a day the deduplicated revenue sits below the attributed sum.
+    """
+    ceiling = {
+        day: sum(channels.values(), Decimal(0))
+        for day, channels in _attributed_by_day(attributed, "total_product_sales").items()
+    }
+    credit: dict[date, dict[str, dict[str, Decimal]]] = defaultdict(lambda: defaultdict(dict))
+    totals: dict[date, dict[str, Decimal]] = defaultdict(lambda: defaultdict(Decimal))
+    for row in rows:
+        day, model = date.fromisoformat(row["event_date_utc"]), row["attribution_model_key"]
+        revenue = Decimal(row["revenue_attributed_deduplicated_incl_halo"])
+        credit[day][row["ad_product_type"]][model] = revenue
+        totals[day][model] += revenue
+    return sorted(
+        day
+        for day, channels in credit.items()
+        if any(len(set(models.values())) > 1 for models in channels.values())
+        and max(totals[day].values()) >= ceiling.get(day, Decimal(0))
+    )
+
+
+def _two_channel_day(day: date, first_touch_dsp: tuple[str, str]) -> Rows:
+    """Build one day where linear credits DSP and SP 10 / 300.00 each, first touch DSP as given."""
+    first_sp = (
+        str(20 - Decimal(first_touch_dsp[0])),
+        str(Decimal("600.00") - Decimal(first_touch_dsp[1])),
+    )
+    cells = {
+        ("linear_v1", DSP): ("10", "300.00"),
+        ("linear_v1", "sponsored_products"): ("10", "300.00"),
+        ("first_touch_v1", DSP): first_touch_dsp,
+        ("first_touch_v1", "sponsored_products"): first_sp,
+    }
+    return [
+        {
+            "event_date_utc": day.isoformat(),
+            "ad_product_type": channel,
+            "attribution_model_key": model,
+            "matched_purchase_credit": credit,
+            "revenue_attributed_deduplicated_incl_halo": revenue,
+        }
+        for (model, channel), (credit, revenue) in cells.items()
+    ]
+
+
+def test_no_model_credits_a_channel_more_than_its_own_attributed_measure() -> None:
+    assert credit_above_own_attributed(_deduplicated(), _attributed()) == []
+    # Positive control: first touch giving DSP 12 / 360.00 against its own 10 / 300.00 is caught.
+    day = date(2026, 9, 30)
+    attributed = [
+        _attributed_day(day, DSP, (10, "300.00")),
+        _attributed_day(day, "sponsored_products", (10, "300.00")),
+    ]
+    assert credit_above_own_attributed(_two_channel_day(day, ("12", "360.00")), attributed) == [
+        (day, "first_touch_v1", DSP)
+    ]
+    assert credit_above_own_attributed(_two_channel_day(day, ("10", "300.00")), attributed) == []
+
+
+def test_models_split_channels_differently_only_below_the_attributed_sum() -> None:
+    assert days_split_by_model_without_overlap(_deduplicated(), _attributed()) == []
+    # Positive control: a 600.00 day equal to the attributed sum on which first touch moves
+    # 60.00 to DSP is caught; the same split under a 700.00 attributed sum is not.
+    day = date(2026, 9, 30)
+    rows = _two_channel_day(day, ("8", "240.00"))
+    equal = [
+        _attributed_day(day, DSP, (10, "300.00")),
+        _attributed_day(day, "sponsored_products", (10, "300.00")),
+    ]
+    above = [*equal[:1], _attributed_day(day, "sponsored_products", (14, "400.00"))]
+    assert days_split_by_model_without_overlap(rows, equal) == [day]
+    assert days_split_by_model_without_overlap(rows, above) == []

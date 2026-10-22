@@ -218,7 +218,8 @@ entry), so a stray one can't decode as format 2.
 retail rows' marketplace identity, and no ranked ratio over zero spend.
 5 (slice 9a round 4): insight cards and Also changed rows carry their marketplace and name.
 7 (2026-10-22): a ranking cell with no deduplicated credit says so and takes no rank, and a
-headline that differs by model makes the ranking insufficient."""
+headline that differs by model, or no credited channel under any model, makes the ranking
+insufficient."""
 
 _CHANNEL_GRAINS = ("ecosystem", "platform", "channel", "marketplace")
 _NETWORK_GRAINS = ("ecosystem", "platform", "marketplace")

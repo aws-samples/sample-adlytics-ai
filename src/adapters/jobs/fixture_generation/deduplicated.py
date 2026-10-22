@@ -8,14 +8,18 @@ every ad product a purchaser touched. The generic row plan can't express that: t
 carries no campaign identity, so it yields one row per day, and the model and ad product rotated
 by row (the defect the 2026-10-22 Scorecard investigation found).
 
-No value is random. A day's totals are the attributed-conversion corpus's purchases and
-halo-inclusive sales, summed over its ad products, so the deduplicated revenue never exceeds the
-channels' halo-inclusive attributed revenue and a coverage-gap campaign-day contributes nothing,
-as on every other contract. Each model splits those totals across the ad products with purchases
-that day, in proportion to each one's own measure times the model's declared weight
-(`shape.amc.deduplicated_attribution`). First and last touch credit each purchase whole, so
-their purchase credit is split in whole units; revenue and linear credit at four places. The
-rounding remainder goes to the largest share, so every model's day total is exact.
+No value is random. Each ad product's measures are the attributed-conversion corpus's purchases
+and halo-inclusive sales that day, so a coverage-gap campaign-day contributes nothing, as on
+every other contract. A declared share of each measure comes from purchases several ad products
+touched (`shape.amc.deduplicated_attribution`): the channels' attributed sum counts those once
+per ad product and the deduplicated total once, so the day total sits below the attributed sum
+and is the same under every model. Each model credits an ad product its unshared measure and a
+part of the shared purchases weighted by its shared measure and the model's declared weight, so
+no model credits an ad product more than its own measure, and only the shared purchases move
+between models, as in the governed query. Matched purchases are whole, so the purchase total is
+too; first and last touch credit each purchase whole, so their purchase credit is split in whole
+units, revenue and linear credit at four places. The rounding remainder goes to the largest
+share, so every model's day total is exact.
 """
 
 from __future__ import annotations
@@ -118,24 +122,56 @@ def _day_measures(
     return days, groups
 
 
-def split(
-    measures: tuple[Decimal, ...], weights: tuple[Decimal, ...], step: Decimal = FOUR_PLACES
+_CONTEXT = decimal.Context(prec=28, rounding=decimal.ROUND_HALF_EVEN)
+
+
+def deduplicated_total(
+    measures: tuple[Decimal, ...], shape: DeduplicatedAttributionShape, step: Decimal
+) -> Decimal:
+    """Count the day's shared purchases once, not once per ad product, at `step`."""
+    share = shape.shared_purchase_share
+    with decimal.localcontext(_CONTEXT):
+        kept = 1 - share + share / shape.channels_per_shared_purchase
+        return (sum(measures, Decimal(0)) * kept).quantize(step)
+
+
+def credit(
+    measures: tuple[Decimal, ...], weights: tuple[Decimal, ...], shape: DeduplicatedAttributionShape
 ) -> tuple[Decimal, ...]:
-    """Split the measures' total in proportion to measure x weight, exact at `step`.
+    """Each ad product's unrounded credit under one model.
+
+    Its unshared measure, plus the shared purchases' deduplicated value in proportion to its
+    shared measure x the model's weight. Equal weights give each ad product its measure x
+    (1 - share + share / channels): every shared purchase split evenly across its ad products.
+    """
+    share = shape.shared_purchase_share
+    with decimal.localcontext(_CONTEXT):
+        pooled = share * sum(measures, Decimal(0)) / shape.channels_per_shared_purchase
+        weighted = tuple(
+            share * measure * weight for measure, weight in zip(measures, weights, strict=True)
+        )
+        denominator = sum(weighted, Decimal(0))
+        if denominator == 0:
+            return tuple(Decimal(0) for _ in measures)
+        return tuple(
+            (1 - share) * measure + pooled * item / denominator
+            for measure, item in zip(measures, weighted, strict=True)
+        )
+
+
+def split(
+    total: Decimal, parts: tuple[Decimal, ...], step: Decimal = FOUR_PLACES
+) -> tuple[Decimal, ...]:
+    """Apportion `total` in proportion to `parts`, exact at `step`.
 
     The rounding remainder goes to the largest share, so the shares sum to the total exactly.
     Shares are written at four places whatever the step.
     """
-    with decimal.localcontext(decimal.Context(prec=28, rounding=decimal.ROUND_HALF_EVEN)):
-        total = sum(measures, Decimal(0))
-        weighted = tuple(
-            measure * weight for measure, weight in zip(measures, weights, strict=True)
-        )
-        denominator = sum(weighted, Decimal(0))
-        shares = [
-            (total * item / denominator).quantize(step, rounding=decimal.ROUND_HALF_EVEN)
-            for item in weighted
-        ]
+    with decimal.localcontext(_CONTEXT):
+        denominator = sum(parts, Decimal(0))
+        if denominator == 0:
+            return tuple(quantize(Decimal(0)) for _ in parts)
+        shares = [(total * part / denominator).quantize(step) for part in parts]
         largest = shares.index(max(shares))
         shares[largest] += total - sum(shares, Decimal(0))
         return tuple(quantize(share) for share in shares)
@@ -169,22 +205,42 @@ def build_deduplicated(fixture: Fixture, inputs: DeduplicatedInputs) -> Fixture:
         )
         if not channels:
             continue
+        own = tuple(
+            tuple(measures[channel][index] for channel in channels)
+            for index in range(len(bound.pairs))
+        )
+        # Matched purchases are whole, so the purchase total is too; every model shares it.
+        totals = tuple(
+            deduplicated_total(own[index], inputs.shape, _WHOLE if index == 0 else FOUR_PLACES)
+            for index in range(len(bound.pairs))
+        )
         for model in models:
             factors = tuple(weights[model][channel] for channel in channels)
             columns = tuple(
                 split(
-                    tuple(measures[channel][index] for channel in channels),
-                    factors,
+                    totals[index],
+                    credit(own[index], factors, inputs.shape),
                     _WHOLE if index == 0 and model in whole else FOUR_PLACES,
                 )
                 for index in range(len(bound.pairs))
             )
+            day = template[bound.date_column]
             if any(share <= 0 for share in columns[0]):
                 # A real query emits no row for an ad product a model never credits, and its
                 # revenue would move with it; the declared weights must not imply that here.
                 raise FixtureError(
                     f"{contract.contract_id}: {model} credits an ad product with purchases "
-                    f"nothing on {template[bound.date_column]}; revise the declared weights."
+                    f"nothing on {day}; revise the declared weights."
+                )
+            if any(
+                share > measure
+                for index in range(len(bound.pairs))
+                for share, measure in zip(columns[index], own[index], strict=True)
+            ):
+                # A model credits an ad product only for purchases it touched (dev-seeding §2).
+                raise FixtureError(
+                    f"{contract.contract_id}: {model} credits an ad product more than its own "
+                    f"attributed measure on {day}; revise the declared share or weights."
                 )
             for position, channel in enumerate(channels):
                 rows.append(

@@ -244,14 +244,20 @@ shape:
     # so the bound holds but the implied frequency isn't realistic. The other two days are clean.
     dsp_reach: {day_offsets: [-3, -2, -1], suppressed: {day_offset: -3, campaign: campaign:northstar-dsp-05}}
     # amc-deduplicated-temporal-attribution (dev-seeding §2): one row per day x registered model
-    # x ad product with attributed purchases that day. Every model splits the same day total, the
-    # attributed corpus's purchases (credit) and halo-inclusive sales (revenue) summed over its
-    # ad products, so the headline is the same under each. A model credits an ad product the total
-    # times its own measure x its weight below, over the sum of weighted measures. First touch
-    # leans to DSP, whose upper-funnel impressions tend to come first; last touch to Sponsored
-    # Products, the search ad nearest the purchase; linear weighs each equally, so its credit is
-    # the ad product's own measure.
+    # x ad product with attributed purchases that day, from the attributed corpus's purchases
+    # (credit) and halo-inclusive sales (revenue) per ad product. A shared_purchase_share of each
+    # ad product's measure comes from purchases that channels_per_shared_purchase ad products
+    # touched, so the channels' attributed sum counts them that many times and the deduplicated
+    # day total once: the total is the attributed sum x (1 - share + share / channels), the same
+    # under every model. Every model credits an ad product its unshared measure whole; the shared
+    # purchases' deduplicated value is split by the ad products' shared measures x the model's
+    # weight below. Linear weighs each equally, so it splits every shared purchase evenly across
+    # the ad products it touched; first touch leans to DSP, whose upper-funnel impressions tend to
+    # come first; last touch to Sponsored Products, the search ad nearest the purchase. No model
+    # credits an ad product more than its own measure (the generator fails closed otherwise).
     deduplicated_attribution:
+      shared_purchase_share: "0.30"
+      channels_per_shared_purchase: 2
       channel_weights:
         first_touch_v1: {amazon_dsp: "1.50", sponsored_products: "0.80", sponsored_brands: "1.00"}
         last_touch_v1: {amazon_dsp: "0.70", sponsored_products: "1.25", sponsored_brands: "1.00"}

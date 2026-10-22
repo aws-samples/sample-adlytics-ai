@@ -121,13 +121,22 @@ on every campaign) are also pinned over the committed fixtures by
   every covered day carries every model registered in `contracts/shared/attribution-models.yaml`;
   per day, `matched_purchase_credit` and revenue are equal across models; every channel with
   attributed purchases that day has linear credit above 0; and the day's deduplicated revenue
-  never exceeds the sum of the channels' halo-inclusive attributed revenue. The generator splits
-  each model's equal day total across the channels with purchases that day, in proportion to
-  each channel's own campaign measures weighted by the model's declared channel weights
-  (`shape.amc.deduplicated_attribution` in the synthetic catalog). Linear weighs every channel
-  equally, so its credit is each channel's own measure; first and last touch credit whole
-  purchases. A campaign on its declared coverage-gap day contributes nothing, as on every other
-  contract.
+  never exceeds the sum of the channels' halo-inclusive attributed revenue. Two consistency
+  clauses keep the feed one the query could produce (added 2026-10-22, review): no model credits
+  a channel more than its own attributed purchases or halo-inclusive sales that day, since it
+  credits only purchases the channel touched; and on a day where models credit a channel
+  different revenue, the deduplicated revenue sits below the attributed sum, since only a
+  purchase several channels touched moves between models and the attributed sum counts it once
+  per channel. The generator reads each channel's measures from the attributed-conversion
+  corpus and declares, in `shape.amc.deduplicated_attribution` of the synthetic catalog, the
+  share of each measure that comes from purchases several channels touched and how many
+  channels each touched. The day total counts those purchases once, so it is below the
+  attributed sum and the same under every model. Every model credits a channel its unshared
+  measure and a part of the shared purchases weighted by the channel's shared measure and the
+  model's declared channel weight. Linear's equal weights split each shared purchase evenly
+  across its channels, so its credit sits below each channel's own measure; first and last touch
+  credit whole purchases. A campaign on its declared coverage-gap day contributes nothing, as on
+  every other contract.
 
 ## 3. Two population tiers
 

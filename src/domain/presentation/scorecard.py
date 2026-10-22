@@ -69,6 +69,7 @@ __all__ = [
     "NETWORK_SCORECARD_ARTIFACT_TYPE",
     "NETWORK_SCORECARD_ARTIFACT_VERSION",
     "NOT_AVAILABLE",
+    "NO_DEDUPLICATED_CREDIT_REASON",
     "NO_DEDUPLICATED_CREDIT_TEXT",
     "SCORECARD_BOUNDARY",
     "SCORECARD_MARKETPLACE_LABELS",
@@ -145,6 +146,10 @@ RANKING_MODELS_DISAGREE_TEXT: Final = (
     "Not available: the attribution models credited different deduplicated totals for this "
     "window, so channels can't be ranked under each model."
 )
+RANKING_NO_CREDIT_TEXT: Final = (
+    "Not available: no channel received deduplicated credit in this window, so channels can't "
+    "be ranked under each model."
+)
 NO_DEDUPLICATED_CREDIT_TEXT: Final = "No deduplicated credit"
 """A spending channel's ranking cell under a model that credited it nothing (owner, 2026-10-22).
 
@@ -194,6 +199,10 @@ DEDUPLICATED_MODELS_DISAGREE_REASON: Final = (
 Every model credits each deduplicated purchase once, so the governed AMC query can't produce
 this; malformed input can (the rotating dev feed found 2026-10-22), and no leader is concluded
 from it."""
+NO_DEDUPLICATED_CREDIT_REASON: Final = "No channel received deduplicated credit in this window."
+"""Why the ranking isn't stated when no model credited any channel (owner, 2026-10-22).
+
+Zero credit takes no rank, so such a ranking has no leader to name under any model."""
 CHANNEL_RETURN_NO_SPEND_REASON: Final = (
     "No ad spend on this channel in this window, so there's no spend to divide its return by."
 )
@@ -687,6 +696,23 @@ def scorecard_ranking(
         distinct = sorted(set(credited.values()), reverse=True)
         ranks[key] = {channel: distinct.index(value) + 1 for channel, value in credited.items()}
         leaders.append(tuple(sorted(c for c, rank in ranks[key].items() if rank == 1)))
+    if not any(ranks.values()):
+        # No model credited any channel, so there's nothing to rank and no leader to name
+        # (owner decision 2026-10-22); each zero keeps its value and its no-credit text.
+        return ScorecardRanking(
+            ScorecardRankingOutcome.INSUFFICIENT,
+            tuple(
+                ScorecardRankingRow(
+                    channel,
+                    label,
+                    spend,
+                    tuple(ScorecardModelValue(key, name, values[key]) for key, name in models),
+                )
+                for channel, label, spend, values in rows
+            ),
+            None,
+            NO_DEDUPLICATED_CREDIT_REASON,
+        )
     ranked = tuple(
         ScorecardRankingRow(
             channel,
@@ -1085,6 +1111,14 @@ def scope_text(artifact: NetworkScorecardArtifact) -> str:
     return f"{shown}. Data through {day_text(artifact.period.end)}."
 
 
+_RANKING_ABSENCE_TEXTS: Final = {
+    DEDUPLICATED_WITHHELD_REASON: RANKING_WITHHELD_TEXT,
+    DEDUPLICATED_MODELS_DISAGREE_REASON: RANKING_MODELS_DISAGREE_TEXT,
+    NO_DEDUPLICATED_CREDIT_REASON: RANKING_NO_CREDIT_TEXT,
+}
+"""An insufficient ranking's fixed sentence per reason; any other reason reads as missing."""
+
+
 def ranking_outcome_text(card: NetworkCard) -> str:
     """Write the ranking's one-sentence answer from its outcome and the card's channels."""
     ranking = card.ranking
@@ -1092,13 +1126,7 @@ def ranking_outcome_text(card: NetworkCard) -> str:
         if ranking.absence_reason == CHANNEL_RETURN_NO_SPEND_REASON:
             unspent = [row.channel_label for row in ranking.rows if row.spend == 0]
             return f"{RANKING_NO_SPEND_LEAD} {_listed(unspent)} {RANKING_NO_SPEND_TAIL}"
-        if ranking.absence_reason == DEDUPLICATED_MODELS_DISAGREE_REASON:
-            return RANKING_MODELS_DISAGREE_TEXT
-        return (
-            RANKING_WITHHELD_TEXT
-            if ranking.absence_reason == DEDUPLICATED_WITHHELD_REASON
-            else RANKING_MISSING_TEXT
-        )
+        return _RANKING_ABSENCE_TEXTS.get(ranking.absence_reason or "", RANKING_MISSING_TEXT)
     if ranking.outcome is ScorecardRankingOutcome.MODEL_SENSITIVE:
         return RANKING_SENSITIVE_TEXT
     leader = next(
