@@ -606,7 +606,7 @@ def test_no_bake_source_or_counter_reads_a_wall_clock_and_one_legacy_wall_caller
     )
     assert pinned == {
         "adapters.jobs.preset_artifact_publisher.graph_bake.GraphBakeCoordinator._selected_and_pinned",
-        "adapters.jobs.preset_artifact_publisher.graph_bake.GraphBakeTaskWork.effect_for",
+        "adapters.jobs.preset_artifact_publisher.graph_bake.GraphBakeTaskWork._effect",
     }
     # Control: a synthetic source with its own `_clock` is reported.
     assert _ambient_clock("from datetime import datetime\ndef _clock():\n    return 1\n")
