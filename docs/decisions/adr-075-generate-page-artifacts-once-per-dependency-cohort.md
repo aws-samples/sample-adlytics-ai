@@ -3,6 +3,12 @@
 Date: 2026-09-19
 Status: Accepted 2026-09-19 — Stage 0 observation baseline dev-accepted 2026-09-19; Stage 1 write discipline (§6) implemented and dev-accepted 2026-09-21; Stages 2–5 (§1–5, §7–8) pending
 
+> **Amendment, 2026-10-22 — §6 statement composition.** §6's "fewest statements" consolidation
+> is amended by [ADR-149](adr-149-write-each-table-unit-with-one-set-based-merge-from-a-staged-object.md):
+> each table unit writes with one set-based `MERGE` from a content-addressed staged object and one
+> set-based verification, whatever its rows. The caps, the lease and fence, the attempt protocol
+> and the servable pointer are unchanged.
+
 > **Withdrawn amendment, 2026-10-10, withdrawn 2026-10-11 — a bounded in-process wait for a
 > busy partition lease (TD-61, FEAT-010).** The 2026-10-10 proposal let the GRAPH
 > `materialize_raw` delivery wait in Lambda for a busy canonical-partition lease

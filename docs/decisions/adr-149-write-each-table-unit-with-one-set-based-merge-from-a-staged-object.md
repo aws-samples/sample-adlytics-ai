@@ -6,7 +6,8 @@ publication. On 2026-10-21 the owner approved the dev scratch probe, the staging
 the IAM grants, a 7-day staging retention and the equal-or-both-NULL comparison of decision 2.
 The probe ran on 2026-10-22 with synthetic rows: both writers' rows were identical on Athena and
 the approved grants sufficed. The two row ceilings in decision 7 come from that probe's timings
-and a local memory measurement. Not implemented or deployed.
+and a local memory measurement. Implemented on the ingestion branch on 2026-10-22 (FEAT-010);
+not deployed.
 
 ## Context
 ADR-075 §6 consolidates a table's immutable-record merges "into the fewest statements" the
