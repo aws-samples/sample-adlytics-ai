@@ -33,14 +33,14 @@ test('the committed route manifest decodes, and Prompt administration needs its 
 
 test('routes resolve with or without the trailing slash, and the root resolves to its owner tab', () => {
   assert.equal(locateRoute('/retail-health')?.tab.tab_id, 'retail-health');
-  assert.equal(locateRoute('/')?.tab.tab_id, 'campaigns');
+  assert.equal(locateRoute('/')?.tab.tab_id, 'scorecard');
   assert.equal(locateRoute('/channel-performance/'), null);
-  assert.equal(rootTab().label, 'Campaigns');
+  assert.equal(rootTab().label, 'Scorecard');
 });
 
 test('an exported index.html locates as its route, as the edge serves it; other dotted paths do not', () => {
   // ADR-123: the edge passes a dotted leaf through, so `<route>index.html` serves the route's page.
-  assert.equal(locateRoute('/index.html')?.tab.tab_id, 'campaigns');
+  assert.equal(locateRoute('/index.html')?.tab.tab_id, 'scorecard');
   assert.equal(locateRoute('/campaigns/index.html')?.tab.tab_id, 'campaigns');
   assert.equal(locateRoute('/retail-health/index.html')?.tab.tab_id, 'retail-health');
   assert.equal(locateRoute('/reach/index.html')?.tab.tab_id, 'reach');

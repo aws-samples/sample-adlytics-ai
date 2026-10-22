@@ -44,7 +44,7 @@ v2 sections [proposal for the ids the information architecture didn't name], in 
 | Field | Value |
 |---|---|
 | `candidate_presets` | `[7d, 30d, last_complete_week, last_complete_month]`; custom disabled |
-| `default_preset` | `7d` |
+| `default_preset` | `last_complete_week`: the page opens on Last full week (OD-UX-6, 2026-10-22). A rolling preset still resolves on its own when chosen |
 | `comparison_policy` | `optional_equal_prior`, which applies on the rolling presets only. A calendar preset shows no comparison: `status: not_applicable`, reason `calendar_period_selected` |
 | `display_grains` | `[period]` |
 | `temporal_control_version` | 2, because of the calendar presets and the section `declared_periods` [repo: `src/domain/presentation/page_schemas.py:1196-1204`] |

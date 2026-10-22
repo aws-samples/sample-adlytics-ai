@@ -75,8 +75,8 @@ test('the page: h1, one sentence, "Go to {root tab}" and the customer hubs only'
   assert.equal(document.activeElement, heading);
   assert.equal(screen.getAllByRole('heading', { level: 1 }).length, 1);
   assert.ok(screen.getByText("This page doesn't exist or has moved."));
-  // The root tab's own label: Campaigns until Overview ships at "/".
-  const root = screen.getByRole('link', { name: 'Go to Campaigns' });
+  // The root tab's own label: Scorecard until Overview ships at "/" (OD-UX-3).
+  const root = screen.getByRole('link', { name: 'Go to Scorecard' });
   assert.equal(root.getAttribute('href'), '/');
   assert.equal(root.className, 'btn primary');
   const hubs = screen.getByRole('heading', { level: 2, name: 'Hubs' }).nextElementSibling as HTMLElement;

@@ -55,8 +55,10 @@ def test_negotiated_declarations_load_frozen_v1_and_canonical_v2_independently()
         "audiences",
     )
     assert all(page.route.startswith("/") and page.route.endswith("/") for page in v2.pages)
-    assert v2.pages[0].compatibility_routes == ("/",)
-    assert all(not page.compatibility_routes for page in v2.pages[1:])
+    owners = {
+        page.page_id: page.compatibility_routes for page in v2.pages if page.compatibility_routes
+    }
+    assert owners == {"scorecard": ("/",)}
 
 
 def test_v2_generator_projects_temporal_artifacts_visuals_and_section_roles(tmp_path: Path) -> None:

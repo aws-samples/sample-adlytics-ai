@@ -177,7 +177,8 @@ landmark order, h1 focus and `document.title` on a route change; sentence-case n
 10. Detail opens in place with the campaign as h1, the channel as a pill and Back closing it. The deep
     section renders or shows a neutral callout, failures show at the top with focus, a Reach slot
     shows on the 1-day preset, and the channel step targets the Scorecard.
-11. `/` stops rendering Campaigns and becomes the Overview.
+11. `/` stops rendering Campaigns and becomes the Overview. Until the Overview ships, `/` opens the
+    Scorecard (OD-UX-3, 2026-10-22): `scorecard` owns `compatibility_routes: ["/"]` in `pages.yaml`.
 
 **Retail health.** One-tab hub header; products table titled "Shipped revenue per product", with the
 title first and ASIN second, a per-row Stale pill and stacked rows when narrow; server change chips;

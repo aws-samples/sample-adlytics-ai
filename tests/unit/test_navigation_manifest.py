@@ -87,7 +87,7 @@ def test_only_hubs_with_a_shipped_tab_are_listed_in_navigation_order() -> None:
         "/retail-health/",
         "/admin/prompts/",
     ]
-    assert manifest["root"] == {"route": "/", "tab_id": "campaigns"}
+    assert manifest["root"] == {"route": "/", "tab_id": "scorecard"}
 
 
 def test_a_page_without_a_navigation_block_is_not_routed() -> None:

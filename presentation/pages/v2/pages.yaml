@@ -9,7 +9,7 @@ pages:
     primary_job: Select an authorized campaign and review its attributed outcome and delivery evidence.
     mode: selectable_parent_child
     boundary_required: true
-    compatibility_routes: ["/"]
+    compatibility_routes: []
     navigation:
       hub_id: performance
       tab_label: Campaigns
@@ -316,7 +316,7 @@ pages:
     primary_job: See which channels return most inside each network, whether the ranking holds under every attribution model, and where ad spend stands against retail sales.
     mode: selectable
     boundary_required: true
-    compatibility_routes: []
+    compatibility_routes: ["/"]
     navigation:
       hub_id: performance
       tab_label: Scorecard
@@ -384,7 +384,7 @@ pages:
           - Which channel had the highest new-to-brand share in {window}?
     temporal_policy:
       candidate_presets: [7d, 30d, last_complete_week, last_complete_month]
-      default_preset: 7d
+      default_preset: last_complete_week
       custom:
         enabled: false
         min_duration_days: 1

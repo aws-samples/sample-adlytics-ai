@@ -556,8 +556,8 @@ def load_v2_page_bindings(  # noqa: PLR0912, PLR0915 -- exact wire-shape validat
     if routes & compatibility_routes:
         raise PageSchemaError("V2 compatibility routes must not be analytical bindings.")
     root_owners = tuple(page.page_id for page in pages if "/" in page.compatibility_routes)
-    if root_owners != ("campaigns",):
-        raise PageSchemaError("V2 root compatibility route must resolve only to campaigns.")
+    if root_owners != ("scorecard",):
+        raise PageSchemaError("V2 root compatibility route must resolve only to scorecard.")
     for page in pages:
         if any(action.target_route not in routes for action in page.actions):
             raise PageSchemaError("V2 action targets an unknown route.")

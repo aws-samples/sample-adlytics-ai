@@ -484,8 +484,8 @@ export function parsePageBindings(value: unknown): readonly PageBinding[] {
   const rootCompatibilityOwners = parsed
     .filter((page) => page.compatibility_routes.includes('/'))
     .map((page) => page.page_id);
-  if (rootCompatibilityOwners.length !== 1 || rootCompatibilityOwners[0] !== 'campaigns') {
-    throw new TypeError('Root compatibility route must resolve only to Campaign Portfolio.');
+  if (rootCompatibilityOwners.length !== 1 || rootCompatibilityOwners[0] !== 'scorecard') {
+    throw new TypeError('Root compatibility route must resolve only to Scorecard.');
   }
   return parsed;
 }

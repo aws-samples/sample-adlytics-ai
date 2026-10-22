@@ -2,5 +2,5 @@
 import { PresentationApp } from '@/features/PresentationApp';
 
 export default function Page() {
-  return <PresentationApp route="campaigns"/>;
+  return <PresentationApp route="scorecard"/>;
 }

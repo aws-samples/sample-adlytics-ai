@@ -1357,9 +1357,9 @@ class PresentationPageSchemaSet:
                 "V2 presentation compatibility routes must not be canonical analytical routes."
             )
         root_owners = tuple(page.page_id for page in self.pages if "/" in page.compatibility_routes)
-        if root_owners != ("campaigns",):
+        if root_owners != ("scorecard",):
             raise PageSchemaError(
-                "V2 presentation root compatibility route must resolve only to campaigns."
+                "V2 presentation root compatibility route must resolve only to scorecard."
             )
         page_ids = {page.page_id for page in self.pages}
         for page in self.pages:

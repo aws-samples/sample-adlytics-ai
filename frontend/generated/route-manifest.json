@@ -123,7 +123,7 @@
   ],
   "root": {
     "route": "/",
-    "tab_id": "campaigns"
+    "tab_id": "scorecard"
   },
   "version": 1
 }

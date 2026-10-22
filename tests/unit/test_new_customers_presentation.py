@@ -81,6 +81,7 @@ WINDOWS = {
     "last_complete_month": MONTH.window,
 }
 SD: tuple[str, str] = ("amazon_sponsored_display", "sponsored_display")
+SEVEN_DAY_SELECTION = {"temporal_selection": {"kind": "preset", "preset_id": "7d"}}
 WEEK_SELECTION = {"temporal_selection": {"kind": "preset", "preset_id": "last_complete_week"}}
 MONTH_SELECTION = {"temporal_selection": {"kind": "preset", "preset_id": "last_complete_month"}}
 
@@ -381,7 +382,7 @@ def test_a_rolling_preset_serves_its_baked_body_with_a_version_2_control(
     presentation_module: _PresentationModule,  # noqa: F811
 ) -> None:
     stores = _Stores({"7d": _publication("7d")})
-    body = _ok(_serve(presentation_module, stores))
+    body = _ok(_serve(presentation_module, stores, SEVEN_DAY_SELECTION))
     temporal = body["temporal"]
     assert temporal["version"] == 2
     assert [preset["id"] for preset in temporal["presets"]] == [
@@ -409,7 +410,11 @@ def test_an_empty_lake_serves_the_designed_absence_for_every_new_customers_prese
 ) -> None:
     """A new deployment: no bake and no source coverage. `NOW` is Sep 23, 2026."""
     stores = _Stores({})
-    default = _ok(_serve(presentation_module, stores, covered=()))
+    # The bare request opens Last full week (OD-UX-6), which reads as its calendar-period absence.
+    bare = _ok(_serve(presentation_module, stores, covered=()))
+    week = _ok(_serve(presentation_module, stores, WEEK_SELECTION, covered=()))
+    assert bare["reason_code"] == week["reason_code"] == "no_complete_period_measured"
+    default = _ok(_serve(presentation_module, stores, SEVEN_DAY_SELECTION, covered=()))
     assert (default["kind"], default["reason_code"]) == ("window_unavailable", "preset_unavailable")
     # ABS-NC-1 (`docs/ui/page-absence-copy.md`): the source never delivered, so no other window.
     expected = absence_message(
@@ -451,7 +456,9 @@ def test_each_pointer_names_its_window_so_the_control_dates_every_baked_preset(
         payload = json.loads(publication.body.payload_json)
         assert pointer.resolved_window == _served_window(payload["period"]), variant
         assert pointer.comparison_window == _served_window(payload["prior_period"]), variant
-    presets = _ok(_serve(presentation_module, _Stores(every)))["temporal"]["presets"]
+    presets = _ok(_serve(presentation_module, _Stores(every), SEVEN_DAY_SELECTION))["temporal"][
+        "presets"
+    ]
     shown = {preset["id"]: (preset["window"], preset["period_label"]) for preset in presets}
     assert shown == {
         "7d": ({"start": "2026-09-14", "end": "2026-09-20"}, None),
@@ -477,7 +484,9 @@ def test_each_pointer_names_its_window_so_the_control_dates_every_baked_preset(
         )
         for variant, publication in every.items()
     }
-    presets = _ok(_serve(presentation_module, _Stores(bare)))["temporal"]["presets"]
+    presets = _ok(_serve(presentation_module, _Stores(bare), SEVEN_DAY_SELECTION))["temporal"][
+        "presets"
+    ]
     assert [preset["window"] for preset in presets[1:]] == [None, None, None]
 
 
@@ -604,7 +613,7 @@ def test_the_artifact_s_page_context_is_the_envelope_s_and_the_bake_names_the_sa
     presentation_module: _PresentationModule,  # noqa: F811
 ) -> None:
     """Plan D5: the envelope renders; the artifact's own fields equal it, so drift fails here."""
-    for variant, selection in (("7d", None), ("last_complete_week", WEEK_SELECTION)):
+    for variant, selection in (("7d", SEVEN_DAY_SELECTION), ("last_complete_week", WEEK_SELECTION)):
         publication = _publication(variant)
         baked = json.loads(publication.body.payload_json)
         page = _ok(_serve(presentation_module, _Stores({variant: publication}), selection))["page"]
@@ -618,7 +627,7 @@ def test_the_artifact_s_page_context_is_the_envelope_s_and_the_bake_names_the_sa
     with _delivery({}):
         empty = _publication("7d")
     assert json.loads(empty.body.payload_json)["starter_questions"]
-    page = _ok(_serve(presentation_module, _Stores({"7d": empty})))["page"]
+    page = _ok(_serve(presentation_module, _Stores({"7d": empty}), SEVEN_DAY_SELECTION))["page"]
     assert page["starter_questions"] == page["artifact"]["starter_questions"] == []
 
 
@@ -717,7 +726,7 @@ def browser_fixture_responses(module: _PresentationModule) -> dict[str, dict[str
         return _body(_serve(module, _Stores({**every, "last_complete_week": body}), WEEK_SELECTION))
 
     responses = {
-        "new-customers-7d-v2.json": _body(_serve(module, stores)),
+        "new-customers-7d-v2.json": _body(_serve(module, stores, SEVEN_DAY_SELECTION)),
         "new-customers-30d-v2.json": _body(
             _serve(module, stores, {"temporal_selection": {"kind": "preset", "preset_id": "30d"}})
         ),
@@ -769,7 +778,7 @@ def browser_fixture_responses(module: _PresentationModule) -> dict[str, dict[str
         # NC-14 and NC-15: the source tests' state, where Sponsored Brands delivered with no
         # conversion row (true zeros and the step-1 absences) and has no gateway purchases.
         "new-customers-step-1-absences-v2.json": _body(
-            _serve(module, _Stores({"7d": _publication("7d")}))
+            _serve(module, _Stores({"7d": _publication("7d")}), SEVEN_DAY_SELECTION)
         ),
         "new-customers-gateway-not-covered-v2.json": _gateway_uncovered(
             module, {nc.PERIOD.start: 1}
@@ -780,7 +789,9 @@ def browser_fixture_responses(module: _PresentationModule) -> dict[str, dict[str
         # NC-16: two marketplaces in two currencies, each section once per marketplace.
         "new-customers-two-marketplaces-v2.json": _two_marketplaces(module),
         # NC-23: a rolling preset where no share moved by the threshold (NC-GATE-101's control).
-        "new-customers-rolling-quiet-v2.json": _body(_serve(module, _Stores({"7d": _quiet_7d()}))),
+        "new-customers-rolling-quiet-v2.json": _body(
+            _serve(module, _Stores({"7d": _quiet_7d()}), SEVEN_DAY_SELECTION)
+        ),
         # NC-17: no complete month measured yet, and a month whose bake is pending.
         "new-customers-no-period-v2.json": _body(
             _serve(
@@ -799,7 +810,7 @@ def browser_fixture_responses(module: _PresentationModule) -> dict[str, dict[str
     # NC-18: no ad product delivered in the window: the bake's outcome is `empty`.
     with _delivery({}):
         responses["new-customers-empty-v2.json"] = _body(
-            _serve(module, _Stores({"7d": _publication("7d")}))
+            _serve(module, _Stores({"7d": _publication("7d")}), SEVEN_DAY_SELECTION)
         )
     return responses
 
@@ -843,7 +854,7 @@ def test_a_calendar_preset_s_quiet_insight_says_nothing_was_compared(
             "No comparison for calendar periods.",
         ), selection
     # Paired control: a rolling preset where nothing moved still serves the silence condition.
-    artifact = _ok(_serve(presentation_module, stores))["page"]["artifact"]
+    artifact = _ok(_serve(presentation_module, stores, SEVEN_DAY_SELECTION))["page"]["artifact"]
     assert artifact["prior_period"] is not None
     assert artifact["insight_cards"] == []
     (slot,) = artifact["insights"]
@@ -897,7 +908,7 @@ def _gateway_uncovered(
 ) -> dict[str, Any]:
     with _mockup():
         body = _publication("7d", titled=True, coverage=nc._Coverage(overrides=overrides))  # pyright: ignore[reportPrivateUsage]
-    return _body(_serve(module, _Stores({"7d": body})))
+    return _body(_serve(module, _Stores({"7d": body}), SEVEN_DAY_SELECTION))
 
 
 def _two_marketplaces(module: _PresentationModule) -> dict[str, Any]:
@@ -914,7 +925,7 @@ def _two_marketplaces(module: _PresentationModule) -> dict[str, Any]:
             doubled=frozenset({nc.UK}),
             labels=labels,
         )
-    return _body(_serve(module, _Stores({"7d": body})))
+    return _body(_serve(module, _Stores({"7d": body}), SEVEN_DAY_SELECTION))
 
 
 def test_the_browser_fixtures_are_the_servers_own_new_customers_responses(

@@ -105,7 +105,7 @@ test('navigation comes from the route manifest and lists only hubs with a shippe
   const hubs = screen.getByRole('navigation', { name: 'Hubs' });
   const links = within(hubs).getAllByRole('link');
   assert.deepEqual(links.map((link) => [link.getAttribute('aria-label'), link.getAttribute('href')]), [
-    ['Adlytics AI, go to Campaigns', '/'],
+    ['Adlytics AI, go to Scorecard', '/'],
     // UI slice 9a: the Scorecard is the Performance hub's first tab.
     ['Performance', '/scorecard/'],
     ['Reach and audiences', '/reach/'],
@@ -156,10 +156,10 @@ test('landmarks come in order and the h1 is the tab name, focused on a route cha
   assert.equal(screen.queryByRole('navigation', { name: /Sections of/ }), null);
 });
 
-test('the root route is the campaigns tab until the Overview ships', () => {
+test('the root route is the scorecard tab until the Overview ships (OD-UX-3)', () => {
   installMediaQuery();
   render(shell('/'));
-  assert.ok(screen.getByRole('heading', { level: 1, name: 'Campaigns' }));
+  assert.ok(screen.getByRole('heading', { level: 1, name: 'Scorecard' }));
 });
 
 test('a direct visit without the entitlement names only the page and marks no navigation current', () => {

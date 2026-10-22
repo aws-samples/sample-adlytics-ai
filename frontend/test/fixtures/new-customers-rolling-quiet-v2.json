@@ -625,10 +625,10 @@
       "as_of_month": null,
       "display_grain": "period",
       "period_label": null,
-      "reporting_window_status": "preferred_default",
+      "reporting_window_status": "user_selected",
       "selection": {
-        "kind": "default",
-        "preset_id": null
+        "kind": "preset",
+        "preset_id": "7d"
       },
       "window": {
         "end": "2026-09-20",
