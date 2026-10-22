@@ -47,6 +47,7 @@ from domain.presentation.preset_artifacts import (
     PresetArtifactPointer,
     PresetArtifactRevision,
     PresetArtifactVariant,
+    split_parent_custody,
 )
 from domain.presentation.retail_health import retail_health_artifact_from_payload
 from domain.presentation.retail_health_custody import retail_health_custody_manifest_from_payload
@@ -202,7 +203,8 @@ class StagedArtifactInsightPlanner:
             raise ValueError("an available readiness entry has no immutable manifest.")
         manifest = self.custody.read(pointer)
         payload: object = json.loads(body.payload_json)
-        private: object = json.loads(manifest.payload_json)
+        # The page's own fields; the stage's sibling index binds only the siblings (ADR-145).
+        private, _ = split_parent_custody(manifest)
         if entry.page == "campaigns":
             attested = campaign_custody_manifest_from_payload(private)
             derived, _ = portfolio_insight_request_derivation(

@@ -23,6 +23,7 @@ from campaign_channel_filter_support import (
     _f,  # pyright: ignore[reportPrivateUsage]
     filter_siblings,
 )
+from preset_artifact_support import staged_custody, staged_index, staged_pointer
 from test_campaign_preset_source import (
     CAMPAIGN_POLICY,
     REQUIREMENT,
@@ -70,6 +71,7 @@ from domain.presentation.preset_artifacts import (
     PresetArtifactBody,
     PresetArtifactCustodyManifest,
     PresetArtifactFilterIdentity,
+    PresetArtifactIndexShardIdentity,
     PresetArtifactPage,
     PresetArtifactPointer,
     PresetArtifactPointerRosterRequest,
@@ -81,6 +83,8 @@ from domain.presentation.preset_artifacts import (
     PresetArtifactSiblingReadRequest,
     PresetArtifactVariant,
     canonical_preset_artifact_json,
+    index_shard_descriptors,
+    split_parent_custody,
 )
 from domain.semantics.analytical_resolution import (
     AuthorizedAnalyticalScope,
@@ -184,10 +188,12 @@ def test_one_bake_binds_every_filter_sibling_under_one_pointer_and_its_custody()
         "All channels",
         "Sponsored ads (all sponsored channels)",
     )
+    pairs = tuple(request.siblings)
+    assert len(pairs) == request.siblings.count
     filters = {
-        _filter_of(item): item
-        for item in request.sibling_bodies
-        if isinstance(item.identity, PresetArtifactFilterIdentity)
+        _filter_of(public): public
+        for public, _ in pairs
+        if isinstance(public.identity, PresetArtifactFilterIdentity)
     }
     assert set(filters) == set(offered) - {"all"}
     for filter_id, sibling in filters.items():
@@ -195,41 +201,42 @@ def test_one_bake_binds_every_filter_sibling_under_one_pointer_and_its_custody()
             f"pages/campaigns/7d/{request.body.revision.value}/filters/{filter_id}.json"
         )
         assert sibling.revision == request.body.revision
-    # All-channels custody is the closed set of every other filter, each bound by digest.
-    assert request.custody is not None
-    manifest = campaign_custody_manifest_from_payload(json.loads(request.custody.payload_json))
+    # ADR-145: All-channels custody is its own rows plus the sibling index, which binds every
+    # filter sibling and every segment by digest; a filter's own custody carries its rows only.
+    custody = staged_custody(request)
+    assert custody is not None
+    header, _ = split_parent_custody(custody)
+    manifest = campaign_custody_manifest_from_payload(header)
     assert manifest.body_digest == request.body.digest
-    bound = {
-        cast("PresetArtifactFilterIdentity", item.identity).filter_id: item
-        for item in manifest.filter_siblings or ()
+    indexed = {
+        item.identity: item
+        for shard, entry in staged_index(request)
+        for item in index_shard_descriptors(shard, entry)
     }
-    assert set(bound) == set(filters)
-    custody_by_identity = {item.identity: item for item in request.sibling_custody}
-    for filter_id, descriptor in bound.items():
-        assert descriptor.body_digest == filters[filter_id].digest
+    assert set(indexed) == {public.identity for public, _ in pairs}
+    custody_by_identity = {private.identity: private for _, private in pairs}
+    for filter_id, sibling in filters.items():
+        descriptor = indexed[PresetArtifactFilterIdentity(filter_id)]
+        assert descriptor.body_digest == sibling.digest
         private = custody_by_identity[descriptor.identity]
         assert descriptor.custody_digest == private.digest
         sibling_manifest = campaign_custody_manifest_from_payload(json.loads(private.payload_json))
-        assert sibling_manifest.body_digest == filters[filter_id].digest
-        assert sibling_manifest.filter_siblings == ()
+        assert sibling_manifest.body_digest == sibling.digest
     # Each filter's segments live under its own filter in the segment identity.
     segments = [
-        item.identity
-        for item in request.sibling_bodies
-        if isinstance(item.identity, PresetArtifactSiblingIdentity)
+        public.identity
+        for public, _ in pairs
+        if isinstance(public.identity, PresetArtifactSiblingIdentity)
     ]
     assert {item.filter_id for item in segments} == set(offered)
-    first = next(item for item in request.sibling_bodies if item.identity in segments)
+    first = next(public for public, _ in pairs if public.identity in segments)
     assert "/segments/" in first.key
     assert first.key.split("/segments/")[1].startswith(
         f"{cast('PresetArtifactSiblingIdentity', first.identity).filter_id}/"
     )
-    # The pointer binds All channels, unchanged in shape.
-    pointer = request.pointer_advance.pointer
-    assert (pointer.body_digest, pointer.custody_digest) == (
-        request.body.digest,
-        request.custody.digest,
-    )
+    # The pointer binds All channels, unchanged in shape, with the staged custody's digest.
+    pointer = staged_pointer(request)
+    assert (pointer.body_digest, pointer.custody_digest) == (request.body.digest, custody.digest)
 
 
 @pytest.mark.covers("ADR-127")
@@ -454,7 +461,7 @@ class _Stores:
 
     @property
     def pointer(self) -> PresetArtifactPointer:
-        return self.request.pointer_advance.pointer
+        return staged_pointer(self.request)
 
     def current(self, page: PresetArtifactPage, variant: PresetArtifactVariant):
         return (
@@ -472,9 +479,9 @@ class _Stores:
 
     def read_sibling(self, request: PresetArtifactSiblingReadRequest) -> PresetArtifactSiblingBody:
         body = next(
-            item
-            for item in self.request.sibling_bodies
-            if item.identity == request.descriptor.identity
+            public
+            for public, _ in self.request.siblings
+            if public.identity == request.descriptor.identity
         )
         if (
             isinstance(body.identity, PresetArtifactFilterIdentity)
@@ -492,17 +499,17 @@ class _Custody:
 
     def read(self, pointer: PresetArtifactPointer) -> PresetArtifactCustodyManifest:
         del pointer
-        assert self.request.custody is not None
-        return self.request.custody
+        custody = staged_custody(self.request)
+        assert custody is not None
+        return custody
 
     def read_sibling(
         self, request: PresetArtifactSiblingReadRequest
     ) -> PresetArtifactSiblingCustody:
-        return next(
-            item
-            for item in self.request.sibling_custody
-            if item.identity == request.descriptor.identity
-        )
+        identity = request.descriptor.identity
+        if isinstance(identity, PresetArtifactIndexShardIdentity):
+            return staged_index(self.request)[identity.shard_index][0]
+        return next(private for _, private in self.request.siblings if private.identity == identity)
 
 
 _TOKENS = tuple(f"{letter * 43}" for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ")

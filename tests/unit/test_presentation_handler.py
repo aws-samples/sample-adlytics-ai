@@ -29,6 +29,7 @@ from campaign_portfolio_support import (
 from change_support import SEMANTICS, as_retained
 from dynamodb_reserved_words import guard_reserved_words
 from insight_key_support import FICTIONAL_INPUT_DIGEST
+from preset_artifact_support import indexed_parent_custody
 from publication_support import StubPublications
 from test_publication_selection import RecordingCurrent
 
@@ -127,6 +128,7 @@ from domain.presentation.next_steps import CampaignKeyTarget, campaign_step_key
 from domain.presentation.preset_artifacts import (
     PresetArtifactBody,
     PresetArtifactCustodyManifest,
+    PresetArtifactIndexShardIdentity,
     PresetArtifactPage,
     PresetArtifactPointer,
     PresetArtifactPointerRosterRequest,
@@ -134,11 +136,12 @@ from domain.presentation.preset_artifacts import (
     PresetArtifactRevision,
     PresetArtifactSiblingBody,
     PresetArtifactSiblingCustody,
-    PresetArtifactSiblingDescriptor,
     PresetArtifactSiblingIdentity,
+    PresetArtifactSiblingPair,
     PresetArtifactSiblingReadRequest,
     PresetArtifactVariant,
     canonical_preset_artifact_json,
+    split_parent_custody,
 )
 from domain.presentation.retail_health import (
     RETAIL_HEALTH_INSIGHT_IDS,
@@ -167,7 +170,6 @@ from domain.presentation.retail_health import (
 from domain.presentation.retail_health_custody import (
     RetailHealthCustodyManifest,
     RetailHealthCustodyProduct,
-    RetailProductChildDigests,
     product_ref_for,
     retail_health_custody_manifest_payload,
 )
@@ -496,10 +498,27 @@ def _campaign_preset_artifact(
     return PresetArtifactPointer(body.page, body.variant, body.revision, body.digest, 1), body
 
 
+_INDEXED: dict[str, tuple[PresetArtifactSiblingCustody, ...]] = {}
+"""Each fixture parent custody's index shards, by its digest, as the stage writes them."""
+
+
+def _indexed_custody(
+    body: PresetArtifactBody,
+    header: dict[str, object],
+    pairs: tuple[PresetArtifactSiblingPair, ...] = (),
+) -> PresetArtifactCustodyManifest:
+    """Return the parent custody the stage builds for `pairs`, keeping its shards to serve."""
+    custody, shards = indexed_parent_custody(body, header, pairs)
+    _INDEXED[custody.digest] = shards
+    return custody
+
+
 @dataclass
 class RecordingCustodyStore:
     manifest: PresetArtifactCustodyManifest | None
     sibling: PresetArtifactSiblingCustody | None = None
+    shards: tuple[PresetArtifactSiblingCustody, ...] | None = None
+    """Overrides the index shards the fixture wrote (a tampered or missing shard)."""
     reads: list[PresetArtifactPointer] = field(
         default_factory=lambda: cast("list[PresetArtifactPointer]", [])
     )
@@ -525,6 +544,17 @@ class RecordingCustodyStore:
         self, request: PresetArtifactSiblingReadRequest
     ) -> PresetArtifactSiblingCustody:
         self.sibling_reads.append(request)
+        identity = request.descriptor.identity
+        if isinstance(identity, PresetArtifactIndexShardIdentity):
+            # ADR-145: the parent custody's index shards, as the fixture's stage wrote them.
+            shards = (
+                self.shards
+                if self.shards is not None
+                else _INDEXED.get("" if self.manifest is None else self.manifest.digest, ())
+            )
+            if identity.shard_index >= len(shards):
+                raise InvariantError(ErrorCode("FICTIONAL", 9), "no such index shard")
+            return shards[identity.shard_index]
         if self.sibling is None:
             raise AssertionError("no sibling custody was configured")
         return self.sibling
@@ -552,16 +582,12 @@ def _campaign_preset_artifact_with_custody(
         revision,
         canonical_preset_artifact_json(campaign_portfolio_artifact_payload(artifact)),
     )
-    custody = PresetArtifactCustodyManifest(
-        body.page,
-        body.variant,
-        revision,
-        canonical_preset_artifact_json(
-            campaign_custody_manifest_payload(
-                CampaignCustodyManifest(
-                    body.digest,
-                    (CampaignCustodyRow(CAMPAIGN, channel, MARKETPLACE, signature),),
-                )
+    custody = _indexed_custody(
+        body,
+        campaign_custody_manifest_payload(
+            CampaignCustodyManifest(
+                body.digest,
+                (CampaignCustodyRow(CAMPAIGN, channel, MARKETPLACE, signature),),
             )
         ),
     )
@@ -638,7 +664,7 @@ def _segmented_campaign_preset_artifact(
     revision = PresetArtifactRevision.from_publication_identities(("segmented-publication",))
     page = PresetArtifactPage("campaigns")
     variant = PresetArtifactVariant("7d")
-    identity = PresetArtifactSiblingIdentity("name-asc", 0)
+    identity = PresetArtifactSiblingIdentity("name-asc", 0, "all")
     sibling_body = PresetArtifactSiblingBody(
         page,
         variant,
@@ -666,9 +692,6 @@ def _segmented_campaign_preset_artifact(
         identity,
         canonical_preset_artifact_json(campaign_custody_manifest_payload(sibling_manifest)),
     )
-    descriptor = PresetArtifactSiblingDescriptor(
-        identity, sibling_body.digest, sibling_custody.digest
-    )
     body = PresetArtifactBody(
         page,
         variant,
@@ -677,24 +700,20 @@ def _segmented_campaign_preset_artifact(
             _baked(campaign_portfolio_artifact_payload(canonical), retired)
         ),
     )
-    custody = PresetArtifactCustodyManifest(
-        page,
-        variant,
-        revision,
-        canonical_preset_artifact_json(
-            campaign_custody_manifest_payload(
-                CampaignCustodyManifest(
-                    body.digest,
-                    tuple(
-                        CampaignCustodyRow(
-                            by_signature[row.signature], CHANNEL, MARKETPLACE, row.signature
-                        )
-                        for row in canonical.rows
-                    ),
-                    (descriptor,),
-                )
+    custody = _indexed_custody(
+        body,
+        campaign_custody_manifest_payload(
+            CampaignCustodyManifest(
+                body.digest,
+                tuple(
+                    CampaignCustodyRow(
+                        by_signature[row.signature], CHANNEL, MARKETPLACE, row.signature
+                    )
+                    for row in canonical.rows
+                ),
             )
         ),
+        ((sibling_body, sibling_custody),),
     )
     pointer = PresetArtifactPointer(page, variant, revision, body.digest, 1, None, custody.digest)
     return pointer, body, custody, sibling_body, sibling_custody
@@ -5232,22 +5251,9 @@ def _retail_parent_custody(
             for row in artifact.rows
         )
     )
-    return PresetArtifactCustodyManifest(
-        body.page,
-        body.variant,
-        body.revision,
-        canonical_preset_artifact_json(
-            retail_health_custody_manifest_payload(
-                RetailHealthCustodyManifest(
-                    body.digest,
-                    products,
-                    tuple(
-                        (item.product_ref, RetailProductChildDigests("a" * 64, "b" * 64))
-                        for item in products
-                    ),
-                )
-            )
-        ),
+    return _indexed_custody(
+        body,
+        retail_health_custody_manifest_payload(RetailHealthCustodyManifest(body.digest, products)),
     )
 
 
@@ -6499,68 +6505,47 @@ def test_every_focus_metric_builds_findings_its_contract_declares(
 
 
 @pytest.mark.covers("ADR-071")
-def test_retained_format_three_parent_serves_during_forward_pointer_rollout(
+def test_a_parent_custody_without_its_sibling_index_is_malformed_never_a_retained_slice(
     presentation_module: _PresentationModule,
 ) -> None:
-    pointer, current_body, current_custody = _campaign_preset_artifact_with_custody()
-    public_payload = cast("dict[str, object]", json.loads(current_body.payload_json))
-    public_payload["roster"] = [
-        {
-            "channel": "Fictional channel",
-            "marketplace": "United States",
-            "name": "Fictional Campaign 001",
-            "position": 0,
-        }
-    ]
-    legacy_body = PresetArtifactBody(
-        current_body.page,
-        current_body.variant,
-        current_body.revision,
-        canonical_preset_artifact_json(public_payload),
-    )
-    custody_payload = cast("dict[str, object]", json.loads(current_custody.payload_json))
-    custody_payload.pop("descriptors")
-    custody_payload["body_digest"] = legacy_body.digest
-    legacy_custody = PresetArtifactCustodyManifest(
-        current_custody.page,
-        current_custody.variant,
-        current_custody.revision,
-        canonical_preset_artifact_json(custody_payload),
-    )
-    legacy_pointer = PresetArtifactPointer(
-        pointer.page,
-        pointer.variant,
-        pointer.revision,
-        legacy_body.digest,
-        pointer.forward_token,
-        pointer.supersedes,
-        legacy_custody.digest,
-    )
-    artifacts = RecordingPresetArtifacts(legacy_pointer, legacy_body)
-    custody_store = RecordingCustodyStore(legacy_custody)
-    event = _event(
-        LIST_PATH,
-        {"session_id": SESSION, "sort": {"field": "name", "direction": "asc"}},
-    )
-    event["headers"] = {"Accept": "application/vnd.adlytics.presentation-v2+json"}
+    """ADR-145: every sibling is read through the index; a custody without one is refused.
 
-    response = presentation_module.handle(
-        event,
-        _analytical_runtime(
-            presentation_module,
-            _AnalyticalRuntimeRequest(
-                RecordingCatalog(),
-                RecordingPages(),
-                ScenarioQueries(),
-                preset_artifacts=artifacts,
-                preset_custody=custody_store,
+    Format 3's retained-population slice (a parent custody naming no siblings) is no fallback:
+    the same parent custody with its index serves the page (the paired control).
+    """
+    pointer, body, custody = _campaign_preset_artifact_with_custody()
+    unindexed_payload = cast("dict[str, object]", json.loads(custody.payload_json))
+    unindexed_payload.pop("sibling_index")
+    unindexed = PresetArtifactCustodyManifest(
+        custody.page,
+        custody.variant,
+        custody.revision,
+        canonical_preset_artifact_json(unindexed_payload),
+    )
+
+    def serve(manifest: PresetArtifactCustodyManifest) -> dict[str, Any]:
+        event = _event(LIST_PATH, {"session_id": SESSION})
+        event["headers"] = {"Accept": "application/vnd.adlytics.presentation-v2+json"}
+        return presentation_module.handle(
+            event,
+            _analytical_runtime(
+                presentation_module,
+                _AnalyticalRuntimeRequest(
+                    RecordingCatalog(),
+                    RecordingPages(),
+                    ScenarioQueries(),
+                    preset_artifacts=RecordingPresetArtifacts(
+                        replace(pointer, custody_digest=manifest.digest), body
+                    ),
+                    preset_custody=RecordingCustodyStore(manifest),
+                ),
             ),
-        ),
-    )
+        )
 
-    assert response["statusCode"] == 200
-    assert artifacts.sibling_reads == []
-    assert custody_store.sibling_reads == []
+    assert serve(custody)["statusCode"] == 200
+    with pytest.raises(InvariantError) as raised:
+        serve(unindexed)
+    assert raised.value.code == presentation_module.module.ARTIFACT_MALFORMED
 
 
 class _CardOrDeepAssembler:
@@ -6761,9 +6746,12 @@ def test_noncanonical_segment_reads_exactly_one_attested_pair_and_never_measures
     rows = cast("list[dict[str, object]]", artifact["rows"])
 
     assert response["statusCode"] == 200
+    # ADR-145's two-level read: the covering index shard, then the one attested pair.
     assert len(artifacts.sibling_reads) == 1
-    assert len(custody_store.sibling_reads) == 1
-    assert artifacts.sibling_reads[0] == custody_store.sibling_reads[0]
+    shard, pair = custody_store.sibling_reads
+    assert shard.descriptor.identity == PresetArtifactIndexShardIdentity(0)
+    assert shard.descriptor.body_digest is None
+    assert artifacts.sibling_reads[0] == pair
     assert [cast("dict[str, object]", row["signature"])["effective_name"] for row in rows] == [
         "Alpha",
         "Mike",
@@ -6772,6 +6760,73 @@ def test_noncanonical_segment_reads_exactly_one_attested_pair_and_never_measures
     assert catalog.browse_calls == []
     assert catalog.lookup_calls == []
     assert queries.seen == []
+
+
+def _two_level_serve(
+    presentation_module: _PresentationModule,
+    custody_store: RecordingCustodyStore,
+    artifacts: RecordingPresetArtifacts,
+) -> dict[str, Any]:
+    """Serve the name-ascending segment 0, the one sibling the segmented fixture indexes."""
+    event = _event(
+        LIST_PATH,
+        {"session_id": SESSION, "sort": {"field": "name", "direction": "asc"}, "segment": 0},
+    )
+    event["headers"] = {"Accept": "application/vnd.adlytics.presentation-v2+json"}
+    return presentation_module.handle(
+        event,
+        _analytical_runtime(
+            presentation_module,
+            _AnalyticalRuntimeRequest(
+                RecordingCatalog(),
+                RecordingPages(tokens=(TOKEN, SECOND_SELECTION_TOKEN, "U" * 43, "V" * 43)),
+                ScenarioQueries(),
+                preset_artifacts=artifacts,
+                preset_custody=custody_store,
+            ),
+        ),
+    )
+
+
+@pytest.mark.covers("ADR-145")
+@pytest.mark.parametrize("defect", ["not-indexed", "refused-shard", "tampered-shard"])
+def test_the_two_level_read_refuses_an_unindexed_identity_and_a_refused_or_tampered_shard(
+    presentation_module: _PresentationModule, defect: str
+) -> None:
+    """Pointer -> parent custody -> covering shard -> descriptor -> body; never a fallback."""
+    pointer, body, custody, sibling_body, sibling_custody = _segmented_campaign_preset_artifact()
+    (shard,) = _INDEXED[custody.digest]
+    # Paired control: the custody and shard as the stage wrote them serve the segment.
+    served = _two_level_serve(
+        presentation_module,
+        RecordingCustodyStore(custody, sibling_custody),
+        RecordingPresetArtifacts(pointer, body, sibling_body=sibling_body),
+    )
+    assert served["statusCode"] == 200
+    manifest, shards = custody, (shard,)
+    if defect == "not-indexed":
+        # The index binds another segment only: the requested one has no descriptor.
+        other = replace(sibling_body, identity=PresetArtifactSiblingIdentity("name-asc", 1, "all"))
+        other_custody = replace(sibling_custody, identity=other.identity)
+        header, _ = split_parent_custody(custody)
+        manifest, shards = indexed_parent_custody(body, header, ((other, other_custody),))
+    elif defect == "refused-shard":
+        # The store refuses the shard read (as S3 does for bytes the entry doesn't bind).
+        shards = ()
+    else:
+        payload = json.loads(shard.payload_json)
+        payload["descriptors"][0]["body_digest"] = "0" * 64
+        shards = (replace(shard, payload_json=canonical_preset_artifact_json(payload)),)
+    store = RecordingCustodyStore(manifest, sibling_custody, shards=shards)
+    artifacts = RecordingPresetArtifacts(
+        replace(pointer, custody_digest=manifest.digest), body, sibling_body=sibling_body
+    )
+
+    with pytest.raises(InvariantError) as raised:
+        _two_level_serve(presentation_module, store, artifacts)
+
+    assert raised.value.code == presentation_module.module.ARTIFACT_MALFORMED
+    assert artifacts.sibling_reads == []  # no body is read without its attested descriptor
 
 
 @pytest.mark.covers("ADR-121")
@@ -8087,24 +8142,20 @@ def _campaign_preset_artifact_with_rows(
         revision,
         canonical_preset_artifact_json(campaign_portfolio_artifact_payload(artifact)),
     )
-    custody = PresetArtifactCustodyManifest(
-        body.page,
-        body.variant,
-        revision,
-        canonical_preset_artifact_json(
-            campaign_custody_manifest_payload(
-                CampaignCustodyManifest(
-                    body.digest,
-                    tuple(
-                        CampaignCustodyRow(
-                            CampaignKey(f"campaign:fictional-{i:03d}", SCOPE, PLATFORM),
-                            CHANNEL,
-                            MARKETPLACE,
-                            signature,
-                        )
-                        for i, signature in enumerate(signatures)
-                    ),
-                )
+    custody = _indexed_custody(
+        body,
+        campaign_custody_manifest_payload(
+            CampaignCustodyManifest(
+                body.digest,
+                tuple(
+                    CampaignCustodyRow(
+                        CampaignKey(f"campaign:fictional-{i:03d}", SCOPE, PLATFORM),
+                        CHANNEL,
+                        MARKETPLACE,
+                        signature,
+                    )
+                    for i, signature in enumerate(signatures)
+                ),
             )
         ),
     )
