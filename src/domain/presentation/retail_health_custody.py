@@ -1,11 +1,12 @@
 # SPDX-License-Identifier: MIT-0
-"""Private Retail health custody: product keys and the closed product-detail child set.
+"""Private Retail health custody: product keys for the served rows and their children.
 
-ADR-125 decision 2: for each preset, one child body per served product row is baked in the
-parent's publication. The parent custody names each row's canonical product key under a
-server-only ``product_ref`` and binds every child's body and custody bytes by digest. The set is
-closed: a ref the rows don't name, or a row with no child, refuses the manifest, so a serve can
-never read a child the bake didn't attest.
+ADR-125 decision 2, as amended by ADR-145: for each preset, one child body per served product
+row is baked in the parent's publication. The parent custody's header names each row's
+canonical product key under a server-only ``product_ref``; the children's digests have one home,
+the parent custody's sibling index, which the stage builds. The set stays closed: the stage
+refuses a publication whose children aren't exactly the served rows before any write, so a serve
+can never read a child the bake didn't attest.
 """
 
 from __future__ import annotations
@@ -23,7 +24,6 @@ __all__ = [
     "RetailHealthCustodyManifest",
     "RetailHealthCustodyProduct",
     "RetailProductChildCustody",
-    "RetailProductChildDigests",
     "product_ref_for",
     "retail_health_custody_manifest_from_payload",
     "retail_health_custody_manifest_payload",
@@ -31,10 +31,10 @@ __all__ = [
     "retail_product_child_custody_payload",
 ]
 
-RETAIL_HEALTH_CUSTODY_MANIFEST_KIND = "retail_health_custody_manifest"
+RETAIL_HEALTH_CUSTODY_MANIFEST_KIND = "retail_health_custody_manifest/v2"
+"""v2 (ADR-145) drops the inline child digests; a v1 manifest is never read in the v2 shape."""
 RETAIL_PRODUCT_CHILD_CUSTODY_KIND = "retail_product_child_custody"
 _DIGEST = re.compile(r"^[a-f0-9]{64}$")
-_REF = re.compile(r"^[a-f0-9]{32}$")
 
 
 def product_ref_for(product: ProductKey) -> str:
@@ -64,24 +64,11 @@ class RetailHealthCustodyProduct:
 
 
 @dataclass(frozen=True, slots=True)
-class RetailProductChildDigests:
-    """The exact public and private bytes of one baked product-detail child."""
-
-    body_digest: str
-    custody_digest: str
-
-    def __post_init__(self) -> None:
-        _digest(self.body_digest, "retail product child body")
-        _digest(self.custody_digest, "retail product child custody")
-
-
-@dataclass(frozen=True, slots=True)
 class RetailHealthCustodyManifest:
-    """Ordered custody products matching the public rows, and the closed child set."""
+    """Ordered custody products matching the public rows, and the movers card's product."""
 
     body_digest: str
     products: tuple[RetailHealthCustodyProduct, ...]
-    product_children: tuple[tuple[str, RetailProductChildDigests], ...]
     movers_product_ref: str | None = None
     """The product the baked Largest movers card names first; its ``open_product_detail``."""
     kind: str = RETAIL_HEALTH_CUSTODY_MANIFEST_KIND
@@ -91,17 +78,10 @@ class RetailHealthCustodyManifest:
             raise ValueError("retail health custody manifest kind is unsupported.")
         _digest(self.body_digest, "retail health custody parent body")
         refs = tuple(item.product_ref for item in self.products)
-        children = tuple(ref for ref, _ in self.product_children)
-        if len(set(refs)) != len(refs) or len(set(children)) != len(children):
+        if len(set(refs)) != len(refs):
             raise ValueError("retail health custody products are unique.")
-        if set(children) != set(refs):
-            raise ValueError("retail health product children are exactly the served rows.")
         if self.movers_product_ref is not None and self.movers_product_ref not in refs:
             raise ValueError("the movers product is one of the served rows.")
-
-    def child(self, product_ref: str) -> RetailProductChildDigests | None:
-        """Return one child's digests, or none for a ref outside the closed set."""
-        return next((digests for ref, digests in self.product_children if ref == product_ref), None)
 
     def product(self, product_ref: str) -> ProductKey | None:
         """Return the canonical product a served row names, or none."""
@@ -142,7 +122,7 @@ def _product(value: object) -> ProductKey:
 def retail_health_custody_manifest_payload(
     manifest: RetailHealthCustodyManifest,
 ) -> dict[str, object]:
-    """Encode the private parent custody; it is never served."""
+    """Encode the private parent custody header; it is never served."""
     return {
         "kind": manifest.kind,
         "body_digest": manifest.body_digest,
@@ -150,24 +130,19 @@ def retail_health_custody_manifest_payload(
             {"product_ref": item.product_ref, "product": _product_payload(item.product)}
             for item in manifest.products
         ],
-        "product_children": {
-            ref: {"body_digest": digests.body_digest, "custody_digest": digests.custody_digest}
-            for ref, digests in manifest.product_children
-        },
         "movers_product_ref": manifest.movers_product_ref,
     }
 
 
 def retail_health_custody_manifest_from_payload(value: object) -> RetailHealthCustodyManifest:
-    """Strictly decode and re-attest one parent custody manifest."""
+    """Strictly decode and re-attest one parent custody header (its index split off first)."""
     item = _object(
         value,
-        frozenset({"kind", "body_digest", "products", "product_children", "movers_product_ref"}),
+        frozenset({"kind", "body_digest", "products", "movers_product_ref"}),
         "retail health custody manifest",
     )
     raw_products = item["products"]
-    raw_children = item["product_children"]
-    if not isinstance(raw_products, list) or not isinstance(raw_children, dict):
+    if not isinstance(raw_products, list):
         raise ValueError("retail health custody collections are malformed.")
     products = tuple(
         RetailHealthCustodyProduct(
@@ -178,26 +153,10 @@ def retail_health_custody_manifest_from_payload(value: object) -> RetailHealthCu
             for raw in cast("list[object]", raw_products)
         )
     )
-    children = tuple(
-        (
-            ref,
-            RetailProductChildDigests(
-                _digest(entry["body_digest"], "child body"),
-                _digest(entry["custody_digest"], "child custody"),
-            ),
-        )
-        for ref, entry in (
-            (ref, _object(raw, frozenset({"body_digest", "custody_digest"}), "child digests"))
-            for ref, raw in cast("dict[str, object]", raw_children).items()
-        )
-    )
-    if any(not _REF.fullmatch(ref) for ref, _ in children):
-        raise ValueError("retail product child reference is invalid.")
     movers = item["movers_product_ref"]
     manifest = RetailHealthCustodyManifest(
         _digest(item["body_digest"], "parent body"),
         products,
-        children,
         None if movers is None else _text(movers, "movers product ref"),
         _text(item["kind"], "custody kind"),
     )

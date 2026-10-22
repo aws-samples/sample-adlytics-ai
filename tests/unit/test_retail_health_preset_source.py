@@ -14,6 +14,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
+from preset_artifact_support import staged_custody, staged_index, staged_pointer
 from publication_support import PublicationSpec, StubPublications, successful_publication
 
 from adapters.config import PresetArtifactBakeSettings
@@ -83,12 +84,14 @@ from domain.presentation.preset_artifacts import (
     PresetArtifactPointer,
     PresetArtifactPointerAdvanceRequest,
     PresetArtifactPointerAdvanceResult,
+    PresetArtifactPointerTemplate,
     PresetArtifactProductChildIdentity,
     PresetArtifactPublicationRequest,
     PresetArtifactRevision,
     PresetArtifactVariant,
     SourceUnchanged,
     canonical_preset_artifact_json,
+    index_shard_descriptors,
 )
 from domain.presentation.retail_health import (
     RETAIL_HEALTH_INSIGHT_IDS,
@@ -106,7 +109,6 @@ from domain.presentation.retail_health import (
     retail_health_coverage_facts,
 )
 from domain.presentation.retail_health_custody import (
-    RetailProductChildDigests,
     retail_health_custody_manifest_from_payload,
 )
 from domain.semantics.analytical_resolution import AuthorizedAnalyticalScope
@@ -953,7 +955,7 @@ def test_revision_derives_from_the_exact_publication_identities_used() -> None:
     request = source.publication_for(VARIANT)
 
     assert isinstance(request, PresetArtifactPublicationRequest)
-    pointer = request.pointer_advance.pointer
+    pointer = request.pointer_template.complete(None).pointer
     assert pointer.revision == PresetArtifactRevision.from_publication_identities(
         ("publication-a", "publication-b"),
         render_format=RETAIL_HEALTH_PRESET_RENDER_FORMAT,
@@ -968,7 +970,7 @@ def test_revision_derives_from_the_exact_publication_identities_used() -> None:
     assert pointer.comparison_window is not None
     assert pointer.comparison_window.end < pointer.resolved_window.start
     assert pointer.custody_digest is None
-    assert request.custody is None
+    assert request.custody_header is None
     assert (request.body.page, request.body.variant) == (PAGE, VARIANT)
     decoded = retail_health_artifact_from_payload(json.loads(request.body.payload_json))
     assert decoded.outcome is RetailHealthOutcome.EMPTY
@@ -979,11 +981,13 @@ def test_an_unchanged_revision_is_not_republished() -> None:
     first = source.publication_for(VARIANT)
     assert isinstance(first, PresetArtifactPublicationRequest)
 
-    source_again, compiler, _ = _source(pointers=Pointers(pointer=first.pointer_advance.pointer))
+    source_again, compiler, _ = _source(
+        pointers=Pointers(pointer=first.pointer_template.complete(None).pointer)
+    )
 
     # S6 §2.8 (D26): unchanged is typed, never None, so a bake can tell it from unavailable.
     assert source_again.publication_for(VARIANT) == SourceUnchanged(
-        first.pointer_advance.pointer.revision
+        first.pointer_template.complete(None).pointer.revision
     )
     assert len(compiler.received) == 1
 
@@ -992,7 +996,7 @@ def test_a_new_revision_supersedes_the_current_pointer_with_a_history_expiry() -
     source, _, _ = _source()
     first = source.publication_for(VARIANT)
     assert isinstance(first, PresetArtifactPublicationRequest)
-    current = first.pointer_advance.pointer
+    current = first.pointer_template.complete(None).pointer
 
     source_two, _, _ = _source(
         compiler=Compiler(identities=("publication-c",)),
@@ -1001,11 +1005,11 @@ def test_a_new_revision_supersedes_the_current_pointer_with_a_history_expiry() -
     request = source_two.publication_for(VARIANT)
 
     assert isinstance(request, PresetArtifactPublicationRequest)
-    pointer = request.pointer_advance.pointer
+    pointer = request.pointer_template.complete(None).pointer
     assert pointer.supersedes == current.revision
     assert pointer.forward_token == current.forward_token + 1
-    assert request.pointer_advance.superseded_history_expires_at is not None
-    assert request.pointer_advance.superseded_history_expires_at > NOW
+    assert request.pointer_template.superseded_history_expires_at is not None
+    assert request.pointer_template.superseded_history_expires_at > NOW
 
 
 def test_an_undeclared_variant_and_an_unavailable_render_bake_nothing() -> None:
@@ -1357,10 +1361,7 @@ def test_retail_fill_child_warms_exactly_the_cache_keys_the_serve_overlay_derive
 
     child.warm(
         PresetArtifactPublicationRequest(
-            body,
-            PresetArtifactPointerAdvanceRequest(
-                PresetArtifactPointer(body.page, body.variant, revision, body.digest, 1)
-            ),
+            body, PresetArtifactPointerTemplate(body.page, body.variant, revision, body.digest, 1)
         )
     )
 
@@ -1518,12 +1519,12 @@ def test_the_retail_decoder_refuses_a_wrong_count_mixed_or_plotted_display_value
 
 @pytest.mark.covers("ADR-084", "ADR-070")
 def test_retail_movers_are_baked_at_two_places_in_the_shipped_revenue_currency() -> None:
-    """Format 4 added display values and two-place movers; formats 5 to 8 keep them."""
+    """Format 4 added display values and two-place movers; formats 5 to 10 keep them."""
     artifact = _rendered(2).artifact
     assert artifact is not None
     movers = artifact.insights[3]
 
-    assert RETAIL_HEALTH_PRESET_RENDER_FORMAT == 9
+    assert RETAIL_HEALTH_PRESET_RENDER_FORMAT == 10
     assert movers.text is not None
     assert re.search(r"changed by -?[\d,]+\.\d{2} USD", movers.text)
 
@@ -1573,19 +1574,38 @@ def test_the_publication_binds_a_closed_child_set_in_its_custody_before_the_poin
     request = source.publication_for(VARIANT)
 
     assert isinstance(request, PresetArtifactPublicationRequest)
-    assert request.custody is not None
-    pointer = request.pointer_advance.pointer
-    assert pointer.custody_digest == request.custody.digest
-    manifest = retail_health_custody_manifest_from_payload(json.loads(request.custody.payload_json))
+    # ADR-145: the manifest is the custody header; the children are the stream, and the stage's
+    # index is their one digest home, checked against the served rows before any write.
+    assert request.custody_header is not None
+    header = json.loads(request.custody_header.payload_json)
+    assert set(header) == {"kind", "body_digest", "products", "movers_product_ref"}
+    manifest = retail_health_custody_manifest_from_payload(header)
     assert manifest.body_digest == request.body.digest
-    children = dict(manifest.product_children)
-    assert [body.identity for body in request.sibling_bodies] == [
+    pairs = tuple(request.siblings)
+    assert [public.identity for public, _ in pairs] == [
         PresetArtifactProductChildIdentity(child.product_ref) for child in rendered.children
     ]
-    for public, private in zip(request.sibling_bodies, request.sibling_custody, strict=True):
+    assert request.closed_children == {public.identity for public, _ in pairs}
+    assert request.closed_children == {
+        PresetArtifactProductChildIdentity(item.product_ref) for item in manifest.products
+    }
+    pointer = staged_pointer(request)
+    custody = staged_custody(request)
+    assert custody is not None
+    assert pointer.custody_digest == custody.digest
+    indexed = {
+        item.identity: item
+        for shard, entry in staged_index(request)
+        for item in index_shard_descriptors(shard, entry)
+    }
+    for public, private in pairs:
         ref = cast("PresetArtifactProductChildIdentity", public.identity).product_ref
         assert public.key.endswith(f"/{pointer.revision.value}/products/{ref}.json")
-        assert children[ref] == RetailProductChildDigests(public.digest, private.digest)
+        descriptor = indexed[public.identity]
+        assert (descriptor.body_digest, descriptor.custody_digest) == (
+            public.digest,
+            private.digest,
+        )
         # The public child names the product by display identity only.
         assert "amazon_asin:" not in public.payload_json
         assert ref not in public.payload_json
