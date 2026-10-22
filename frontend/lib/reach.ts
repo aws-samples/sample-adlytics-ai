@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT-0
+import { type Answer } from './answer';
 /**
  * Strict browser decoder for `ReachAndFunnelArtifact` v1.
  *
@@ -720,5 +721,29 @@ export function parseReachAndFunnelArtifact(value: unknown): ReachAndFunnelArtif
     period,
     preset,
     starter_questions: starters,
+  };
+}
+
+/**
+ * The Reach answer (plan template): the served DSP-only shopper count and DSP-only reach share
+ * for the period, or the served reason the overlap isn't available.
+ */
+export function reachAnswer(artifact: ReachAndFunnelArtifact, displayText: (figure: ReachFigure) => string): Answer {
+  const month = artifact.period.label;
+  const overlap = artifact.markets[0]?.overlap ?? null;
+  const unavailable = (reason: string | null): Answer => ({
+    kind: 'fallback',
+    text: reason === null ? `Reach for ${month} isn't available.` : `Reach for ${month} isn't available: ${reason}`,
+  });
+  if (overlap === null) return unavailable(null);
+  if (overlap.state !== 'figures') return unavailable(overlap.text);
+  const group = overlap.groups.find((entry) => entry.exposure_group === 'dsp_only') ?? null;
+  const share = overlap.tiles.find((tile) => tile.metric === 'dsp_only_reach_share') ?? null;
+  if (group === null || share === null) return unavailable(null);
+  if (group.account.absence !== null) return unavailable(group.account.absence.text);
+  if (share.current.absence !== null) return unavailable(share.current.absence.text);
+  return {
+    kind: 'answer',
+    text: `Amazon DSP reached ${displayText(group.account)} shoppers your sponsored ads didn't in ${month}: ${displayText(share.current)} of shoppers reached.`,
   };
 }

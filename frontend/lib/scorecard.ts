@@ -8,6 +8,7 @@
  * row, and any attributed total or channel-group subtotal row, because attributed returns are
  * never added across channels (ia §8.5).
  */
+import { type Answer, windowText } from './answer';
 import { parseChange, type Change } from './change';
 import { isDisplayValue } from './display-value';
 import { parseEvidenceStatus, type EvidenceStatusV2 } from './evidence-status';
@@ -639,4 +640,21 @@ export function parseNetworkScorecardArtifact(value: unknown): NetworkScorecardA
 /** Whether a figure measures an attributed return, which is only ever served on a channel row. */
 export function isAttributedMetric(metric: string): boolean {
   return ATTRIBUTED_METRICS.has(metric);
+}
+
+/**
+ * The Scorecard answer (plan template): the selected model's served headline return, with its
+ * served prior when the window has one; the served headline absence otherwise.
+ */
+export function scorecardAnswer(artifact: NetworkScorecardArtifact, card: ScorecardCard, model: string): Answer {
+  const selected = card.headline.models.find((entry) => entry.model === model) ?? null;
+  const figure = selected?.figure ?? null;
+  if (figure === null || figure.display_value === null) {
+    const reason = card.headline.absence_text ?? figure?.absence_text ?? null;
+    return { kind: 'fallback', text: reason ?? artifact.not_available_text };
+  }
+  const currency = card.currency_code;
+  const lead = `Amazon Ads returned ${figure.display_value} ${currency} in sales for every 1 ${currency} spent in ${windowText(artifact.period)}`;
+  if (figure.prior_display_value === null || artifact.prior_period === null) return { kind: 'answer', text: `${lead}.` };
+  return { kind: 'answer', text: `${lead}, compared with ${figure.prior_display_value} ${currency} in ${windowText(artifact.prior_period)}.` };
 }

@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: MIT-0
+import { type Answer } from './answer';
+import { displayFigure } from './exact-format';
 /** Strict browser decoder for server-owned AudienceProfileArtifact v1. */
 
 export type AudiencesOutcome = 'complete' | 'empty' | 'insufficient';
@@ -405,4 +407,28 @@ export function parseAudienceProfileArtifact(value: unknown): AudienceProfileArt
   const starter_questions = array(item.starter_questions).map(text);
   if (starter_questions.length !== (outcome === 'complete' ? 2 : 0)) return fail();
   return { boundary: [BOUNDARY_TEXT, SEGMENT_IDS_SENTENCE], display_minimum: positiveInteger(item.display_minimum), evidence_status: evidence(item.evidence_status), markets, month, outcome, page_context_expires_at: text(item.page_context_expires_at), page_context_label: text(item.page_context_label), starter_questions, type: 'AudienceProfileArtifact', version: 1 };
+}
+
+/**
+ * The Audiences answer (plan template). The server ranks each delivery's rows by index, so the
+ * first shown row of a delivery whose `segment-over-index` slot is filled names the segment; the
+ * figures are its served shares and index. A silent slot reads the rule's own line, an
+ * unavailable one its served reason.
+ */
+export function audiencesAnswer(artifact: AudienceProfileArtifact): Answer {
+  const market = artifact.markets[0];
+  const view = market.views.find((entry) => entry.view === market.default_view) ?? market.views[0];
+  for (const delivery of view.deliveries) {
+    const slot = delivery.insights.find((entry) => entry.id === 'segment-over-index') ?? null;
+    if (slot?.state !== 'filled') continue;
+    const row = view.rows.find((entry) => entry.profile_path === delivery.profile_path && entry.state === 'value') ?? null;
+    if (row === null || row.segment_buyer_share === null || row.segment_exposed_share === null || row.segment_index === null) continue;
+    const index = displayFigure('segment_index', row.segment_index, 'ratio', null).text;
+    return {
+      kind: 'answer',
+      text: `${row.display_name} shoppers are ${row.segment_buyer_share.text} of your buyers but ${row.segment_exposed_share.text} of shoppers reached: ${index} as common among your buyers.`,
+    };
+  }
+  const reason = view.deliveries.flatMap((delivery) => delivery.insights).find((slot) => slot.absence_reason !== null && slot.absence_class !== 'evaluated-quiet')?.absence_reason ?? null;
+  return { kind: 'fallback', text: reason ?? `No segment met the over-index rule in ${artifact.month.label}.` };
 }

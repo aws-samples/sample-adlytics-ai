@@ -4,6 +4,7 @@
  * model selector, the channel table and its links, highlight, pointer lines, dialogs, loading
  * and absence states, and axe. Each passing case sits beside its failing control.
  */
+import { scorecardAnswer } from '../lib/scorecard';
 import { CUSTOMER_METRIC_LABELS } from '../lib/glossary';
 import assert from 'node:assert/strict';
 import { render, screen, within } from '@testing-library/react';
@@ -478,13 +479,16 @@ const WALKED = { absentCell, alsoChanged, defaultBody, emptyBody, modelSensitive
 test('every visible text is exactly a string or figure its own response served, or allowlisted', () => {
   for (const [name, fixture] of Object.entries(WALKED)) {
     const { artifact, view } = renderRoute(fixture);
-    const served = new Set([...servedStrings(fixture), ...servedFigures(artifact), bindingByRoute.scorecard.display_name]);
+    // Each card's answer sentence is a fixed template over served values (UI refresh 1.5).
+    const answers = artifact === null || artifact.outcome !== 'complete' ? [] : artifact.cards.map((card) => scorecardAnswer(artifact, card, card.headline.default_model).text);
+    const served = new Set([...servedStrings(fixture), ...servedFigures(artifact), bindingByRoute.scorecard.display_name, ...answers]);
     assert.ok((view.container.textContent ?? '').length > 0, name);
     assert.deepEqual(strayTexts(view.container, served, ALLOWLIST), [], `browser-written text in ${name}`);
     view.unmount();
   }
   // Paired controls in the same walk. A browser-written sentence is caught.
-  const own = new Set([...servedStrings(weekly), ...servedFigures(artifactOf(weekly)), bindingByRoute.scorecard.display_name]);
+  const weeklyArtifact = artifactOf(weekly);
+  const own = new Set([...servedStrings(weekly), ...servedFigures(weeklyArtifact), bindingByRoute.scorecard.display_name, ...weeklyArtifact.cards.map((card) => scorecardAnswer(weeklyArtifact, card, card.headline.default_model).text)]);
   const planted = render(<div><ScorecardView artifact={artifactOf(weekly)} /><p>This window is not ready.</p></div>);
   assert.deepEqual(strayTexts(planted.container, own, ALLOWLIST), ['This window is not ready.']);
   planted.unmount();

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT-0
 'use client';
 
+import { campaignsAnswer } from '@/lib/campaign-attribution';
+import { AnswerSentence } from './AnswerSentence';
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type RefObject } from 'react';
 
 import type { Change } from '@/lib/change';
@@ -1393,6 +1395,7 @@ export function CampaignPortfolioV2View({ child, closedCampaign = null, detailSt
     </div>}
     {parent.outcome === 'complete'
       ? <CoverageProvider status={parent.evidence_status} subject="Campaigns">
+        <AnswerSentence answer={campaignsAnswer(parent, portfolioOutcomeCopy(parent.outcome).description)} />
         <PortfolioTiles artifact={parent} filterId={filterId} focus={portfolioFocus} sessionId={focusSessionId} temporalSelection={focusTemporalSelection} />
         {view === null ? null : <>
           <ByChannel

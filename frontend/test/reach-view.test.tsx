@@ -5,7 +5,8 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { afterEach, test } from 'vitest';
 
-import { ReachAndFunnelView, reachDisplayText } from '../components/ReachAndFunnelView';
+import { ReachAndFunnelView, reachDisplayText, reachFigureText } from '../components/ReachAndFunnelView';
+import { reachAnswer } from '../lib/reach';
 import { parseReachAndFunnelArtifact } from '../lib/reach';
 import {
   cloneReachFixture,
@@ -213,6 +214,8 @@ test('a same-response copy walk refuses invented or borrowed visible text', () =
   // The served text in the shared figure style (plan D4) is the same served string, regrouped.
   for (const line of [...allowed]) for (const unit of ['count', 'multiplier'] as const) allowed.add(reachDisplayText(line, unit));
   for (const line of BROWSER_COPY) allowed.add(line);
+  // The answer sentence is a fixed template over served values (UI refresh 1.5), pinned by its builder's tests.
+  allowed.add(reachAnswer(parseReachAndFunnelArtifact(fixture), reachFigureText).text);
   const { container } = view(fixture);
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
   const unexpected: string[] = [];

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT-0
 'use client';
 
+import { audiencesAnswer } from '@/lib/audiences';
+import { AnswerSentence } from './AnswerSentence';
 import { displayFigure } from '@/lib/exact-format';
 import { useId, useMemo, useState } from 'react';
 
@@ -153,6 +155,7 @@ function Outcome({ artifact }: { readonly artifact: AudienceProfileArtifact }) {
   }
   return <>
     <MonthScope artifact={artifact} />
+    <AnswerSentence answer={audiencesAnswer(artifact)} />
     <ProfileSection market={market} />
     <CampaignSection market={market} />
   </>;

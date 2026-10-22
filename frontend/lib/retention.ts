@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT-0
+import { type Answer } from './answer';
 /** Strict browser decoder for server-owned RetentionCohortArtifact v1. */
 
 export type RetentionOutcome = 'complete' | 'empty' | 'insufficient';
@@ -300,5 +301,33 @@ export function parseRetentionCohortArtifact(value: unknown): RetentionCohortArt
     page_context_expires_at: text(item.page_context_expires_at), page_context_label: text(item.page_context_label),
     starter_questions, type: 'RetentionCohortArtifact', version: 1,
     vintage: { as_of_month, end, label: text(vintage.label), start },
+  };
+}
+
+/**
+ * The Retention answer (plan template): at the last offset all three served curve lines carry a
+ * rate, each group's served rate text; otherwise the served absence for the vintage.
+ */
+export function retentionAnswer(artifact: RetentionCohortArtifact): Answer {
+  const market = artifact.markets[0];
+  const absent = (reason: string | null): Answer => ({
+    kind: 'fallback',
+    text: `Repeat purchase for ${artifact.vintage.label} isn't measured yet${reason === null ? '.' : `: ${reason}`}`,
+  });
+  if (market === undefined) return absent(null);
+  const lines = market.curve.lines;
+  const line = (group: RetentionGroup) => lines.find((entry) => entry.group === group) ?? null;
+  const dsp = line('dsp_only');
+  const sponsored = line('sponsored_only');
+  const both = line('dsp_and_sponsored');
+  if (dsp === null || sponsored === null || both === null) return absent(market.absence_text);
+  const at = (entry: RetentionCurveLine, offset: number) => entry.points.find((point) => point.offset === offset)?.rate ?? null;
+  const offsets = dsp.points.map((point) => point.offset).filter((offset) => at(dsp, offset) !== null && at(sponsored, offset) !== null && at(both, offset) !== null);
+  const last = offsets.at(-1);
+  if (last === undefined) return absent(market.absence_text);
+  const label = dsp.points.find((point) => point.offset === last)!.label;
+  return {
+    kind: 'answer',
+    text: `By ${label}, ${at(dsp, last)!.text} of DSP-only customers bought again, against ${at(sponsored, last)!.text} sponsored-only and ${at(both, last)!.text} both.`,
   };
 }

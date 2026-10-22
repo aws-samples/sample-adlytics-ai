@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT-0
 'use client';
 
+import { retailHealthAnswer } from '@/lib/retail-health';
+import { AnswerSentence } from './AnswerSentence';
 import { useRef, useState } from 'react';
 
 import { formatCanonicalDecimal, formatIsoDate, formatIsoDateRange } from '@/lib/exact-format';
@@ -351,6 +353,7 @@ export function RetailHealthView({ artifact, closedProduct = null, loadingRefere
       <strong>{closedProduct.title} isn&apos;t in the product list for {windowText}.</strong>
       <span>Product detail closed. Choose a product from the list to open its detail for this window.</span>
     </div>}
+    <AnswerSentence answer={retailHealthAnswer(artifact, '')} />
     <RetailTileGroups
       absences={artifact.absences}
       idPrefix="retail-section"

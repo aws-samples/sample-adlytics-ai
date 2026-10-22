@@ -7,6 +7,7 @@
  * which served headline shows, with no request; nothing here adds, ranks or converts a figure.
  * Attributed returns appear only on a channel row of one network card (ia §8.5).
  */
+import { AnswerSentence } from './AnswerSentence';
 import { metricLabel } from '@/lib/glossary';
 import { Fragment, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 
@@ -24,6 +25,7 @@ import type {
   ScorecardFigure,
   ScorecardInsightCard,
 } from '@/lib/scorecard';
+import { scorecardAnswer } from '@/lib/scorecard';
 
 /**
  * A served figure's value text: money and multipliers from their two-place served display value
@@ -73,7 +75,9 @@ function Tile({ figure, notAvailable, slot, market = null, children }: {
   </div>;
 }
 
-function NetworkCardSection({ card, highlight, notAvailable, several }: {
+function NetworkCardSection({ artifact, card, highlight, notAvailable, several }: {
+  /** The page body, whose served windows the answer sentence names. */
+  readonly artifact: NetworkScorecardArtifact;
   readonly card: ScorecardCard;
   readonly highlight: string | null;
   readonly notAvailable: string;
@@ -92,6 +96,7 @@ function NetworkCardSection({ card, highlight, notAvailable, several }: {
       {card.networks_text === null ? null : <span className="note">{card.networks_text}</span>}
     </div>
     {card.dsp_absence_text === null ? null : <p className="small dim">{card.dsp_absence_text}</p>}
+    <AnswerSentence answer={scorecardAnswer(artifact, card, selected.model)} />
     <div className="tiles three">
       <Tile figure={selected.figure} notAvailable={notAvailable} slot={`headline:${card.card_id}`} />
       <Tile figure={card.spend} notAvailable={notAvailable} slot={`spend:${card.card_id}`} />
@@ -337,7 +342,7 @@ export function ScorecardView({ artifact, highlight = null }: {
   return <CoverageProvider status={artifact.evidence_status} subject="Scorecard">
     <div className="scorecard">
       <p className="scope-band" aria-live="polite">{artifact.scope_text}</p>
-      {artifact.cards.map((card) => <NetworkCardSection key={card.card_id} card={card} highlight={highlightFor(card)} notAvailable={notAvailable} several={several} />)}
+      {artifact.cards.map((card) => <NetworkCardSection key={card.card_id} artifact={artifact} card={card} highlight={highlightFor(card)} notAvailable={notAvailable} several={several} />)}
       <section className="section" aria-labelledby={insightsHeading}>
         <h2 id={insightsHeading}>{artifact.insights_heading}</h2>
         <InsightCards artifact={artifact} onRead={openInsight} />

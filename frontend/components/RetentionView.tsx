@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT-0
 'use client';
 
+import { retentionAnswer } from '@/lib/retention';
+import { AnswerSentence } from './AnswerSentence';
 import { useState } from 'react';
 
 import type { RetentionCohortArtifact, RetentionEvidenceStatusSlot, RetentionGrid, RetentionGroup, RetentionMarket } from '@/lib/retention';
@@ -103,6 +105,7 @@ function EvidenceTrace({ slots }: { readonly slots: readonly RetentionEvidenceSt
 
 export function RetentionView({ artifact }: { readonly artifact: RetentionCohortArtifact }) {
   return <div className="retention-view">
+    <AnswerSentence answer={retentionAnswer(artifact)} />
     {artifact.markets.map((market) => <Market key={market.marketplace_key} market={market} />)}
     <EvidenceTrace slots={artifact.evidence_status.slots} />
     <details className="about"><summary>About these figures</summary><div className="body">{artifact.boundary.map((item) => <p key={item}>{item}</p>)}</div></details>

@@ -1306,3 +1306,14 @@ textarea.prompt-text:focus-visible { outline: 2px solid var(--ai); outline-offse
   .audience-insights .insights { grid-template-columns: 1fr; }
   .audience-profile .seg.compact { width: 100%; }
 }
+
+/* UI refresh 1.5: the page's answer sentence above its first figure. */
+.answer-sentence {
+  margin: 4px 0 16px;
+  max-width: 72ch;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--text);
+}
+.answer-sentence.fallback { font-size: 15px; font-weight: 500; }

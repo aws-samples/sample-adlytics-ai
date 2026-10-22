@@ -4,6 +4,8 @@
 /** Reach and funnel visual surface. Visible figures are served display text or absence text. */
 import { useId, useRef, useState, type ReactNode } from 'react';
 
+import { reachAnswer } from '@/lib/reach';
+import { AnswerSentence } from './AnswerSentence';
 import type {
   ReachAndFunnelArtifact,
   ReachChange,
@@ -36,9 +38,13 @@ export function reachDisplayText(text: string, unit: ReachFigure['unit']): strin
   if (unit === 'multiplier' && SERVED_MULTIPLIER.test(text)) return `${formatCanonicalDecimal(text.slice(0, -1))}×`;
   return text;
 }
+/** A served figure's visible text: its regrouped display text, or "Not available". */
+export function reachFigureText(figure: ReachFigure): string {
+  return figure.display_text === null ? NOT_AVAILABLE : reachDisplayText(figure.display_text, figure.unit);
+}
 function Figure({ figure }: { readonly figure: ReachFigure }) {
   return <span className={figure.absence === null ? 'reach-figure' : 'reach-figure absent'}>
-    <span className="reach-value">{figure.display_text === null ? NOT_AVAILABLE : reachDisplayText(figure.display_text, figure.unit)}</span>
+    <span className="reach-value">{reachFigureText(figure)}</span>
     {figure.absence === null ? null : <span className="reach-absence">{figure.absence.text}</span>}
   </span>;
 }
@@ -244,6 +250,7 @@ export function ReachAndFunnelView({ artifact }: { readonly artifact: ReachAndFu
   const market = artifact.markets[0];
   if (market === undefined) return null;
   return <div className="reach-view">
+    <AnswerSentence answer={reachAnswer(artifact, reachFigureText)} />
     <OverlapSection market={market} />
     <FunnelSection market={market} />
     <InsightsSection artifact={artifact} market={market} />

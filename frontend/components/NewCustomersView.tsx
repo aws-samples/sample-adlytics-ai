@@ -9,6 +9,8 @@
  * purchase or shopper can be credited to more than one channel (ADR-106). With two marketplaces
  * every section repeats once per marketplace, never one table across two.
  */
+import { newCustomersAnswer } from '@/lib/new-customers';
+import { AnswerSentence } from './AnswerSentence';
 import { Fragment, useEffect, useId, useRef, useState } from 'react';
 
 import { ChangeChip } from './ChartPrimitives';
@@ -369,6 +371,7 @@ export function NewCustomersView({ artifact }: { readonly artifact: NewCustomers
   return <CoverageProvider status={artifact.evidence_status} subject={bindingByRoute['new-customers'].display_name}>
     <div className="new-customers">
       <p className="scope-band" aria-live="polite">{artifact.scope_text}</p>
+      <AnswerSentence answer={newCustomersAnswer(artifact)} />
       <section className="section" aria-labelledby={stepOneHeading}>
         <h2 id={stepOneHeading}>{artifact.markets[0]?.new_to_brand.heading}</h2>
         {artifact.markets.map((market) => <StepOneTable key={market.marketplace} market={market} text={text} />)}

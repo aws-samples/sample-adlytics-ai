@@ -9,6 +9,8 @@
  * per-channel table beside tiles that aren't shown, rows beside a table that isn't listed, and a
  * total or subtotal row, because new-to-brand figures are never added across channels (ADR-106).
  */
+import { type Answer, windowText } from './answer';
+import { formatCount, formatCurrency } from './exact-format';
 import { parseChange, type Change } from './change';
 import { isDisplayValue } from './display-value';
 import { parseEvidenceStatus, type EvidenceStatusV2 } from './evidence-status';
@@ -603,4 +605,31 @@ export function parseNewCustomersArtifact(value: unknown): NewCustomersArtifact 
     scope_text: text(item.scope_text),
     starter_questions: starters,
   };
+}
+
+/**
+ * The New customers answer (plan template): the period's served new buyers and cost per new
+ * buyer; otherwise the served per-channel or callout line, then each channel's served first-time
+ * purchases, listed and never summed.
+ */
+export function newCustomersAnswer(artifact: NewCustomersArtifact): Answer | null {
+  const market = artifact.markets[0];
+  if (market === undefined) return artifact.outcome_text === null ? null : { kind: 'fallback', text: artifact.outcome_text };
+  const buyers = market.new_buyers;
+  const tile = buyers.new_buyers;
+  const cost = buyers.cost_per_new_buyer;
+  if (buyers.state === 'figures' && tile?.value != null && cost?.display_value != null && cost.currency_code !== null && buyers.period !== null) {
+    return {
+      kind: 'answer',
+      text: `Your ads won ${formatCount(tile.value)} new customers in ${windowText(buyers.period)}, at ${formatCurrency(cost.display_value, cost.currency_code)} each.`,
+    };
+  }
+  const line = buyers.per_channel?.text ?? buyers.text ?? tile?.absence?.text ?? null;
+  const listed = market.new_to_brand.rows
+    .filter((row) => row.ntb_purchases.value !== null)
+    .map((row) => `${row.ad_product_label} ${formatCount(row.ntb_purchases.value!)}`);
+  // With no channel purchases to list, the served line already says it on the page: no repeat.
+  if (listed.length === 0) return null;
+  const purchases = `First-time purchases in ${windowText(artifact.period)}: ${listed.join(', ')}.`;
+  return { kind: 'fallback', text: line === null ? purchases : `${line} ${purchases}` };
 }
