@@ -111,6 +111,7 @@ from domain.presentation.retail_health import (
 from domain.presentation.retail_health_custody import (
     retail_health_custody_manifest_from_payload,
 )
+from domain.presentation.retail_product_detail import RetailDetailReason
 from domain.semantics.analytical_resolution import AuthorizedAnalyticalScope
 from domain.shared_kernel.errors import InvariantError
 from domain.shared_kernel.provenance import Suppression
@@ -1564,6 +1565,47 @@ def test_a_bake_reduces_one_product_detail_child_per_displayed_row() -> None:
         assert ads is not None
         assert [item.label for item in ads.rows] == list(CHANNEL_LABELS.values())
         assert child.product.value == _canonical_asin(int(row.child_asin.removeprefix("FICT")))
+
+
+def _ceiling_render(count: int) -> RetailHealthRenderResult:
+    products = _products(count)
+    return _renderer(
+        RetailQueries(products, PERIOD),
+        FakeHierarchy(_hierarchy_result(products)),
+        FakeReported(
+            RetailReportedTotals(Decimal(0), Decimal(0), ("reported-total-publication-1",))
+        ),
+    ).render_retail_health(RetailHealthRenderInput(PERIOD, PRIOR))
+
+
+@pytest.mark.covers("ADR-125", "ADR-142")
+def test_an_ad_read_over_the_bake_ceiling_blanks_only_product_details_ad_section() -> None:
+    """At 10,000 products the product x channel ad read (20,000 rows) is cut at its width.
+
+    The ad read never blocks the Retail bake: the page bakes its top 50 of every product, and
+    each child's ad section is its typed absence. Only a Retail-actual read refuses the page.
+    """
+    assert retail_source_module.BAKE_MAX_ROWS == 10_000
+    rendered = _ceiling_render(retail_source_module.BAKE_MAX_ROWS)
+    assert rendered.artifact is not None
+    assert (len(rendered.artifact.rows), rendered.artifact.total_count) == (
+        RETAIL_HEALTH_MAX_ROWS,
+        10_000,
+    )
+    assert len(rendered.children) == RETAIL_HEALTH_MAX_ROWS
+    for child in rendered.children:
+        ads = child.artifact.ad_attributed
+        assert ads is not None
+        assert (ads.rows, ads.reason_code) == ((), RetailDetailReason.MISSING_CURRENT_PUBLICATION)
+    # Paired: under the ceiling (2 x 4,000 ad rows) every child's ad section fills.
+    under = _ceiling_render(4_000)
+    assert under.artifact is not None
+    assert all(
+        child.artifact.ad_attributed is not None
+        and [item.label for item in child.artifact.ad_attributed.rows]
+        == list(CHANNEL_LABELS.values())
+        for child in under.children
+    )
 
 
 @pytest.mark.covers("ADR-125")

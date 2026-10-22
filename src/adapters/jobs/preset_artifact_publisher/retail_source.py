@@ -664,6 +664,13 @@ class RetailHealthArtifactRenderer:
         )
         answers: dict[tuple[str, str], _ParsedAnswer] = {}
         for answer, (_, metric, role, expected) in zip(executed.slots, batch.slots, strict=True):
+            shaped = answer.answer
+            if shaped is not None and shaped.metadata.truncated:
+                # The product x channel read is population-wide, not ranked: one cut at its
+                # width blanks only product detail's ad section, as any incomplete ad answer
+                # does, and Retail health still bakes. Only the Retail-actual reads refuse
+                # the page (`_answer_rows`).
+                return _ad_missing(window)
             parsed = _answer_rows(
                 answer,
                 expected,
@@ -1561,8 +1568,10 @@ def _answer_rows(  # noqa: PLR0913, PLR0917
 ) -> _ParsedAnswer | None:
     """Parse one complete grouped answer of one basis, or none when incoherent.
 
-    A read cut at its declared width refuses the page (`rows_over_ceiling`, ADR-142): Retail
-    declares no section a refusal may own, so the page is the read's smallest grain.
+    A Retail-actual read cut at its declared width refuses the page (`rows_over_ceiling`,
+    ADR-142): Retail declares no section a refusal may own, so the page is the read's smallest
+    grain. The ad-attributed read never reaches here truncated: `_ad_evidence` makes it product
+    detail's ad absence first, so it never blocks the Retail bake (ADR-125).
     """
     shaped = answer.answer
     if shaped is None:
