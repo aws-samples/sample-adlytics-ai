@@ -125,7 +125,7 @@ from ports.outbound.preset_artifacts import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
 pytestmark = pytest.mark.unit
 
@@ -1718,7 +1718,7 @@ def test_a_listed_sibling_or_shard_missing_from_s3_is_an_invariant_and_a_throttl
         parent.revision,
         PresetArtifactSiblingDescriptor(PresetArtifactIndexShardIdentity(0), None, entry.digest),
     )
-    reads = (
+    reads: tuple[Callable[[Any], object], ...] = (
         lambda client: S3PresetArtifactBodyStore("fictional-bucket", client).read_sibling(sibling),
         lambda client: S3PresetArtifactCustodyStore("fictional-bucket", client).read_sibling(
             sibling
