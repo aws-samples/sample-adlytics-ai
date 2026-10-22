@@ -41,7 +41,10 @@ test('returned temporal control submits only returned preset and Custom intent w
   const view = render(<TemporalControl control={control} onSelect={(selection) => selections.push(selection)} />);
   assert.equal(screen.getByRole('radiogroup').getAttribute('aria-label'), 'Available reporting periods');
   assert.equal(screen.getByRole('radio', { name: '14D' }).hasAttribute('disabled'), true);
-  assert.match(screen.getByText(/14D is not available for the currently published coverage/).textContent ?? '', /Choose another available reporting window/);
+  // The reason stays as the disabled option's accessible description, not visible prose (D5).
+  const reason = document.getElementById(screen.getByRole('radio', { name: '14D' }).getAttribute('aria-describedby') ?? '');
+  assert.match(reason?.textContent ?? '', /14D is not available for the currently published coverage\. Choose another available reporting window/);
+  assert.equal(reason?.className, 'sr-only');
   assert.equal(view.container.textContent?.includes('preset_unavailable'), false);
   await user.click(screen.getByRole('radio', { name: '7D' }));
   await user.click(screen.getByRole('button', { name: 'Custom period' }));
@@ -49,7 +52,7 @@ test('returned temporal control submits only returned preset and Custom intent w
   fireEvent.change(screen.getByLabelText('End'), { target: { value: '2026-08-21' } });
   await user.click(screen.getByRole('button', { name: 'Apply' }));
   assert.deepEqual(selections, [{ kind: 'preset', preset_id: '7d' }, { end: '2026-08-21', kind: 'custom', start: '2026-08-16' }]);
-  assert.ok(screen.getByText('Server-resolved reporting scope'));
+  assert.equal(view.container.textContent?.includes('Server-resolved reporting scope'), false);
 });
 
 test('returned temporal control keeps a comparison refusal in plain language', () => {
@@ -85,7 +88,7 @@ test('fixed returned controls offer a plain-language unavailable state without a
   const fixed: TemporalControlV1 = { ...control, custom: { availability: 'unavailable', bounds: null, reason_code: 'fixed_period' }, mode: 'fixed', presets: control.presets.map((preset) => ({ ...preset, availability: 'unavailable' as const, reason_code: 'fixed_period' })) };
   const view = render(<TemporalControl control={fixed} onSelect={() => undefined} />);
   assert.equal(screen.queryByRole('button', { name: 'Custom period' }), null);
-  assert.ok(screen.getByText('Custom reporting windows are not available for this page.'));
+  assert.equal(view.container.textContent?.includes('Custom reporting windows'), false);
   assert.equal(view.container.textContent?.includes('fixed_period'), false);
   assert.ok(screen.getAllByRole('radio').every((radio) => radio.hasAttribute('disabled')));
 });
@@ -97,25 +100,25 @@ function footnote(view: ReturnType<typeof render>): string {
 test('the as-of footnote prints the window end and the served build time, never "latest published coverage"', () => {
   const view = render(<TemporalControl control={control} generation={{ built_at: '2026-08-22T06:12:04Z' }} onSelect={() => undefined} />);
   const builtAt = footnote(view);
-  assert.match(builtAt, /Data as of Aug 21, 2026, built 2026-08-22 06:12:04 UTC\. Windows anchor to the published coverage this page was built from, never to today\./);
+  assert.match(builtAt, /^Aug 15–21, 2026 · 7 days · Data through Aug 21, 2026, built 2026-08-22 06:12:04 UTC\.$/);
   assert.equal(view.container.textContent?.includes('latest published coverage'), false);
   view.unmount();
 
   // Control: the same window with a different build time prints a different footnote.
   const later = render(<TemporalControl control={control} generation={{ built_at: '2026-08-23T07:00:00Z' }} onSelect={() => undefined} />);
   assert.notEqual(footnote(later), builtAt);
-  assert.match(footnote(later), /Data as of Aug 21, 2026, built 2026-08-23 07:00:00 UTC\./);
+  assert.match(footnote(later), /Data through Aug 21, 2026, built 2026-08-23 07:00:00 UTC\./);
   later.unmount();
 });
 
 test('the built-before and no-generation forms each print their own copy', () => {
   const before = render(<TemporalControl control={control} generation={{ built_before: '2026-10-09T21:06:31Z' }} onSelect={() => undefined} />);
-  assert.match(footnote(before), /Data as of Aug 21, 2026, built before 2026-10-09 21:06:31 UTC\. Windows anchor to the published coverage this page was built from, never to today\./);
+  assert.match(footnote(before), /Data through Aug 21, 2026, built before 2026-10-09 21:06:31 UTC\.$/);
   assert.equal(before.container.textContent?.includes('latest published coverage'), false);
   before.unmount();
 
   const none = render(<TemporalControl control={control} onSelect={() => undefined} />);
-  assert.match(footnote(none), /Data as of Aug 21, 2026\. Windows anchor to the published coverage this page was built from, never to today\./);
+  assert.match(footnote(none), /Data through Aug 21, 2026\.$/);
   assert.doesNotMatch(footnote(none), /, built/);
   assert.equal(none.container.textContent?.includes('latest published coverage'), false);
   none.unmount();

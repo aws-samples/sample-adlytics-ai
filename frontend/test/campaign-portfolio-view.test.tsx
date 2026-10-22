@@ -383,7 +383,7 @@ test('Campaign Portfolio view gives each insight state its designed treatment an
   // Filled: narration, evidence line, output-class tag.
   assert.ok(screen.getByText('Spend was the clearest contributor to the portfolio movement.'));
   assert.ok(document.querySelector('.narr-card .ev'));
-  assert.ok(screen.getByText('Perspective'));
+  assert.ok(screen.getByText('Reading'));
   // Each absence states its served reason verbatim under its contract-owned tag.
   assert.ok(screen.getByText('No campaign direction materially diverges from the portfolio direction.'));
   assert.ok(screen.getByText('Nothing noteworthy'));
@@ -1292,4 +1292,18 @@ test('A step to another tab\'s view renders no chip, and no complete body lacks 
   assert.throws(() => parseCampaignPortfolioArtifact(steppedPayload({
     kind: 'open_evidence_status', label: 'See why', reason: 'A fictional reason.', target: null,
   }, { ...completePayload('spend', 'desc'), evidence_status: null })), { name: 'CampaignAttributionContractError' });
+});
+
+test('each campaign row carries one freshness badge instead of the staleness sentences (D5)', () => {
+  const served = structuredClone(completeArtifact('spend', 'desc')) as unknown as {
+    rows: { freshness_qualifiers: string[] }[];
+  };
+  const current = portfolioView(served as unknown as CampaignPortfolioArtifact);
+  assert.match(current.container.querySelector('tbody tr td.l')?.textContent ?? '', /^Latest data [A-Z][a-z]{2} \d{1,2}, \d{4}$/);
+  current.unmount();
+  served.rows[0]!.freshness_qualifiers = ['Fictional source arrived late'];
+  const late = portfolioView(served as unknown as CampaignPortfolioArtifact);
+  // The served sentence stays as the badge's accessible description, not visible prose.
+  assert.equal(late.container.querySelector('tbody tr td.l')?.textContent, 'Late data: Fictional source arrived late');
+  assert.equal(late.container.querySelector('tbody tr td.l .sr-only')?.textContent, ': Fictional source arrived late');
 });

@@ -18,7 +18,7 @@ import type {
   CampaignPortfolioRow,
   CampaignSelectionCapability,
 } from '@/lib/campaign-attribution';
-import { formatCount, formatIsoDateRange } from '@/lib/exact-format';
+import { formatCount, formatIsoDate, formatIsoDateRange } from '@/lib/exact-format';
 import type { InsightNextStep, InsightNextStepHandlers } from '@/lib/insight-next-step';
 import type { MetricFocusV4 } from '@/lib/metric-focus';
 import { bindingByRoute } from '@/lib/page-bindings';
@@ -40,7 +40,7 @@ import { DataTable, DtBody, DtCell, DtColumn, DtHead, DtRow, DtRowHeader } from 
 import { PAGE_HEADING_ID } from './Dialog';
 import { ChangeChip, ChartLegend, displayValueText, numberText, SeriesChart, type ValueKind } from './ChartPrimitives';
 import { seedAssistantQuestion } from './ChatPanel';
-import { CoverageBasis, CoverageProvider, FigureChange, TileAbsence, TileChange, useCoverageText } from './Coverage';
+import { CoverageBasis, CoverageProvider, FigureChange, TileAbsence, TileChange, useCoverageOpen, useCoverageText } from './Coverage';
 import { EvidenceStatusSheet } from './EvidenceStatusSheet';
 import { InsightCard, InsightNextStepControl } from './InsightCard';
 import { InsightFocusDialog, type InsightFocusSurface } from './InsightFocusDialog';
@@ -104,6 +104,18 @@ export function PortfolioValue({ metric: metricName, value }: {
   return <>{displayValueText({ ...value, value: value.value }, value.units.kind, governedMetric(metricName))}</>;
 }
 
+/**
+ * One freshness badge per campaign row (cp-row-fresh, D5): "Latest data {date}" when the row
+ * carries no served staleness qualifier, else "Late data", which opens the page's one coverage
+ * sheet. The served qualifier sentences stay as the badge's accessible description.
+ */
+function RowFreshness({ end, qualifiers }: { readonly end: string; readonly qualifiers: readonly string[] }) {
+  const open = useCoverageOpen();
+  if (qualifiers.length === 0) return <span className="pill good">Latest data {formatIsoDate(end)}</span>;
+  const described = <span className="sr-only">: {qualifiers.join(', ')}</span>;
+  if (open === null) return <span className="pill warn">Late data{described}</span>;
+  return <button type="button" className="pill warn" aria-haspopup="dialog" onClick={(event) => open(event.currentTarget)}>Late data{described}</button>;
+}
 /** Whether both sides are defined; an undefined comparison has no change (ADR-087). */
 function comparable(comparison: CampaignPortfolioComparison): boolean {
   return comparison.current.value !== null && comparison.prior.value !== null;
@@ -365,7 +377,6 @@ function PortfolioTrend({ artifact }: { readonly artifact: CampaignPortfolioArti
   return <section className="panel" aria-label="Portfolio trend">
     <div className="panel-head">
       <div>
-        <p className="eyebrow">Visual evidence</p>
         <h2 id="portfolio-trend-heading">{label(selected)}</h2>
         <p className="footnote">{formatIsoDateRange(trend.period.start, trend.period.end)}</p>
       </div>
@@ -630,9 +641,8 @@ function PortfolioTable({ artifact, onFilter, onSegment, onSegmentApproach, onSe
   return <section className="panel" aria-labelledby="campaign-table-heading">
     <div className="panel-head">
       <div>
-        <p className="eyebrow">Server ordering</p>
         <h2 id="campaign-table-heading">Campaigns</h2>
-        <p className="footnote">Order and changes are returned by the server. Selecting a header requests a new ordered portfolio; paging walks baked segments of the same publication.</p>
+        <p className="footnote">Sorted by {sortLabel(artifact.sort)}. Select a column header to sort by it.</p>
       </div>
     </div>
     <div className="table-toolbar">
@@ -677,9 +687,7 @@ function PortfolioTable({ artifact, onFilter, onSegment, onSegmentApproach, onSe
               <span><strong><PortfolioValue metric={comparison.metric} value={comparison.current} /></strong>{' '}
               <PortfolioChange comparison={comparison} figure={`${label(comparison.metric)}, ${campaignName(row)}`} /></span>
             </DtCell>)}
-            <DtCell className="l" label="Coverage">{row.freshness_qualifiers.length === 0
-              ? <span className="pill good">Current coverage</span>
-              : <span className="coverage-note">{row.freshness_qualifiers.join(', ')}</span>}</DtCell>
+            <DtCell className="l" label="Coverage"><RowFreshness end={artifact.period.end} qualifiers={row.freshness_qualifiers} /></DtCell>
           </DtRow>;
         })}</DtBody>
     </DataTable>
@@ -1023,7 +1031,6 @@ function DetailChart({ detail }: { readonly detail: CampaignAttributionDetailV2 
   return <section className="panel" aria-label="Campaign trend">
     <div className="panel-head">
       <div>
-        <p className="eyebrow">Visual evidence</p>
         <h2 id="campaign-trend-heading">{label(activeMetric)}</h2>
         <p className="footnote">{formatIsoDateRange(detail.period.start, detail.period.end)}</p>
       </div>
@@ -1270,12 +1277,10 @@ export function PortfolioBandTitle({ artifact, onFilter }: {
       {artifact === null
         ? <span className="pill">Reporting window unavailable</span>
         : <>
-          {filter === null ? null : <span className="pill">{filter.options.find((option) => option.filter_id === filter.selected)?.label}</span>}
-          <span className="pill">{artifact.total_count} authorized {artifact.total_count === 1 ? 'campaign' : 'campaigns'}</span>
+          {/* Text diet (D5): the channel select already names the option; readiness shows only when absent. */}
+          <span className="pill">{formatCount(String(artifact.total_count))} {artifact.total_count === 1 ? 'campaign' : 'campaigns'}</span>
           <span className="pill">Ad-attributed</span>
-          {artifact.outcome === 'complete'
-            ? <span className="pill good">{portfolioOutcomeCopy(artifact.outcome).status}</span>
-            : <span className="pill warn">{portfolioOutcomeCopy(artifact.outcome).status}</span>}
+          {artifact.outcome === 'complete' ? null : <span className="pill warn">{portfolioOutcomeCopy(artifact.outcome).status}</span>}
         </>}
     </div>
   </>;

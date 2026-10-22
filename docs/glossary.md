@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Living. Grows when a term appears in a second document |
-| **Last updated** | 2026-09-25 |
+| **Last updated** | 2026-10-22 |
 | **Scope** | Acronyms and terms used across these documents, with a pointer to whoever owns each |
 | **Related** | [conventions](conventions.md) §9 · [understanding-the-data-model](understanding-the-data-model.md) · [business-context](business-context.md) |
 
@@ -103,3 +103,18 @@ Terms specific to one document are defined there and deliberately absent from th
 | **G-nn** | Something missing that nothing accounts for — [gap register](decision-coverage-registry.md#gap-register-g-nn) |
 | **Q-nn** | An open decision — [question register](decision-coverage-registry.md#question-register-q-nn) |
 | **D-nn** | A made decision, indexed in [architecture](architecture.md) §11 and owned by an ADR |
+
+## Customer labels
+
+The words customer pages show for a governed metric whose served label is jargon (UI refresh 2026-10-22, D5). Only the label changes; the metric, its value and its basis stay as served. [`frontend/lib/glossary.ts`](../frontend/lib/glossary.ts) owns the table; this list mirrors it for reviewers.
+
+| Governed id | Customer label |
+|---|---|
+| `roas_deduplicated_incl_halo_14d` | Return on ad spend, each sale counted once |
+| `roas_attributed_14d`, `portfolio_roas_attributed_14d` | Return on ad spend |
+| `roas_attributed_incl_halo_14d` | Return incl. other products of your brand |
+| `tacos` | Ad spend as a share of shipped sales |
+| `glance_views` | Product page views |
+| `amazon_margin_proxy` | Amazon's margin on your products (not yours) |
+| `purchaser_rate_index_vs_sponsored_only` | Purchase rate compared with sponsored-only shoppers |
+| Insight output classes `observed`, `perspective`, `hypothesis` | Fact, Reading, Idea to check |

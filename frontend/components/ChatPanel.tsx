@@ -740,7 +740,7 @@ export function ChatPanel({
           rows={2}
         />
         <div className="send">
-          <span>Managed assistant response</span>
+          <span aria-hidden="true" />
           <button className="btn primary" type="submit" disabled={busy || !question.trim()}>
             {busy ? 'Working' : 'Submit'}
           </button>

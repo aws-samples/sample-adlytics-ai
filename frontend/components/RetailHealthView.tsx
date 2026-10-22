@@ -80,11 +80,11 @@ export function RetailHealthBandTitle({ artifact, product = null }: {
           <span className="pill">Reporting window unavailable</span>
         </>
         : <>
-          <span className="pill">{artifact.total_count} authorized {artifact.total_count === 1 ? 'product' : 'products'}</span>
+          <span className="pill">{artifact.total_count} {artifact.total_count === 1 ? 'product' : 'products'}</span>
           <span className="pill">Retail actuals · shipped basis</span>
           <span className="pill">{artifact.distributor_view === 'MANUFACTURING' ? 'Manufacturing view' : 'Sourcing view'}</span>
           {artifact.reconciliation === null ? null : artifact.reconciliation.outcome === 'reconciled'
-            ? <span className="pill good">Reconciled to reported totals · loaded {formatIsoDate(artifact.reconciliation.as_of)}</span>
+            ? <span className="pill good">Matches Vendor Central totals · loaded {formatIsoDate(artifact.reconciliation.as_of)}</span>
             : <span className="pill warn">Totals differ from reported · loaded {formatIsoDate(artifact.reconciliation.as_of)}</span>}
         </>}
     </div>
@@ -126,7 +126,6 @@ function RetailTrend({ artifact }: { readonly artifact: RetailHealthArtifact }) 
   return <section className="panel" aria-label="Retail trend">
     <div className="panel-head">
       <div>
-        <p className="eyebrow">Visual evidence</p>
         <h2>{metricLabel(selected)}</h2>
         <p className="footnote">{formatIsoDateRange(artifact.period.start, artifact.period.end)} · daily</p>
       </div>

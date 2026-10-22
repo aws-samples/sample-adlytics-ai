@@ -4,6 +4,7 @@
  * model selector, the channel table and its links, highlight, pointer lines, dialogs, loading
  * and absence states, and axe. Each passing case sits beside its failing control.
  */
+import { CUSTOMER_METRIC_LABELS } from '../lib/glossary';
 import assert from 'node:assert/strict';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -359,7 +360,7 @@ test('the TACoS change goes through its served coverage entry, like every other 
   const artifact = artifactOf(weekly);
   const tacos = artifact.tacos[0];
   assert.equal(tacos?.coverage_slot, 'tacos:amazon:amazon_us');
-  const tile = (view: ReturnType<typeof render>) => [...view.container.querySelectorAll('.tile')].find((node) => node.querySelector('.k')?.textContent === 'TACoS') as HTMLElement;
+  const tile = (view: ReturnType<typeof render>) => [...view.container.querySelectorAll('.tile')].find((node) => node.querySelector('.k')?.textContent === 'Ad spend as a share of shipped sales') as HTMLElement;
   const complete = render(<ScorecardView artifact={artifact} />);
   assert.equal(tile(complete).querySelectorAll('.chg').length, 1);
   assert.equal(tile(complete).querySelector('.tile-absence'), null);
@@ -381,7 +382,7 @@ test('the TACoS change goes through its served coverage entry, like every other 
   assert.equal(tile(gated).querySelectorAll('.chg').length, 0);
   assert.equal(tile(gated).querySelectorAll('.chg-absent').length, 1);
   assert.match(tile(gated).querySelector('.tile-absence')?.textContent ?? '', /Sep 12/);
-  assert.ok(within(tile(gated)).getByRole('button', { name: /TACoS/ }));
+  assert.ok(within(tile(gated)).getByRole('button', { name: /Ad spend as a share of shipped sales/ }));
 });
 
 /** Every string one served response carries, from that response alone (never another state's). */
@@ -470,7 +471,8 @@ function renderRoute(fixture: unknown) {
 }
 
 // Scorecard LLD "Browser-owned copy": the only words the browser writes on a served page.
-const ALLOWLIST = new Set(['Read more ›']);
+// Plus the glossary's customer labels for served metric labels (UI refresh D5).
+const ALLOWLIST = new Set(['Read more ›', ...CUSTOMER_METRIC_LABELS]);
 const WALKED = { absentCell, alsoChanged, defaultBody, emptyBody, modelSensitive, monthly, needsVendor, noCredit, noDsp, noPeriod, pending, twoAlsoChanged, twoMarketplaces, weekly };
 
 test('every visible text is exactly a string or figure its own response served, or allowlisted', () => {
@@ -673,7 +675,7 @@ test('the A.3 states render their served ranking, card line and TACoS absence', 
   assert.equal(undelivered.container.querySelector('.scorecard-card p.small.dim')?.textContent, 'No DSP delivery in this window');
   assert.equal(undelivered.container.querySelectorAll('tr[data-channel="amazon_dsp"]').length, 0);
   undelivered.unmount();
-  const tacosTile = (container: HTMLElement) => [...container.querySelectorAll('.tile')].find((node) => node.querySelector('.k')?.textContent === 'TACoS');
+  const tacosTile = (container: HTMLElement) => [...container.querySelectorAll('.tile')].find((node) => node.querySelector('.k')?.textContent === 'Ad spend as a share of shipped sales');
   const vendor = render(<ScorecardView artifact={artifactOf(needsVendor)} />);
   assert.equal(tacosTile(vendor.container)?.querySelector('.v')?.textContent, 'Not available');
   assert.equal(tacosTile(vendor.container)?.querySelector('.reason')?.textContent, 'Needs Vendor Central sales');

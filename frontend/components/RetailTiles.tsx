@@ -7,6 +7,7 @@
  * server's; the browser only shifts a decimal point to show a rate as a percentage or per 1,000.
  */
 
+import { metricLabel } from '@/lib/glossary';
 import { formatCanonicalDecimal, formatCount, formatCurrency, formatRatePercent } from '@/lib/exact-format';
 import type { Metric, RetailComparison, RetailMetricValue } from '@/lib/retail-health';
 import { TileAbsence, TileChange, useWithheld } from './Coverage';
@@ -27,13 +28,13 @@ export const RETAIL_TILE_GROUPS: readonly {
 ];
 
 const LABELS: Record<Metric, string> = {
-  amazon_margin_proxy: 'Amazon margin proxy',
+  amazon_margin_proxy: metricLabel('amazon_margin_proxy', 'Amazon margin proxy'),
   asp_shipped: 'Average selling price',
   cogs_shipped: 'Cost of goods shipped',
-  conversion_rate_retail: 'Units per 1,000 glance views',
+  conversion_rate_retail: 'Units per 1,000 product page views',
   customer_returns: 'Customer returns',
   fulfilment_rate: 'Fulfilment rate',
-  glance_views: 'Glance views',
+  glance_views: metricLabel('glance_views', 'Glance views'),
   retail_revenue_shipped: 'Shipped revenue',
   return_rate: 'Return rate',
   returns_value_estimate_retail: 'Estimated revenue withheld by returns',

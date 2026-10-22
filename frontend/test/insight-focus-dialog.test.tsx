@@ -116,7 +116,7 @@ test('a filled slot dialog carries the narration, evidence line, and output clas
   const dialog = screen.getByRole('dialog');
   assert.ok(dialog.textContent?.includes('Spend was the clearest contributor to the portfolio movement.'));
   assert.ok(dialog.textContent?.includes('Spend changed while attributed purchases were stable.'));
-  assert.ok(screen.getAllByText('Perspective').length >= 1);
+  assert.ok(screen.getAllByText('Reading').length >= 1);
   // Customer words only (design revision 2026-09-25.1): no prompt version, no
   // internal vocabulary — the strip carries the generic governed-reading line.
   assert.equal(dialog.textContent?.includes('v4'), false);

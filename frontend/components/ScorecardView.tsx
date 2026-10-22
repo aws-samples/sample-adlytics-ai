@@ -7,6 +7,7 @@
  * which served headline shows, with no request; nothing here adds, ranks or converts a figure.
  * Attributed returns appear only on a channel row of one network card (ia §8.5).
  */
+import { metricLabel } from '@/lib/glossary';
 import { Fragment, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 
 import { CoverageProvider, FigureChange, TileAbsence, TileChange } from './Coverage';
@@ -57,13 +58,13 @@ function Tile({ figure, notAvailable, slot, market = null, children }: {
   const value = figureText(figure);
   const prior = figureText(figure, true);
   return <div className={value === null ? 'tile na' : 'tile'}>
-    <span className="k">{figure.label}</span>
+    <span className="k">{metricLabel(figure.metric, figure.label)}</span>
     {market === null ? null : <span className="market">{market}</span>}
     <span className="v num">{value ?? notAvailable}</span>
     {value === null ? <span className="reason">{figure.absence_text}</span> : null}
     {prior === null || figure.prior_label === null ? null : <span className="prior">{figure.prior_label}: {prior}</span>}
     <span className="basis">{figure.basis}</span>
-    {value === null ? null : <TileAbsence slot={slot} figure={figure.label} />}
+    {value === null ? null : <TileAbsence slot={slot} figure={metricLabel(figure.metric, figure.label)} />}
     <div className="foot">
       {/* The chip, or nothing while coverage withholds it: TileAbsence then says why, once. */}
       {figure.change === null ? <span /> : <TileChange change={figure.change} slot={slot} />}

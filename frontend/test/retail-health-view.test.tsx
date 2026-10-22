@@ -299,7 +299,7 @@ test('A retail card\'s metric step opens that tile\'s focus dialog; a campaign s
   const chip = screen.getByRole('button', { name: 'Open glance views by day' });
   assert.equal(document.getElementById(chip.getAttribute('aria-describedby') ?? '')?.textContent, 'Traffic stayed flat while revenue rose.');
   await user.click(chip);
-  assert.ok(screen.getByRole('dialog', { name: 'Glance views' }));
+  assert.ok(screen.getByRole('dialog', { name: 'Product page views' }));
   await user.keyboard('{Escape}');
   view.unmount();
   const campaign = render(<RetailHealthView artifact={stepped({
@@ -343,9 +343,9 @@ test('Retail health shows the four shared tile groups, the return-reasons absenc
   assert.deepEqual(headings.slice(0, 4), ['Demand and conversion', 'Sales and fulfilment', 'Traffic value and margin', 'Returns']);
   const group = (name: string) => screen.getByRole('region', { name });
   const keys = (name: string) => [...group(name).querySelectorAll('.tile .k')].map((key) => key.textContent);
-  assert.deepEqual(keys('Demand and conversion'), ['Glance views', 'Units per 1,000 glance views', 'Ordered revenue', 'Ordered units']);
+  assert.deepEqual(keys('Demand and conversion'), ['Product page views', 'Units per 1,000 product page views', 'Ordered revenue', 'Ordered units']);
   assert.deepEqual(keys('Sales and fulfilment'), ['Shipped revenue', 'Shipped units', 'Fulfilment rate', 'Average selling price']);
-  assert.deepEqual(keys('Traffic value and margin'), ['Revenue per glance view', 'Cost of goods shipped', 'Amazon margin proxy']);
+  assert.deepEqual(keys('Traffic value and margin'), ['Revenue per glance view', 'Cost of goods shipped', "Amazon's margin on your products (not yours)"]);
   assert.deepEqual(keys('Returns'), ['Customer returns', 'Return rate', 'Estimated revenue withheld by returns', 'Return reasons']);
   assert.ok(group('Returns').textContent?.includes("Vendor Central doesn't send return reasons for this account."));
   const paid = group('Retail purchases from Amazon Marketing Cloud');

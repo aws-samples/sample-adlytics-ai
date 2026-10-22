@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT-0
 'use client';
 
+import { INSIGHT_TAG_LABELS } from '@/lib/glossary';
 import Link from 'next/link';
 import { useId } from 'react';
 
@@ -38,9 +39,9 @@ export interface InsightSlotView {
 export const INSIGHT_FALLBACK_REASON = 'Nothing noteworthy this window.';
 
 const OUTPUT_TAGS = {
-  hypothesis: { className: 'tag hypothesis', label: 'Hypothesis' },
-  observed: { className: 'tag observed', label: 'Observed' },
-  perspective: { className: 'tag perspective', label: 'Perspective' },
+  hypothesis: { className: 'tag hypothesis', label: INSIGHT_TAG_LABELS.hypothesis },
+  observed: { className: 'tag observed', label: INSIGHT_TAG_LABELS.observed },
+  perspective: { className: 'tag perspective', label: INSIGHT_TAG_LABELS.perspective },
 } as const;
 
 export interface InsightTreatment {

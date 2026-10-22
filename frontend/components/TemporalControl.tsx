@@ -35,15 +35,14 @@ function validCustomSelection(start: string, end: string, bounds: NonNullable<Te
   return Number.isSafeInteger(duration) && duration >= bounds.min_duration_days && duration <= bounds.max_duration_days;
 }
 
-/** What the page's data is as of: its window end and, when known, its generation's build time. */
-function asOfCopy(control: TemporalControlV1, generation: PageGenerationV1 | undefined): string {
-  const asOf = `Data as of ${formatIsoDate(control.resolved.window.end)}`;
-  if (generation === undefined) return `${asOf}.`;
+/** The page's one freshness line: the window's end and, when known, its generation's build time. */
+function throughCopy(control: TemporalControlV1, generation: PageGenerationV1 | undefined): string {
+  const through = `Data through ${formatIsoDate(control.resolved.window.end)}`;
+  if (generation === undefined) return `${through}.`;
   return 'built_at' in generation
-    ? `${asOf}, built ${formatIsoInstant(generation.built_at)}.`
-    : `${asOf}, built before ${formatIsoInstant(generation.built_before)}.`;
+    ? `${through}, built ${formatIsoInstant(generation.built_at)}.`
+    : `${through}, built before ${formatIsoInstant(generation.built_before)}.`;
 }
-
 function unavailablePresetCopy(label: string): string {
   return `${label} is not available for the currently published coverage. Choose another available reporting window.`;
 }
@@ -264,7 +263,7 @@ function TemporalControlV1View({ control, generation, onFocusRestored, onSelect,
           onClick={() => onSelect({ kind: 'preset', preset_id: preset.id })}
         >
           <span className="w">{preset.label}</span>
-          <span className="s">{checked ? range(control) : unavailable ? 'Not published' : 'Published'}</span>
+          {checked ? <span className="s">{range(control)}</span> : unavailable ? <span className="s">Not published</span> : null}
         </button>;
       })}
       {bounds !== null && placement !== null ? <button
@@ -292,14 +291,9 @@ function TemporalControlV1View({ control, generation, onFocusRestored, onSelect,
         {invalid ? <span role="alert">Choose an ordered date range within the published bounds and allowed duration.</span> : null}
       </form> : null}
     </div>
-    <p className="footnote win-note">
-      <span>Server-resolved reporting scope</span>
-      {' · '}{range(control)}{' · '}{resolvedDays} {resolvedDays === 1 ? 'day' : 'days'}.
-      {' '}{asOfCopy(control, generation)}
-      {' '}Windows anchor to the published coverage this page was built from, never to today. Changing the window re-resolves every card, table, chart, and insight on this page.
-    </p>
-    {control.presets.filter((preset) => preset.availability === 'unavailable').map((preset) => <p key={preset.id} id={`period-status-${preset.id}`} className="footnote win-note">{unavailablePresetCopy(preset.label)}</p>)}
-    {custom.availability === 'unavailable' ? <p className="footnote win-note">Custom reporting windows are not available for this page.</p> : null}
+    {/* Text diet (UI refresh 1.4, D5): one line names the window and how far the data runs. */}
+    <p className="footnote win-note" data-slot="pg-through">{range(control)} · {resolvedDays} {resolvedDays === 1 ? 'day' : 'days'} · {throughCopy(control, generation)}</p>
+    {control.presets.filter((preset) => preset.availability === 'unavailable').map((preset) => <p key={preset.id} id={`period-status-${preset.id}`} className="sr-only">{unavailablePresetCopy(preset.label)}</p>)}
     {refusal ? <p role="status" aria-live="polite" className="state-note bad win-note"><span className="badge">Comparison unavailable</span>This reporting window cannot be compared safely. {refusal.recovery}</p> : null}
   </>;
 }
