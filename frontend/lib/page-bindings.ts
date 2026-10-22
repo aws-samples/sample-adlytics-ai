@@ -453,7 +453,7 @@ function parseBinding(value: unknown, expectedPageId: DeclaredPageId): PageBindi
 export function parsePageBindings(value: unknown): readonly PageBinding[] {
   const document = record(
     value,
-    ['pages', 'presentation_result_version', 'temporal_control_version', 'version'],
+    ['metric_display', 'pages', 'presentation_result_version', 'temporal_control_version', 'version'],
     'page bindings',
   );
   if (
@@ -495,6 +495,35 @@ export function needsTemporalV2(page: PageBinding): boolean {
   return page.vintage_policy !== undefined
     || page.temporal_policy.candidate_presets.some(isCalendarPreset);
 }
+
+/** A governed metric's unit and ratio scale, projected from the metric dictionary (plan D4). */
+export interface MetricDisplay {
+  readonly ratio_scale: 'multiplier' | 'rate' | null;
+  readonly units: 'count' | 'currency' | 'ratio';
+}
+
+/** Decode the generated `metric_display` block: one unit per metric, a scale exactly on ratios. */
+export function parseMetricDisplay(value: unknown): ReadonlyMap<string, MetricDisplay> {
+  const document = record(value, ['metric_display', 'pages', 'presentation_result_version', 'temporal_control_version', 'version'], 'page bindings');
+  const block = document.metric_display;
+  if (typeof block !== 'object' || block === null || Array.isArray(block) || Object.keys(block).length === 0) {
+    throw new TypeError('Metric display must be a nonempty object.');
+  }
+  const displays = new Map<string, MetricDisplay>();
+  for (const [metric, raw] of Object.entries(block as UnknownRecord)) {
+    const entry = record(raw, ['ratio_scale', 'units'], `metric display ${metric}`);
+    const units = enumValue(entry.units, ['count', 'currency', 'ratio'] as const, `metric display ${metric} units`);
+    const scale = entry.ratio_scale === null
+      ? null
+      : enumValue(entry.ratio_scale, ['multiplier', 'rate'] as const, `metric display ${metric} ratio scale`);
+    if ((units === 'ratio') !== (scale !== null)) throw new TypeError(`Metric display ${metric} must scale exactly a ratio.`);
+    displays.set(metric, { ratio_scale: scale, units });
+  }
+  return displays;
+}
+
+/** Every governed metric's display rule, keyed by metric id. */
+export const metricDisplay = parseMetricDisplay(generatedDocument as unknown);
 
 /** Every declared page binding, whether or not this frontend renders it. */
 export const pageBindings = parsePageBindings(generatedDocument as unknown);

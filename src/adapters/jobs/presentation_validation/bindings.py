@@ -353,6 +353,25 @@ def _v2_vintage_policy(value: object) -> None:
         raise PageSchemaError("V2 vintage policy has an unknown value.")
 
 
+_METRIC_UNITS = frozenset({"count", "currency", "ratio"})
+_RATIO_SCALES = frozenset({"rate", "multiplier"})
+
+
+def _metric_display(raw: object) -> None:
+    """Refuse a metric display projection that isn't one unit, with a scale exactly on ratios."""
+    if not isinstance(raw, dict) or not raw:
+        raise PageSchemaError("V2 page bindings metric_display must be a nonempty object.")
+    for name, spec in cast("dict[object, object]", raw).items():
+        entry = _record(spec, {"ratio_scale", "units"}, f"V2 metric_display {name!s}")
+        units, scale = entry["units"], entry["ratio_scale"]
+        if not isinstance(name, str) or units not in _METRIC_UNITS:
+            raise PageSchemaError(f"V2 metric_display {name!s} has an unknown unit.")
+        if (units == "ratio") != (scale in _RATIO_SCALES):
+            raise PageSchemaError(f"V2 metric_display {name!s} must scale exactly a ratio.")
+        if units != "ratio" and scale is not None:
+            raise PageSchemaError(f"V2 metric_display {name!s} must scale exactly a ratio.")
+
+
 def load_v2_page_bindings(  # noqa: PLR0912, PLR0915 -- exact wire-shape validation
     root: Path,
     *,
@@ -368,9 +387,16 @@ def load_v2_page_bindings(  # noqa: PLR0912, PLR0915 -- exact wire-shape validat
         raise PageSchemaError(f"frontend page bindings are invalid: {error}") from error
     top = _record(
         document,
-        {"pages", "presentation_result_version", "temporal_control_version", "version"},
+        {
+            "metric_display",
+            "pages",
+            "presentation_result_version",
+            "temporal_control_version",
+            "version",
+        },
         "V2 page bindings",
     )
+    _metric_display(top["metric_display"])
     pages_raw = top["pages"]
     if (
         top["version"] != _V2_VERSION

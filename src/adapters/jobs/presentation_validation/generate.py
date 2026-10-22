@@ -346,10 +346,26 @@ def _v2_generated_document(root: Path) -> dict[str, object]:
             }
         )
     return {
+        "metric_display": _v2_metric_display(root),
         "pages": pages,
         "presentation_result_version": schemas.presentation_result_version,
         "temporal_control_version": schemas.temporal_control_version,
         "version": schemas.version,
+    }
+
+
+def _v2_metric_display(root: Path) -> dict[str, dict[str, str | None]]:
+    """Project each dictionary metric's unit and ratio scale so the browser formats by contract.
+
+    A rate renders as a percentage and a multiplier with a times sign, rounded only for display;
+    the exact served value stays in the exact-values disclosure (plan D4, ADR-121).
+    """
+    return {
+        metric.name: {
+            "ratio_scale": None if metric.ratio_scale is None else metric.ratio_scale.value,
+            "units": metric.unit_kind.value,
+        }
+        for metric in sorted(load_catalog(root).metrics, key=lambda item: item.name)
     }
 
 

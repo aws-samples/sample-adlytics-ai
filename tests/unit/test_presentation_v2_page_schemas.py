@@ -98,6 +98,25 @@ def test_v2_binding_validator_rejects_unknown_temporal_policy_field(tmp_path: Pa
         load_v2_page_bindings(tmp_path, path=Path(path.name))
 
 
+def test_v2_generator_projects_each_metric_unit_and_ratio_scale(tmp_path: Path) -> None:
+    """Plan D4: the browser formats a rate as % and a multiplier with a times sign."""
+    document = generated_document(ROOT, schema_version=2)
+    display = cast("dict[str, dict[str, object]]", document["metric_display"])
+    assert display["ctr"] == {"ratio_scale": "rate", "units": "ratio"}
+    assert display["roas_attributed_14d"] == {"ratio_scale": "multiplier", "units": "ratio"}
+    assert display["impressions"] == {"ratio_scale": None, "units": "count"}
+    assert display["ad_spend"] == {"ratio_scale": None, "units": "currency"}
+    path = tmp_path / "v2-bindings.json"
+    for broken in (
+        {"ratio_scale": None, "units": "ratio"},
+        {"ratio_scale": "rate", "units": "count"},
+    ):
+        display["ctr"] = broken
+        path.write_text(json.dumps(document))
+        with pytest.raises(PageSchemaError, match="must scale exactly a ratio"):
+            load_v2_page_bindings(tmp_path, path=Path(path.name))
+
+
 def test_v2_section_role_projection_is_exhaustive_for_every_declared_section() -> None:
     schemas = load_v2_page_schemas(ROOT)
 

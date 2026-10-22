@@ -15,6 +15,7 @@ import {
 
 function fictionalDocument(): Record<string, unknown> {
   return {
+    metric_display: { ctr: { ratio_scale: 'rate', units: 'ratio' } },
     pages: structuredClone(pageBindings),
     presentation_result_version: 2,
     temporal_control_version: 2,
