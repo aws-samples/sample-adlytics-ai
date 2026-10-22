@@ -20,6 +20,7 @@ import {
   grantGraphWorker,
   grantModeItemRead,
 } from './execution-graph-authority';
+import { buildBakeAlarms } from './execution-graph-alarms';
 import {
   arrivalAlarm,
   boundedStreamMapping,
@@ -390,6 +391,9 @@ export class PublisherStack extends cdk.Stack {
       queue: deadLetterQueue,
       action: staffedAction,
     });
+    // ADR-142 (A1): the isolated-refusal and over-budget alarms, in every environment, because
+    // both bake entries emit their metrics; alarm-only (no IAM, route, storage or function).
+    buildBakeAlarms(this, config, staffedAction);
     baker.addEventSource(
       new sources.SqsEventSource(bakeQueue, {
         batchSize: 1,

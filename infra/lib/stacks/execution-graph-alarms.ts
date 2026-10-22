@@ -42,6 +42,9 @@ export const BAKE_FINALIZER_BLOCKED_METRIC = 'GraphBakeFinalizerBlocked';
 export const BAKE_TELEMETRY_LOSS_METRIC = 'GraphBakeTelemetryLoss';
 export const BAKE_TRACE_INCOMPLETE_METRIC = 'GraphBakeTraceIncomplete';
 export const SERVING_WITHHELD_METRIC = 'GraphServingWithheld';
+/** ADR-142: both bake entries emit these, so they carry no `Graph` prefix. */
+export const BAKE_ISOLATED_REFUSAL_LIMIT_METRIC = 'BakeIsolatedRefusalLimit';
+export const BAKE_TASK_OVER_BUDGET_METRIC = 'BakeTaskOverBudget';
 /** The bake rows are evaluated each sweep (one a minute). */
 export const BAKE_ALARM_PERIOD_SECONDS = 60;
 /**
@@ -249,6 +252,79 @@ export const GRAPH_ALARMS: readonly GraphAlarmSpec[] = [
   },
 ];
 
+/**
+ * ADR-142 (owner approval A1): the two bake alarms in the publisher stack, which every
+ * environment deploys, so the legacy entry's refusals alarm wherever there is no graph
+ * authority. Both are event counts (`BakeIsolatedRefusalLimit` per limit or dependency refusal
+ * group, `BakeTaskOverBudget` per over-budget bake), absent when nothing happened, so missing
+ * data is not breaching. `BakeIsolatedRefusalData` (history gaps, incomplete answers, source
+ * refusals) is counted and not alarmed: the user sees a precise note, so it stays a product
+ * signal.
+ */
+export const BAKE_ALARMS: readonly GraphAlarmSpec[] = [
+  {
+    id: 'BakeIsolatedRefusalLimit',
+    suffix: 'bake-isolated-refusal-limit',
+    metricName: BAKE_ISOLATED_REFUSAL_LIMIT_METRIC,
+    scope: 'live',
+    threshold: 1,
+    periodSeconds: BAKE_ALARM_PERIOD_SECONDS,
+    missing: cloudwatch.TreatMissingData.NOT_BREACHING,
+    notifyOk: true,
+    description:
+      'A page, section or campaign hit a stated bake limit or a dependency that stayed down, and '
+      + 'users see an absence there; every other page published. Read the baker isolated_refusal '
+      + 'line for the entry, page and reason. For dependency_unavailable: once the dependency is '
+      + 'healthy, run a declarative re-bake (operator-tools.md); otherwise the page keeps its '
+      + 'last-good body until the next landing, because freshness is landing-driven. For '
+      + 'quarter_manifest_absent: run the quarter-manifest backfill with its readback '
+      + '(quarter_manifest_backfill), then re-bake.',
+  },
+  {
+    id: 'BakeTaskOverBudget',
+    suffix: 'bake-task-over-budget',
+    metricName: BAKE_TASK_OVER_BUDGET_METRIC,
+    scope: 'live',
+    threshold: 1,
+    periodSeconds: BAKE_ALARM_PERIOD_SECONDS,
+    missing: cloudwatch.TreatMissingData.NOT_BREACHING,
+    notifyOk: true,
+    description:
+      'A page\'s bake ran past its certified seconds. Users see no difference: nothing was cut. '
+      + 'Find the baker over_budget line (entry, page, seconds, budget_seconds) and decide: a '
+      + 'defect (a slow path nobody expected), or data beyond the envelope the budget was '
+      + 'certified at.',
+  },
+];
+
+/** One alarm from one spec: the shared metric construction every graph and bake alarm uses. */
+export function alarmFromSpec(
+  scope: Construct,
+  config: AppConfig,
+  spec: GraphAlarmSpec,
+  action: cloudwatch.IAlarmAction,
+): cloudwatch.Alarm {
+  const alarm = new cloudwatch.Alarm(scope, spec.id, {
+    alarmName: `adlytics-${config.envName}-${spec.suffix}`,
+    alarmDescription: spec.description,
+    metric: new cloudwatch.Metric({
+      namespace: GRAPH_METRIC_NAMESPACE,
+      metricName: spec.metricName,
+      dimensionsMap: { Protocol: PROTOCOL_VERSION, AuthorityScope: spec.scope },
+      statistic: cloudwatch.Stats.MAXIMUM,
+      period: cdk.Duration.seconds(spec.periodSeconds),
+    }),
+    threshold: spec.threshold,
+    comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+    evaluationPeriods: 1,
+    datapointsToAlarm: 1,
+    treatMissingData: spec.missing,
+  });
+  alarm.addAlarmAction(action);
+  if (spec.notifyOk) alarm.addOkAction(action);
+  return alarm;
+}
+
 /** One alarm per spec, every action on the selected staffed destination. */
 export function buildGraphAlarms(
   scope: Construct,
@@ -256,27 +332,16 @@ export function buildGraphAlarms(
   topic: sns.ITopic,
 ): cloudwatch.Alarm[] {
   const action = new actions.SnsAction(topic);
-  return GRAPH_ALARMS.map((spec) => {
-    const alarm = new cloudwatch.Alarm(scope, spec.id, {
-      alarmName: `adlytics-${config.envName}-${spec.suffix}`,
-      alarmDescription: spec.description,
-      metric: new cloudwatch.Metric({
-        namespace: GRAPH_METRIC_NAMESPACE,
-        metricName: spec.metricName,
-        dimensionsMap: { Protocol: PROTOCOL_VERSION, AuthorityScope: spec.scope },
-        statistic: cloudwatch.Stats.MAXIMUM,
-        period: cdk.Duration.seconds(spec.periodSeconds),
-      }),
-      threshold: spec.threshold,
-      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
-      evaluationPeriods: 1,
-      datapointsToAlarm: 1,
-      treatMissingData: spec.missing,
-    });
-    alarm.addAlarmAction(action);
-    if (spec.notifyOk) alarm.addOkAction(action);
-    return alarm;
-  });
+  return GRAPH_ALARMS.map((spec) => alarmFromSpec(scope, config, spec, action));
+}
+
+/** ADR-142: the publisher stack's two bake alarms, on its staffed action. */
+export function buildBakeAlarms(
+  scope: Construct,
+  config: AppConfig,
+  action: cloudwatch.IAlarmAction,
+): cloudwatch.Alarm[] {
+  return BAKE_ALARMS.map((spec) => alarmFromSpec(scope, config, spec, action));
 }
 
 /**
