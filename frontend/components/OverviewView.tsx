@@ -23,7 +23,7 @@ import { retailMetricLabel, retailValue } from './RetailTiles';
 import { ScorecardTile } from './ScorecardView';
 import { formatCurrency, formatIsoDate } from '@/lib/exact-format';
 import { windowText } from '@/lib/answer';
-import { overviewAnswer, overviewCard, OVERVIEW_PRESET, sourceIssueText, throughLines, type OverviewSource } from '@/lib/overview';
+import { bandWindowText, overviewAnswer, overviewCard, OVERVIEW_PRESET, sourceIssueText, throughLines, type OverviewSource } from '@/lib/overview';
 import type {
   CampaignParentPresentation,
   NewCustomersPresentation,
@@ -90,15 +90,23 @@ function retailAbsence(source: OverviewSource<RetailHealthPresentation>): string
   return presentation.artifact.outcome === 'empty' ? RETAIL_HEALTH_EMPTY_TEXT : RETAIL_HEALTH_INSUFFICIENT_TEXT;
 }
 
-/** The shipped-revenue tile: the served total, its prior under the prior window, its change. */
-function RetailRevenueTile({ artifact }: { readonly artifact: RetailHealthArtifact }) {
+/** The window the page label names: the served Scorecard window, or none without its body. */
+type LabelledWindow = NetworkScorecardArtifact['period'] | null;
+
+/**
+ * The shipped-revenue tile: the served total, its prior under the prior window, its change. Its
+ * own served window is named when the page label's window isn't the same days.
+ */
+function RetailRevenueTile({ artifact, labelled }: { readonly artifact: RetailHealthArtifact; readonly labelled: LabelledWindow }) {
   const revenue = artifact.totals.find((entry) => entry.metric === 'retail_revenue_shipped');
   const label = retailMetricLabel('retail_revenue_shipped');
+  const own = bandWindowText(artifact.period, labelled);
   // A complete body always serves shipped revenue (it is never a declared absence).
   if (revenue === undefined) return null;
   return <div className="tile" data-slot="ov-tile-retail">
     <span className="k">{label}</span>
     <span className="v num">{retailValue('retail_revenue_shipped', revenue.current)}</span>
+    {own === null ? null : <span className="prior" data-slot="ov-tile-retail-window">{own}</span>}
     <span className="prior">{windowText(artifact.prior_period)}: {retailValue('retail_revenue_shipped', revenue.prior)}</span>
     <span className="basis">Vendor Central · shipped revenue</span>
     <TileAbsence figure={label} slot="retail_revenue_shipped" />
@@ -121,7 +129,7 @@ function Tiles({ retail, scorecard }: { readonly retail: OverviewSources['retail
       </CoverageProvider>}
     {rh === null
       ? <BandAbsence link={<TabLink tabId="retail-health">Open Retail health ›</TabLink>}>{retailAbsence(retail)}</BandAbsence>
-      : <CoverageProvider status={rh.evidence_status} subject="Retail health"><RetailRevenueTile artifact={rh} /></CoverageProvider>}
+      : <CoverageProvider status={rh.evidence_status} subject="Retail health"><RetailRevenueTile artifact={rh} labelled={sc?.period ?? null} /></CoverageProvider>}
     {sc === null || tacos === null ? null : <CoverageProvider status={sc.evidence_status} subject="Scorecard">
       <ScorecardTile figure={tacos.figure} notAvailable={sc.not_available_text} slot={tacos.coverage_slot} />
     </CoverageProvider>}
@@ -176,13 +184,19 @@ function RetailChart({ source }: { readonly source: OverviewSources['retail'] })
   </section>;
 }
 
+/** A band's own served window as a footnote, as the charts name theirs, when the label differs. */
+function OwnWindow({ labelled, period, slot }: { readonly labelled: LabelledWindow; readonly period: NetworkScorecardArtifact['period']; readonly slot: string }) {
+  const own = bandWindowText(period, labelled);
+  return own === null ? null : <p className="footnote" data-slot={slot}>{own}</p>;
+}
+
 /** "16.62 USD per first-time purchase" from the served cost, or its served absence. */
 export function costText(cost: NewCustomersFigure, notAvailable: string): string {
   if (cost.display_value !== null && cost.currency_code !== null) return `${formatCurrency(cost.display_value, cost.currency_code)} per first-time purchase`;
   return cost.absence?.text ?? notAvailable;
 }
 
-function NewCustomersBand({ source }: { readonly source: OverviewSources['newCustomers'] }) {
+function NewCustomersBand({ labelled, source }: { readonly labelled: LabelledWindow; readonly source: OverviewSources['newCustomers'] }) {
   const headingId = useId();
   const served = source.kind === 'served' && source.presentation.kind === 'parent' ? source.presentation.artifact : null;
   const market = served !== null && served.outcome === 'complete' && served.markets.length === 1 ? served.markets[0] ?? null : null;
@@ -195,6 +209,7 @@ function NewCustomersBand({ source }: { readonly source: OverviewSources['newCus
     {market === null
       ? <p className="small dim" role="status">{absence}</p>
       : <>
+        {served === null ? null : <OwnWindow period={served.period} labelled={labelled} slot="ov-ntb-window" />}
         <p className="small dim">Share of ad-credited sales from first-time buyers ({market.new_to_brand.share_basis}). Not added across channels.</p>
         <ul className="ov-ntb">
           {market.new_to_brand.rows.map((row) => <li key={row.ad_product_key} data-slot={`ov-ntb-${row.ad_product_key}`}>
@@ -292,7 +307,7 @@ export function OverviewView({ sources }: { readonly sources: OverviewSources })
       </div>
       {sc === null || rh === null ? null : <p className="small dim">Ad days are UTC and retail days are Pacific, so compare the shape, not single days.</p>}
     </section>
-    <NewCustomersBand source={sources.newCustomers} />
+    <NewCustomersBand labelled={sc?.period ?? null} source={sources.newCustomers} />
     <WhatChanged retail={sources.retail} scorecard={sources.scorecard} />
     <nav className="ov-pointers" aria-label="Where to look next">
       <TabLink tabId="reach">Who your ads reached ›</TabLink>

@@ -8,8 +8,11 @@
 ## 1. Purpose
 The Growth check answers "is my advertising growing my business?" at `/` for the last 7 days, the one
 preset the Scorecard, Retail health and New customers all declare. It shows no date control: the
-window is a fixed label from the Scorecard's served window and prior. Each band links to its source tab
-on the same window (`?preset=7d` where the source's default is another preset).
+window is a fixed label from the Scorecard's served window and prior. Each source serves its own 7-day
+anchor, so a band whose served `period` isn't the labelled window (or that has no label, because the
+Scorecard isn't served) names its own window: the charts in their footnote, `ov-tile-retail` under its
+value (`ov-tile-retail-window`), and the New customers band in a footnote (`ov-ntb-window`). Each band
+links to its source tab on the same window (`?preset=7d` where the source's default is another preset).
 ## 2. Bands and the source of each figure
 Every figure is a served value. The view adds, ranks and recomputes nothing.
 

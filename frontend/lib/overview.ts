@@ -36,6 +36,14 @@ function sentence(text: string): string {
 function sameWindow(left: { readonly end: string; readonly start: string }, right: { readonly end: string; readonly start: string }): boolean {
   return left.start === right.start && left.end === right.end;
 }
+type Window = { readonly end: string; readonly start: string };
+/**
+ * A band's own served window, named when the page's window label (the Scorecard's) doesn't cover
+ * it: a different window, or no label at all. Null when the band measures the labelled days.
+ */
+export function bandWindowText(period: Window, labelled: Window | null): string | null {
+  return labelled !== null && sameWindow(period, labelled) ? null : windowText(period);
+}
 
 /**
  * The Growth check answer (plan template): the once-counted return and its prior, then shipped

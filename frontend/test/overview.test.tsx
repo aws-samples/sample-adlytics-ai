@@ -8,7 +8,7 @@ import { afterEach, test } from 'vitest';
 import { VisibleTabsContext } from '@/components/NextStepContext';
 import { overviewRouteAdapter } from '@/components/OverviewRouteAdapter';
 import { OverviewView, sourceIssueText, type OverviewSources } from '@/components/OverviewView';
-import { overviewAnswer, throughLines } from '@/lib/overview';
+import { bandWindowText, overviewAnswer, throughLines } from '@/lib/overview';
 import {
   campaignPresentationV2,
   newCustomersPresentationV2,
@@ -105,6 +105,35 @@ test('each band shows its own absence when its source is rejected, and the other
   }
 });
 
+test('a band whose served window is not the labelled Scorecard window names its own window', () => {
+  // Fixtures: Scorecard Sep 9–15, Retail health Aug 13–19, New customers Sep 14–20 (each its own 7d anchor).
+  const { container, unmount } = view(served());
+  assert.equal(container.querySelector('[data-slot="ov-tile-retail-window"]')?.textContent, 'Aug 13–19, 2026');
+  assert.equal(container.querySelector('[data-slot="ov-ntb-window"]')?.textContent, 'Sep 14–20, 2026');
+  unmount();
+  // Without a served Scorecard there is no window label, so each band names its own.
+  const { container: unlabelled, unmount: unmountUnlabelled } = view({ ...served(), scorecard: { issue: 'dependency', kind: 'rejected' } });
+  assert.equal(unlabelled.querySelector('[data-slot="ov-tile-retail-window"]')?.textContent, 'Aug 13–19, 2026');
+  assert.equal(unlabelled.querySelector('[data-slot="ov-ntb-window"]')?.textContent, 'Sep 14–20, 2026');
+  unmountUnlabelled();
+  // A band that measures the labelled days repeats no window.
+  const sources = served();
+  const scorecard = sources.scorecard.kind === 'served' && sources.scorecard.presentation.kind === 'parent' ? sources.scorecard.presentation : null;
+  const retail = sources.retail.kind === 'served' && sources.retail.presentation.kind === 'parent' ? sources.retail.presentation : null;
+  const newCustomers = sources.newCustomers.kind === 'served' && sources.newCustomers.presentation.kind === 'parent' ? sources.newCustomers.presentation : null;
+  assert.ok(scorecard !== null && retail !== null && newCustomers !== null);
+  const period = scorecard.artifact.period;
+  const aligned: OverviewSources = {
+    ...sources,
+    newCustomers: { kind: 'served', presentation: { ...newCustomers, artifact: { ...newCustomers.artifact, period } } },
+    retail: { kind: 'served', presentation: { ...retail, artifact: { ...retail.artifact, period } } },
+  };
+  const { container: same } = view(aligned);
+  assert.equal(same.querySelector('[data-slot="ov-tile-retail-window"]'), null);
+  assert.equal(same.querySelector('[data-slot="ov-ntb-window"]'), null);
+  assert.equal(bandWindowText(period, period), null);
+  assert.equal(bandWindowText(period, null), 'Sep 9–15, 2026');
+});
 test('the answer drops each clause on its own and names the absent return', () => {
   const sources = served();
   const scorecard = sources.scorecard.kind === 'served' && sources.scorecard.presentation.kind === 'parent' ? sources.scorecard.presentation.artifact : null;
