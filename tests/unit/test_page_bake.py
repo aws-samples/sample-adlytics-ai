@@ -10,24 +10,38 @@ from typing import Any, cast
 
 import pytest
 from bake_application_support import bake_parts
+from refusal_telemetry_support import LOGGER, capture
 
 from adapters.jobs.preset_artifact_publisher.bake_results import (
     BakeResult,
     BakeUnavailable,
     BakeUnchanged,
 )
+from adapters.jobs.preset_artifact_publisher.isolated_refusals import note_isolated_refusal
 from adapters.jobs.preset_artifact_publisher.page_bake import (
     PageFatalError,
     PageWindow,
     ProcessBakeLedger,
+    RefusalLineage,
+    classify_page_error,
+    emit_isolated_refusals,
     page_absence,
     render_page,
+    report_over_budget,
     stage_page,
 )
 from adapters.jobs.preset_artifact_publisher.transport import BakeIntent
 from adapters.outbound.athena.deadline import BAKE_DEADLINE_UNSET, bake_statement_deadline
+from adapters.outbound.athena.execution import QUERY_TIMED_OUT
 from adapters.outbound.athena.query import BAKE_INVOCATION_WAIT
 from adapters.outbound.bake_sources import BakeQueryCapture
+from domain.operations.bake_refusals import (
+    REFUSAL_SCOPE_INVALID,
+    IsolatedRefusal,
+    IsolatedRefusalReason,
+    RefusalScope,
+    group_refusals,
+)
 from domain.operations.execution_graph_release import (
     BAKE_EXECUTIONS_OVER_CERTIFIED_BOUND,
     BakeRoster,
@@ -39,6 +53,7 @@ from domain.shared_kernel.errors import (
     DomainError,
     ErrorCode,
     InvariantError,
+    ValidationError,
 )
 from ports.outbound.query import QueryResult
 
@@ -51,8 +66,10 @@ TAIL = 30.0
 REMAINING_MS = 600_000
 
 
-def _window(row: BakeRosterRow, remaining: int = REMAINING_MS) -> PageWindow:
-    return PageWindow(lambda: remaining, row, TAIL, final=False)
+def _window(
+    row: BakeRosterRow, remaining: int = REMAINING_MS, *, final: bool = False
+) -> PageWindow:
+    return PageWindow(lambda: remaining, row, TAIL, final=final)
 
 
 def _intent(row: BakeRosterRow) -> BakeIntent:
@@ -66,9 +83,19 @@ class _DeadlineBaker:
     result: BakeResult | None = None
     error: Exception | None = None
     seen: list[tuple[float, float]] = field(default_factory=list[tuple[float, float]])
+    notes: list[IsolatedRefusal] = field(default_factory=list[IsolatedRefusal])
+    """Item or section refusals the source notes before it returns or raises."""
 
     def bake(self, intent: BakeIntent) -> BakeResult:
         self.seen.append((monotonic(), bake_statement_deadline()))
+        for note in self.notes:
+            note_isolated_refusal(
+                note.reason,
+                note.scope,
+                note.count,
+                section=cast("str", note.section),
+                **cast("dict[str, Any]", dict(note.refusal_context)),
+            )
         if self.error is not None:
             raise self.error
         return self.result or BakeUnchanged(
@@ -173,20 +200,119 @@ def test_over_the_certified_bound_is_fatal_even_when_the_source_swallows_it() ->
     assert (page.executed.distinct, page.executed.over_bound) == (3, False)
 
 
-def test_a_source_refusal_is_the_page_absence_only_where_the_entry_names_it() -> None:
+_TIMED_OUT = DependencyError(
+    QUERY_TIMED_OUT,
+    "The statement took too long.",
+    context={
+        "wait_policy": "bake_invocation",
+        "waited_seconds": 812.4,
+        "wait_limit_seconds": 812.0,
+    },
+)
+
+
+def test_a_source_refusal_is_the_page_absence_with_one_page_group_and_no_item_notes() -> None:
     refusal = DomainError(ErrorCode("FICTIONAL", 2), "refused")
-    page = render_page(
-        bake_parts(_DeadlineBaker(error=refusal)),
-        _intent(CAMPAIGNS),
-        _window(CAMPAIGNS),
-        absent_on=(DomainError,),
-    )
-    assert page.result == page_absence(_intent(CAMPAIGNS)) and page.refusal is refusal
-    # Paired: without it (the legacy entry today) the refusal propagates.
-    with pytest.raises(DomainError):
-        render_page(
-            bake_parts(_DeadlineBaker(error=refusal)), _intent(CAMPAIGNS), _window(CAMPAIGNS)
+    item = IsolatedRefusal(IsolatedRefusalReason.HISTORY_GAP, RefusalScope.ITEM, 3, section="x")
+    baker = _DeadlineBaker(error=refusal, notes=[item])
+    page = render_page(bake_parts(baker), _intent(CAMPAIGNS), _window(CAMPAIGNS))
+    assert page.result == page_absence(_intent(CAMPAIGNS)) and page.cause is refusal
+    assert [(g.scope, g.reason, g.count, dict(g.context)) for g in page.groups] == [
+        (
+            RefusalScope.PAGE,
+            IsolatedRefusalReason.SOURCE_REFUSED,
+            1,
+            {"error_code": "ADLY-FICTIONAL-0002"},
         )
+    ]
+    # Paired: a typed page refusal passes through with its own figures.
+    typed = IsolatedRefusal(
+        IsolatedRefusalReason.ROWS_OVER_CEILING,
+        RefusalScope.PAGE,
+        rows_read=10_001,
+        max_rows=10_000,
+    )
+    page = render_page(
+        bake_parts(_DeadlineBaker(error=typed)), _intent(CAMPAIGNS), _window(CAMPAIGNS)
+    )
+    assert page.refusal is typed and page.groups == group_refusals((typed,))
+
+
+def test_item_notes_publish_with_the_body_and_group_by_scope_and_reason() -> None:
+    notes = [
+        IsolatedRefusal(
+            IsolatedRefusalReason.HISTORY_GAP, RefusalScope.ITEM, 2, section="campaign-audiences"
+        ),
+        IsolatedRefusal(
+            IsolatedRefusalReason.HISTORY_GAP, RefusalScope.ITEM, 1, section="segment-ranking"
+        ),
+    ]
+    audiences = BakeIntent("audiences", "last_complete_month")
+    page = render_page(bake_parts(_DeadlineBaker(notes=notes)), audiences, _window(AUDIENCES))
+    assert isinstance(page.result, BakeUnchanged) and page.refusal is None
+    assert [(g.scope, g.reason, g.count) for g in page.groups] == [
+        (RefusalScope.ITEM, IsolatedRefusalReason.HISTORY_GAP, 3)
+    ]
+    # Paired: a page whose source returns its designed absence reports no items.
+    absent = _DeadlineBaker(
+        result=BakeUnavailable(audiences, "audiences_materialization_unavailable"), notes=notes
+    )
+    assert render_page(bake_parts(absent), audiences, _window(AUDIENCES)).groups == ()
+
+
+def test_a_scope_claim_the_page_does_not_declare_is_an_invariant() -> None:
+    note = IsolatedRefusal(
+        IsolatedRefusalReason.ROWS_OVER_CEILING, RefusalScope.SECTION, section="gateway-products"
+    )
+    with pytest.raises(InvariantError) as raised:
+        render_page(
+            bake_parts(_DeadlineBaker(notes=[note])), _intent(CAMPAIGNS), _window(CAMPAIGNS)
+        )
+    assert raised.value.code == REFUSAL_SCOPE_INVALID
+    # A raised item refusal (items are noted, never raised) is a defect, not an absence.
+    raised_item = IsolatedRefusal(IsolatedRefusalReason.HISTORY_GAP, RefusalScope.ITEM, section="x")
+    with pytest.raises(IsolatedRefusal):
+        render_page(
+            bake_parts(_DeadlineBaker(error=raised_item)), _intent(CAMPAIGNS), _window(CAMPAIGNS)
+        )
+
+
+def test_a_dependency_error_propagates_before_the_final_receive_and_is_unavailable_on_it() -> None:
+    down = DependencyError(ErrorCode("FICTIONAL", 4), "down")
+    with pytest.raises(DependencyError):
+        render_page(bake_parts(_DeadlineBaker(error=down)), _intent(CAMPAIGNS), _window(CAMPAIGNS))
+    page = render_page(
+        bake_parts(_DeadlineBaker(error=down)), _intent(CAMPAIGNS), _window(CAMPAIGNS, final=True)
+    )
+    assert page.result == page_absence(_intent(CAMPAIGNS))
+    assert [(g.reason, dict(g.context)) for g in page.groups] == [
+        (IsolatedRefusalReason.DEPENDENCY_UNAVAILABLE, {"error_code": "ADLY-FICTIONAL-0004"})
+    ]
+
+
+def test_a_bake_wait_timeout_is_statement_time_over_invocation_on_any_receive() -> None:
+    page = render_page(
+        bake_parts(_DeadlineBaker(error=_TIMED_OUT)), _intent(CAMPAIGNS), _window(CAMPAIGNS)
+    )
+    assert [(g.reason, dict(g.context)) for g in page.groups] == [
+        (
+            IsolatedRefusalReason.STATEMENT_TIME_OVER_INVOCATION,
+            {"wait_limit_seconds": 812, "waited_seconds": 812},
+        )
+    ]
+    # Paired: a timeout under another wait policy is any other dependency: it retries.
+    interactive = DependencyError(QUERY_TIMED_OUT, "slow", context={"wait_policy": "interactive"})
+    assert classify_page_error(interactive, final=False) is None
+    with pytest.raises(DependencyError):
+        render_page(
+            bake_parts(_DeadlineBaker(error=interactive)), _intent(CAMPAIGNS), _window(CAMPAIGNS)
+        )
+
+
+def test_only_taxonomy_refusals_and_dependencies_are_classified() -> None:
+    assert classify_page_error(ValidationError(ErrorCode("PLAN", 8), "x"), final=False) is not None
+    assert classify_page_error(InvariantError(ErrorCode("FICTIONAL", 5), "x"), final=True) is None
+    assert classify_page_error(ValueError("x"), final=True) is None
 
 
 # --- the process ledger (02 §3.6, R5-M1) -----------------------------------------------------
@@ -233,13 +359,138 @@ def test_a_render_that_raises_still_advanced_the_ledger() -> None:
     assert (first.entry.process_bake_ordinal, first.entry.process_baseline_mb) == (1, 50.0)
 
 
-def test_stage_page_writes_through_the_entry_stage() -> None:
-    written: list[object] = []
+def test_stage_page_passes_the_window_and_catches_only_the_write_deadline() -> None:
+    written: list[tuple[object, int, float]] = []
 
-    def write(request: Any) -> str:
-        written.append(request)
+    def write(request: Any, *, remaining_ms: Any, tail_seconds: float) -> str:
+        written.append((request, remaining_ms(), tail_seconds))
         return "published"
 
     request = cast("Any", object())
-    assert stage_page(write, request, _window(CAMPAIGNS)) == "published"
-    assert written == [request]
+    assert stage_page(write, request, _window(CAMPAIGNS, remaining=1_234)) == "published"
+    assert written == [(request, 1_234, TAIL)]
+    deadline = IsolatedRefusal(
+        IsolatedRefusalReason.BODIES_OVER_INVOCATION, RefusalScope.PAGE, written=3, bodies=9
+    )
+
+    def expired(_request: Any, *, remaining_ms: Any, tail_seconds: float) -> str:
+        del remaining_ms, tail_seconds
+        raise deadline
+
+    assert stage_page(expired, request, _window(CAMPAIGNS)) is deadline
+    # Paired: any other stage error, a refusal of another reason included, propagates.
+    other = IsolatedRefusal(IsolatedRefusalReason.BODY_OVER_CAP, RefusalScope.PAGE, max_bytes=1)
+
+    def refused(_request: Any, *, remaining_ms: Any, tail_seconds: float) -> str:
+        del remaining_ms, tail_seconds
+        raise other
+
+    with pytest.raises(IsolatedRefusal):
+        stage_page(refused, request, _window(CAMPAIGNS))
+
+    def failing(_request: Any, *, remaining_ms: Any, tail_seconds: float) -> str:
+        del remaining_ms, tail_seconds
+        raise DependencyError(ErrorCode("FICTIONAL", 6), "s3 down")
+
+    with pytest.raises(DependencyError):
+        stage_page(failing, request, _window(CAMPAIGNS))
+
+
+# --- the one emitter (02 §4) ----------------------------------------------------------------
+
+
+def test_each_group_emits_one_failed_span_one_line_and_one_datapoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    telemetry = capture(monkeypatch)
+    groups = group_refusals(
+        (
+            IsolatedRefusal(IsolatedRefusalReason.HISTORY_GAP, RefusalScope.ITEM, 200, section="s"),
+            IsolatedRefusal(
+                IsolatedRefusalReason.ROWS_OVER_CEILING,
+                RefusalScope.SECTION,
+                section="s",
+                rows_read=10_001,
+                max_rows=10_000,
+            ),
+        )
+    )
+    lineage = RefusalLineage("graph", "audiences", "last_complete_month", run_id="r", task_id="t")
+    emit_isolated_refusals(LOGGER, groups, lineage, replayed=False, metric=telemetry.metric)
+    assert telemetry.triples() == [
+        ("item", "history_gap", 200),
+        ("section", "rows_over_ceiling", 1),
+    ]
+    assert all(item["failed"] == "IsolatedRefusal" for item in telemetry.spans)
+    assert telemetry.spans[1]["rows_read"] == 10_001 and "rows_read" not in telemetry.spans[0]
+    assert telemetry.datapoints == [("data", 200), ("limit", 1)]
+    first, second = telemetry.refusal_lines()
+    # Exactly the allowlisted fields: the entry, the lineage, the page and the group; no other
+    # identifier, and `count` is items (200 campaigns, one line).
+    assert dict(first.details) == {
+        "entry": "graph",
+        "run_id": "r",
+        "task_id": "t",
+        "page": "audiences",
+        "variant": "last_complete_month",
+        "scope": "item",
+        "refusal_class": "data",
+        "count": 200,
+        "replayed": False,
+    }
+    assert (first.outcome, first.severity.value, first.component) == (
+        "history_gap",
+        "warning",
+        "page_bake",
+    )
+    assert set(second.details) - set(first.details) == {"rows_read", "max_rows"}
+    # Paired: no groups, nothing emitted.
+    emit_isolated_refusals(LOGGER, (), lineage, replayed=False, metric=telemetry.metric)
+    assert len(telemetry.spans) == len(telemetry.datapoints) == 2
+
+
+def test_the_legacy_lineage_carries_the_execution_and_a_replay_says_so(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    telemetry = capture(monkeypatch)
+    groups = group_refusals(
+        (IsolatedRefusal(IsolatedRefusalReason.QUARTER_MANIFEST_ABSENT, RefusalScope.PAGE),)
+    )
+    lineage = RefusalLineage("legacy", "reach", "last_complete_quarter", execution_id="e")
+    emit_isolated_refusals(LOGGER, groups, lineage, replayed=True, metric=telemetry.metric)
+    (line,) = telemetry.refusal_lines()
+    assert {key: line.details[key] for key in ("entry", "execution_id", "replayed")} == {
+        "entry": "legacy",
+        "execution_id": "e",
+        "replayed": True,
+    }
+    assert "run_id" not in line.details and telemetry.datapoints == [("limit", 1)]
+    assert telemetry.spans[0]["replayed"] is True
+
+
+def test_over_budget_reports_once_and_at_the_budget_reports_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    telemetry = capture(monkeypatch)
+    lineage = RefusalLineage("legacy", "campaigns", "7d", execution_id="e")
+    assert report_over_budget(
+        LOGGER,
+        CAMPAIGNS.budget_seconds + 0.5,
+        CAMPAIGNS,
+        lineage,
+        replayed=False,
+        metric=telemetry.budget,
+    )
+    (line,) = telemetry.budget_lines()
+    assert line.details["budget_seconds"] == CAMPAIGNS.budget_seconds and line.phase == "task"
+    assert telemetry.over_budget == [1]
+    # Paired: at the budget, nothing is reported.
+    assert not report_over_budget(
+        LOGGER,
+        CAMPAIGNS.budget_seconds,
+        CAMPAIGNS,
+        lineage,
+        replayed=False,
+        metric=telemetry.budget,
+    )
+    assert telemetry.over_budget == [1] and len(telemetry.budget_lines()) == 1

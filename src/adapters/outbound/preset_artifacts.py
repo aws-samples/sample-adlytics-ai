@@ -7,12 +7,19 @@ then writes and attests its private custody. On the first failure no further pai
 every in-flight pair is observed, and the first error is raised. The parent body, then its
 custody, are written only after every sibling pair attests. `stage` stops there (a GRAPH bake
 task has no pointer capability); `publish` stages and then advances the pointer.
+
+The runtime write deadline (ADR-145, ADR-142): `stage` and `publish` take the invocation's
+`remaining_ms` and the contract's `tail_seconds` as required keywords. Before each pair is
+submitted, `remaining_ms() / 1000 < tail_seconds` stops submission, every in-flight pair is
+observed, and the stage raises `IsolatedRefusal(bodies_over_invocation, scope=page, written=k,
+bodies=n)`: no parent, custody or pointer is written, so the pairs already written are
+unreferenced objects under a revision no custody names.
 """
 
 from __future__ import annotations
 
 from collections import deque
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from contextlib import contextmanager
 from contextvars import copy_context
@@ -20,6 +27,11 @@ from typing import TYPE_CHECKING, Final
 
 from adapters.outbound.telemetry.span_context import correlation
 from adapters.outbound.telemetry.tracing import ARTIFACT_WRITE, span, trace_boundary
+from domain.operations.bake_refusals import (
+    IsolatedRefusal,
+    IsolatedRefusalReason,
+    RefusalScope,
+)
 from domain.operations.generated_execution_graphs import BAKE_TASKS
 from domain.presentation.preset_artifacts import (
     PRESET_ARTIFACT_POINTER_CONFLICT,
@@ -72,9 +84,18 @@ class PresetArtifactPersistence(PresetArtifactPersistencePort, PresetArtifactSta
         self._custody = custody
         self._width = write_width
 
-    def publish(self, request: PresetArtifactPublicationRequest) -> PresetArtifactPublicationResult:
-        """Attest every sibling before parent bytes and expose only the complete revision."""
-        staged = self.stage(request)
+    def publish(
+        self,
+        request: PresetArtifactPublicationRequest,
+        *,
+        remaining_ms: Callable[[], int],
+        tail_seconds: float,
+    ) -> PresetArtifactPublicationResult:
+        """Attest every sibling before parent bytes and expose only the complete revision.
+
+        A stage refused by its write deadline raises before the pointer: no pointer moves.
+        """
+        staged = self.stage(request, remaining_ms=remaining_ms, tail_seconds=tail_seconds)
         pointer_result = self._pointers.advance(request.pointer_advance)
         return PresetArtifactPublicationResult(
             staged.body,
@@ -84,8 +105,17 @@ class PresetArtifactPersistence(PresetArtifactPersistencePort, PresetArtifactSta
             staged.sibling_custody,
         )
 
-    def stage(self, request: PresetArtifactPublicationRequest) -> PresetArtifactStageResult:
-        """Write and attest every immutable object of one revision; never touch a pointer."""
+    def stage(
+        self,
+        request: PresetArtifactPublicationRequest,
+        *,
+        remaining_ms: Callable[[], int],
+        tail_seconds: float,
+    ) -> PresetArtifactStageResult:
+        """Write and attest every immutable object of one revision; never touch a pointer.
+
+        Before each pair is submitted, a deadline reached refuses the page (module docstring).
+        """
         pointer = request.pointer_advance.pointer
         if request.sibling_custody and self._custody is None:
             raise InvariantError(
@@ -94,7 +124,8 @@ class PresetArtifactPersistence(PresetArtifactPersistencePort, PresetArtifactSta
                 context={"partition": pointer.partition_key, "revision": pointer.revision.value},
             )
         pairs = self._write_siblings(
-            tuple(zip(request.sibling_bodies, request.sibling_custody, strict=True))
+            tuple(zip(request.sibling_bodies, request.sibling_custody, strict=True)),
+            _Deadline(remaining_ms, tail_seconds),
         )
         size = _size(request.body.payload_json) + (
             0 if request.custody is None else _size(request.custody.payload_json)
@@ -163,13 +194,20 @@ class PresetArtifactPersistence(PresetArtifactPersistencePort, PresetArtifactSta
         return body, custody
 
     def _write_siblings(
-        self, pairs: tuple[tuple[PresetArtifactSiblingBody, PresetArtifactSiblingCustody], ...]
+        self,
+        pairs: tuple[tuple[PresetArtifactSiblingBody, PresetArtifactSiblingCustody], ...],
+        deadline: _Deadline,
     ) -> tuple[_Pair, ...]:
-        """Run the bounded body->custody pair jobs; join every one before the parent writes."""
+        """Run the bounded body->custody pair jobs; join every one before the parent writes.
+
+        Each submission first checks the write deadline; once it is reached nothing more is
+        submitted, the in-flight pairs are observed, and the page is refused.
+        """
         if not pairs:
             return ()
         results: dict[int, _Pair] = {}
         first_error: BaseException | None = None
+        expired = False
         pending = deque(enumerate(pairs))
         with ThreadPoolExecutor(
             max_workers=min(self._width, len(pairs)), thread_name_prefix="preset-artifact-write"
@@ -177,7 +215,10 @@ class PresetArtifactPersistence(PresetArtifactPersistencePort, PresetArtifactSta
             in_flight: dict[Future[_Pair], int] = {}
 
             def submit_next() -> None:
-                if pending:
+                nonlocal expired
+                if pending and not expired and deadline.reached():
+                    expired = True
+                if pending and not expired:
                     index, (public, private) = pending.popleft()
                     # A copy of the caller's context parents each chain's span (plan A2).
                     job = executor.submit(copy_context().run, self._write_pair, public, private)
@@ -198,6 +239,13 @@ class PresetArtifactPersistence(PresetArtifactPersistencePort, PresetArtifactSta
                         submit_next()
         if first_error is not None:
             raise first_error
+        if expired:
+            raise IsolatedRefusal(
+                IsolatedRefusalReason.BODIES_OVER_INVOCATION,
+                RefusalScope.PAGE,
+                written=len(results),
+                bodies=len(pairs),
+            )
         return tuple(results[index] for index in range(len(pairs)))
 
     def _write_pair(
@@ -258,6 +306,20 @@ class PresetArtifactPersistence(PresetArtifactPersistencePort, PresetArtifactSta
                 "Sibling custody persistence did not attest requested evidence.",
             )
         return public_result, private_result
+
+
+class _Deadline:
+    """The stage's runtime write deadline: the invocation's time against the contract's tail."""
+
+    __slots__ = ("_remaining_ms", "_tail_seconds")
+
+    def __init__(self, remaining_ms: Callable[[], int], tail_seconds: float) -> None:
+        self._remaining_ms = remaining_ms
+        self._tail_seconds = tail_seconds
+
+    def reached(self) -> bool:
+        """Whether less than the tail remains, so no further pair may be submitted."""
+        return self._remaining_ms() / 1_000 < self._tail_seconds
 
 
 def _size(payload_json: str) -> int:

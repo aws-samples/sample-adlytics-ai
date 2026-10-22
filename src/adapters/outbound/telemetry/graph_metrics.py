@@ -19,6 +19,12 @@ counts a succeeded Athena execution whose `athena.query` span carries `statistic
 `emit_serving_withheld` (ADR-139) is a 0/1 gauge with the same closed dimensions: `1` for a
 finalized cohort whose binding is withheld (a failure kept its pages on last-good), `0` only on a
 fresh non-withheld commit, which is what clears `GraphServingWithheld`.
+
+`emit_isolated_refusal` and `emit_task_over_budget` (ADR-142) are event counts both bake entries
+emit, so their names carry no `Graph` prefix: `BakeIsolatedRefusalLimit` (a limit or a dependency
+refusal, alarmed), `BakeIsolatedRefusalData` (a data refusal, counted) and `BakeTaskOverBudget`
+(alarmed). Same closed dimensions, so one alarm covers both entries; the `isolated_refusal` and
+`over_budget` lines name the entry, page and reason.
 """
 
 from __future__ import annotations
@@ -39,11 +45,14 @@ if TYPE_CHECKING:
 
 __all__ = [
     "BAKE_FINALIZER_BLOCKED_METRIC",
+    "BAKE_ISOLATED_REFUSAL_DATA_METRIC",
+    "BAKE_ISOLATED_REFUSAL_LIMIT_METRIC",
     "BAKE_PRECOMPUTE_BLOCKED_METRIC",
     "BAKE_QUERY_COUNT_METRIC",
     "BAKE_RETRY_EXHAUSTED_METRIC",
     "BAKE_TASK_FAILED_METRIC",
     "BAKE_TASK_MEMORY_METRIC",
+    "BAKE_TASK_OVER_BUDGET_METRIC",
     "BAKE_TASK_SECONDS_METRIC",
     "BAKE_TELEMETRY_LOSS_METRIC",
     "BAKE_TRACE_INCOMPLETE_METRIC",
@@ -62,9 +71,12 @@ __all__ = [
     "emit_bake_task",
     "emit_bake_trace_signal",
     "emit_cutover_drop",
+    "emit_isolated_refusal",
     "emit_post_grant_invariant",
     "emit_serving_withheld",
     "emit_stuck_flow_reading",
+    "emit_task_over_budget",
+    "isolated_refusal_metric",
     "process_memory_peak_mb",
     "put_probe_stuck_flow_reading",
     "stuck_flow_datapoints",
@@ -88,6 +100,14 @@ BAKE_TELEMETRY_LOSS_METRIC: Final = "GraphBakeTelemetryLoss"
 BAKE_TRACE_INCOMPLETE_METRIC: Final = "GraphBakeTraceIncomplete"
 _BAKE_TRACE_SIGNALS: Final = frozenset({BAKE_TELEMETRY_LOSS_METRIC, BAKE_TRACE_INCOMPLETE_METRIC})
 SERVING_WITHHELD_METRIC: Final = "GraphServingWithheld"
+BAKE_ISOLATED_REFUSAL_LIMIT_METRIC: Final = "BakeIsolatedRefusalLimit"
+BAKE_ISOLATED_REFUSAL_DATA_METRIC: Final = "BakeIsolatedRefusalData"
+BAKE_TASK_OVER_BUDGET_METRIC: Final = "BakeTaskOverBudget"
+_REFUSAL_METRICS: Final = {
+    "limit": BAKE_ISOLATED_REFUSAL_LIMIT_METRIC,
+    "dependency": BAKE_ISOLATED_REFUSAL_LIMIT_METRIC,
+    "data": BAKE_ISOLATED_REFUSAL_DATA_METRIC,
+}
 
 
 class AuthorityScope(StrEnum):
@@ -222,6 +242,39 @@ def emit_serving_withheld(count: Literal[0, 1]) -> None:
     """
     with single_metric(
         name=SERVING_WITHHELD_METRIC, unit=MetricUnit.Count, value=count, namespace=NAMESPACE
+    ) as emitted:
+        for dimension, value in _dimensions(AuthorityScope.LIVE):
+            emitted.add_dimension(name=dimension, value=value)
+
+
+def isolated_refusal_metric(refusal_class: str) -> str:
+    """Return a refusal class's metric: limit and dependency alarm, data is counted."""
+    try:
+        return _REFUSAL_METRICS[refusal_class]
+    except KeyError:
+        raise ValueError("a refusal class is limit, dependency or data.") from None
+
+
+def emit_isolated_refusal(refusal_class: str, count: int) -> None:
+    """Count one `(scope, reason)` refusal group's items, flushed at emission (ADR-142).
+
+    Dimensioned only on the protocol and `AuthorityScope=live`, as every alarmed bake signal is;
+    the `isolated_refusal` line names the entry, page, scope and reason.
+    """
+    with single_metric(
+        name=isolated_refusal_metric(refusal_class),
+        unit=MetricUnit.Count,
+        value=count,
+        namespace=NAMESPACE,
+    ) as emitted:
+        for dimension, value in _dimensions(AuthorityScope.LIVE):
+            emitted.add_dimension(name=dimension, value=value)
+
+
+def emit_task_over_budget() -> None:
+    """Count one page bake that ran past its certified seconds (ADR-142), flushed at once."""
+    with single_metric(
+        name=BAKE_TASK_OVER_BUDGET_METRIC, unit=MetricUnit.Count, value=1, namespace=NAMESPACE
     ) as emitted:
         for dimension, value in _dimensions(AuthorityScope.LIVE):
             emitted.add_dimension(name=dimension, value=value)

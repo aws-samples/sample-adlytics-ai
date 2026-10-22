@@ -225,7 +225,7 @@ def test_persistence_writes_body_before_attempting_the_conditional_pointer() -> 
     events: list[str] = []
     persistence = PresetArtifactPersistence(RecordingBodies(events), RecordingPointers(events))
 
-    result = persistence.publish(request)
+    result = persistence.publish(request, remaining_ms=lambda: 600_000, tail_seconds=30.0)
 
     assert events == ["body", "pointer"]
     assert result.pointer.outcome is PresetArtifactPointerAdvanceOutcome.ADVANCED
@@ -438,7 +438,9 @@ def test_stage_writes_at_most_eight_pairs_at_once_and_custody_never_precedes_its
     stores = _SiblingStores()
     persistence, _ = _persistence(stores)
 
-    staged = persistence.stage(_sibling_request(20))
+    staged = persistence.stage(
+        _sibling_request(20), remaining_ms=lambda: 600_000, tail_seconds=30.0
+    )
 
     assert stores.max_active == S3_CHAINS_PER_BAKER
     _require_occupancy_within(stores.max_active, S3_CHAINS_PER_BAKER)
@@ -458,7 +460,7 @@ def test_control_a_width_nine_writer_is_refused_by_the_occupancy_helper() -> Non
     stores = _SiblingStores()
     persistence, _ = _persistence(stores, width=9)
 
-    persistence.stage(_sibling_request(20))
+    persistence.stage(_sibling_request(20), remaining_ms=lambda: 600_000, tail_seconds=30.0)
 
     assert stores.max_active == 9
     with pytest.raises(AssertionError, match="exceed the width 8"):
@@ -469,7 +471,9 @@ def test_publish_stages_every_object_before_the_pointer_advances() -> None:
     stores = _SiblingStores(hold_seconds=0)
     persistence, _ = _persistence(stores)
 
-    result = persistence.publish(_sibling_request(3))
+    result = persistence.publish(
+        _sibling_request(3), remaining_ms=lambda: 600_000, tail_seconds=30.0
+    )
 
     assert stores.events[-3:] == ["parent-body", "parent-custody", "pointer"]
     assert result.pointer.outcome is PresetArtifactPointerAdvanceOutcome.ADVANCED
@@ -480,7 +484,7 @@ def test_a_failed_pair_stops_submission_observes_in_flight_and_writes_no_parent(
     persistence, _ = _persistence(stores)
 
     with pytest.raises(DependencyError) as failed:
-        persistence.publish(_sibling_request(40))
+        persistence.publish(_sibling_request(40), remaining_ms=lambda: 600_000, tail_seconds=30.0)
 
     assert failed.value.code == ErrorCode("FICTIONAL", 1)
     bodies = [event for event in stores.events if event.startswith("body:")]
@@ -496,7 +500,7 @@ def test_a_custody_attestation_mismatch_is_an_invariant_with_no_parent_write() -
     persistence, _ = _persistence(stores)
 
     with pytest.raises(InvariantError) as refused:
-        persistence.stage(_sibling_request(4))
+        persistence.stage(_sibling_request(4), remaining_ms=lambda: 600_000, tail_seconds=30.0)
 
     assert refused.value.code == PRESET_ARTIFACT_POINTER_CONFLICT
     assert "parent-body" not in stores.events
@@ -507,7 +511,9 @@ def test_an_exact_replay_attests_the_same_objects() -> None:
     persistence, _ = _persistence(stores)
     request = _sibling_request(5)
 
-    assert persistence.stage(request) == persistence.stage(request)
+    assert persistence.stage(
+        request, remaining_ms=lambda: 600_000, tail_seconds=30.0
+    ) == persistence.stage(request, remaining_ms=lambda: 600_000, tail_seconds=30.0)
 
 
 def test_a_pointer_carries_its_served_windows_and_an_older_pointer_reads_as_no_dates() -> None:

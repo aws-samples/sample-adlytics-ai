@@ -288,7 +288,9 @@ class Persistence:
     after_publish: Callable[[PresetArtifactPublicationRequest], None] | None = None
     """Runs after the pointer advanced: an error there is a write whose result was lost."""
 
-    def publish(self, request: PresetArtifactPublicationRequest) -> PresetArtifactPublicationResult:
+    def publish(
+        self, request: PresetArtifactPublicationRequest, **_deadline: object
+    ) -> PresetArtifactPublicationResult:
         """Advance the pointer table unless an outcome or an error is scripted for the key."""
         pointer = request.pointer_advance.pointer
         name = pointer.partition_key

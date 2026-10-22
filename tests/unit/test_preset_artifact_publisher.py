@@ -68,6 +68,11 @@ from adapters.outbound.telemetry.tracing import (
     PRESET_ARTIFACT_BACKFILL,
     PRESET_ARTIFACT_ENQUEUE_DELIVERY,
 )
+from domain.operations.bake_refusals import (
+    IsolatedRefusal,
+    IsolatedRefusalReason,
+    RefusalScope,
+)
 from domain.operations.execution_graph import AuthorityMode
 from domain.operations.execution_graph_release import BakeRoster
 from domain.presentation.preset_artifacts import (
@@ -169,7 +174,9 @@ class Persistence:
     )
     fail: bool = False
 
-    def publish(self, request: PresetArtifactPublicationRequest) -> PresetArtifactPublicationResult:
+    def publish(
+        self, request: PresetArtifactPublicationRequest, **_deadline: object
+    ) -> PresetArtifactPublicationResult:
         if self.fail:
             raise RuntimeError("persistence unavailable")
         self.results.append(request)
@@ -1018,7 +1025,7 @@ def test_agg3_6_a_legacy_write_refused_across_the_cas_is_acknowledged_and_counte
     @dataclass
     class _Refusing(Persistence):
         def publish(
-            self, request: PresetArtifactPublicationRequest
+            self, request: PresetArtifactPublicationRequest, **_deadline: object
         ) -> PresetArtifactPublicationResult:
             raise LegacyPointerAfterCutoverError(request.pointer_advance.pointer.partition_key)
 
@@ -1197,3 +1204,81 @@ def test_an_absent_admission_setting_composes_every_source_as_none(
     # No factory is called without the admission, so none can build an unbounded adapter.
     assert factories == []
     assert queries.calls == 0
+
+
+# --- the stage's runtime write deadline (ADR-145, design 04 §4 step 1, 02 §3.3 step 5) -------
+
+
+def _deadline_after(pairs: int, calls: list[int]) -> Any:
+    """Return a `remaining_ms` with time for `pairs` submissions, then below the tail."""
+
+    def remaining() -> int:
+        calls.append(1)
+        return 600_000 if len(calls) <= pairs else 29_999
+
+    return remaining
+
+
+def test_the_write_deadline_stops_submission_drains_in_flight_and_writes_no_parent() -> None:
+    from test_preset_artifacts import (  # noqa: PLC0415 -- the sibling-store fixtures
+        _persistence,  # pyright: ignore[reportPrivateUsage]
+        _sibling_request,  # pyright: ignore[reportPrivateUsage]
+        _SiblingStores,  # pyright: ignore[reportPrivateUsage]
+    )
+
+    stores = _SiblingStores(hold_seconds=0)
+    persistence, _ = _persistence(stores)
+    with pytest.raises(IsolatedRefusal) as refused:
+        persistence.stage(
+            _sibling_request(20), remaining_ms=_deadline_after(3, []), tail_seconds=30.0
+        )
+    assert (refused.value.reason, refused.value.scope) == (
+        IsolatedRefusalReason.BODIES_OVER_INVOCATION,
+        RefusalScope.PAGE,
+    )
+    # The three submitted pairs were written and observed; nothing after; no parent, custody
+    # or pointer, so no custody names the pairs written.
+    assert dict(refused.value.refusal_context) == {"bodies": 20, "written": 3}
+    assert len([event for event in stores.events if event.startswith("custody:")]) == 3
+    assert stores.active == 0
+    assert not {"parent-body", "parent-custody", "pointer"} & set(stores.events)
+    # Paired: with time for every pair, the stage writes them all and the parent.
+    complete = _SiblingStores(hold_seconds=0)
+    staged, _ = _persistence(complete)
+    staged.stage(_sibling_request(20), remaining_ms=_deadline_after(20, []), tail_seconds=30.0)
+    assert complete.events[-2:] == ["parent-body", "parent-custody"]
+
+
+def test_the_write_deadline_through_publish_moves_no_legacy_pointer() -> None:
+    from test_preset_artifacts import (  # noqa: PLC0415 -- the sibling-store fixtures
+        _persistence,  # pyright: ignore[reportPrivateUsage]
+        _sibling_request,  # pyright: ignore[reportPrivateUsage]
+        _SiblingStores,  # pyright: ignore[reportPrivateUsage]
+    )
+
+    stores = _SiblingStores(hold_seconds=0)
+    persistence, _ = _persistence(stores)
+    with pytest.raises(IsolatedRefusal):
+        persistence.publish(
+            _sibling_request(9), remaining_ms=_deadline_after(0, []), tail_seconds=30.0
+        )
+    assert stores.events == []  # nothing submitted, no parent, no pointer
+    # Paired: the same request with time publishes and advances the pointer last.
+    published = _SiblingStores(hold_seconds=0)
+    publishing, _ = _persistence(published)
+    publishing.publish(_sibling_request(9), remaining_ms=lambda: 600_000, tail_seconds=30.0)
+    assert published.events[-1] == "pointer"
+
+
+def test_stage_and_publish_require_the_deadline_keywords() -> None:
+    from test_preset_artifacts import (  # noqa: PLC0415 -- the sibling-store fixtures
+        _persistence,  # pyright: ignore[reportPrivateUsage]
+        _sibling_request,  # pyright: ignore[reportPrivateUsage]
+        _SiblingStores,  # pyright: ignore[reportPrivateUsage]
+    )
+
+    persistence, _ = _persistence(_SiblingStores(hold_seconds=0))
+    with pytest.raises(TypeError):
+        cast("Any", persistence).stage(_sibling_request(1))
+    with pytest.raises(TypeError):
+        cast("Any", persistence).publish(_sibling_request(1), remaining_ms=lambda: 1)

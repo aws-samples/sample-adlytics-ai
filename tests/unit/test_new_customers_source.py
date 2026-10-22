@@ -1241,7 +1241,9 @@ class _Persistence:
         default_factory=list[PresetArtifactPublicationRequest]
     )
 
-    def publish(self, request: PresetArtifactPublicationRequest) -> PresetArtifactPublicationResult:
+    def publish(
+        self, request: PresetArtifactPublicationRequest, **_deadline: object
+    ) -> PresetArtifactPublicationResult:
         self.published.append(request)
         body = request.body
         return PresetArtifactPublicationResult(
