@@ -20,14 +20,16 @@ from adapters.outbound.athena.semantic_storage import (
     verification_statement,
 )
 from adapters.outbound.athena.staging import iter_staged_lines, render_staged_body, stage_unit
+from adapters.outbound.athena.start_envelope import (
+    ComposeStartEnvelopeRequest,
+    compose_start_envelope,
+)
 from adapters.outbound.athena.table_attempt_statements import (
     ENVELOPE_MALFORMED,
     STATEMENT_UNPACKABLE,
     ComposedStatement,
-    ComposeStartEnvelopeRequest,
     ComposeUnitStatementsRequest,
     UnitStatementComposition,
-    compose_start_envelope,
     compose_unit_statements,
     parse_start_envelope,
 )

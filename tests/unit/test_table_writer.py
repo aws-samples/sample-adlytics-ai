@@ -3130,6 +3130,10 @@ def test_slice7_ar5_3_a_member_alone_over_ten_statements_is_its_own_failure(
     writer: Any, monkeypatch: pytest.MonkeyPatch, reported: list[BaseException]
 ) -> None:
     """ADR-149: a member alone always composes two statements, so none is `member_failed`."""
+    from adapters.outbound.athena.start_envelope import (  # noqa: PLC0415
+        ComposeStartEnvelopeRequest,
+        compose_start_envelope,
+    )
     from adapters.outbound.athena.table_attempt_statements import (  # noqa: PLC0415
         compose_unit_statements,
     )
@@ -3143,6 +3147,16 @@ def test_slice7_ar5_3_a_member_alone_over_ten_statements_is_its_own_failure(
             "merge",
             "verification",
         ]
+        # Each statement carries the canonical envelope of exactly its own SQL and parameters.
+        for statement in alone.statements:
+            assert statement.start_envelope == compose_start_envelope(
+                ComposeStartEnvelopeRequest(
+                    workgroup="fictional-batch",
+                    database=workload.database,
+                    sql=statement.sql,
+                    parameters=statement.parameters,
+                )
+            )
     world = _graph_batch_world(writer, entries=entries, inline=_BatchInline())
     result = world.process(receive_count=1)
     nodes = world.nodes()
