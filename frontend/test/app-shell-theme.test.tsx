@@ -105,7 +105,9 @@ test('navigation comes from the route manifest and lists only hubs with a shippe
   const hubs = screen.getByRole('navigation', { name: 'Hubs' });
   const links = within(hubs).getAllByRole('link');
   assert.deepEqual(links.map((link) => [link.getAttribute('aria-label'), link.getAttribute('href')]), [
-    ['Adlytics AI, go to Scorecard', '/'],
+    ['Adlytics AI, go to Overview', '/'],
+    // ADR-151: the composed Overview owns the root and is the first hub.
+    ['Overview', '/'],
     // UI slice 9a: the Scorecard is the Performance hub's first tab.
     ['Performance', '/scorecard/'],
     ['Reach and audiences', '/reach/'],
@@ -156,10 +158,11 @@ test('landmarks come in order and the h1 is the tab name, focused on a route cha
   assert.equal(screen.queryByRole('navigation', { name: /Sections of/ }), null);
 });
 
-test('the root route is the scorecard tab until the Overview ships (OD-UX-3)', () => {
+test('the root route is the composed Overview tab (ADR-151)', () => {
   installMediaQuery();
   render(shell('/'));
-  assert.ok(screen.getByRole('heading', { level: 1, name: 'Scorecard' }));
+  assert.ok(screen.getByRole('heading', { level: 1, name: 'Overview' }));
+  assert.equal(document.title, 'Overview · Adlytics AI');
 });
 
 test('a direct visit without the entitlement names only the page and marks no navigation current', () => {
@@ -233,7 +236,7 @@ test('below 881 px the menu button opens a modal sheet with hubs, Theme and Sign
   assert.ok(within(sheet).getByText('Performance / Campaigns'));
   const hubs = within(sheet).getByRole('navigation', { name: 'Hubs' });
   // The current hub lists its tabs under it in the sheet.
-  assert.deepEqual(within(hubs).getAllByRole('link').map((link) => link.textContent), ['Performance', 'Scorecard', 'Campaigns', 'Reach and audiences', 'Reach and funnel', 'Audiences', 'Customers', 'New customers', 'Retention', 'Retail health', 'Operations']);
+  assert.deepEqual(within(hubs).getAllByRole('link').map((link) => link.textContent), ['Overview', 'Performance', 'Scorecard', 'Campaigns', 'Reach and audiences', 'Reach and funnel', 'Audiences', 'Customers', 'New customers', 'Retention', 'Retail health', 'Operations']);
   assert.equal(document.getElementById('app-root')?.inert, true);
   await user.click(within(sheet).getByRole('radio', { name: 'Light' }));
   assert.equal(document.documentElement.dataset.theme, 'light');

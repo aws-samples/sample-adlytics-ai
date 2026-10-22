@@ -13,7 +13,6 @@ import pathlib
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
-from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -793,10 +792,8 @@ def test_the_materializer_composes_on_its_page_entry_and_fails_closed_without_it
     assert TemporalPresetId.LAST_COMPLETE_MONTH in composed.temporal_policy.candidate_presets
     # Paired: without the page entry the source doesn't compose.
     schemas = scorecard_source.load_v2_page_schemas(ROOT)
-    # The Scorecard owns `/` since OD-UX-3, so a declaration without it can't be built; the
-    # source reads only `.pages`, so a pages-only stand-in proves the same absence.
-    without = SimpleNamespace(
-        pages=tuple(page for page in schemas.pages if page.page_id != SCORECARD_PAGE_ID)
+    without = replace(
+        schemas, pages=tuple(page for page in schemas.pages if page.page_id != SCORECARD_PAGE_ID)
     )
 
     def _without(_root: pathlib.Path) -> object:

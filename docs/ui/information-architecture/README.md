@@ -177,8 +177,10 @@ landmark order, h1 focus and `document.title` on a route change; sentence-case n
 10. Detail opens in place with the campaign as h1, the channel as a pill and Back closing it. The deep
     section renders or shows a neutral callout, failures show at the top with focus, a Reach slot
     shows on the 1-day preset, and the channel step targets the Scorecard.
-11. `/` stops rendering Campaigns and becomes the Overview. Until the Overview ships, `/` opens the
-    Scorecard (OD-UX-3, 2026-10-22): `scorecard` owns `compatibility_routes: ["/"]` in `pages.yaml`.
+11. `/` stops rendering Campaigns and becomes the Overview. From UI refresh slice 2.1 (2026-10-22) `/`
+    is the composed Overview › Growth check tab ([ADR-151](../../decisions/adr-151-compose-a-customer-tab-from-served-page-presentations.md),
+    [Overview](../overview/README.md)) listed under `composed_routes` in `presentation/navigation.yaml`,
+    and no `pages.yaml` entry carries `/`. Between OD-UX-3 and that slice, `/` opened the Scorecard.
 
 **Retail health.** One-tab hub header; products table titled "Shipped revenue per product", with the
 title first and ASIN second, a per-row Stale pill and stacked rows when narrow; server change chips;

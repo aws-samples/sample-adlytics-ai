@@ -106,6 +106,9 @@ DEEP_INPUT_REVISIONS: Final[tuple[tuple[str, str], ...]] = (
     ("2026-10-19.1", "c3316551d07ffb2cb480e4b48a54e1319fc92860a275aced749af9c961dcc63c"),
     # ui-refresh 1.1: resolve_temporal gives a calendar default no day-count default window.
     ("2026-10-22.1", "371b804b7a9c3821226d37e353c53fc5b8c47edf02c486b5ac19821a17d8a4a1"),
+    # ui-refresh 2.1 (ADR-151): no page entry owns `/`. Named .3 because the Tier 1 integration
+    # tree deployed its merge closure to dev as 2026-10-22.2.
+    ("2026-10-22.3", "4af6dfa54bb3d1c68024986fbbe60383998b551af9e4d0ed4703c7c0ef63bec7"),
 )
 DEEP_INPUT_REVISION: Final[str] = DEEP_INPUT_REVISIONS[-1][0]
 """The revision every deep cache key carries (``#DEEPINPUT#<revision>``)."""

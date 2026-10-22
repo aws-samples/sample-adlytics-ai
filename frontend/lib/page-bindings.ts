@@ -484,8 +484,9 @@ export function parsePageBindings(value: unknown): readonly PageBinding[] {
   const rootCompatibilityOwners = parsed
     .filter((page) => page.compatibility_routes.includes('/'))
     .map((page) => page.page_id);
-  if (rootCompatibilityOwners.length !== 1 || rootCompatibilityOwners[0] !== 'scorecard') {
-    throw new TypeError('Root compatibility route must resolve only to Scorecard.');
+  // ADR-151: the composed Overview tab owns the root in the route manifest, so no page binding may.
+  if (rootCompatibilityOwners.length !== 0) {
+    throw new TypeError('No page binding may own the root route; the Overview does.');
   }
   return parsed;
 }

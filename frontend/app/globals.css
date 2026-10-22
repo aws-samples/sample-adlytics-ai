@@ -1135,6 +1135,27 @@ textarea.prompt-text:focus-visible { outline: 2px solid var(--ai); outline-offse
 .scorecard details.about .body { color: var(--text); font-size: 13px; display: flex; flex-direction: column; gap: 6px; padding: 6px 0 0; max-width: 72ch; }
 .scorecard .small { font-size: 12px; }
 .scorecard .dim { color: var(--text-dim); }
+/* ---------- Overview › Growth check (ADR-151; docs/ui/overview/README.md) ---------- */
+.overview .ov-question { font-size: 18px; }
+.overview .ov-tiles { grid-auto-flow: row; grid-auto-columns: unset; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@container main (max-width: 959px) { .overview .ov-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container main (max-width: 559px) { .overview .ov-tiles { grid-template-columns: 1fr; } }
+.overview .ov-absence { grid-column: span 1; }
+.overview .ov-charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+@container main (max-width: 719px) { .overview .ov-charts { grid-template-columns: 1fr; } }
+.overview .ov-chart { margin-top: 0; }
+.overview .ov-chart h3 { font-size: 14px; }
+.overview .ov-ntb { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.overview .ov-ntb li { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.overview .ov-ntb li:first-child { border-top: 0; }
+.overview .ov-ntb-v { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.overview .ov-ntb-cost { font-size: 12px; color: var(--text-dim); min-width: 22ch; text-align: right; }
+.overview .ov-links, .overview .ov-pointers { display: flex; flex-wrap: wrap; gap: 10px 18px; }
+.overview .ov-link { font-weight: 650; color: var(--accent); }
+.overview .ov-pointers .ov-link { border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; background: var(--card); }
+.overview .ov-trust { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.overview .ov-trust li { border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; }
+.overview .ov-trust li.ok::before { content: "✓"; color: var(--accent); font-weight: 700; margin-right: 8px; }
 /* ---------- New customers (Customers › New customers; docs/ui/new-customers/mockup.html) ---------- */
 .new-customers { display: flex; flex-direction: column; gap: 18px; margin-top: 10px; }
 .new-customers .section { display: flex; flex-direction: column; gap: 10px; }

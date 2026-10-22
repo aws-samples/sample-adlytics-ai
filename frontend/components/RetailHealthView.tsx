@@ -117,7 +117,8 @@ export function RetailHealthSkeleton({ subject = 'retail health' }: { readonly s
 
 /* ---------- trend panel ---------- */
 
-function trendSeries(artifact: RetailHealthArtifact, metric: typeof TREND_SWITCHER[number], series: 'current' | 'prior'): readonly (number | string)[] {
+/** One chartable metric's served daily values, current or prior (the Overview reuses it). */
+export function trendSeries(artifact: RetailHealthArtifact, metric: typeof TREND_SWITCHER[number], series: 'current' | 'prior'): readonly (number | string)[] {
   const column = TREND_COLUMNS.indexOf(metric);
   return artifact.trend.map((point) => point[series][column]?.value ?? '');
 }

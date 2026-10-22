@@ -12,7 +12,8 @@ Each v2 `window_unavailable.message` is chosen from this catalog by an explicit 
 server rows equal `ABSENCE_COPY`, `OTHER_WINDOWS_READY` and `SERVING_CHECK_TEXT`, and PI-DOMAIN equals
 the browser's `PI_DOMAIN_FALLBACK` (`frontend/components/PresentationV2RouteController.tsx`). ABS-CAMP-1,
 ABS-CAMP-2, ABS-RH-1 to ABS-RH-4 equal the `CAMPAIGN_ABSENCE_…` and `RETAIL_HEALTH_…` constants
-(`frontend/components/CampaignRouteAdapter.tsx`, `frontend/components/RetailHealthRouteAdapter.tsx`),
+(`frontend/components/CampaignRouteAdapter.tsx`, `frontend/components/RetailHealthRouteAdapter.tsx`), and ABS-OV-1 and ABS-OV-2 equal the Overview's
+`sourceIssueText` and `OVERVIEW_NO_SPEND_TREND` (`frontend/components/OverviewView.tsx`),
 whose v1 contract carries no server text. Equality tests on both sides read this file. `{period_label}` is the served period's label. Each page LLD's
 "Designed states" table links its row here and restates no text.
 
@@ -168,6 +169,14 @@ persistent status region announces it ([temporal contract §6](temporal-control-
 - Trigger: a served `insufficient` body.
 - Title: "Not enough Vendor Central data for this period"
 - Text: "There isn't enough Vendor Central data to show this period safely. Choose another period above. If this keeps happening, ask your administrator to check the Vendor Central connection."
+### ABS-OV-1
+- Surface: Overview › Growth check, any band
+- Trigger: the band's source presentation request failed (the composed tab settles each source on its own, ADR-151). `{tab}` is the source tab's name. A source served as `window_unavailable`, `empty` or `insufficient` shows that source's own served or catalog text instead (ABS-SC, ABS-NC, ABS-RH-1, ABS-RH-3, ABS-RH-4, ABS-CAMP title).
+- Text: "This part comes from {tab}, which can't be shown right now. Try again later."
+### ABS-OV-2
+- Surface: Overview › Growth check, daily ad spend chart
+- Trigger: the served Campaigns body has no portfolio trend for the window.
+- Text: "This window has no daily ad spend to draw."
 ## Why the wording
 
 Reach, Audiences and Retention are Amazon Marketing Cloud packs (each LLD's "Materializer"). A Reach

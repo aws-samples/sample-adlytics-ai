@@ -18,10 +18,14 @@ export type SessionField = typeof sessionFields[number];
 /** What the session grants. A field the session doesn't carry yet reads as false. */
 export type SessionEntitlements = Readonly<Partial<Record<SessionField, boolean>>>;
 
+/** ADR-151: the composed tabs this frontend renders, each over its sources' served presentations. */
+export const composedTabIds = ['overview'] as const;
+export type ComposedTabId = typeof composedTabIds[number];
+
 export interface ManifestTab {
   readonly description: string;
   readonly entitlement: { readonly group: string; readonly session_field: SessionField } | null;
-  readonly kind: 'page' | 'static';
+  readonly kind: 'composed' | 'page' | 'static';
   readonly label: string;
   readonly order: number;
   readonly route: string;
@@ -78,7 +82,7 @@ function route(value: unknown, context: string): string {
 
 function parseTab(value: unknown, audience: ManifestHub['audience']): ManifestTab {
   const tab = record(value, ['description', 'entitlement', 'kind', 'label', 'order', 'route', 'tab_id'], 'manifest tab');
-  const kind = oneOf(tab.kind, ['page', 'static'] as const, 'manifest tab kind');
+  const kind = oneOf(tab.kind, ['composed', 'page', 'static'] as const, 'manifest tab kind');
   let entitlement: ManifestTab['entitlement'] = null;
   if (tab.entitlement !== null) {
     const raw = record(tab.entitlement, ['group', 'session_field'], 'manifest tab entitlement');
@@ -101,6 +105,9 @@ function parseTab(value: unknown, audience: ManifestHub['audience']): ManifestTa
     if (bindingByRoute[tabId as RouteName].route !== tabRoute) {
       throw new TypeError('Manifest page tab route does not match its page binding.');
     }
+  }
+  if (kind === 'composed' && !(composedTabIds as readonly string[]).includes(tabId)) {
+    throw new TypeError('Manifest composed tab is not a rendered view.');
   }
   if (!Number.isSafeInteger(tab.order) || (tab.order as number) < 1) {
     throw new TypeError('Manifest tab order must be a positive integer.');

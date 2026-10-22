@@ -50,7 +50,8 @@ test('generated V2 binding parser accepts the current generated binding and cano
   assert.deepEqual(renderedBindings.map((page) => page.page_id), ['campaigns', 'retail-health', 'scorecard', 'new-customers', 'reach', 'retention', 'audiences']);
   assert.equal(bindingByRoute.campaigns.route, '/campaigns/');
   assert.deepEqual(bindingByRoute.campaigns.compatibility_routes, []);
-  assert.deepEqual(bindingByRoute.scorecard.compatibility_routes, ['/']);
+  // ADR-151: the composed Overview owns `/`, so no page binding carries it.
+  assert.deepEqual(bindingByRoute.scorecard.compatibility_routes, []);
   assert.equal(bindingByPath['/campaigns/'].page_id, 'campaigns');
   assert.equal(bindingByPath['/retail-health/'].page_id, 'retail-health');
   assert.equal(bindingByPath['/scorecard/'].page_id, 'scorecard');

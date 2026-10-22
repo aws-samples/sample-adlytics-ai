@@ -58,7 +58,20 @@ def test_negotiated_declarations_load_frozen_v1_and_canonical_v2_independently()
     owners = {
         page.page_id: page.compatibility_routes for page in v2.pages if page.compatibility_routes
     }
-    assert owners == {"scorecard": ("/",)}
+    # ADR-151: the composed Overview owns `/` in navigation.yaml, so no page entry does.
+    assert owners == {}
+
+
+def test_a_v2_page_binding_that_owns_the_root_is_refused(tmp_path: Path) -> None:
+    document = generated_document(ROOT, schema_version=2)
+    pages = cast("list[dict[str, object]]", document["pages"])
+    scorecard = next(page for page in pages if page["page_id"] == "scorecard")
+    scorecard["compatibility_routes"] = ["/"]
+    path = tmp_path / "v2-bindings.json"
+    path.write_text(json.dumps(document))
+
+    with pytest.raises(PageSchemaError, match="must not own the root route"):
+        load_v2_page_bindings(tmp_path, path=Path(path.name))
 
 
 def test_v2_generator_projects_temporal_artifacts_visuals_and_section_roles(tmp_path: Path) -> None:

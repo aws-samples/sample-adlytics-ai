@@ -46,7 +46,7 @@ export function figureText(figure: ScorecardFigure, prior = false): string | nul
  * chip (or its withheld text, from the coverage `slot` the server wrote). The metric focus
  * openers ("Details ›") wait for the Scorecard metric focus path, so none renders yet.
  */
-function Tile({ figure, notAvailable, slot, market = null, children }: {
+export function ScorecardTile({ figure, notAvailable, slot, market = null, children }: {
   readonly figure: ScorecardFigure;
   /** The served marketplace a retail tile measures, when the page shows more than one. */
   readonly market?: string | null;
@@ -98,8 +98,8 @@ function NetworkCardSection({ artifact, card, highlight, notAvailable, several }
     {card.dsp_absence_text === null ? null : <p className="small dim">{card.dsp_absence_text}</p>}
     <AnswerSentence answer={scorecardAnswer(artifact, card, selected.model)} />
     <div className="tiles three">
-      <Tile figure={selected.figure} notAvailable={notAvailable} slot={`headline:${card.card_id}`} />
-      <Tile figure={card.spend} notAvailable={notAvailable} slot={`spend:${card.card_id}`} />
+      <ScorecardTile figure={selected.figure} notAvailable={notAvailable} slot={`headline:${card.card_id}`} />
+      <ScorecardTile figure={card.spend} notAvailable={notAvailable} slot={`spend:${card.card_id}`} />
       <div className="tile">
         <div className="select-wrap">
           <label htmlFor={selectId}>{card.headline.selector_label}</label>
@@ -235,9 +235,9 @@ function RetailSales({ artifact, notAvailable }: { readonly artifact: NetworkSco
   return <section className="section" aria-labelledby={headingId}>
     <h2 id={headingId}>{artifact.retail_sales_heading}</h2>
     <div className="tiles two">
-      {artifact.tacos.map((row) => <Tile key={row.coverage_slot} figure={row.figure} notAvailable={notAvailable} slot={row.coverage_slot} market={row.marketplace_text}>
+      {artifact.tacos.map((row) => <ScorecardTile key={row.coverage_slot} figure={row.figure} notAvailable={notAvailable} slot={row.coverage_slot} market={row.marketplace_text}>
         {row.link === null ? null : <a className="chip-link" href={row.link.href} aria-label={row.link.label}>{row.link.text}</a>}
-      </Tile>)}
+      </ScorecardTile>)}
       {artifact.cross_network_spend.map((row) => <div key={row.row_id} className={row.figure === null ? 'tile na' : 'tile'}>
         <span className="k">{row.label}</span>
         {row.marketplace_text === null ? null : <span className="market">{row.marketplace_text}</span>}

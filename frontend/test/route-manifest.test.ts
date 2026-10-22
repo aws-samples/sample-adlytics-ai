@@ -10,11 +10,11 @@ function copy(): Record<string, unknown> & { hubs: Array<Record<string, unknown>
 }
 
 test('the committed route manifest decodes, and Prompt administration needs its session field', () => {
-  assert.deepEqual(visibleHubs({}).map((hub) => hub.hub_id), ['performance', 'reach', 'customers', 'retail']);
-  assert.deepEqual(visibleHubs({ can_manage_prompts: true }).map((hub) => hub.hub_id), ['performance', 'reach', 'customers', 'retail', 'operations']);
+  assert.deepEqual(visibleHubs({}).map((hub) => hub.hub_id), ['overview', 'performance', 'reach', 'customers', 'retail']);
+  assert.deepEqual(visibleHubs({ can_manage_prompts: true }).map((hub) => hub.hub_id), ['overview', 'performance', 'reach', 'customers', 'retail', 'operations']);
   // Data pipeline status is dark: no manifest entry, so its field lists nothing
   // (test/data-pipeline-status.test.tsx holds the positive control).
-  assert.deepEqual(visibleHubs({ can_read_operational_status: true }).map((hub) => hub.hub_id), ['performance', 'reach', 'customers', 'retail']);
+  assert.deepEqual(visibleHubs({ can_read_operational_status: true }).map((hub) => hub.hub_id), ['overview', 'performance', 'reach', 'customers', 'retail']);
   const reach = visibleHubs({}).find((hub) => hub.hub_id === 'reach');
   assert.deepEqual(reach?.tabs.map((tab) => ({ description: tab.description, label: tab.label, order: tab.order, route: tab.route, tab_id: tab.tab_id })), [{
     description: 'How many shoppers your ads reached, how often, and what they did next',
@@ -33,14 +33,15 @@ test('the committed route manifest decodes, and Prompt administration needs its 
 
 test('routes resolve with or without the trailing slash, and the root resolves to its owner tab', () => {
   assert.equal(locateRoute('/retail-health')?.tab.tab_id, 'retail-health');
-  assert.equal(locateRoute('/')?.tab.tab_id, 'scorecard');
+  assert.equal(locateRoute('/')?.tab.tab_id, 'overview');
+  assert.equal(locateRoute('/')?.tab.kind, 'composed');
   assert.equal(locateRoute('/channel-performance/'), null);
-  assert.equal(rootTab().label, 'Scorecard');
+  assert.equal(rootTab().label, 'Overview');
 });
 
 test('an exported index.html locates as its route, as the edge serves it; other dotted paths do not', () => {
   // ADR-123: the edge passes a dotted leaf through, so `<route>index.html` serves the route's page.
-  assert.equal(locateRoute('/index.html')?.tab.tab_id, 'scorecard');
+  assert.equal(locateRoute('/index.html')?.tab.tab_id, 'overview');
   assert.equal(locateRoute('/campaigns/index.html')?.tab.tab_id, 'campaigns');
   assert.equal(locateRoute('/retail-health/index.html')?.tab.tab_id, 'retail-health');
   assert.equal(locateRoute('/reach/index.html')?.tab.tab_id, 'reach');
@@ -58,6 +59,7 @@ test('document titles follow ia §3.5', () => {
   assert.equal(documentTitle(locateRoute('/reach/')), 'Reach and funnel · Reach and audiences · Adlytics AI');
   assert.equal(documentTitle(locateRoute('/audiences/')), 'Audiences · Reach and audiences · Adlytics AI');
   assert.equal(documentTitle(locateRoute('/admin/prompts/')), 'Prompt administration · Operations · Adlytics AI');
+  assert.equal(documentTitle(locateRoute('/')), 'Overview · Adlytics AI');
   assert.equal(documentTitle(null), 'Page not found · Adlytics AI');
 });
 
@@ -75,6 +77,11 @@ test('the decoder refuses a hub without an icon, a mismatched entitlement and an
   const unrendered = copy();
   hubOf(unrendered, 'performance').tabs[0]!.tab_id = 'channel-performance';
   assert.throws(() => parseRouteManifest(unrendered), /not a rendered page/);
+
+  // ADR-151: a composed tab is one this frontend renders, never an unknown view.
+  const unknownComposed = copy();
+  hubOf(unknownComposed, 'overview').tabs[0]!.tab_id = 'growth-forecast';
+  assert.throws(() => parseRouteManifest(unknownComposed), /composed tab is not a rendered view/);
 
   const extra = copy();
   extra.unexpected = true;

@@ -1106,9 +1106,7 @@
         }
       ],
       "boundary_required": true,
-      "compatibility_routes": [
-        "/"
-      ],
+      "compatibility_routes": [],
       "display_name": "Scorecard",
       "mode": "selectable",
       "page_id": "scorecard",

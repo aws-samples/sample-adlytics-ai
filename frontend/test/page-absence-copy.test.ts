@@ -9,6 +9,7 @@ import {
   CAMPAIGN_ABSENCE_OTHER_PERIODS,
   CAMPAIGN_ABSENCE_TITLE,
 } from '@/components/CampaignRouteAdapter';
+import { OVERVIEW_NO_SPEND_TREND, sourceIssueText } from '@/components/OverviewView';
 import { PI_DOMAIN_FALLBACK } from '@/components/PresentationV2RouteController';
 import {
   RETAIL_HEALTH_ABSENCE_NO_PERIOD,
@@ -45,4 +46,9 @@ test('ABS-CAMP-1/2 and ABS-RH-1/2 in docs/ui/page-absence-copy.md are the adapte
   assert.deepEqual(row('ABS-RH-3'), { text: RETAIL_HEALTH_EMPTY_TEXT, title: RETAIL_HEALTH_EMPTY_TITLE });
   assert.deepEqual(row('ABS-RH-4'), { text: RETAIL_HEALTH_INSUFFICIENT_TEXT, title: RETAIL_HEALTH_INSUFFICIENT_TITLE });
   assert.notEqual(RETAIL_HEALTH_EMPTY_TEXT, RETAIL_HEALTH_INSUFFICIENT_TEXT);
+});
+
+test('ABS-OV-1 and ABS-OV-2 in docs/ui/page-absence-copy.md are the Overview band absences', () => {
+  assert.equal(row('ABS-OV-1').text, sourceIssueText('{tab}'));
+  assert.equal(row('ABS-OV-2').text, OVERVIEW_NO_SPEND_TREND);
 });

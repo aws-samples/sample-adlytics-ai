@@ -56,6 +56,9 @@ def test_the_catalog_doc_and_the_domain_catalog_are_equal() -> None:
         # Retail health empty and insufficient bodies (OD-UX-9 E1), browser-owned.
         "ABS-RH-3",
         "ABS-RH-4",
+        # Overview band absences (ADR-151), browser-owned.
+        "ABS-OV-1",
+        "ABS-OV-2",
     }
 
 

@@ -71,6 +71,7 @@ def test_only_hubs_with_a_shipped_tab_are_listed_in_navigation_order() -> None:
     manifest = json.loads((ROOT / ROUTE_MANIFEST_PATH).read_text())
 
     assert [hub["hub_id"] for hub in manifest["hubs"]] == [
+        "overview",
         "performance",
         "reach",
         "customers",
@@ -78,6 +79,7 @@ def test_only_hubs_with_a_shipped_tab_are_listed_in_navigation_order() -> None:
         "operations",
     ]
     assert [tab["route"] for hub in manifest["hubs"] for tab in hub["tabs"]] == [
+        "/",
         "/scorecard/",
         "/campaigns/",
         "/reach/",
@@ -87,7 +89,94 @@ def test_only_hubs_with_a_shipped_tab_are_listed_in_navigation_order() -> None:
         "/retail-health/",
         "/admin/prompts/",
     ]
-    assert manifest["root"] == {"route": "/", "tab_id": "scorecard"}
+    assert manifest["root"] == {"route": "/", "tab_id": "overview"}
+
+
+@pytest.mark.covers("ADR-151")
+def test_the_composed_overview_owns_the_root_over_routed_source_pages() -> None:
+    navigation = load_navigation(ROOT)
+    overview = next(tab for tab in navigation.tabs if tab.tab_id == "overview")
+
+    assert (overview.kind, overview.route, overview.hub_id, overview.entitlement) == (
+        "composed",
+        "/",
+        "overview",
+        None,
+    )
+    assert overview.sources == ("scorecard", "retail-health", "new-customers", "campaigns")
+    assert navigation.root_tab_id == "overview"
+    manifest = json.loads((ROOT / ROUTE_MANIFEST_PATH).read_text())
+    hub = next(hub for hub in manifest["hubs"] if hub["hub_id"] == "overview")
+    # The manifest carries the kind, never the sources: the browser reads each source itself.
+    assert hub["tabs"] == [
+        {
+            "description": overview.description,
+            "entitlement": None,
+            "kind": "composed",
+            "label": "Overview",
+            "order": 1,
+            "route": "/",
+            "tab_id": "overview",
+        }
+    ]
+
+
+def test_a_composed_source_that_is_not_a_routed_page_tab_is_refused(tmp_path: Path) -> None:
+    root = _workspace(
+        tmp_path,
+        navigation=_navigation_text().replace(
+            "sources: [scorecard, retail-health, new-customers, campaigns]",
+            "sources: [scorecard, channel-performance]",
+        ),
+    )
+
+    with pytest.raises(PageSchemaError, match="composed sources must be routed v2 page tabs"):
+        load_navigation(root)
+
+
+def test_a_composed_tab_cannot_sit_in_the_operator_group(tmp_path: Path) -> None:
+    root = _workspace(
+        tmp_path,
+        navigation=_navigation_text().replace(
+            "    hub_id: overview\n    tab_id: overview",
+            "    hub_id: operations\n    tab_id: overview",
+        ),
+    )
+
+    with pytest.raises(PageSchemaError, match="composed tab belongs to a customer hub"):
+        load_navigation(root)
+
+
+def test_two_root_owners_are_refused(tmp_path: Path) -> None:
+    # A second composed tab at `/` beside the Overview: the root must have exactly one owner.
+    second = """  - route: /
+    hub_id: plan
+    tab_id: plan-overview
+    tab_label: Plan
+    tab_description: A second owner of the root
+    order: 1
+    sources: [scorecard]
+"""
+    anchor = "static_routes:\n"
+    text = _navigation_text()
+    assert text.count(anchor) == 1
+    root = _workspace(tmp_path, navigation=text.replace(anchor, second + anchor))
+
+    with pytest.raises(PageSchemaError, match=r"routes must be unique|exactly one routed tab"):
+        load_navigation(root)
+
+
+def test_a_page_entry_that_owns_the_root_is_refused(tmp_path: Path) -> None:
+    pages = _pages_text()
+    anchor = (
+        "    compatibility_routes: []\n    navigation:\n"
+        "      hub_id: performance\n      tab_label: Scorecard"
+    )
+    assert pages.count(anchor) == 1
+    root = _workspace(tmp_path, pages=pages.replace(anchor, anchor.replace("[]", '["/"]')))
+
+    with pytest.raises(PageSchemaError, match="must not own the root route"):
+        load_navigation(root)
 
 
 def test_a_page_without_a_navigation_block_is_not_routed() -> None:

@@ -316,7 +316,7 @@ pages:
     primary_job: See which channels return most inside each network, whether the ranking holds under every attribution model, and where ad spend stands against retail sales.
     mode: selectable
     boundary_required: true
-    compatibility_routes: ["/"]
+    compatibility_routes: []
     navigation:
       hub_id: performance
       tab_label: Scorecard
