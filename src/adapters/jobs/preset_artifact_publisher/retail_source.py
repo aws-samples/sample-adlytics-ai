@@ -74,15 +74,15 @@ from domain.presentation.insights import (
 )
 from domain.presentation.preset_artifacts import (
     PresetArtifactBody,
-    PresetArtifactCustodyManifest,
+    PresetArtifactCustodyHeader,
     PresetArtifactPage,
-    PresetArtifactPointer,
-    PresetArtifactPointerAdvanceRequest,
+    PresetArtifactPointerTemplate,
     PresetArtifactProductChildIdentity,
     PresetArtifactPublicationRequest,
     PresetArtifactRevision,
     PresetArtifactSiblingBody,
     PresetArtifactSiblingCustody,
+    PresetArtifactSiblingStream,
     PresetArtifactVariant,
     SourceUnchanged,
 )
@@ -112,7 +112,6 @@ from domain.presentation.retail_health_custody import (
     RetailHealthCustodyManifest,
     RetailHealthCustodyProduct,
     RetailProductChildCustody,
-    RetailProductChildDigests,
     product_ref_for,
     retail_health_custody_manifest_payload,
     retail_product_child_custody_payload,
@@ -235,7 +234,10 @@ __all__ = [
 #     custody manifest and one baked `RetailProductDetail` child per served row (ADR-125).
 # 9 — moves with Campaigns format 11, whose Delivery per channel adds the viewable rate to the
 #     compared-metric roster (ADR-127); the body bytes are format 8's.
-RETAIL_HEALTH_PRESET_RENDER_FORMAT = 9
+# 10 — the children's digests move from the parent custody's inline child set to the
+#     stage-built sibling index, and the manifest kind is versioned (ADR-145); the body bytes
+#     are format 9's.
+RETAIL_HEALTH_PRESET_RENDER_FORMAT = 10
 
 RETAIL_HEALTH_BOUNDARY = (
     "Retail actuals only. No campaign identifier, ROAS, or advertising "
@@ -1676,13 +1678,12 @@ class RetainedRetailHealthPresetArtifactSource:
             capped_preset_artifact_json(retail_health_artifact_payload(rendered.artifact)),
         )
         children = _child_bodies(self.page, variant, revision, rendered.children)
-        custody = (
+        # The manifest is the custody header; the stage adds the sibling index, the children's
+        # one digest home (ADR-145), and refuses children that aren't exactly the served rows.
+        header = (
             None
             if not rendered.children
-            else PresetArtifactCustodyManifest(
-                self.page,
-                variant,
-                revision,
+            else PresetArtifactCustodyHeader(
                 capped_preset_artifact_json(
                     retail_health_custody_manifest_payload(
                         RetailHealthCustodyManifest(
@@ -1691,43 +1692,34 @@ class RetainedRetailHealthPresetArtifactSource:
                                 RetailHealthCustodyProduct(child.product_ref, child.product)
                                 for child in rendered.children
                             ),
-                            tuple(
-                                (
-                                    child.product_ref,
-                                    RetailProductChildDigests(public.digest, private.digest),
-                                )
-                                for child, (public, private) in zip(
-                                    rendered.children, children, strict=True
-                                )
-                            ),
                             rendered.movers_product_ref,
                         )
                     )
-                ),
+                )
             )
-        )
-        pointer = PresetArtifactPointer(
-            self.page,
-            variant,
-            revision,
-            body.digest,
-            1 if current is None else current.forward_token + 1,
-            None if current is None else current.revision,
-            None if custody is None else custody.digest,
-            resolved_window=window,
-            comparison_window=prior,
         )
         # Every child and its custody are written and attested before the parent, and the
         # pointer advances last, so a served revision always has its whole closed child set.
         return PresetArtifactPublicationRequest(
             body,
-            PresetArtifactPointerAdvanceRequest(
-                pointer,
+            PresetArtifactPointerTemplate(
+                self.page,
+                variant,
+                revision,
+                body.digest,
+                1 if current is None else current.forward_token + 1,
+                None if current is None else current.revision,
                 None if current is None else self.clock() + SUPERSEDED_HISTORY_RETENTION,
+                resolved_window=window,
+                comparison_window=prior,
             ),
-            custody,
-            tuple(public for public, _ in children),
-            tuple(private for _, private in children),
+            header,
+            PresetArtifactSiblingStream.of(children),
+            None
+            if header is None
+            else frozenset(
+                PresetArtifactProductChildIdentity(child.product_ref) for child in rendered.children
+            ),
         )
 
     def _resolved_windows(
