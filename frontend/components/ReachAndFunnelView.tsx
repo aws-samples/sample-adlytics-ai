@@ -205,15 +205,14 @@ function FrequencyChart({ frequency }: { readonly frequency: ReachFrequency }) {
 function FrequencyTables({ frequency }: { readonly frequency: ReachFrequency }) {
   const table = frequency.per_channel;
   if (table === null) return null;
+  // E3 (OD-UX-9): the decoder admits only the served "not available per channel" absence in this
+  // grid (lib/reach.ts), so it reads as one line per channel instead of rows of the same words.
+  const reason = table.rows[0] === undefined ? null : Object.values(table.rows[0].cells)[0]?.absence?.text ?? null;
   return <div className="reach-frequency-tables">
-    <div>
-      <DataTable title="Return per channel by frequency" note={table.label} nameWithNote>
-        <DtHead><DtRow><DtColumn>Channel</DtColumn>{frequency.buckets.map((bucket) => <DtColumn key={bucket.bucket}>{bucket.label}</DtColumn>)}</DtRow></DtHead>
-        <DtBody>{table.rows.map((row) => <DtRow key={row.ad_product_key}>
-          <DtRowHeader>{row.label}</DtRowHeader>
-          {frequency.buckets.map((bucket) => <DtCell key={bucket.bucket} label={bucket.label}><Figure figure={row.cells[bucket.bucket]!} /></DtCell>)}
-        </DtRow>)}</DtBody>
-      </DataTable>
+    <div className="reach-channel-absent" role="group" aria-label="Return per channel by frequency">
+      <h3>Return per channel by frequency</h3>
+      <p className="reach-notes">{table.label}</p>
+      <ul className="reach-notes">{table.rows.map((row) => <li key={row.ad_product_key}><strong>{row.label}</strong> <span>{reason}</span></li>)}</ul>
       <p className="reach-notes">{table.unavailable_reason}</p>
       <p className="reach-notes">{table.foot}</p>
     </div>

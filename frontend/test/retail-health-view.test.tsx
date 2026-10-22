@@ -402,3 +402,19 @@ test('A window change that closed the open product says which product and the wi
   render(<RetailHealthView artifact={parseRetailHealthArtifact(format8Payload())} closedProduct={{ title: 'Fictional bottle' }} />);
   assert.ok(screen.getByText("Fictional bottle isn't in the product list for Aug 15\u201321, 2026."));
 });
+
+test('an empty and an insufficient Retail health body each say what is missing and who acts (E1)', async () => {
+  const { default: served } = await import('./fixtures/retail-health-v2.json');
+  const body = (outcome: 'empty' | 'insufficient') => parseRetailHealthArtifact({
+    ...(served as { page: { artifact: Record<string, unknown> } }).page.artifact,
+    evidence_status: null, absences: [], outcome, reconciliation: null, rows: [], total_count: 0, totals: [], trend: [], truncation: null,
+  });
+  const empty = render(<RetailHealthView artifact={body('empty')} />);
+  assert.ok(screen.getByText('No retail movement in this period'));
+  assert.match(empty.container.textContent ?? '', /administrator to check the Vendor Central connection/);
+  empty.unmount();
+  const insufficient = render(<RetailHealthView artifact={body('insufficient')} />);
+  assert.ok(screen.getByText('Not enough Vendor Central data for this period'));
+  assert.equal(screen.queryByText('No retail movement in this period'), null);
+  insufficient.unmount();
+});

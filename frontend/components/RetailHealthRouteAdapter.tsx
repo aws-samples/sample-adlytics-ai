@@ -139,9 +139,14 @@ function UnavailableProduct({ childAsin, onBack, onRetry, title }: {
 type RetailHealthAbsence = Extract<RetailHealthPresentation, { readonly kind: 'window_unavailable' }>;
 
 /** Catalog ABS-RH-1 / ABS-RH-2 (`docs/ui/page-absence-copy.md`). */
-export const RETAIL_HEALTH_ABSENCE_TITLE = 'Retail Health is unavailable for this period';
-export const RETAIL_HEALTH_ABSENCE_OTHER_PERIODS = 'Choose another published reporting period to view Retail Health.';
-export const RETAIL_HEALTH_ABSENCE_NO_PERIOD = "Retail Health isn't ready to show yet. It's built from your Vendor Central data. When it's ready, you'll see the sales, traffic, conversion and returns your data supports, per product.";
+export const RETAIL_HEALTH_ABSENCE_TITLE = "Retail health isn't published for this period";
+export const RETAIL_HEALTH_ABSENCE_OTHER_PERIODS = 'Choose another period above to see shipped sales, traffic and returns.';
+/** ABS-RH-3 and ABS-RH-4 (OD-UX-9, E1): a served empty or insufficient body, each its own words. */
+export const RETAIL_HEALTH_EMPTY_TITLE = 'No retail movement in this period';
+export const RETAIL_HEALTH_EMPTY_TEXT = 'Vendor Central reported no shipped sales, traffic or returns for this period. If you expected sales, ask your administrator to check the Vendor Central connection.';
+export const RETAIL_HEALTH_INSUFFICIENT_TITLE = 'Not enough Vendor Central data for this period';
+export const RETAIL_HEALTH_INSUFFICIENT_TEXT = "There isn't enough Vendor Central data to show this period safely. Choose another period above. If this keeps happening, ask your administrator to check the Vendor Central connection.";
+export const RETAIL_HEALTH_ABSENCE_NO_PERIOD = "Retail health isn't ready to show yet. It's built from your Vendor Central data, which your administrator connects. When it's ready, you'll see the sales, traffic, conversion and returns your data supports, per product.";
 export const retailHealthRouteAdapter: V2RouteAdapter<
   RetailHealthPresentation,
   RetailProductPresentation,

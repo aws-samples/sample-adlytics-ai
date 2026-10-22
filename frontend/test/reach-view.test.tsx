@@ -97,7 +97,9 @@ test('the overlap table gives every value its group and server-owned identity-sp
 test('renders fine and coarse server bucket rosters without browser-composed bands or totals', () => {
   const fine = view();
   assert.equal(fine.container.querySelectorAll('.reach-chart-item').length, 10);
-  assert.equal(fine.container.querySelectorAll('.reach-frequency-tables tbody tr').length, 12);
+  // The per-channel grid is all one served absence here, so it reads as one line per channel (E3).
+  assert.equal(fine.container.querySelectorAll('.reach-frequency-tables tbody tr').length, 10);
+  assert.equal(fine.container.querySelectorAll('.reach-channel-absent li').length, 2);
   assert.equal(screen.queryByText(/total/i), null);
   fine.unmount();
 
@@ -122,12 +124,12 @@ test('not-returned buckets leave a chart gap and state the exact absence in char
 test('keeps no-credit channel rows separate and places each served platform return beside them', () => {
   const { container } = view();
   const regions = screen.getAllByRole('region');
-  const channelRegion = regions.find((region) => region.getAttribute('aria-labelledby')?.split(' ').some((id) => document.getElementById(id)?.textContent === 'Return per channel by frequency'));
   const platformRegion = regions.find((region) => region.getAttribute('aria-labelledby')?.split(' ').some((id) => document.getElementById(id)?.textContent === 'Platform return'));
-  assert.ok(channelRegion);
   assert.ok(platformRegion);
-  assert.deepEqual(within(channelRegion).getAllByRole('rowheader').map((cell) => cell.textContent), ['Sponsored Products', 'Amazon DSP']);
-  assert.equal(within(channelRegion).getAllByText('Not available per channel').length, 20);
+  // E3: every channel cell carries the same served absence, so the grid is one line per channel.
+  const channelGroup = screen.getByRole('group', { name: 'Return per channel by frequency' });
+  assert.deepEqual([...channelGroup.querySelectorAll('li')].map((item) => item.textContent), ['Sponsored Products Not available per channel', 'Amazon DSP Not available per channel']);
+  assert.equal(within(channelGroup).getAllByText('Not available per channel').length, 2);
   assert.equal(within(platformRegion).getAllByRole('rowheader').length, 10);
   assert.equal(container.querySelector('.reach-frequency-tables')?.children.length, 2);
   assert.equal(screen.queryByText(/total/i), null);
@@ -251,3 +253,4 @@ test('served counts read grouped and served multipliers with a times sign, nothi
   assert.equal(reachDisplayText('25.93%', 'share'), '25.93%');
   assert.equal(reachDisplayText('2.50 USD', 'currency'), '2.50 USD');
 });
+

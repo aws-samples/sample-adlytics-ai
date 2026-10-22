@@ -14,6 +14,10 @@ import {
   RETAIL_HEALTH_ABSENCE_NO_PERIOD,
   RETAIL_HEALTH_ABSENCE_OTHER_PERIODS,
   RETAIL_HEALTH_ABSENCE_TITLE,
+  RETAIL_HEALTH_EMPTY_TEXT,
+  RETAIL_HEALTH_EMPTY_TITLE,
+  RETAIL_HEALTH_INSUFFICIENT_TEXT,
+  RETAIL_HEALTH_INSUFFICIENT_TITLE,
 } from '@/components/RetailHealthRouteAdapter';
 
 const catalog = readFileSync(join(__dirname, '..', '..', 'docs', 'ui', 'page-absence-copy.md'), 'utf8');
@@ -37,4 +41,8 @@ test('ABS-CAMP-1/2 and ABS-RH-1/2 in docs/ui/page-absence-copy.md are the adapte
   assert.deepEqual(row('ABS-CAMP-2'), { text: CAMPAIGN_ABSENCE_NO_PERIOD, title: CAMPAIGN_ABSENCE_TITLE });
   assert.deepEqual(row('ABS-RH-1'), { text: RETAIL_HEALTH_ABSENCE_OTHER_PERIODS, title: RETAIL_HEALTH_ABSENCE_TITLE });
   assert.deepEqual(row('ABS-RH-2'), { text: RETAIL_HEALTH_ABSENCE_NO_PERIOD, title: RETAIL_HEALTH_ABSENCE_TITLE });
+  // E1 (OD-UX-9): an empty and an insufficient Retail health body each have their own row.
+  assert.deepEqual(row('ABS-RH-3'), { text: RETAIL_HEALTH_EMPTY_TEXT, title: RETAIL_HEALTH_EMPTY_TITLE });
+  assert.deepEqual(row('ABS-RH-4'), { text: RETAIL_HEALTH_INSUFFICIENT_TEXT, title: RETAIL_HEALTH_INSUFFICIENT_TITLE });
+  assert.notEqual(RETAIL_HEALTH_EMPTY_TEXT, RETAIL_HEALTH_INSUFFICIENT_TEXT);
 });

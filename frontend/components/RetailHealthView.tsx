@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT-0
 'use client';
 
+import { RETAIL_HEALTH_EMPTY_TEXT, RETAIL_HEALTH_EMPTY_TITLE, RETAIL_HEALTH_INSUFFICIENT_TEXT, RETAIL_HEALTH_INSUFFICIENT_TITLE } from './RetailHealthRouteAdapter';
 import { retailHealthAnswer } from '@/lib/retail-health';
 import { AnswerSentence } from './AnswerSentence';
 import { useRef, useState } from 'react';
@@ -270,10 +271,12 @@ export function RetailHealthView({ artifact, closedProduct = null, loadingRefere
   const origin = useRef<HTMLButtonElement | null>(null);
   const insightOrigin = useRef<HTMLButtonElement | null>(null);
   if (artifact.outcome !== 'complete') {
+    // E1 (OD-UX-9): empty and insufficient each say what is missing, why, and who acts.
+    const empty = artifact.outcome === 'empty';
     return <section className="state-note" role="status">
-      <span className="badge">Unavailable</span>
-      <strong>Retail reporting is not available for this period</strong>
-      <span>Choose another available reporting period when published Vendor coverage is available.</span>
+      <span className="badge">{empty ? 'No movement' : 'Not enough data'}</span>
+      <strong>{empty ? RETAIL_HEALTH_EMPTY_TITLE : RETAIL_HEALTH_INSUFFICIENT_TITLE}</strong>
+      <span>{empty ? RETAIL_HEALTH_EMPTY_TEXT : RETAIL_HEALTH_INSUFFICIENT_TEXT}</span>
     </section>;
   }
   const windowText = formatIsoDateRange(artifact.period.start, artifact.period.end);

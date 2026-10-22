@@ -641,13 +641,13 @@ const D2_ABSENCES = [
 const BROWSER_ABSENCES = [
   {
     adapter: campaignRouteAdapter,
-    message: 'Campaign reporting is unavailable for the selected period. Choose another available period to view campaign results.',
-    title: 'Campaign portfolio is unavailable for this period',
+    message: 'No campaign results are published for this period. Choose another period above.',
+    title: 'No campaign results for this period',
   },
   {
     adapter: retailHealthRouteAdapter,
-    message: 'Choose another published reporting period to view Retail Health.',
-    title: 'Retail Health is unavailable for this period',
+    message: 'Choose another period above to see shipped sales, traffic and returns.',
+    title: "Retail health isn't published for this period",
   },
 ] as const;
 
@@ -696,13 +696,13 @@ test('Campaigns and Retail health render their existing browser copy unchanged t
 const NO_PERIOD_ABSENCES = [
   {
     adapter: campaignRouteAdapter,
-    message: "Campaign reporting isn't ready to show yet. It's built from your Amazon Ads data. When it's ready, you'll see the campaign results your data supports for each published window.",
-    title: 'Campaign portfolio is unavailable for this period',
+    message: "Campaign results aren't ready to show yet. They're built from your Amazon Ads data, which your administrator connects. When they're ready, you'll see the campaign results your data supports for each published window.",
+    title: 'No campaign results for this period',
   },
   {
     adapter: retailHealthRouteAdapter,
-    message: "Retail Health isn't ready to show yet. It's built from your Vendor Central data. When it's ready, you'll see the sales, traffic, conversion and returns your data supports, per product.",
-    title: 'Retail Health is unavailable for this period',
+    message: "Retail health isn't ready to show yet. It's built from your Vendor Central data, which your administrator connects. When it's ready, you'll see the sales, traffic, conversion and returns your data supports, per product.",
+    title: "Retail health isn't published for this period",
   },
 ] as const;
 

@@ -310,7 +310,7 @@ test('Campaign window recovery keeps closed outcome tokens internal', () => {
   const view = render(<PageAbsence {...campaignRouteAdapter.absence(parent)} />);
   const rendered = view.container.textContent?.toLowerCase() ?? '';
 
-  assert.ok(screen.getByText(/Campaign reporting is unavailable for the selected period\./));
+  assert.ok(screen.getByText(/No campaign results are published for this period\./));
   assert.equal(rendered.includes('complete'), false);
   assert.equal(rendered.includes('empty'), false);
   assert.equal(rendered.includes('insufficient'), false);

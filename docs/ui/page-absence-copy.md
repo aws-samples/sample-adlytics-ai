@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Type** | Shared UI copy catalog |
-| **Status** | Current development implementation under [ADR-139](../decisions/adr-139-serve-designed-absence-and-advance-pages-only-with-a-grantable-cohort.md); the wording awaits owner approval before any deploy |
+| **Status** | Owner-approved 2026-10-22 under OD-UX-9 (UI refresh), implemented under [ADR-139](../decisions/adr-139-serve-designed-absence-and-advance-pages-only-with-a-grantable-cohort.md). The browser-owned Campaigns and Retail health rows were revised to say what is missing, why, and who acts; ABS-RH-3 and ABS-RH-4 give Retail health distinct empty and insufficient copy |
 | **Owns** | Every server-owned page-level absence text, the serving-refusal text, the one browser fallback for a `domain` refusal, and the browser-owned Campaigns and Retail health absence text |
 | **Parent** | [Decision Workspace UI](README.md) |
 
@@ -11,7 +11,7 @@ Each v2 `window_unavailable.message` is chosen from this catalog by an explicit 
 (`src/domain/presentation/absence_copy.py`, `AbsenceTrigger`, whose values are the IDs below). The
 server rows equal `ABSENCE_COPY`, `OTHER_WINDOWS_READY` and `SERVING_CHECK_TEXT`, and PI-DOMAIN equals
 the browser's `PI_DOMAIN_FALLBACK` (`frontend/components/PresentationV2RouteController.tsx`). ABS-CAMP-1,
-ABS-CAMP-2, ABS-RH-1 and ABS-RH-2 equal the `CAMPAIGN_ABSENCE_…` and `RETAIL_HEALTH_ABSENCE_…` constants
+ABS-CAMP-2, ABS-RH-1 to ABS-RH-4 equal the `CAMPAIGN_ABSENCE_…` and `RETAIL_HEALTH_…` constants
 (`frontend/components/CampaignRouteAdapter.tsx`, `frontend/components/RetailHealthRouteAdapter.tsx`),
 whose v1 contract carries no server text. Equality tests on both sides read this file. `{period_label}` is the served period's label. Each page LLD's
 "Designed states" table links its row here and restates no text.
@@ -134,30 +134,40 @@ persistent status region announces it ([temporal contract §6](temporal-control-
 
 - Surface: Campaigns
 - Trigger: `window_unavailable` and the served control has at least one available preset.
-- Title: "Campaign portfolio is unavailable for this period"
-- Text: "Campaign reporting is unavailable for the selected period. Choose another available period to view campaign results."
+- Title: "No campaign results for this period"
+- Text: "No campaign results are published for this period. Choose another period above."
 
 ### ABS-CAMP-2
 
 - Surface: Campaigns
 - Trigger: `window_unavailable` and the served control has no available preset (custom periods are off for this page, so presets are the only choosable periods).
-- Title: "Campaign portfolio is unavailable for this period"
-- Text: "Campaign reporting isn't ready to show yet. It's built from your Amazon Ads data. When it's ready, you'll see the campaign results your data supports for each published window."
+- Title: "No campaign results for this period"
+- Text: "Campaign results aren't ready to show yet. They're built from your Amazon Ads data, which your administrator connects. When they're ready, you'll see the campaign results your data supports for each published window."
 
 ### ABS-RH-1
 
 - Surface: Retail health
 - Trigger: `window_unavailable` and the served control has at least one available preset.
-- Title: "Retail Health is unavailable for this period"
-- Text: "Choose another published reporting period to view Retail Health."
+- Title: "Retail health isn't published for this period"
+- Text: "Choose another period above to see shipped sales, traffic and returns."
 
 ### ABS-RH-2
 
 - Surface: Retail health
 - Trigger: `window_unavailable` and the served control has no available preset (custom periods are off for this page, so presets are the only choosable periods).
-- Title: "Retail Health is unavailable for this period"
-- Text: "Retail Health isn't ready to show yet. It's built from your Vendor Central data. When it's ready, you'll see the sales, traffic, conversion and returns your data supports, per product."
+- Title: "Retail health isn't published for this period"
+- Text: "Retail health isn't ready to show yet. It's built from your Vendor Central data, which your administrator connects. When it's ready, you'll see the sales, traffic, conversion and returns your data supports, per product."
 
+### ABS-RH-3
+- Surface: Retail health
+- Trigger: a served `empty` body: Vendor Central covered the window and reported no retail movement.
+- Title: "No retail movement in this period"
+- Text: "Vendor Central reported no shipped sales, traffic or returns for this period. If you expected sales, ask your administrator to check the Vendor Central connection."
+### ABS-RH-4
+- Surface: Retail health
+- Trigger: a served `insufficient` body.
+- Title: "Not enough Vendor Central data for this period"
+- Text: "There isn't enough Vendor Central data to show this period safely. Choose another period above. If this keeps happening, ask your administrator to check the Vendor Central connection."
 ## Why the wording
 
 Reach, Audiences and Retention are Amazon Marketing Cloud packs (each LLD's "Materializer"). A Reach
