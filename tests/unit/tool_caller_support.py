@@ -30,6 +30,8 @@ from adapters.config import (
     tracing_settings,
 )
 from adapters.inbound.tool_handlers.caller import CallerVerifier
+from domain.identity.issuance import jwk_from_der_public_key
+from domain.identity.tokens import JsonWebKeySet
 
 # A-TEST-LITERALS-001: a fictional issuer URL; see docs/security-dispositions.md
 TOKEN_ISSUER = "https://abc123.execute-api.eu-west-1.amazonaws.com/v1"  # nosec B105
@@ -113,6 +115,94 @@ def with_bearer(custom: Mapping[str, Any], token: str | None = None) -> dict[str
     """Return a client context carrying the propagated `Authorization` the Gateway forwards."""
     bearer = gateway_token() if token is None else token
     return {**custom, PROPAGATED_HEADERS: {"Authorization": f"Bearer {bearer}"}}
+
+
+# ADR-150: the external MCP gateway's credential class, a Cognito access token for one public
+# client. Every value is fictional; the pool id follows Cognito's `<region>_<id>` shape.
+MCP_CLIENT = "3mcpclientexample4567890"
+POOL_ID = "eu-west-1_example"
+POOL_REGION = "eu-west-1"
+COGNITO_ISSUER = f"https://cognito-idp.{POOL_REGION}.amazonaws.com/{POOL_ID}"
+COGNITO_KID = "cognito-access-signing-key-1"
+COGNITO_KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+"""The user pool's access-token signing key, as far as these tests are concerned."""
+
+MCP_CALLER_ENV: Mapping[str, str] = {
+    **CALLER_ENV,
+    "ADL_MCP_CLIENT_ID": MCP_CLIENT,
+    "ADL_COGNITO_USER_POOL_ID": POOL_ID,
+    "ADL_AWS_REGION": POOL_REGION,
+}
+
+
+def _public_jwk(key: rsa.RSAPrivateKey, kid: str) -> dict[str, str]:
+    der = key.public_key().public_bytes(
+        serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo
+    )
+    return jwk_from_der_public_key(der, kid)
+
+
+@dataclass
+class LocalPoolKeys:
+    """`SigningKeySource` over keys held in the test: what the pool's JWKS endpoint publishes.
+
+    `published` is what a refresh returns; `cached` is what `signing_keys` returns until then, so a
+    test can stage a rotation the cache has not seen yet.
+    """
+
+    published: tuple[tuple[str, rsa.RSAPrivateKey], ...] = ((COGNITO_KID, COGNITO_KEY),)
+    cached: tuple[tuple[str, rsa.RSAPrivateKey], ...] | None = None
+    reads: int = 0
+    refreshes: int = 0
+    failure: Exception | None = None
+
+    def signing_keys(self) -> JsonWebKeySet:
+        self.reads += 1
+        if self.failure is not None:
+            raise self.failure
+        keys = self.published if self.cached is None else self.cached
+        return JsonWebKeySet(keys=tuple(_public_jwk(key, kid) for kid, key in keys))
+
+    def refresh_signing_keys(self) -> JsonWebKeySet:
+        self.refreshes += 1
+        if self.failure is not None:
+            raise self.failure
+        self.cached = None
+        return JsonWebKeySet(keys=tuple(_public_jwk(key, kid) for kid, key in self.published))
+
+
+def mcp_verifier(keys: LocalPoolKeys | None = None) -> CallerVerifier:
+    """Return the real verifier with the external MCP client configured, over test keys."""
+    return CallerVerifier(
+        read_tool_caller_settings(MCP_CALLER_ENV),
+        LocalPublicKey(CALLER_KEY),
+        cognito_keys=keys if keys is not None else LocalPoolKeys(),
+        now=lambda: NOW,
+    )
+
+
+def cognito_claims(**overrides: Any) -> dict[str, Any]:
+    """Build an entitled MCP-client access token's claims; an override of None removes one."""
+    claims = {
+        "iss": COGNITO_ISSUER,
+        "sub": SUBJECT,
+        "client_id": MCP_CLIENT,
+        "token_use": "access",
+        "scope": "openid",
+        "quality_review_levels": ["mcp_tool_use"],
+        "iat": int(NOW.timestamp()) - 10,
+        "exp": int(NOW.timestamp()) + 900,
+        "jti": "0" * 31 + "2",
+        **overrides,
+    }
+    return {name: value for name, value in claims.items() if value is not None}
+
+
+def cognito_token(
+    key: rsa.RSAPrivateKey = COGNITO_KEY, *, kid: str = COGNITO_KID, **overrides: Any
+) -> str:
+    """Sign an MCP-client access token as the user pool would, or vary one attribute of it."""
+    return jwt.encode(cognito_claims(**overrides), key=key, algorithm="RS256", headers={"kid": kid})
 
 
 def import_tool_entrypoint(name: str, extra_env: Mapping[str, str] | None = None) -> ModuleType:

@@ -28,8 +28,10 @@ from tool_caller_support import (
     FOREIGN_KEY,
     PROPAGATED_HEADERS,
     SUBJECT,
+    cognito_token,
     gateway_token,
     import_tool_entrypoint,
+    mcp_verifier,
     with_bearer,
 )
 
@@ -345,6 +347,33 @@ class TestTheMeasurementTool:
         projection = recorder.lifecycle[-1].projection
         _assert_verified(projection)
         assert projection["result_class"] == "classified_refusal"
+
+    @pytest.mark.covers("ADR-150")
+    def test_an_unentitled_mcp_client_caller_is_refused_before_any_data_port(
+        self, monkeypatch: pytest.MonkeyPatch, recorder: _Recorder, logs: _Logs
+    ) -> None:
+        """The external MCP path reaches the same function; the gate refuses it the same way."""
+        monkeypatch.setattr(measurement, "CALLER", _RecordingCaller(mcp_verifier(), recorder))
+        entitled = with_bearer(_gateway_custom(self.TOOL), cognito_token())
+        response = measurement.handler({"metric_reference": "shipped revenue"}, _context(entitled))
+        assert response["code"] == str(REACHED)
+        assert recorder.calls == [*_ADMITTED, "dispatch.tool", "dispatch.request_from"]
+        recorder.calls.clear()
+        logs.start()
+
+        custom = with_bearer(_gateway_custom(self.TOOL), cognito_token(quality_review_levels=[]))
+        response = measurement.handler({"metric_reference": "shipped revenue"}, _context(custom))
+
+        _governed_refusal(response)
+        assert recorder.calls == ["caller.admit"]
+        projection = recorder.lifecycle[-1].projection
+        assert {key: projection[key] for key in _unverified_projection("x")} == (
+            _unverified_projection("unverified_caller")
+        )
+        _assert_unattributed(projection)
+        logged = logs.text()
+        assert "entitlement_missing" in logged
+        _assert_nothing_secret_logged(logged, custom)
 
     def test_the_deployment_wide_scope_is_still_the_dispatch_scope(self) -> None:
         """Identity is attribution, not entitlement: ADR-054's scope is unchanged by the gate."""

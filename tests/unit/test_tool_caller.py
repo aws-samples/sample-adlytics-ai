@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from aws_lambda_powertools import Logger
@@ -18,16 +19,28 @@ from tool_caller_support import (
     AGENT_CLIENT,
     CALLER_ENV,
     CALLER_KEY,
+    COGNITO_ISSUER,
+    COGNITO_KEY,
+    COGNITO_KID,
+    FOREIGN_KEY,
+    MCP_CALLER_ENV,
+    MCP_CLIENT,
+    NOW,
+    POOL_ID,
+    POOL_REGION,
     PROPAGATED_HEADERS,
     SIGNING_KEY_ARN,
     SIGNING_KEY_ID,
     SUBJECT,
+    LocalPoolKeys,
     LocalPublicKey,
+    cognito_token,
     gateway_token,
     local_verifier,
+    mcp_verifier,
 )
 
-from adapters.config import read_tool_caller_settings
+from adapters.config import ToolCallerSettings, read_tool_caller_settings
 from adapters.inbound.tool_handlers import caller
 from adapters.inbound.tool_handlers.caller import (
     CALLER_KEY_SET_UNAVAILABLE,
@@ -36,8 +49,10 @@ from adapters.inbound.tool_handlers.caller import (
     CallerAdmission,
     CallerRefusalCause,
     CallerUnverifiedError,
+    CallerVerifier,
     bearer_token,
 )
+from adapters.outbound.cognito.identity_provider import CognitoSigningKeys
 from adapters.outbound.telemetry.reporting import Report
 from domain.identity.caller import CallerPrincipal
 from domain.shared_kernel.errors import (
@@ -254,6 +269,178 @@ class TestAdmission:
             CallerAdmission(principal=None)
 
 
+MCP_GOOD = CallerPrincipal(subject=SUBJECT, actor=MCP_CLIENT)
+
+
+def _refused(verifier: CallerVerifier, context: object) -> CallerUnverifiedError:
+    with pytest.raises(CallerUnverifiedError) as caught:
+        verifier.verify(context)
+    return caught.value
+
+
+@pytest.mark.covers("ADR-150")
+class TestTheExternalMcpClientBranch:
+    """A Quick user's own Cognito access token, verified at the tool (ADR-150).
+
+    Every refusal sits beside a passing control on the same verifier, and asserts the exact closed
+    cause the `ADLY-CALLER-0001` refusal carries.
+    """
+
+    def test_unconfigured_a_valid_pool_token_is_refused_as_any_foreign_token(self) -> None:
+        verifier = local_verifier()
+        assert verifier.verify(_context(_bearer())) == GOOD
+
+        refusal = _refused(verifier, _context(_bearer(cognito_token())))
+        assert refusal.cause is CallerRefusalCause.ASSERTION_REFUSED
+        assert refusal.dependency is None
+
+    def test_configured_an_entitled_token_verifies_to_the_user_and_the_mcp_client(self) -> None:
+        keys = LocalPoolKeys()
+        verifier = mcp_verifier(keys)
+
+        assert verifier.verify(_context(_bearer(cognito_token()))) == MCP_GOOD
+        assert keys.refreshes == 0
+
+    def test_configured_the_token_service_branch_is_unchanged(self) -> None:
+        keys = LocalPoolKeys()
+        verifier = mcp_verifier(keys)
+
+        assert verifier.verify(_context(_bearer())) == GOOD
+        refusal = _refused(verifier, _context(_bearer(gateway_token(aud="adlytics-dev-harness"))))
+        assert refusal.cause is CallerRefusalCause.ASSERTION_REFUSED
+        assert keys.reads == 0
+
+    @pytest.mark.parametrize(
+        "overrides",
+        [
+            pytest.param({"client_id": "2publicexample345678"}, id="another-client"),
+            pytest.param(
+                {"iss": "https://cognito-idp.eu-west-1.amazonaws.com/eu-west-1_other"},
+                id="another-pool",
+            ),
+            pytest.param({"token_use": "id"}, id="an-id-token"),
+            pytest.param({"exp": int(NOW.timestamp())}, id="expired-at-the-instant"),
+            pytest.param({"exp": None}, id="no-expiry"),
+            pytest.param({"quality_review_levels": ["mcp_tool_use", "retired"]}, id="bad-claim"),
+        ],
+    )
+    def test_a_token_varying_one_attribute_is_an_assertion_refusal(
+        self, overrides: dict[str, Any]
+    ) -> None:
+        verifier = mcp_verifier()
+        assert verifier.verify(_context(_bearer(cognito_token()))) == MCP_GOOD
+
+        refusal = _refused(verifier, _context(_bearer(cognito_token(**overrides))))
+        assert refusal.cause is CallerRefusalCause.ASSERTION_REFUSED
+
+    def test_a_foreign_key_under_the_pool_kid_is_an_assertion_refusal(self) -> None:
+        verifier = mcp_verifier()
+        assert verifier.verify(_context(_bearer(cognito_token()))) == MCP_GOOD
+
+        refusal = _refused(verifier, _context(_bearer(cognito_token(FOREIGN_KEY))))
+        assert refusal.cause is CallerRefusalCause.ASSERTION_REFUSED
+
+    def test_an_unknown_kid_refreshes_the_key_set_exactly_once_then_refuses(self) -> None:
+        keys = LocalPoolKeys()
+        verifier = mcp_verifier(keys)
+        assert verifier.verify(_context(_bearer(cognito_token()))) == MCP_GOOD
+
+        refusal = _refused(verifier, _context(_bearer(cognito_token(FOREIGN_KEY, kid="unknown"))))
+        assert refusal.cause is CallerRefusalCause.ASSERTION_REFUSED
+        assert keys.refreshes == 1
+
+    def test_a_rotated_pool_key_is_found_by_the_one_refresh(self) -> None:
+        """The positive control for the refresh: the pool published a key the cache predates."""
+        keys = LocalPoolKeys(
+            published=(("rotated-in", FOREIGN_KEY),), cached=((COGNITO_KID, COGNITO_KEY),)
+        )
+        verifier = mcp_verifier(keys)
+
+        assert verifier.verify(_context(_bearer(cognito_token(FOREIGN_KEY, kid="rotated-in")))) == (
+            MCP_GOOD
+        )
+        assert keys.refreshes == 1
+
+    @pytest.mark.parametrize(
+        "bearer", ["not-a-jwt", "a.b.c", "Zm9v.YmFy.YmF6"], ids=["opaque", "dotted", "undecodable"]
+    )
+    def test_a_bearer_that_is_not_a_jwt_is_an_assertion_refusal(self, bearer: str) -> None:
+        keys = LocalPoolKeys()
+        verifier = mcp_verifier(keys)
+        assert verifier.verify(_context(_bearer(cognito_token()))) == MCP_GOOD
+
+        refusal = _refused(verifier, _context(_bearer(bearer)))
+        assert refusal.cause is CallerRefusalCause.ASSERTION_REFUSED
+        assert keys.refreshes == 0
+
+    @pytest.mark.parametrize("case", ["basic scheme", "trailing part", "two spaces"])
+    def test_a_wrong_scheme_or_embedded_whitespace_is_malformed(self, case: str) -> None:
+        verifier = mcp_verifier()
+        assert verifier.verify(_context(_bearer(cognito_token()))) == MCP_GOOD
+
+        refusal = _refused(verifier, _context(_MALFORMED[case](cognito_token())))
+        assert refusal.cause is CallerRefusalCause.BEARER_MALFORMED
+
+    def test_no_authorization_header_is_a_missing_bearer(self) -> None:
+        keys = LocalPoolKeys()
+        verifier = mcp_verifier(keys)
+        assert verifier.verify(_context(_bearer(cognito_token()))) == MCP_GOOD
+
+        refusal = _refused(verifier, _context({"x-probe": "1"}))
+        assert refusal.cause is CallerRefusalCause.BEARER_MISSING
+        assert keys.reads == 1
+
+    @pytest.mark.parametrize(
+        "levels", [[], ["quality_reviewer"], ["quality_reviewer", "audit_attribution"]]
+    )
+    def test_a_verified_user_without_the_level_is_refused_as_entitlement_missing(
+        self, levels: list[str]
+    ) -> None:
+        verifier = mcp_verifier()
+        assert verifier.verify(_context(_bearer(cognito_token()))) == MCP_GOOD
+
+        refusal = _refused(verifier, _context(_bearer(cognito_token(quality_review_levels=levels))))
+        assert refusal.cause is CallerRefusalCause.ENTITLEMENT_MISSING
+        assert refusal.dependency is None
+
+    def test_an_absent_level_claim_is_refused_as_entitlement_missing(self) -> None:
+        verifier = mcp_verifier()
+        assert verifier.verify(_context(_bearer(cognito_token()))) == MCP_GOOD
+
+        refusal = _refused(verifier, _context(_bearer(cognito_token(quality_review_levels=None))))
+        assert refusal.cause is CallerRefusalCause.ENTITLEMENT_MISSING
+
+    def test_an_unreadable_pool_key_set_refuses_as_the_dependency_failure(self) -> None:
+        failure = DependencyError(ErrorCode("COGNITO", 3), "unavailable")
+        keys = LocalPoolKeys()
+        verifier = mcp_verifier(keys)
+        assert verifier.verify(_context(_bearer(cognito_token()))) == MCP_GOOD
+
+        keys.failure = failure
+        refusal = _refused(verifier, _context(_bearer(cognito_token())))
+        assert refusal.cause is CallerRefusalCause.KEY_SET_UNAVAILABLE
+        assert refusal.dependency is failure
+
+    def test_admission_reports_the_closed_refusal_with_its_cause(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        report, reported = TestAdmission._report(monkeypatch)  # pyright: ignore[reportPrivateUsage]
+        verifier = mcp_verifier()
+        assert verifier.admit(_context(_bearer(cognito_token())), report) == CallerAdmission(
+            MCP_GOOD
+        )
+        assert reported == []
+
+        admission = verifier.admit(
+            _context(_bearer(cognito_token(quality_review_levels=[]))), report
+        )
+        assert admission.principal is None
+        assert admission.refusal is not None
+        assert str(admission.refusal.code) == "ADLY-CALLER-0001"
+        assert admission.refusal.context == {"cause": "entitlement_missing"}
+        assert reported == [admission.refusal]
+
+
 class TestSettings:
     def test_the_kid_and_region_derive_from_the_key_arn(self) -> None:
         settings = read_tool_caller_settings(CALLER_ENV)
@@ -305,3 +492,36 @@ class TestSettings:
         assert caught.value.context["missing"] == [problem]
         assert value not in str(caught.value)
         assert value not in json.dumps(caught.value.context)
+
+    @pytest.mark.covers("ADR-150")
+    def test_without_an_mcp_client_the_settings_are_today_s(self) -> None:
+        settings = read_tool_caller_settings(
+            {**CALLER_ENV, "ADL_COGNITO_USER_POOL_ID": POOL_ID, "ADL_AWS_REGION": POOL_REGION}
+        )
+
+        assert settings == ToolCallerSettings(
+            token_issuer=CALLER_ENV["ADL_TOKEN_ISSUER"],
+            token_signing_key_arn=SIGNING_KEY_ARN,
+            gateway_token_audience=CALLER_ENV["ADL_GATEWAY_TOKEN_AUDIENCE"],
+            agent_client_id=AGENT_CLIENT,
+        )
+        assert settings.mcp_client_id == ""
+
+    @pytest.mark.covers("ADR-150")
+    def test_an_mcp_client_requires_its_pool_and_region_reporting_both_at_once(self) -> None:
+        settings = read_tool_caller_settings(MCP_CALLER_ENV)
+        assert settings.mcp_client_id == MCP_CLIENT
+        assert settings.mcp_cognito_issuer == COGNITO_ISSUER
+        assert settings.mcp_cognito_jwks_url == f"{COGNITO_ISSUER}/.well-known/jwks.json"
+
+        with pytest.raises(InvariantError) as caught:
+            read_tool_caller_settings({**CALLER_ENV, "ADL_MCP_CLIENT_ID": MCP_CLIENT})
+        assert caught.value.context["missing"] == ["ADL_AWS_REGION", "ADL_COGNITO_USER_POOL_ID"]
+
+    @pytest.mark.covers("ADR-150")
+    def test_the_production_verifier_composes_the_pool_key_set_only_when_configured(self) -> None:
+        unconfigured = caller.kms_caller_verifier(read_tool_caller_settings(CALLER_ENV))
+        configured = caller.kms_caller_verifier(read_tool_caller_settings(MCP_CALLER_ENV))
+
+        assert unconfigured._cognito_keys is None  # pyright: ignore[reportPrivateUsage]
+        assert isinstance(configured._cognito_keys, CognitoSigningKeys)  # pyright: ignore[reportPrivateUsage]
