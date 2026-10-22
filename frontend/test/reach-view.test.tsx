@@ -5,7 +5,7 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { afterEach, test } from 'vitest';
 
-import { ReachAndFunnelView, reachDisplayText, reachFigureText } from '../components/ReachAndFunnelView';
+import { ReachAndFunnelView, reachChangeText, reachDisplayText, reachFigureText } from '../components/ReachAndFunnelView';
 import { reachAnswer } from '../lib/reach';
 import { parseReachAndFunnelArtifact } from '../lib/reach';
 import {
@@ -79,6 +79,20 @@ test('renders the complete surface in section order using only served display te
   assertInOrder(notes[1]?.textContent ?? '', FREQUENCY_CAVEAT);
   assert.ok(notes[0]?.nextElementSibling?.classList.contains('dt-wrap'));
   assert.ok(notes[1]?.nextElementSibling?.textContent?.includes('Ads seen within 14 days'));
+  // OD-UX-7: one visible line per visual; the disclosure holds every served caveat string.
+  for (const [note, lines] of [[notes[0], FUNNEL_CAVEAT], [notes[1], FREQUENCY_CAVEAT]] as const) {
+    assert.deepEqual([...(note?.children ?? [])].filter((child) => child.tagName === 'P').map((child) => child.textContent), [lines[0]]);
+    const disclosure = note?.querySelector('details');
+    assert.equal(disclosure?.open, false);
+    assert.deepEqual([...(disclosure?.querySelectorAll('.precision-evidence__body p') ?? [])].map((line) => line.textContent), [...lines]);
+  }
+});
+
+test('a served count change reads with grouped digits; any other change text stays as served (T1L-4)', () => {
+  assert.equal(reachChangeText('+155963'), '+155,963');
+  assert.equal(reachChangeText('\u221216310'), '\u221216,310');
+  assert.equal(reachChangeText('+1.5 pts'), '+1.5 pts');
+  assert.equal(reachChangeText('No change'), 'No change');
 });
 
 test('every served prior carries the served prior period label in the tiles and the account cells (C6)', () => {
@@ -224,6 +238,8 @@ const BROWSER_COPY = new Set([
   'Read more ›', 'Show values', 'Purchaser rate by number of ads seen', 'Ads seen',
   'Purchaser rate', 'Return per channel by frequency', 'Channel', 'Return on ad spend, all Amazon ads',
   'Previous month:', 'Purchase rate compared with sponsored-only shoppers',
+  // OD-UX-7: the caveat disclosure's summary (ADR-102 amendment).
+  'Why this is association, not cause',
 ]);
 
 test('a same-response copy walk refuses invented or borrowed visible text', () => {
@@ -231,6 +247,7 @@ test('a same-response copy walk refuses invented or borrowed visible text', () =
   const allowed = responseStrings(fixture);
   // The served text in the shared figure style (plan D4) is the same served string, regrouped.
   for (const line of [...allowed]) for (const unit of ['count', 'multiplier'] as const) allowed.add(reachDisplayText(line, unit));
+  for (const line of [...allowed]) allowed.add(reachChangeText(line));
   for (const line of BROWSER_COPY) allowed.add(line);
   // The answer sentence is a fixed template over served values (UI refresh 1.5), pinned by its builder's tests.
   allowed.add(reachAnswer(parseReachAndFunnelArtifact(fixture), reachFigureText).text);

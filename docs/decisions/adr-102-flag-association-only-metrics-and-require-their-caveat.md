@@ -32,6 +32,11 @@ surface that shows it carries the caveat.**
    "lifted", "incremental", and a sentence that credits DSP for search by comparing a DSP group with
    sponsored only.
 
+Amended 2026-10-22 (UI refresh 2.4, readout OD-UX-7, owner-approved): on the page, each visual shows one
+caveat line, the served first line, which is the decision 2 sentence, and every served caveat line in one
+"Why this is association, not cause" disclosure beneath it. Decision 2 still holds: the sentence stays
+visible wherever the figures render. An insight or focus dialog over these figures still opens with the
+full served caveat.
 Amended 2026-10-09 (business outcomes wave 2b, plan D13): "branded search" became "search" in the context
 and point 4. AMC's conversions pages don't say a `searchConversion` event is a branded search, so the
 metric is `search_rate` ([Reach and funnel low-level design](../ui/reach-and-funnel/low-level-design.md#10-open-items)

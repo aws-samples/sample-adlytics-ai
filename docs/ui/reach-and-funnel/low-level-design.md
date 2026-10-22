@@ -71,6 +71,7 @@ before it builds the bands: additive measures only, one ad product, one delivery
 band returned [proposal]. Until that amendment is recorded, S3.2 doesn't build the bands.
 
 ### Labels and caveats (server text)
+Display only (UI refresh, plan D4, T1L-4): a served count and a served integer count change ("+155963") render with grouped digits ("+155,963"), a served multiplier's "x" reads "×"; the browser regroups the served string and never reads `value`.
 
 | Figure | Label |
 |---|---|
@@ -84,11 +85,11 @@ band returned [proposal]. Until that amendment is recorded, S3.2 doesn't build t
 | Per-channel return | "Credited revenue ÷ spend · linear model · 14-day lookback from each shopper's first ad · includes brand halo · {period}" |
 | Funnel column for `search_rate` (revised at `2026-10-09.2`) | "Search rate". Never "branded search", because AMC's documentation doesn't say these searches are branded (§10) |
 
-The **caveat block** sits inside the full-funnel and frequency visuals, above the chart, never collapsible:
+The **caveat block** sits inside the full-funnel and frequency visuals, above the chart. Since UI refresh 2.4 (OD-UX-7, [ADR-102](../../decisions/adr-102-flag-association-only-metrics-and-require-their-caveat.md) amendment of 2026-10-22) it shows the first served line, and every served line in a closed "Why this is association, not cause" disclosure beneath it. The served lines are:
 "This shows association, not cause. Shoppers were not randomly assigned to groups.", "Shoppers can see an ad
 after they buy, so groups that include DSP retargeting may look stronger." and "Sponsored ads appear when
 shoppers search, so sponsored groups start closer to buying." The frequency block adds "Shoppers can see
-more ads after they buy, so higher buckets may look stronger." It also renders at the top of any insight or
+more ads after they buy, so higher buckets may look stronger." It also renders, all lines open, at the top of any insight or
 focus dialog whose subject is a full-funnel or frequency figure. Starter questions and "Ask the assistant"
 questions on this tab use "associated with", never "drove", "caused" or "led to".
 
@@ -157,7 +158,7 @@ resolved period and preset, and bakes its deterministic findings.
 |---|---|
 | Page declaration | v1 and v2 entries pass `make validate-page-schemas`, including the per-section `declared_periods` and the quarter anchor rule |
 | Periods | Unit tests on `resolve_calendar_preset` with fixture publications: pack 5 published and pack 6 not gives pending frequency and overlap with figures; week and quarter absence texts |
-| Caveat | A page-text snapshot test finds the caveat block inside the funnel and frequency visuals and at the top of their dialogs |
+| Caveat | A page-text snapshot test finds the caveat block inside the funnel and frequency visuals (one visible line, every line in its disclosure) and at the top of their dialogs |
 | Per-channel return | `roas_incl_halo_by_frequency` refused at channel grain; the no-credit fallback renders every cell "Not available per channel" with the platform figure |
 | Bucket bands | The D-9 and ADR-101 subset-sum amendment is recorded first; planner tests: a band sum inside one ad product and one delivery plans, a band with a `not_returned` bucket is refused and reads "Not available", and a band sum across ad products or deliveries is refused |
 | Identity space | Rates bind `account` only; all-ID reach carries its unit |

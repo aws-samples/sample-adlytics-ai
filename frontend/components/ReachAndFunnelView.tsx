@@ -17,6 +17,7 @@ import type {
 } from '@/lib/reach';
 import { formatCanonicalDecimal, formatCount } from '@/lib/exact-format';
 import { metricLabel } from '@/lib/glossary';
+import { EvidenceDisclosure } from './PrecisionPrimitives';
 import { DataTable, DtBody, DtCell, DtColumn, DtHead, DtRow, DtRowHeader } from './DataTable';
 import { InsightFocusDialog, type InsightDialogSlot, type InsightFocusSurface } from './InsightFocusDialog';
 
@@ -63,13 +64,36 @@ function PriorFigure({ figure, label }: { readonly figure: ReachFigure; readonly
   return <span className="reach-prior"><span className="reach-prior-label">{`${label}:`}</span> <Figure figure={figure} /></span>;
 }
 
+const SERVED_SIGNED_COUNT = /^([+\u2212-]?)(0|[1-9][0-9]*)$/;
+/** A served count change ("+155963") with its digits grouped ("+155,963"); any other text as served (T1L-4). */
+export function reachChangeText(text: string): string {
+  const match = SERVED_SIGNED_COUNT.exec(text);
+  return match === null ? text : `${match[1]}${formatCount(match[2] ?? '')}`;
+}
+
 function ChangeFigure({ change }: { readonly change: ReachChange }) {
   return <span className={change.absence === null ? 'reach-change' : 'reach-change absent'}>
-    {change.text ?? change.absence?.text}
+    {change.text === null ? change.absence?.text : reachChangeText(change.text)}
   </span>;
 }
 
+/**
+ * OD-UX-7 (ADR-102 amendment): one visible caveat line per visual, the served first line, and the
+ * full served caveat, every line, in one disclosure beneath it.
+ */
 function Caveat({ lines }: { readonly lines: readonly string[] }) {
+  const [first] = lines;
+  if (first === undefined) return null;
+  return <div className="reach-caveat" role="note">
+    <p>{first}</p>
+    <EvidenceDisclosure summary="Why this is association, not cause">
+      {lines.map((line) => <p key={line}>{line}</p>)}
+    </EvidenceDisclosure>
+  </div>;
+}
+
+/** The dialog's preamble keeps the full served caveat open: it is the dialog's only context. */
+function CaveatLines({ lines }: { readonly lines: readonly string[] }) {
   return <div className="reach-caveat" role="note">{lines.map((line) => <p key={line}>{line}</p>)}</div>;
 }
 
@@ -155,8 +179,8 @@ function InsightsSection({ artifact, market }: { readonly artifact: ReachAndFunn
   const opener = useRef<HTMLButtonElement | null>(null);
   const slots = market.insights.map(insightDialogSlot);
   const preambleFor = (slot: InsightDialogSlot): ReactNode => {
-    if (slot.id === 'full-funnel-association' && market.funnel?.state === 'figures') return <Caveat lines={market.funnel.caveat} />;
-    if (slot.id === 'frequency-saturation' && market.frequency.state === 'figures') return <Caveat lines={market.frequency.caveat} />;
+    if (slot.id === 'full-funnel-association' && market.funnel?.state === 'figures') return <CaveatLines lines={market.funnel.caveat} />;
+    if (slot.id === 'frequency-saturation' && market.frequency.state === 'figures') return <CaveatLines lines={market.frequency.caveat} />;
     return null;
   };
   const surface: InsightFocusSurface = {
