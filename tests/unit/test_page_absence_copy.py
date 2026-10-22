@@ -53,6 +53,9 @@ def test_the_catalog_doc_and_the_domain_catalog_are_equal() -> None:
         "ABS-CAMP-2",
         "ABS-RH-1",
         "ABS-RH-2",
+        # Retail health empty and insufficient bodies (OD-UX-9 E1), browser-owned.
+        "ABS-RH-3",
+        "ABS-RH-4",
     }
 
 
