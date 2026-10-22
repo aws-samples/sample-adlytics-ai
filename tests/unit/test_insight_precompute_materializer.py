@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
+from preset_artifact_support import indexed_parent_custody
 from test_preset_insight_fill import _fictional_portfolio  # pyright: ignore[reportPrivateUsage]
 from test_retail_health import (
     _empty_artifact as _fictional_retail_health,  # pyright: ignore[reportPrivateUsage]
@@ -97,13 +98,8 @@ def _fixture() -> tuple[PrecomputeInputV1, PresetArtifactBody, PresetArtifactCus
         revision,
         canonical_preset_artifact_json(campaign_portfolio_artifact_payload(artifact)),
     )
-    custody = PresetArtifactCustodyManifest(
-        body.page,
-        body.variant,
-        revision,
-        canonical_preset_artifact_json(
-            campaign_custody_manifest_payload(CampaignCustodyManifest(body.digest, ()))
-        ),
+    custody, _ = indexed_parent_custody(
+        body, campaign_custody_manifest_payload(CampaignCustodyManifest(body.digest, ())), ()
     )
     effect = DurableBakeEffectV3(
         task_id="task-campaigns-7d",
@@ -136,15 +132,12 @@ def _retail_fixture(
         revision,
         canonical_preset_artifact_json(retail_health_artifact_payload(artifact)),
     )
-    custody = PresetArtifactCustodyManifest(
-        body.page,
-        body.variant,
-        revision,
-        canonical_preset_artifact_json(
-            retail_health_custody_manifest_payload(
-                RetailHealthCustodyManifest(custody_body_digest or body.digest, (), ())
-            )
+    custody, _ = indexed_parent_custody(
+        body,
+        retail_health_custody_manifest_payload(
+            RetailHealthCustodyManifest(custody_body_digest or body.digest, ())
         ),
+        (),
     )
     effect = DurableBakeEffectV3(
         task_id="task-retail-health-7d",
@@ -213,14 +206,9 @@ def test_staged_retail_artifact_produces_the_same_requests_as_the_served_body() 
 
 
 def test_missing_or_mismatched_custody_fails_closed_without_an_athena_fallback() -> None:
-    inputs, body_value, custody_value = _fixture()
-    corrupted = PresetArtifactCustodyManifest(
-        custody_value.page,
-        custody_value.variant,
-        custody_value.revision,
-        canonical_preset_artifact_json(
-            campaign_custody_manifest_payload(CampaignCustodyManifest("d" * 64, ()))
-        ),
+    inputs, body_value, _ = _fixture()
+    corrupted, _ = indexed_parent_custody(
+        body_value, campaign_custody_manifest_payload(CampaignCustodyManifest("d" * 64, ())), ()
     )
     bodies, custody = Bodies(body_value), Custody(corrupted)
 

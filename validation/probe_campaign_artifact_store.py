@@ -7,7 +7,7 @@ import argparse
 import json
 import sys
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Final, NoReturn
+from typing import TYPE_CHECKING, Final, NoReturn, cast
 
 import boto3
 from botocore.exceptions import ClientError
@@ -34,9 +34,14 @@ from domain.presentation.campaign_portfolio import (
     order_campaign_portfolio_rows,
 )
 from domain.presentation.preset_artifacts import (
+    PresetArtifactIndexShardIdentity,
     PresetArtifactPage,
+    PresetArtifactSiblingDescriptor,
+    PresetArtifactSiblingIdentity,
     PresetArtifactSiblingReadRequest,
     PresetArtifactVariant,
+    index_shard_descriptors,
+    split_parent_custody,
 )
 
 _ENVIRONMENT: Final = "dev"
@@ -137,7 +142,7 @@ class _ArtifactStores:
     custody: S3PresetArtifactCustodyStore
 
 
-def _attest_variant(  # noqa: PLR0912 - each branch is an independent attestation gate
+def _attest_variant(  # noqa: PLR0912, PLR0915 - each branch is an independent attestation gate
     variant: PresetArtifactVariant,
     stores: _ArtifactStores,
 ) -> VariantResult:
@@ -149,9 +154,31 @@ def _attest_variant(  # noqa: PLR0912 - each branch is an independent attestatio
     custody = stores.custody.read(pointer)
     try:
         parent = campaign_portfolio_artifact_from_payload(json.loads(body.payload_json))
-        manifest = campaign_custody_manifest_from_payload(json.loads(custody.payload_json))
+        header, index = split_parent_custody(custody)
+        manifest = campaign_custody_manifest_from_payload(header)
+        # ADR-145: every sibling is listed by the custody's index shards; read each, attested.
+        indexed: list[PresetArtifactSiblingDescriptor] = []
+        for position, entry in enumerate(index):
+            shard = stores.custody.read_sibling(
+                PresetArtifactSiblingReadRequest(
+                    pointer.page,
+                    pointer.variant,
+                    pointer.revision,
+                    PresetArtifactSiblingDescriptor(
+                        PresetArtifactIndexShardIdentity(position), None, entry.digest
+                    ),
+                )
+            )
+            indexed.extend(index_shard_descriptors(shard, entry))
     except (TypeError, ValueError, json.JSONDecodeError) as error:
         raise ProbeError("campaign parent or custody payload is malformed") from error
+    # The All-channels segments: the filter siblings and their segments are other filters'.
+    all_segments = tuple(
+        item
+        for item in indexed
+        if isinstance(item.identity, PresetArtifactSiblingIdentity)
+        and item.identity.filter_id == "all"
+    )
     pagination = parent.pagination
     if (
         manifest.body_digest != body.digest
@@ -160,8 +187,8 @@ def _attest_variant(  # noqa: PLR0912 - each branch is an independent attestatio
         or not custody_rows_align(manifest, tuple(row.signature for row in parent.rows))
     ):
         raise ProbeError("campaign parent pagination or custody alignment failed")
-    descriptors = {item.identity: item for item in manifest.descriptors}
-    if len(descriptors) != len(manifest.descriptors):
+    descriptors = {item.identity: item for item in all_segments}
+    if len(descriptors) != len(all_segments):
         raise ProbeError("campaign sibling descriptors repeat an identity")
     expected_identities = {
         (field.value, direction, segment_index)
@@ -176,11 +203,13 @@ def _attest_variant(  # noqa: PLR0912 - each branch is an independent attestatio
     }
     observed_identities = {
         (
-            descriptor.identity.ordering.rsplit("-", maxsplit=1)[0],
-            descriptor.identity.ordering.rsplit("-", maxsplit=1)[1],
-            descriptor.identity.segment_index,
+            identity.ordering.rsplit("-", maxsplit=1)[0],
+            identity.ordering.rsplit("-", maxsplit=1)[1],
+            identity.segment_index,
         )
-        for descriptor in manifest.descriptors
+        for identity in (
+            cast("PresetArtifactSiblingIdentity", item.identity) for item in all_segments
+        )
     }
     if observed_identities != expected_identities:
         raise ProbeError("campaign sibling descriptor index is incomplete")
@@ -190,7 +219,8 @@ def _attest_variant(  # noqa: PLR0912 - each branch is an independent attestatio
         for direction in ("asc", "desc")
     }
     segments["spend-desc"][0] = tuple(parent.rows)
-    for descriptor in manifest.descriptors:
+    for descriptor in all_segments:
+        identity = cast("PresetArtifactSiblingIdentity", descriptor.identity)
         request = PresetArtifactSiblingReadRequest(
             pointer.page,
             pointer.variant,
@@ -210,9 +240,8 @@ def _attest_variant(  # noqa: PLR0912 - each branch is an independent attestatio
             raise ProbeError("campaign sibling payload is malformed") from error
         if (
             segment.pagination is None
-            or segment.pagination.segment_index != descriptor.identity.segment_index
+            or segment.pagination.segment_index != identity.segment_index
             or segment.pagination.segment_count != pagination.segment_count
-            or segment_manifest.descriptors
             or segment_manifest.body_digest != public.digest
             or not custody_rows_align(
                 segment_manifest,
@@ -220,7 +249,7 @@ def _attest_variant(  # noqa: PLR0912 - each branch is an independent attestatio
             )
         ):
             raise ProbeError("campaign sibling pagination or custody alignment failed")
-        segments[descriptor.identity.ordering][descriptor.identity.segment_index] = tuple(
+        segments[identity.ordering][identity.segment_index] = tuple(
             segment.rows
         )
     baseline_signatures: set[SafeCampaignDisplaySignature] | None = None
@@ -253,7 +282,7 @@ def _attest_variant(  # noqa: PLR0912 - each branch is an independent attestatio
         parent.total_count,
         len(parent.rows),
         pagination.segment_count,
-        len(manifest.descriptors),
+        len(all_segments),
     )
 
 
