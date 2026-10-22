@@ -5,7 +5,10 @@ from __future__ import annotations
 
 import pytest
 
-from adapters.jobs.quality_review_token.handler import handler
+from adapters.jobs.quality_review_token.handler import (
+    _GROUP_LEVELS,  # pyright: ignore[reportPrivateUsage]
+    handler,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -44,3 +47,22 @@ def test_a_retired_group_projects_no_level(group: str) -> None:
 @pytest.mark.covers("ADR-078")
 def test_audit_attribution_alone_projects_no_reviewer_level() -> None:
     assert _levels("audit-attribution") == ["audit_attribution"]
+
+
+@pytest.mark.covers("ADR-150")
+def test_mcp_tool_users_projects_only_the_mcp_tool_use_level() -> None:
+    assert _levels("mcp-tool-users") == ["mcp_tool_use"]
+    assert _levels("mcp-tool-users", "quality-reviewer") == ["mcp_tool_use", "quality_reviewer"]
+
+
+@pytest.mark.covers("ADR-150")
+def test_the_group_mapping_is_exactly_the_approved_set() -> None:
+    """Adding the MCP group changed no existing mapping, and no other group grants its level."""
+    assert _GROUP_LEVELS == {
+        "quality-reviewer": ("quality_reviewer",),
+        "audit-attribution": ("audit_attribution",),
+        "prompt-admin": ("prompt_admin",),
+        "operations-status-read": ("operations_status_read",),
+        "operations-run-requesters": ("operations_run_request",),
+        "mcp-tool-users": ("mcp_tool_use",),
+    }

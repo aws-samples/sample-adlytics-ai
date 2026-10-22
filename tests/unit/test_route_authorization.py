@@ -312,6 +312,47 @@ class TestRouteEntitlement:
                 )
             )
 
+    @pytest.mark.covers("ADR-150")
+    def test_no_route_requires_the_mcp_tool_use_level(self) -> None:
+        assert ReviewAccessLevel.MCP_TOOL_USE not in set(ROUTE_ENTITLEMENTS.values())
+
+    @pytest.mark.covers("ADR-150")
+    @pytest.mark.parametrize("route_key", sorted(ROUTE_ENTITLEMENTS))
+    def test_the_mcp_tool_use_level_alone_opens_no_entitled_route(
+        self, minter: TokenMinter, route_key: str
+    ) -> None:
+        """ADR-150: the external MCP entitlement is admitted at that gateway only.
+
+        Refused at the route's entitlement step with the same signal a missing level gets; the
+        control in the same test is the route's own level on the same credential.
+        """
+        method = route_key.split(" ", 1)[0]
+        required = ROUTE_ENTITLEMENTS[route_key]
+        mcp_only = minter.token(quality_review_levels=[ReviewAccessLevel.MCP_TOOL_USE.value])
+        with pytest.raises(IdentityError, match=r"^Route entitlement is absent\.$"):
+            authorize_route(
+                _route(
+                    minter,
+                    route_key=route_key,
+                    method=method,
+                    cookie_header=_cookie(mcp_only),
+                    csrf_header=CSRF,
+                )
+            )
+        entitled = minter.token(
+            quality_review_levels=[ReviewAccessLevel.MCP_TOOL_USE.value, required.value]
+        )
+        decision = authorize_route(
+            _route(
+                minter,
+                route_key=route_key,
+                method=method,
+                cookie_header=_cookie(entitled),
+                csrf_header=CSRF,
+            )
+        )
+        assert decision.identity.subject == SUBJECT
+
     @pytest.mark.parametrize("retired", ["audit", "findings", "evaluation"])
     def test_a_retired_level_is_refused_on_every_route(
         self, minter: TokenMinter, retired: str

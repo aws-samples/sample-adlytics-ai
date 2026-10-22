@@ -33,6 +33,11 @@ class ReviewAccessLevel(StrEnum):
     OPERATIONS_STATUS_READ = "operations_status_read"
     OPERATIONS_RUN_REQUEST = "operations_run_request"
     """May request ingestion runs on demand (owner-gate item 5, 2026-10-07)."""
+    MCP_TOOL_USE = "mcp_tool_use"
+    """May call the governed tools through the external MCP gateway (ADR-150).
+
+    Admitted only at that gateway and by its tools; no route requires it, so it opens no app route.
+    """
 
 
 def may_receive_attribution(levels: Collection[ReviewAccessLevel]) -> bool:
