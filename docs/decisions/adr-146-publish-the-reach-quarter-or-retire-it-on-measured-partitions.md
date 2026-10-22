@@ -45,6 +45,11 @@ days × 2 lenses), over the bound of 100, and `select` raised `ADLY-PUBLICATION_
 The last-complete-month control resolved 60 and passed. Chat's "reach last quarter" answered from
 `fct_exposure_frequency`'s one quarter-bucket partition; "reach by channel last quarter" was refused
 with `ADLY-PLAN-0008`. The owner chose the manifest over retiring the option on 2026-10-18 (UTC).
+The manifest isn't built yet, so the quarter view is still unavailable. The bake and chat read the
+servable head, which three publication paths move (the legacy commit and its separate servable
+advance, the Stage 1 table writer's later advance, and the GRAPH stage, generation-pointer flip and
+fold), and none of them is one transaction the manifest could share. Where the writer lives on each
+path is decided before the writer, its backfill and readback, and then the reader are built.
 
 Decided by rubric item (1) of
 [delivery practice](../delivery-practice.md#5-the-decision-weighting-rubric): a declared view that

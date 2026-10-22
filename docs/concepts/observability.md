@@ -170,7 +170,7 @@ every environment, alarms on two:
 
 | Metric (`adlytics-<env>-…` alarm) | Source and read | Missing data | Recovery owner |
 |---|---|---|---|
-| `BakeIsolatedRefusalLimit` (`bake-isolated-refusal-limit`) | either entry: the items of one `limit` or `dependency` refusal group (a row ceiling, a body or partition bound, a statement or write deadline, a dependency that stayed down) | not breaching | the `isolated_refusal` line; a declarative re-bake once a dependency is healthy, or the quarter-manifest backfill for `quarter_manifest_absent` |
+| `BakeIsolatedRefusalLimit` (`bake-isolated-refusal-limit`) | either entry: the items of one `limit` or `dependency` refusal group (a row ceiling, a body or partition bound, a statement or write deadline, a dependency that stayed down) | not breaching | the `isolated_refusal` line; a declarative re-bake once a dependency is healthy, or, for `quarter_manifest_absent`, the quarter-manifest backfill (neither exists yet: the reason is emitted only once the Reach quarter manifest, its backfill and its reader ship, ADR-146) |
 | `BakeTaskOverBudget` (`bake-task-over-budget`) | either entry: one bake over its certified seconds | not breaching | the `over_budget` line: a defect, or data beyond the envelope |
 | `BakeIsolatedRefusalData` (not alarmed) | either entry: the items of one `data` group (`source_refused`, `history_gap`, `evidence_incomplete`); the user sees a precise note, so it stays a product signal | — | — |
 
