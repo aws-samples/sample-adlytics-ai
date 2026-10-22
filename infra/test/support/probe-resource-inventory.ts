@@ -36,6 +36,8 @@ export const PROBE_NAME_INVENTORY: Inventory = {
     ['validation/probe_edge_entry.py', 'edge'],
     ['validation/probe_edge_entry.py', 'edge'],
     ['validation/probe_edge_entry.py', 'user-pool'],
+    ['validation/probe_external_mcp.py', 'external-mcp'],
+    ['validation/probe_external_mcp.py', 'external-mcp'],
     ['validation/probe_identity_chain.py', 'agent'],
     ['validation/probe_identity_chain.py', 'conversation-route'],
     ['validation/probe_identity_chain.py', 'gateway'],
