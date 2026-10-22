@@ -249,7 +249,9 @@ TABLE = CATALOG.canonical(DATASET, successful=True)
 RECORDS = canonical_unit_records(projection_unit_source(canonical_object_bytes(CANONICAL)), TABLE)
 WORKLOAD = UnitWorkload(TABLE, CURRENT_DATABASE, ((PUBLICATION_ID, RECORDS),))
 COMPOSITION = compose_unit_statements(
-    ComposeUnitStatementsRequest(workload=WORKLOAD, workgroup="fictional-batch")
+    ComposeUnitStatementsRequest(
+        workload=WORKLOAD, workgroup="fictional-batch", staging_database="fictional_staging"
+    )
 )
 EXPECTED_READBACK = tuple(_expected_records(TABLE, ordered_records(TABLE, RECORDS)))
 SERVABLE = ServablePointerTarget(PARTITION_IDENTITY, PUBLICATION_ID, FENCING_TOKEN)

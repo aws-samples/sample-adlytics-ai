@@ -89,6 +89,7 @@ def _target() -> AthenaSemanticTarget:
         "source_database": "/adlytics/dev/data/v2/source-aligned-glue-database",
         "candidate_database": "/adlytics/dev/data/v2/canonical-candidate-glue-database",
         "current_database": "/adlytics/dev/data/v2/canonical-current-glue-database",
+        "staging_database": "/adlytics/dev/data/v2/staging-glue-database",
     }
     try:
         client = boto3.client("ssm")

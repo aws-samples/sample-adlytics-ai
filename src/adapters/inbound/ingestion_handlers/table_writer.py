@@ -891,6 +891,7 @@ def _runtime() -> _Runtime:
         "source database": SETTINGS.semantic_v2_source_database,
         "candidate database": SETTINGS.semantic_v2_candidate_database,
         "current database": SETTINGS.semantic_v2_current_database,
+        "staging database": SETTINGS.semantic_v2_staging_database,
     }
     missing = tuple(label for label, value in configured.items() if not value.strip())
     if missing:
@@ -920,6 +921,7 @@ def _runtime() -> _Runtime:
             source_database=SETTINGS.semantic_v2_source_database,
             candidate_database=SETTINGS.semantic_v2_candidate_database,
             current_database=SETTINGS.semantic_v2_current_database,
+            staging_database=SETTINGS.semantic_v2_staging_database,
         ),
         visibility=SqsMessageVisibility(WRITER_SETTINGS.semantic_write_queue_url, SQS),
         wall=_utc_now,
@@ -2609,10 +2611,11 @@ def _entry_of(node: NodeRecord) -> CanonicalUnitEntry:
         ) from None
 
 
-def _compose(workload: UnitWorkload, workgroup: str) -> ComposeUnitStatementsRequest:
+def _compose(workload: UnitWorkload, target: AthenaSemanticTarget) -> ComposeUnitStatementsRequest:
     return ComposeUnitStatementsRequest(
         workload=workload,
-        workgroup=workgroup,
+        workgroup=target.batch_workgroup,
+        staging_database=target.staging_database,
         max_statement_bytes=WRITER_SETTINGS.athena_max_statement_bytes,
     )
 
@@ -2783,9 +2786,7 @@ class _Batch:
             unit, entry = member.unit, member.entry
             try:
                 shaped = _shape_unit(self.runtime, entry)
-                alone = compose_unit_statements(
-                    _compose(shaped.workload, self.runtime.target.batch_workgroup)
-                )
+                alone = compose_unit_statements(_compose(shaped.workload, self.runtime.target))
                 unit_statement_kinds(alone.merge_count)  # AR5-3: the built refusal, kept
             except _ChecksumMismatchError as mismatch:
                 self.settle(
@@ -2809,7 +2810,7 @@ class _Batch:
         """Compose a set's union: any exception is `GRAPH_UNIT_SET_COMPOSITION` (M3, M4)."""
         try:
             workload = _union(members)
-            request = _compose(workload, self.runtime.target.batch_workgroup)
+            request = _compose(workload, self.runtime.target)
             composition = compose_unit_statements(request)
             shapes = merge_shapes(request)
         except Exception as error:
@@ -3541,13 +3542,7 @@ def _process_legacy_unit(  # noqa: PLR0911 - one explicit ordered §2.2 unit lif
             return _UnitResult(acknowledge=False, outcome=refused.reason)
         try:
             shaped = _shape_unit(runtime, authority.unit_entry)
-            composition = compose_unit_statements(
-                ComposeUnitStatementsRequest(
-                    workload=shaped.workload,
-                    workgroup=runtime.target.batch_workgroup,
-                    max_statement_bytes=WRITER_SETTINGS.athena_max_statement_bytes,
-                )
-            )
+            composition = compose_unit_statements(_compose(shaped.workload, runtime.target))
             unit_statement_kinds(composition.merge_count)
             retryable = _execute_statements(ctx, shaped, composition)
             if retryable is not None:

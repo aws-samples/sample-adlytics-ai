@@ -125,6 +125,7 @@ TARGET = AthenaSemanticTarget(
     source_database="z_source",
     candidate_database="a_candidate",
     current_database="m_current",
+    staging_database="s_staging",
 )
 SETTINGS = Stage1DeliverySettings(
     max_units=15,

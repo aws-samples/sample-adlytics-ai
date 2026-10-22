@@ -80,6 +80,7 @@ def resolve_named_semantic_resources(
         "source_database": f"/adlytics/{environment}/data/v2/source-aligned-glue-database",
         "candidate_database": f"/adlytics/{environment}/data/v2/canonical-candidate-glue-database",
         "current_database": f"/adlytics/{environment}/data/v2/canonical-current-glue-database",
+        "staging_database": f"/adlytics/{environment}/data/v2/staging-glue-database",
         "attempts": f"/adlytics/{environment}/data/v2/semantic-attempts-table",
         "leases": f"/adlytics/{environment}/data/v2/semantic-leases-table",
         "publications": f"/adlytics/{environment}/data/v2/semantic-publications-table",

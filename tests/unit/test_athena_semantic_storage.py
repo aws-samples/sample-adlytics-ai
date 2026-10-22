@@ -22,6 +22,7 @@ from adapters.outbound.athena.semantic_storage import (
     AthenaSemanticTarget,
     AthenaSourceMaterializer,
     PhysicalRecord,
+    StagedSource,
     UnitWorkload,
     canonical_records,
     canonical_unit_records,
@@ -32,6 +33,9 @@ from adapters.outbound.athena.semantic_storage import (
     pack_object_batches,
     select_statement,
     source_records,
+    staged_merge_statement,
+    verification_matches,
+    verification_statement,
 )
 from adapters.outbound.athena.start_envelope import envelope_fits
 from adapters.outbound.s3.semantic_storage import (
@@ -46,7 +50,7 @@ from adapters.outbound.semantic_storage import (
     ReplicatedCanonicalStorage,
     ReplicatedSourceAlignedStorage,
 )
-from adapters.outbound.v2_storage_catalog import V2Table, load_v2_storage_catalog
+from adapters.outbound.v2_storage_catalog import V2Column, V2Table, load_v2_storage_catalog
 from domain.operations.statement_protocol import MAX_STATEMENT_BYTES
 from domain.semantics.canonical_compiler import CanonicalRow, canonical_rows_checksum
 from domain.semantics.identity import (
@@ -101,6 +105,7 @@ from ports.outbound.canonical import (
     CanonicalWriteResult,
 )
 from ports.outbound.source_aligned import MaterializeSourceRowsetResult
+from ports.outbound.unit_staging import StagedUnit
 
 if TYPE_CHECKING:
     from types_boto3_athena.client import AthenaClient
@@ -579,7 +584,7 @@ def test_projection_statement_spans_record_cost_without_sql(
     monkeypatch.setattr(semantic_module, "fetch_rows", no_rows)
 
     materializer = AthenaSourceMaterializer(
-        AthenaSemanticTarget("batch", "source", "candidate", "current"),
+        AthenaSemanticTarget("batch", "source", "candidate", "current", "staging"),
         CATALOG,
         client=cast("AthenaClient", object()),
     )
@@ -599,3 +604,198 @@ def test_projection_statement_spans_record_cost_without_sql(
         assert item.attributes["total_millis"] == 19
         assert "sql" not in item.attributes
         assert "parameters" not in item.attributes
+
+
+# --- ADR-149: the staged MERGE, the set-based verification and its acceptance rule ---------------
+
+_DIGEST = "0123456789abcdef" * 4
+_SOURCE = StagedSource("db_staging", _DIGEST)
+_PIN_TABLE = V2Table(
+    name="fct_pin_rows",
+    columns=(
+        V2Column(name="publication_id", type="string", nullable=False),
+        V2Column(name="segment_id", type="string", nullable=True),
+        V2Column(name="amount", type="decimal(38,4)", nullable=True),
+        V2Column(name="label", type="string", nullable=False),
+    ),
+    grain=("publication_id", "segment_id"),
+    partition_keys=("publication_id",),
+)
+_PIN_MERGE = (
+    'MERGE INTO "fct_pin_rows" AS target USING (SELECT '
+    'CAST("publication_id" AS varchar) AS "publication_id", '
+    'CAST("segment_id" AS varchar) AS "segment_id", '
+    'CAST("amount" AS decimal(38,4)) AS "amount", '
+    'CAST("label" AS varchar) AS "label" '
+    'FROM "db_staging"."fct_pin_rows" WHERE "staging_key" = '
+    "'0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef') AS incoming "
+    'ON target."publication_id" = incoming."publication_id" AND '
+    '(target."segment_id" = incoming."segment_id" OR '
+    '(target."segment_id" IS NULL AND incoming."segment_id" IS NULL)) '
+    'WHEN NOT MATCHED THEN INSERT ("publication_id", "segment_id", "amount", "label") '
+    'VALUES (incoming."publication_id", incoming."segment_id", incoming."amount", '
+    'incoming."label")'
+)
+_PIN_VERIFICATION = (
+    'WITH s AS (SELECT CAST("stg_ordinal" AS bigint) AS "stg_ordinal", '
+    'CAST("publication_id" AS varchar) AS "publication_id", '
+    'CAST("segment_id" AS varchar) AS "segment_id", '
+    'CAST("amount" AS decimal(38,4)) AS "amount", '
+    'CAST("label" AS varchar) AS "label" '
+    'FROM "db_staging"."fct_pin_rows" WHERE "staging_key" = '
+    "'0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'), "
+    't AS (SELECT "publication_id", "segment_id", "amount", "label" FROM "fct_pin_rows" '
+    'WHERE "publication_id" IN (CAST(? AS varchar), CAST(? AS varchar))), '
+    'm AS (SELECT t."publication_id" AS identity, s."stg_ordinal" AS ordinal FROM t JOIN s '
+    'ON t."publication_id" = s."publication_id" AND '
+    '(t."segment_id" = s."segment_id" OR (t."segment_id" IS NULL AND s."segment_id" IS NULL)) '
+    'WHERE (t."amount" = s."amount" OR (t."amount" IS NULL AND s."amount" IS NULL)) '
+    'AND t."label" = s."label") '
+    "SELECT 'target' AS side, \"publication_id\" AS identity, count(*) AS n FROM t GROUP BY 2 "
+    "UNION ALL SELECT 'staged', \"publication_id\", count(*) FROM s GROUP BY 2 "
+    "UNION ALL SELECT 'matched_target', identity, count(*) FROM m GROUP BY 2 "
+    "UNION ALL SELECT 'matched_staged', identity, count(DISTINCT ordinal) FROM m GROUP BY 2"
+)
+
+
+@pytest.mark.covers("ADR-149")
+def test_t6_the_staged_merge_and_verification_are_pinned_exactly() -> None:
+    assert staged_merge_statement(_PIN_TABLE, _SOURCE) == _PIN_MERGE
+    assert verification_statement(_PIN_TABLE, _SOURCE, 2) == _PIN_VERIFICATION
+    # Control: rendering the non-nullable `label` null-safe fails the pin.
+    loosened = V2Table(
+        name=_PIN_TABLE.name,
+        columns=(*_PIN_TABLE.columns[:3], V2Column(name="label", type="string", nullable=True)),
+        grain=_PIN_TABLE.grain,
+        partition_keys=_PIN_TABLE.partition_keys,
+    )
+    assert verification_statement(loosened, _SOURCE, 2) != _PIN_VERIFICATION
+    assert staged_merge_statement(loosened, _SOURCE) == _PIN_MERGE  # label not grain
+
+
+def _null_safe(left: str, right: str, name: str) -> str:
+    equal = f'{left}."{name}" = {right}."{name}"'
+    return f'({equal} OR ({left}."{name}" IS NULL AND {right}."{name}" IS NULL))'
+
+
+@pytest.mark.covers("ADR-149")
+@pytest.mark.parametrize("name", ["fct_segment_profile", "fct_retail_sales"])
+def test_t6_catalog_tables_compare_nullable_columns_equal_or_both_null(name: str) -> None:
+    table = next(table for table in CATALOG.candidate_by_dataset.values() if table.name == name)
+    merge = staged_merge_statement(table, _SOURCE)
+    verification = verification_statement(table, _SOURCE, 3)
+    columns = {column.name: column for column in table.columns}
+    for column_name in table.grain:
+        if columns[column_name].nullable:
+            assert _null_safe("target", "incoming", column_name) in merge
+            assert _null_safe("t", "s", column_name) in verification
+        else:
+            assert f'target."{column_name}" = incoming."{column_name}"' in merge
+            assert f'(target."{column_name}" = incoming."{column_name}" OR' not in merge
+            assert f'(t."{column_name}" = s."{column_name}" OR' not in verification
+    for column in table.columns:
+        if column.name in table.grain:
+            continue
+        if column.nullable:
+            assert _null_safe("t", "s", column.name) in verification
+        else:
+            assert f't."{column.name}" = s."{column.name}"' in verification
+            assert f'(t."{column.name}" = s."{column.name}" OR' not in verification
+    if name == "fct_segment_profile":
+        assert columns["segment_id"].nullable  # the nullable grain this case exists for
+    # Control: no statement uses IS NOT DISTINCT FROM (ING-VERIFY-NULLSAFE).
+    assert "IS NOT DISTINCT FROM" not in merge
+    assert "IS NOT DISTINCT FROM" not in verification
+    assert "DELETE" not in merge
+    assert "UPDATE" not in merge
+
+
+@pytest.mark.covers("ADR-149")
+def test_t6_no_catalog_statement_uses_is_not_distinct_from() -> None:
+    tables = (
+        *CATALOG.source_by_contract.values(),
+        *CATALOG.candidate_by_dataset.values(),
+        *CATALOG.current_by_dataset.values(),
+    )
+    for table in tables:
+        for sql in (
+            staged_merge_statement(table, _SOURCE),
+            verification_statement(table, _SOURCE, 1),
+        ):
+            assert "IS NOT DISTINCT FROM" not in sql
+
+
+@pytest.mark.covers("ADR-149")
+@pytest.mark.parametrize(
+    ("database", "key"),
+    [("db-staging", _DIGEST), ("db_staging", _DIGEST.upper()), ("db_staging", "x' OR 1=1 --")],
+)
+def test_staged_statements_refuse_an_unsafe_database_or_key(database: str, key: str) -> None:
+    with pytest.raises(ValueError, match=r"unsafe staging database|64 lowercase hex"):
+        StagedSource(database, key)
+
+
+def _staged(*counts: tuple[str, int]) -> StagedUnit:
+    return StagedUnit(table="fct_pin_rows", staging_key=_DIGEST, byte_length=10, row_counts=counts)
+
+
+def _rows(counts: dict[str, int], **sides: dict[str, int]) -> tuple[tuple[str | None, ...], ...]:
+    names = ("target", "staged", "matched_target", "matched_staged")
+    return tuple(
+        (side, identity, str(count))
+        for side in names
+        for identity, count in sides.get(side, counts).items()
+    )
+
+
+@pytest.mark.covers("ADR-149")
+def test_t5_verification_accepts_exactly_the_staged_counts() -> None:
+    staged = _staged(("pub-a", 2), ("pub-b", 1))
+    exact = {"pub-a": 2, "pub-b": 1}
+    assert verification_matches(staged, _rows(exact)) is True
+    # Row order does not matter.
+    assert verification_matches(staged, tuple(reversed(_rows(exact)))) is True
+
+
+@pytest.mark.covers("ADR-149")
+@pytest.mark.parametrize(
+    "sides",
+    [
+        # A missing target row: the target and matched counts fall short.
+        {"target": {"pub-a": 1, "pub-b": 1}, "matched_target": {"pub-a": 1, "pub-b": 1}},
+        # An extra target row with no staged twin.
+        {"target": {"pub-a": 3, "pub-b": 1}},
+        # A duplicate target row matches the same staged row twice.
+        {"target": {"pub-a": 3, "pub-b": 1}, "matched_target": {"pub-a": 3, "pub-b": 1}},
+        # An altered value: the row is counted but matches nothing.
+        {"matched_target": {"pub-a": 1, "pub-b": 1}, "matched_staged": {"pub-a": 1, "pub-b": 1}},
+        # A row under the wrong identity.
+        {"target": {"pub-a": 1, "pub-b": 2}, "matched_target": {"pub-a": 1, "pub-b": 1}},
+        # An empty or missing staged object: no staged or matched side at all.
+        {"staged": {}, "matched_target": {}, "matched_staged": {}},
+    ],
+)
+def test_t5_verification_refuses_every_differing_count(sides: dict[str, dict[str, int]]) -> None:
+    staged = _staged(("pub-a", 2), ("pub-b", 1))
+    assert verification_matches(staged, _rows({"pub-a": 2, "pub-b": 1}, **sides)) is False
+
+
+@pytest.mark.covers("ADR-149")
+@pytest.mark.parametrize(
+    "extra",
+    [
+        ("target", "pub-a"),
+        ("target", "pub-a", "2", "x"),
+        ("unknown", "pub-a", "2"),
+        ("target", "pub-z", "2"),
+        ("target", "pub-a", None),
+        ("target", "pub-a", "-1"),
+        ("target", "pub-a", "2.0"),
+        ("target", "pub-a", "2"),
+    ],
+)
+def test_t5_verification_refuses_a_malformed_or_unknown_row(extra: tuple[str | None, ...]) -> None:
+    staged = _staged(("pub-a", 2))
+    rows = _rows({"pub-a": 2})
+    assert verification_matches(staged, rows) is True
+    assert verification_matches(staged, (*rows, extra)) is False

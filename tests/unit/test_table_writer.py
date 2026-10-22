@@ -250,6 +250,7 @@ _SETTINGS_ENV = {
     "ADL_SEMANTIC_V2_SOURCE_DATABASE": "fictional-source",
     "ADL_SEMANTIC_V2_CANDIDATE_DATABASE": "fictional-candidate",
     "ADL_SEMANTIC_V2_CURRENT_DATABASE": CURRENT_DATABASE,
+    "ADL_SEMANTIC_V2_STAGING_DATABASE": "fictional_staging",
     "ADL_ATHENA_RESULT_REUSE_MAX_AGE_MINUTES": "0",
     "ADL_ATHENA_QUERY_BATCH_MAX_CONCURRENCY": "2",
     "AWS_DEFAULT_REGION": "us-east-1",
@@ -1032,6 +1033,7 @@ def _harness(
             source_database="fictional-source",
             candidate_database="fictional-candidate",
             current_database=CURRENT_DATABASE,
+            staging_database="fictional_staging",
         ),
         visibility=cast("Any", visibility),
         wall=lambda: NOW,
@@ -2922,7 +2924,11 @@ def _alone_compositions(writer: Any) -> list[Any]:
     shaped = [writer._shape_unit(None, _unit_entry_for(index)) for index in range(2)]
     return [
         compose_unit_statements(
-            ComposeUnitStatementsRequest(workload=item.workload, workgroup="fictional-batch")
+            ComposeUnitStatementsRequest(
+                workload=item.workload,
+                workgroup="fictional-batch",
+                staging_database="fictional_staging",
+            )
         )
         for item in shaped
     ]
@@ -3120,42 +3126,29 @@ def test_slice7_3_a_union_composition_failure_is_an_invariant_with_zero_effect(
     assert alone.process().outcome == "graph_unit_succeeded"
 
 
-def _merge_bound(writer: Any) -> int:
-    """Return a statement bound that fits one fixture record's MERGE but not two."""
-    from adapters.outbound.athena.semantic_storage import merge_statement  # noqa: PLC0415
-    from adapters.outbound.athena.start_envelope import (  # noqa: PLC0415
-        ComposeStartEnvelopeRequest,
-        compose_start_envelope,
-    )
-
-    workload = writer._shape_unit(None, _unit_entry_for(0)).workload
-    ((_, records),) = workload.records_by_identity
-    sql, parameters = merge_statement(workload.table, records)
-    envelope = compose_start_envelope(
-        ComposeStartEnvelopeRequest(
-            workgroup="fictional-batch", database=workload.database, sql=sql, parameters=parameters
-        )
-    )
-    return len(envelope.encode("utf-8")) + 256  # room for a varied record, not for two
-
-
 def test_slice7_ar5_3_a_member_alone_over_ten_statements_is_its_own_failure(
     writer: Any, monkeypatch: pytest.MonkeyPatch, reported: list[BaseException]
 ) -> None:
-    _batch_shaper(writer, monkeypatch, rows={1: 10, 2: 9})
-    bound = _merge_bound(writer)
-    monkeypatch.setattr(
-        writer, "WRITER_SETTINGS", replace(writer.WRITER_SETTINGS, athena_max_statement_bytes=bound)
+    """ADR-149: a member alone always composes two statements, so none is `member_failed`."""
+    from adapters.outbound.athena.table_attempt_statements import (  # noqa: PLC0415
+        compose_unit_statements,
     )
+
+    _batch_shaper(writer, monkeypatch, rows={1: 10, 2: 9})
     entries = tuple(_unit_entry_for(index) for index in range(3))
+    for entry in entries:
+        workload = writer._shape_unit(None, entry).workload
+        alone = compose_unit_statements(writer._compose(workload, _harness(writer).runtime.target))
+        assert [statement.kind.value for statement in alone.statements] == [
+            "merge",
+            "verification",
+        ]
     world = _graph_batch_world(writer, entries=entries, inline=_BatchInline())
     result = world.process(receive_count=1)
     nodes = world.nodes()
-    # 10 merges + verification = 11 statements: returned `member_failed` (unclassified).
-    assert (nodes[1].state.value, nodes[1].return_reason) == ("PENDING", "member_failed")
-    # Control: 9 merges + verification = 10 statements forms a set of one and executes.
-    assert (nodes[0].state.value, nodes[2].state.value) == ("SUCCEEDED", "SUCCEEDED")
-    assert {_publication(2)} in world.inline.sets()
+    # The 10-row member that once needed 11 statements is shaped and settles like the others.
+    assert [node.return_reason for node in nodes] == [None, None, None]
+    assert [node.state.value for node in nodes] == ["SUCCEEDED", "SUCCEEDED", "SUCCEEDED"]
     assert result.acknowledge is True
     assert reported == []
 
@@ -3734,3 +3727,16 @@ def test_slice7_4_f5_a_member_returned_by_the_time_rule_gets_exactly_one_more_at
     )
     assert world.node(0).return_reason == "final_unisolated"  # nothing returned it again
     assert [type(error).__name__ for error in reported] == ["GraphUnitFailedError"]
+
+
+@pytest.mark.covers("ADR-149")
+@pytest.mark.parametrize("case", [("semantic_v2_staging_database", "staging database")])
+def test_the_writer_runtime_refuses_a_blank_staging_setting(
+    writer: Any, monkeypatch: pytest.MonkeyPatch, case: tuple[str, str]
+) -> None:
+    field, label = case
+    # Control: the module imported, so the runtime built with every staging setting present.
+    assert writer.RUNTIME is not None
+    monkeypatch.setattr(writer, "SETTINGS", writer.SETTINGS.model_copy(update={field: " "}))
+    with pytest.raises(ValueError, match=label):
+        writer._runtime()

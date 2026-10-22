@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from time import monotonic
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Final, cast
 
 import boto3
 
@@ -41,6 +41,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from types_boto3_athena.client import AthenaClient
 
     from adapters.outbound.s3.semantic_storage import ProjectionUnitSource
+    from ports.outbound.unit_staging import StagedUnit
 
 __all__ = [
     "AthenaCanonicalMaterializer",
@@ -48,6 +49,7 @@ __all__ = [
     "AthenaSourceMaterializer",
     "AthenaTableUnitProjector",
     "PhysicalRecord",
+    "StagedSource",
     "UnitProjectionResult",
     "UnitWorkload",
     "canonical_records",
@@ -59,6 +61,9 @@ __all__ = [
     "pack_object_batches",
     "select_statement",
     "source_records",
+    "staged_merge_statement",
+    "verification_matches",
+    "verification_statement",
 ]
 
 _IDENTIFIER = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -79,6 +84,8 @@ class AthenaSemanticTarget:
     source_database: str
     candidate_database: str
     current_database: str
+    staging_database: str
+    """The staging database whose external tables read staged units (ADR-149)."""
 
     def __post_init__(self) -> None:
         if any(
@@ -88,9 +95,12 @@ class AthenaSemanticTarget:
                 self.source_database,
                 self.candidate_database,
                 self.current_database,
+                self.staging_database,
             )
         ):
             raise ValueError("Athena Semantic V2 target requires every workgroup/database name.")
+        if not _IDENTIFIER.fullmatch(self.staging_database):
+            raise ValueError("Athena Semantic V2 staging database must be a generated identifier.")
 
 
 def _json(value: object) -> str:
@@ -633,6 +643,156 @@ def multi_select_statement(table: V2Table, identity_count: int) -> str:
         f"SELECT {names} FROM {quoted(table.name)} "  # noqa: S608 - generated identifiers only  # nosec B608 # A-SQL-001
         f"WHERE {partition} IN ({placeholders}) ORDER BY {ordering}"
     )
+
+
+_STAGING_KEY = re.compile(r"^[0-9a-f]{64}$")
+_VERIFICATION_SIDES: Final = ("target", "staged", "matched_target", "matched_staged")
+_COUNT = re.compile(r"^(0|[1-9][0-9]*)$")
+
+
+def _equal(left: str, right: str, column: V2Column) -> str:
+    """Compare one column: ``=``, or "equal, or both NULL" when the column is nullable.
+
+    Never ``IS NOT DISTINCT FROM``: on Athena it dropped correct rows when every compared row
+    held NULL in a nullable varchar column (ADR-149 decision 2).
+    """
+    if column.nullable:
+        return f"({left} = {right} OR ({left} IS NULL AND {right} IS NULL))"
+    return f"{left} = {right}"
+
+
+@dataclass(frozen=True, slots=True)
+class StagedSource:
+    """Where one unit's staged rows are read: the staging database and the unit's key."""
+
+    staging_database: str
+    staging_key: str
+
+    def __post_init__(self) -> None:
+        if not _IDENTIFIER.fullmatch(self.staging_database):
+            raise ValueError(f"unsafe staging database identifier {self.staging_database!r}.")
+        if not _STAGING_KEY.fullmatch(self.staging_key):
+            raise ValueError("a staging key is 64 lowercase hex characters.")
+
+
+def _staged_identifiers(table: V2Table) -> None:
+    for name in (table.name, *(column.name for column in table.columns)):
+        if not _IDENTIFIER.fullmatch(name):
+            raise ValueError(f"unsafe generated V2 identifier {name!r}.")
+
+
+def _staged_casts(table: V2Table) -> str:
+    return ", ".join(
+        f"CAST({quoted(column.name)} AS {_athena_type(column.type)}) AS {quoted(column.name)}"
+        for column in table.columns
+    )
+
+
+def _staged_rows(table: V2Table, source: StagedSource) -> str:
+    return (
+        f"FROM {quoted(source.staging_database)}.{quoted(table.name)} "
+        f"WHERE {quoted('staging_key')} = '{source.staging_key}'"
+    )
+
+
+def _grain_match(table: V2Table, left: str, right: str) -> str:
+    columns = {column.name: column for column in table.columns}
+    return " AND ".join(
+        _equal(f"{left}.{quoted(name)}", f"{right}.{quoted(name)}", columns[name])
+        for name in table.grain
+    )
+
+
+def staged_merge_statement(table: V2Table, source: StagedSource) -> str:
+    """Compose the unit's one insert-only MERGE, reading its staged rows (ADR-149 decision 1).
+
+    The source casts each all-``string`` staging column exactly as the deleted renderer cast
+    the same text; the ``ON`` clause matches a nullable grain column when both sides are NULL,
+    so a re-run inserts nothing. The key is a validated 64-hex literal, so the MERGE has no
+    parameters.
+    """
+    _staged_identifiers(table)
+    names = ", ".join(quoted(column.name) for column in table.columns)
+    inserted = ", ".join(f"incoming.{quoted(column.name)}" for column in table.columns)
+    rows = f"SELECT {_staged_casts(table)} {_staged_rows(table, source)}"
+    return (
+        f"MERGE INTO {quoted(table.name)} AS target "  # noqa: S608 - generated identifiers and a validated hex key  # nosec B608 # A-SQL-001
+        f"USING ({rows}) "
+        f"AS incoming ON {_grain_match(table, 'target', 'incoming')} "
+        f"WHEN NOT MATCHED THEN INSERT ({names}) VALUES ({inserted})"
+    )
+
+
+def verification_statement(table: V2Table, source: StagedSource, identity_count: int) -> str:
+    """Compose the unit's one set-based verification: four counts per identity, never rows.
+
+    ``target`` and ``staged`` count each side; ``matched_target`` counts target rows equal in
+    every column to a staged row, and ``matched_staged`` the distinct staged rows matched. The
+    identities are bound as ``CAST(? AS varchar)`` parameters.
+    """
+    _staged_identifiers(table)
+    if identity_count < 1:
+        raise ValueError("a unit verification requires at least one identity.")
+    partition = quoted(table.partition_keys[0])
+    ordinal = quoted("stg_ordinal")
+    names = ", ".join(quoted(column.name) for column in table.columns)
+    placeholders = ", ".join("CAST(? AS varchar)" for _ in range(identity_count))
+    compared = " AND ".join(
+        _equal(f"t.{quoted(column.name)}", f"s.{quoted(column.name)}", column)
+        for column in table.columns
+        if column.name not in table.grain
+    )
+    where = f" WHERE {compared}" if compared else ""
+    return (
+        f"WITH s AS (SELECT CAST({ordinal} AS bigint) AS {ordinal}, {_staged_casts(table)} "  # noqa: S608 - generated identifiers and a validated hex key  # nosec B608 # A-SQL-001
+        f"{_staged_rows(table, source)}), "
+        f"t AS (SELECT {names} FROM {quoted(table.name)} WHERE {partition} IN ({placeholders})), "
+        f"m AS (SELECT t.{partition} AS identity, s.{ordinal} AS ordinal FROM t JOIN s "
+        f"ON {_grain_match(table, 't', 's')}{where}) "
+        f"SELECT 'target' AS side, {partition} AS identity, count(*) AS n FROM t GROUP BY 2 "
+        f"UNION ALL SELECT 'staged', {partition}, count(*) FROM s GROUP BY 2 "
+        "UNION ALL SELECT 'matched_target', identity, count(*) FROM m GROUP BY 2 "
+        "UNION ALL SELECT 'matched_staged', identity, count(DISTINCT ordinal) FROM m GROUP BY 2"
+    )
+
+
+def _verification_counts(
+    staged: StagedUnit, rows: tuple[tuple[str | None, ...], ...]
+) -> dict[tuple[str, str], int] | None:
+    """Return each (side, identity) count, or ``None`` for any row of another shape."""
+    identities = {identity for identity, _ in staged.row_counts}
+    counts: dict[tuple[str, str], int] = {}
+    for row in rows:
+        if len(row) != 3:  # noqa: PLR2004 - side, identity, count
+            return None
+        side, identity, count = row
+        if (
+            side not in _VERIFICATION_SIDES
+            or identity not in identities
+            or count is None
+            or not _COUNT.fullmatch(count)
+            or (side, identity) in counts
+        ):
+            return None
+        counts[(side, identity)] = int(count)
+    return counts
+
+
+def verification_matches(staged: StagedUnit, rows: tuple[tuple[str | None, ...], ...]) -> bool:
+    """Accept a unit only when all four sides count exactly its staged rows per identity.
+
+    Staged grains are unique and the partition key is in every grain, so equal target and
+    staged counts plus both matched counts mean every target row matches one staged row with
+    identical values: a missing, extra, duplicated, altered or misplaced row, and an empty or
+    missing staged object, each leave some side short or over.
+    """
+    counts = _verification_counts(staged, rows)
+    expected = {
+        (side, identity): count
+        for side in _VERIFICATION_SIDES
+        for identity, count in staged.row_counts
+    }
+    return counts == expected
 
 
 @dataclass(frozen=True, slots=True)

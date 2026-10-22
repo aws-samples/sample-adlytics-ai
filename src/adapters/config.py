@@ -1589,6 +1589,8 @@ class Settings(BaseSettings):
     semantic_v2_source_database: str = ""
     semantic_v2_candidate_database: str = ""
     semantic_v2_current_database: str = ""
+    semantic_v2_staging_database: str = ""
+    """ADR-149: blank by default; only the table writer and delivery runtimes require it."""
     registration_status_table: str = ""
     raw_bucket: str = ""
     athena_result_reuse_max_age_minutes: int = Field(ge=0, le=MAX_RESULT_REUSE_MINUTES)

@@ -179,7 +179,11 @@ def test_roster_merge_counts_come_from_the_single_packer_over_the_unit_workload(
 
     for unit in roster.units:
         composed = compose_unit_statements(
-            ComposeUnitStatementsRequest(workload=unit.workload, workgroup="fictional-batch")
+            ComposeUnitStatementsRequest(
+                workload=unit.workload,
+                workgroup="fictional-batch",
+                staging_database=TARGET.staging_database,
+            )
         )
         assert unit.entry.merge_count == composed.merge_count == unit.measurement.merge_count
         assert unit.entry.merge_count >= 1

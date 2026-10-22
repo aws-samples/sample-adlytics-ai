@@ -580,6 +580,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0915
                         source_database=semantic_resources["source_database"],
                         candidate_database=semantic_resources["candidate_database"],
                         current_database=semantic_resources["current_database"],
+                        staging_database=semantic_resources["staging_database"],
                     ),
                     catalog=load_v2_storage_catalog(ROOT / "contracts/generated/v2-tables.json"),
                     s3=s3,

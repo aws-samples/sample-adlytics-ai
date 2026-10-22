@@ -380,6 +380,7 @@ def _runtime() -> _V2Runtime:
         "source database": SETTINGS.semantic_v2_source_database,
         "candidate database": SETTINGS.semantic_v2_candidate_database,
         "current database": SETTINGS.semantic_v2_current_database,
+        "staging database": SETTINGS.semantic_v2_staging_database,
     }
     missing = tuple(label for label, value in target_values.items() if not value.strip())
     if missing:
@@ -398,6 +399,7 @@ def _runtime() -> _V2Runtime:
         source_database=SETTINGS.semantic_v2_source_database,
         candidate_database=SETTINGS.semantic_v2_candidate_database,
         current_database=SETTINGS.semantic_v2_current_database,
+        staging_database=SETTINGS.semantic_v2_staging_database,
     )
     catalog = load_v2_storage_catalog(ROOT / "contracts/generated/v2-tables.json")
     storage = s3_only_semantic_storage(SETTINGS.semantic_v2_bucket, S3)

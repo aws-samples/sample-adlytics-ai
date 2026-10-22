@@ -343,7 +343,7 @@ def prepared_roster(request: PreparedRosterRequest) -> DeliveryRoster:
                     request,
                 )
             )
-    return _shape(objects, request.target.batch_workgroup, request.max_statement_bytes)
+    return _shape(objects, request.target, request.max_statement_bytes)
 
 
 def _published_canonical(
@@ -378,13 +378,13 @@ def published_roster(request: PublishedRosterRequest) -> DeliveryRoster:
         for receipt in result.receipts
         for item in _receipt_objects(receipt, request)
     ]
-    return _shape(objects, request.target.batch_workgroup, request.max_statement_bytes)
+    return _shape(objects, request.target, request.max_statement_bytes)
 
 
 def _shape(
-    objects: list[_RosterObject], workgroup: str, max_statement_bytes: int
+    objects: list[_RosterObject], target: AthenaSemanticTarget, max_statement_bytes: int
 ) -> DeliveryRoster:
-    """Coalesce objects into canonical units and measure each through the §6 packer."""
+    """Coalesce objects into canonical units and compose each through the staged composer."""
     by_unit: dict[str, dict[tuple[bytes, bytes], _RosterObject]] = {}
     for item in objects:
         members = by_unit.setdefault(item.unit_key, {})
@@ -410,7 +410,10 @@ def _shape(
         )
         composition = compose_unit_statements(
             ComposeUnitStatementsRequest(
-                workload=workload, workgroup=workgroup, max_statement_bytes=max_statement_bytes
+                workload=workload,
+                workgroup=target.batch_workgroup,
+                staging_database=target.staging_database,
+                max_statement_bytes=max_statement_bytes,
             )
         )
         units.append(
