@@ -94,7 +94,7 @@ class _Stores:
         window = self.targets.get((page, variant))
         if window is None:
             return None
-        template = next(iter(self.scorecard.values())).pointer_advance.pointer
+        template = next(iter(self.scorecard.values())).pointer_template.complete(None).pointer
         return replace(
             template,
             page=PresetArtifactPage(page),
@@ -113,7 +113,9 @@ class _Stores:
         for variant in request.variants:
             if request.page.value == "scorecard":
                 published = self.scorecard.get(variant.value)
-                pointers.append(None if published is None else published.pointer_advance.pointer)
+                pointers.append(
+                    None if published is None else published.pointer_template.complete(None).pointer
+                )
             else:
                 pointers.append(self._target(request.page.value, variant.value))
         return PresetArtifactPointerRosterResult(request, tuple(pointers))

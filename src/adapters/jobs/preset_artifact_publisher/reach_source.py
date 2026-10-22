@@ -93,8 +93,7 @@ from domain.presentation.page_schemas import TemporalPresetId, is_calendar_prese
 from domain.presentation.preset_artifacts import (
     PresetArtifactBody,
     PresetArtifactPage,
-    PresetArtifactPointer,
-    PresetArtifactPointerAdvanceRequest,
+    PresetArtifactPointerTemplate,
     PresetArtifactPublicationRequest,
     PresetArtifactRevision,
     PresetArtifactVariant,
@@ -966,24 +965,19 @@ class RetainedReachPresetArtifactSource:
             revision,
             capped_preset_artifact_json(reach_artifact_payload(rendered.artifact)),
         )
-        pointer = PresetArtifactPointer(
-            self.page,
-            variant,
-            revision,
-            body.digest,
-            1 if current is None else current.forward_token + 1,
-            None if current is None else current.revision,
-            None,
-            # The served period (ADR-116 decision 4), so every preset button names its dates.
-            resolved_window=rendered.artifact.period.window,
-        )
         return PresetArtifactPublicationRequest(
             body,
-            PresetArtifactPointerAdvanceRequest(
-                pointer,
+            PresetArtifactPointerTemplate(
+                self.page,
+                variant,
+                revision,
+                body.digest,
+                1 if current is None else current.forward_token + 1,
+                None if current is None else current.revision,
                 None if current is None else self.clock() + SUPERSEDED_HISTORY_RETENTION,
+                # The served period (ADR-116 decision 4), so every preset button names its dates.
+                resolved_window=rendered.artifact.period.window,
             ),
-            None,
         )
 
     def resolve(self, preset: TemporalPresetId) -> ReachRenderInput | None:

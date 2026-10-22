@@ -131,8 +131,7 @@ from domain.presentation.preset_artifacts import (
     MAX_PRESET_ARTIFACT_BYTES,
     PresetArtifactBody,
     PresetArtifactPage,
-    PresetArtifactPointer,
-    PresetArtifactPointerAdvanceRequest,
+    PresetArtifactPointerTemplate,
     PresetArtifactPublicationRequest,
     PresetArtifactRevision,
     PresetArtifactVariant,
@@ -1140,23 +1139,18 @@ class RetainedAudiencesPresetArtifactSource:
         if current is not None and current.revision == revision:
             return SourceUnchanged(revision)
         body = PresetArtifactBody(self.page, variant, revision, encoded)
-        pointer = PresetArtifactPointer(
-            self.page,
-            variant,
-            revision,
-            body.digest,
-            1 if current is None else current.forward_token + 1,
-            None if current is None else current.revision,
-            None,
-            resolved_window=rendered.artifact.month.window,
-        )
         return PresetArtifactPublicationRequest(
             body,
-            PresetArtifactPointerAdvanceRequest(
-                pointer,
+            PresetArtifactPointerTemplate(
+                self.page,
+                variant,
+                revision,
+                body.digest,
+                1 if current is None else current.forward_token + 1,
+                None if current is None else current.revision,
                 None if current is None else self.clock() + SUPERSEDED_HISTORY_RETENTION,
+                resolved_window=rendered.artifact.month.window,
             ),
-            None,
         )
 
     def prefetch(self, variant: PresetArtifactVariant) -> None:

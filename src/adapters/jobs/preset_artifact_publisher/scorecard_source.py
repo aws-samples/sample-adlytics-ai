@@ -96,8 +96,7 @@ from domain.presentation.page_schemas import TemporalPresetId, is_calendar_prese
 from domain.presentation.preset_artifacts import (
     PresetArtifactBody,
     PresetArtifactPage,
-    PresetArtifactPointer,
-    PresetArtifactPointerAdvanceRequest,
+    PresetArtifactPointerTemplate,
     PresetArtifactPublicationRequest,
     PresetArtifactRevision,
     PresetArtifactVariant,
@@ -1253,24 +1252,19 @@ class RetainedScorecardPresetArtifactSource:
             revision,
             capped_preset_artifact_json(network_scorecard_artifact_payload(rendered.artifact)),
         )
-        pointer = PresetArtifactPointer(
-            self.page,
-            variant,
-            revision,
-            body.digest,
-            1 if current is None else current.forward_token + 1,
-            None if current is None else current.revision,
-            None,
-            resolved_window=window,
-            comparison_window=prior,
-        )
         return PresetArtifactPublicationRequest(
             body,
-            PresetArtifactPointerAdvanceRequest(
-                pointer,
+            PresetArtifactPointerTemplate(
+                self.page,
+                variant,
+                revision,
+                body.digest,
+                1 if current is None else current.forward_token + 1,
+                None if current is None else current.revision,
                 None if current is None else self.clock() + SUPERSEDED_HISTORY_RETENTION,
+                resolved_window=window,
+                comparison_window=prior,
             ),
-            None,
         )
 
     def _resolved_windows(  # noqa: PLR0911 -- each unresolvable preset bakes nothing

@@ -589,7 +589,7 @@ def test_an_injected_page_entry_bakes_a_publication_equal_to_the_planned_answers
         "last_complete_week",
     )
     # The pointer names the served period, so the Reach route's preset buttons carry dates.
-    pointer = result.request.pointer_advance.pointer
+    pointer = result.request.pointer_template.complete(None).pointer
     assert (pointer.resolved_window, pointer.comparison_window) == (WEEK.window, None)
 
 

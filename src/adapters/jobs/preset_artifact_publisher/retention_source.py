@@ -91,8 +91,7 @@ from domain.presentation.page_schemas import RETENTION_CURVE_SECTION
 from domain.presentation.preset_artifacts import (
     PresetArtifactBody,
     PresetArtifactPage,
-    PresetArtifactPointer,
-    PresetArtifactPointerAdvanceRequest,
+    PresetArtifactPointerTemplate,
     PresetArtifactPublicationRequest,
     PresetArtifactRevision,
     PresetArtifactVariant,
@@ -604,23 +603,18 @@ class RetainedRetentionPresetArtifactSource:
             revision,
             capped_preset_artifact_json(retention_artifact_payload(rendered.artifact)),
         )
-        pointer = PresetArtifactPointer(
-            self.page,
-            variant,
-            revision,
-            body.digest,
-            1 if current is None else current.forward_token + 1,
-            None if current is None else current.revision,
-            None,
-            resolved_window=rendered.artifact.period.window,
-        )
         return PresetArtifactPublicationRequest(
             body,
-            PresetArtifactPointerAdvanceRequest(
-                pointer,
+            PresetArtifactPointerTemplate(
+                self.page,
+                variant,
+                revision,
+                body.digest,
+                1 if current is None else current.forward_token + 1,
+                None if current is None else current.revision,
                 None if current is None else self.clock() + SUPERSEDED_HISTORY_RETENTION,
+                resolved_window=rendered.artifact.period.window,
             ),
-            None,
         )
 
     def resolve(self) -> RetentionRenderInput | None:

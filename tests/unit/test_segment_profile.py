@@ -1441,7 +1441,7 @@ def test_an_injected_page_entry_bakes_a_publication_equal_to_the_planned_answers
     baked = baker.bake(BakeIntent("audiences", "last_complete_month"))
     assert isinstance(baked, BakePublication)
     body = json.loads(baked.request.body.payload_json)
-    assert baked.request.pointer_advance.pointer.resolved_window == SEPTEMBER
+    assert baked.request.pointer_template.complete(None).pointer.resolved_window == SEPTEMBER
     assert (body["type"], body["version"], body["outcome"]) == (
         "AudienceProfileArtifact",
         1,
@@ -1750,7 +1750,7 @@ def test_a_matching_generation_one_pointer_is_rebuilt_with_its_resolved_window()
     old = PresetArtifactRevision.from_publication_identities(identities, render_format=1)
     upgraded = source(old).publication_for(PresetArtifactVariant("last_complete_month"))
     assert isinstance(upgraded, PresetArtifactPublicationRequest)
-    pointer = upgraded.pointer_advance.pointer
+    pointer = upgraded.pointer_template.complete(None).pointer
     assert (pointer.resolved_window, pointer.supersedes, pointer.forward_token) == (
         SEPTEMBER,
         old,
@@ -1959,7 +1959,7 @@ def test_an_over_bound_new_month_publishes_a_typed_pointer_that_supersedes_the_p
     second = source(
         OCTOBER_MONTH,
         rows - 1,
-        _CurrentPointers(first.request.pointer_advance.pointer),
+        _CurrentPointers(first.request.pointer_template.complete(None).pointer),
     ).bake(intent)
     assert isinstance(second, BakePublication)
     unavailable = require_audiences_unavailable_artifact_payload(
@@ -1968,7 +1968,7 @@ def test_an_over_bound_new_month_publishes_a_typed_pointer_that_supersedes_the_p
     assert unavailable == AudienceUnavailableArtifact(
         OCTOBER, "October 2026", AUDIENCES_BODY_OVER_BOUND
     )
-    pointer = second.request.pointer_advance.pointer
+    pointer = second.request.pointer_template.complete(None).pointer
     assert (pointer.resolved_window, pointer.supersedes, pointer.forward_token) == (
         OCTOBER,
         first.request.body.revision,
