@@ -147,6 +147,11 @@ export interface GeneratedTools {
   readonly catalog: ToolDefinition[];
   /** Tools whose name begins `measurement_`. Answered by the measurement function. */
   readonly measurement: ToolDefinition[];
+  /**
+   * What an external MCP client is told about the returned figures (ADR-150). Only the external
+   * MCP gateway reads it; the in-app tool descriptions never carry it.
+   */
+  readonly externalClientRule: string;
 }
 
 /**
@@ -172,6 +177,16 @@ export function loadGeneratedTools(filePath: string): GeneratedTools {
     throw new GeneratedToolsError(`${filePath} has no \`tools\` array.`);
   }
 
+  // Refused rather than defaulted: an external gateway built without it would hand an external
+  // model governed figures with no instruction not to recompute or total them.
+  const externalClientRule = parsed.external_client_rule;
+  if (typeof externalClientRule !== 'string' || externalClientRule.trim() === '') {
+    throw new GeneratedToolsError(
+      `${filePath} has no non-empty \`external_client_rule\` string. ` +
+        'Run `make generate-tool-schemas` to produce it.',
+    );
+  }
+
   const tools = parsed.tools.map((tool, index) => readTool(tool, index));
   if (tools.length === 0) {
     throw new GeneratedToolsError(`${filePath} declares no tools.`);
@@ -193,5 +208,6 @@ export function loadGeneratedTools(filePath: string): GeneratedTools {
   return {
     catalog: catalog.map((tool) => tool.definition),
     measurement: measurement.map((tool) => tool.definition),
+    externalClientRule,
   };
 }

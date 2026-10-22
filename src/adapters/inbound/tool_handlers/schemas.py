@@ -36,6 +36,7 @@ from enum import StrEnum
 from typing import Any
 
 __all__ = [
+    "EXTERNAL_CLIENT_FIGURE_RULE",
     "TOOL_CONTRACTS",
     "Argument",
     "ArgumentType",
@@ -505,6 +506,26 @@ the capability tools were built to make possible.
 arguments are candidate semantic intent only. Comparison fixes comparison semantics, ranking fixes
 top semantics plus an explicit rank order, and metric-by-grain permits only breakdown or trend.
 None exposes the canonical values that the resolver and mapper produce for execution.
+"""
+
+
+EXTERNAL_CLIENT_FIGURE_RULE = (
+    "These are finished governed figures. Quote each as returned, with its measurement basis "
+    "(metadata.measurement_basis) and its date range (metadata.requested_coverage_intervals) "
+    "where the result states one; if metadata.coverage_holes is non-empty, say the figures do not "
+    "cover those periods. Never state a date range the result does not state. State an "
+    "attribution window only where the result states one: in the figure's label "
+    "(data.claim_fields[].label) or in a metadata.semantic_qualifiers entry whose field is "
+    "attribution_window. Never assume or add a window the result does not state. Do not add, "
+    "total, average, convert or recompute figures, and never sum attributed sales across ad "
+    "networks; ask this tool for a governed figure instead."
+)
+"""What an external MCP client is told about the figures these tools return (ADR-150).
+
+Generated into `contracts/generated/tools.json` as `external_client_rule`, never into the in-app
+tool descriptions. The external MCP gateway appends it to each tool's description and states it as
+the server instructions, because an external client's model narrates the answer itself and no
+in-app figure verification runs on that path. It names only fields a `ShapedResponse` serializes.
 """
 
 

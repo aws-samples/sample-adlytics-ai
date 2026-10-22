@@ -29,6 +29,7 @@ from tool_caller_support import import_tool_entrypoint, with_bearer
 from adapters.inbound.tool_handlers.catalog import CatalogTool
 from adapters.inbound.tool_handlers.measurement import MeasurementTool
 from adapters.inbound.tool_handlers.schemas import (
+    EXTERNAL_CLIENT_FIGURE_RULE,
     TOOL_CONTRACTS,
     Argument,
     ArgumentType,
@@ -36,6 +37,7 @@ from adapters.inbound.tool_handlers.schemas import (
     as_tool_definitions,
     contract_for,
 )
+from adapters.jobs.tool_schema_generation.__main__ import render
 
 catalog_entrypoint = import_tool_entrypoint("adapters.inbound.tool_handlers.catalog_entrypoint")
 
@@ -341,6 +343,39 @@ class TestTheRenderedDefinitions:
         # The consumer is CDK reading a file, so anything that cannot round-trip is a deploy
         # failure rather than a test failure.
         assert json.loads(json.dumps(as_tool_definitions()))
+
+
+@pytest.mark.covers("ADR-150")
+class TestTheExternalClientRule:
+    """ADR-150: what an external MCP client is told, generated beside the tools, never into them."""
+
+    def test_the_generated_file_carries_the_rule_and_leaves_the_tools_unchanged(self) -> None:
+        document = json.loads(render())
+        assert document["external_client_rule"] == EXTERNAL_CLIENT_FIGURE_RULE
+        assert document["tools"] == as_tool_definitions()
+        assert all(
+            EXTERNAL_CLIENT_FIGURE_RULE not in tool["description"] for tool in document["tools"]
+        )
+
+    @pytest.mark.parametrize(
+        "field",
+        [
+            "metadata.measurement_basis",
+            "metadata.requested_coverage_intervals",
+            "metadata.coverage_holes",
+            "data.claim_fields[].label",
+            "metadata.semantic_qualifiers",
+            "attribution_window",
+        ],
+    )
+    def test_the_rule_names_each_governed_field_a_result_states(self, field: str) -> None:
+        assert field in EXTERNAL_CLIENT_FIGURE_RULE
+
+    def test_the_rule_forbids_recomputing_and_summing_across_networks(self) -> None:
+        assert "Do not add, total, average, convert or recompute figures" in (
+            EXTERNAL_CLIENT_FIGURE_RULE
+        )
+        assert "never sum attributed sales across ad networks" in EXTERNAL_CLIENT_FIGURE_RULE
 
 
 def test_the_grain_and_selector_descriptions_name_every_governed_value() -> None:
