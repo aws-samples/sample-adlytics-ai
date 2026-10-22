@@ -107,10 +107,11 @@ def test_v2_generator_projects_each_metric_unit_and_ratio_scale(tmp_path: Path) 
     assert display["impressions"] == {"ratio_scale": None, "units": "count"}
     assert display["ad_spend"] == {"ratio_scale": None, "units": "currency"}
     path = tmp_path / "v2-bindings.json"
-    for broken in (
+    broken_entries: tuple[dict[str, object], ...] = (
         {"ratio_scale": None, "units": "ratio"},
         {"ratio_scale": "rate", "units": "count"},
-    ):
+    )
+    for broken in broken_entries:
         display["ctr"] = broken
         path.write_text(json.dumps(document))
         with pytest.raises(PageSchemaError, match="must scale exactly a ratio"):
