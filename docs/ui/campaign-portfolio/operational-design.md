@@ -47,7 +47,10 @@ measurement targets, not request cutoffs:
   budget, 150 s. `make check-bakeability` checks the page's estimate against the baker itself: the
   bodies held in memory against half of the 1,024 MB baker (318.5 MB at 245,000 bytes a body,
   against 536.9 MB), and measurement plus 100 ms per sequential object write against the 300 s
-  timeout (150 s + 130 s). The 100 ms write is a budget, not a measurement. Local evidence
+  timeout (150 s + 130 s). The 100 ms write is a budget, not a measurement. Since ADR-145
+  (streamed writes) a variant also writes one index shard per 800 siblings (1,301 objects at the
+  bound) and the all-bodies memory check is gone: the memory model's write term covers the pairs
+  in flight ([publisher](../preset-artifact-publisher.md#bake-width-and-the-memory-model)). Local evidence
   (`accept_campaign_estate_local.py`, 2026-10-08) bakes 30d for 1,000 campaigns over all five
   channels: 7 filters, 64 segments, 1,280 objects (the gate's count for that split), 102.8 MB in
   total, the largest 228,495 bytes, render 3.3 s and a peak of 201 MB of traced Python allocation.

@@ -17,11 +17,11 @@
         },
         {
           "path": "docs/ui/campaign-portfolio/operational-design.md",
-          "sha256": "28ea98af697843ad5810034468082395917c1e11c4c69ef653bb4a50b53753e8"
+          "sha256": "8db138449b441c9c915e1c60e85821b07be54299880ce6f7342ae71fbb3b6f96"
         },
         {
           "path": "docs/ui/campaign-portfolio/low-level-design.md",
-          "sha256": "a431fe2f9a83273eb5575fe4be20ae87bcba119e74f70481e49a578900ce044d"
+          "sha256": "b52d7ecd429f0c0c3fdbe69bc8a98318ed3c9d6a78a83bc9388e6185310fe186"
         },
         {
           "path": "docs/ui/campaign-portfolio/mockup.html",
@@ -79,7 +79,7 @@
         },
         {
           "path": "docs/ui/retail-health/low-level-design.md",
-          "sha256": "433d787c09f46a1b83b48e9aa7c2742d41da4ef7b744bea35f64cf6343d0626e"
+          "sha256": "1c889e497707ff745eec0c1f2cd92f88f678209034f57ea039866a44483b1bf3"
         },
         {
           "path": "docs/ui/retail-health/mockup.html",

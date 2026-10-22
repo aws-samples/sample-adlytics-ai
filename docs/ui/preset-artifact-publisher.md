@@ -210,6 +210,32 @@ DynamoDB table with `CURRENT` plus immutable revision history. A page that decla
 [ADR-071](../decisions/adr-071-reach-the-full-campaign-estate-through-baked-ordered-segments.md) also
 persists ordered public/private siblings and a parent custody manifest under the same revision closure.
 The pointer remains the sole commit point: all required bytes and digests attest before it advances.
+
+**Streamed writes and the sharded sibling index** ([ADR-145](../decisions/adr-145-serve-ten-thousand-campaigns-with-a-sharded-roster-and-streamed-writes.md)).
+A source's publication carries its parent body, a pointer template (every pointer field but the
+custody digest), its page's own custody fields as a header, and its siblings as a re-iterable stream
+of body/custody pairs with a declared count. Campaigns renders each segment and filter sibling as the
+stage draws it; Retail wraps its product-detail children. One stage writes every source, in order:
+
+1. Retail's closed child set: the stream's identities must be exactly the served rows, else an
+   invariant before any write.
+2. The pairs, body then custody, at most 8 in flight, drawing the next pair only as one completes
+   and keeping only its descriptor (identity, body digest, custody digest). The first failure, or a
+   refusal the stream raises (a sibling over its cap), stops submission; the pairs in flight are
+   observed and the error is raised.
+3. The descriptors, sorted by identity path, in index shards of 800 at
+   `custody/{page}/{variant}/{revision}/index/segment-NNNN.json`. A descriptor is at most 256 bytes,
+   so a shard fits the cap.
+4. The parent body, then the parent custody: the header plus `sibling_index`, one
+   `{first_identity, last_identity, digest}` per shard. The pointer is the template completed with
+   that custody's digest.
+
+The stage reports every write chain (each pair, each shard, the parent) and its bytes, which are the
+task's `pairs` and `written_bytes` on both entries. Every sibling of every source is indexed, and a
+sibling-free page writes no custody. A serve reads a sibling in two levels: pointer, parent custody,
+the shard whose range covers the identity (checked against the parent's digest), the descriptor, then
+the body and custody (each checked against it). An identity no shard lists, or a shard or sibling
+whose bytes don't match, is the malformed-artifact refusal, never a fallback.
 Superseded history receives retention TTL; current records do not expire. Baked bodies are
 capability-free, and the serve path mints session custody.
 
@@ -328,8 +354,9 @@ as before.
 **The runtime write deadline.** `stage` and `publish` take the invocation's remaining time and the
 contract's `tail_seconds` (30 s) as required arguments. Before each body/custody pair is submitted,
 less than the tail left stops submission, the pairs in flight are observed, and the page settles
-`bodies_over_invocation`: no parent, custody or pointer is written, so the pairs already written
-are unreferenced objects no custody names. Telemetry for all of it is in
+`bodies_over_invocation`: no index shard, parent, custody or pointer is written, so the pairs
+already written are unreferenced objects no custody names. A page-scope refusal the stream raises
+while the stage draws it settles the page's absence the same way. Telemetry for all of it is in
 [observability](../concepts/observability.md#32-application-spans-and-metrics).
 
 ## Bake width and the memory model
@@ -346,7 +373,7 @@ resident(row) = W                               # writes in flight: 2 x S3 chain
 certified iff resident(row) <= 0.5 x the Baker's memory
 ```
 
-A held slot's width is read from the batch the source builds: a fixed axis's own bound (days by marketplaces), the ranked 50, or the bake ceiling for a population read. The per-row byte terms are the row-ceiling probe's (`validation/probe_bake_row_ceiling.py`), recorded with their date in `bakeability.BAKE_MEMORY_TERMS`. Until bodies stream, the gate also keeps its check that every body a page writes fits the same share.
+A held slot's width is read from the batch the source builds: a fixed axis's own bound (days by marketplaces), the ranked 50, or the bake ceiling for a population read. The per-row byte terms are the row-ceiling probe's (`validation/probe_bake_row_ceiling.py`), recorded with their date in `bakeability.BAKE_MEMORY_TERMS`. Bodies stream, so `W` (the pairs in flight) is the only body term; the gate counts each page's objects, index shards included, against the write budget.
 
 ## Scale envelope
 The one home of each page's own-absence thresholds at publish time. The README's known-limits line links here.

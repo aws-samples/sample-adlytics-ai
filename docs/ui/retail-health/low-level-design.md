@@ -79,7 +79,11 @@ encoder and browser decoder always land in one deploy.
 > never rows that open nothing. A format-7 body decodes as retained: its rows serve as text and
 > open no detail until its pointer moves. **Retired 2026-10-09:** that read is gone from both
 > sides, so a body without the two fixed statuses is refused (owner revision of 2026-10-08: the
-> API, a full re-bake and the browser deploy together). The three new tiles change the compared-metric roster,
+> API, a full re-bake and the browser deploy together). **Amended by ADR-145 (render format
+> 10):** the parent custody names the served products only; each child's digests live in the
+> stage-built sibling index, the stage refuses children that aren't exactly the served rows before
+> any write, and the detail route reads the child through the covering index shard. A ref the index
+> doesn't list is the malformed-artifact refusal. The three new tiles change the compared-metric roster,
 > so Campaigns moves to render format 10 with the same body bytes. The request-time
 > `retail-product` path, its route and the `retail-detail` entries retire in this release.
 
