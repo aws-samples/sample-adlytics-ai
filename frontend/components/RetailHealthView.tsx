@@ -12,13 +12,17 @@ import type { MetricFocusV4 } from '@/lib/metric-focus';
 import { fetchInsightDeepDive, fetchRetailMetricFocus, type TemporalSelectionV1 } from '@/lib/presentation-v2';
 import type { Metric, RetailComparison, RetailHealthArtifact } from '@/lib/retail-health';
 import { ChartLegend, SeriesChart, type ValueKind } from './ChartPrimitives';
-import { CoverageProvider, FigureChange, useCoverageText } from './Coverage';
+import { CoverageProvider, FigureChange, SeeWhy, useCoverageText } from './Coverage';
 import { DataTable, DtBody, DtCell, DtColumn, DtHead, DtRow, DtRowHeader } from './DataTable';
 import { InsightCard } from './InsightCard';
 import { InsightFocusDialog, type InsightFocusSurface } from './InsightFocusDialog';
 import { MetricFocusDialog, type MetricFocusSurface } from './MetricFocusDialog';
 import { useVisibleTabs } from './NextStepContext';
 import { RetailTileGroups, retailMetricLabel, retailValue } from './RetailTiles';
+import { ScorecardTile } from './ScorecardView';
+import { windowText } from '@/lib/answer';
+import { sourceIssueText, type OverviewSource } from '@/lib/overview';
+import type { ScorecardPresentation } from '@/lib/presentation-v2';
 
 type TotalMetric = Metric;
 type InsightSlot = RetailHealthArtifact['insights'][number];
@@ -64,6 +68,47 @@ export function AmcRetailPurchases({ headingId, text }: { readonly headingId: st
       <strong>Available with the paid feature</strong>
       <span>{text}</span>
     </div>
+  </section>;
+}
+
+/* ---------- ads beside retail (OD-UX-13, plan 2.5) ---------- */
+
+/** The strip's browser-owned words (Retail health LLD "Ads beside retail"). */
+export const ADS_BESIDE_RETAIL_COPY = {
+  heading: 'Ads beside retail',
+  link: 'Open Scorecard ›',
+  sevenDaysOnly: 'Ad spend beside retail sales is shown for 7 days.',
+} as const;
+
+/**
+ * Ad spend and ad spend as a share of shipped sales from the served 7-day Scorecard, beside
+ * retail. Neither is attributed sales or a return, so the page's served boundary stays true (D7).
+ */
+export function AdsBesideRetail({ ads }: { readonly ads: OverviewSource<ScorecardPresentation> | null }) {
+  const scorecardTab = useVisibleTabs().find((tab) => tab.tab_id === 'scorecard');
+  const link = scorecardTab === undefined ? null : <a className="chip-link" href={scorecardTab.route}>{ADS_BESIDE_RETAIL_COPY.link}</a>;
+  const body = ads !== null && ads.kind === 'served' && ads.presentation.kind === 'parent' && ads.presentation.artifact.outcome === 'complete'
+    ? ads.presentation.artifact
+    : null;
+  const card = body !== null && body.cards.length === 1 ? body.cards[0] ?? null : null;
+  const tacos = body === null || card === null ? null : body.tacos.find((row) => row.card_id === card.card_id) ?? null;
+  let line: string | null = null;
+  if (ads === null) line = ADS_BESIDE_RETAIL_COPY.sevenDaysOnly;
+  else if (ads.kind === 'rejected') line = sourceIssueText('the Scorecard');
+  else if (ads.presentation.kind === 'window_unavailable') line = ads.presentation.message;
+  else if (card === null) line = ads.presentation.artifact.outcome_text ?? ads.presentation.artifact.scope_text;
+  return <section className="metric-section rh-ads" aria-labelledby="retail-ads-heading" data-slot="rh-ads">
+    <div className="sec-head"><h2 id="retail-ads-heading">{ADS_BESIDE_RETAIL_COPY.heading}</h2></div>
+    {line !== null || body === null || card === null
+      ? <p className="footnote">{line}</p>
+      : <CoverageProvider status={body.evidence_status} subject="Scorecard">
+        <p className="footnote">{windowText(body.period)}</p>
+        <div className="scorecard"><div className="tiles two">
+          <ScorecardTile figure={card.spend} notAvailable={body.not_available_text} slot={`spend:${card.card_id}`} />
+          {tacos === null ? null : <ScorecardTile figure={tacos.figure} notAvailable={body.not_available_text} slot={tacos.coverage_slot} />}
+        </div></div>
+      </CoverageProvider>}
+    {link}
   </section>;
 }
 
@@ -197,8 +242,12 @@ function ProductTable({ artifact, loadingReference, onOpenProduct }: {
   const cellBasis = (metric: TotalMetric) => ({ coverage: coverageText(metric), text: null });
   const windowText = formatIsoDateRange(artifact.period.start, artifact.period.end);
   const priorText = formatIsoDateRange(artifact.prior_period.start, artifact.prior_period.end);
+  // UX sweep fix 2: one page-level freshness line, each served qualifier once, opening Coverage,
+  // instead of a status pill on every row.
+  const qualifiers = [...new Set(artifact.rows.flatMap((row) => row.freshness_qualifiers))];
   return <section className="metric-section" aria-labelledby="retail-products-heading">
     <div className="sec-head"><h2 id="retail-products-heading">Products</h2></div>
+    {qualifiers.length === 0 ? null : <p className="footnote rh-fresh" data-slot="rh-fresh">{qualifiers.join(' · ')} <SeeWhy figure="product freshness" /></p>}
     <DataTable
       className="camp-table retail-products"
       title="Shipped revenue per product"
@@ -211,7 +260,6 @@ function ProductTable({ artifact, loadingReference, onOpenProduct }: {
           <DtColumn className="num">Change</DtColumn>
           <DtColumn className="num" basis={coverageText('units_shipped')}>Shipped units</DtColumn>
           <DtColumn className="num" basis={coverageText('return_rate')}>Return rate</DtColumn>
-          <DtColumn className="l">Status</DtColumn>
         </DtRow>
       </DtHead>
       <DtBody>
@@ -237,11 +285,6 @@ function ProductTable({ artifact, loadingReference, onOpenProduct }: {
             <DtCell className="num" label="Change"><FigureChange change={revenue?.change ?? null} figure={`Shipped revenue, ${row.title}`} slot="retail_revenue_shipped" /></DtCell>
             <DtCell className="num" label="Shipped units" basis={cellBasis('units_shipped')}>{rowCell(row, 'units_shipped')}</DtCell>
             <DtCell className="num" label="Return rate" basis={cellBasis('return_rate')}>{rowCell(row, 'return_rate')}</DtCell>
-            <DtCell className="l" label="Status">
-              {row.freshness_qualifiers.length === 0
-                ? <span className="pill">Current</span>
-                : <span className="pill warn">{row.freshness_qualifiers.join(' · ')}</span>}
-            </DtCell>
           </DtRow>;
         })}
       </DtBody>
@@ -257,7 +300,9 @@ function ProductTable({ artifact, loadingReference, onOpenProduct }: {
 
 /* ---------- page ---------- */
 
-export function RetailHealthView({ artifact, closedProduct = null, loadingReference = null, onOpenProduct, sessionId = '', temporalSelection }: {
+export function RetailHealthView({ ads, artifact, closedProduct = null, loadingReference = null, onOpenProduct, sessionId = '', temporalSelection }: {
+  /** The served 7-day Scorecard for the strip, null on another preset; undefined renders no strip. */
+  readonly ads?: OverviewSource<ScorecardPresentation> | null;
   readonly artifact: RetailHealthArtifact;
   /** The product a window change closed because no single row matched it (ADR-125). */
   readonly closedProduct?: { readonly title: string } | null;
@@ -366,6 +411,7 @@ export function RetailHealthView({ artifact, closedProduct = null, loadingRefere
       scope="page"
       totals={artifact.totals}
     />
+    {ads === undefined ? null : <AdsBesideRetail ads={ads} />}
     <section className="metric-section" aria-labelledby="retail-insights-heading">
       <div className="sec-head"><h2 id="retail-insights-heading">Insights</h2></div>
       <div className="narr-row">

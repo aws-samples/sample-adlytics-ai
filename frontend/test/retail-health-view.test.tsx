@@ -6,7 +6,10 @@ import { test } from 'vitest';
 
 import { CoverageProvider, TileAbsence, TileChange } from '../components/Coverage';
 import { VisibleTabsContext } from '../components/NextStepContext';
-import { RetailHealthBandTitle, RetailHealthView } from '../components/RetailHealthView';
+import { ADS_BESIDE_RETAIL_COPY, RetailHealthBandTitle, RetailHealthView } from '../components/RetailHealthView';
+import { sourceIssueText, type OverviewSource } from '../lib/overview';
+import { parsePresentationResultCalendarV2, scorecardPresentationV2, type ScorecardPresentation } from '../lib/presentation-v2';
+import scorecard7d from './fixtures/scorecard-7d-v2.json';
 import { provenanceLine } from '../lib/provenance';
 import type { ManifestTab } from '../lib/route-manifest';
 import { parseRetailHealthArtifact, type RetailHealthArtifact } from '../lib/retail-health';
@@ -367,12 +370,12 @@ test('The Repeat purchase pointer renders from the manifest tab repeat-purchase-
   render(<VisibleTabsContext.Provider value={[repeatPurchaseTab('repeat-purchase')]}><RetailHealthView artifact={artifact} /></VisibleTabsContext.Provider>);
   assert.equal(screen.queryByRole('link', { name: 'Repeat purchase by product' }), null);
 });
-test('The product table has six columns and a row opens that product in place', async () => {
+test('The product table has five columns and a row opens that product in place', async () => {
   const user = (await import('@testing-library/user-event')).default.setup();
   const opened: string[] = [];
   render(<RetailHealthView artifact={parseRetailHealthArtifact(format8Payload())} onOpenProduct={(row) => opened.push(row.child_asin)} />);
   const table = screen.getByRole('table', { name: /Shipped revenue per product/ });
-  assert.deepEqual(within(table).getAllByRole('columnheader').map((th) => th.firstChild?.textContent), ['Product', 'Shipped revenue', 'Change', 'Shipped units', 'Return rate', 'Status']);
+  assert.deepEqual(within(table).getAllByRole('columnheader').map((th) => th.firstChild?.textContent), ['Product', 'Shipped revenue', 'Change', 'Shipped units', 'Return rate']);
   await user.click(within(table).getByRole('button', { name: /Fictional product/ }));
   assert.deepEqual(opened, ['b0fictional']);
 });
@@ -417,4 +420,47 @@ test('an empty and an insufficient Retail health body each say what is missing a
   assert.ok(screen.getByText('Not enough Vendor Central data for this period'));
   assert.equal(screen.queryByText('No retail movement in this period'), null);
   insufficient.unmount();
+});
+
+const SCORECARD_TAB: ManifestTab = {
+  description: 'Return on ad spend per network and channel', entitlement: null, kind: 'page', label: 'Scorecard', order: 1, route: '/scorecard/', tab_id: 'scorecard',
+};
+
+test('Ads beside retail: the served 7-day spend and TACoS, one line on other presets, the absence when it fails', () => {
+  const artifact = parseRetailHealthArtifact(format8Payload());
+  const served = scorecardPresentationV2(parsePresentationResultCalendarV2(scorecard7d, 'scorecard'));
+  const strip = (ads: OverviewSource<ScorecardPresentation> | null) => render(<VisibleTabsContext.Provider value={[SCORECARD_TAB]}>
+    <RetailHealthView ads={ads} artifact={artifact} />
+  </VisibleTabsContext.Provider>);
+  const seven = strip({ kind: 'served', presentation: served });
+  const section = seven.container.querySelector('[data-slot="rh-ads"]') as HTMLElement;
+  assert.ok(within(section).getByRole('heading', { name: ADS_BESIDE_RETAIL_COPY.heading }));
+  assert.ok(within(section).getByText('1,000.00 USD'));
+  assert.ok(within(section).getByText('5.0%'));
+  assert.ok(within(section).getByText('Mixed basis: ad spend ÷ Vendor shipped revenue'));
+  assert.equal(within(section).getByRole('link', { name: ADS_BESIDE_RETAIL_COPY.link }).getAttribute('href'), '/scorecard/');
+  // No return figure on this page: the strip carries spend and its share of sales only (D7).
+  assert.equal(/×/.test(section.textContent ?? ''), false);
+  seven.unmount();
+  const other = strip(null);
+  assert.ok(within(other.container.querySelector('[data-slot="rh-ads"]') as HTMLElement).getByText(ADS_BESIDE_RETAIL_COPY.sevenDaysOnly));
+  other.unmount();
+  const failed = strip({ issue: 'dependency', kind: 'rejected' });
+  assert.ok(within(failed.container.querySelector('[data-slot="rh-ads"]') as HTMLElement).getByText(sourceIssueText('the Scorecard')));
+  failed.unmount();
+  // Rendered without a strip source (product detail, older callers): no strip at all.
+  const none = render(<RetailHealthView artifact={artifact} />);
+  assert.equal(none.container.querySelector('[data-slot="rh-ads"]'), null);
+});
+
+test('Product freshness reads once for the page, opening Coverage, never as a pill on every row (UX sweep fix 2)', () => {
+  const base = parseRetailHealthArtifact(format8Payload());
+  const qualifier = "Days are bucketed by the source's own business day in Pacific time.";
+  const artifact = { ...base, rows: base.rows.map((row) => ({ ...row, freshness_qualifiers: [qualifier] })) };
+  const view = render(<CoverageProvider status={artifact.evidence_status} subject="Retail health"><RetailHealthView artifact={artifact} /></CoverageProvider>);
+  const lines = view.container.querySelectorAll('[data-slot="rh-fresh"]');
+  assert.equal(lines.length, 1);
+  assert.equal(lines[0]?.textContent?.split(qualifier).length, 2);
+  assert.ok(within(lines[0] as HTMLElement).getByRole('button', { name: 'See why: product freshness' }));
+  assert.equal(view.container.querySelectorAll('.retail-products .pill').length, 0);
 });

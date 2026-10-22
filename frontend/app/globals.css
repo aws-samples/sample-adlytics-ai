@@ -611,6 +611,9 @@ details.exact th { color: var(--text-faint); font-weight: 600; }
 .camp-table tbody th.name { white-space: normal; overflow-wrap: anywhere; }
 /* A campaign name breaks between words, never inside one; figures keep breaking anywhere. */
 .camp-table:not(.retail-products) tbody th.name { overflow-wrap: break-word; min-width: 10ch; }
+/* UX sweep fix 2: a product title breaks between words, never inside one, in a column wide enough to read. */
+.camp-table.retail-products tbody th.name { overflow-wrap: break-word; word-break: normal; min-width: 22ch; }
+.retail-health .rh-fresh .see-why-link { margin-left: 4px; }
 /* A row name is a row header, not a column header: sentence case, and an openable row reads as a link. */
 .camp-table tbody th.name { font-size: 13px; letter-spacing: normal; text-transform: none; color: var(--text); font-weight: 600; }
 .camp-table .name button .link-text { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }

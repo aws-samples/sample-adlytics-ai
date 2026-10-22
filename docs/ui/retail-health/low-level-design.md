@@ -201,6 +201,20 @@ actions:
   `repeat-purchase-by-product` page entry (business outcomes slice S4.3). Until then the manifest doesn't
   list the tab, so no dead link renders.
 
+### Ads beside retail (UI refresh 2.5, OD-UX-13, added 2026-10-22)
+On the 7-day preset, `RetailHealthRouteAdapter` also requests the served 7-day Scorecard and settles
+it on its own, so it never blocks the page. The "Ads beside retail" section shows that body's
+`cards[0].spend` (`ad_spend`) and its `tacos` figure with the served mixed-basis label, the
+Scorecard's window, and an "Open Scorecard ›" link when the session lists the Scorecard. No return
+and no attributed sales render here, so the served `boundary` stays true (plan D7). On 1 day, 14 days
+and 30 days the section reads one line, "Ad spend beside retail sales is shown for 7 days.", with the
+link. A failed Scorecard request reads [ABS-OV-1](../page-absence-copy.md#abs-ov-1) naming the
+Scorecard; a served Scorecard absence reads its own served text. The words are
+`ADS_BESIDE_RETAIL_COPY` (`frontend/components/RetailHealthView.tsx`).
+### Product freshness (UI refresh, UX sweep fix 2, 2026-10-22)
+The products table has no per-row status column. Each distinct served `freshness_qualifiers` string
+reads once in one line above the table, with "See why" opening the page's Coverage sheet. A product
+title breaks between words, never inside one, in a column at least 22 characters wide.
 ### Insight-slot prerequisite
 
 The three prompted slots require insight contracts under `contracts/insights/` with declared

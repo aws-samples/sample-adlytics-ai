@@ -16,6 +16,11 @@ export type OverviewSource<Presentation> =
   | { readonly kind: 'served'; readonly presentation: Presentation }
   | { readonly issue: PresentationErrorClass; readonly kind: 'rejected' };
 
+/** ABS-OV-1 (`docs/ui/page-absence-copy.md`): a source that didn't load, named by its tab. */
+export function sourceIssueText(tab: string): string {
+  return `This part comes from ${tab}, which can't be shown right now. Try again later.`;
+}
+
 /** The one preset all three window-bound sources declare (plan 2.2). */
 export const OVERVIEW_PRESET = '7d' as const;
 

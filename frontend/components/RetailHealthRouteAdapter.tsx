@@ -15,13 +15,16 @@ import {
   anyPresetAvailable,
   fetchRetailHealthPresentationV2,
   fetchRetailHealthProductV2,
+  fetchScorecardPresentationV2,
   focusTemporalSelection,
   type RetailHealthPresentation,
   type RetailProductPresentation,
+  type ScorecardPresentation,
   type TemporalControlV1,
   type TemporalSelectionV1,
 } from '@/lib/presentation-v2';
 import type { PresentationErrorClass } from '@/lib/presentation';
+import type { OverviewSource } from '@/lib/overview';
 import type { V2RouteAdapter } from './PresentationV2RouteController';
 
 /** One product row's opaque capability: the only thing the browser sends to open detail. */
@@ -29,7 +32,16 @@ export interface RetailProductCommand {
   readonly selection_reference: string;
 }
 
-type ParentPresentation = Extract<RetailHealthPresentation, { readonly kind: 'parent' }>;
+/**
+ * The served Retail health parent, plus the served 7-day Scorecard for the "Ads beside retail"
+ * strip (OD-UX-13, plan 2.5): settled on its own, and null on any other preset, which shows one
+ * line instead because the strip is shown for 7 days only.
+ */
+export type RetailHealthRouteParent = RetailHealthPresentation & {
+  readonly ads: OverviewSource<ScorecardPresentation> | null;
+};
+
+type ParentPresentation = Extract<RetailHealthRouteParent, { readonly kind: 'parent' }>;
 
 function pageIssueClass(error: unknown): PresentationErrorClass {
   if (error instanceof PresentationRequestError) return error.errorClass;
@@ -43,12 +55,12 @@ export function parentPreset(temporal: TemporalControlV1): TemporalSelectionV1 {
     ?? { kind: 'preset', preset_id: bindingByRoute['retail-health'].temporal_policy.default_preset };
 }
 
-function openableRows(parent: RetailHealthPresentation) {
+function openableRows(parent: RetailHealthRouteParent) {
   return parent.kind === 'parent' ? parent.artifact.rows.filter((row) => row.selection_reference !== null) : [];
 }
 
 function neighboursFor(
-  parent: RetailHealthPresentation,
+  parent: RetailHealthRouteParent,
   reference: string,
   requestChild: (command: RetailProductCommand) => void,
 ): ProductNeighbours | null {
@@ -136,7 +148,7 @@ function UnavailableProduct({ childAsin, onBack, onRetry, title }: {
 }
 
 /** The parent a page-level absence carries (ADR-139). */
-type RetailHealthAbsence = Extract<RetailHealthPresentation, { readonly kind: 'window_unavailable' }>;
+type RetailHealthAbsence = Extract<RetailHealthRouteParent, { readonly kind: 'window_unavailable' }>;
 
 /** Catalog ABS-RH-1 / ABS-RH-2 (`docs/ui/page-absence-copy.md`). */
 export const RETAIL_HEALTH_ABSENCE_TITLE = "Retail health isn't published for this period";
@@ -147,8 +159,11 @@ export const RETAIL_HEALTH_EMPTY_TEXT = 'Vendor Central reported no shipped sale
 export const RETAIL_HEALTH_INSUFFICIENT_TITLE = 'Not enough Vendor Central data for this period';
 export const RETAIL_HEALTH_INSUFFICIENT_TEXT = "There isn't enough Vendor Central data to show this period safely. Choose another period above. If this keeps happening, ask your administrator to check the Vendor Central connection.";
 export const RETAIL_HEALTH_ABSENCE_NO_PERIOD = "Retail health isn't ready to show yet. It's built from your Vendor Central data, which your administrator connects. When it's ready, you'll see the sales, traffic, conversion and returns your data supports, per product.";
+/** The one preset the strip shows: the Scorecard and Retail health both declare it. */
+export const ADS_BESIDE_RETAIL_PRESET = '7d' as const;
+
 export const retailHealthRouteAdapter: V2RouteAdapter<
-  RetailHealthPresentation,
+  RetailHealthRouteParent,
   RetailProductPresentation,
   RetailProductCommand,
   undefined,
@@ -185,7 +200,21 @@ export const retailHealthRouteAdapter: V2RouteAdapter<
     },
     reopenAfterParentChange: true,
   },
-  loadParent: (session: string, selection: TemporalSelectionV1 | undefined, signal: AbortSignal) => fetchRetailHealthPresentationV2(session, selection, signal),
+  loadParent: async (session: string, selection: TemporalSelectionV1 | undefined, signal: AbortSignal) => {
+    const preset = selection === undefined
+      ? bindingByRoute['retail-health'].temporal_policy.default_preset
+      : selection.kind === 'preset' ? selection.preset_id : null;
+    const sevenDays: TemporalSelectionV1 = { kind: 'preset', preset_id: ADS_BESIDE_RETAIL_PRESET };
+    const [retail, ads] = await Promise.allSettled([
+      fetchRetailHealthPresentationV2(session, selection, signal),
+      preset === ADS_BESIDE_RETAIL_PRESET ? fetchScorecardPresentationV2(session, sevenDays, signal) : Promise.resolve(null),
+    ]);
+    if (retail.status === 'rejected') throw retail.reason;
+    const strip: OverviewSource<ScorecardPresentation> | null = ads.status === 'rejected'
+      ? { issue: pageIssueClass(ads.reason), kind: 'rejected' }
+      : ads.value === null ? null : { kind: 'served', presentation: ads.value };
+    return { ...retail.value, ads: strip };
+  },
   pageIssueClass,
   // A page-level absence (an empty or insufficient body or detail) offers no context.
   pageContext: (parent, child) => {
@@ -224,6 +253,7 @@ export const retailHealthRouteAdapter: V2RouteAdapter<
       />;
     }
     return <RetailHealthView
+      ads={parent.ads}
       artifact={parent.artifact}
       closedProduct={closedChild === null ? null : { title: closedChild.artifact.product.title }}
       onOpenProduct={(row) => {

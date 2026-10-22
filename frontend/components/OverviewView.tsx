@@ -23,7 +23,7 @@ import { retailMetricLabel, retailValue } from './RetailTiles';
 import { ScorecardTile } from './ScorecardView';
 import { formatCurrency, formatIsoDate } from '@/lib/exact-format';
 import { windowText } from '@/lib/answer';
-import { overviewAnswer, overviewCard, OVERVIEW_PRESET, throughLines, type OverviewSource } from '@/lib/overview';
+import { overviewAnswer, overviewCard, OVERVIEW_PRESET, sourceIssueText, throughLines, type OverviewSource } from '@/lib/overview';
 import type {
   CampaignParentPresentation,
   NewCustomersPresentation,
@@ -42,10 +42,7 @@ export interface OverviewSources {
   readonly scorecard: OverviewSource<ScorecardPresentation>;
 }
 
-/** ABS-OV-1 (`docs/ui/page-absence-copy.md`): a source that didn't load, named by its tab. */
-export function sourceIssueText(tab: string): string {
-  return `This part comes from ${tab}, which can't be shown right now. Try again later.`;
-}
+export { sourceIssueText } from '@/lib/overview';
 
 /** ABS-OV-2: a served Campaigns body with no portfolio trend. */
 export const OVERVIEW_NO_SPEND_TREND = 'This window has no daily ad spend to draw.';
