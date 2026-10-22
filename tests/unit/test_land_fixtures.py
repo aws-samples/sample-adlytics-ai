@@ -623,43 +623,6 @@ def test_the_d2_declared_refused_periods_are_never_landed() -> None:
         assert f"{fixture}#period={start.isoformat()}..{end.isoformat()}" not in names
 
 
-def _sa_term(contract_id: str, body: str) -> int:
-    """`M(u) + 1` of a body's source-aligned unit, every column a 64-byte parameter."""
-    from adapters.outbound.athena.semantic_storage import (  # noqa: PLC0415
-        PhysicalRecord,
-        merge_batches,
-    )
-    from adapters.outbound.athena.start_envelope import envelope_fits  # noqa: PLC0415
-    from adapters.outbound.v2_storage_catalog import load_v2_storage_catalog  # noqa: PLC0415
-    from domain.operations.statement_protocol import MAX_STATEMENT_BYTES  # noqa: PLC0415
-
-    table = load_v2_storage_catalog(ROOT / "contracts/generated/v2-tables.json").source_by_contract[
-        contract_id
-    ]
-    row: PhysicalRecord = {column.name: "x" * 64 for column in table.columns}
-    _, rows = dict_rows(body)
-    records = tuple(dict(row) for _ in rows)
-    fits = envelope_fits("adlytics-dev-v2-batch", "adlytics_dev_source_v2", MAX_STATEMENT_BYTES)
-    return len(merge_batches(table, records, fits)) + 1
-
-
-@pytest.mark.covers("ADR-086")
-def test_every_d2_delivery_fits_the_unit_cap_and_the_whole_corpus_does_not() -> None:
-    """No D2 delivery exceeds the reviewed 10-attempt unit cap; the cap still bites unsplit."""
-    from domain.operations.projection_feasibility import (  # noqa: PLC0415
-        MAX_ACCEPTED_ATTEMPTS_PER_UNIT,
-    )
-
-    for item in _plan():
-        fixture = item.fixture.split("#", 1)[0]
-        if fixture in _D2_CORPORA:
-            body = item.data[0].body.decode()
-            assert _sa_term(_D2_CORPORA[fixture], body) <= MAX_ACCEPTED_ATTEMPTS_PER_UNIT
-    # Negative control: the widest corpus landed whole would not fit one unit.
-    whole = (FIXTURES / "generated/amc-audience-performance.csv").read_text()
-    assert _sa_term("amc-audience-performance", whole) > MAX_ACCEPTED_ATTEMPTS_PER_UNIT
-
-
 @pytest.mark.covers("ADR-100")
 def test_only_a_cohort_corpus_on_a_span_without_a_vintage_may_be_empty() -> None:
     """A short span's empty cohort corpus plans nothing; every other empty corpus is refused."""
@@ -2778,47 +2741,6 @@ def test_a_seal_landing_needs_a_fresh_settled_report_before_any_put(
 
 _HIERARCHY = "generated/vendor-product-hierarchy.jsonl"
 FIXTURES = ROOT / "tests/fixtures"
-
-
-def _hierarchy_term(text: str) -> int:
-    """Measure the source-aligned unit's clean-attempt term `M(u) + 1` for one hierarchy body.
-
-    `M(u)` is measured with the deployed packer and §11 byte bound over the deployed table,
-    every column a 64-byte parameter, so the term does not under-count.
-    """
-    from adapters.outbound.athena.semantic_storage import (  # noqa: PLC0415
-        PhysicalRecord,
-        merge_batches,
-    )
-    from adapters.outbound.athena.start_envelope import envelope_fits  # noqa: PLC0415
-    from adapters.outbound.v2_storage_catalog import load_v2_storage_catalog  # noqa: PLC0415
-    from domain.operations.statement_protocol import MAX_STATEMENT_BYTES  # noqa: PLC0415
-
-    table = load_v2_storage_catalog(ROOT / "contracts/generated/v2-tables.json").source_by_contract[
-        "vendor-product-hierarchy"
-    ]
-    row: PhysicalRecord = {column.name: "x" * 64 for column in table.columns}
-    records = tuple(dict(row) for _ in text.splitlines())
-    fits = envelope_fits("adlytics-dev-v2-batch", "adlytics_dev_source_v2", MAX_STATEMENT_BYTES)
-    return len(merge_batches(table, records, fits)) + 1
-
-
-@pytest.mark.covers("ADR-086")
-def test_every_hierarchy_chunk_fits_the_unit_cap_and_a_larger_body_does_not() -> None:
-    from domain.operations.projection_feasibility import (  # noqa: PLC0415
-        MAX_ACCEPTED_ATTEMPTS_PER_UNIT,
-    )
-
-    chunks = [item for item in _plan() if item.fixture.startswith(f"{_HIERARCHY}#chunk=")]
-    assert len(chunks) == 2
-    for chunk in chunks:
-        assert _hierarchy_term(chunk.data[0].body.decode()) <= MAX_ACCEPTED_ATTEMPTS_PER_UNIT
-    # Negative control: the cap still bites. The unsplit 463-row fixture was refused live on
-    # 2026-10-06 under the since-removed 900-parameter bound; byte-bound packing fits it, so the
-    # control is a body three times its size.
-    whole = (FIXTURES / _HIERARCHY).read_text()
-    assert _hierarchy_term(whole) <= MAX_ACCEPTED_ATTEMPTS_PER_UNIT
-    assert _hierarchy_term(whole * 3) > MAX_ACCEPTED_ATTEMPTS_PER_UNIT
 
 
 @pytest.mark.covers("ADR-086")

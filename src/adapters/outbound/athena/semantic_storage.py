@@ -20,8 +20,6 @@ from adapters.outbound.athena.execution import (
     start,
 )
 from adapters.outbound.athena.literals import quoted
-from adapters.outbound.athena.parameters import sql_literal
-from adapters.outbound.athena.start_envelope import StatementFits
 from adapters.outbound.s3.semantic_storage import source_publication_payload
 from adapters.outbound.telemetry.tracing import ATHENA_STATEMENT, span, trace_boundary
 from adapters.outbound.v2_storage_catalog import V2Column, V2StorageCatalog, V2Table
@@ -51,8 +49,6 @@ __all__ = [
     "UnitWorkload",
     "canonical_records",
     "canonical_unit_records",
-    "merge_batches",
-    "merge_statement",
     "ordered_records",
     "source_records",
     "staged_merge_statement",
@@ -61,7 +57,6 @@ __all__ = [
 ]
 
 _IDENTIFIER = re.compile(r"^[a-z][a-z0-9_]*$")
-_MAX_PARAMETER_LENGTH = 1024
 type PhysicalValue = str | int | float | bool | Decimal | date | datetime | None
 type PhysicalRecord = dict[str, PhysicalValue]
 
@@ -231,70 +226,6 @@ def _athena_type(column_type: str) -> str:
     raise ValueError(f"unsupported generated V2 Athena type {column_type!r}.")
 
 
-def _value(value: PhysicalValue, column: V2Column) -> tuple[str, tuple[str, ...]]:
-    sql_type = _athena_type(column.type)
-    if value is None:
-        if not column.nullable:
-            raise ValueError(f"required V2 column {column.name!r} is null.")
-        return f"CAST(NULL AS {sql_type})", ()
-    if isinstance(value, datetime):
-        if value.tzinfo is None:
-            raise ValueError(f"V2 timestamp {column.name!r} must be timezone-aware.")
-        rendered = value.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S.%f")
-    elif isinstance(value, date):
-        rendered = value.isoformat()
-    elif isinstance(value, bool):
-        rendered = "true" if value else "false"
-    else:
-        rendered = str(value)
-    literal = sql_literal(rendered)
-    if len(literal.encode()) > _MAX_PARAMETER_LENGTH:
-        return f"CAST({literal} AS {sql_type})", ()
-    return f"CAST(? AS {sql_type})", (rendered,)
-
-
-def _ordered_record(table: V2Table, record: PhysicalRecord) -> tuple[PhysicalValue, ...]:
-    names = tuple(column.name for column in table.columns)
-    missing = set(names) - set(record)
-    if missing:
-        raise ValueError(f"{table.name}: physical record is missing {sorted(missing)}.")
-    return tuple(record[name] for name in names)
-
-
-def merge_statement(
-    table: V2Table,
-    records: tuple[PhysicalRecord, ...],
-) -> tuple[str, tuple[str, ...]]:
-    """Compose one insert-only immutable-partition MERGE from generated identifiers."""
-    if not records:
-        raise ValueError(f"{table.name}: immutable materialization requires at least one record.")
-    columns = table.columns
-    names = tuple(column.name for column in columns)
-    for name in names:
-        if not _IDENTIFIER.fullmatch(name):
-            raise ValueError(f"unsafe generated V2 column identifier {name!r}.")
-    parameters: list[str] = []
-    rows: list[str] = []
-    for record in records:
-        expressions: list[str] = []
-        for value, column in zip(_ordered_record(table, record), columns, strict=True):
-            expression, bound = _value(value, column)
-            expressions.append(expression)
-            parameters.extend(bound)
-        rows.append("(" + ", ".join(expressions) + ")")
-    column_list = ", ".join(quoted(name) for name in names)
-    source_columns = ", ".join(quoted(name) for name in names)
-    match = " AND ".join(f"target.{quoted(name)} = incoming.{quoted(name)}" for name in table.grain)
-    inserted = ", ".join(f"incoming.{quoted(name)}" for name in names)
-    sql = (
-        f"MERGE INTO {quoted(table.name)} AS target "  # noqa: S608 - identifiers come from generated catalog
-        f"USING (VALUES {', '.join(rows)}) AS incoming ({source_columns}) "
-        f"ON {match} "
-        f"WHEN NOT MATCHED THEN INSERT ({column_list}) VALUES ({inserted})"
-    )
-    return sql, tuple(parameters)
-
-
 def _grain_sort_value(value: PhysicalValue) -> tuple[int, Decimal | str]:
     """Order one grain value the way Athena's ORDER BY orders the typed column.
 
@@ -330,36 +261,6 @@ def ordered_records(
     if len(set(keys)) != len(keys):
         raise ValueError(f"{table.name}: immutable records repeat generated grain values.")
     return ordered
-
-
-def merge_batches(
-    table: V2Table,
-    records: tuple[PhysicalRecord, ...],
-    fits: StatementFits,
-) -> tuple[tuple[PhysicalRecord, ...], ...]:
-    """Split immutable records into contiguous merges, each within the statement byte bound.
-
-    ``fits`` is the one §11 byte measure (``start_envelope.envelope_fits``); there is no
-    parameter-count bound. A record whose own merge does not fit raises ``ValueError``.
-    """
-    batches: list[tuple[PhysicalRecord, ...]] = []
-    pending: list[PhysicalRecord] = []
-    for record in records:
-        proposed = (*pending, record)
-        within = fits(*merge_statement(table, proposed))
-        if not within and pending:
-            batches.append(tuple(pending))
-            pending = [record]
-            within = fits(*merge_statement(table, tuple(pending)))
-        else:
-            pending.append(record)
-        if not within:
-            raise ValueError(
-                f"{table.name}: one immutable record exceeds the statement byte bound."
-            )
-    if pending:
-        batches.append(tuple(pending))
-    return tuple(batches)
 
 
 def _expected(value: PhysicalValue) -> str | None:
