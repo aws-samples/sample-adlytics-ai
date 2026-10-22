@@ -15,7 +15,6 @@ from adapters.jobs.preset_artifact_publisher.audiences_source import (
     audiences_marketplace_count,
 )
 from adapters.jobs.preset_artifact_publisher.bakeability import (
-    BAKE_RESIDENT_SHARE,
     BAKER_LAMBDA_TIMEOUT_SECONDS,
     BAKER_MEMORY_BYTES,
     BAKER_TIMEOUT_SECONDS,
@@ -41,6 +40,7 @@ from adapters.jobs.preset_artifact_publisher.bakeability import (
     certify_roster_tasks,
     evaluate_bakeability,
     roster_plan_counts,
+    sibling_index_shard_count,
 )
 from adapters.jobs.preset_artifact_publisher.campaign_source import (
     campaign_portfolio_bake_plan_count,
@@ -140,7 +140,8 @@ def test_todays_declared_presets_and_real_bake_batches_pass_the_gate() -> None:
     assert campaign_portfolio_bake_plan_count(ROOT, 30) == 34
     # Up to seven filter siblings per preset, each with its own segments (ADR-127).
     assert CAMPAIGN_MAX_FILTER_SIBLINGS == 7
-    assert MAX_BAKE_BODY_COUNT == 1300
+    # 1,300 pair objects and the one index shard binding their 649 siblings (ADR-145).
+    assert MAX_BAKE_BODY_COUNT == 1301
     assert _STORAGE["campaigns"].maximum_body_bytes < 256_000
 
 
@@ -251,31 +252,36 @@ def test_the_storage_estimate_is_checked_against_the_bakers_own_memory_and_time(
     measured = 34  # Campaigns' 30d batch: 4 waves of 10 at 30 s and the 30 s tail, 150 s.
     budget_ms = BAKER_TIMEOUT_SECONDS * 1_000 - (4 * PER_QUERY_SECONDS + _TAIL_SECONDS) * 1_000
     fitting = budget_ms // PER_OBJECT_WRITE_MS
-    resident = int(BAKER_MEMORY_BYTES * BAKE_RESIDENT_SHARE)
-    fits = BakeStorageEstimate(fitting, 256_000, resident)
+    fits = BakeStorageEstimate(fitting, 256_000, fitting * 256_000)
     assert evaluate_bakeability((page,), {"synthetic": measured}, {"synthetic": fits}) == ()
-    over = BakeStorageEstimate(fitting + 1, 256_001, resident + 1)
+    over = BakeStorageEstimate(fitting + 1, 256_001, (fitting + 1) * 256_001)
     findings = evaluate_bakeability((page,), {"synthetic": measured}, {"synthetic": over})
+    # Bodies stream (ADR-145): what a bake holds is the memory model's, so the only storage
+    # findings are the per-body cap and the writes' time.
     assert [finding.rule for finding in findings] == [
         "artifact-storage-bound",
-        "bake-memory-bound",
         "bake-write-budget",
     ]
     assert "256001" in findings[0].message
-    assert str(resident + 1) in findings[1].message
-    assert str(fitting + 1) in findings[2].message
-    # Campaigns at the estate bound with seven siblings: 1,300 objects, 130 s of writes after
-    # 150 s of measurement, and at most 318.5 MB resident.
-    assert MAX_BAKE_BODY_COUNT == 1300 <= fitting
-    assert _STORAGE["campaigns"].total_bytes <= resident
+    assert str(fitting + 1) in findings[1].message
+    # Campaigns at the estate bound with seven siblings: 1,301 objects, 130.1 s of writes after
+    # 150 s of measurement.
+    assert MAX_BAKE_BODY_COUNT == 1301 <= fitting
     assert MAX_BAKE_TOTAL_BYTES == MAX_BAKE_BODY_COUNT * 256_000
 
 
 def test_the_object_count_follows_each_filters_segments() -> None:
-    """Each filter writes 2 x orderings x its segments; the estate acceptance bakes the same."""
-    # All 1,000, Sponsored 999, then 1, 251, 251, 251 and 246: 64 segments, as baked locally.
-    assert campaign_bake_object_count((1000, 999, 1, 251, 251, 251, 246)) == 1280
-    assert campaign_bake_object_count((61,)) == 40  # the 19 sibling pairs, parent and custody
+    """Each filter writes 2 x orderings x its segments, plus the index shards (ADR-145).
+
+    The estate acceptance bakes the same count.
+    """
+    # All 1,000, Sponsored 999, then 1, 251, 251, 251 and 246: 64 segments, as baked locally,
+    # and the one shard indexing their 639 siblings.
+    assert campaign_bake_object_count((1000, 999, 1, 251, 251, 251, 246)) == 1281
+    # The 19 sibling pairs, the parent and its custody, and one index shard.
+    assert campaign_bake_object_count((61,)) == 41
+    # A shard holds 800 descriptors: 800 siblings need one, 801 two, none none.
+    assert [sibling_index_shard_count(count) for count in (0, 1, 800, 801)] == [0, 1, 1, 2]
     # The closed form bounds every split of the population: one-channel segments sum to under
     # 20 + 5, so the split above (64 segments) is the most a real bake reaches.
     assert campaign_bake_object_count((1000, 999, 1, 251, 251, 251, 246)) < MAX_BAKE_BODY_COUNT
