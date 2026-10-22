@@ -38,7 +38,8 @@ def test_bulk_runner_attests_full_segment_fanout_without_a_wall_clock_assertion(
     assert result.campaign_count == 1_000
     assert result.segment_count == 20
     assert result.sibling_pair_count == 199
-    assert result.body_count == 400
+    # 200 pairs (the parent's and 199 siblings) and the one index shard (ADR-145), as staged.
+    assert result.body_count == 401
     assert 0 < result.maximum_body_bytes <= MAX_PRESET_ARTIFACT_BYTES
     assert result.maximum_body_bytes < result.maximum_served_bytes <= MAX_PRESET_ARTIFACT_BYTES
     # 30d chunks the trend into three windows; Delivery per channel adds clicks and the DSP

@@ -153,7 +153,10 @@ from domain.presentation.page_schemas import (
     TemporalPresetId,
     is_calendar_preset,
 )
-from domain.presentation.preset_artifacts import MAX_PRESET_ARTIFACT_BYTES
+from domain.presentation.preset_artifacts import (
+    MAX_PRESET_ARTIFACT_BYTES,
+    SIBLING_INDEX_SHARD_ENTRIES,
+)
 from domain.presentation.reach import FREQUENCY_DECLARED_PERIODS, OVERLAP_DECLARED_PERIODS
 from domain.presentation.retail_health import RETAIL_HEALTH_MAX_ROWS
 from domain.presentation.retention import ARP_PATH, STANDARD_PATH
@@ -208,6 +211,7 @@ __all__ = [
     "evaluate_bakeability",
     "main",
     "roster_plan_counts",
+    "sibling_index_shard_count",
     "write_allowance_findings",
 ]
 
@@ -250,25 +254,39 @@ CAMPAIGN_MAX_FILTER_SIBLINGS = 2 + CAMPAIGN_GOVERNED_CHANNEL_COUNT
 CAMPAIGN_MAX_FILTER_SEGMENTS = 3 * CAMPAIGN_MAX_SEGMENTS + CAMPAIGN_GOVERNED_CHANNEL_COUNT
 
 
+def sibling_index_shard_count(siblings: int) -> int:
+    """Count the index shards a stage writes for `siblings` sibling pairs (ADR-145)."""
+    return math.ceil(siblings / SIBLING_INDEX_SHARD_ENTRIES)
+
+
+def _with_index(pair_objects: int) -> int:
+    """Pair objects (a parent pair and its sibling pairs) plus the index shards they need."""
+    return pair_objects + sibling_index_shard_count(pair_objects // 2 - 1)
+
+
 def campaign_bake_object_count(filter_populations: tuple[int, ...]) -> int:
     """Count the immutable objects one Campaigns variant writes for its filters' populations.
 
     Each filter writes every ordering's segments as a public body and a private custody; its
     canonical first segment is the filter's own parent (the pointer's body for All channels), so
-    a filter of S segments writes 2 x orderings x S objects. The local estate acceptance holds
-    this count equal to a real seven-sibling bake's.
+    a filter of S segments writes 2 x orderings x S objects. Every pair but the parent's is a
+    sibling, and the stage indexes them in shards of `SIBLING_INDEX_SHARD_ENTRIES` (ADR-145).
+    The local estate acceptance holds this count equal to a real seven-sibling bake's.
     """
-    return sum(
-        2 * CAMPAIGN_ORDERING_COUNT * max(1, math.ceil(count / CAMPAIGN_PORTFOLIO_MAX_ROWS))
-        for count in filter_populations
+    return _with_index(
+        sum(
+            2 * CAMPAIGN_ORDERING_COUNT * max(1, math.ceil(count / CAMPAIGN_PORTFOLIO_MAX_ROWS))
+            for count in filter_populations
+        )
     )
 
 
-MAX_BAKE_BODY_COUNT = 2 * CAMPAIGN_ORDERING_COUNT * CAMPAIGN_MAX_FILTER_SEGMENTS
+MAX_BAKE_BODY_COUNT = _with_index(2 * CAMPAIGN_ORDERING_COUNT * CAMPAIGN_MAX_FILTER_SEGMENTS)
 """The most objects a Campaigns variant writes at the estate bound: the estimate, not the bound."""
 CAMPAIGN_MAX_ENCODED_BODY_ESTIMATE = 245_000
 MAX_BAKE_TOTAL_BYTES = MAX_BAKE_BODY_COUNT * MAX_PRESET_ARTIFACT_BYTES
-RETAIL_HEALTH_BAKE_BODY_COUNT = 2 + 2 * RETAIL_HEALTH_MAX_ROWS
+RETAIL_HEALTH_BAKE_BODY_COUNT = _with_index(2 + 2 * RETAIL_HEALTH_MAX_ROWS)
+"""The parent pair, one child pair per served row, and the index shard binding the children."""
 
 # The envelope a bake's writes are checked against, independent of any page's estimate.
 # Must match the Baker's memorySize in infra/lib/stacks/publisher-stack.ts; a test reads it.
@@ -705,20 +723,8 @@ def evaluate_bakeability(
                     ),
                 )
             )
-        # Until bodies stream (04 §4), a page holds every body it writes at once beside its
-        # measured rows (`resident`, ADR-143), so its encoded bytes keep their own share too.
-        body_share = int(BAKER_MEMORY_BYTES * BAKE_RESIDENT_SHARE)
-        if estimate.total_bytes > body_share:
-            findings.append(
-                BakeabilityFinding(
-                    page.page_id,
-                    "bake-memory-bound",
-                    (
-                        f"{estimate.body_count} bodies of {estimate.total_bytes} bytes exceed "
-                        f"the {body_share}-byte share of the {BAKER_MEMORY_BYTES}-byte baker."
-                    ),
-                )
-            )
+        # Bodies stream (ADR-145): a bake holds the pairs in flight, the memory model's `W` term
+        # (`resident`, ADR-143), never every body it writes, so no all-bodies share is checked.
         # The writes follow measurement in one invocation; an already over-budget batch
         # has its own finding.
         write_ms = estimate.body_count * PER_OBJECT_WRITE_MS
@@ -860,7 +866,7 @@ def main() -> int:
             CAMPAIGN_MAX_ENCODED_BODY_ESTIMATE,
             MAX_BAKE_BODY_COUNT * CAMPAIGN_MAX_ENCODED_BODY_ESTIMATE,
         ),
-        # The parent body and custody, and one child body and custody per displayed row.
+        # The parent body and custody, one child body and custody per displayed row, the index.
         "retail-health": BakeStorageEstimate(
             RETAIL_HEALTH_BAKE_BODY_COUNT,
             MAX_PRESET_ARTIFACT_BYTES,
@@ -921,14 +927,6 @@ def main() -> int:
         print(
             f"  write {page}#{row['variant']}: write_seconds "
             f"{float(BAKE_TASKS['write_seconds'][page]):g} s <= {WRITE_ALLOWANCE_SECONDS:g} s"
-        )
-    # One live variant per task (streamed) is the shape the memory bound certifies; the pooled
-    # shape (every variant of a page resident at once) is reported, never certified.
-    for page_id, estimate in storage.items():
-        variants = sum(1 for key in task_counts if key.split("#", 1)[0] == page_id)
-        print(
-            f"  {page_id}: streamed {estimate.total_bytes} B resident; pooled "
-            f"{variants * estimate.total_bytes} B over {variants} variants (not certified)"
         )
     print(
         f"  campaigns: up to {CAMPAIGN_MAX_FILTER_SIBLINGS} filter siblings per preset, "

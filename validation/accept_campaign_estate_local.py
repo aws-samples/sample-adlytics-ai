@@ -33,6 +33,7 @@ from adapters.jobs.preset_artifact_publisher.campaign_source import (
     RetainedCampaignPresetArtifactSource,
 )
 from adapters.outbound.metric_dictionary import load_catalog
+from adapters.outbound.preset_artifacts import PresetArtifactPersistence
 from domain.presentation.analytical_pages import PresentationDimensionLabel
 from domain.presentation.campaign_attribution import CampaignSelectionCapability
 from domain.presentation.campaign_custody import (
@@ -64,9 +65,22 @@ from domain.presentation.insights import (
 from domain.presentation.next_steps import MAX_ASSISTANT_QUESTION_CHARS, AssistantTarget
 from domain.presentation.preset_artifacts import (
     MAX_PRESET_ARTIFACT_BYTES,
+    ArtifactBodyWriteResult,
+    CustodyManifestWriteResult,
+    PresetArtifactBody,
+    PresetArtifactCustodyManifest,
+    PresetArtifactIndexShardIdentity,
     PresetArtifactPublicationRequest,
+    PresetArtifactSiblingBody,
+    PresetArtifactSiblingCustody,
+    PresetArtifactSiblingCustodyWriteResult,
+    PresetArtifactSiblingDescriptor,
+    PresetArtifactSiblingIdentity,
+    PresetArtifactSiblingWriteResult,
     PresetArtifactVariant,
     canonical_preset_artifact_json,
+    index_shard_descriptors,
+    split_parent_custody,
 )
 from domain.semantics.analytical_resolution import (
     AuthorizedAnalyticalScope,
@@ -128,6 +142,80 @@ class _AcceptanceSource(Protocol):
 
 class _AcceptanceCompiler(Protocol):
     received: list[CampaignArtifactRenderInput]
+
+
+@dataclass
+class _MemoryStores:
+    """In-memory body and custody stores: every object one real stage writes, by key."""
+
+    objects: dict[str, str]
+
+    def write(self, item: Any) -> Any:
+        self.objects[item.key] = item.payload_json
+        kind = (
+            ArtifactBodyWriteResult
+            if isinstance(item, PresetArtifactBody)
+            else CustodyManifestWriteResult
+        )
+        return kind(item.page, item.variant, item.revision, item.key, item.digest, None)
+
+    def write_sibling(self, item: Any) -> Any:
+        self.objects[item.key] = item.payload_json
+        kind = (
+            PresetArtifactSiblingWriteResult
+            if isinstance(item, PresetArtifactSiblingBody)
+            else PresetArtifactSiblingCustodyWriteResult
+        )
+        return kind(
+            item.page, item.variant, item.revision, item.identity, item.key, item.digest, None
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _Staged:
+    """What the real stage wrote for one publication (ADR-145): every object, the parent custody,
+    and the descriptors its sibling index lists."""
+
+    objects: dict[str, str]
+    custody: PresetArtifactCustodyManifest
+    descriptors: dict[object, PresetArtifactSiblingDescriptor]
+
+
+def _stage(request: PresetArtifactPublicationRequest) -> _Staged:
+    """Stage one publication through the real streamed stage into memory; nothing is persisted."""
+    objects: dict[str, str] = {}
+    stores = _MemoryStores(objects)
+    persistence = PresetArtifactPersistence(
+        cast("Any", stores), cast("Any", object()), cast("Any", stores)
+    )
+    staged = persistence.stage(request, remaining_ms=lambda: 900_000, tail_seconds=30.0)
+    if staged.custody is None:
+        raise RuntimeError("bulk campaign parent custody is absent.")
+    body = request.body
+    custody = PresetArtifactCustodyManifest(
+        body.page, body.variant, body.revision, objects[staged.custody.key]
+    )
+    _, index = split_parent_custody(custody)
+    descriptors: dict[object, PresetArtifactSiblingDescriptor] = {}
+    for position, entry in enumerate(index):
+        identity = PresetArtifactIndexShardIdentity(position)
+        shard = PresetArtifactSiblingCustody(
+            body.page,
+            body.variant,
+            body.revision,
+            identity,
+            objects[
+                f"custody/{body.page.value}/{body.variant.value}/{body.revision.value}/"
+                f"{identity.path}.json"
+            ],
+        )
+        descriptors.update(
+            (item.identity, item) for item in index_shard_descriptors(shard, entry)
+        )
+    siblings = (len(objects) - len(index) - 2) // 2
+    if staged.pairs != siblings + len(index) + 1:
+        raise RuntimeError("the stage's write chains disagree with the objects it wrote.")
+    return _Staged(objects, custody, descriptors)
 
 
 _AcceptanceSourceFactory = Callable[
@@ -246,11 +334,11 @@ def _attest_request(  # noqa: PLR0912
     request: PresetArtifactPublicationRequest,
     campaigns: tuple[SyntheticCampaign, ...],
 ) -> tuple[int, int]:
-    """Walk every sibling and return maximum persisted and worst-case served bytes."""
-    if request.custody is None:
-        raise RuntimeError("bulk campaign parent custody is absent.")
+    """Stage and walk every sibling; return maximum persisted and worst-case served bytes."""
+    staged = _stage(request)
     parent = campaign_portfolio_artifact_from_payload(json.loads(request.body.payload_json))
-    manifest = campaign_custody_manifest_from_payload(json.loads(request.custody.payload_json))
+    header, _ = split_parent_custody(staged.custody)
+    manifest = campaign_custody_manifest_from_payload(header)
     segment_count = -(-len(campaigns) // CAMPAIGN_PORTFOLIO_MAX_ROWS)
     if (
         len(parent.rows) != CAMPAIGN_PORTFOLIO_MAX_ROWS
@@ -260,7 +348,7 @@ def _attest_request(  # noqa: PLR0912
         or not custody_rows_align(manifest, tuple(row.signature for row in parent.rows))
     ):
         raise RuntimeError("bulk campaign parent, roster, or custody is incomplete.")
-    descriptors = {item.identity: item for item in manifest.descriptors}
+    descriptors = staged.descriptors
     ordered: dict[str, dict[int, tuple[object, ...]]] = {
         f"{field.value}-{direction}": {}
         for field in CampaignPortfolioSortField
@@ -274,7 +362,7 @@ def _attest_request(  # noqa: PLR0912
     )
     if any(value in request.body.payload_json for value in forbidden):
         raise RuntimeError("bulk campaign parent exposes canonical or source identity.")
-    for public, private in zip(request.sibling_bodies, request.sibling_custody, strict=True):
+    for public, private in request.siblings:
         descriptor = descriptors.get(public.identity)
         if (
             descriptor is None
@@ -283,22 +371,22 @@ def _attest_request(  # noqa: PLR0912
             or descriptor.custody_digest != private.digest
         ):
             raise RuntimeError("bulk campaign sibling descriptor digest binding failed.")
+        identity = cast("PresetArtifactSiblingIdentity", public.identity)
         segment = campaign_portfolio_segment_from_payload(
             json.loads(public.payload_json), parent
         )
         custody = campaign_custody_manifest_from_payload(json.loads(private.payload_json))
         if (
             segment.pagination is None
-            or segment.pagination.segment_index != public.identity.segment_index
+            or segment.pagination.segment_index != identity.segment_index
             or segment.pagination.segment_count != segment_count
             or custody.body_digest != public.digest
-            or custody.descriptors
             or not custody_rows_align(custody, tuple(row.signature for row in segment.rows))
         ):
             raise RuntimeError("bulk campaign sibling or custody is not exact.")
         if any(value in public.payload_json for value in forbidden):
             raise RuntimeError("bulk campaign sibling exposes canonical or source identity.")
-        ordered[public.identity.ordering][public.identity.segment_index] = cast(
+        ordered[identity.ordering][identity.segment_index] = cast(
             "tuple[object, ...]", segment.rows
         )
     expected_identities = len(tuple(CampaignPortfolioSortField)) * 2 * segment_count - 1
@@ -325,13 +413,7 @@ def _attest_request(  # noqa: PLR0912
             )
             if rows != expected:
                 raise RuntimeError("bulk campaign ordering is not deterministic.")
-    bodies = (
-        request.body,
-        request.custody,
-        *request.sibling_bodies,
-        *request.sibling_custody,
-    )
-    persisted_maximum = max(len(item.payload_json.encode()) for item in bodies)
+    persisted_maximum = max(len(item.encode()) for item in staged.objects.values())
     served = replace(
         parent,
         rows=tuple(
@@ -413,7 +495,7 @@ def run(root: Path) -> CampaignEstateAcceptanceResult:
         PresetArtifactVariant("30d"),
     ):
         request = source.publication_for(variant)
-        if request is None or request.custody is None:
+        if request is None or request.custody_header is None:
             raise RuntimeError(f"bulk campaign publication {variant.value} was unavailable.")
         requests.append(request)
     request = requests[-1]
@@ -433,9 +515,7 @@ def run(root: Path) -> CampaignEstateAcceptanceResult:
         campaign_count=len(campaigns),
         segment_count=segment_count,
         sibling_pair_count=expected_pairs,
-        body_count=(
-            2 + len(request.sibling_bodies) + len(request.sibling_custody)
-        ),
+        body_count=len(_stage(request).objects),
         maximum_body_bytes=maximum,
         maximum_served_bytes=maximum_served,
         measurement_plan_count=measurement_plan_count,
@@ -553,7 +633,7 @@ def run_filter_estate(root: Path) -> CampaignFilterEstateResult:  # noqa: PLR091
     traced = source.publication_for(variant)
     _, peak = tracemalloc.get_traced_memory()
     tracemalloc.stop()
-    if request is None or request.custody is None or traced is None:
+    if request is None or request.custody_header is None or traced is None:
         raise RuntimeError("the seven-sibling estate publication was unavailable.")
     if traced.body.digest != request.body.digest:
         raise RuntimeError("the seven-sibling estate bake is not deterministic.")
@@ -573,7 +653,7 @@ def run_filter_estate(root: Path) -> CampaignFilterEstateResult:  # noqa: PLR091
     # Each filter writes every ordering's segments except its canonical first, which is the
     # filter's own parent body, so a filter of S segments has S x orderings - 1 segment siblings.
     pairs: dict[str, int] = dict.fromkeys(offered, 0)
-    for body in request.sibling_bodies:
+    for body, _ in request.siblings:
         identity = cast("Any", body.identity)
         filter_id = identity.filter_id
         if not hasattr(identity, "ordering"):
@@ -596,8 +676,9 @@ def run_filter_estate(root: Path) -> CampaignFilterEstateResult:  # noqa: PLR091
     expected_segments = {key: -(-count // CAMPAIGN_PORTFOLIO_MAX_ROWS) for key, count in expected_population.items()}
     if segments != expected_segments:
         raise RuntimeError(f"segments by filter {segments} differ from {expected_segments}.")
-    objects = (request.body, request.custody, *request.sibling_bodies, *request.sibling_custody)
-    sizes = tuple(len(item.payload_json.encode()) for item in objects)
+    # Every object the real stage writes: the pairs, the index shards, the parent (ADR-145).
+    objects = tuple(_stage(request).objects.values())
+    sizes = tuple(len(item.encode()) for item in objects)
     return CampaignFilterEstateResult(
         campaign_count=len(estate),
         filter_count=len(offered),
