@@ -1592,7 +1592,7 @@ class _RecordingPersistence:
         default_factory=list[PresetArtifactPublicationRequest]
     )
 
-    def publish(self, request: PresetArtifactPublicationRequest) -> None:
+    def publish(self, request: PresetArtifactPublicationRequest, **_deadline: object) -> None:
         self.calls.append(request)
 
 
@@ -1602,7 +1602,7 @@ def _bake_and_persist(products: int) -> tuple[_RecordingPersistence, int]:
     persistence = _RecordingPersistence()
     result = RetailHealthPresetArtifactBaker(source).bake(BakeIntent("retail-health", "7d"))
     assert isinstance(result, BakePublication)
-    persistence.publish(result.request)
+    persistence.publish(result.request, remaining_ms=lambda: 600_000, tail_seconds=30.0)
     return persistence, len(result.request.body.payload_json.encode())
 
 

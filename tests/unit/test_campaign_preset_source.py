@@ -569,7 +569,9 @@ def test_persistence_writes_body_and_custody_before_the_conditional_pointer() ->
         RecordingCustody(events),
     )
 
-    result = persistence.publish(_custody_request())
+    result = persistence.publish(
+        _custody_request(), remaining_ms=lambda: 600_000, tail_seconds=30.0
+    )
 
     assert events == ["body", "custody", "pointer"]
     assert result.custody is not None
@@ -581,7 +583,7 @@ def test_a_custody_bearing_publication_without_a_custody_store_fails_closed() ->
     persistence = PresetArtifactPersistence(RecordingBodies(events), RecordingPointers(events))
 
     with pytest.raises(InvariantError, match="custody store"):
-        persistence.publish(_custody_request())
+        persistence.publish(_custody_request(), remaining_ms=lambda: 600_000, tail_seconds=30.0)
 
     assert events == ["body"]
 
@@ -650,7 +652,7 @@ def test_persistence_writes_every_sibling_pair_before_parent_and_pointer() -> No
         RecordingBodies(events), RecordingPointers(events), RecordingCustody(events)
     )
 
-    persistence.publish(request)
+    persistence.publish(request, remaining_ms=lambda: 600_000, tail_seconds=30.0)
 
     assert events[-3:] == ["body", "custody", "pointer"]
     assert all(event.startswith("sibling-") for event in events[:-3])
@@ -681,7 +683,7 @@ def test_partial_sibling_failure_never_writes_parent_or_advances_pointer() -> No
     )
 
     with pytest.raises(RuntimeError, match="partial sibling write"):
-        persistence.publish(request)
+        persistence.publish(request, remaining_ms=lambda: 600_000, tail_seconds=30.0)
 
     assert "body" not in events
     assert "custody" not in events

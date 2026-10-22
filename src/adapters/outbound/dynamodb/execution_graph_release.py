@@ -100,6 +100,7 @@ from domain.operations.execution_graph_release import (
     DurableBakeSourceManifest,
     DurableBakeSourceManifestInvalidError,
     LineageHead,
+    PinRefusal,
     PrecomputeInputV1,
     ReservationSet,
     ServingBinding,
@@ -270,6 +271,18 @@ def _req_int(item: Item, name: str) -> int:
     if value is None:
         raise GraphStoreUnavailableError(f"a release item is missing {name}.")
     return value
+
+
+def _pin_refusal(item: Item) -> PinRefusal | None:
+    """Read a pin item's optional refusal (ADR-142); an absent attribute is None."""
+    reason, attempts = _text(item, "pin_refusal"), _int(item, "pin_refusal_attempts")
+    if reason is None and attempts is None:
+        return None
+    if reason is None or attempts is None:
+        raise DurableBakeSourceManifestInvalidError(
+            "a pin refusal is missing its reason or attempts"
+        )
+    return PinRefusal(attempts, reason)
 
 
 def _number_list(item: Item, name: str) -> tuple[int, ...]:
@@ -2623,6 +2636,15 @@ class DynamoGraphReleaseStore(DynamoGraphDispatchStore):
                 "request_digests": {"L": [write_text(item) for item in task.request_digests]},
                 "plan_count": write_int(task.plan_count),
                 "source_digest": write_text(task.digest),
+                # ADR-142: optional, written only when set, so a stored pin re-hashes unchanged.
+                **(
+                    {}
+                    if task.pin_refusal is None
+                    else {
+                        "pin_refusal": write_text(task.pin_refusal.reason),
+                        "pin_refusal_attempts": write_int(task.pin_refusal.attempts),
+                    }
+                ),
             }
             for task, blob in zip(manifest.tasks, request.reads, strict=True)
         ]
@@ -2710,6 +2732,7 @@ class DynamoGraphReleaseStore(DynamoGraphDispatchStore):
                 _req_text(sources[key], "reads_digest"),
                 _string_list(sources[key], "request_digests"),
                 _req_int(sources[key], "plan_count"),
+                _pin_refusal(sources[key]),
             )
             for key in keys
         )

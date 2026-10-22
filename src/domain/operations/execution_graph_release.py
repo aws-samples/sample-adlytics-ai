@@ -113,6 +113,7 @@ __all__ = [
     "LineageHead",
     "LineageRepairUnsupportedError",
     "LineageStep",
+    "PinRefusal",
     "PrecomputeInputEntry",
     "PrecomputeInputV1",
     "ReleaseRefusedError",
@@ -1296,12 +1297,36 @@ class BakeRoster:
 
 
 @dataclass(frozen=True, slots=True)
+class PinRefusal:
+    """Why the fan-out pinned a row with nothing to replay (ADR-142): a closed reason.
+
+    Only `dependency_unavailable` today: the row's plan pass kept failing on a dependency
+    through every one of its `attempts`, so its task settles the page's designed absence.
+    """
+
+    attempts: int
+    reason: str = "dependency_unavailable"
+
+    def __post_init__(self) -> None:
+        if self.reason != "dependency_unavailable":
+            raise DurableBakeSourceManifestInvalidError("a pin refusal's reason is closed")
+        if (
+            isinstance(self.attempts, bool)  # pyright: ignore[reportUnnecessaryIsInstance]
+            or not isinstance(self.attempts, int)  # pyright: ignore[reportUnnecessaryIsInstance]
+            or not 1 <= self.attempts < 2**31
+        ):
+            raise DurableBakeSourceManifestInvalidError("a pin refusal made at least one attempt")
+
+
+@dataclass(frozen=True, slots=True)
 class BakeTaskSource:
     """One roster task's pinned source slice (DB21, S5).
 
     `reads_digest` covers every exact publication read the task's source made at fan-out;
     `request_digests` are its ordered complete-bound query requests, and `plan_count` their
-    distinct count after exact fan-in (4.4) - the true post-fan-in plan count.
+    distinct count after exact fan-in (4.4) - the true post-fan-in plan count. `pin_refusal`,
+    when set (ADR-142), means the row pinned nothing to replay: zero requests, by construction.
+    It enters the digest only when set, so a slice without one hashes as before it existed.
     """
 
     page: str
@@ -1309,6 +1334,7 @@ class BakeTaskSource:
     reads_digest: str
     request_digests: tuple[str, ...]
     plan_count: int
+    pin_refusal: PinRefusal | None = None
 
     def __post_init__(self) -> None:
         _require_digest(self.reads_digest, "reads_digest")
@@ -1322,6 +1348,8 @@ class BakeTaskSource:
             or (self.plan_count == 0) != (not self.request_digests)
         ):
             raise DurableBakeSourceManifestInvalidError("a plan count disagrees with its requests")
+        if self.pin_refusal is not None and (self.plan_count != 0 or self.request_digests):
+            raise DurableBakeSourceManifestInvalidError("a refused pin carries no requests")
 
     @property
     def key(self) -> str:
@@ -1339,6 +1367,12 @@ class BakeTaskSource:
                 self.reads_digest,
                 list(self.request_digests),
                 self.plan_count,
+                # Set-only terms: a slice without a refusal hashes exactly as before (round-2 N5).
+                *(
+                    ()
+                    if self.pin_refusal is None
+                    else (self.pin_refusal.reason, self.pin_refusal.attempts)
+                ),
             ],
         )
 

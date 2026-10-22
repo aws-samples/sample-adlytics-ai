@@ -321,7 +321,9 @@ class _Baker:
 class _Persistence:
     outcome: PresetArtifactPointerAdvanceOutcome
 
-    def publish(self, request: PresetArtifactPublicationRequest) -> PresetArtifactPublicationResult:
+    def publish(
+        self, request: PresetArtifactPublicationRequest, **_deadline: object
+    ) -> PresetArtifactPublicationResult:
         body = request.body
         return PresetArtifactPublicationResult(
             ArtifactBodyWriteResult(

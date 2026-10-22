@@ -380,7 +380,7 @@ def test_a_stage_call_traces_each_body_custody_chain_with_its_size(
     )
 
     with correlated("run-1", "task-1", "cohort-1"):
-        store.stage(request)
+        store.stage(request, remaining_ms=lambda: 600_000, tail_seconds=30.0)
 
     (chain,) = spans.named("artifact.write")
     assert chain == {
@@ -417,7 +417,9 @@ def test_a_legacy_artifact_write_outside_a_cohort_writes_and_records_no_cohort_f
     )
 
     store.stage(
-        PresetArtifactPublicationRequest(body, PresetArtifactPointerAdvanceRequest(_pointer(body)))
+        PresetArtifactPublicationRequest(body, PresetArtifactPointerAdvanceRequest(_pointer(body))),
+        remaining_ms=lambda: 600_000,
+        tail_seconds=30.0,
     )
 
     (chain,) = spans.named("artifact.write")

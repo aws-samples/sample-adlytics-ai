@@ -17,7 +17,8 @@ from execution_graph_release_support import (
     release_store,
 )
 from graph_bake_v3_support import Bake, current_identity, final_transaction, roster
-from graph_consumer_support import precompute_contributed, sqs_record
+from graph_consumer_support import expire_claim, precompute_contributed, sqs_record
+from refusal_telemetry_support import LOGGER, Telemetry, capture
 
 from adapters.jobs.execution_graph.post_grant_consumer import ConsumeResult
 from adapters.jobs.insight_precompute.graph_precompute import PRECOMPUTE_CLAIM_LEASE
@@ -29,27 +30,43 @@ from adapters.jobs.preset_artifact_publisher.graph_bake import (
     PRECOMPUTE_ARMED,
     task_node_name,
 )
+from adapters.jobs.preset_artifact_publisher.page_bake import ProcessBakeLedger
 from adapters.jobs.preset_artifact_publisher.transport import BakeDelivery, parse_bake_v3_body
+from adapters.outbound.athena.execution import QUERY_TIMED_OUT
 from adapters.outbound.dynamodb import execution_graph_release as release_adapter
 from adapters.outbound.dynamodb.execution_graph import due_shard
+from adapters.outbound.dynamodb.execution_graph_release import DynamoGraphReleaseStore
 from adapters.outbound.dynamodb.graph_transactions import Member
+from adapters.outbound.telemetry.reporting import LogSeverity
+from domain.operations.bake_refusals import (
+    IsolatedRefusal,
+    IsolatedRefusalReason,
+    RefusalScope,
+)
 from domain.operations.bake_scheduling import (
     BakeTaskLoad,
     LanePlan,
     task_seconds,
     two_lane_partition,
 )
-from domain.operations.execution_graph_dispatch import GraphGuardError, NodeState
+from domain.operations.execution_graph_dispatch import (
+    CLAIM_LEASE_STALE,
+    GraphGuardError,
+    NodeState,
+)
 from domain.operations.execution_graph_release import (
+    BAKE_EXECUTIONS_OVER_CERTIFIED_BOUND,
     BAKE_PLAN_COUNT_MISMATCH,
     BakeEffectKind,
     BakeRoster,
+    BakeRosterRow,
     binding_authorizes_serving,
     final_transaction_member_count,
 )
 from domain.operations.generated_execution_graphs import BAKE_TASKS, ROUTES
 from domain.presentation.preset_artifacts import PresetArtifactBodyCeilingError
 from domain.shared_kernel.errors import DependencyError, DomainError, ErrorCode, InvariantError
+from ports.outbound.execution_graph_dispatch import GraphStoreUnavailableError
 from ports.outbound.execution_graph_release import BakeFinalizeOutcome
 
 pytestmark = [pytest.mark.unit, pytest.mark.covers("ADR-075")]
@@ -270,21 +287,43 @@ def test_d18_an_over_cap_body_is_a_final_task_failure_and_abandons_finalization(
     assert bake.tables.pointer_writes() == []
 
 
-def test_a_dependency_failure_retries_and_the_final_receive_is_retry_exhausted() -> None:
+def test_a_dependency_failure_retries_and_the_final_receive_is_the_pages_absence() -> None:
+    """ADR-142 §3.3 step 3: the page's own dependency on its final receive is designed absence."""
     bake = Bake(roster=roster(1))
     run = bake.granted()
     bake.fan_out(run)
     bake.dispatch(run)
     (key,) = bake.roster.keys
     bake.queries.fail[key] = DependencyError(ErrorCode("FICTIONAL", 1), "athena throttled")
-
     retried = bake.task(run, key, receive_count=1)
-    claim = bake.tables.items[
-        (f"EXEC_CLAIM#{bake.node(run, task_node_name(key)).node_id}", "CLAIM")
+    expire_claim(bake.tables, bake.node(run, task_node_name(key)))
+    final = bake.task(run, key, receive_count=3)
+    assert (retried.acknowledge, retried.node_state) == (False, NodeState.CLAIMED)
+    assert (final.outcome, final.node_state) == ("graph_bake_task_unavailable", NodeState.SUCCEEDED)
+    _effect, extra = graph_bake.read_task_effect(bake.node(run, task_node_name(key)))
+    assert extra["isolated_refusals"] == [
+        {
+            "scope": "page",
+            "reason": "dependency_unavailable",
+            "refusal_class": "dependency",
+            "count": 1,
+            "context": {"error_code": "ADLY-FICTIONAL-0001"},
+        }
     ]
-    claim["lease_expires_at"] = {"S": "2000-01-01T00:00:00+00:00"}
-    exhausted = bake.task(run, key, receive_count=3)
 
+
+def test_control_a_pin_read_dependency_on_the_final_receive_is_still_retry_exhausted() -> None:
+    """Outside the page's work (§3.3 step 6): the task's pin read still settles FAILED."""
+    bake = Bake(roster=roster(1))
+    run = bake.granted()
+    bake.fan_out(run)
+    bake.dispatch(run)
+    (key,) = bake.roster.keys
+    bake.tables.fail_query = "{'S': 'BAKE_'}"  # the task's `read_durable_bake_sources`
+    retried = bake.task(run, key, receive_count=1)
+    expire_claim(bake.tables, bake.node(run, task_node_name(key)))
+    exhausted = bake.task(run, key, receive_count=3)
+    bake.tables.fail_query = None
     assert (retried.acknowledge, retried.node_state) == (False, NodeState.CLAIMED)
     assert exhausted.node_state is NodeState.FAILED
     unit = bake.run_item(run)["conflict_unit"]["S"]
@@ -1480,17 +1519,20 @@ def test_h2_a_pin_refused_row_pins_zero_requests_and_its_task_re_refuses_with_ze
     assert bake.queries.calls == [control] * 2
 
 
-def test_h2_control_a_pin_time_dependency_error_re_raises_and_pins_nothing() -> None:
+def test_h2_control_a_pin_time_dependency_error_is_retried_then_pins_the_row_refused() -> None:
+    """ADR-142 §3.3: a row's throttle no longer withholds the cohort (test_graph_bake_pin)."""
     bake = Bake(roster=roster(2))
     run = bake.granted()
-    bake.sources.prefetch_raises[bake.roster.keys[1]] = DependencyError(
+    refused, control = bake.roster.keys[1], bake.roster.keys[0]
+    bake.sources.prefetch_raises[refused] = DependencyError(
         ErrorCode("FICTIONAL", 32), "a throttled CURRENT read"
     )
-
     result = bake.fan_out(run)
-
-    assert (result.acknowledge, result.node_state) == (False, NodeState.CLAIMED)
-    assert not any(sk == "BAKE_PIN" for _pk, sk in bake.tables.items)
+    assert (result.acknowledge, result.node_state) == (True, NodeState.SUCCEEDED)
+    pin = release_store(bake.tables).read_durable_bake_sources(run)
+    assert pin is not None
+    assert pin.manifest.task(refused).pin_refusal is not None
+    assert pin.manifest.task(control).pin_refusal is None
 
 
 def test_h2_replay_of_87067199_a_bake_pass_plan_refusal_pins_siblings_and_redelivery_adopts() -> (
@@ -1706,3 +1748,418 @@ def test_h5d_an_authorizing_binding_is_never_abandoned_and_the_receive_retries(o
     assert bake.run_item(run)["state"]["S"] == "GRANTED"
     (line,) = signals.lines("abandon_refused")
     assert (line["cause"], line["reason"]) == ("finalize_error", "authorizing_binding")
+
+
+# --- isolation on the graph entry (ADR-142, design 02 §3.3, §9) ----------------------------
+
+
+def _isolating(
+    monkeypatch: pytest.MonkeyPatch, rows: BakeRoster | None = None
+) -> tuple[Bake, Telemetry]:
+    """Return a bake world whose one emitter is captured: spans, lines and datapoints."""
+    telemetry = capture(monkeypatch)
+    bake = Bake(roster=rows or roster(2))
+    bake.runtime.logger = LOGGER
+    bake.runtime.refusal_metric = telemetry.metric
+    bake.runtime.over_budget_metric = telemetry.budget
+    return bake, telemetry
+
+
+def _ran(bake: Bake) -> str:
+    run = bake.granted()
+    assert bake.fan_out(run).node_state is NodeState.SUCCEEDED
+    bake.dispatch(run)
+    return run
+
+
+def _stored(bake: Bake, run: str, key: str) -> dict[str, object]:
+    _effect, extra = graph_bake.read_task_effect(bake.node(run, task_node_name(key)))
+    return extra
+
+
+_ROWS_OVER = IsolatedRefusal(
+    IsolatedRefusalReason.ROWS_OVER_CEILING, RefusalScope.PAGE, rows_read=10_001, max_rows=10_000
+)
+
+
+def _history_gaps(count: int) -> tuple[IsolatedRefusal, ...]:
+    return tuple(
+        IsolatedRefusal(
+            IsolatedRefusalReason.HISTORY_GAP, RefusalScope.ITEM, section="campaign-audiences"
+        )
+        for _ in range(count)
+    )
+
+
+def test_a_page_refusal_settles_unavailable_and_its_sibling_is_written(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bake, telemetry = _isolating(monkeypatch)
+    run = _ran(bake)
+    refused, sibling = bake.roster.keys
+    bake.sources.render_raises[refused] = _ROWS_OVER
+    result = bake.task(run, refused)
+    assert (result.outcome, result.node_state) == (
+        "graph_bake_task_unavailable",
+        NodeState.SUCCEEDED,
+    )
+    assert bake.task(run, sibling).outcome == "graph_bake_task_written"
+    assert telemetry.triples() == [("page", "rows_over_ceiling", 1)]
+    assert telemetry.datapoints == [("limit", 1)]
+    (line,) = telemetry.refusal_lines()
+    assert set(line.details) == {
+        "entry",
+        "run_id",
+        "task_id",
+        "page",
+        "variant",
+        "scope",
+        "refusal_class",
+        "count",
+        "replayed",
+        "rows_read",
+        "max_rows",
+    }
+    assert line.details["task_id"] == bake.node(run, task_node_name(refused)).node_id
+
+
+def test_item_refusals_publish_the_body_and_the_plan_pass_notes_are_discarded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bake, telemetry = _isolating(monkeypatch, roster(1, page="audiences"))
+    (key,) = bake.roster.keys
+    # The source notes on every bake call: the fan-out's pass, the task's plan replay and its
+    # render; only the render's are collected.
+    bake.sources.notes[key] = _history_gaps(3)
+    run = _ran(bake)
+    assert bake.task(run, key).outcome == "graph_bake_task_written"
+    assert telemetry.triples() == [("item", "history_gap", 3)]
+    assert _stored(bake, run, key)["isolated_refusals"] == [
+        {
+            "scope": "item",
+            "reason": "history_gap",
+            "refusal_class": "data",
+            "count": 3,
+            "context": {},
+        }
+    ]
+
+
+@pytest.mark.parametrize("where", ["pin", "render"])
+def test_one_refusal_is_one_emission_across_pin_and_task(
+    monkeypatch: pytest.MonkeyPatch, where: str
+) -> None:
+    """Round-1 H4: the pin only logs; the task is the one emission site (paired: render only)."""
+    bake, telemetry = _isolating(monkeypatch)
+    refused, _ = bake.roster.keys
+    untyped = DomainError(ErrorCode("FICTIONAL", 61), "a suppressed read")
+    if where == "pin":
+        bake.sources.raises[refused] = untyped
+    else:
+        bake.sources.render_raises[refused] = untyped
+    run = _ran(bake)
+    assert telemetry.spans == []  # nothing from the fan-out
+    assert bake.task(run, refused).outcome == "graph_bake_task_unavailable"
+    # Round-1 H5: an untyped DomainError is source_refused, one span, line and datapoint.
+    assert telemetry.triples() == [("page", "source_refused", 1)]
+    assert telemetry.datapoints == [("data", 1)] and len(telemetry.refusal_lines()) == 1
+    assert telemetry.refusal_lines()[0].details["error_code"] == "ADLY-FICTIONAL-0061"
+
+
+def test_a_bake_wait_timeout_settles_unavailable_on_receive_1_and_another_policy_retries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bake, telemetry = _isolating(monkeypatch)
+    run = _ran(bake)
+    timed_out, control = bake.roster.keys
+    bake.queries.fail[timed_out] = DependencyError(
+        QUERY_TIMED_OUT,
+        "slow",
+        context={
+            "wait_policy": "bake_invocation",
+            "waited_seconds": 790.0,
+            "wait_limit_seconds": 790.0,
+        },
+    )
+    result = bake.task(run, timed_out)
+    assert (result.acknowledge, result.outcome) == (True, "graph_bake_task_unavailable")
+    assert telemetry.triples() == [("page", "statement_time_over_invocation", 1)]
+    # Paired: a timeout under another wait policy is retried, as any dependency.
+    bake.queries.fail[control] = DependencyError(
+        QUERY_TIMED_OUT, "slow", context={"wait_policy": "interactive"}
+    )
+    retried = bake.task(run, control)
+    assert (retried.acknowledge, retried.node_state) == (False, NodeState.CLAIMED)
+    assert len(telemetry.spans) == 1
+
+
+def test_a_retryable_or_claim_lost_receive_emits_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bake, telemetry = _isolating(monkeypatch)
+    run = _ran(bake)
+    key, other = bake.roster.keys
+    bake.sources.notes[key] = _history_gaps(1)
+    bake.queries.fail[key] = DependencyError(ErrorCode("FICTIONAL", 62), "throttled")
+    assert bake.task(run, key).outcome == "graph_bake_task_retryable"
+
+    def stale(_store: Any, _request: Any) -> None:
+        raise GraphGuardError(CLAIM_LEASE_STALE)
+
+    monkeypatch.setattr(DynamoGraphReleaseStore, "settle_node", stale)
+    assert bake.task(run, other).outcome == "graph_claim_lost"
+    assert telemetry.spans == [] and telemetry.datapoints == []
+
+
+def test_h1a_a_retryable_stage_error_emits_nothing_and_the_settling_redelivery_emits_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bake, telemetry = _isolating(monkeypatch, roster(1, page="audiences"))
+    (key,) = bake.roster.keys
+    bake.sources.notes[key] = _history_gaps(3)
+    run = _ran(bake)
+    original = bake.stage.stage
+    failures: list[int] = []
+
+    def flaky(request: Any, **window: Any) -> Any:
+        if not failures:
+            failures.append(1)
+            raise DependencyError(ErrorCode("FICTIONAL", 63), "s3 throttled")
+        return original(request, **window)
+
+    monkeypatch.setattr(bake.stage, "stage", flaky)
+    assert bake.task(run, key).outcome == "graph_bake_task_retryable"
+    assert telemetry.spans == []
+    expire_claim(bake.tables, bake.node(run, task_node_name(key)))
+    assert bake.task(run, key, receive_count=2).outcome == "graph_bake_task_written"
+    assert telemetry.triples() == [("item", "history_gap", 3)]
+
+
+def test_h1b_collected_item_refusals_then_over_count_settle_failed_and_emit_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rows = BakeRoster((BakeRosterRow("audiences", "1d", 240, 16.6, 123, 1),))
+    bake, telemetry = _isolating(monkeypatch, rows)
+    (key,) = bake.roster.keys
+    bake.sources.notes[key] = _history_gaps(3)
+    run = _ran(bake)  # the harness render runs two distinct requests over a bound of one
+    failed = bake.task(run, key)
+    assert (failed.node_state, failed.failure_reason) == (
+        NodeState.FAILED,
+        BAKE_EXECUTIONS_OVER_CERTIFIED_BOUND,
+    )
+    assert telemetry.spans == [] and telemetry.datapoints == []
+
+
+def _replay_world(
+    monkeypatch: pytest.MonkeyPatch, *, notes: bool
+) -> tuple[Bake, Telemetry, str, str]:
+    """Settle one task whose settle response is lost: the write lands, then it raises."""
+    bake, telemetry = _isolating(monkeypatch, roster(1, page="audiences"))
+    (key,) = bake.roster.keys
+    if notes:
+        bake.sources.notes[key] = _history_gaps(2)
+    run = _ran(bake)
+    original = DynamoGraphReleaseStore.settle_node
+
+    def lands_then_raises(store: Any, request: Any) -> None:
+        original(store, request)
+        raise GraphStoreUnavailableError("injected lost settle response")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(DynamoGraphReleaseStore, "settle_node", lands_then_raises)
+        with pytest.raises(GraphStoreUnavailableError):
+            bake.task(run, key)
+    assert bake.node(run, task_node_name(key)).state is NodeState.SUCCEEDED
+    assert telemetry.spans == []  # a settle that raised emits nothing
+    return bake, telemetry, run, key
+
+
+def test_m1_a_lost_settlement_is_replayed_once_at_the_claim_decision(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bake, telemetry, run, key = _replay_world(monkeypatch, notes=True)
+    replay = bake.task(run, key, receive_count=2)
+    assert (replay.acknowledge, replay.outcome) == (True, "graph_already_settled")
+    assert telemetry.triples() == [("item", "history_gap", 2)]
+    assert all(item["replayed"] is True for item in telemetry.spans)
+    assert telemetry.refusal_lines()[0].details["replayed"] is True
+    assert telemetry.datapoints == [("data", 2)]
+    # Paired: a stored SUCCEEDED node with no groups replays nothing.
+    quiet, quiet_telemetry, quiet_run, quiet_key = _replay_world(monkeypatch, notes=False)
+    assert quiet.task(quiet_run, quiet_key, receive_count=2).outcome == "graph_already_settled"
+    assert quiet_telemetry.spans == []
+
+
+def test_m1_a_settled_node_found_after_the_claim_is_replayed_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bake, telemetry, run, key = _replay_world(monkeypatch, notes=True)
+
+    # The claim races the settlement: it is granted, then the node reads settled.
+    def granted(_ports: Any, _delivery: Any) -> tuple[object, ConsumeResult]:
+        return object(), ConsumeResult(True, "claimed")
+
+    monkeypatch.setattr(graph_bake, "_claim", granted)
+    replay = bake.task(run, key, receive_count=2)
+    assert (replay.outcome, replay.node_state) == ("graph_already_settled", NodeState.SUCCEEDED)
+    assert telemetry.triples() == [("item", "history_gap", 2)]
+    assert telemetry.spans[0]["replayed"] is True
+
+
+def test_the_settlement_stores_its_groups_without_changing_its_digest(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bake, _telemetry = _isolating(monkeypatch, roster(1, page="audiences"))
+    (key,) = bake.roster.keys
+    bake.sources.notes[key] = _history_gaps(1)
+    run = _ran(bake)
+    bake.task(run, key)
+    node = bake.node(run, task_node_name(key))
+    effect, extra = graph_bake.read_task_effect(node)  # still parses
+    assert effect.effect_digest == node.effect_digest
+    assert set(extra) == {
+        "schema_version",
+        "node",
+        "effect",
+        "pointer",
+        "isolated_refusals",
+        "over_budget",
+    }
+    assert extra["over_budget"] is None
+    # The digest covers the effect only: the same effect without the stored groups re-hashes.
+    bare = graph_bake.task_effect_record(effect, {"pointer": extra["pointer"]})
+    assert graph_bake.read_task_effect(replace(node, effect_record=bare))[0] == effect
+
+
+def test_a_stored_list_that_does_not_validate_is_reported_and_acknowledged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bake, telemetry, run, key = _replay_world(monkeypatch, notes=True)
+    node = bake.node(run, task_node_name(key))
+    parsed = json.loads(cast("str", node.effect_record))
+    parsed["isolated_refusals"][0]["context"] = {"campaign_id": "fictional"}
+    (item,) = [
+        stored
+        for (pk, _sk), stored in bake.tables.items.items()
+        if pk == f"RUN#{run}" and stored.get("effect_record", {}).get("S") == node.effect_record
+    ]
+    item["effect_record"] = {"S": json.dumps(parsed, sort_keys=True, separators=(",", ":"))}
+    replay = bake.task(run, key, receive_count=2)
+    assert (replay.acknowledge, replay.outcome) == (True, "graph_already_settled")
+    assert bake.invariants == ["STORED_REFUSAL_INVALID"]
+    assert telemetry.spans == []
+
+
+def test_a_node_read_that_raises_on_replay_is_a_batch_item_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bake, _telemetry, run, key = _replay_world(monkeypatch, notes=True)
+    original = graph_bake._node  # pyright: ignore[reportPrivateUsage]
+    calls: list[int] = []
+
+    def failing(store: Any, run_id: str, node_id: str) -> Any:
+        del store, run_id, node_id
+        calls.append(1)
+        raise GraphStoreUnavailableError("injected node read failure")
+
+    monkeypatch.setattr(graph_bake, "_node", failing)
+    with pytest.raises(GraphStoreUnavailableError):
+        bake.task(run, key, receive_count=2)
+    assert calls == [1]
+    monkeypatch.setattr(graph_bake, "_node", original)
+
+
+def test_the_stage_write_deadline_settles_bodies_over_invocation_and_moves_no_pointer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bake, telemetry = _isolating(monkeypatch)
+    run = _ran(bake)
+    expired, control = bake.roster.keys
+
+    def deadline(request: Any, *, remaining_ms: Any, tail_seconds: float) -> Any:
+        del request, remaining_ms, tail_seconds
+        raise IsolatedRefusal(
+            IsolatedRefusalReason.BODIES_OVER_INVOCATION, RefusalScope.PAGE, written=3, bodies=9
+        )
+
+    original = bake.stage.stage
+
+    def stage(request: Any, *, remaining_ms: Any, tail_seconds: float) -> Any:
+        if request.body.variant.value == expired.split("#")[1]:
+            return deadline(request, remaining_ms=remaining_ms, tail_seconds=tail_seconds)
+        return original(request, remaining_ms=remaining_ms, tail_seconds=tail_seconds)
+
+    monkeypatch.setattr(bake.stage, "stage", stage)
+    result = bake.task(run, expired)
+    assert result.outcome == "graph_bake_task_unavailable"
+    effect, extra = graph_bake.read_task_effect(bake.node(run, task_node_name(expired)))
+    assert (effect.effect_kind, extra["pointer"]) == (BakeEffectKind.UNAVAILABLE, None)
+    (line,) = telemetry.refusal_lines()
+    assert (line.outcome, line.details["written"], line.details["bodies"]) == (
+        "bodies_over_invocation",
+        3,
+        9,
+    )
+    # Paired: a stage that finishes before its deadline publishes, with the window it was given.
+    assert bake.task(run, control).outcome == "graph_bake_task_written"
+    assert bake.stage.calls[-1] == (600_000, 30.0)
+
+
+def test_over_budget_reports_once_on_the_settling_receive_and_leaves_the_effect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rows = BakeRoster((BakeRosterRow("campaigns", "1d", 1e-9, 16.6, 123, 26),))
+    bake, telemetry = _isolating(monkeypatch, rows)
+    (key,) = bake.roster.keys
+    run = _ran(bake)
+    assert bake.task(run, key).outcome == "graph_bake_task_written"
+    assert telemetry.over_budget == [1]
+    (line,) = telemetry.budget_lines()
+    assert line.details["budget_seconds"] == 1e-9 and line.details["replayed"] is False
+    stored = _stored(bake, run, key)["over_budget"]
+    assert isinstance(stored, dict) and set(cast("dict[str, object]", stored)) == {
+        "seconds",
+        "budget_seconds",
+    }
+    # Paired: a task inside its budget reports nothing.
+    within, quiet = _isolating(monkeypatch)
+    within_run = _ran(within)
+    within.task(within_run, within.roster.keys[0])
+    assert (
+        quiet.over_budget == []
+        and _stored(within, within_run, within.roster.keys[0])["over_budget"] is None
+    )
+
+
+def test_the_task_summary_carries_the_memory_and_process_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bake, _telemetry = _isolating(monkeypatch)
+    bake.runtime.process = ProcessBakeLedger(peak=iter([100.0, 140.0, 150.0]).__next__)
+    lines: list[tuple[str, dict[str, object]]] = []
+    original = bake.runtime.log
+
+    def log(phase: str, outcome: str, severity: Any = LogSeverity.INFO, **details: object) -> None:
+        lines.append((phase, details))
+        original(phase, outcome, severity, **details)
+
+    monkeypatch.setattr(bake.runtime, "log", log)
+    run = _ran(bake)
+    bake.task(run, bake.roster.keys[0])
+    (summary,) = [details for phase, details in lines if phase == "task_summary"]
+    assert {
+        key: summary[key]
+        for key in (
+            "rss_before_mb",
+            "process_baseline_mb",
+            "process_bake_ordinal",
+            "memory_peak_mb",
+        )
+    } == {
+        "rss_before_mb": 100.0,
+        "process_baseline_mb": 100.0,
+        "process_bake_ordinal": 1,
+        "memory_peak_mb": 140.0,
+    }
+    assert isinstance(summary["process_id"], str)

@@ -128,6 +128,11 @@ from adapters.outbound.dynamodb.semantic_state import (
     FoldOutcome,
 )
 from adapters.outbound.telemetry.reporting import Report
+from domain.operations.bake_refusals import (
+    IsolatedRefusal,
+    IsolatedRefusalReason,
+    RefusalScope,
+)
 from domain.operations.execution_graph import AuthorityMode
 from domain.operations.execution_graph_dispatch import ArmScope, NodeState
 from domain.operations.execution_graph_release import (
@@ -679,12 +684,16 @@ def test_a_task_exhausted_on_its_final_receive_settles_withheld_and_keeps_bound_
     assert chain.fan_out(g2).node_state is NodeState.SUCCEEDED
     chain.dispatch()
     failing = key(CAMPAIGNS_7D)
-    chain.lake.queries.fail[failing] = DependencyError(ErrorCode("FICTIONAL", 3), "throttled")
+    # The task's pin read is outside its page's work (ADR-142 §3.3 step 6), so its dependency
+    # failure is still retried, then FAILED on the final receive; a page's own dependency on
+    # the final receive is that page's designed absence instead (test_graph_bake).
+    chain.tables.fail_query = _PIN_READ
     retried = chain.lake.task(g2, failing)
     assert (retried.acknowledge, retried.node_state) == (False, NodeState.CLAIMED)
     task = chain.node(g2, task_node_name(failing))
     expire_claim(chain.tables, task)
     exhausted = chain.lake.task(g2, failing, receive_count=BAKE_FINAL_RECEIVE)
+    chain.tables.fail_query = None
     assert exhausted.node_state is NodeState.FAILED
     for other in (CAMPAIGNS_30D, RETAIL_7D):
         assert chain.lake.task(g2, key(other)).node_state is NodeState.SUCCEEDED
@@ -1470,9 +1479,56 @@ def test_h1_control_with_no_refusal_every_contract_row_is_written(
     assert _assert_finalized_serving(chain, run, signals).unavailable == ()
 
 
+@pytest.mark.covers("ADR-142")
+@pytest.mark.parametrize("refusal", ["limit", "invariant"])
+def test_a_page_scope_limit_refusal_binds_and_an_invariant_on_the_same_row_withholds(
+    refusal: str, make_chain: Callable[..., Chain]
+) -> None:
+    """ADR-142: a limit is that page's absence, the rest publish; a defect holds every page."""
+    chain = make_chain(roster=CONTRACT_ROSTER)
+    signals: list[int] = []
+    run, before = _contract_run(chain, signals)
+    refused = CONTRACT_ROSTER.keys[0]
+    error: Exception = (
+        IsolatedRefusal(
+            IsolatedRefusalReason.ROWS_OVER_CEILING,
+            RefusalScope.PAGE,
+            rows_read=10_001,
+            max_rows=10_000,
+        )
+        if refusal == "limit"
+        else InvariantError(ErrorCode("FICTIONAL", 25), "a fictional render invariant")
+    )
+    _refuse(chain, refused, "render", error)
+
+    if refusal == "limit":
+        _serve(chain, run)
+        after = _pointer_items(chain)
+        assert after[refused] == before[refused]  # the refused page keeps its last good
+        binding = _assert_finalized_serving(chain, run, signals)
+        page = refused.split("#", maxsplit=1)[0]
+        assert binding.unavailable == ((refused, unavailable_reason(page)),)
+        for other in chain.roster.keys[1:]:
+            assert after[other] != before[other], other  # every sibling advanced
+        return
+    # Control: the same row's invariant settles FAILED and withholds the cohort; no page moves.
+    assert chain.fan_out(run).node_state is NodeState.SUCCEEDED
+    states = {result.node_state for result in chain.tasks(run)}
+    assert states == {NodeState.SUCCEEDED, NodeState.FAILED}
+    chain.arm()
+    abandoned = chain.finalize(run)
+    assert (abandoned.outcome, abandoned.node_state) == (
+        "graph_bake_finalize_abandoned",
+        NodeState.FAILED,
+    )
+    assert _pointer_items(chain) == before
+
+
 # --- B4: a genuine task failure arms the finalizer, which settles the cohort withheld ---------
 
 _GENUINE_FAILURES: Final = ("invariant", "d18", "retry_exhausted")
+_PIN_READ: Final = "{'S': 'BAKE_'}"
+"""A `fail_query` matching only the task's pin read (`read_durable_bake_sources`, `BAKE_*`)."""
 
 
 def _fail_task(  # noqa: PLR0913, PLR0917 -- the chain, its run, the row and the failure
@@ -1488,11 +1544,15 @@ def _fail_task(  # noqa: PLR0913, PLR0917 -- the chain, its run, the row and the
             "retail_body_ceiling", 256_001
         )
     else:
-        chain.lake.queries.fail[task_key] = DependencyError(ErrorCode("FICTIONAL", 24), "throttled")
+        # The pin read, outside the page's work: retried, then FAILED on the final receive.
+        chain.tables.fail_query = _PIN_READ
         retried = chain.lake.task(run, task_key)
         assert (retried.acknowledge, retried.node_state) == (False, NodeState.CLAIMED)
         expire_claim(chain.tables, chain.node(run, task_node_name(task_key)))
-        return chain.lake.task(run, task_key, receive_count=BAKE_FINAL_RECEIVE)
+        try:
+            return chain.lake.task(run, task_key, receive_count=BAKE_FINAL_RECEIVE)
+        finally:
+            chain.tables.fail_query = None
     return chain.lake.task(run, task_key)
 
 

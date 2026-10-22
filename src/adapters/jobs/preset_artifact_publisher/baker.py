@@ -55,7 +55,12 @@ from adapters.jobs.preset_artifact_publisher.page_bake import (
     PageParts,
     PageRender,
     PageWindow,
+    RefusalLineage,
+    emit_isolated_refusals,
+    guarded,
+    page_absence,
     render_page,
+    report_over_budget,
     stage_page,
 )
 from adapters.jobs.preset_artifact_publisher.reach_source import (
@@ -104,7 +109,13 @@ from adapters.outbound.s3.preset_artifacts import (
 from adapters.outbound.source_pack import load_source_packs
 from adapters.outbound.sqs.insight_continuation import SqsInsightContinuation
 from adapters.outbound.telemetry.bootstrap import configure_tracing, flushes_traces
-from adapters.outbound.telemetry.graph_metrics import emit_cutover_drop
+from adapters.outbound.telemetry.graph_metrics import (
+    BAKE_TELEMETRY_LOSS_METRIC,
+    emit_bake_trace_signal,
+    emit_cutover_drop,
+    emit_isolated_refusal,
+    emit_task_over_budget,
+)
 from adapters.outbound.telemetry.reporting import (
     METRICS,
     LogSeverity,
@@ -117,9 +128,11 @@ from adapters.outbound.telemetry.span_context import admitted, collecting
 from adapters.outbound.telemetry.tracing import (
     PRESET_ARTIFACT_DELIVERY,
     PRESET_ARTIFACT_PROCESS,
+    Recording,
     span,
     trace_boundary,
 )
+from domain.operations.bake_refusals import IsolatedRefusal, RefusalGroup, group_refusals
 from domain.operations.companions import (
     CompanionFlow,
     CompanionFlowRequest,
@@ -847,6 +860,8 @@ class _BakeReportContext:
     plan_digest: str
     completed: int
     total: int
+    delivery: Recording | None = None
+    """The record's `PRESET_ARTIFACT_DELIVERY` span: the parent of its refusal spans (ADR-142)."""
 
 
 class GraphBakeConsumer(Protocol):
@@ -889,6 +904,10 @@ class PresetArtifactBakeApplication:
     """S6 §2.9 (D6, AGG3-6): counts a legacy intent dropped in GRAPH, or refused at its write."""
     clock: BakeClock = field(default_factory=BakeClock)
     """The sources' one bake clock (A5.1 I6), opened on the wall clock for the legacy render."""
+    refusal_metric: Callable[[str, int], None] = emit_isolated_refusal
+    """ADR-142: one `BakeIsolatedRefusal*` datapoint per refusal group."""
+    over_budget_metric: Callable[[], None] = emit_task_over_budget
+    """ADR-142: one `BakeTaskOverBudget` datapoint per over-budget bake."""
 
     def apply(  # noqa: PLR0913 -- the record, its lineage and the invocation's deadline inputs
         self,
@@ -932,7 +951,9 @@ class PresetArtifactBakeApplication:
             page = render_page(self.parts, intent, window)
         result = page.result
         source_ms = int((monotonic() - started) * 1_000)
-        observed = _PageReport(sum(item.throttled_starts for item in statistics), page)
+        observed = _PageReport(
+            sum(item.throttled_starts for item in statistics), page, self.parts.process.peak()
+        )
         if isinstance(result, BakeUnavailable | BakeUnchanged):
             # D26: an unchanged page writes nothing, as an unavailable one does; only the
             # report label differs (a report change, not a write change).
@@ -945,6 +966,7 @@ class PresetArtifactBakeApplication:
                     observed,
                 )
             )
+            self._settled(page.groups, intent, window, (started, context))
             return result
         request = result.request
         if (request.body.page.value, request.body.variant.value) != (intent.page, intent.variant):
@@ -956,6 +978,7 @@ class PresetArtifactBakeApplication:
             published = stage_page(self.persistence.publish, request, window)
         except LegacyPointerAfterCutoverError:
             # AGG3-6: the CAS committed after this batch read the mode; zero effect, acked.
+            # No body was published, so nothing is emitted.
             self.cutover_drop(LEGACY_BAKE_AFTER_CUTOVER, 1)
             _report_bake(
                 _BakeResultReport(
@@ -967,19 +990,86 @@ class PresetArtifactBakeApplication:
                 )
             )
             return None
+        durations = _BakeStageDurations(source_ms, int((monotonic() - persist_started) * 1_000))
+        if isinstance(published, IsolatedRefusal):
+            # ADR-145: the write deadline came first. `publish` wrote no pointer, so the page
+            # keeps its last good legacy pointer; its one page group replaces the item notes.
+            absence = page_absence(intent)
+            _report_bake(_BakeResultReport(intent, "unavailable", durations, context, observed))
+            self._settled(group_refusals((published,)), intent, window, (started, context))
+            return absence
         if self.insight_fill is not None and published.pointer.outcome.value == "advanced":
             # §5.3: enqueued strictly after the pointer advanced; best-effort by contract.
             self.insight_fill.warm(request)
-        _report_bake(
-            _BakeResultReport(
-                intent,
-                "published",
-                _BakeStageDurations(source_ms, int((monotonic() - persist_started) * 1_000)),
-                context,
-                observed,
-            )
-        )
+        _report_bake(_BakeResultReport(intent, "published", durations, context, observed))
+        self._settled(page.groups, intent, window, (started, context))
         return published
+
+    def _settled(  # noqa: PLR0913, PLR0917 -- the groups, the intent, its window, its measure
+        self,
+        groups: tuple[RefusalGroup, ...],
+        intent: BakeIntent,
+        window: PageWindow,
+        measured: tuple[float, _BakeReportContext | None],
+    ) -> None:
+        """Emit a final outcome's refusal groups and over-budget report once (ADR-142).
+
+        Called only once the outcome is final (published, unchanged or unavailable): a receive
+        that raises emits nothing, and its redelivery renders again and emits. Each emission
+        runs through the telemetry guard, so it never changes the business result.
+        """
+        started, context = measured
+        seconds = monotonic() - started
+        lineage = RefusalLineage(
+            "legacy",
+            intent.page,
+            intent.variant,
+            execution_id=None if context is None else context.execution_id,
+        )
+        if groups:
+            guarded(
+                lambda: emit_isolated_refusals(
+                    LOGGER, groups, lineage, replayed=False, metric=self.refusal_metric
+                ),
+                _telemetry_lost,
+            )
+        over: list[bool] = []
+        guarded(
+            lambda: over.append(
+                report_over_budget(
+                    LOGGER,
+                    seconds,
+                    window.row,
+                    lineage,
+                    replayed=False,
+                    metric=self.over_budget_metric,
+                )
+            ),
+            _telemetry_lost,
+        )
+        delivery = None if context is None else context.delivery
+        if delivery is not None:
+            names = ",".join(f"{group.scope.value}:{group.reason.value}" for group in groups)
+            delivery.record(isolated_refusals=names or None, over_budget=any(over) or None)
+
+
+def _telemetry_lost(cause: str) -> None:
+    """Report one lost legacy telemetry emission: a WARNING line and the loss count (A2.2)."""
+    guarded(
+        lambda: report_operation(
+            OperationLog(
+                operation=_OPERATION,
+                component=_COMPONENT,
+                phase="telemetry",
+                outcome="telemetry_unavailable",
+                severity=LogSeverity.WARNING,
+                details={"cause": cause},
+            ),
+            LOGGER,
+        ),
+        lambda _cause: None,
+    )
+    guarded(lambda: emit_bake_trace_signal(BAKE_TELEMETRY_LOSS_METRIC, 1), lambda _cause: None)
 
 
 @dataclass(frozen=True, slots=True)
@@ -996,6 +1086,8 @@ class _PageReport:
 
     throttled_starts: int
     page: PageRender
+    memory_peak_mb: float
+    """The process's peak at the end of the page's render (`ru_maxrss`, through the ledger)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -1023,6 +1115,12 @@ def _report_bake(request: _BakeResultReport) -> None:
         else {
             "throttled_starts": observed.throttled_starts,
             "deadline_clamped": observed.page.deadline_clamped,
+            # 02 §3.6: the page observation's memory and process fields, as on the graph entry.
+            "memory_peak_mb": observed.memory_peak_mb,
+            "rss_before_mb": observed.page.entry.rss_before_mb,
+            "process_baseline_mb": observed.page.entry.process_baseline_mb,
+            "process_id": observed.page.entry.process_id,
+            "process_bake_ordinal": observed.page.entry.process_bake_ordinal,
         }
     )
     lineage = (
@@ -1247,6 +1345,7 @@ def apply_records(
                         invocation.plan_digest,
                         completed + 1,
                         invocation.total,
+                        delivery_span,
                     ),
                     remaining_ms=remaining_ms,
                     final=_final_receive(record),
