@@ -630,6 +630,8 @@ export function newCustomersAnswer(artifact: NewCustomersArtifact): Answer | nul
     .map((row) => `${row.ad_product_label} ${formatCount(row.ntb_purchases.value!)}`);
   // With no channel purchases to list, the served line already says it on the page: no repeat.
   if (listed.length === 0) return null;
-  const purchases = `First-time purchases in ${windowText(artifact.period)}: ${listed.join(', ')}.`;
+  // T1L-7: a calendar period reads by its served label, as the served line before it does.
+  const period = artifact.prior_period === null ? artifact.period_label : windowText(artifact.period);
+  const purchases = `First-time purchases in ${period}: ${listed.join(', ')}.`;
   return { kind: 'fallback', text: line === null ? purchases : `${line} ${purchases}` };
 }

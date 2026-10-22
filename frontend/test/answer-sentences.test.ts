@@ -15,6 +15,7 @@ import audiencesServed from './fixtures/audiences-served-v2.json';
 import campaignsAll from './fixtures/campaigns-all-v2.json';
 import campaignsDsp from './fixtures/campaigns-dsp-v2.json';
 import ncWeek from './fixtures/new-customers-week-v2.json';
+import ncTilesMissing from './fixtures/new-customers-tiles-missing-v2.json';
 import ncPending from './fixtures/new-customers-per-channel-pending-v2.json';
 import ncRolling from './fixtures/new-customers-7d-v2.json';
 import ncEmpty from './fixtures/new-customers-empty-v2.json';
@@ -59,6 +60,11 @@ test('Campaigns: count and spend with its served change, or one channel\'s serve
 test('New customers: new buyers and their cost, else the served line and per-channel purchases, never summed', () => {
   assert.deepEqual(newCustomersAnswer(nc(ncWeek)), { kind: 'answer', text: 'Your ads won 2,180 new customers in Sep 14–20, 2026, at 21.30 USD each.' });
   assert.equal(newCustomersAnswer(nc(ncPending))?.kind, 'answer');
+  // T1L-7: a calendar fallback names its period by the served label in both clauses.
+  assert.deepEqual(newCustomersAnswer(nc(ncTilesMissing)), {
+    kind: 'fallback',
+    text: "Figures for Week of 14–20 Sep 2026 didn't arrive. First-time purchases in Week of 14–20 Sep 2026: Amazon DSP 610, Sponsored Products 1,420, Sponsored Brands 390, Sponsored Display 95.",
+  });
   assert.deepEqual(newCustomersAnswer(nc(ncRolling)), {
     kind: 'fallback',
     text: 'New buyers are measured for complete weeks and months. Choose Latest measured week to see them. First-time purchases in Sep 14–20, 2026: Amazon DSP 610, Sponsored Products 1,420, Sponsored Brands 390, Sponsored Display 95.',
