@@ -21,7 +21,7 @@ endef
 .PHONY: help check check-links check-diagrams check-design-manifest require-approved-design-manifest check-model check-steering check-config-access check-prompt-text check-conformed-columns check-observability-bans check-exception-handling check-aws-pagination check-publication-boundary check-license-headers check-debt-markers check-run-record-coverage check-format report-retire-markers \
         check-bakeability \
         install lint format typecheck lint-boundaries validate-contracts validate-page-schemas test test-integration \
-        check-lambda-layer-reproducibility verify verify-clean verify-clean-run gate-status publication-gate release-gate install-hooks uninstall-hooks publish accept-ingestion-v2 accept-campaign-estate-local accept-evaluation-link print-deploy-flags accept-evaluation-custody regress-agent mutate mutate-next mutation-status mutation-verdict dead-code dead-code-allowlist build-lambdas build-frontend \
+        check-lambda-layer-reproducibility verify verify-clean verify-clean-run gate-status publication-gate release-gate install-hooks uninstall-hooks publish pr merge-pr accept-ingestion-v2 accept-campaign-estate-local accept-evaluation-link print-deploy-flags accept-evaluation-custody regress-agent mutate mutate-next mutation-status mutation-verdict dead-code dead-code-allowlist build-lambdas build-frontend \
         generate-design-manifest generate-schemas check-schemas generate-fixtures check-fixtures \
         generate-tool-schemas check-tool-schemas generate-trace-contract check-trace-contract generate-data-flow-registry check-data-flow-coverage generate-execution-graph-protocol check-execution-graph-protocol check-execution-graph-deployable generate-alarm-destinations check-alarm-destinations generate-producer-packs check-producer-packs \
         generate-parameter-contract check-parameter-contract \
@@ -241,7 +241,7 @@ gate-status: ## List in-progress and recent run records: state, elapsed time, he
 publication-gate: ## Refuse a public push unless every commit since BASE is publishable, recorded: make publication-gate [BASE=<rev>] (before every push; default public/main)
 	@uv run python scripts/publication_gate.py $(if $(BASE),--base "$(BASE)")
 # Not part of `check` or `verify`: about an hour, and it needs the pinned ASH, uvx and finch or
-# Docker. Run once per release, before make publication-gate; the mutation summary never refuses.
+# Docker. Run on a pull request's head before make merge-pr; the mutation summary never refuses.
 release-gate: ## Release gate: verify-clean (reusing a sealed record of the same tree), full ASH container scan, mutation coverage summary (report only)
 	@uv run python scripts/release_gate.py
 # Run once per clone, by the owner. It writes stubs into the repository's own hooks directory and
@@ -252,9 +252,19 @@ install-hooks: ## Install the tracked commit and push hooks in .githooks/ for th
 	@bash scripts/install-hooks.sh install
 uninstall-hooks: ## Remove only the hook stubs make install-hooks wrote
 	@bash scripts/install-hooks.sh uninstall
-publish: ## Publish through the operator's local publish script (local-publish.sh)
-	@test -f local-publish.sh || (echo "publish: local-publish.sh is absent; publishing is operator-local and runs only through that gitignored script"; exit 1)
-	@bash ./local-publish.sh
+# The only push path: the current feature branch, never main, after the push gate (scripts/pr_flow.py).
+publish: ## Push the current feature branch to the public remote after make publication-gate passes for it: make publish [DRY_RUN=1]
+	@uv run python scripts/pr_flow.py publish $(if $(DRY_RUN),--dry-run)
+pr: ## Open or update the pull request of the pushed feature branch, its body the commits and gate records: make pr [TITLE=...] [DRY_RUN=1]
+	@uv run python scripts/pr_flow.py pr $(if $(TITLE),--title "$$TITLE") $(if $(DRY_RUN),--dry-run)
+# The owner's go (CONTRIBUTING.md "Run the gates"). $(origin) drops an exported CONFIRM, and
+# pr_flow.py checks make's own argv ($$PPID is make), since an inherited MAKEFLAGS assignment
+# also has the origin "command line".
+from_command_line = $(if $(filter command line,$(origin $(1))),$($(1)))
+merge-pr: ## Squash-merge PR into main after make release-gate passed on its head, with the owner's go: make merge-pr PR=<n> CONFIRM=yes [DELETE_BRANCH=yes] [DRY_RUN=1]
+	@uv run python scripts/pr_flow.py merge-pr --pr "$$PR" --confirm "$(call from_command_line,CONFIRM)" \
+		--delete-branch "$(call from_command_line,DELETE_BRANCH)" \
+		--make-argv "$$(ps -ww -o args= -p $$PPID 2>/dev/null)" $(if $(DRY_RUN),--dry-run)
 
 # Not part of `verify` or `test-integration`: this is manual deployed acceptance against synthetic
 # Vendor Central input, not AMC. It refuses every omitted target value before Python can make the

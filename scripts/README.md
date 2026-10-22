@@ -330,6 +330,14 @@ the test files that import it (python: AST imports and module-name strings; Type
 specifiers through the `@/` alias, relative paths and index files). It printed the first
 `mutation-priorities.yaml`, which is authored from then on.
 
+## verify-clean.sh
+
+`make verify-clean` exports exactly what HEAD tracks into a temporary directory and runs
+`make verify`, `make check`, `make infra-test` and the frontend gates there, so a file that is
+ignored, untracked or only present locally cannot make them pass. Its run records name HEAD's
+tree; the publication gate requires them, and the release gate reuses the verify-clean record
+([test run records](../docs/test-run-records.md#which-records-the-publication-gate-accepts)).
+
 ## publication_gate.py
 
 `make publication-gate [BASE=<rev>]` runs it before every push to the public remote; BASE defaults
@@ -347,8 +355,8 @@ also matches patch headers, so listing an internal tool's name there refuses a c
 its output directory on any clone; a tracked ignore rule would publish the name.
 
 The gate reads no remote and scans only `BASE..HEAD`. It proves BASE is an ancestor of HEAD, not
-that BASE is the current public main, so run `git fetch public` first (the operator's publish
-script fetches and passes the tip itself); a later BASE leaves the commits before it unscanned. Tags are outside the range and are never
+that BASE is the current public main, so run `git fetch public` first (`make publish` fetches and
+passes the tip itself); a later BASE leaves the commits before it unscanned. Tags are outside the range and are never
 pushed to the public remote ([meta-delivery-git](../.kiro/steering/meta-delivery-git.md)).
 
 ## commit_gate.py and .githooks/
@@ -379,7 +387,7 @@ says why that never bypasses the push tier.
 
 ## release_gate.py
 
-`make release-gate` runs it once per release, before `make publication-gate`, on a clean
+`make release-gate` runs it on a pull request's head before `make merge-pr`, on a clean
 checkout ([CONTRIBUTING](../CONTRIBUTING.md#run-the-gates) owns the order). It refuses a dirty tree, a missing ASH pin, and a missing
 `uvx` or container runtime (finch or Docker), then runs every stage whatever an earlier one
 found: verify-clean, whose run records the publication gate requires; three ASH container
@@ -399,6 +407,53 @@ run without any `ADLYTICS_*` or `AWS_*` variable and without the other variables
 into its VM (`CONTAINER_FORWARDED`), because scanning a tree needs no AWS access; the ASH command
 mounts only the export and the output directory, never `~/.aws`. Every run writes a `release-gate` run record with
 each step, the ASH summaries, the three ASH `reports/` directories and the child records.
+
+## pr_flow.py
+
+The push and merge path to the public remote, in three subcommands. The remote and its main come
+from the publication gate's `DEFAULT_BASE` (`public/main`); the remote's URL stays in the
+operator's git configuration, and the GitHub OWNER/REPO given to `gh` is read from it at run time.
+The module docstring lists every refusal code. Each subcommand removes every `ADLYTICS_*` and
+`AWS_*` variable first, and passes every line it prints through the publication gate's denylist
+redaction.
+
+```bash
+make publish [DRY_RUN=1]
+make pr [TITLE=<subject>] [DRY_RUN=1]
+make merge-pr PR=<n> CONFIRM=yes [DELETE_BRANCH=yes] [DRY_RUN=1]
+```
+
+- `publish` pushes HEAD's checked commit to `refs/heads/<current branch>` with no tags and no
+  force, so the remote accepts only a fast-forward. It refuses a dirty tree, a detached HEAD,
+  main, any `release/*` branch (read from the full ref, so a same-named tag hides neither), and a
+  branch whose history does not contain the freshly fetched `public/main`. It reuses
+  a passing, canonical, clean `publication-gate` record of HEAD on that tip, or runs
+  `make publication-gate` with it as BASE. It then runs the gate's denylist and identity checks
+  again on the range, and the denylist on the branch name, because a pushed branch name is public.
+  After the push it checks that the remote branch is HEAD and that the remote has no tags.
+- `pr` needs the remote branch to equal HEAD. It edits the open pull request of the branch from
+  this repository, never one from a fork, or creates one into main. The title is `TITLE`, else
+  the subject of the branch's only commit, else the branch name. The title becomes the squash
+  commit's subject on main. The body lists the commits after `public/main` and the newest sealed
+  verify-clean, publication-gate and release-gate record of HEAD's tree, as a path under the
+  checkout and its outcome. The title and body pass the denylist before `gh` runs.
+- `merge-pr` runs `gh pr merge <n> --squash --match-head-commit <HEAD>` only when `CONFIRM` is
+  exactly `yes`, the tree is clean, and the pull request is open, merges into main, has local HEAD
+  as its head, is mergeable and not behind, blocked or a draft, and has GitHub's main in its
+  history. It also needs a sealed, passing, canonical, clean `release-gate` record of the head's
+  tree, and needs the squash's title, body and commit messages to pass the denylist. After the
+  merge it fetches main and refuses when main did not move or its new commit's tree is not the
+  head's tree. Otherwise it fast-forwards local main, and deletes the remote branch only with
+  `DELETE_BRANCH=yes`. CONTRIBUTING [Run the gates](../CONTRIBUTING.md#run-the-gates) owns what
+  counts as the owner's go; `make merge-pr` passes make's own command line as `--make-argv` so
+  the script can check it.
+- `DRY_RUN=1` still runs the read-only queries (`git status`, `rev-parse`, `ls-remote`,
+  `gh pr list`, `gh pr view`) and every check, so it reports the refusals a real run would. It
+  prints each command that would change something (the fetch, the gate, the push, `gh pr create`,
+  `gh pr edit`, `gh pr merge`, the fast-forward and the branch delete) instead of running it.
+
+`tests/unit/test_pr_flow.py` runs against a local bare repository and a `gh` stub; no test reaches
+GitHub or pushes.
 
 ## tool_versions.py
 

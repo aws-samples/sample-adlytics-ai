@@ -91,10 +91,12 @@ removal condition is worse than a branch.
   Bind them per meta-style-steering, not here.
 - The tracked tree is publication-appropriate at every commit: content unfit for public
   publication never enters source control. Private working material lives locally, gitignored.
-- A commit reaches a public remote only through `make publish`, after `make publication-gate`
-  and `make release-gate` have both passed on that exact tree. Never push to a public remote by
-  any other command.
-- Never push a feature branch, a tag or working history to a public remote. A public release is
-  one commit whose parent is the current public main.
+- Gates run in three tiers; CONTRIBUTING.md "Run the gates" owns what each runs. A commit passes
+  the commit hook, a push passes `make publication-gate` for the pushed range, and a merge to main
+  passes `make release-gate` on the exact tree being merged.
+- Push only through `make publish`, which runs the push gate first. Never push a tag, and never
+  push a branch whose history is not based on the current public main.
+- Main changes only by squash-merging a pull request after its head passed `make release-gate`,
+  with the owner's go. The merge commit's tree must equal that head's tree.
 - Never rewrite or force-push public history without the owner's explicit approval. A leaked
   secret is rotated first, then removed from history; CONTRIBUTING.md "If a secret is pushed" owns the procedure.
