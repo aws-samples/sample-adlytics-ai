@@ -407,8 +407,13 @@ def run_p1(sizes: tuple[int, ...] = P1_SIZES, runs: int = P1_RUNS) -> dict[str, 
                 )
     renders: list[dict[str, Any]] = []
     campaign_render = 0.0
+    # Retail renders only at a size its reads can bake: above the deployed BAKE_MAX_ROWS a
+    # Retail-actual read is cut at its width and the page is its designed absence (ADR-142), so
+    # there is nothing to measure. Its bytes per product fall with size (2026-10-18: 10,466,
+    # 9,006 and 6,662 B at 10,000, 30,000 and 50,000), so the smallest size binds B_render.
+    retail_sizes = tuple(size for size in sizes if size <= BAKE_MAX_ROWS)
     for _run in range(runs):
-        for products in sizes:
+        for products in retail_sizes:
             peak = measure_retail_render(products)
             render = max(render, peak / products)
             renders.append({"render": "retail_health", "rows": products, "peak_bytes": peak})
@@ -424,6 +429,7 @@ def run_p1(sizes: tuple[int, ...] = P1_SIZES, runs: int = P1_RUNS) -> dict[str, 
         )
     return {
         "sizes": list(sizes),
+        "retail_render_sizes": list(retail_sizes),
         "runs": runs,
         "samples": samples,
         "render_samples": renders,
