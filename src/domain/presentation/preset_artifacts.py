@@ -4,25 +4,34 @@
 from __future__ import annotations
 
 import hashlib
+import itertools
 import json
 import re
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import cast
+from typing import Final, cast
 
 from domain.shared_kernel.errors import ErrorCode, InvariantError
 from domain.shared_kernel.values import DateRange
 
 __all__ = [
+    "NO_SIBLINGS",
     "PRESET_BODY_CEILING",
     "RETAIL_BODY_CEILING",
+    "SIBLING_DESCRIPTOR_MAX_BYTES",
+    "SIBLING_INDEX_KEY",
+    "SIBLING_INDEX_SHARD_ENTRIES",
+    "SIBLING_INDEX_SHARD_KIND",
     "ArtifactBodyWriteResult",
     "CustodyManifestWriteResult",
     "PresetArtifactBody",
     "PresetArtifactBodyCeilingError",
+    "PresetArtifactCustodyHeader",
     "PresetArtifactCustodyManifest",
     "PresetArtifactFilterIdentity",
+    "PresetArtifactIndexShardIdentity",
     "PresetArtifactPage",
     "PresetArtifactPointer",
     "PresetArtifactPointerAdvanceOutcome",
@@ -30,6 +39,7 @@ __all__ = [
     "PresetArtifactPointerAdvanceResult",
     "PresetArtifactPointerRosterRequest",
     "PresetArtifactPointerRosterResult",
+    "PresetArtifactPointerTemplate",
     "PresetArtifactProductChildIdentity",
     "PresetArtifactPublicationRequest",
     "PresetArtifactPublicationResult",
@@ -39,14 +49,24 @@ __all__ = [
     "PresetArtifactSiblingCustodyWriteResult",
     "PresetArtifactSiblingDescriptor",
     "PresetArtifactSiblingIdentity",
+    "PresetArtifactSiblingIndexEntry",
+    "PresetArtifactSiblingPair",
     "PresetArtifactSiblingReadRequest",
+    "PresetArtifactSiblingStream",
     "PresetArtifactSiblingWriteResult",
     "PresetArtifactStageResult",
     "PresetArtifactVariant",
     "SourceUnchanged",
     "canonical_preset_artifact_json",
+    "child_identity_from_path",
     "classify_conditional_pointer_failure",
+    "covering_index_shard",
+    "index_shard_descriptors",
+    "parent_custody_manifest",
     "pointer_written_at",
+    "sibling_descriptor_bytes",
+    "sibling_index_shards",
+    "split_parent_custody",
 ]
 
 _PAGE_IDENTIFIER = re.compile(r"^[a-z][a-z0-9-]{0,79}$")
@@ -336,17 +356,67 @@ class PresetArtifactFilterIdentity:
         return f"filters/{self.filter_id}"
 
 
+@dataclass(frozen=True, slots=True)
+class PresetArtifactIndexShardIdentity:
+    """One shard of a revision's sibling digest index (ADR-145): custody-only, no public body.
+
+    Its key is `custody/{page}/{variant}/{revision}/index/segment-NNNN.json`; the parent custody
+    binds it by digest, and it binds up to `SIBLING_INDEX_SHARD_ENTRIES` sibling descriptors.
+    """
+
+    shard_index: int
+
+    def __post_init__(self) -> None:
+        if (
+            isinstance(cast("object", self.shard_index), bool)
+            or not isinstance(cast("object", self.shard_index), int)
+            or not 0 <= self.shard_index <= MAX_PRESET_SIBLING_SEGMENT_INDEX
+        ):
+            raise ValueError("preset artifact sibling index shard is invalid.")
+
+    @property
+    def path(self) -> str:
+        """Key suffix beneath the parent revision's custody."""
+        return f"index/segment-{self.shard_index:04d}"
+
+
 type PresetArtifactChildIdentity = (
     PresetArtifactSiblingIdentity
     | PresetArtifactProductChildIdentity
     | PresetArtifactFilterIdentity
 )
 """An ordered segment, a product-detail child or a filter sibling; each binds through custody."""
+type PresetArtifactCustodyIdentity = PresetArtifactChildIdentity | PresetArtifactIndexShardIdentity
+"""Any custody-namespace object beneath a revision: a child's custody or an index shard."""
 _CHILD_IDENTITIES = (
     PresetArtifactSiblingIdentity,
     PresetArtifactProductChildIdentity,
     PresetArtifactFilterIdentity,
 )
+_CUSTODY_IDENTITIES = (*_CHILD_IDENTITIES, PresetArtifactIndexShardIdentity)
+_SEGMENT_PART = re.compile(r"^segment-(\d{4,5})$")
+
+
+def child_identity_from_path(path: str) -> PresetArtifactChildIdentity:
+    """Decode one child's `path` exactly as `identity.path` renders it, or raise `ValueError`."""
+    parts = path.split("/") if isinstance(cast("object", path), str) else []
+    identity: PresetArtifactChildIdentity
+    match parts:
+        case ["segments", ordering, segment] if matched := _SEGMENT_PART.fullmatch(segment):
+            identity = PresetArtifactSiblingIdentity(ordering, int(matched.group(1)))
+        case ["segments", filter_id, ordering, segment] if matched := _SEGMENT_PART.fullmatch(
+            segment
+        ):
+            identity = PresetArtifactSiblingIdentity(ordering, int(matched.group(1)), filter_id)
+        case ["products", ref]:
+            identity = PresetArtifactProductChildIdentity(ref)
+        case ["filters", filter_id]:
+            identity = PresetArtifactFilterIdentity(filter_id)
+        case _:
+            raise ValueError("preset artifact child path is invalid.")
+    if identity.path != path:
+        raise ValueError("preset artifact child path is not canonical.")
+    return identity
 
 
 @dataclass(frozen=True, slots=True)
@@ -396,11 +466,11 @@ class PresetArtifactSiblingCustody:
     page: PresetArtifactPage
     variant: PresetArtifactVariant
     revision: PresetArtifactRevision
-    identity: PresetArtifactChildIdentity
+    identity: PresetArtifactCustodyIdentity
     payload_json: str
 
     def __post_init__(self) -> None:
-        if not isinstance(cast("object", self.identity), _CHILD_IDENTITIES):
+        if not isinstance(cast("object", self.identity), _CUSTODY_IDENTITIES):
             raise TypeError("preset artifact sibling custody requires a sibling identity.")
         if len(self.payload_json.encode()) > MAX_PRESET_ARTIFACT_BYTES:
             raise ValueError("preset artifact sibling custody exceeds the safe byte limit.")
@@ -431,14 +501,22 @@ class PresetArtifactSiblingCustody:
 
 @dataclass(frozen=True, slots=True)
 class PresetArtifactSiblingDescriptor:
-    """Parent-custody binding for one public/custody sibling pair."""
+    """Index binding for one public/custody sibling pair, or for one custody-only index shard.
 
-    identity: PresetArtifactChildIdentity
-    body_digest: str
+    `body_digest` is None exactly for an index shard, which has no public body.
+    """
+
+    identity: PresetArtifactCustodyIdentity
+    body_digest: str | None
     custody_digest: str
 
     def __post_init__(self) -> None:
-        if not _DIGEST.fullmatch(self.body_digest) or not _DIGEST.fullmatch(self.custody_digest):
+        shard = isinstance(cast("object", self.identity), PresetArtifactIndexShardIdentity)
+        if not isinstance(cast("object", self.identity), _CUSTODY_IDENTITIES):
+            raise TypeError("preset artifact sibling descriptor requires a sibling identity.")
+        if (self.body_digest is None) != shard or not _DIGEST.fullmatch(self.custody_digest):
+            raise ValueError("preset artifact sibling descriptor digests are invalid.")
+        if self.body_digest is not None and not _DIGEST.fullmatch(self.body_digest):
             raise ValueError("preset artifact sibling descriptor digests are invalid.")
 
 
@@ -467,12 +545,12 @@ class PresetArtifactSiblingWriteResult:
 
 @dataclass(frozen=True, slots=True)
 class PresetArtifactSiblingCustodyWriteResult:
-    """Attested result of writing one private sibling custody body."""
+    """Attested result of writing one private sibling custody body or index shard."""
 
     page: PresetArtifactPage
     variant: PresetArtifactVariant
     revision: PresetArtifactRevision
-    identity: PresetArtifactChildIdentity
+    identity: PresetArtifactCustodyIdentity
     key: str
     digest: str
     version_id: str | None
@@ -712,90 +790,418 @@ class PresetArtifactPointerAdvanceResult:
 
 
 @dataclass(frozen=True, slots=True)
-class PresetArtifactPublicationRequest:
-    """One body-first persistence request for a rendered preset artifact.
+class PresetArtifactPointerTemplate:
+    """Every field of one pointer advance except `custody_digest`, which the stage fills in.
 
-    When a private custody manifest accompanies the public body, the pointer binds both
-    objects through their digests, and both must be persisted before the pointer advances.
+    A source can't know its parent custody's digest: the stage builds that custody from the
+    source's header and the sibling index it writes (ADR-145). `complete` returns the advance.
+    """
+
+    page: PresetArtifactPage
+    variant: PresetArtifactVariant
+    revision: PresetArtifactRevision
+    body_digest: str
+    forward_token: int
+    supersedes: PresetArtifactRevision | None = None
+    superseded_history_expires_at: datetime | None = None
+    grant_id: str | None = None
+    serving_generation: str | None = None
+    written_at: str | None = None
+    resolved_window: DateRange | None = None
+    comparison_window: DateRange | None = None
+
+    def __post_init__(self) -> None:
+        # Every field is held to the pointer's and the advance's own rules now, not at the stage.
+        self.complete(None)
+
+    def complete(self, custody_digest: str | None) -> PresetArtifactPointerAdvanceRequest:
+        """Return the pointer advance this template names, with the staged custody's digest."""
+        return PresetArtifactPointerAdvanceRequest(
+            PresetArtifactPointer(
+                self.page,
+                self.variant,
+                self.revision,
+                self.body_digest,
+                self.forward_token,
+                self.supersedes,
+                custody_digest,
+                self.grant_id,
+                self.serving_generation,
+                self.written_at,
+                self.resolved_window,
+                self.comparison_window,
+            ),
+            self.superseded_history_expires_at,
+        )
+
+    @property
+    def partition_key(self) -> str:
+        """Return the shared DynamoDB partition key for the page/variant pair."""
+        return f"{self.page.value}#{self.variant.value}"
+
+
+type PresetArtifactSiblingPair = tuple[PresetArtifactSiblingBody, PresetArtifactSiblingCustody]
+"""One sibling's public body and its private custody, written body first."""
+
+
+@dataclass(frozen=True, slots=True)
+class _HeldSiblingPairs:
+    """A finite tuple of pairs as a stream factory (`PresetArtifactSiblingStream.of`)."""
+
+    pairs: tuple[PresetArtifactSiblingPair, ...]
+
+    def __call__(self) -> Iterator[PresetArtifactSiblingPair]:
+        return iter(self.pairs)
+
+
+@dataclass(frozen=True, slots=True)
+class PresetArtifactSiblingStream:
+    """A re-iterable factory of one revision's sibling pairs, and their declared count (ADR-145).
+
+    Each iteration calls `pairs()` afresh, so a source can render its siblings lazily. The stage
+    consumes the stream once and keeps only each pair's descriptor, so a bake holds the pairs in
+    flight, never every body. A stream that yields a different number of pairs than `count`,
+    a repeated identity, or a pair of another revision is an invariant the stage refuses.
+    """
+
+    pairs: Callable[[], Iterator[PresetArtifactSiblingPair]]
+    count: int
+
+    def __post_init__(self) -> None:
+        if not callable(self.pairs):
+            raise TypeError("a preset artifact sibling stream requires a pair factory.")
+        if (
+            isinstance(cast("object", self.count), bool)
+            or not isinstance(cast("object", self.count), int)
+            or self.count < 0
+        ):
+            raise ValueError("a preset artifact sibling stream count is a nonnegative integer.")
+
+    @classmethod
+    def of(cls, pairs: Iterable[PresetArtifactSiblingPair]) -> PresetArtifactSiblingStream:
+        """Wrap a finite set of pairs, for a source with few siblings (Retail's children)."""
+        held = tuple(pairs)
+        for pair in held:
+            if (
+                not isinstance(cast("object", pair), tuple)
+                or len(pair) != 2  # noqa: PLR2004 -- a body and its custody
+                or not isinstance(cast("object", pair[0]), PresetArtifactSiblingBody)
+                or not isinstance(cast("object", pair[1]), PresetArtifactSiblingCustody)
+            ):
+                raise TypeError("a preset artifact sibling pair is a body and its custody.")
+        return cls(_HeldSiblingPairs(held), len(held))
+
+    def __iter__(self) -> Iterator[PresetArtifactSiblingPair]:
+        return iter(self.pairs())
+
+
+NO_SIBLINGS: Final = PresetArtifactSiblingStream.of(())
+"""The stream of a publication with no siblings."""
+
+
+@dataclass(frozen=True, slots=True)
+class PresetArtifactCustodyHeader:
+    """A page's own parent-custody fields: canonical JSON with no `sibling_index` key.
+
+    The stage builds the parent custody from it and the sibling index it writes (ADR-145).
+    """
+
+    payload_json: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(cast("object", self.payload_json), str) or not self.payload_json:
+            raise ValueError("preset artifact custody header cannot be blank.")
+        try:
+            payload = json.loads(self.payload_json)
+        except ValueError:
+            raise ValueError("preset artifact custody header is not JSON.") from None
+        if (
+            not isinstance(payload, dict)
+            or canonical_preset_artifact_json(cast("dict[str, object]", payload))
+            != self.payload_json
+        ):
+            raise ValueError("preset artifact custody header must be a canonical JSON object.")
+        if SIBLING_INDEX_KEY in payload:
+            raise ValueError("a custody header never carries the stage's sibling index.")
+
+
+@dataclass(frozen=True, slots=True)
+class PresetArtifactPublicationRequest:
+    """One body-first persistence request for a rendered preset artifact (ADR-145).
+
+    The stage writes the sibling stream, then the sibling index, then the parent body and the
+    parent custody it builds from `custody_header` and the index; the pointer, completed from
+    the template with that custody's digest, advances last. A publication with no header has no
+    custody, and so no siblings.
     """
 
     body: PresetArtifactBody
-    pointer_advance: PresetArtifactPointerAdvanceRequest
-    custody: PresetArtifactCustodyManifest | None = None
-    sibling_bodies: tuple[PresetArtifactSiblingBody, ...] = ()
-    sibling_custody: tuple[PresetArtifactSiblingCustody, ...] = ()
+    pointer_template: PresetArtifactPointerTemplate
+    custody_header: PresetArtifactCustodyHeader | None = None
+    siblings: PresetArtifactSiblingStream = NO_SIBLINGS
+    closed_children: frozenset[PresetArtifactProductChildIdentity] | None = None
+    """When set, the stream's identities are exactly this set (Retail's served rows), checked by
+    the stage before any write."""
 
     def __post_init__(self) -> None:
         if not isinstance(cast("object", self.body), PresetArtifactBody):
             raise TypeError("preset artifact publication requires a body.")
-        if not isinstance(
-            cast("object", self.pointer_advance), PresetArtifactPointerAdvanceRequest
-        ):
-            raise TypeError("preset artifact publication requires a pointer advance request.")
-        if len(self.sibling_bodies) != len(self.sibling_custody):
-            raise ValueError("preset artifact sibling public and custody bodies must pair exactly.")
-        identities = tuple(body.identity for body in self.sibling_bodies)
-        if len(set(identities)) != len(identities) or identities != tuple(
-            custody.identity for custody in self.sibling_custody
-        ):
-            raise ValueError("preset artifact sibling identities must be unique and aligned.")
-        if any(
-            (body.page, body.variant, body.revision)
-            != (self.body.page, self.body.variant, self.body.revision)
-            for body in (*self.sibling_bodies, *self.sibling_custody)
-        ):
-            raise ValueError("preset artifact siblings must share the parent revision.")
-        pointer = self.pointer_advance.pointer
+        if not isinstance(cast("object", self.pointer_template), PresetArtifactPointerTemplate):
+            raise TypeError("preset artifact publication requires a pointer template.")
+        if not isinstance(cast("object", self.siblings), PresetArtifactSiblingStream):
+            raise TypeError("preset artifact publication siblings must be a sibling stream.")
+        template = self.pointer_template
         if (self.body.page, self.body.variant, self.body.revision, self.body.digest) != (
-            pointer.page,
-            pointer.variant,
-            pointer.revision,
-            pointer.body_digest,
+            template.page,
+            template.variant,
+            template.revision,
+            template.body_digest,
         ):
             raise ValueError(
                 "preset artifact pointer must exactly attest its body identity and bytes."
             )
-        if self.custody is None:
-            if pointer.custody_digest is not None:
-                raise ValueError(
-                    "a custody-free publication cannot advance a custody-bearing pointer."
-                )
-            return
-        if not isinstance(cast("object", self.custody), PresetArtifactCustodyManifest):
-            raise TypeError("preset artifact publication custody must be a custody manifest.")
-        if (
-            self.custody.page,
-            self.custody.variant,
-            self.custody.revision,
-            self.custody.digest,
-        ) != (pointer.page, pointer.variant, pointer.revision, pointer.custody_digest):
-            raise ValueError(
-                "preset artifact pointer must exactly attest its custody identity and bytes."
-            )
-
-
-@dataclass(frozen=True, slots=True)
-class PresetArtifactPublicationResult:
-    """Body evidence and the resulting pointer state from one publication attempt."""
-
-    body: ArtifactBodyWriteResult
-    pointer: PresetArtifactPointerAdvanceResult
-    custody: CustodyManifestWriteResult | None = None
-    sibling_bodies: tuple[PresetArtifactSiblingWriteResult, ...] = ()
-    sibling_custody: tuple[PresetArtifactSiblingCustodyWriteResult, ...] = ()
+        if self.custody_header is not None and not isinstance(
+            cast("object", self.custody_header), PresetArtifactCustodyHeader
+        ):
+            raise TypeError("preset artifact publication custody must be a custody header.")
+        if self.custody_header is None and (self.siblings.count or self.closed_children):
+            raise ValueError("a sibling-bearing preset artifact publication carries custody.")
 
 
 @dataclass(frozen=True, slots=True)
 class PresetArtifactStageResult:
-    """Plan 4.5: the attested immutable objects of one rendered revision, with no pointer.
+    """Plan 4.5: the attested parent of one staged revision, and what the stage wrote.
 
-    A GRAPH bake task stages; only the finalizer constructs pointer members (DB7).
+    A GRAPH bake task stages; only the finalizer constructs pointer members (DB7). `pairs`
+    counts every write chain (each sibling pair, each index shard and the parent) and
+    `written_bytes` their encoded bytes, as written.
     """
 
     body: ArtifactBodyWriteResult
-    custody: CustodyManifestWriteResult | None = None
-    sibling_bodies: tuple[PresetArtifactSiblingWriteResult, ...] = ()
-    sibling_custody: tuple[PresetArtifactSiblingCustodyWriteResult, ...] = ()
+    custody: CustodyManifestWriteResult | None
+    pairs: int
+    written_bytes: int
+
+    @property
+    def custody_digest(self) -> str | None:
+        """The staged parent custody's digest, which completes the pointer template."""
+        return None if self.custody is None else self.custody.digest
+
+
+@dataclass(frozen=True, slots=True)
+class PresetArtifactPublicationResult:
+    """The staged revision and the resulting pointer state from one publication attempt."""
+
+    body: ArtifactBodyWriteResult
+    pointer: PresetArtifactPointerAdvanceResult
+    custody: CustodyManifestWriteResult | None
+    pairs: int
+    written_bytes: int
+
+
+# --- the sharded sibling digest index (ADR-145) ----------------------------------------------
+
+SIBLING_INDEX_SHARD_ENTRIES: Final = 800
+"""Descriptors per index shard (class A): 800 x `SIBLING_DESCRIPTOR_MAX_BYTES` fits the cap."""
+SIBLING_DESCRIPTOR_MAX_BYTES: Final = 256
+"""The most bytes one encoded descriptor may take (class A); a test holds the widest real one."""
+SIBLING_INDEX_KEY: Final = "sibling_index"
+"""The parent-custody key the stage owns: one `{first_identity, last_identity, digest}` a shard."""
+SIBLING_INDEX_SHARD_KIND: Final = "preset_artifact_sibling_index_shard"
+
+
+@dataclass(frozen=True, slots=True)
+class PresetArtifactSiblingIndexEntry:
+    """One shard's range in the parent custody: its first and last identity paths and digest."""
+
+    first_identity: str
+    last_identity: str
+    digest: str
+
+    def __post_init__(self) -> None:
+        for path in (self.first_identity, self.last_identity):
+            child_identity_from_path(path)
+        if self.first_identity > self.last_identity or not _DIGEST.fullmatch(self.digest):
+            raise ValueError("preset artifact sibling index entry is invalid.")
+
+    def covers(self, path: str) -> bool:
+        """Whether an identity path falls in this shard's range."""
+        return self.first_identity <= path <= self.last_identity
+
+
+def _descriptor_payload(descriptor: PresetArtifactSiblingDescriptor) -> dict[str, object]:
+    return {
+        "body_digest": descriptor.body_digest,
+        "custody_digest": descriptor.custody_digest,
+        "identity": descriptor.identity.path,
+    }
+
+
+def sibling_descriptor_bytes(descriptor: PresetArtifactSiblingDescriptor) -> int:
+    """Return one descriptor's encoded size inside an index shard."""
+    return len(canonical_preset_artifact_json(_descriptor_payload(descriptor)).encode())
+
+
+def sibling_index_shards(
+    parent: PresetArtifactBody, descriptors: Iterable[PresetArtifactSiblingDescriptor]
+) -> tuple[tuple[PresetArtifactSiblingCustody, PresetArtifactSiblingIndexEntry], ...]:
+    """Sort descriptors by identity path and cut them into shards of 800, each with its entry.
+
+    A repeated identity, an index shard named as a sibling, or a descriptor over
+    `SIBLING_DESCRIPTOR_MAX_BYTES` is a defect (`ValueError`).
+    """
+    ordered = sorted(descriptors, key=lambda item: item.identity.path)
+    paths = [item.identity.path for item in ordered]
+    if len(set(paths)) != len(paths):
+        raise ValueError("preset artifact sibling identities must be unique.")
+    for item in ordered:
+        if isinstance(item.identity, PresetArtifactIndexShardIdentity):
+            raise ValueError("an index shard is never a sibling of its own index.")
+        if sibling_descriptor_bytes(item) > SIBLING_DESCRIPTOR_MAX_BYTES:
+            raise ValueError("a preset artifact sibling descriptor exceeds its byte bound.")
+    shards: list[tuple[PresetArtifactSiblingCustody, PresetArtifactSiblingIndexEntry]] = []
+    for shard_index, start in enumerate(range(0, len(ordered), SIBLING_INDEX_SHARD_ENTRIES)):
+        chunk = ordered[start : start + SIBLING_INDEX_SHARD_ENTRIES]
+        shard = PresetArtifactSiblingCustody(
+            parent.page,
+            parent.variant,
+            parent.revision,
+            PresetArtifactIndexShardIdentity(shard_index),
+            canonical_preset_artifact_json(
+                {
+                    "descriptors": [_descriptor_payload(item) for item in chunk],
+                    "kind": SIBLING_INDEX_SHARD_KIND,
+                    "shard": shard_index,
+                }
+            ),
+        )
+        shards.append(
+            (
+                shard,
+                PresetArtifactSiblingIndexEntry(
+                    chunk[0].identity.path, chunk[-1].identity.path, shard.digest
+                ),
+            )
+        )
+    return tuple(shards)
+
+
+def parent_custody_manifest(
+    body: PresetArtifactBody,
+    header: PresetArtifactCustodyHeader,
+    index: tuple[PresetArtifactSiblingIndexEntry, ...],
+) -> PresetArtifactCustodyManifest:
+    """Build a parent custody: the source's header plus one `sibling_index` entry per shard."""
+    payload = cast("dict[str, object]", json.loads(header.payload_json))
+    payload[SIBLING_INDEX_KEY] = [
+        {
+            "digest": entry.digest,
+            "first_identity": entry.first_identity,
+            "last_identity": entry.last_identity,
+        }
+        for entry in index
+    ]
+    return PresetArtifactCustodyManifest(
+        body.page, body.variant, body.revision, canonical_preset_artifact_json(payload)
+    )
+
+
+def split_parent_custody(
+    manifest: PresetArtifactCustodyManifest,
+) -> tuple[dict[str, object], tuple[PresetArtifactSiblingIndexEntry, ...]]:
+    """Return a parent custody's header payload and its sibling index, or raise `ValueError`.
+
+    The index's shards are ordered and disjoint: each range starts after the last one ends.
+    """
+    payload = cast("dict[str, object]", json.loads(manifest.payload_json))
+    raw = payload.pop(SIBLING_INDEX_KEY, None)
+    if not isinstance(raw, list):
+        raise ValueError("a parent custody carries its sibling index.")
+    entries: list[PresetArtifactSiblingIndexEntry] = []
+    for item in cast("list[object]", raw):
+        if not isinstance(item, dict) or frozenset(cast("dict[str, object]", item)) != frozenset(
+            {
+                "digest",
+                "first_identity",
+                "last_identity",
+            }
+        ):
+            raise ValueError("a sibling index entry's fields are not exact.")
+        fields = cast("dict[str, object]", item)
+        first, last, digest = fields["first_identity"], fields["last_identity"], fields["digest"]
+        if not all(isinstance(value, str) for value in (first, last, digest)):
+            raise ValueError("a sibling index entry's fields are text.")
+        entries.append(
+            PresetArtifactSiblingIndexEntry(
+                cast("str", first), cast("str", last), cast("str", digest)
+            )
+        )
+    for earlier, later in itertools.pairwise(entries):
+        if earlier.last_identity >= later.first_identity:
+            raise ValueError("a sibling index's shards are ordered and disjoint.")
+    return payload, tuple(entries)
+
+
+def index_shard_descriptors(
+    shard: PresetArtifactSiblingCustody, entry: PresetArtifactSiblingIndexEntry
+) -> tuple[PresetArtifactSiblingDescriptor, ...]:
+    """Decode one index shard the parent entry binds, or raise `ValueError`.
+
+    The shard's bytes must match the entry's digest, its descriptors must be strictly ordered by
+    identity path, and its first and last must be the entry's range.
+    """
+    if not isinstance(shard.identity, PresetArtifactIndexShardIdentity) or (
+        shard.digest != entry.digest
+    ):
+        raise ValueError("an index shard does not match its parent custody entry.")
+    payload = json.loads(shard.payload_json)
+    if (
+        not isinstance(payload, dict)
+        or frozenset(cast("dict[str, object]", payload))
+        != frozenset({"descriptors", "kind", "shard"})
+        or payload["kind"] != SIBLING_INDEX_SHARD_KIND
+        or payload["shard"] != shard.identity.shard_index
+        or not isinstance(payload["descriptors"], list)
+        or not payload["descriptors"]
+    ):
+        raise ValueError("an index shard's fields are not exact.")
+    descriptors: list[PresetArtifactSiblingDescriptor] = []
+    for raw in cast("list[object]", payload["descriptors"]):
+        if not isinstance(raw, dict) or frozenset(cast("dict[str, object]", raw)) != frozenset(
+            {
+                "body_digest",
+                "custody_digest",
+                "identity",
+            }
+        ):
+            raise ValueError("an index descriptor's fields are not exact.")
+        item = cast("dict[str, object]", raw)
+        body_digest, custody_digest = item["body_digest"], item["custody_digest"]
+        if not isinstance(body_digest, str) or not isinstance(custody_digest, str):
+            raise ValueError("an index descriptor's digests are text.")
+        descriptors.append(
+            PresetArtifactSiblingDescriptor(
+                child_identity_from_path(cast("str", item["identity"])),
+                body_digest,
+                custody_digest,
+            )
+        )
+    paths = [item.identity.path for item in descriptors]
+    if (
+        any(earlier >= later for earlier, later in itertools.pairwise(paths))
+        or (paths[0], paths[-1]) != (entry.first_identity, entry.last_identity)
+        or len(paths) > SIBLING_INDEX_SHARD_ENTRIES
+    ):
+        raise ValueError("an index shard's descriptors are not its entry's ordered range.")
+    return tuple(descriptors)
+
+
+def covering_index_shard(
+    index: tuple[PresetArtifactSiblingIndexEntry, ...], identity: PresetArtifactChildIdentity
+) -> int | None:
+    """Return the position of the one shard whose range covers an identity, or None."""
+    path = identity.path
+    return next((position for position, entry in enumerate(index) if entry.covers(path)), None)
 
 
 @dataclass(frozen=True, slots=True)
