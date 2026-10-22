@@ -39,6 +39,13 @@ total, each partition's grain, the raising call, and whether chat raises. Then:
 No doc states chat's quarterly behaviour until the probe has measured it. The pin's refusal line
 carries the required and maximum partition counts (ADR-142).
 
+**Branch taken: (d), the quarter manifest.** The probe ran read-only against dev on 2026-10-18
+(UTC). The quarter's bake pin resolved 184 day partitions in one dataset (`fct_ad_exposure`, 92
+days × 2 lenses), over the bound of 100, and `select` raised `ADLY-PUBLICATION_SELECTION-0002`.
+The last-complete-month control resolved 60 and passed. Chat's "reach last quarter" answered from
+`fct_exposure_frequency`'s one quarter-bucket partition; "reach by channel last quarter" was refused
+with `ADLY-PLAN-0008`. The owner chose the manifest over retiring the option on 2026-10-18 (UTC).
+
 Decided by rubric item (1) of
 [delivery practice](../delivery-practice.md#5-the-decision-weighting-rubric): a declared view that
 never fills is a broken promise on the page.
