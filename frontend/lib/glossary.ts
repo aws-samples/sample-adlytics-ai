@@ -11,6 +11,7 @@ const METRIC_LABELS: Readonly<Record<string, string>> = {
   glance_views: 'Product page views',
   portfolio_roas_attributed_14d: 'Return on ad spend',
   purchaser_rate_index_vs_sponsored_only: 'Purchase rate compared with sponsored-only shoppers',
+  revenue_per_glance_view: 'Revenue per product page view',
   roas_attributed_14d: 'Return on ad spend',
   roas_attributed_incl_halo_14d: 'Return incl. other products of your brand',
   roas_deduplicated_incl_halo_14d: 'Return on ad spend, each sale counted once',

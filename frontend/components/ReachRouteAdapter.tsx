@@ -86,7 +86,11 @@ export const reachRouteAdapter: V2RouteAdapter<ReachPresentation, never, never, 
     : null,
   render: (state) => {
     if (state.kind !== 'parent_ready' || state.parent.kind !== 'parent') return null;
-    return <ReachAndFunnelView artifact={state.parent.artifact} />;
+    const comparison = state.parent.temporal.comparison;
+    return <ReachAndFunnelView
+      artifact={state.parent.artifact}
+      priorPeriodLabel={comparison.policy === 'prior_calendar_period' ? comparison.prior_period_label : null}
+    />;
   },
   renderLoading: () => <ReachSkeleton />,
   renderLoadingControls: () => <ReachControlsSkeleton />,

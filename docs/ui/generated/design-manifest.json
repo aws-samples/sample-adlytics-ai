@@ -135,7 +135,7 @@
         },
         {
           "path": "docs/ui/scorecard/low-level-design.md",
-          "sha256": "2fba9c490aaa2bfa97feda855c93dea9b023521da12ff19e7e7111e0e22833ae"
+          "sha256": "61ec4e6e3e5ca94a7dafe7f8b85ea0626b6c83585e5b5cfdbee7b66707ed653e"
         },
         {
           "path": "docs/ui/scorecard/mockup.html",
@@ -250,7 +250,7 @@
         },
         {
           "path": "docs/ui/reach-and-funnel/low-level-design.md",
-          "sha256": "98a4096d5b0a5598362c61bd1988cb0fb6bb9407028f75065e2576e4160a3297"
+          "sha256": "ab8fce99514bddcdccee76288fd7bba62690ce5e7fdeee0af22dec831a2ea53f"
         },
         {
           "path": "docs/ui/reach-and-funnel/mockup.html",
@@ -366,7 +366,7 @@
         },
         {
           "path": "docs/ui/retention/low-level-design.md",
-          "sha256": "4bf8734bc98b5494c3c99cadd21731cde43a6ee700919f28a9d9a2856b7c5138"
+          "sha256": "2b814313be6dd1a33288364d3319fa06402ca242543766ed3087e863b2d420ff"
         },
         {
           "path": "docs/ui/retention/mockup.html",
@@ -472,7 +472,7 @@
       "members": [
         {
           "path": "docs/ui/insight-presentation-contract.md",
-          "sha256": "08a8514d29cb95d3fa8406523416737bc5e118429872159189764683fe1a5bc2"
+          "sha256": "348142e0800cf4c87b92100a1ef5742e429a047a7d6f16fb287720e6235b909f"
         }
       ],
       "revision": "2026-10-09.2"

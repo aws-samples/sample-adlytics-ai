@@ -39,7 +39,7 @@ const LABELS: Record<Metric, string> = {
   return_rate: 'Return rate',
   returns_value_estimate_retail: 'Estimated revenue withheld by returns',
   revenue_ordered: 'Ordered revenue',
-  revenue_per_glance_view: 'Revenue per glance view',
+  revenue_per_glance_view: metricLabel('revenue_per_glance_view', 'Revenue per glance view'),
   units_ordered: 'Ordered units',
   units_shipped: 'Shipped units',
 };
@@ -51,12 +51,12 @@ export function retailMetricLabel(metric: Metric): string {
 /** Each tile's basis line: how the figure is defined, in the dictionary's terms. */
 function basisLine(metric: Metric, scope: RetailTileScope): string | null {
   switch (metric) {
-    case 'glance_views': return 'Vendor Central · glance views';
-    case 'conversion_rate_retail': return 'Ordered units ÷ glance views × 1,000';
+    case 'glance_views': return 'Vendor Central · product page views';
+    case 'conversion_rate_retail': return 'Ordered units ÷ product page views × 1,000';
     case 'retail_revenue_shipped': return 'Vendor Central · shipped revenue';
     case 'fulfilment_rate': return 'Shipped units ÷ ordered units';
     case 'asp_shipped': return 'Shipped revenue ÷ shipped units';
-    case 'revenue_per_glance_view': return 'Shipped revenue ÷ glance views';
+    case 'revenue_per_glance_view': return 'Shipped revenue ÷ product page views';
     case 'cogs_shipped': return "Amazon's wholesale cost for shipped units: what Amazon paid you";
     case 'amazon_margin_proxy': return "Shipped revenue − cost of goods shipped · Amazon's margin, not yours";
     case 'return_rate': return 'Customer returns ÷ shipped units';

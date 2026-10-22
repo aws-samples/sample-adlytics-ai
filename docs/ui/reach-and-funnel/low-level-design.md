@@ -76,7 +76,7 @@ band returned [proposal]. Until that amendment is recorded, S3.2 doesn't build t
 |---|---|
 | Saw both | "Saw both within 14 days of their first ad · Amazon account IDs · a lower bound: DSP impressions Amazon couldn't link to an account aren't matched" |
 | Saw both, all ID types | "Saw both within 14 days of their first ad · all ID types · overlap is understated" |
-| All-ID overlap table column | "All ID types" |
+| All-ID overlap table column | "All ID types" (the page shows "All shoppers incl. devices", and labels each served prior with the served `temporal.comparison.prior_period_label`, for example "August 2026:", or "Previous {grain}:" without one; [glossary](../../glossary.md#customer-labels)) |
 | Saw DSP only | "Saw DSP only within 14 days of their first ad · Amazon account IDs" |
 | Overlap subtitle | "Shoppers reached in {period label}, grouped by the ads they saw within 14 days of their first ad in that {grain}." |
 | Window note | "These groups use each shopper's 14-day window, so they don't match Amazon's own period reach reports." and "Ads seen before the {grain} began aren't counted." |

@@ -83,7 +83,7 @@ change when its target's page entry, with a `navigation` block, lands.
 | Figure | Label |
 |---|---|
 | Channel attributed revenue and ROAS | "Amazon-attributed · 14-day · conversion date · excludes brand halo" |
-| ROAS with brand halo | "Amazon-attributed · 14-day · includes brand halo" |
+| ROAS with brand halo (the page shows "Return incl. other products of your brand"; [glossary](../../glossary.md#customer-labels)) | "Amazon-attributed · 14-day · includes brand halo" |
 | Network headline | "Deduplicated across DSP and sponsored · {model} · 14-day · includes brand halo" |
 | TACoS | "Mixed basis: ad spend ÷ Vendor shipped revenue" |
 

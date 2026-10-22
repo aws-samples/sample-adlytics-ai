@@ -16,10 +16,16 @@ import type {
   ReachMarket,
 } from '@/lib/reach';
 import { formatCanonicalDecimal, formatCount } from '@/lib/exact-format';
+import { metricLabel } from '@/lib/glossary';
 import { DataTable, DtBody, DtCell, DtColumn, DtHead, DtRow, DtRowHeader } from './DataTable';
 import { InsightFocusDialog, type InsightDialogSlot, type InsightFocusSurface } from './InsightFocusDialog';
 
 const NOT_AVAILABLE = 'Not available';
+/** Customer words for the identity spaces and the platform return (cross-cutting §2.1). */
+const ACCOUNT_IDS_LABEL = 'Signed-in shoppers';
+/** The decoder pins the served `all_ids_label` to "All ID types", so this relabels exactly that one string. */
+const ALL_IDS_LABEL = 'All shoppers incl. devices';
+const PLATFORM_RETURN_LABEL = 'Return on ad spend, all Amazon ads';
 const INSIGHT_LABELS: Readonly<Record<ReachInsightId, string>> = {
   'frequency-saturation': 'Frequency',
   'full-funnel-association': 'Association, not cause',
@@ -49,6 +55,14 @@ function Figure({ figure }: { readonly figure: ReachFigure }) {
   </span>;
 }
 
+/**
+ * A served prior figure, named by the served prior period ("August 2026:") so it can't be read as
+ * the current one (C6). Without a served label it reads "Previous {grain}:".
+ */
+function PriorFigure({ figure, label }: { readonly figure: ReachFigure; readonly label: string }) {
+  return <span className="reach-prior"><span className="reach-prior-label">{`${label}:`}</span> <Figure figure={figure} /></span>;
+}
+
 function ChangeFigure({ change }: { readonly change: ReachChange }) {
   return <span className={change.absence === null ? 'reach-change' : 'reach-change absent'}>
     {change.text ?? change.absence?.text}
@@ -63,7 +77,7 @@ function SectionState({ text }: { readonly text: string }) {
   return <div className="callout reach-state"><h3>{NOT_AVAILABLE}</h3><p>{text}</p></div>;
 }
 
-function OverlapSection({ market }: { readonly market: ReachMarket }) {
+function OverlapSection({ market, priorLabel }: { readonly market: ReachMarket; readonly priorLabel: string }) {
   const accountHeadingId = useId();
   const allIdsHeadingId = useId();
   const overlap = market.overlap;
@@ -76,7 +90,7 @@ function OverlapSection({ market }: { readonly market: ReachMarket }) {
         {overlap.tiles.map((tile) => <article className={tile.current.absence === null ? 'reach-tile' : 'reach-tile absent'} key={tile.metric}>
           <h3>{tile.label}</h3>
           <Figure figure={tile.current} />
-          {tile.prior === null ? null : <Figure figure={tile.prior} />}
+          {tile.prior === null ? null : <PriorFigure figure={tile.prior} label={priorLabel} />}
           <ChangeFigure change={tile.change} />
         </article>)}
       </div>
@@ -88,20 +102,20 @@ function OverlapSection({ market }: { readonly market: ReachMarket }) {
           style={{ flexGrow: group.account.value === null ? 0 : Number(group.account.value) }}
         />)}
       </div>
-      <DataTable title="Amazon account IDs">
+      <DataTable title={ACCOUNT_IDS_LABEL}>
         <DtHead><DtRow>
           <DtColumn><span className="sr-only">Overlap between DSP and sponsored ads</span></DtColumn>
-          <DtColumn id={accountHeadingId}>Amazon account IDs</DtColumn>
-          <DtColumn id={allIdsHeadingId}>{overlap.all_ids_label}</DtColumn>
+          <DtColumn id={accountHeadingId}>{ACCOUNT_IDS_LABEL}</DtColumn>
+          <DtColumn id={allIdsHeadingId}>{ALL_IDS_LABEL}</DtColumn>
         </DtRow></DtHead>
         <DtBody>{overlap.groups.map((group) => {
           const rowHeadingId = `${allIdsHeadingId}-${group.exposure_group}`;
           return <DtRow key={group.exposure_group}>
             <DtRowHeader id={rowHeadingId}>{group.label}</DtRowHeader>
-            <DtCell headers={`${rowHeadingId} ${accountHeadingId}`} label="Amazon account IDs">
-              <span className="reach-cell-stack"><Figure figure={group.account} />{group.prior_account === null ? null : <Figure figure={group.prior_account} />}<ChangeFigure change={group.change} /></span>
+            <DtCell headers={`${rowHeadingId} ${accountHeadingId}`} label={ACCOUNT_IDS_LABEL}>
+              <span className="reach-cell-stack"><Figure figure={group.account} />{group.prior_account === null ? null : <PriorFigure figure={group.prior_account} label={priorLabel} />}<ChangeFigure change={group.change} /></span>
             </DtCell>
-            <DtCell headers={`${rowHeadingId} ${allIdsHeadingId}`} label={overlap.all_ids_label}><Figure figure={group.all_ids} /></DtCell>
+            <DtCell headers={`${rowHeadingId} ${allIdsHeadingId}`} label={ALL_IDS_LABEL}><Figure figure={group.all_ids} /></DtCell>
           </DtRow>;
         })}</DtBody>
       </DataTable>
@@ -120,11 +134,11 @@ function FunnelSection({ market }: { readonly market: ReachMarket }) {
       <DataTable title="Full funnel by exposure group">
         <DtHead><DtRow>
           <DtColumn><span className="sr-only">Full funnel by exposure group</span></DtColumn>
-          {funnel.columns.map((column) => <DtColumn key={column.metric}>{column.label}</DtColumn>)}
+          {funnel.columns.map((column) => <DtColumn key={column.metric}>{metricLabel(column.metric, column.label)}</DtColumn>)}
         </DtRow></DtHead>
         <DtBody>{funnel.rows.map((row) => <DtRow key={row.exposure_group}>
           <DtRowHeader>{row.label}</DtRowHeader>
-          {funnel.columns.map((column) => <DtCell key={column.metric} label={column.label}><Figure figure={row.figures[column.metric]} /></DtCell>)}
+          {funnel.columns.map((column) => <DtCell key={column.metric} label={metricLabel(column.metric, column.label)}><Figure figure={row.figures[column.metric]} /></DtCell>)}
         </DtRow>)}</DtBody>
       </DataTable>
       {funnel.index_note === null ? null : <p className="reach-notes">{funnel.index_note}</p>}
@@ -216,11 +230,11 @@ function FrequencyTables({ frequency }: { readonly frequency: ReachFrequency }) 
       <p className="reach-notes">{table.unavailable_reason}</p>
       <p className="reach-notes">{table.foot}</p>
     </div>
-    <DataTable title="Platform return" note={table.platform_label} nameWithNote>
-      <DtHead><DtRow><DtColumn>Ads seen</DtColumn><DtColumn>Platform return</DtColumn></DtRow></DtHead>
+    <DataTable title={PLATFORM_RETURN_LABEL} note={table.platform_label} nameWithNote>
+      <DtHead><DtRow><DtColumn>Ads seen</DtColumn><DtColumn>{PLATFORM_RETURN_LABEL}</DtColumn></DtRow></DtHead>
       <DtBody>{frequency.buckets.map((bucket) => <DtRow key={bucket.bucket}>
         <DtRowHeader>{bucket.label}</DtRowHeader>
-        <DtCell label="Platform return"><Figure figure={bucket.platform_return} /></DtCell>
+        <DtCell label={PLATFORM_RETURN_LABEL}><Figure figure={bucket.platform_return} /></DtCell>
       </DtRow>)}</DtBody>
     </DataTable>
   </div>;
@@ -239,7 +253,11 @@ function FrequencySection({ market }: { readonly market: ReachMarket }) {
   </section>;
 }
 
-export function ReachAndFunnelView({ artifact }: { readonly artifact: ReachAndFunnelArtifact }) {
+export function ReachAndFunnelView({ artifact, priorPeriodLabel = null }: {
+  readonly artifact: ReachAndFunnelArtifact;
+  /** The envelope's served `temporal.comparison.prior_period_label`, when it serves one. */
+  readonly priorPeriodLabel?: string | null;
+}) {
   if (artifact.outcome !== 'complete') return <div className="reach-view">
     <section className="callout reach-page-state" role="status">
       <h2>{NOT_AVAILABLE}</h2>
@@ -250,7 +268,7 @@ export function ReachAndFunnelView({ artifact }: { readonly artifact: ReachAndFu
   if (market === undefined) return null;
   return <div className="reach-view">
     <AnswerSentence answer={reachAnswer(artifact, reachFigureText)} />
-    <OverlapSection market={market} />
+    <OverlapSection market={market} priorLabel={priorPeriodLabel ?? `Previous ${artifact.period.grain}`} />
     <FunnelSection market={market} />
     <InsightsSection artifact={artifact} market={market} />
     <FrequencySection market={market} />

@@ -388,9 +388,9 @@ test('Campaign Portfolio view gives each insight state its designed treatment an
   assert.ok(screen.getByText('No campaign direction materially diverges from the portfolio direction.'));
   assert.ok(screen.getByText('Nothing noteworthy'));
   assert.ok(screen.getByText(/requires a governed delivery follow-up read/));
-  assert.ok(screen.getByText('Needs data'));
+  assert.ok(screen.getByText('Not enough data yet'));
   assert.ok(screen.getByText(/retries automatically and appears on a later view/));
-  assert.ok(screen.getByText('Retrying'));
+  assert.ok(screen.getByText('Loading'));
   // Treatment is carried by the card class, never by graying the served words.
   assert.ok(view.container.querySelector('.narr-card.quiet'));
   assert.ok(view.container.querySelector('.narr-card.callout'));
@@ -617,7 +617,7 @@ test('An insufficient delivery renders one opener card and the served-words stat
   // No raw condition code, no browser label, and no "written by the server" line (F32).
   assert.equal(dialog.textContent?.includes('incomplete_daily_series'), false);
   assert.equal(dialog.textContent?.includes('Every line below is written by the server'), false);
-  assert.equal(dialog.textContent?.includes('Needs data'), false);
+  assert.equal(dialog.textContent?.includes('Not enough data yet'), false);
   const rows = within(dialog).getAllByRole('row');
   assert.equal(rows.length, 31 + 1);
   assert.ok(within(dialog).getByRole('region', { name: 'What each figure needs' }));

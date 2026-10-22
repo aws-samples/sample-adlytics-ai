@@ -95,7 +95,7 @@ test('The distributor view and provenance render in customer words, never as wir
   // Page chrome maps server enums to words; the browser probe no longer scans rendered text (ADR-082),
   // so the mapping is asserted here.
   const view = render(<><RetailHealthBandTitle artifact={completeArtifact()} /><RetailHealthView artifact={completeArtifact()} /></>);
-  assert.ok(screen.getByText('Manufacturing view'));
+  assert.ok(screen.getByText('Ordered and shipped figures'));
   assert.equal(/\bMANUFACTURING\b|\bSOURCING\b/.test(view.container.textContent ?? ''), false);
   for (const stamp of ['deterministic-gate1', 'deterministic-v1', 'not-generated']) {
     assert.notEqual(provenanceLine(stamp), stamp);
@@ -345,7 +345,7 @@ test('Retail health shows the four shared tile groups, the return-reasons absenc
   const keys = (name: string) => [...group(name).querySelectorAll('.tile .k')].map((key) => key.textContent);
   assert.deepEqual(keys('Demand and conversion'), ['Product page views', 'Units per 1,000 product page views', 'Ordered revenue', 'Ordered units']);
   assert.deepEqual(keys('Sales and fulfilment'), ['Shipped revenue', 'Shipped units', 'Fulfilment rate', 'Average selling price']);
-  assert.deepEqual(keys('Traffic value and margin'), ['Revenue per glance view', 'Cost of goods shipped', "Amazon's margin on your products (not yours)"]);
+  assert.deepEqual(keys('Traffic value and margin'), ['Revenue per product page view', 'Cost of goods shipped', "Amazon's margin on your products (not yours)"]);
   assert.deepEqual(keys('Returns'), ['Customer returns', 'Return rate', 'Estimated revenue withheld by returns', 'Return reasons']);
   assert.ok(group('Returns').textContent?.includes("Vendor Central doesn't send return reasons for this account."));
   const paid = group('Retail purchases from Amazon Marketing Cloud');

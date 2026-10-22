@@ -85,7 +85,7 @@ export function RetailHealthBandTitle({ artifact, product = null }: {
         : <>
           <span className="pill">{artifact.total_count} {artifact.total_count === 1 ? 'product' : 'products'}</span>
           <span className="pill">Retail actuals · shipped basis</span>
-          <span className="pill">{artifact.distributor_view === 'MANUFACTURING' ? 'Manufacturing view' : 'Sourcing view'}</span>
+          <span className="pill">{artifact.distributor_view === 'MANUFACTURING' ? 'Ordered and shipped figures' : 'Shipped figures only'}</span>
           {artifact.reconciliation === null ? null : artifact.reconciliation.outcome === 'reconciled'
             ? <span className="pill good">Matches Vendor Central totals · loaded {formatIsoDate(artifact.reconciliation.as_of)}</span>
             : <span className="pill warn">Totals differ from reported · loaded {formatIsoDate(artifact.reconciliation.as_of)}</span>}

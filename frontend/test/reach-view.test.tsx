@@ -58,6 +58,12 @@ test('renders the complete surface in section order using only served display te
   assert.deepEqual(headings, ['Overlap between DSP and sponsored ads', 'Full funnel by exposure group', 'Insights', 'Frequency']);
   assert.ok(container.textContent?.includes('30.00%'));
   assert.ok(container.textContent?.includes('2000 served'));
+  // C6: without a served prior label every served prior is named as the previous period.
+  const priors = [...container.querySelectorAll('.reach-prior')].map((node) => node.textContent);
+  assert.equal(priors.length, 6);
+  assert.ok(priors.every((text) => text?.startsWith('Previous month: ')), priors.join(' | '));
+  assert.ok(priors.includes('Previous month: 29.00%'));
+  assert.ok(priors.includes('Previous month: 2900 served'));
   assert.ok(container.textContent?.includes('2.50 USD'));
   // Plan D4: the served "2.50x" reads in the shared multiplier style; its rounding is the server's.
   assert.ok(container.textContent?.includes('2.50×'));
@@ -75,10 +81,19 @@ test('renders the complete surface in section order using only served display te
   assert.ok(notes[1]?.nextElementSibling?.textContent?.includes('Ads seen within 14 days'));
 });
 
+test('every served prior carries the served prior period label in the tiles and the account cells (C6)', () => {
+  const { container } = render(<ReachAndFunnelView artifact={parseReachAndFunnelArtifact(reachCompleteFineFixture)} priorPeriodLabel="August 2026" />);
+  const priors = [...container.querySelectorAll('.reach-prior')].map((node) => node.textContent);
+  assert.deepEqual(priors, [
+    'August 2026: 29.00%', 'August 2026: 25.00%', 'August 2026: 21.00%',
+    'August 2026: 2900 served', 'August 2026: 3900 served', 'August 2026: 4900 served',
+  ]);
+});
+
 test('the overlap table gives every value its group and server-owned identity-space heading', () => {
   view();
-  const region = screen.getByRole('region', { name: 'Amazon account IDs' });
-  assert.ok(within(region).getByRole('columnheader', { name: 'All ID types' }));
+  const region = screen.getByRole('region', { name: 'Signed-in shoppers' });
+  assert.ok(within(region).getByRole('columnheader', { name: 'All shoppers incl. devices' }));
   assert.ok(screen.getByText('Saw both within 14 days of their first ad · all ID types · overlap is understated'));
   assert.equal(screen.getAllByText('Shoppers reached in September 2026, grouped by the ads they saw within 14 days of their first ad in that month.').length, 1);
 
@@ -89,7 +104,7 @@ test('the overlap table gives every value its group and server-owned identity-sp
       const headings = (cell.getAttribute('headers') ?? '')
         .split(' ')
         .map((id) => document.getElementById(id)?.textContent);
-      assert.deepEqual(headings, [rowHeader.textContent, index === 0 ? 'Amazon account IDs' : 'All ID types']);
+      assert.deepEqual(headings, [rowHeader.textContent, index === 0 ? 'Signed-in shoppers' : 'All shoppers incl. devices']);
     }
   }
 });
@@ -124,7 +139,7 @@ test('not-returned buckets leave a chart gap and state the exact absence in char
 test('keeps no-credit channel rows separate and places each served platform return beside them', () => {
   const { container } = view();
   const regions = screen.getAllByRole('region');
-  const platformRegion = regions.find((region) => region.getAttribute('aria-labelledby')?.split(' ').some((id) => document.getElementById(id)?.textContent === 'Platform return'));
+  const platformRegion = regions.find((region) => region.getAttribute('aria-labelledby')?.split(' ').some((id) => document.getElementById(id)?.textContent === 'Return on ad spend, all Amazon ads'));
   assert.ok(platformRegion);
   // E3: every channel cell carries the same served absence, so the grid is one line per channel.
   const channelGroup = screen.getByRole('group', { name: 'Return per channel by frequency' });
@@ -204,10 +219,11 @@ function responseStrings(value: unknown, into = new Set<string>()): Set<string> 
 }
 
 const BROWSER_COPY = new Set([
-  'Overlap between DSP and sponsored ads', 'Amazon account IDs', 'Full funnel by exposure group',
+  'Overlap between DSP and sponsored ads', 'Signed-in shoppers', 'All shoppers incl. devices', 'Full funnel by exposure group',
   'Insights', 'Frequency', 'About these figures', 'Association, not cause', 'Not available',
   'Read more ›', 'Show values', 'Purchaser rate by number of ads seen', 'Ads seen',
-  'Purchaser rate', 'Return per channel by frequency', 'Channel', 'Platform return',
+  'Purchaser rate', 'Return per channel by frequency', 'Channel', 'Return on ad spend, all Amazon ads',
+  'Previous month:', 'Purchase rate compared with sponsored-only shoppers',
 ]);
 
 test('a same-response copy walk refuses invented or borrowed visible text', () => {

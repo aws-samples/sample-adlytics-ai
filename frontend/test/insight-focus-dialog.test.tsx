@@ -137,7 +137,7 @@ test('an ineligible slot dialog is the loud callout with the served missing-evid
     />,
   );
 
-  assert.ok(screen.getByText('Needs data'));
+  assert.ok(screen.getByText('Not enough data yet'));
   assert.ok(screen.getByText('What this slot needs'));
   assert.ok(screen.getByText(/requires a governed delivery follow-up read/));
   assert.ok(document.querySelector('.focus-dialog .narr-card.callout'));
@@ -159,7 +159,7 @@ test('a pending movers dialog reads the deterministic-narrator stamp as its cont
   );
 
   const dialog = screen.getByRole('dialog');
-  assert.ok(screen.getByText('Retrying'));
+  assert.ok(screen.getByText('Loading'));
   assert.ok(screen.getByText('What happens next'));
   assert.ok(dialog.textContent?.includes('retries automatically and appears on a later view'));
   // The reading names the composer without asserting composition (contract §3).

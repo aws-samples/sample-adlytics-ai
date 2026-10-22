@@ -3,12 +3,14 @@
 
 import { audiencesAnswer } from '@/lib/audiences';
 import { AnswerSentence } from './AnswerSentence';
-import { displayFigure } from '@/lib/exact-format';
+import { displayFigure, formatCount } from '@/lib/exact-format';
 import { useId, useMemo, useState } from 'react';
 
 import type { AudienceDelivery, AudienceMarket, AudienceProfileArtifact, AudienceSegmentNames, AudienceView, AudienceViewId } from '@/lib/audiences';
 import { DataTable, DtBody, DtCell, DtColumn, DtHead, DtRow, DtRowHeader } from './DataTable';
 
+/** A served count, digit-grouped (UI refresh D4). The decoder pins it to the count's own digits (`countPair`). */
+const groupedCount = (text: string | null): string | null => text === null ? null : formatCount(text);
 function SegmentName({ row }: { readonly row: AudienceSegmentNames }) {
   return <>{row.display_name}{row.provider_label === null ? null : <span className="sub">{row.provider_label}</span>}{row.category_path === null ? null : <span className="sub">{row.category_path}</span>}</>;
 }
@@ -61,7 +63,7 @@ function SegmentTable({ buyerMode, delivery, view }: {
           ? <UnavailableSegmentRow buyerMode={buyerMode} key={`${row.profile_path}:${row.segment_id}`} reason={row.text} row={row} />
           : <DtRow key={`${row.profile_path}:${row.segment_id}`} className={row.state === 'value' ? undefined : 'na-row'}>
             <DtRowHeader><SegmentName row={row} /></DtRowHeader>
-            <DtCell label={metricLabels(buyerMode)[0]}>{buyerMode === 'all' ? row.segment_buyer_share?.text ?? row.text : row.segment_buyers_new_to_brand_text}</DtCell>
+            <DtCell label={metricLabels(buyerMode)[0]}>{buyerMode === 'all' ? row.segment_buyer_share?.text ?? row.text : groupedCount(row.segment_buyers_new_to_brand_text)}</DtCell>
             <DtCell label="Share of reached shoppers">{row.segment_exposed_share?.text ?? row.text}</DtCell>
             <DtCell label="Index">{row.segment_index === null ? row.text : displayFigure('segment_index', row.segment_index, 'ratio', null).text}</DtCell>
           </DtRow>)}
@@ -128,7 +130,7 @@ function CampaignSection({ market }: { readonly market: AudienceMarket }) {
       <DtHead><DtRow><DtColumn className="l">Segment</DtColumn><DtColumn>Impressions</DtColumn><DtColumn>CPM</DtColumn><DtColumn>ROAS</DtColumn></DtRow></DtHead>
       <DtBody>{rows.map((row) => <DtRow key={`${row.campaign_ref}:${row.segment_id}`}>
         <DtRowHeader><SegmentName row={row} /></DtRowHeader>
-        <DtCell label="Impressions">{row.segment_impressions_text}</DtCell>
+        <DtCell label="Impressions">{groupedCount(row.segment_impressions_text)}</DtCell>
         <DtCell label="CPM">{row.segment_cpm?.text ?? row.cpm_text}</DtCell>
         <DtCell label="ROAS">{row.segment_roas_attributed === null ? row.roas_text : displayFigure('segment_roas_attributed', row.segment_roas_attributed, 'ratio', null).text}</DtCell>
       </DtRow>)}</DtBody>

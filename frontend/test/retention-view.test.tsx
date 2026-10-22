@@ -109,7 +109,7 @@ test('a refreshed artifact without paid grids shows the standard path instead of
   triangle.paid = structuredClone(triangle.standard);
   for (const grid of triangle.paid as Record<string, unknown>[]) grid.grid_label = `${String(grid.label)} · all Amazon purchases`;
   const view = render(<RetentionView artifact={parseRetentionCohortArtifact(observed)} />);
-  fireEvent.click(screen.getByRole('radio', { name: 'All Amazon purchases' }));
+  fireEvent.click(screen.getByRole('radio', { name: 'Any repeat purchase' }));
   const region = () => screen.getByRole('region', { name: /Share of each cohort/ });
   assert.ok(within(region()).getByText('Won by sponsored ads only · all Amazon purchases'));
   // The page context refresh replaces the artifact in place, so this component's choice survives it.

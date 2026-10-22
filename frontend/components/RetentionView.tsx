@@ -70,8 +70,8 @@ function Market({ market }: { readonly market: RetentionMarket }) {
     <section className="section" aria-labelledby={named(`triangle-${market.marketplace_key}`)}>
       <h2 id={`triangle-${market.marketplace_key}`}>Repeat purchase by cohort</h2>
       {market.path.paid.state === 'observed' ? <fieldset className="retention-switch"><legend>Purchase path</legend>
-        <label><input type="radio" name={`path-${market.marketplace_key}`} checked={shownPath === 'standard'} onChange={() => setPath('standard')} />Ad-touched repeat</label>
-        <label><input type="radio" name={`path-${market.marketplace_key}`} checked={shownPath === 'paid'} onChange={() => setPath('paid')} />All Amazon purchases</label>
+        <label><input type="radio" name={`path-${market.marketplace_key}`} checked={shownPath === 'standard'} onChange={() => setPath('standard')} />Repeat after an ad</label>
+        <label><input type="radio" name={`path-${market.marketplace_key}`} checked={shownPath === 'paid'} onChange={() => setPath('paid')} />Any repeat purchase</label>
       </fieldset> : null}
       <fieldset className="datectl retention-groups"><legend>Acquired through</legend><div className="seg compact">
         {GROUPS.map((id, index) => {

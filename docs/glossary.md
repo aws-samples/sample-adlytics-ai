@@ -115,6 +115,20 @@ The words customer pages show for a governed metric whose served label is jargon
 | `roas_attributed_incl_halo_14d` | Return incl. other products of your brand |
 | `tacos` | Ad spend as a share of shipped sales |
 | `glance_views` | Product page views |
+| `revenue_per_glance_view` | Revenue per product page view |
 | `amazon_margin_proxy` | Amazon's margin on your products (not yours) |
 | `purchaser_rate_index_vs_sponsored_only` | Purchase rate compared with sponsored-only shoppers |
 | Insight output classes `observed`, `perspective`, `hypothesis` | Fact, Reading, Idea to check |
+
+Fixed page words that aren't metric labels change in the component that renders them (cross-cutting §2.1). The served string stays in the artifact.
+
+| Page | Was | Customer words | Component |
+|---|---|---|---|
+| Reach | Amazon account IDs (overlap table) | Signed-in shoppers | `ReachAndFunnelView.tsx` |
+| Reach | All ID types (served `all_ids_label`, decoder-pinned) | All shoppers incl. devices | `ReachAndFunnelView.tsx` |
+| Reach | Platform return | Return on ad spend, all Amazon ads | `ReachAndFunnelView.tsx` |
+| Reach | an unlabelled prior figure | {served prior period label}: {served prior}, or "Previous {grain}:" without a label | `ReachAndFunnelView.tsx` |
+| Retention | Ad-touched repeat / All Amazon purchases | Repeat after an ad / Any repeat purchase | `RetentionView.tsx` |
+| Retail health | Manufacturing view / Sourcing view | Ordered and shipped figures / Shipped figures only | `RetailHealthView.tsx` |
+| Retail health | glance views (tile basis lines) | product page views | `RetailTiles.tsx` |
+| Every insight card | Needs data / Retrying | Not enough data yet / Loading | `InsightCard.tsx` |

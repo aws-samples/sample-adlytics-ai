@@ -149,7 +149,7 @@ function ChannelTable({ card, highlight, notAvailable, several }: {
       <DtHead>
         <DtRow>
           <DtColumn className="l">{table.row_header_label}</DtColumn>
-          {table.columns.map((column) => <DtColumn key={column.column} basis={column.basis}>{column.label}</DtColumn>)}
+          {table.columns.map((column) => <DtColumn key={column.column} basis={column.basis}>{metricLabel(column.column, column.label)}</DtColumn>)}
           <DtColumn className="l">{table.link_column}</DtColumn>
         </DtRow>
       </DtHead>
@@ -166,13 +166,13 @@ function ChannelTable({ card, highlight, notAvailable, several }: {
               const value = figureText(figure);
               return <DtCell
                 key={figure.metric}
-                label={table.columns[index]?.label ?? figure.label}
+                label={metricLabel(figure.metric, table.columns[index]?.label ?? figure.label)}
                 absent={value === null}
                 basis={{ coverage: null, text: table.columns[index]?.basis ?? null }}
               >
                 {/* "Not available over hiding": the word and the server's reason, both visible. */}
                 {value ?? <span className="cell-na">{notAvailable}<span className="reason">{figure.absence_text}</span></span>}
-                {figure.change === null ? null : <FigureChange change={figure.change} slot={`channels:${card.card_id}`} figure={`${row.channel_label} ${figure.label}`} />}
+                {figure.change === null ? null : <FigureChange change={figure.change} slot={`channels:${card.card_id}`} figure={`${row.channel_label} ${metricLabel(figure.metric, figure.label)}`} />}
               </DtCell>;
             })}
             <DtCell label={table.link_column} className="cell-link nw">

@@ -49,7 +49,9 @@ test('renders DSP profile, campaign figures and server text without browser form
   assert.ok(screen.getByText('7.00 USD'));
   assert.ok(screen.getByText('0.59×'));
   assert.equal(container.textContent?.includes('0.4000'), false);
-  assert.equal(container.textContent?.includes('30000'), true);
+  // Plan D4: the served count's own digits, grouped; the ungrouped string is gone.
+  assert.ok(screen.getByText('30,000'));
+  assert.equal(container.textContent?.includes('30000'), false);
 });
 
 test('renders a roster gap with one reason and described visual-only markers in both buyer modes', () => {

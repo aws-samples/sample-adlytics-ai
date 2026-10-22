@@ -57,8 +57,8 @@ export interface InsightTreatment {
 export function insightTreatment(slot: InsightSlotView): InsightTreatment {
   if (slot.state === 'filled') return { cardClass: '', reason: null, tag: OUTPUT_TAGS[slot.output_class] };
   const reason = slot.absence_reason ?? INSIGHT_FALLBACK_REASON;
-  if (slot.absence_class === 'ineligible') return { cardClass: 'callout', reason, tag: { className: 'tag needs-data', label: 'Needs data' } };
-  if (slot.absence_class === 'generation-pending') return { cardClass: 'pending', reason, tag: { className: 'tag retrying', label: 'Retrying' } };
+  if (slot.absence_class === 'ineligible') return { cardClass: 'callout', reason, tag: { className: 'tag needs-data', label: 'Not enough data yet' } };
+  if (slot.absence_class === 'generation-pending') return { cardClass: 'pending', reason, tag: { className: 'tag retrying', label: 'Loading' } };
   // evaluated-quiet, the never-rendered out-of-slice, and the pair-less retained shape all recede.
   return { cardClass: 'quiet', reason, tag: { className: 'tag quiet', label: 'Nothing noteworthy' } };
 }
