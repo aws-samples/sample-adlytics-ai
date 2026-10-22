@@ -1851,7 +1851,6 @@ tiers:
       - tests/unit/test_sqs_receipt_attributes.py
       - tests/unit/test_stage1_operator_bootstrap.py
       - tests/unit/test_stage1_reconcile_jobs.py
-      - tests/unit/test_stuck_flow_detector.py
       - tests/unit/test_table_attempt.py
       - tests/unit/test_table_attempt_statements.py
       - tests/unit/test_table_writer.py
