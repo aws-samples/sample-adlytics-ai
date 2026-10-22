@@ -16,7 +16,8 @@ staged file is judged by what the commit will hold. Every check runs and refuses
     IDENTITY_NOT_ALLOWED   the author or committer email git will record is outside
                            publication.allowedEmail (git config; falls back to user.email)
     LINT_FAILED            ruff check or ruff format --check refuses a staged .py file under src/
-                           or tests/, the scope of `make lint` and `make check-format`
+                           or tests/, the scope of `make lint` and `make check-format`; a path
+                           pyproject's [tool.ruff.format] exclude names is linted, not formatted
 
 An absent or empty local-denylist.txt prints a warning here; the push tier owns that refusal.
 `make publication-gate` stays the enforcing gate before every push: this hook is opt-in, and
@@ -30,7 +31,9 @@ import importlib.util
 import shutil
 import sys
 import tempfile
+import tomllib
 from collections.abc import Callable, Sequence
+from fnmatch import fnmatch
 from pathlib import Path
 from types import ModuleType
 
@@ -189,12 +192,28 @@ def lint_targets(paths: Sequence[str]) -> list[str]:
     return [p for p in paths if p.startswith(LINT_ROOTS) and p.endswith(LINT_SUFFIXES)]
 
 
+def format_excluded(root: Path) -> tuple[str, ...]:
+    """Return pyproject's `[tool.ruff.format]` exclude patterns, the generated modules.
+
+    `make check-format` honours them, but ruff ignores them for content read from stdin even
+    with `--force-exclude`, so without this every commit of a regenerated module is refused.
+    """
+    pyproject = root / "pyproject.toml"
+    if not pyproject.is_file():
+        return ()
+    section = tomllib.loads(pyproject.read_text()).get("tool", {}).get("ruff", {}).get("format", {})
+    return tuple(str(pattern) for pattern in section.get("exclude", ()))
+
+
 def check_lint(root: Path) -> list[Refusal]:
     """Run ruff check and ruff format --check on the staged content of each lintable file."""
     refusals: list[Refusal] = []
+    excluded = format_excluded(root)
     for path in lint_targets(staged_paths(root)):
         content = publication_gate.git_bytes(root, "show", f":{path}")
         for tool in (["check", "--output-format", "concise"], ["format", "--check"]):
+            if tool[0] == "format" and any(fnmatch(path, pattern) for pattern in excluded):
+                continue
             argv = [sys.executable, "-m", "ruff", *tool, "--force-exclude"]
             result = publication_gate._run(
                 [*argv, "--stdin-filename", path, "-"], root, stdin=content
