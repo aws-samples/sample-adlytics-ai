@@ -118,7 +118,7 @@ from domain.presentation.preset_artifacts import (
     sibling_index_shards,
     split_parent_custody,
 )
-from domain.shared_kernel.errors import InvariantError
+from domain.shared_kernel.errors import DependencyError, InvariantError
 from ports.outbound.preset_artifacts import (
     LegacyPointerAfterCutoverError,
     PresetArtifactPersistencePort,
@@ -1677,3 +1677,57 @@ def test_the_s3_body_store_refuses_to_read_an_index_shard_as_a_public_body() -> 
         request
     )
     assert (read, gets) == (shard, [shard.key])
+
+
+@pytest.mark.covers("ADR-145")
+@pytest.mark.parametrize("code", ["NoSuchKey", "404"])
+def test_a_listed_sibling_or_shard_missing_from_s3_is_an_invariant_and_a_throttle_is_not(
+    code: str,
+) -> None:
+    """Design 04 §8: a listed object that is missing is the malformed refusal, not a retry."""
+    from botocore.exceptions import ClientError  # noqa: PLC0415
+
+    from adapters.outbound.s3.preset_artifacts import (  # noqa: PLC0415
+        S3PresetArtifactBodyStore,
+        S3PresetArtifactCustodyStore,
+    )
+
+    parent = _stream_parent()
+    public, private = _pair(parent, PresetArtifactSiblingIdentity("name-asc", 0, "all"))
+    ((_shard, entry),) = sibling_index_shards(
+        parent, (PresetArtifactSiblingDescriptor(public.identity, public.digest, private.digest),)
+    )
+
+    class _Client:
+        def __init__(self, error_code: str) -> None:
+            self.error_code = error_code
+
+        def get_object(self, *, Bucket: str, Key: str) -> dict[str, Any]:  # noqa: N803
+            del Bucket, Key
+            raise ClientError({"Error": {"Code": self.error_code, "Message": "x"}}, "GetObject")
+
+    sibling = PresetArtifactSiblingReadRequest(
+        parent.page,
+        parent.variant,
+        parent.revision,
+        PresetArtifactSiblingDescriptor(public.identity, public.digest, private.digest),
+    )
+    shard = PresetArtifactSiblingReadRequest(
+        parent.page,
+        parent.variant,
+        parent.revision,
+        PresetArtifactSiblingDescriptor(PresetArtifactIndexShardIdentity(0), None, entry.digest),
+    )
+    reads = (
+        lambda client: S3PresetArtifactBodyStore("fictional-bucket", client).read_sibling(sibling),
+        lambda client: S3PresetArtifactCustodyStore("fictional-bucket", client).read_sibling(
+            sibling
+        ),
+        lambda client: S3PresetArtifactCustodyStore("fictional-bucket", client).read_sibling(shard),
+    )
+    for read in reads:
+        with pytest.raises(InvariantError, match="custody lists is missing"):
+            read(cast("Any", _Client(code)))
+        # Paired: a throttled read of the same listed object stays a retryable dependency.
+        with pytest.raises(DependencyError):
+            read(cast("Any", _Client("SlowDown")))
