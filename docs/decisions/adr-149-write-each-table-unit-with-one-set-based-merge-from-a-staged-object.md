@@ -73,7 +73,12 @@ deterministic envelope; reader all-or-nothing comes from the servable pointer.
 8. **Wide windows land in chunks of at most 30 canonical partitions per derived table per
    delivery.** This replaces the 2026-09-22 three-bucket landing rule, whose arithmetic assumed
    merges per bucket. The 37-object unit bound still refuses anything wider, typed and before
-   authority.
+   authority. **Deferred (2026-10-22):** not applied yet. The dev landing seam keeps the
+   three-bucket rule, because applying this one re-shapes the dev seed plan: run-request
+   admission's pinned replay band, the dev probes and fixtures that name chunked deliveries, and
+   the plan tests. It moves to a follow-up change. The large-seller tier doesn't depend on it,
+   because `maxRowsPerDelivery` (decision 7) already limits a large seller's history to 2-day
+   deliveries.
 
 Decided by rubric items (1), (3) and (4) of
 [delivery practice](../delivery-practice.md#5-the-decision-weighting-rubric): every guarantee holds
@@ -112,8 +117,8 @@ slicing; and one renderer serves every writer.
 
 ## Consequences
 - A unit of any admitted size costs two Athena commits and two reservations per receive instead of
-  up to ten. The large-seller tier loads, and a wide re-pull needs one or two deliveries instead of
-  ten or more.
+  up to ten. The large-seller tier loads. Once decision 8 is applied, a wide re-pull needs one or
+  two deliveries instead of ten or more; until then it keeps landing in three-bucket chunks.
 - The remaining row cost sits where the platform limits are: Lambda memory and invocation time,
   bounded by the measured ceilings, and Athena execution time.
 - Each unit's rows are held twice for the retention period: once in the table and once staged.
