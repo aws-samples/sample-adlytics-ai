@@ -283,6 +283,7 @@ class TestTheWafClassifier:
         record = probe.WafRecord.from_log(_COUNTED_LOG4J)
         assert "jndi" not in repr(record)
         assert record.locations == ("HEADER",)
+        # pragma: allowlist nextline secret (A-ENTROPY-IDENTIFIER-001)
         assert "AWSManagedRulesKnownBadInputsRuleSet/Log4JRCE_HEADER" in record.matched_rules
 
 

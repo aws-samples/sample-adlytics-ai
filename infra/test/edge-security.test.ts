@@ -103,7 +103,9 @@ function rule(acl: Props, name: string): Props {
 }
 
 /** sha256 of each ACL's rendered `Rules` under TEST_CONFIG, read from the 438b7edd renderer. */
+// pragma: allowlist nextline secret (A-ENTROPY-IDENTIFIER-001)
 const EDGE_RULES_SHA256 = '7494630e05620069a48c776da9e0137484791c6a9e108521a6a1c09b584ff1c5';
+// pragma: allowlist nextline secret (A-ENTROPY-IDENTIFIER-001)
 const USER_POOL_RULES_SHA256 = '5b74b5fe1e1687504b93ce00882cbf7a72cfd9b0d56e0c8f1810a00920cf680e';
 
 const NONE = [{ Priority: 0, Type: 'NONE' }];
