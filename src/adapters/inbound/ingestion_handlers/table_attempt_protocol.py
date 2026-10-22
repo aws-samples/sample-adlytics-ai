@@ -3,8 +3,9 @@
 
 The queued table writer and the inline-run driver own different authorities — a
 plan ``UNIT#`` versus a ``RUN#`` — but drive every merge/verify statement through
-the same protocol: monotonic deadlines, the closed step-2 validator,
-``BeginTableAttemptRequest``, the dedicated one-call start client,
+the same protocol: monotonic deadlines, the closed step-2 validator, the staged
+unit's once-only write for the ``MERGE`` (ADR-149), ``BeginTableAttemptRequest``,
+the dedicated one-call start client,
 ``RecordSubmittedAttemptRequest`` on ``Accepted``, bounded terminal-first polling
 with cancellation at ``Q`` and parking at ``S``, and
 ``CompleteTableAttemptRequest`` on a provider terminal. This module holds that
@@ -18,10 +19,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Final, Protocol
 
-from adapters.outbound.athena.semantic_storage import UnitWorkload, ordered_records
-from adapters.outbound.athena.semantic_storage import (
-    _expected_records as _expected_readback_records,  # pyright: ignore[reportPrivateUsage] — the one §2.2 step-5 readback renderer; extraction belongs to a later slice
-)
+from adapters.outbound.athena.semantic_storage import verification_matches
 from adapters.outbound.telemetry.reporting import LogSeverity
 from domain.operations.statement_protocol import (
     InsufficientStatementBudget,
@@ -64,8 +62,12 @@ from ports.outbound.table_attempt_terminal import (
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from collections.abc import Callable
 
-    from adapters.outbound.athena.table_attempt_statements import ComposedStatement
+    from adapters.outbound.athena.table_attempt_statements import (
+        ComposedStatement,
+        UnitStatementComposition,
+    )
     from domain.operations.table_lease import TableLeaseRecord
+    from ports.outbound.unit_staging import UnitStager
 
 __all__ = [
     "PROJECTION_INVALID",
@@ -79,8 +81,8 @@ __all__ = [
     "StatementRun",
     "epoch_micros",
     "instant",
-    "readback_matches",
     "run_statement",
+    "verification_holds",
 ]
 
 PROJECTION_INVALID: Final = ErrorCode("TABLE_WRITER", 2)
@@ -160,6 +162,8 @@ class StatementProtocolRuntime:
     start: TableAttemptStartClient
     terminals: TableAttemptTerminalClient
     reads: AttemptReads
+    stager: UnitStager
+    """ADR-149: writes a ``MERGE``'s staged unit just before its ``Begin``."""
     wall: Callable[[], datetime]
     monotonic_ms: Callable[[], int]
     sleep_ms: Callable[[int], None]
@@ -328,24 +332,14 @@ def _drive_attempt(  # noqa: PLR0913, PLR0917 - the one bounded §5 poll loop
         interval_ms = min(interval_ms * 2, _POLL_MAX_MS)
 
 
-def readback_matches(workload: UnitWorkload, rows: tuple[tuple[str | None, ...], ...]) -> bool:
-    """Compare one verification readback with the immutable objects (§2.2 step 5)."""
-    table = workload.table
-    partition_column = table.partition_keys[0]
-    partition_index = next(
-        index for index, column in enumerate(table.columns) if column.name == partition_column
-    )
-    grouped: dict[str, list[tuple[str | None, ...]]] = {}
-    for row in rows:
-        grouped.setdefault(row[partition_index] or "", []).append(tuple(row))
-    identities = {identity for identity, _ in workload.records_by_identity}
-    if set(grouped) - identities:
-        return False
-    for identity, records in workload.records_by_identity:
-        expected = _expected_readback_records(table, ordered_records(table, records))
-        if tuple(grouped.get(identity, ())) != expected:
-            return False
-    return True
+def verification_holds(
+    composition: UnitStatementComposition, rows: tuple[tuple[str | None, ...], ...]
+) -> bool:
+    """Check one verification's count rows against the unit's staged summary (§2.2 step 5)."""
+    staged = composition.merges[0].staged
+    if staged is None:  # pragma: no cover - UnitStatementComposition refuses this shape
+        raise _invariant("A unit composition's MERGE carries no staged unit.")
+    return verification_matches(staged, rows)
 
 
 def _owner_kind(owner: BeginQueuedUnitOwner | BeginInlineRunOwner) -> str:
@@ -381,7 +375,9 @@ def run_statement(run: StatementRun, statement: ComposedStatement) -> StatementR
 
     A ``LocalStatementRefusal`` raises ``ValueError`` here: validation happens
     before Begin, so no attempt or reservation exists and the owner decides its
-    own failure disposition from the raised refusal reason.
+    own failure disposition from the raised refusal reason. The ``MERGE`` stages its
+    unit after validation and before Begin, so a staging failure (raised as the
+    stager's error, never caught here) reserves nothing.
     """
     runtime = run.runtime
     deadlines = derive_statement_deadlines(runtime.monotonic_ms(), run.remaining_budget_ms())
@@ -405,6 +401,10 @@ def run_statement(run: StatementRun, statement: ComposedStatement) -> StatementR
     )
     if isinstance(validation, LocalStatementRefusal):
         raise LocalStatementRefusedError(validation)
+    if statement.staged is not None:
+        if statement.render is None:  # pragma: no cover - the composition refuses this shape
+            raise _invariant("A staged statement carries no renderer.")
+        runtime.stager.ensure(statement.staged, statement.render)
     fences = _graph_fences(run)
     begin = runtime.coordinator.begin_table_attempt(
         BeginTableAttemptRequest(

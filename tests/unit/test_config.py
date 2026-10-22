@@ -814,6 +814,10 @@ def test_shared_settings_resolve_without_the_staging_database() -> None:
     """Only the table writer and delivery runtimes need staging; every other Lambda starts."""
     settings = load_settings(_with(), resolve_client_secret=False)
     assert settings.semantic_v2_staging_database == ""
-    # Control: the field reads its prefixed variable, so a rename or lost prefix fails here.
-    named = load_settings(_with(ADL_SEMANTIC_V2_STAGING_DATABASE="x"), resolve_client_secret=False)
-    assert named.semantic_v2_staging_database == "x"
+    assert settings.semantic_v2_staging_bucket == ""
+    # Control: each field reads its prefixed variable, so a rename or lost prefix fails here.
+    named = load_settings(
+        _with(ADL_SEMANTIC_V2_STAGING_DATABASE="x", ADL_SEMANTIC_V2_STAGING_BUCKET="y"),
+        resolve_client_secret=False,
+    )
+    assert (named.semantic_v2_staging_database, named.semantic_v2_staging_bucket) == ("x", "y")

@@ -1081,6 +1081,28 @@ def test_an_occupied_run_key_with_changed_identity_is_an_invariant_collision() -
         )
 
 
+@pytest.mark.covers("ADR-149")
+def test_t11a_a_set_persisted_with_two_merges_collides_when_repersisted_with_one() -> None:
+    """Why ADR-149's GRAPH deploy precondition exists: the roster is immutable run identity."""
+    before = ("merge", "merge", "verification")
+    dynamo = _RecordingDynamo()
+    _coordinator(dynamo).persist_inline_run(_persist_run_request(statement_intent_kinds=before))
+
+    retry = _RecordingDynamo(items=dict(dynamo.items))
+    retry.fail_next_transactions = 1
+    with pytest.raises(InvariantError, match="immutable run identity"):
+        _coordinator(retry).persist_inline_run(
+            _persist_run_request(statement_intent_kinds=("merge", "verification"))
+        )
+    # Control: the identical request replays.
+    same = _RecordingDynamo(items=dict(dynamo.items))
+    same.fail_next_transactions = 1
+    replayed = _coordinator(same).persist_inline_run(
+        _persist_run_request(statement_intent_kinds=before)
+    )
+    assert replayed.outcome is PersistInlineRunOutcome.REPLAYED
+
+
 # --- RecoverParkedAttemptSubmissionRequest ----------------------------------------------------
 
 

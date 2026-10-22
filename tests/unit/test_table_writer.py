@@ -20,10 +20,11 @@ from decimal import Decimal
 from typing import Any, Final, cast
 
 import pytest
+from unit_staging_support import RecordingStager, workload_verification_rows
 
 from adapters import config
 from adapters.config import settings_without_client_secret, tracing_settings
-from adapters.outbound.athena.semantic_storage import _expected_records, ordered_records
+from adapters.outbound.athena.semantic_storage import AthenaSemanticTarget
 from adapters.outbound.dynamodb.execution_graph_dispatch import batch_dispatch_id
 from adapters.outbound.dynamodb.projection_coordinator import _plan_meta_item
 from adapters.outbound.s3.semantic_storage import canonical_object_bytes, canonical_object_key
@@ -251,6 +252,7 @@ _SETTINGS_ENV = {
     "ADL_SEMANTIC_V2_CANDIDATE_DATABASE": "fictional-candidate",
     "ADL_SEMANTIC_V2_CURRENT_DATABASE": CURRENT_DATABASE,
     "ADL_SEMANTIC_V2_STAGING_DATABASE": "fictional_staging",
+    "ADL_SEMANTIC_V2_STAGING_BUCKET": "fictional-staging",
     "ADL_ATHENA_RESULT_REUSE_MAX_AGE_MINUTES": "0",
     "ADL_ATHENA_QUERY_BATCH_MAX_CONCURRENCY": "2",
     "AWS_DEFAULT_REGION": "us-east-1",
@@ -977,14 +979,12 @@ class _Harness:
     clock: _Clock
     calls: list[str]
     runtime: Any
+    stager: RecordingStager
 
     def expected_readback(self) -> tuple[tuple[str | None, ...], ...]:
+        """ADR-149: the exact verification count rows for the unit's staged rows."""
         shaped = self.writer._shape_unit(self.runtime, UNIT)
-        table = shaped.workload.table
-        rows: list[tuple[str | None, ...]] = []
-        for _, records in shaped.workload.records_by_identity:
-            rows.extend(_expected_records(table, ordered_records(table, records)))
-        return tuple(rows)
+        return workload_verification_rows(shaped.workload)
 
     def process(self, receive_count: int = 1) -> Any:
         delivery = self.writer.write_unit_delivery(_event(receive_count=receive_count))
@@ -1020,6 +1020,7 @@ def _harness(
     terminals = _Terminals(calls, clock)
     objects = _Objects(calls)
     visibility = _Visibility(calls)
+    stager = RecordingStager()
     runtime = writer._Runtime(
         reader=_Reader(selected),
         coordinator=cast("Any", coordinator),
@@ -1027,8 +1028,9 @@ def _harness(
         start=cast("Any", start),
         terminals=cast("Any", terminals),
         objects=cast("Any", objects),
+        stager=stager,
         catalog=CATALOG,
-        target=writer.AthenaSemanticTarget(
+        target=AthenaSemanticTarget(
             batch_workgroup="fictional-batch",
             source_database="fictional-source",
             candidate_database="fictional-candidate",
@@ -1054,6 +1056,7 @@ def _harness(
         clock,
         calls,
         runtime,
+        stager,
     )
     terminals.readback = harness.expected_readback()
     calls.clear()  # the readback fixture shaped the unit once; the run under test starts clean
@@ -3616,15 +3619,18 @@ def test_slice7_f5_a_raised_batch_still_emits_each_metric_once_with_its_batch_id
 def test_slice7_n1_a_formation_that_yields_no_set_is_an_invariant_with_zero_effect(
     writer: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """N1: an empty prefix after step 2 is `GRAPH_UNIT_SET_COMPOSITION`, fault-injected."""
+    """N1: an empty formation after step 2 is `GRAPH_UNIT_SET_COMPOSITION`, fault-injected.
+
+    D10: `form_sets` composes nothing, so the fault enters through the grouping step.
+    """
     from domain.shared_kernel.errors import GRAPH_UNIT_SET_COMPOSITION_CODE  # noqa: PLC0415
 
     world = _graph_unit_world(writer)
 
-    def nothing(_self: Any, _members: Any) -> None:
-        return None
+    def nothing(*_args: object) -> list[object]:
+        return []
 
-    monkeypatch.setattr(writer._Batch, "compose_set", nothing)
+    monkeypatch.setattr(writer, "_group_members", nothing)
     with pytest.raises(InvariantError) as refused:
         world.process()
     assert refused.value.code == GRAPH_UNIT_SET_COMPOSITION_CODE
@@ -3744,7 +3750,13 @@ def test_slice7_4_f5_a_member_returned_by_the_time_rule_gets_exactly_one_more_at
 
 
 @pytest.mark.covers("ADR-149")
-@pytest.mark.parametrize("case", [("semantic_v2_staging_database", "staging database")])
+@pytest.mark.parametrize(
+    "case",
+    [
+        ("semantic_v2_staging_database", "staging database"),
+        ("semantic_v2_staging_bucket", "staging bucket"),
+    ],
+)
 def test_the_writer_runtime_refuses_a_blank_staging_setting(
     writer: Any, monkeypatch: pytest.MonkeyPatch, case: tuple[str, str]
 ) -> None:
@@ -3754,3 +3766,466 @@ def test_the_writer_runtime_refuses_a_blank_staging_setting(
     monkeypatch.setattr(writer, "SETTINGS", writer.SETTINGS.model_copy(update={field: " "}))
     with pytest.raises(ValueError, match=label):
         writer._runtime()
+
+
+# --- ADR-149 slice S3: staging before Begin, staged verification and attested telemetry -------
+
+
+def _attested_line(writer: Any, monkeypatch: pytest.MonkeyPatch) -> list[Any]:
+    logged: list[Any] = []
+    real = writer.report_operation
+
+    def capture(log: Any, logger: Any) -> None:
+        if log.operation == "semantic_unit_attested":
+            logged.append(log)
+        real(log, logger)
+
+    monkeypatch.setattr(writer, "report_operation", capture)
+    return logged
+
+
+@pytest.mark.covers("ADR-149")
+def test_t8_the_merge_stages_before_its_begin_and_the_verification_never_stages(
+    writer: Any,
+) -> None:
+    harness = _harness(writer)
+    harness.stager.calls = harness.calls
+
+    result = harness.process()
+
+    assert result.outcome == "attested"
+    begins = [index for index, call in enumerate(harness.calls) if call == "begin_table_attempt"]
+    assert harness.calls.count("stage") == 1  # the MERGE only, never the verification
+    assert harness.calls.index("stage") < begins[0]
+    (staged,) = harness.stager.ensured
+    shaped = writer._shape_unit(harness.runtime, UNIT)
+    assert staged.rows == sum(len(records) for _, records in shaped.workload.records_by_identity)
+    # The staged body is the one the MERGE names: its digest is the key in the MERGE's SQL.
+    merge = harness.start.requests[0]
+    assert staged.staging_key in merge.start_envelope
+
+
+@pytest.mark.covers("ADR-149")
+def test_t8_a_failing_stage_begins_nothing_reserves_nothing_and_retries(writer: Any) -> None:
+    from ports.outbound.unit_staging import StagingUnavailableError  # noqa: PLC0415
+
+    harness = _harness(writer)
+    harness.stager.failure = StagingUnavailableError("injected throttle")
+
+    result = harness.process(receive_count=1)
+
+    assert result == writer._UnitResult(acknowledge=False, outcome="statement_retryable")
+    assert "begin_table_attempt" not in harness.calls
+    assert "start" not in harness.calls
+    assert harness.world.unit_item is not None
+    assert harness.world.unit_item.get("unit_reservation_count", 0) == 0
+    assert harness.world.plan_reservation_count == 0
+    assert harness.calls[-1] == "release_table_fence"
+    # On the final receive the same failure fails the unit like an Athena outage.
+    final = _harness(writer)
+    final.stager.failure = StagingUnavailableError("injected throttle")
+    failed = final.process(receive_count=MAX_RECEIVES)
+    assert failed.outcome == "unit_failed"
+    failure = next(r for r in final.coordinator.requests if isinstance(r, FailUnitRequest))
+    assert failure.reason is UnitFailureReason.STATEMENT_RETRIES_EXHAUSTED
+    # Control: a passing stage begins exactly once per statement.
+    clean = _harness(writer)
+    assert clean.process().outcome == "attested"
+    assert clean.calls.count("begin_table_attempt") == 2
+
+
+def _counted_unit_reads(harness: _Harness) -> list[str]:
+    reads: list[str] = []
+    real = harness.runtime.reader.unit_item
+
+    def counted(plan_key: str, unit_key: str) -> dict[str, object] | None:
+        reads.append(unit_key)
+        return real(plan_key, unit_key)
+
+    harness.runtime.reader.unit_item = counted
+    return reads
+
+
+@pytest.mark.covers("ADR-149")
+def test_t9_the_attested_line_carries_two_accepted_attempts_one_merge_and_its_rows(
+    writer: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Baseline: the same receive without the count read, to pin exactly one extra read.
+    baseline = _harness(writer)
+    baseline_reads = _counted_unit_reads(baseline)
+    with monkeypatch.context() as patched:
+
+        def unread(_ctx: object) -> None:
+            return None
+
+        patched.setattr(writer, "_accepted_attempts", unread)
+        assert baseline.process().outcome == "attested"
+    logged = _attested_line(writer, monkeypatch)
+    harness = _harness(writer)
+    reads = _counted_unit_reads(harness)
+
+    assert harness.process().outcome == "attested"
+
+    (line,) = logged
+    shaped = writer._shape_unit(harness.runtime, UNIT)
+    rows = sum(len(records) for _, records in shaped.workload.records_by_identity)
+    assert (line.details["accepted_attempts"], line.details["merge_count"]) == (2, 1)
+    assert line.details["rows"] == rows
+    assert harness.world.unit_item is not None
+    assert line.details["accepted_attempts"] == harness.world.unit_item["unit_reservation_count"]
+    assert len(reads) == len(baseline_reads) + 1
+
+
+@pytest.mark.covers("ADR-149")
+def test_t9_a_failed_count_read_still_attests_with_a_null_count_reported_once(
+    writer: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    logged = _attested_line(writer, monkeypatch)
+    errors: list[BaseException] = []
+
+    def record(error: BaseException, _report: object) -> None:
+        errors.append(error)
+
+    monkeypatch.setattr(writer, "report_error", record)
+    real = writer._snapshot_count
+
+    def failing(item: Any, name: str) -> int:
+        if name == "unit_reservation_count" and item.get("status") == "attested":
+            raise DependencyError(ErrorCode("FICTIONAL", 3), "injected count read")
+        return real(item, name)
+
+    monkeypatch.setattr(writer, "_snapshot_count", failing)
+    harness = _harness(writer)
+
+    result = harness.process()
+
+    assert (result.acknowledge, result.outcome) == (True, "attested")
+    (line,) = logged
+    assert line.details["accepted_attempts"] is None
+    assert [type(error).__name__ for error in errors] == ["DependencyError"]
+
+
+@pytest.mark.covers("ADR-149")
+def test_t9_a_verification_count_mismatch_retries_while_receives_remain(writer: Any) -> None:
+    harness = _harness(writer)
+    exact = harness.terminals.readback
+    harness.terminals.readback = tuple(
+        (side, identity, "0") if side == "matched_target" else (side, identity, count)
+        for side, identity, count in exact
+    )
+
+    result = harness.process(receive_count=1)
+
+    assert result == writer._UnitResult(acknowledge=False, outcome="statement_retryable")
+    assert "finalize_unit" not in harness.calls
+    # Control: the exact count rows attest.
+    assert _harness(writer).process().outcome == "attested"
+
+
+# --- ADR-149 slice S3, D10: at most one composed GRAPH set is live (T-11) ----------------------
+
+
+class _Tracked(dict[str, Any]):
+    """A staged record a weakref can follow; a plain dict can't be weakly referenced."""
+
+
+@dataclass
+class _D10:
+    """Spies on re-shapes, compositions, groupings and runs, and on which sets stay alive.
+
+    The run stub keeps no request, so a set's records are reachable only through the writer.
+    `live_at_shape` records, at every re-shape after formation, how many earlier runs' records
+    are still alive: D10 requires 0.
+    """
+
+    events: list[tuple[str, Any]] = field(default_factory=list[tuple[str, Any]])
+    refs: list[Any] = field(default_factory=list[Any])
+    live_at_shape: list[int] = field(default_factory=list[int])
+    script: list[Any] = field(default_factory=list[Any])
+    shape_failures: dict[int, BaseException] = field(default_factory=dict[int, BaseException])
+    groups: list[Any] = field(default_factory=list[Any])
+    formed: bool = False
+
+    def after_form(self) -> list[tuple[str, Any]]:
+        index = next(i for i, event in enumerate(self.events) if event[0] == "form")
+        return self.events[index + 1 :]
+
+    def kinds(self) -> list[str]:
+        return [kind for kind, _ in self.after_form()]
+
+    def __call__(self, runtime: Any, request: Any) -> Any:
+        from adapters.inbound.ingestion_handlers.inline_run import (  # noqa: PLC0415
+            InlineRunResult,
+        )
+
+        del runtime
+        request.graph_claims()
+        identities = frozenset(identity for identity, _ in request.workload.records_by_identity)
+        self.events.append(("run", identities))
+        import weakref  # noqa: PLC0415
+
+        self.refs.append(weakref.ref(request.workload.records_by_identity[0][1][0]))
+        outcome = self.script.pop(0) if self.script else "finalized"
+        if isinstance(outcome, _LazyError):
+            raise outcome.build()
+        if isinstance(outcome, BaseException):
+            raise outcome
+        return InlineRunResult(
+            outcome=outcome,
+            run_id="inline-run-fictional",
+            retryable=False,
+            flow_id=STAGE1_FLOW,
+            execution_id="88888888-8888-4888-8888-888888888888",
+            predecessor_execution_id=None,
+        )
+
+
+def _d10_world(  # noqa: PLR0913, PLR0917 - one fixture builder
+    writer: Any, monkeypatch: pytest.MonkeyPatch, entries: tuple[int, ...], spy: _D10
+) -> _GraphUnitWorld:
+    _batch_shaper(writer, monkeypatch)
+    world = _graph_batch_world(
+        writer, entries=tuple(_unit_entry_for(index) for index in entries), inline=spy
+    )
+    shaped_by = writer._shape_unit
+    composer = writer.compose_unit_statements
+    grouping = writer._group_members
+
+    def shape(runtime: Any, entry: CanonicalUnitEntry) -> Any:
+        publication = entry.objects[0].publication_id
+        if spy.formed:
+            spy.live_at_shape.append(sum(ref() is not None for ref in spy.refs))
+            calls = sum(1 for kind, _ in spy.after_form() if kind == "shape")
+            spy.events.append(("shape", publication))
+            failure = spy.shape_failures.get(calls)
+            if failure is not None:
+                raise failure
+        shaped = shaped_by(runtime, entry)
+        records = tuple(
+            (identity, tuple(_Tracked(record) for record in rows))
+            for identity, rows in shaped.workload.records_by_identity
+        )
+        return replace(shaped, workload=replace(shaped.workload, records_by_identity=records))
+
+    def compose(request: Any) -> Any:
+        if spy.formed:
+            identities = frozenset(i for i, _ in request.workload.records_by_identity)
+            spy.events.append(("compose", identities))
+        return composer(request)
+
+    def group(*args: Any) -> Any:
+        spy.formed = True
+        spy.events.append(("form", None))
+        groups = grouping(*args)
+        spy.groups.extend(groups)
+        return groups
+
+    monkeypatch.setattr(writer, "_shape_unit", shape)
+    monkeypatch.setattr(writer, "compose_unit_statements", compose)
+    monkeypatch.setattr(writer, "_group_members", group)
+    return world
+
+
+@pytest.mark.covers("ADR-149")
+def test_t11_a_b_c_f_each_group_composes_just_before_its_run_and_then_dies(
+    writer: Any, monkeypatch: pytest.MonkeyPatch, reported: list[BaseException]
+) -> None:
+    spy = _D10()
+    world = _d10_world(writer, monkeypatch, (0, 1, 1, 1), spy)
+
+    result = world.process()
+
+    assert result.acknowledge is True
+    pub0, pub1 = _publication(0), _publication(1)
+    # (b) formation returns member tuples and composes nothing; (c) per group: re-shape each
+    # member, compose the union, run, and only then the next group's first re-shape.
+    assert all(isinstance(group, tuple) for group in spy.groups)
+    assert [len(group) for group in spy.groups] == [2, 1, 1]
+    assert spy.after_form() == [
+        ("shape", pub0),
+        ("shape", pub1),
+        ("compose", frozenset({pub0, pub1})),
+        ("run", frozenset({pub0, pub1})),
+        ("shape", pub1),
+        ("compose", frozenset({pub1})),
+        ("run", frozenset({pub1})),
+        ("shape", pub1),
+        ("compose", frozenset({pub1})),
+        ("run", frozenset({pub1})),
+    ]
+    assert spy.live_at_shape == [0, 0, 0, 0]  # no earlier set is alive at any re-shape
+    assert all(ref() is None for ref in spy.refs)
+    # (f) after step 2 every member holds a body-free summary and no workload.
+    for member in (m for group in spy.groups for m in group):
+        assert isinstance(member.summary, writer._MemberSummary)
+        assert not hasattr(member, "shaped")
+    assert _states(world) == ["SUCCEEDED"] * 4
+    assert reported == []
+
+
+@pytest.mark.covers("ADR-149")
+def test_t11_a_the_union_is_one_merge_over_every_members_rows(
+    writer: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    world = _batch_world(writer, monkeypatch, 3)
+    assert world.process().acknowledge is True
+    (request,) = world.inline.requests
+    merge = request.composition.merges[0]
+    assert [statement.kind.value for statement in request.composition.statements] == [
+        "merge",
+        "verification",
+    ]
+    assert merge.staged is not None
+    assert dict(merge.staged.row_counts) == {_publication(index): 1 for index in range(3)}
+
+
+@pytest.mark.covers("ADR-149")
+def test_t11_d_a_split_composes_each_half_only_after_the_previous_set_is_gone(
+    writer: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spy = _D10(script=["statement_failed"])
+    world = _d10_world(writer, monkeypatch, (0, 1, 2, 3), spy)
+
+    assert world.process().acknowledge is True
+
+    assert (
+        spy.kinds() == ["shape"] * 4 + ["compose", "run"] + (["shape"] * 2 + ["compose", "run"]) * 2
+    )
+    assert spy.live_at_shape == [0] * 8  # the parent set is dead when the first half shapes
+    assert _states(world) == ["SUCCEEDED"] * 4
+
+
+@pytest.mark.covers("ADR-149")
+def test_t11_d_a_table_stop_inside_a_split_composes_nothing_more(
+    writer: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stop = DependencyError(ErrorCode("FICTIONAL", 5), "injected run dependency")
+    spy = _D10(script=["statement_failed", stop])
+    world = _d10_world(writer, monkeypatch, (0, 1, 2, 3), spy)
+
+    result = world.process(receive_count=1)
+
+    assert (result.acknowledge, result.outcome) == (False, "graph_unit_batch_unresolved")
+    assert spy.kinds() == ["shape"] * 4 + ["compose", "run"] + ["shape"] * 2 + ["compose", "run"]
+    assert _states(world) == ["CLAIMED"] * 4  # every member has a class: unresolved retries
+
+
+@pytest.mark.covers("ADR-149")
+def test_t11_d1_a_first_half_reshape_dependency_error_stops_the_second_half_uncomposed(
+    writer: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spy = _D10(script=["statement_failed"])
+    spy.shape_failures[4] = DependencyError(ErrorCode("FICTIONAL", 6), "injected object read")
+    world = _d10_world(writer, monkeypatch, (0, 1, 2, 3), spy)
+
+    result = world.process(receive_count=1)
+
+    assert (result.acknowledge, result.outcome) == (False, "graph_unit_batch_unresolved")
+    assert spy.kinds() == ["shape"] * 4 + ["compose", "run", "shape"]
+    assert _states(world) == ["CLAIMED"] * 4
+
+
+@pytest.mark.covers("ADR-149")
+def test_t11_d2_a_first_half_that_fails_its_checksums_lets_the_second_half_run(
+    writer: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spy = _D10(script=["statement_failed"])
+    spy.shape_failures[4] = writer._ChecksumMismatchError("injected")
+    spy.shape_failures[5] = writer._ChecksumMismatchError("injected")
+    world = _d10_world(writer, monkeypatch, (0, 1, 2, 3), spy)
+
+    assert world.process(receive_count=1).acknowledge is True
+
+    assert spy.kinds() == ["shape"] * 4 + ["compose", "run"] + ["shape"] * 4 + [
+        "compose",
+        "run",
+    ]
+    assert _states(world) == ["FAILED", "FAILED", "SUCCEEDED", "SUCCEEDED"]
+    assert {world.node(i).failure_reason for i in (0, 1)} == {"checksum_mismatch"}
+
+
+@pytest.mark.covers("ADR-149")
+def test_t11_g_a_reshape_dependency_error_halts_the_set_with_no_split(
+    writer: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spy = _D10()
+    spy.shape_failures[0] = DependencyError(ErrorCode("FICTIONAL", 7), "injected object read")
+    world = _d10_world(writer, monkeypatch, (0, 1), spy)
+
+    result = world.process(receive_count=1)
+
+    assert (result.acknowledge, result.outcome) == (False, "graph_unit_batch_unresolved")
+    assert spy.kinds() == ["shape"]
+    assert _states(world) == ["CLAIMED", "CLAIMED"]
+    # Control: a checksum mismatch at re-shape fails only that member; the other runs alone.
+    other = _D10()
+    other.shape_failures[0] = writer._ChecksumMismatchError("injected")
+    alone = _d10_world(writer, monkeypatch, (0, 1), other)
+    assert alone.process(receive_count=1).acknowledge is True
+    assert [event for event in other.after_form() if event[0] == "run"] == [
+        ("run", frozenset({_publication(1)}))
+    ]
+    assert _states(alone) == ["FAILED", "SUCCEEDED"]
+
+
+@pytest.mark.covers("ADR-149")
+def test_t11_h_a_stager_failure_halts_the_set_table_and_never_splits(
+    writer: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ports.outbound.unit_staging import StagingUnavailableError  # noqa: PLC0415
+
+    records: list[Any] = []
+    real = writer.report_operation
+
+    def capture(log: Any, logger: Any) -> None:
+        if log.phase == "graph_unit_set_executed":
+            records.append(log)
+        real(log, logger)
+
+    monkeypatch.setattr(writer, "report_operation", capture)
+    spy = _D10(script=[StagingUnavailableError("injected throttle")])
+    world = _d10_world(writer, monkeypatch, (0, 1), spy)
+
+    result = world.process(receive_count=1)
+
+    assert (result.acknowledge, result.outcome) == (False, "graph_unit_batch_unresolved")
+    assert [record.outcome for record in records] == ["raised"]
+    assert spy.kinds().count("run") == 1  # never split or isolated
+    assert _states(world) == ["CLAIMED", "CLAIMED"]
+
+
+@pytest.mark.covers("ADR-149")
+def test_t11_i_a_refused_begin_drops_the_refused_set_before_reshaping_the_rest(
+    writer: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ports.outbound.projection_coordinator import (  # noqa: PLC0415
+        GraphAuthorityRefusedError,
+    )
+
+    spy = _D10()
+    world = _d10_world(writer, monkeypatch, (0, 1, 2), spy)
+    node = world.node(1)
+
+    def lose_one() -> GraphAuthorityRefusedError:
+        item = world.graph.items[(f"EXEC_CLAIM#{node.node_id}", "CLAIM")]
+        item["lease_version"] = {"N": str(int(item["lease_version"]["N"]) + 1)}
+        return GraphAuthorityRefusedError("GRAPH_CLAIM_SUPERSEDED")
+
+    spy.script = [_LazyError(lose_one)]
+    assert world.process().acknowledge is True
+    assert spy.kinds() == ["shape"] * 3 + ["compose", "run"] + ["shape"] * 2 + ["compose", "run"]
+    assert spy.live_at_shape == [0] * 5  # the refused set is dead when `remaining` re-shapes
+    assert _states(world) == ["SUCCEEDED", "CLAIMED", "SUCCEEDED"]
+    # Control: a refusal that loses no member re-runs the same set with no re-shape.
+    again = _D10(script=[GraphAuthorityRefusedError("GRAPH_CLAIM_SUPERSEDED")])
+    same = _d10_world(writer, monkeypatch, (0, 1), again)
+    assert same.process().acknowledge is True
+    assert again.kinds() == ["shape"] * 2 + ["compose", "run", "run"]
+
+
+class _LazyError(Exception):
+    """A scripted outcome built when it is reached, so a fault can change state first."""
+
+    def __init__(self, build: Any) -> None:
+        super().__init__("lazy")
+        self.build = build

@@ -128,6 +128,7 @@ from adapters.outbound.legacy_head import S3CoordinatorLegacyHead
 from adapters.outbound.media_taxonomy import load_media_taxonomy
 from adapters.outbound.metric_dictionary import load_catalog
 from adapters.outbound.s3.run_request_manifests import S3RunRequestManifests
+from adapters.outbound.s3.unit_staging import S3UnitStager
 from adapters.outbound.semantic_storage import s3_only_semantic_storage
 from adapters.outbound.source_pack import load_source_packs
 from adapters.outbound.table_dq import load_runtime_table_rules
@@ -360,6 +361,7 @@ def _inline_runtime(
         start=Stage1AthenaStartClient(),
         terminals=Stage1AthenaTerminalClient(),
         reads=reads,
+        stager=S3UnitStager(SETTINGS.semantic_v2_staging_bucket, S3),
         bounds=StatementStartBounds(
             max_statement_bytes=DELIVERY_SETTINGS.athena_max_statement_bytes,
             max_encoded_identity_bytes=DELIVERY_SETTINGS.max_encoded_identity_bytes,
@@ -381,6 +383,7 @@ def _runtime() -> _V2Runtime:
         "candidate database": SETTINGS.semantic_v2_candidate_database,
         "current database": SETTINGS.semantic_v2_current_database,
         "staging database": SETTINGS.semantic_v2_staging_database,
+        "staging bucket": SETTINGS.semantic_v2_staging_bucket,
     }
     missing = tuple(label for label, value in target_values.items() if not value.strip())
     if missing:

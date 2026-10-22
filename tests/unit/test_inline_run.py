@@ -22,6 +22,7 @@ from aws_lambda_powertools import Logger
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from unit_staging_support import RecordingStager, workload_verification_rows
 
 from adapters.inbound.ingestion_handlers import inline_run
 from adapters.inbound.ingestion_handlers.inline_run import (
@@ -31,12 +32,7 @@ from adapters.inbound.ingestion_handlers.inline_run import (
     ServablePointerTarget,
     run_inline_table,
 )
-from adapters.outbound.athena.semantic_storage import (
-    UnitWorkload,
-    _expected_records,
-    canonical_unit_records,
-    ordered_records,
-)
+from adapters.outbound.athena.semantic_storage import UnitWorkload, canonical_unit_records
 from adapters.outbound.athena.table_attempt_statements import (
     ComposeUnitStatementsRequest,
     compose_unit_statements,
@@ -95,6 +91,7 @@ from domain.semantics.validation import (
     PublicationEvidenceSubject,
     RuleOutcome,
 )
+from domain.shared_kernel.errors import DependencyError, ErrorCode
 from domain.shared_kernel.values import DateRange
 from ports.outbound.canonical import CanonicalDestination, CanonicalMaterializeRequest
 from ports.outbound.projection_coordinator import (
@@ -253,7 +250,7 @@ COMPOSITION = compose_unit_statements(
         workload=WORKLOAD, workgroup="fictional-batch", staging_database="fictional_staging"
     )
 )
-EXPECTED_READBACK = tuple(_expected_records(TABLE, ordered_records(TABLE, RECORDS)))
+EXPECTED_READBACK = workload_verification_rows(WORKLOAD)  # ADR-149: exact count rows
 SERVABLE = ServablePointerTarget(PARTITION_IDENTITY, PUBLICATION_ID, FENCING_TOKEN)
 
 
@@ -649,6 +646,7 @@ def _harness(
         start=cast("Any", _Start(calls, list(starts))),
         terminals=cast("Any", terminals),
         reads=_Reads(selected),
+        stager=RecordingStager(),
         bounds=BOUNDS,
         lease_duration_seconds=930,
         wall=lambda: NOW,
@@ -985,7 +983,7 @@ def test_a_failed_provider_terminal_is_non_retryable_and_releases_the_lease(
 
 def test_a_verification_readback_mismatch_is_non_retryable_and_never_finalizes() -> None:
     harness = _harness()
-    harness.terminals.readback = (("unexpected",) * len(EXPECTED_READBACK[0]),)
+    harness.terminals.readback = (("target", PUBLICATION_ID, "0"), *EXPECTED_READBACK[1:])
 
     result = harness.run()
 
@@ -1204,3 +1202,125 @@ def test_slice7_1d_a_deadline_cancelled_failure_is_typed_on_the_result() -> None
     assert (failed.outcome, failed.deadline_cancelled) == (InlineRunOutcome.STATEMENT_FAILED, False)
     # Control: a finalized run reads false.
     assert _harness().run().deadline_cancelled is False
+
+
+# --- ADR-149 slice S3: staging, staged verification and terminal telemetry -------------------
+
+
+def _logged(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
+    lines: list[Any] = []
+    real = inline_run.report_operation
+
+    def capture(log: Any, logger: Any) -> None:
+        lines.append(log)
+        real(log, logger)
+
+    monkeypatch.setattr(inline_run, "report_operation", capture)
+    return lines
+
+
+def _staging(harness: _Harness, stager: RecordingStager) -> None:
+    harness.runtime = replace(harness.runtime, stager=stager)
+
+
+@pytest.mark.covers("ADR-149")
+def test_t10_a_run_stages_once_before_its_merge_and_reports_two_accepted_attempts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lines = _logged(monkeypatch)
+    harness = _harness()
+    stager = RecordingStager(calls=harness.calls)
+    _staging(harness, stager)
+
+    result = harness.run()
+
+    assert result.outcome == InlineRunOutcome.FINALIZED
+    assert harness.calls.count("stage") == 1
+    assert harness.calls.index("stage") < harness.calls.index("begin_table_attempt")
+    assert harness.calls.count("begin_table_attempt") == 2
+    (terminal,) = [line for line in lines if line.operation == "semantic_inline_run_terminal"]
+    assert harness.world.run_item is not None
+    reserved = harness.world.run_item["accepted_attempt_reservations"]
+    assert (terminal.details["accepted_attempts"], reserved) == (2, 2)
+    assert terminal.details["rows"] == len(RECORDS)
+    assert terminal.details["execution_id"] == EXECUTION_ID
+    assert terminal.details["physical_table_id"] == TABLE_ID
+
+
+@pytest.mark.covers("ADR-149")
+def test_t10_a_failed_count_read_still_finalizes_with_a_null_count_reported_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lines = _logged(monkeypatch)
+    errors: list[BaseException] = []
+
+    def record(error: BaseException, _report: object) -> None:
+        errors.append(error)
+
+    monkeypatch.setattr(inline_run, "report_error", record)
+    harness = _harness()
+    real = inline_run._reservations  # pyright: ignore[reportPrivateUsage]
+    finalized = [False]
+
+    def reservations(owner: Any) -> int:
+        if finalized[0]:
+            raise DependencyError(ErrorCode("FICTIONAL", 4), "injected run read")
+        return real(owner)
+
+    real_finalize = inline_run._finalize_run  # pyright: ignore[reportPrivateUsage]
+
+    def finalize(ctx: Any) -> None:
+        real_finalize(ctx)
+        finalized[0] = True
+
+    monkeypatch.setattr(inline_run, "_reservations", reservations)
+    monkeypatch.setattr(inline_run, "_finalize_run", finalize)
+
+    result = harness.run()
+
+    assert result.outcome == InlineRunOutcome.FINALIZED
+    (terminal,) = [line for line in lines if line.operation == "semantic_inline_run_terminal"]
+    assert terminal.details["accepted_attempts"] is None
+    assert [type(error).__name__ for error in errors] == ["DependencyError"]
+
+
+@pytest.mark.covers("ADR-149")
+def test_t10_a_stager_failure_raises_as_a_dependency_error_and_reserves_nothing() -> None:
+    from ports.outbound.unit_staging import StagingUnavailableError  # noqa: PLC0415
+
+    harness = _harness()
+    _staging(harness, RecordingStager(failure=StagingUnavailableError("injected throttle")))
+
+    with pytest.raises(StagingUnavailableError) as raised:
+        harness.run()
+
+    assert isinstance(raised.value, DependencyError)
+    assert "begin_table_attempt" not in harness.calls
+    assert harness.world.run_item is not None
+    assert harness.world.run_item["accepted_attempt_reservations"] == 0
+    assert harness.calls[-1] == "release_table_fence"
+    # Control: a passing stager finalizes the same run.
+    assert _harness().run().outcome == InlineRunOutcome.FINALIZED
+
+
+@pytest.mark.covers("ADR-149")
+def test_t10_refusal_and_failure_lines_carry_the_table_and_the_execution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lines = _logged(monkeypatch)
+    _harness(acquire=AcquireTableFenceOutcome.TABLE_BUSY).run()
+    failed = _harness()
+    failed.terminals.terminal = _terminal(ProviderTerminalState.FAILED)
+    failed.run()
+    budget = _harness()
+    budget.clock.now_ms = FULL_BUDGET_MS - 1_000
+    budget.run()
+
+    operations = {line.operation: line.details for line in lines}
+    for operation in (
+        "semantic_inline_run_refused",
+        "semantic_statement_failed",
+        "semantic_statement_budget",
+    ):
+        assert operations[operation]["physical_table_id"] == TABLE_ID
+        assert operations[operation]["execution_id"] == EXECUTION_ID
