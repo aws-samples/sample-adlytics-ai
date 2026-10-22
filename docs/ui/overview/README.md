@@ -32,8 +32,10 @@ to the Scorecard.
 ## 3. Answer template
 "Amazon Ads returned {roas} USD for every 1 USD spent in {window}, compared with {prior_roas} USD in
 {prior_window}. Shipped retail sales {rose/fell} {retail_chg} while ad spend {rose/fell} {spend_chg}."
-Each clause drops on its own (`frontend/lib/overview.ts`). A retail window that isn't the ad window is
-named in its clause. With no return figure the first sentence is "Return on ad spend isn't available
+Each clause drops on its own (`frontend/lib/overview.ts`). "while" joins the two changes only when the
+retail and ad windows are the same days. Otherwise they are two sentences, each naming its window:
+"Shipped retail sales {rose/fell} {retail_chg} in {retail_window}. Ad spend {rose/fell} {spend_chg} in
+{window}." With no return figure the first sentence is "Return on ad spend isn't available
 for {window}: {served absence}".
 ## 4. States
 A band whose source request fails shows ABS-OV-1; a source served as `window_unavailable`, `empty` or

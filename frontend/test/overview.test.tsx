@@ -59,7 +59,7 @@ test('every band renders its own served source, with the answer from served stri
   assert.equal(
     container.querySelector('[data-slot="answer"]')?.textContent,
     'Amazon Ads returned 3.96 USD for every 1 USD spent in Sep 9–15, 2026, compared with 4.40 USD in Sep 2–8, 2026. '
-      + 'Shipped retail sales rose 100.0% in Aug 13–19, 2026 while ad spend rose 11.1%.',
+      + 'Shipped retail sales rose 100.0% in Aug 13–19, 2026. Ad spend rose 11.1% in Sep 9–15, 2026.',
   );
   const tiles = container.querySelector('.ov-tiles') as HTMLElement;
   assert.ok(within(tiles).getByText('1,000.00 USD'));
@@ -129,6 +129,12 @@ test('a band whose served window is not the labelled Scorecard window names its 
     retail: { kind: 'served', presentation: { ...retail, artifact: { ...retail.artifact, period } } },
   };
   const { container: same } = view(aligned);
+  // Same days: one sentence pairs the two changes with "while" and names no second window.
+  assert.equal(
+    same.querySelector('[data-slot="answer"]')?.textContent,
+    'Amazon Ads returned 3.96 USD for every 1 USD spent in Sep 9–15, 2026, compared with 4.40 USD in Sep 2–8, 2026. '
+      + 'Shipped retail sales rose 100.0% while ad spend rose 11.1%.',
+  );
   assert.equal(same.querySelector('[data-slot="ov-tile-retail-window"]'), null);
   assert.equal(same.querySelector('[data-slot="ov-ntb-window"]'), null);
   assert.equal(bandWindowText(period, period), null);

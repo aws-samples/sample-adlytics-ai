@@ -48,7 +48,8 @@ export function bandWindowText(period: Window, labelled: Window | null): string 
 /**
  * The Growth check answer (plan template): the once-counted return and its prior, then shipped
  * retail sales and ad spend by their served change. Each clause drops on its own; a retail
- * window that isn't the ad window is named, never merged into it.
+ * window that isn't the ad window is named, never merged into it, and the two changes are then
+ * two sentences, each naming its own window, never joined by "while".
  */
 export function overviewAnswer(scorecard: NetworkScorecardArtifact | null, retail: RetailHealthArtifact | null): Answer | null {
   const complete = scorecard !== null && scorecard.outcome === 'complete' ? scorecard : null;
@@ -81,8 +82,12 @@ export function overviewAnswer(scorecard: NetworkScorecardArtifact | null, retai
   const retailClause = retailMoved === null || retail === null
     ? null
     : `Shipped retail sales ${retailMoved}${shared || complete === null ? '' : ` in ${windowText(retail.period)}`}`;
-  if (retailClause !== null && spendMoved !== null) parts.push(`${retailClause} while ad spend ${spendMoved}.`);
-  else if (retailClause !== null) parts.push(`${retailClause}.`);
+  // "while" pairs the two changes only over the same days; otherwise each sentence names its window.
+  if (retailClause !== null && spendMoved !== null && complete !== null) {
+    parts.push(shared
+      ? `${retailClause} while ad spend ${spendMoved}.`
+      : `${retailClause}. Ad spend ${spendMoved} in ${windowText(complete.period)}.`);
+  } else if (retailClause !== null) parts.push(`${retailClause}.`);
   else if (spendMoved !== null) parts.push(`Ad spend ${spendMoved}.`);
   return parts.length === 0 ? null : { kind, text: parts.join(' ') };
 }
