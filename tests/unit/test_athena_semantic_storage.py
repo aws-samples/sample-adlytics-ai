@@ -13,31 +13,25 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, cast
 
 import pytest
+from unit_staging_support import RecordingStager
 
 from adapters.outbound.athena import semantic_storage as semantic_module
 from adapters.outbound.athena.execution import StatementOutcome
-from adapters.outbound.athena.parameters import sql_literal
 from adapters.outbound.athena.semantic_storage import (
     AthenaCanonicalMaterializer,
     AthenaSemanticTarget,
     AthenaSourceMaterializer,
-    PhysicalRecord,
+    ProjectionClients,
     StagedSource,
     UnitWorkload,
     canonical_records,
     canonical_unit_records,
-    merge_batches,
-    merge_statement,
-    multi_select_statement,
     ordered_records,
-    pack_object_batches,
-    select_statement,
     source_records,
     staged_merge_statement,
     verification_matches,
     verification_statement,
 )
-from adapters.outbound.athena.start_envelope import envelope_fits
 from adapters.outbound.s3.semantic_storage import (
     S3CanonicalAdapter,
     S3SourceAlignedAdapter,
@@ -51,7 +45,6 @@ from adapters.outbound.semantic_storage import (
     ReplicatedSourceAlignedStorage,
 )
 from adapters.outbound.v2_storage_catalog import V2Column, V2Table, load_v2_storage_catalog
-from domain.operations.statement_protocol import MAX_STATEMENT_BYTES
 from domain.semantics.canonical_compiler import CanonicalRow, canonical_rows_checksum
 from domain.semantics.identity import (
     CommerceScopeKey,
@@ -113,7 +106,6 @@ if TYPE_CHECKING:
 pytestmark = [pytest.mark.unit, pytest.mark.covers("ADR-044", "ADR-049")]
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 CATALOG = load_v2_storage_catalog(ROOT / "contracts/generated/v2-tables.json")
-_FITS = envelope_fits("wg-fixture-batch", "candidate", MAX_STATEMENT_BYTES)
 DAY = date(2026, 8, 25)
 NOW = datetime(2026, 8, 25, 12, tzinfo=UTC)
 CALENDAR = BusinessCalendarKey("iso_gregorian", 0)
@@ -353,93 +345,22 @@ def test_unit_workload_rejects_duplicate_identity_and_packs_whole_objects() -> N
             ((identity, records), (identity, records)),
         )
 
-    packed = pack_object_batches(table, (records, records), _FITS)
-    readback = multi_select_statement(table, 2)
-    assert packed == (records + records,)
-    assert readback.count("CAST(? AS varchar)") == 2
-    assert 'ORDER BY "publication_id"' in readback
-
 
 def test_insert_only_merge_and_exact_partition_select_never_delete_or_update() -> None:
-    request = _canonical()
+    """ADR-149: the staged MERGE only inserts, and the verification only reads."""
     table = CATALOG.canonical("fct_retail_purchase_amc", successful=False)
-    records = canonical_records(request, table)
-    sql, parameters = merge_statement(table, records)
-    select = select_statement(table)
+    sql = staged_merge_statement(table, StagedSource("db_staging", "ab" * 32))
+    verification = verification_statement(table, StagedSource("db_staging", "ab" * 32), 1)
     assert "MERGE INTO" in sql
     assert "WHEN NOT MATCHED THEN INSERT" in sql
     assert "UPDATE" not in sql
     assert "DELETE" not in sql
-    assert select.startswith("SELECT ")
-    assert 'WHERE "publication_id" = CAST(? AS varchar)' in select
-    assert select.count("?") == 1
-    assert "ORDER BY" in select
-    assert "MERGE" not in select
-    assert "INSERT" not in select
-    assert "UPDATE" not in select
-    assert "DELETE" not in select
-    assert parameters
-
-
-def test_large_values_are_safely_inlined_beyond_execution_parameter_member_limit() -> None:
-    publication = _source(
-        rows=(
-            SourceAlignedRow(
-                fields=(SourceAlignedField("long_value", "x" * 1_100),),
-                source_identifiers=(SourceIdentifier("amc.asin", "B0PROBE001"),),
-                measurement=BUCKET,
-            ),
-        )
-    )
-    table = CATALOG.source_for_interpreter(publication.rowset.interpreter.value)
-    sql, parameters = merge_statement(table, source_records(publication, table))
-
-    assert "x" * 1_100 in sql
-    assert all(len(sql_literal(value).encode()) <= 1_024 for value in parameters)
-
-
-def _sixty_row_partition() -> tuple[V2Table, tuple[PhysicalRecord, ...]]:
-    publication = _source(
-        rows=tuple(
-            SourceAlignedRow(
-                fields=(SourceAlignedField("amount", Decimal(index)),),
-                source_identifiers=(SourceIdentifier("amc.asin", f"B0PROBE{index:03}"),),
-                measurement=BUCKET,
-            )
-            for index in range(60)
-        )
-    )
-    table = CATALOG.source_for_interpreter(publication.rowset.interpreter.value)
-    return table, source_records(publication, table)
-
-
-def test_a_partition_past_the_old_parameter_cap_is_one_merge_under_the_byte_bound() -> None:
-    """61 records carried well over 900 parameters, which used to force several commits."""
-    table, records = _sixty_row_partition()
-    _, parameters = merge_statement(table, records)
-    assert len(parameters) > 900
-    assert merge_batches(table, records, _FITS) == (records,)
-
-
-def test_large_partitions_split_under_the_byte_bound_without_losing_rows() -> None:
-    table, records = _sixty_row_partition()
-    one_record = merge_statement(table, records[:1])
-    single_bytes = len(
-        json.dumps({"QueryString": one_record[0], "ExecutionParameters": one_record[1]}).encode()
-    )
-    fits = envelope_fits("wg", "source", 4 * single_bytes)  # a few records per merge
-    batches = merge_batches(table, records, fits)
-
-    assert len(batches) > 1
-    assert tuple(record for batch in batches for record in batch) == records
-    for batch in batches:
-        assert fits(*merge_statement(table, batch))
-
-
-def test_one_record_beyond_the_byte_bound_raises_rather_than_truncating() -> None:
-    table, records = _sixty_row_partition()
-    with pytest.raises(ValueError, match="statement byte bound"):
-        merge_batches(table, records[:1], envelope_fits("wg", "source", 64))
+    assert "WHEN MATCHED" not in sql
+    assert verification.startswith("WITH s AS (SELECT ")
+    assert 'WHERE "publication_id" IN (CAST(? AS varchar))' in verification
+    assert verification.count("?") == 1
+    for verb in ("MERGE", "INSERT", "UPDATE", "DELETE"):
+        assert verb not in verification
 
 
 def test_empty_canonical_materialization_requires_withheld_only_evidence() -> None:
@@ -552,11 +473,14 @@ def test_projection_statement_spans_record_cost_without_sql(
 ) -> None:
     recorded: list[_RecordedStatementSpan] = []
     executions: list[str] = []
+    order: list[str] = []
+    stager = RecordingStager(calls=order)
 
     @contextmanager
     def record_span(name: str, **attributes: object) -> Generator[_RecordedStatementSpan]:
         opened = _RecordedStatementSpan(name, dict(attributes))
         recorded.append(opened)
+        order.append(str(attributes["operation_kind"]))
         yield opened
 
     def start_statement(_client: object, _request: object) -> str:
@@ -586,16 +510,22 @@ def test_projection_statement_spans_record_cost_without_sql(
     materializer = AthenaSourceMaterializer(
         AthenaSemanticTarget("batch", "source", "candidate", "current", "staging"),
         CATALOG,
-        client=cast("AthenaClient", object()),
+        ProjectionClients(stager=stager, athena=cast("AthenaClient", object())),
     )
-    result = materializer.materialize(_source(rows=()))
+    publication = _source(rows=())
+    result = materializer.materialize(publication)
 
+    # The empty readback verifies nothing, so the MERGE runs and the second verification fails.
+    table = CATALOG.source_for_interpreter(publication.rowset.interpreter.value)
     assert result.accepted is False
+    assert result.reason == f"Iceberg verification differs from the staged unit for {table.name}."
     assert [item.attributes["operation_kind"] for item in recorded] == [
         "select",
         "merge",
         "select",
     ]
+    assert len(stager.ensured) == 1
+    assert order.index("stage") < order.index("merge")
     assert [item.attributes["query_id"] for item in recorded] == executions
     for item in recorded:
         assert item.name == "athena.statement"

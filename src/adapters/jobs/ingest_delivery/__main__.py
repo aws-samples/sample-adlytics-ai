@@ -394,6 +394,7 @@ def _semantic_names(resources: dict[str, str]) -> dict[str, str]:
         "candidate_database": resources["candidate_database"],
         "current_database": resources["current_database"],
         "staging_database": resources["staging_database"],
+        "staging_bucket": resources["staging_bucket"],
         "attempts_table": resources["attempts"],
         "leases_table": resources["leases"],
         "publications_table": resources["publications"],
@@ -460,6 +461,7 @@ def _semantic_tooling(request: _SemanticToolingRequest) -> SemanticSidecarToolin
     storage = replicated_semantic_storage(
         ReplicatedSemanticStorageRequest(
             bucket=resolved["semantic_bucket"],
+            staging_bucket=resolved["staging_bucket"],
             target=AthenaSemanticTarget(
                 batch_workgroup=resolved["bake_workgroup"],
                 source_database=resolved["source_database"],

@@ -575,6 +575,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0915
             storage = replicated_semantic_storage(
                 ReplicatedSemanticStorageRequest(
                     bucket=semantic_resources["bucket"],
+                    staging_bucket=semantic_resources["staging_bucket"],
                     target=AthenaSemanticTarget(
                         batch_workgroup=semantic_resources["bake_workgroup"],
                         source_database=semantic_resources["source_database"],

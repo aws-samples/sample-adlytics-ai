@@ -405,6 +405,7 @@ def test_ingest_cancellation_preserves_durable_progress_and_recovery_lineage(
             "candidate_database": "candidate",
             "current_database": "current",
             "staging_database": "staging",
+            "staging_bucket": "staging-bucket",
             "attempts": "attempts",
             "leases": "leases",
             "publications": "publications",

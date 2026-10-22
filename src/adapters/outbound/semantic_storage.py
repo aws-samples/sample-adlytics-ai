@@ -10,12 +10,14 @@ from adapters.outbound.athena.semantic_storage import (
     AthenaCanonicalMaterializer,
     AthenaSemanticTarget,
     AthenaSourceMaterializer,
+    ProjectionClients,
 )
 from adapters.outbound.s3.semantic_storage import (
     S3CanonicalAdapter,
     S3IdentityEvidenceAdapter,
     S3SourceAlignedAdapter,
 )
+from adapters.outbound.s3.unit_staging import S3UnitStager
 from adapters.outbound.v2_storage_catalog import V2StorageCatalog
 from domain.semantics.canonical_compiler import CanonicalRow
 from domain.semantics.publication import SourcePublicationRef, SuccessfulPublication
@@ -153,6 +155,8 @@ class ReplicatedSemanticStorageRequest:
     """Complete physical target and typed clients for Semantic V2 replication."""
 
     bucket: str
+    staging_bucket: str
+    """ADR-149: where the Iceberg projection stages each identity's unit before its MERGE."""
     target: AthenaSemanticTarget
     catalog: V2StorageCatalog
     s3: S3Client
@@ -161,20 +165,25 @@ class ReplicatedSemanticStorageRequest:
     def __post_init__(self) -> None:
         if not self.bucket.strip():
             raise ValueError("replicated Semantic V2 storage requires a bucket.")
+        if not self.staging_bucket.strip():
+            raise ValueError("replicated Semantic V2 storage requires a staging bucket.")
 
 
 def replicated_semantic_storage(
     request: ReplicatedSemanticStorageRequest,
 ) -> ReplicatedSemanticStorage:
     """Compose immutable S3 authority before generated Iceberg projection."""
+    clients = ProjectionClients(
+        stager=S3UnitStager(request.staging_bucket, request.s3), athena=request.athena
+    )
     return ReplicatedSemanticStorage(
         source=ReplicatedSourceAlignedStorage(
             S3SourceAlignedAdapter(request.bucket, request.s3),
-            AthenaSourceMaterializer(request.target, request.catalog, request.athena),
+            AthenaSourceMaterializer(request.target, request.catalog, clients),
         ),
         canonical=ReplicatedCanonicalStorage(
             S3CanonicalAdapter(request.bucket, request.s3),
-            AthenaCanonicalMaterializer(request.target, request.catalog, request.athena),
+            AthenaCanonicalMaterializer(request.target, request.catalog, clients),
         ),
         identity_evidence=S3IdentityEvidenceAdapter(request.bucket, request.s3),
     )

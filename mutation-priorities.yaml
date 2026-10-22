@@ -932,7 +932,6 @@ tiers:
       - tests/unit/test_table_writer.py
     - unit: src/domain/operations/statement_protocol.py
       tests:
-      - tests/unit/test_athena_semantic_storage.py
       - tests/unit/test_inline_run.py
       - tests/unit/test_land_fixtures.py
       - tests/unit/test_statement_protocol.py
@@ -3271,7 +3270,6 @@ tiers:
     - unit: src/adapters/outbound/athena/parameters.py
       tests:
       - tests/unit/test_athena_parameters.py
-      - tests/unit/test_athena_semantic_storage.py
     - unit: src/adapters/outbound/athena/query.py
       tests:
       - tests/unit/test_athena_query_preflight.py
@@ -3288,7 +3286,6 @@ tiers:
       - tests/unit/test_table_writer.py
     - unit: src/adapters/outbound/athena/start_envelope.py
       tests:
-      - tests/unit/test_athena_semantic_storage.py
       - tests/unit/test_land_fixtures.py
       - tests/unit/test_table_attempt_statements.py
       - tests/unit/test_table_writer.py
