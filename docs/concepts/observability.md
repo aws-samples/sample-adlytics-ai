@@ -152,6 +152,39 @@ legacy entry's per-bake `terminal` line both carry it, with `deadline_clamped` w
 reported negative remaining time. It is a scale signal, not an alarm: a burst the retry absorbed
 changes nothing a user sees.
 
+**Isolated bake refusals** ([ADR-142](../decisions/adr-142-isolate-a-bake-refusal-to-its-own-scope-and-alarm-on-defects.md)).
+Both bake entries report every isolated refusal through one emitter
+(`src/adapters/jobs/preset_artifact_publisher/page_bake.py`): one failed `bake.isolated_refusal`
+span, one WARNING `report_operation` line (`operation=preset_bake`, `component=page_bake`,
+`phase=isolated_refusal`, `outcome=<reason>`) and one datapoint per `(scope, reason)` group of a
+settled outcome. The line carries only `entry` (`graph` or `legacy`), its lineage (`run_id` and
+`task_id`, or the legacy invocation's `execution_id`), `page`, `variant`, `scope`, `refusal_class`,
+`count` (items, so 200 refused campaigns are one line with `count=200`), `replayed` and the
+reason's allowlisted figures (`bake_refusals.REFUSAL_CONTEXT`); no other identifier. The graph
+entry stores the groups with the task's settlement and replays them once, `replayed=true`, when a
+redelivery finds the settled node, so the guarantee is at least once. A bake that runs past its
+row's `budget_seconds` cuts nothing and emits one WARNING `phase=task outcome=over_budget` line
+(`entry`, `seconds`, `budget_seconds`, `replayed`). Three event counts carry them, with the same
+`Protocol` and `AuthorityScope=live` dimensions on either entry; the publisher stack, deployed in
+every environment, alarms on two:
+
+| Metric (`adlytics-<env>-…` alarm) | Source and read | Missing data | Recovery owner |
+|---|---|---|---|
+| `BakeIsolatedRefusalLimit` (`bake-isolated-refusal-limit`) | either entry: the items of one `limit` or `dependency` refusal group (a row ceiling, a body or partition bound, a statement or write deadline, a dependency that stayed down) | not breaching | the `isolated_refusal` line; a declarative re-bake once a dependency is healthy, or the quarter-manifest backfill for `quarter_manifest_absent` |
+| `BakeTaskOverBudget` (`bake-task-over-budget`) | either entry: one bake over its certified seconds | not breaching | the `over_budget` line: a defect, or data beyond the envelope |
+| `BakeIsolatedRefusalData` (not alarmed) | either entry: the items of one `data` group (`source_refused`, `history_gap`, `evidence_incomplete`); the user sees a precise note, so it stays a product signal | — | — |
+
+**The page observation.** The graph task's `task_summary` line and the legacy `terminal` line both
+carry five memory and process fields from the page's render: `memory_peak_mb`, `ru_maxrss` for the
+process (its peak since it started, over every page that warm process baked and including the
+interpreter, imports and composition, not this page's own allocations); `process_id`, one id per
+Python process; `process_bake_ordinal`, 1, 2, … per render in that process; `rss_before_mb`, the
+peak read on this render's entry; and `process_baseline_mb`, the peak read on the process's first
+render entry, kept for every later line. Growth over the process is
+`memory_peak_mb - process_baseline_mb` on any line; one page alone is
+`memory_peak_mb - rss_before_mb` on an ordinal-1 line only. A task or record that rendered nothing
+carries the entry fields as `null` (graph) or omits them (a legacy page with no bake source).
+
 The four sweep gauges come from one complete sweep. Silence means the detector could not read,
 which `OpenFlowsPastProtocolCeiling` already treats as breaching, so the bake alarms never read
 silence as success. The two Baker counts are events and are absent when nothing happened. A visible

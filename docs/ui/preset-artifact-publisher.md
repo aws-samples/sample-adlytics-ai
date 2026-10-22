@@ -294,6 +294,44 @@ flow identity is a required recovery capability. The custom-resource path remain
 revision/pointer boundary, but neither substitutes for dependency-aware scheduling or objective
 attainment evidence.
 
+## Page isolation
+
+A bake limit or failure is one of two things ([ADR-142](../decisions/adr-142-isolate-a-bake-refusal-to-its-own-scope-and-alarm-on-defects.md);
+the closed table is `src/domain/operations/bake_refusals.py`):
+
+- **An isolated refusal** (a scale limit, a data-history gap or a dependency that stayed down) is
+  its own scope's designed absence, and everything else publishes. Designed absence has three
+  scopes. An **item** (one Audiences campaign or profile path) or a **section** (only a section
+  that declares `period_anchor: false`) renders its absence inside a body that publishes, and the
+  absence is part of the revision. A **page** refusal settles the page's
+  `<page>_materialization_unavailable` absence: the page keeps its last good body, its siblings
+  advance, and on the graph entry the cohort still binds. A source decides the scope; the page
+  execution refuses a claim the page doesn't declare. Every body a source builds is size-checked
+  first, so an over-cap body is that page's `body_over_cap`, never the D18 failure.
+- **A defect** (over the certified query count, a plan-count mismatch, any invariant, the D18
+  ceiling reached past a source's check) still holds every page on the graph entry and only its own
+  page on the legacy entry, and pages the operator.
+
+Both entries render through one page execution (`page_bake.py`), so the classification is the same:
+a source's `DomainError` or `ValidationError` is the page's `source_refused` (or
+`partitions_over_bound` for the selector's exact-partition bounds); a bake-wait timeout is
+`statement_time_over_invocation` on any receive; any other dependency failure retries, and on the
+record's final receive is the page's `dependency_unavailable` instead of a dead letter.
+
+**The pin's bounded retry.** On the graph entry the fan-out's pin pass retries a dependency
+failure in place, per row and around its own release-store calls, up to three attempts with full
+jitter (0.5 s base, 4 s cap) and only while 60 s of the invocation remain for the pin write. A row
+whose attempts run out pins with zero requests and its `pin_refusal`; the cohort proceeds and that
+row's task settles `dependency_unavailable`. A release-store call whose attempts run out re-raises,
+as before.
+
+**The runtime write deadline.** `stage` and `publish` take the invocation's remaining time and the
+contract's `tail_seconds` (30 s) as required arguments. Before each body/custody pair is submitted,
+less than the tail left stops submission, the pairs in flight are observed, and the page settles
+`bodies_over_invocation`: no parent, custody or pointer is written, so the pairs already written
+are unreferenced objects no custody names. Telemetry for all of it is in
+[observability](../concepts/observability.md#32-application-spans-and-metrics).
+
 ## Bake width and the memory model
 Every bake read asks for a bake row ceiling, never chat's 500-row narration bound ([ADR-143](../decisions/adr-143-size-bake-reads-by-a-bake-row-ceiling-separate-from-chat.md); the ceilings and transports are owned by [the query path](../capabilities/query-path/architecture.md#row-ceilings-result-transports-and-folds)). A held answer keeps up to `BAKE_MAX_ROWS` rows; a reduction streams up to `BAKE_MAX_STREAMED_ROWS` through a fold that keeps a bounded summary. The Baker reads each result as a stream from its result object, so one buffer is resident at any row count. One row more than the ceiling is a refusal of that read, never a page of an unknown whole.
 
@@ -322,11 +360,11 @@ The one home of each page's own-absence thresholds at publish time. The README's
 
 ## Scaling and operational gaps
 
-The legacy bake unit is one variant. On the `GRAPH` path one page row's scale failure withholds the
-whole cohort, so every page stays on its last good generation until a cohort serves; isolating a
-page's failure as that page's absence is designed, not built (README
-[Known limits](../../README.md#known-limits)). When a page approaches its page-owned envelope, decompose into
-revision-bound required children rather than raising a timeout. Current unresolved controls are:
+The legacy bake unit is one variant. A page's scale failure is that page's own absence on either
+entry ([Page isolation](#page-isolation)); a defect still withholds the whole `GRAPH` cohort, so
+every page stays on its last good generation until a cohort serves. When a page approaches its
+page-owned envelope, decompose into revision-bound required children rather than raising a timeout.
+Current unresolved controls are:
 
 - the [target pipeline](#target-pipeline) mandated by ADR-075, including complete cohort
   registration and retirement of global fan-out;
