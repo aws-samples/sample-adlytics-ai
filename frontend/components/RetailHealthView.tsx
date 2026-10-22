@@ -4,6 +4,7 @@
 import { RETAIL_HEALTH_EMPTY_TEXT, RETAIL_HEALTH_EMPTY_TITLE, RETAIL_HEALTH_INSUFFICIENT_TEXT, RETAIL_HEALTH_INSUFFICIENT_TITLE } from './RetailHealthRouteAdapter';
 import { retailHealthAnswer } from '@/lib/retail-health';
 import { AnswerSentence } from './AnswerSentence';
+import { PAID_FEATURE_NEXT_STEP } from './PageAbsence';
 import { useRef, useState } from 'react';
 
 import { formatCanonicalDecimal, formatIsoDate, formatIsoDateRange } from '@/lib/exact-format';
@@ -67,6 +68,7 @@ export function AmcRetailPurchases({ headingId, text }: { readonly headingId: st
       <span className="badge">Paid feature</span>
       <strong>Available with the paid feature</strong>
       <span>{text}</span>
+      <span>{PAID_FEATURE_NEXT_STEP}</span>
     </div>
   </section>;
 }

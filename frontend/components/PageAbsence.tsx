@@ -10,6 +10,12 @@
 
 import { StateCallout } from './StatePanels';
 
+/**
+ * E4 (UX sweep fix 10, `docs/ui/page-absence-copy.md` PAID-NEXT): who acts on a paid-feature card,
+ * one browser line after the served text on every page that shows one.
+ */
+export const PAID_FEATURE_NEXT_STEP = 'Ask your administrator about turning on this paid feature for your workspace.';
+
 export function PageAbsence({ message, title }: { readonly message: string; readonly title: string }) {
   return <StateCallout title={title} tone="neutral">{message}</StateCallout>;
 }

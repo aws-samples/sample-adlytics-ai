@@ -4,6 +4,7 @@
 import { retentionAnswer } from '@/lib/retention';
 import { metricLabel } from '@/lib/glossary';
 import { AnswerSentence } from './AnswerSentence';
+import { PAID_FEATURE_NEXT_STEP } from './PageAbsence';
 import { useState } from 'react';
 
 import type { RetentionCohortArtifact, RetentionEvidenceStatusSlot, RetentionGrid, RetentionGroup, RetentionMarket } from '@/lib/retention';
@@ -89,7 +90,7 @@ function Market({ market }: { readonly market: RetentionMarket }) {
       <Triangle grid={selected} legend={market.triangle.legend} marketplaceText={market.marketplace_text} />
       {shownPath === 'standard' ? <p className="footnote">{market.triangle.identity_caveat}</p> : null}
     </section>
-    {market.path.paid.state === 'not_observed' ? <section className="callout paid"><h2>Available with the paid feature</h2><p>{market.path.paid.callout}</p></section> : null}
+    {market.path.paid.state === 'not_observed' ? <section className="callout paid"><h2>Available with the paid feature</h2><p>{market.path.paid.callout}</p><p className="small">{PAID_FEATURE_NEXT_STEP}</p></section> : null}
     <section className="section retention-insights" aria-labelledby={named(`insights-${market.marketplace_key}`)}><h2 id={`insights-${market.marketplace_key}`}>Insights</h2>
       {market.insights.map((slot) => <article className="insight" key={slot.id}><span className="kind">Retention shift</span><p>{slot.text ?? slot.absence_reason}</p>{slot.evidence_line === null ? null : <p className="footnote">{slot.evidence_line}</p>}</article>)}
     </section>

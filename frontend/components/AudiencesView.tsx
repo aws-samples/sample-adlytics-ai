@@ -3,6 +3,7 @@
 
 import { audiencesAnswer } from '@/lib/audiences';
 import { AnswerSentence } from './AnswerSentence';
+import { PAID_FEATURE_NEXT_STEP } from './PageAbsence';
 import { displayFigure, formatCount } from '@/lib/exact-format';
 import { useId, useMemo, useState } from 'react';
 
@@ -94,7 +95,7 @@ function ProfileSection({ market }: { readonly market: AudienceMarket }) {
   const selected = market.views.find((view) => view.view === profile)!;
   const paid = market.views[0];
   return <>
-    {paid.paid_state === 'not_observed' ? <section className="callout paid" role="note"><h2>Available with the paid feature</h2><p>{paid.callout}</p><p className="small">DSP-exposed buyers are shown below instead.</p></section> : null}
+    {paid.paid_state === 'not_observed' ? <section className="callout paid" role="note"><h2>Available with the paid feature</h2><p>{paid.callout}</p><p className="small">DSP-exposed buyers are shown below instead.</p><p className="small">{PAID_FEATURE_NEXT_STEP}</p></section> : null}
     <section className="card section audience-profile" aria-labelledby="audience-profile-heading">
       <div className="section-head"><h2 id="audience-profile-heading">Segment profile</h2></div>
       <fieldset className="datectl"><legend>Profile</legend><div className="seg compact">

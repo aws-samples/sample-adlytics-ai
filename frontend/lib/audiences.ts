@@ -426,7 +426,9 @@ export function audiencesAnswer(artifact: AudienceProfileArtifact): Answer {
     const index = displayFigure('segment_index', row.segment_index, 'ratio', null).text;
     return {
       kind: 'answer',
-      text: `${row.display_name} shoppers are ${row.segment_buyer_share.text} of your buyers but ${row.segment_exposed_share.text} of shoppers reached: ${index} as common among your buyers.`,
+      // UX sweep fix 10 (T1L-6): the served segment name leads, without the provider suffix the
+      // display name adds; a segment the server can't name keeps its served display name.
+      text: `Shoppers in ${row.name ?? row.display_name} are ${row.segment_buyer_share.text} of your buyers but ${row.segment_exposed_share.text} of shoppers reached: ${index} as common among your buyers.`,
     };
   }
   const reason = view.deliveries.flatMap((delivery) => delivery.insights).find((slot) => slot.absence_reason !== null && slot.absence_class !== 'evaluated-quiet')?.absence_reason ?? null;

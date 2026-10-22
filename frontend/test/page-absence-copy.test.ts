@@ -11,6 +11,7 @@ import {
 } from '@/components/CampaignRouteAdapter';
 import { OVERVIEW_NO_SPEND_TREND, sourceIssueText } from '@/components/OverviewView';
 import { CHANNEL_NEW_CUSTOMERS_ABSENT } from '@/components/ScorecardView';
+import { PAID_FEATURE_NEXT_STEP } from '@/components/PageAbsence';
 import { PI_DOMAIN_FALLBACK } from '@/components/PresentationV2RouteController';
 import {
   RETAIL_HEALTH_ABSENCE_NO_PERIOD,
@@ -53,4 +54,5 @@ test('ABS-OV-1 and ABS-OV-2 in docs/ui/page-absence-copy.md are the Overview ban
   assert.equal(row('ABS-OV-1').text, sourceIssueText('{tab}'));
   assert.equal(row('ABS-OV-2').text, OVERVIEW_NO_SPEND_TREND);
   assert.equal(row('ABS-SC-CH').text, CHANNEL_NEW_CUSTOMERS_ABSENT);
+  assert.equal(row('PAID-NEXT').text, PAID_FEATURE_NEXT_STEP);
 });

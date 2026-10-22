@@ -13,8 +13,9 @@ server rows equal `ABSENCE_COPY`, `OTHER_WINDOWS_READY` and `SERVING_CHECK_TEXT`
 the browser's `PI_DOMAIN_FALLBACK` (`frontend/components/PresentationV2RouteController.tsx`). ABS-CAMP-1,
 ABS-CAMP-2, ABS-RH-1 to ABS-RH-4 equal the `CAMPAIGN_ABSENCE_…` and `RETAIL_HEALTH_…` constants
 (`frontend/components/CampaignRouteAdapter.tsx`, `frontend/components/RetailHealthRouteAdapter.tsx`), ABS-OV-1 and ABS-OV-2 equal the Overview's
-`sourceIssueText` and `OVERVIEW_NO_SPEND_TREND` (`frontend/components/OverviewView.tsx`), and ABS-SC-CH equals
-`CHANNEL_NEW_CUSTOMERS_ABSENT` (`frontend/components/ScorecardView.tsx`),
+`sourceIssueText` and `OVERVIEW_NO_SPEND_TREND` (`frontend/components/OverviewView.tsx`), ABS-SC-CH equals
+`CHANNEL_NEW_CUSTOMERS_ABSENT` (`frontend/components/ScorecardView.tsx`), and PAID-NEXT equals `PAID_FEATURE_NEXT_STEP`
+(`frontend/components/PageAbsence.tsx`),
 whose v1 contract carries no server text. Equality tests on both sides read this file. `{period_label}` is the served period's label. Each page LLD's
 "Designed states" table links its row here and restates no text.
 
@@ -170,6 +171,10 @@ persistent status region announces it ([temporal contract §6](temporal-control-
 - Trigger: a served `insufficient` body.
 - Title: "Not enough Vendor Central data for this period"
 - Text: "There isn't enough Vendor Central data to show this period safely. Choose another period above. If this keeps happening, ask your administrator to check the Vendor Central connection."
+### PAID-NEXT
+- Surface: every paid-feature card (Retail health and Retail product "Retail purchases from Amazon Marketing Cloud", Retention "Any repeat purchase", Audiences paid profile)
+- Trigger: the card renders; the line follows the served paid-feature text and says who acts (E4, UX sweep fix 10).
+- Text: "Ask your administrator about turning on this paid feature for your workspace."
 ### ABS-SC-CH
 - Surface: Scorecard channel cards
 - Trigger: the same-preset New customers request failed, its window or currency isn't the Scorecard's, or no served row joins the channel on its governed ad product key. A New customers `window_unavailable` or non-complete body shows its own served text instead.

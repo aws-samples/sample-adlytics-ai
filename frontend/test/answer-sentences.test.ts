@@ -87,7 +87,9 @@ test('Audiences: the server-ranked first segment when the over-index slot is fil
   const answer = audiencesAnswer({ ...artifact, markets: [{ ...market, views }] });
   const row = view.rows.find((entry) => entry.profile_path === delivery.profile_path && entry.state === 'value')!;
   assert.equal(answer.kind, 'answer');
-  assert.equal(answer.text, `${row.display_name} shoppers are ${row.segment_buyer_share!.text} of your buyers but ${row.segment_exposed_share!.text} of shoppers reached: ${row.segment_index}× as common among your buyers.`);
+  // T1L-6: the served segment name leads ("Demo - Age 25-34"), without the " · Amazon" suffix.
+  assert.ok(row.name !== null && row.display_name !== row.name);
+  assert.equal(answer.text, `Shoppers in ${row.name} are ${row.segment_buyer_share!.text} of your buyers but ${row.segment_exposed_share!.text} of shoppers reached: ${row.segment_index}× as common among your buyers.`);
 });
 
 test('Retention: the last offset all three served lines carry, else the served absence', () => {
