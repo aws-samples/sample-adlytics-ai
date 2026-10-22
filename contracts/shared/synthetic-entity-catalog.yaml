@@ -243,6 +243,22 @@ shape:
     # that day's delivery. Only the reach-side row is shaped; that day's impressions corpus isn't,
     # so the bound holds but the implied frequency isn't realistic. The other two days are clean.
     dsp_reach: {day_offsets: [-3, -2, -1], suppressed: {day_offset: -3, campaign: campaign:northstar-dsp-05}}
+    # amc-deduplicated-temporal-attribution (dev-seeding §2): one row per day x registered model
+    # x ad product with attributed purchases that day. Every model splits the same day total, the
+    # attributed corpus's purchases (credit) and halo-inclusive sales (revenue) summed over its
+    # ad products, so the headline is the same under each. A model credits an ad product the total
+    # times its own measure x its weight below, over the sum of weighted measures. First touch
+    # leans to DSP, whose upper-funnel impressions tend to come first; last touch to Sponsored
+    # Products, the search ad nearest the purchase; linear weighs each equally, so its credit is
+    # the ad product's own measure.
+    deduplicated_attribution:
+      channel_weights:
+        first_touch_v1: {amazon_dsp: "1.50", sponsored_products: "0.80", sponsored_brands: "1.00"}
+        last_touch_v1: {amazon_dsp: "0.70", sponsored_products: "1.25", sponsored_brands: "1.00"}
+        linear_v1: {amazon_dsp: "1.00", sponsored_products: "1.00", sponsored_brands: "1.00"}
+      # First and last touch credit each purchase whole to one touch, so their purchase credit per
+      # ad product is a whole number; linear's equal fractions are not.
+      whole_credit_models: [first_touch_v1, last_touch_v1]
     # Pack 5 (amc-exposure-groups, ADR-101): one delivery of the 3 x 2 grid (exposure source set x
     # identity space) per complete ISO week and calendar month. A period's DSP and sponsored
     # impressions and raw costs come from the amc-dsp-impressions and amc-reach-frequency corpora

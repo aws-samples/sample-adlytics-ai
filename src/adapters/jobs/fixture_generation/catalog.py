@@ -560,8 +560,9 @@ class GovernedValueProvider:
                 target_column,
             )
         else:
-            # A portfolio-level AMC result (deduplicated attribution): the day's eligible
-            # campaigns summed, so it agrees with the campaign-grain facts.
+            # A portfolio-level AMC result: the day's eligible campaigns summed, so it agrees
+            # with the campaign-grain facts. Deduplicated attribution's committed layout is
+            # then split per model and ad product by `deduplicated.build_deduplicated`.
             value = self._portfolio_measure(target_column, on)
         if value is None:
             raise SyntheticCatalogError(

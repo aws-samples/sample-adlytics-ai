@@ -99,7 +99,7 @@ Shape invariants, each falsifiable against the lake. The three the 2026-10-04 UX
 broken on the earlier generation (returns above shipped units, an implausibly small day, one CTR
 on every campaign) are also pinned over the committed fixtures by
 `tests/unit/test_display_data_invariants.py`, because the page shows no data-quality notes
-(ADR-086 §17):
+(ADR-086 §17); so is the deduplicated-attribution invariant, the last below:
 
 - **A campaign active in a window has a row for every day of that window.** A zero-delivery
   day (before the launch, or a pause day) is a present row with every measure 0, never an
@@ -113,6 +113,21 @@ on every campaign) are also pinned over the committed fixtures by
   margin-pressure scenario says otherwise.
 - **Product names are valid from the hierarchy's first dev observation** (2026-08-28, read
   2026-10-05), because the hierarchy is a system-first-observed snapshot (ADR-086 §16).
+- **Deduplicated attribution credits every model on every day** (added 2026-10-22, after the
+  Scorecard showed DSP and Sponsored Brands at 0.00× because the feed held one row per day,
+  rotating its one model and one channel). The governed query credits each matched purchase
+  once under each model from one ranked set
+  (`contracts/amc/query-packs/amc-deduplicated-temporal-attribution.sql`), so:
+  every covered day carries every model registered in `contracts/shared/attribution-models.yaml`;
+  per day, `matched_purchase_credit` and revenue are equal across models; every channel with
+  attributed purchases that day has linear credit above 0; and the day's deduplicated revenue
+  never exceeds the sum of the channels' halo-inclusive attributed revenue. The generator splits
+  each model's equal day total across the channels with purchases that day, in proportion to
+  each channel's own campaign measures weighted by the model's declared channel weights
+  (`shape.amc.deduplicated_attribution` in the synthetic catalog). Linear weighs every channel
+  equally, so its credit is each channel's own measure; first and last touch credit whole
+  purchases. A campaign on its declared coverage-gap day contributes nothing, as on every other
+  contract.
 
 ## 3. Two population tiers
 

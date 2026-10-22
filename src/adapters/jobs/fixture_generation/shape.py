@@ -358,6 +358,21 @@ class DspReachShape:
 
 
 @dataclass(frozen=True, slots=True)
+class DeduplicatedAttributionShape:
+    """How each model splits one day's deduplicated total across channels (dev-seeding §2).
+
+    `channel_weights[model][ad_product]` weighs a channel's own attributed measure for that
+    model. Every model splits the same day total, so a channel's credit is the total times its
+    weighted measure over the sum of weighted measures; equal weights credit each channel its
+    own measure, as linear credit does. A `whole_credit_models` model credits each purchase
+    whole to one touch (first or last), so its purchase credit per ad product is a whole number.
+    """
+
+    channel_weights: dict[str, dict[str, Decimal]]
+    whole_credit_models: frozenset[str]
+
+
+@dataclass(frozen=True, slots=True)
 class CampaignSpread:
     """Per-campaign constant bands, one independent draw per campaign and field."""
 
@@ -516,6 +531,7 @@ class CatalogShape:
     new_to_brand_buyers_channel: NewToBrandBuyersChannelShape
     new_to_brand_buyers_campaign: NewToBrandBuyersCampaignShape
     dsp_reach: DspReachShape
+    deduplicated_attribution: DeduplicatedAttributionShape
     exposure_groups: ExposureGroupsShape
     exposure_frequency: ExposureFrequencyShape
     audience_segments: AudienceSegmentsShape
@@ -1006,6 +1022,7 @@ def load_catalog_shape(value: object, context: ShapeContext) -> CatalogShape:
                 "new_to_brand_buyers_channel",
                 "new_to_brand_buyers_campaign",
                 "dsp_reach",
+                "deduplicated_attribution",
                 "exposure_groups",
                 "exposure_frequency",
                 "audience_segments",
@@ -1105,6 +1122,7 @@ def load_catalog_shape(value: object, context: ShapeContext) -> CatalogShape:
         new_to_brand_buyers_channel=channel,
         new_to_brand_buyers_campaign=campaign,
         dsp_reach=dsp_reach,
+        deduplicated_attribution=_deduplicated_attribution(amc["deduplicated_attribution"]),
         exposure_groups=exposure_groups,
         exposure_frequency=exposure_frequency,
         audience_segments=audience_segments,
@@ -1216,6 +1234,33 @@ def _positive_decimal(value: object, path: str) -> Decimal:
     if number <= 0:
         raise _fail(path, "must be a positive decimal.")
     return number
+
+
+def _deduplicated_attribution(value: object) -> DeduplicatedAttributionShape:
+    """Narrow `amc.deduplicated_attribution`: positive weights, the same channels per model."""
+    path = "amc.deduplicated_attribution"
+    raw = _mapping(value, path, frozenset({"channel_weights", "whole_credit_models"}))
+    models = raw["channel_weights"]
+    if not isinstance(models, dict) or not models:
+        raise _fail(f"{path}.channel_weights", "must be a non-empty mapping of models.")
+    weights: dict[str, dict[str, Decimal]] = {}
+    for model, channels in cast("RawMapping", models).items():
+        model_path = f"{path}.channel_weights.{model}"
+        if not isinstance(channels, dict) or not channels:
+            raise _fail(model_path, "must be a non-empty mapping of ad products.")
+        weights[_text(model, model_path)] = {
+            _text(channel, model_path): _positive_decimal(weight, f"{model_path}.{channel}")
+            for channel, weight in cast("RawMapping", channels).items()
+        }
+    if len({frozenset(channels) for channels in weights.values()}) != 1:
+        raise _fail(f"{path}.channel_weights", "every model must weigh the same ad products.")
+    whole = frozenset(
+        _text(item, f"{path}.whole_credit_models")
+        for item in _list(raw["whole_credit_models"], f"{path}.whole_credit_models")
+    )
+    if not whole <= set(weights):
+        raise _fail(f"{path}.whole_credit_models", "must name models with channel weights.")
+    return DeduplicatedAttributionShape(weights, whole)
 
 
 def _exposure_cell(value: object, path: str, period_start: date) -> ExposureCellShape:

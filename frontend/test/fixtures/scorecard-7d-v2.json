@@ -362,6 +362,7 @@
                 "spend_display_value": "400.00",
                 "values": [
                   {
+                    "credit_text": null,
                     "display_value": "3.75",
                     "model": "first_touch_v1",
                     "rank": 2,
@@ -369,6 +370,7 @@
                     "value": "3.7500"
                   },
                   {
+                    "credit_text": null,
                     "display_value": "3.25",
                     "model": "last_touch_v1",
                     "rank": 2,
@@ -376,6 +378,7 @@
                     "value": "3.2500"
                   },
                   {
+                    "credit_text": null,
                     "display_value": "3.50",
                     "model": "linear_v1",
                     "rank": 2,
@@ -390,6 +393,7 @@
                 "spend_display_value": "600.00",
                 "values": [
                   {
+                    "credit_text": null,
                     "display_value": "4.10",
                     "model": "first_touch_v1",
                     "rank": 1,
@@ -397,6 +401,7 @@
                     "value": "4.1000"
                   },
                   {
+                    "credit_text": null,
                     "display_value": "4.43",
                     "model": "last_touch_v1",
                     "rank": 1,
@@ -404,6 +409,7 @@
                     "value": "4.4333"
                   },
                   {
+                    "credit_text": null,
                     "display_value": "4.27",
                     "model": "linear_v1",
                     "rank": 1,
@@ -631,7 +637,7 @@
       ],
       "insights": [
         {
-          "artifact_revision": "fa90856e06a61844ffb76a82f53245d0437d2592b2b6c07489a69ae51fb3ae05",
+          "artifact_revision": "645065e588bbc59269bd36ae229e4162e57c36ecdc5bb8dd80fa9df457a6c9dc",
           "evidence_line": "Server-computed channel shares of network spend and channel ROAS moves.",
           "id": "network-scorecard",
           "output_class": "observed",

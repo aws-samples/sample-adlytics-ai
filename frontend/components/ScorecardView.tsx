@@ -118,7 +118,7 @@ function NetworkCardSection({ card, highlight, notAvailable, several }: {
           {ranking.rows.map((row) => <DtRow key={row.channel} className={row.channel === highlight ? 'highlight-row' : undefined}>
             <DtRowHeader>{row.channel_label}</DtRowHeader>
             {row.values.map((value, index) => <DtCell key={value.model} label={ranking.models[index]?.label ?? value.model}>
-              {value.display_value === null ? notAvailable : formatRatio(value.display_value)}{' '}
+              {value.credit_text ?? (value.display_value === null ? notAvailable : formatRatio(value.display_value))}{' '}
               {value.rank_text === null ? null : <span className="rank">{value.rank_text}</span>}
             </DtCell>)}
           </DtRow>)}

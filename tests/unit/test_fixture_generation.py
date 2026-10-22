@@ -14,6 +14,7 @@ survive the divisor.
 """
 
 import copy
+import csv
 import dataclasses
 import functools
 import json
@@ -41,6 +42,7 @@ from adapters.jobs.fixture_generation.catalog import (
     load_synthetic_entity_catalog,
 )
 from adapters.jobs.fixture_generation.checks import check_ties
+from adapters.jobs.fixture_generation.deduplicated import split
 from adapters.jobs.fixture_generation.shape import (
     BudgetShift,
     CampaignDay,
@@ -480,6 +482,29 @@ class TestClosedValueDomains:
                 else "display"
             )
             assert row["channel_group_key"] == expected
+
+    def test_deduplicated_whole_credit_models_credit_whole_purchases(self) -> None:
+        """First and last touch give each purchase whole to one touch (dev-seeding §2)."""
+        declared = load_synthetic_entity_catalog(ROOT).shape.deduplicated_attribution
+        path = ROOT / "tests/fixtures/generated/amc-deduplicated-temporal-attribution.csv"
+        rows = list(csv.DictReader(path.open(encoding="utf-8")))
+        assert {row["attribution_model_key"] for row in rows} == {
+            "first_touch_v1",
+            "last_touch_v1",
+            "linear_v1",
+        }
+        assert declared.whole_credit_models == {"first_touch_v1", "last_touch_v1"}
+        for row in rows:
+            credit = Decimal(row["matched_purchase_credit"])
+            if row["attribution_model_key"] in declared.whole_credit_models:
+                assert credit == credit.to_integral_value(), row
+        # Equal weights credit each ad product its own measure; unequal ones keep the total.
+        assert split((Decimal(3), Decimal(5)), (Decimal(1), Decimal(1))) == (
+            Decimal("3.0000"),
+            Decimal("5.0000"),
+        )
+        shares = split((Decimal(3), Decimal(5)), (Decimal("1.5"), Decimal("0.7")), Decimal(1))
+        assert (sum(shares), shares) == (Decimal(8), (Decimal("4.0000"), Decimal("4.0000")))
 
 
 class TestOneDeliveryCoversOneMarketplace:
@@ -1425,6 +1450,21 @@ _LOADER_RULES: tuple[tuple[str, Callable[[_Raw], None], str], ...] = (
         "must be first_report or final",
     ),
     ("seal generation", _set("seal_generation", -1), "seal_generation: must be an integer >= 0"),
+    (
+        "deduplicated weight not positive",
+        _set("amc.deduplicated_attribution.channel_weights.linear_v1.amazon_dsp", "0"),
+        "channel_weights.linear_v1.amazon_dsp: must be a positive decimal",
+    ),
+    (
+        "deduplicated models weigh different ad products",
+        _drop("amc.deduplicated_attribution.channel_weights.last_touch_v1.sponsored_brands"),
+        "every model must weigh the same ad products",
+    ),
+    (
+        "deduplicated whole credit names an unweighted model",
+        _set("amc.deduplicated_attribution.whole_credit_models", ["position_based_v1"]),
+        "whole_credit_models: must name models with channel weights",
+    ),
 )
 
 

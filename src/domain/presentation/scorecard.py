@@ -63,11 +63,13 @@ __all__ = [
     "CHANNEL_RETURN_NO_SPEND_REASON",
     "CHANNEL_TABLE_FOOT",
     "DEDUPLICATED_MISSING_REASON",
+    "DEDUPLICATED_MODELS_DISAGREE_REASON",
     "DEDUPLICATED_WITHHELD_REASON",
     "MODEL_NOTE",
     "NETWORK_SCORECARD_ARTIFACT_TYPE",
     "NETWORK_SCORECARD_ARTIFACT_VERSION",
     "NOT_AVAILABLE",
+    "NO_DEDUPLICATED_CREDIT_TEXT",
     "SCORECARD_BOUNDARY",
     "SCORECARD_MARKETPLACE_LABELS",
     "TACOS_NEEDS_VENDOR",
@@ -139,6 +141,16 @@ RANKING_MISSING_TEXT: Final = (
     "Not available: the deduplicated figure for this window hasn't arrived yet, so channels "
     "can't be ranked under each model."
 )
+RANKING_MODELS_DISAGREE_TEXT: Final = (
+    "Not available: the attribution models credited different deduplicated totals for this "
+    "window, so channels can't be ranked under each model."
+)
+NO_DEDUPLICATED_CREDIT_TEXT: Final = "No deduplicated credit"
+"""A spending channel's ranking cell under a model that credited it nothing (owner, 2026-10-22).
+
+Its governed 0.00 stays in the artifact as its value, but the cell names the absence of credit
+and states no rank, because a tie at zero read like a broken second place beside the channel
+table's attributed ROAS."""
 RANKING_NO_SPEND_LEAD: Final = "Not available:"
 RANKING_NO_SPEND_TAIL: Final = (
     "had no ad spend in this window, so channels can't be ranked under each model."
@@ -174,6 +186,14 @@ DEDUPLICATED_WITHHELD_REASON: Final = (
 )
 """The ADR-035 reason: availability requires an unsuppressed deduplicated delivery."""
 DEDUPLICATED_MISSING_REASON: Final = "The deduplicated figure for this window hasn't arrived yet."
+DEDUPLICATED_MODELS_DISAGREE_REASON: Final = (
+    "The attribution models credited different deduplicated totals for this window."
+)
+"""Why the ranking isn't stated when the complete headline differs by model (bake guard).
+
+Every model credits each deduplicated purchase once, so the governed AMC query can't produce
+this; malformed input can (the rotating dev feed found 2026-10-22), and no leader is concluded
+from it."""
 CHANNEL_RETURN_NO_SPEND_REASON: Final = (
     "No ad spend on this channel in this window, so there's no spend to divide its return by."
 )
@@ -445,6 +465,13 @@ class ScorecardRanking:
             self.absence_reason is not None
         ):
             raise ValueError("only an insufficient ranking carries an absence reason.")
+        stated = self.outcome is not ScorecardRankingOutcome.INSUFFICIENT
+        for row in self.rows:
+            for item in row.values:
+                if stated and (item.value is None or (item.rank is None) != (item.value == 0)):
+                    raise ValueError("a stated ranking ranks every credited value and no zero.")
+                if not stated and item.rank is not None:
+                    raise ValueError("an insufficient ranking ranks no channel.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -626,7 +653,8 @@ def scorecard_ranking(
 
     ``rows`` are ``(channel_key, channel_label, spend, {model_key: value})``. A missing value,
     or a withheld delivery, makes the ranking insufficient: no winner is concluded from part
-    of it. Spend only travels with its row; it never ranks.
+    of it. Spend only travels with its row; it never ranks. A zero value is a channel the model
+    credited nothing: it keeps its value and takes no rank (`NO_DEDUPLICATED_CREDIT_TEXT`).
     """
     missing = (
         absence_reason is not None
@@ -653,12 +681,11 @@ def scorecard_ranking(
     leaders: list[tuple[str, ...]] = []
     for key, _ in models:
         values = {channel: values[key] for channel, _, _, values in rows}
-        distinct = sorted({value for value in values.values() if value is not None}, reverse=True)
-        ranks[key] = {
-            channel: distinct.index(value) + 1
-            for channel, value in values.items()
-            if value is not None
+        credited = {
+            channel: value for channel, value in values.items() if value is not None and value != 0
         }
+        distinct = sorted(set(credited.values()), reverse=True)
+        ranks[key] = {channel: distinct.index(value) + 1 for channel, value in credited.items()}
         leaders.append(tuple(sorted(c for c, rank in ranks[key].items() if rank == 1)))
     ranked = tuple(
         ScorecardRankingRow(
@@ -666,7 +693,7 @@ def scorecard_ranking(
             label,
             spend,
             tuple(
-                ScorecardModelValue(key, name, values[key], ranks[key][channel])
+                ScorecardModelValue(key, name, values[key], ranks[key].get(channel))
                 for key, name in models
             ),
         )
@@ -1065,6 +1092,8 @@ def ranking_outcome_text(card: NetworkCard) -> str:
         if ranking.absence_reason == CHANNEL_RETURN_NO_SPEND_REASON:
             unspent = [row.channel_label for row in ranking.rows if row.spend == 0]
             return f"{RANKING_NO_SPEND_LEAD} {_listed(unspent)} {RANKING_NO_SPEND_TAIL}"
+        if ranking.absence_reason == DEDUPLICATED_MODELS_DISAGREE_REASON:
+            return RANKING_MODELS_DISAGREE_TEXT
         return (
             RANKING_WITHHELD_TEXT
             if ranking.absence_reason == DEDUPLICATED_WITHHELD_REASON
@@ -1276,6 +1305,8 @@ def _card(card: NetworkCard, artifact: NetworkScorecardArtifact) -> dict[str, ob
                             else ratio_display_value(item.value),
                             "rank": item.rank,
                             "rank_text": None if item.rank is None else ordinal_text(item.rank),
+                            # The governed zero stays as the value; the cell names it instead.
+                            "credit_text": NO_DEDUPLICATED_CREDIT_TEXT if item.value == 0 else None,
                         }
                         for item in row.values
                     ],

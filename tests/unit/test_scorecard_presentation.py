@@ -626,6 +626,48 @@ def test_the_a3_visual_states_are_served_by_the_real_source(
     )
 
 
+def test_a_spending_channel_with_no_deduplicated_credit_names_it_and_takes_no_rank(
+    presentation_module: _PresentationModule,  # noqa: F811
+) -> None:
+    """Owner decision 2026-10-22: "No deduplicated credit" and no rank, not "0.00x 2nd"."""
+    with _sc1(), _deduplicated_patched(NO_SB_FIRST_TOUCH_CREDIT):
+        stores = _Stores(_bake("7d"))
+    (card,) = _ok(_serve(presentation_module, stores, {}))["page"]["artifact"]["cards"]
+    ranking = card["ranking"]
+    rows = {row["channel"]: row for row in ranking["rows"]}
+    first, last, linear = rows[scorecard_tests.SB]["values"]
+    # The governed zero stays the cell's value; only its presentation and rank change.
+    assert first == {
+        "model": "first_touch_v1",
+        "value": "0.0000",
+        "display_value": "0.00",
+        "rank": None,
+        "rank_text": None,
+        "credit_text": "No deduplicated credit",
+    }
+    assert (last["credit_text"], last["rank_text"]) == (None, "2nd")
+    assert (linear["credit_text"], linear["rank_text"]) == (None, "2nd")
+    # The other channels rank among themselves under first touch: 1st, 2nd and 3rd.
+    assert [
+        rows[channel]["values"][0]["rank_text"]
+        for channel in (scorecard_tests.SP, scorecard_tests.DSP, scorecard_tests.SD)
+    ] == ["1st", "2nd", "3rd"]
+    assert (ranking["outcome"], ranking["outcome_text"]) == (
+        "robust_leader",
+        "Sponsored Products leads under all three models.",
+    )
+    # The headline is unchanged: each model still credits 5,290 once.
+    # 5,290 / 1,500 network spend.
+    assert {model["figure"]["value"] for model in card["headline"]["models"]} == {"3.5267"}
+    # Paired: SC-1, where Sponsored Brands has credit, names no cell and ranks it under each.
+    with _sc1():
+        sc1 = _Stores(_bake("7d"))
+    (base,) = _ok(_serve(presentation_module, sc1, {}))["page"]["artifact"]["cards"]
+    cells = [cell for row in base["ranking"]["rows"] for cell in row["values"]]
+    assert {cell["credit_text"] for cell in cells} == {None}
+    assert None not in {cell["rank"] for cell in cells}
+
+
 def browser_fixture_responses(module: _PresentationModule) -> dict[str, dict[str, Any]]:
     """Serve the Scorecard responses the browser tests decode (SC-1, SC-4, SC-11)."""
     baked = _bake("7d", "30d", "last_complete_week", "last_complete_month")
@@ -674,6 +716,9 @@ def browser_fixture_responses(module: _PresentationModule) -> dict[str, dict[str
         no_dsp = _Stores(_bake("7d"), links)
     with _without_vendor_central(), _sc1():
         needs_vendor = _Stores(_bake("7d"), links)
+    # A spending channel a model credits nothing: "No deduplicated credit", no rank (2026-10-22).
+    with _sc1(), _deduplicated_patched(NO_SB_FIRST_TOUCH_CREDIT):
+        no_credit = _Stores(_bake("7d"), links)
     # SC9A-GATE-R4-001, -005: two marketplaces with an Also changed row in each, and the UK's
     # revenue at 80% of the US, so a figure under the wrong marketplace would show.
     with (
@@ -688,6 +733,7 @@ def browser_fixture_responses(module: _PresentationModule) -> dict[str, dict[str
         "scorecard-model-sensitive-v2.json": _body(_serve(module, model_sensitive, {})),
         "scorecard-no-dsp-v2.json": _body(_serve(module, no_dsp, {})),
         "scorecard-tacos-needs-vendor-v2.json": _body(_serve(module, needs_vendor, {})),
+        "scorecard-no-deduplicated-credit-v2.json": _body(_serve(module, no_credit, {})),
         "scorecard-two-marketplaces-also-changed-v2.json": _body(
             _serve(module, two_also_changed, {})
         ),
@@ -877,6 +923,10 @@ NO_DSP_DEDUPLICATED = {
     "linear_v1": {scorecard_tests.SP: Decimal(2510), scorecard_tests.SB: Decimal(900)},
 }
 """With DSP out, each model credits the same three-channel total once (3,790, SC-6)."""
+NO_SB_FIRST_TOUCH_CREDIT = {
+    "first_touch_v1": {scorecard_tests.SB: Decimal(0), scorecard_tests.SP: Decimal(3360)}
+}
+"""Sponsored Brands spends but first touch credits it nothing; the model's total stays 5,290."""
 UK_REVENUE = {scorecard_tests.UK: Decimal("0.8")}
 """The fictional UK marketplace returns 80% of the US revenue, so its figures differ."""
 

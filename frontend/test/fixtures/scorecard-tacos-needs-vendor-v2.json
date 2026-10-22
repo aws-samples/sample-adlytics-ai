@@ -560,6 +560,7 @@
                 "spend_display_value": "500.00",
                 "values": [
                   {
+                    "credit_text": null,
                     "display_value": "3.00",
                     "model": "first_touch_v1",
                     "rank": 3,
@@ -567,6 +568,7 @@
                     "value": "3.0000"
                   },
                   {
+                    "credit_text": null,
                     "display_value": "2.60",
                     "model": "last_touch_v1",
                     "rank": 3,
@@ -574,6 +576,7 @@
                     "value": "2.6000"
                   },
                   {
+                    "credit_text": null,
                     "display_value": "2.80",
                     "model": "linear_v1",
                     "rank": 3,
@@ -588,6 +591,7 @@
                 "spend_display_value": "600.00",
                 "values": [
                   {
+                    "credit_text": null,
                     "display_value": "4.10",
                     "model": "first_touch_v1",
                     "rank": 1,
@@ -595,6 +599,7 @@
                     "value": "4.1000"
                   },
                   {
+                    "credit_text": null,
                     "display_value": "4.43",
                     "model": "last_touch_v1",
                     "rank": 1,
@@ -602,6 +607,7 @@
                     "value": "4.4333"
                   },
                   {
+                    "credit_text": null,
                     "display_value": "4.27",
                     "model": "linear_v1",
                     "rank": 1,
@@ -616,6 +622,7 @@
                 "spend_display_value": "250.00",
                 "values": [
                   {
+                    "credit_text": null,
                     "display_value": "3.60",
                     "model": "first_touch_v1",
                     "rank": 2,
@@ -623,6 +630,7 @@
                     "value": "3.6000"
                   },
                   {
+                    "credit_text": null,
                     "display_value": "4.00",
                     "model": "last_touch_v1",
                     "rank": 2,
@@ -630,6 +638,7 @@
                     "value": "4.0000"
                   },
                   {
+                    "credit_text": null,
                     "display_value": "3.80",
                     "model": "linear_v1",
                     "rank": 2,
@@ -644,6 +653,7 @@
                 "spend_display_value": "150.00",
                 "values": [
                   {
+                    "credit_text": null,
                     "display_value": "2.87",
                     "model": "first_touch_v1",
                     "rank": 4,
@@ -651,6 +661,7 @@
                     "value": "2.8667"
                   },
                   {
+                    "credit_text": null,
                     "display_value": "2.20",
                     "model": "last_touch_v1",
                     "rank": 4,
@@ -658,6 +669,7 @@
                     "value": "2.2000"
                   },
                   {
+                    "credit_text": null,
                     "display_value": "2.53",
                     "model": "linear_v1",
                     "rank": 4,
@@ -951,7 +963,7 @@
       ],
       "insights": [
         {
-          "artifact_revision": "a596a2f2e8cb4e520ccfb00c36da060192aec994de37f3299c3e9b5887533e62",
+          "artifact_revision": "f2067c6534bc09391cbdc0fae56c79b175e3d41d2169cbd876b975e173d65d8c",
           "evidence_line": "Server-computed channel shares of network spend and channel ROAS moves.",
           "id": "network-scorecard",
           "output_class": "observed",

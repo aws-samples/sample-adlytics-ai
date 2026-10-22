@@ -33,6 +33,7 @@ import modelSensitive from './fixtures/scorecard-model-sensitive-v2.json';
 import noDsp from './fixtures/scorecard-no-dsp-v2.json';
 import needsVendor from './fixtures/scorecard-tacos-needs-vendor-v2.json';
 import twoAlsoChanged from './fixtures/scorecard-two-marketplaces-also-changed-v2.json';
+import noCredit from './fixtures/scorecard-no-deduplicated-credit-v2.json';
 
 function artifactOf(fixture: unknown): NetworkScorecardArtifact {
   const presentation = scorecardPresentationV2(parsePresentationResultCalendarV2(fixture, 'scorecard'));
@@ -470,7 +471,7 @@ function renderRoute(fixture: unknown) {
 
 // Scorecard LLD "Browser-owned copy": the only words the browser writes on a served page.
 const ALLOWLIST = new Set(['Read more ›']);
-const WALKED = { absentCell, alsoChanged, defaultBody, emptyBody, modelSensitive, monthly, needsVendor, noDsp, noPeriod, pending, twoAlsoChanged, twoMarketplaces, weekly };
+const WALKED = { absentCell, alsoChanged, defaultBody, emptyBody, modelSensitive, monthly, needsVendor, noCredit, noDsp, noPeriod, pending, twoAlsoChanged, twoMarketplaces, weekly };
 
 test('every visible text is exactly a string or figure its own response served, or allowlisted', () => {
   for (const [name, fixture] of Object.entries(WALKED)) {
@@ -686,6 +687,23 @@ test('the A.3 states render their served ranking, card line and TACoS absence', 
   assert.equal(sc1.container.querySelector('.scorecard-card p.small.dim'), null);
 });
 
+test('a channel a model credits nothing reads "No deduplicated credit" with no rank, not "0.00× 2nd"', () => {
+  const cellsOf = (container: HTMLElement, channel: string) => [...[...container.querySelectorAll('.rank-block tbody tr')]
+    .find((row) => row.querySelector('th')?.textContent === channel)?.querySelectorAll('td') ?? []];
+  const view = render(<ScorecardView artifact={artifactOf(noCredit)} />);
+  const [first, last] = cellsOf(view.container, 'Sponsored Brands');
+  assert.equal(first?.textContent?.trim(), 'No deduplicated credit');
+  assert.equal(first?.querySelector('.rank'), null);
+  // Paired: the same channel under last touch shows its served ratio and rank.
+  assert.equal(last?.textContent?.trim(), `${formatRatio('4.00')} 2nd`);
+  assert.equal(last?.querySelector('.rank')?.textContent, '2nd');
+  view.unmount();
+  // Paired: SC-1, where every channel has credit, names no cell.
+  const sc1 = render(<ScorecardView artifact={artifactOf(defaultBody)} />);
+  assert.equal(sc1.container.textContent?.includes('No deduplicated credit'), false);
+  assert.equal(cellsOf(sc1.container, 'Sponsored Brands')[0]?.querySelector('.rank')?.textContent, '2nd');
+  sc1.unmount();
+});
 /** The quiet insights section's sentence, or null when the section shows none. */
 function quietReason(container: HTMLElement): string | null {
   const text = container.querySelector('.insight.quiet p')?.textContent ?? null;
