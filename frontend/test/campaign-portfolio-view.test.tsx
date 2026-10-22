@@ -1294,16 +1294,19 @@ test('A step to another tab\'s view renders no chip, and no complete body lacks 
   }, { ...completePayload('spend', 'desc'), evidence_status: null })), { name: 'CampaignAttributionContractError' });
 });
 
-test('each campaign row carries one freshness badge instead of the staleness sentences (D5)', () => {
+test('the campaign table carries one page freshness line instead of a badge per row (UX sweep fix 6)', () => {
   const served = structuredClone(completeArtifact('spend', 'desc')) as unknown as {
     rows: { freshness_qualifiers: string[] }[];
   };
   const current = portfolioView(served as unknown as CampaignPortfolioArtifact);
-  assert.match(current.container.querySelector('tbody tr td.l')?.textContent ?? '', /^Latest data [A-Z][a-z]{2} \d{1,2}, \d{4}$/);
+  assert.match(current.container.querySelector('[data-slot="cp-page-fresh"]')?.textContent ?? '', /^Latest data [A-Z][a-z]{2} \d{1,2}, \d{4}$/);
+  assert.equal(current.container.querySelectorAll('tbody .pill').length, 0);
   current.unmount();
   served.rows[0]!.freshness_qualifiers = ['Fictional source arrived late'];
   const late = portfolioView(served as unknown as CampaignPortfolioArtifact);
-  // The served sentence stays as the badge's accessible description, not visible prose.
-  assert.equal(late.container.querySelector('tbody tr td.l')?.textContent, 'Late data: Fictional source arrived late');
-  assert.equal(late.container.querySelector('tbody tr td.l .sr-only')?.textContent, ': Fictional source arrived late');
+  // Each distinct served qualifier reads once for the page, with See why opening Coverage.
+  const line = late.container.querySelectorAll('[data-slot="cp-page-fresh"]');
+  assert.equal(line.length, 1);
+  assert.equal(line[0]?.textContent, 'Late data Fictional source arrived late See why');
+  assert.equal(late.container.querySelectorAll('tbody .pill').length, 0);
 });

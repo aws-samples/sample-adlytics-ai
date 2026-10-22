@@ -8,7 +8,7 @@
  */
 
 import { metricLabel } from '@/lib/glossary';
-import { formatCanonicalDecimal, formatCount, formatCurrency, formatRatePercent } from '@/lib/exact-format';
+import { formatCanonicalDecimal, formatCount, formatCurrency, formatIsoDateRange, formatRatePercent } from '@/lib/exact-format';
 import type { Metric, RetailComparison, RetailMetricValue } from '@/lib/retail-health';
 import { TileAbsence, TileChange, useWithheld } from './Coverage';
 
@@ -109,7 +109,8 @@ function RetailTile({ comparison, onOpen, scope }: {
     <div className="row">
       <div>
         <p className="v">{retailValue(comparison.metric, comparison.current)}</p>
-        <p className="prior">Prior: {retailValue(comparison.metric, comparison.prior)}</p>
+        {/* UX sweep fix 9 (C6): the prior names its own served window. */}
+        <p className="prior">{formatIsoDateRange(comparison.prior.period.start, comparison.prior.period.end)}: {retailValue(comparison.metric, comparison.prior)}</p>
       </div>
       <TileChange change={comparison.change} slot={comparison.metric} />
     </div>

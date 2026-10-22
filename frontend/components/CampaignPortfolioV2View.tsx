@@ -42,7 +42,7 @@ import { DataTable, DtBody, DtCell, DtColumn, DtHead, DtRow, DtRowHeader } from 
 import { PAGE_HEADING_ID } from './Dialog';
 import { ChangeChip, ChartLegend, displayValueText, numberText, SeriesChart, type ValueKind } from './ChartPrimitives';
 import { seedAssistantQuestion } from './ChatPanel';
-import { CoverageBasis, CoverageProvider, FigureChange, TileAbsence, TileChange, useCoverageOpen, useCoverageText } from './Coverage';
+import { CoverageBasis, CoverageProvider, FigureChange, SeeWhy, TileAbsence, TileChange, useCoverageText } from './Coverage';
 import { EvidenceStatusSheet } from './EvidenceStatusSheet';
 import { InsightCard, InsightNextStepControl } from './InsightCard';
 import { InsightFocusDialog, type InsightFocusSurface } from './InsightFocusDialog';
@@ -106,17 +106,20 @@ export function PortfolioValue({ metric: metricName, value }: {
   return <>{displayValueText({ ...value, value: value.value }, value.units.kind, governedMetric(metricName))}</>;
 }
 
+/** UX sweep fix 6: the one line under All channels in place of the "Not added" tiles. */
+export const CAMPAIGNS_PICK_CHANNEL = 'Pick a channel to see its sales and return.';
+/** UX sweep fix 6: the table's decision hint; the change itself happens in Amazon Ads. */
+export const CAMPAIGNS_SORT_HINT = 'Sort by Attributed ROAS to find campaigns to fix; you make the change in Amazon Ads.';
+
 /**
- * One freshness badge per campaign row (cp-row-fresh, D5): "Latest data {date}" when the row
- * carries no served staleness qualifier, else "Late data", which opens the page's one coverage
- * sheet. The served qualifier sentences stay as the badge's accessible description.
+ * One freshness line for the campaign table (cp-page-fresh, UX sweep fix 6), not a badge per row:
+ * "Latest data {date}" when no row carries a served staleness qualifier, else each distinct served
+ * qualifier once, with "See why" opening the page's one coverage sheet.
  */
-function RowFreshness({ end, qualifiers }: { readonly end: string; readonly qualifiers: readonly string[] }) {
-  const open = useCoverageOpen();
-  if (qualifiers.length === 0) return <span className="pill good">Latest data {formatIsoDate(end)}</span>;
-  const described = <span className="sr-only">: {qualifiers.join(', ')}</span>;
-  if (open === null) return <span className="pill warn">Late data{described}</span>;
-  return <button type="button" className="pill warn" aria-haspopup="dialog" onClick={(event) => open(event.currentTarget)}>Late data{described}</button>;
+function PageFreshness({ end, qualifiers }: { readonly end: string; readonly qualifiers: readonly string[] }) {
+  const distinct = [...new Set(qualifiers)];
+  if (distinct.length === 0) return <p className="footnote" data-slot="cp-page-fresh"><span className="pill good">Latest data {formatIsoDate(end)}</span></p>;
+  return <p className="footnote" data-slot="cp-page-fresh"><span className="pill warn">Late data</span> {distinct.join(' · ')} <SeeWhy figure="campaign freshness" /></p>;
 }
 /** Whether both sides are defined; an undefined comparison has no change (ADR-087). */
 function comparable(comparison: CampaignPortfolioComparison): boolean {
@@ -326,7 +329,7 @@ function PortfolioTiles({ artifact, filterId, focus, sessionId, temporalSelectio
         <div className="row">
           <div>
             <p className="v"><PortfolioValue metric={comparison.metric} value={comparison.current} /></p>
-            <p className="prior">Prior: <PortfolioValue metric={comparison.metric} value={comparison.prior} /></p>
+            <p className="prior">{formatIsoDateRange(artifact.prior_period.start, artifact.prior_period.end)}: <PortfolioValue metric={comparison.metric} value={comparison.prior} /></p>
           </div>
           {comparable(comparison) ? <TileChange change={comparison.change} slot={comparison.metric} /> : null}
         </div>
@@ -341,13 +344,10 @@ function PortfolioTiles({ artifact, filterId, focus, sessionId, temporalSelectio
           Open the focus view for {label(comparison.metric).toLowerCase()}
         </button>
       </article>)}
-      {/* An attributed total is never added across channels; the tile says so in place. */}
-      {(artifact.channel_view?.not_added ?? []).map((tile) => <article className="tile not-added" key={tile.metric}>
-        <p className="k">{tile.label}</p>
-        <p className="v na">{tile.value_text}</p>
-        <p className="prior">{tile.reason}</p>
-      </article>)}
     </div>
+    {/* UX sweep fix 6 (readout A.4): an attributed total is never added across channels, so one
+        line replaces the served "Not added across channels" tiles. */}
+    {(artifact.channel_view?.not_added ?? []).length === 0 ? null : <p className="section-line" data-slot="cp-pick-channel">{CAMPAIGNS_PICK_CHANNEL}</p>}
     {focusMetric !== null ? <MetricFocusDialog
       key={`portfolio-${windowText}`}
       metricId={focusMetric}
@@ -645,6 +645,8 @@ function PortfolioTable({ artifact, onFilter, onSegment, onSegmentApproach, onSe
       <div>
         <h2 id="campaign-table-heading">Campaigns</h2>
         <p className="footnote">Sorted by {sortLabel(artifact.sort)}. Select a column header to sort by it.</p>
+        {artifact.channel_view === null ? <p className="footnote" data-slot="cp-sort-hint">{CAMPAIGNS_SORT_HINT}</p> : null}
+        <PageFreshness end={artifact.period.end} qualifiers={artifact.rows.flatMap((row) => row.freshness_qualifiers)} />
       </div>
     </div>
     <div className="table-toolbar">
@@ -667,7 +669,6 @@ function PortfolioTable({ artifact, onFilter, onSegment, onSegmentApproach, onSe
               <button type="button" onClick={() => requestSort(field)}>{label(field)}</button>
             </DtColumn>
           ))}
-          <DtColumn className="l">Coverage</DtColumn>
         </DtRow></DtHead>
         <DtBody>{displayRows.map((row) => {
           const expired = isCapabilityExpired(row.capability.expires_at, () => clock);
@@ -689,7 +690,6 @@ function PortfolioTable({ artifact, onFilter, onSegment, onSegmentApproach, onSe
               <span><strong><PortfolioValue metric={comparison.metric} value={comparison.current} /></strong>{' '}
               <PortfolioChange comparison={comparison} figure={`${label(comparison.metric)}, ${campaignName(row)}`} /></span>
             </DtCell>)}
-            <DtCell className="l" label="Coverage"><RowFreshness end={artifact.period.end} qualifiers={row.freshness_qualifiers} /></DtCell>
           </DtRow>;
         })}</DtBody>
     </DataTable>
@@ -770,14 +770,13 @@ function ChannelCell({ comparison, figure, roles, slot }: {
 const VIEWABLE_ROLES = ['current', 'prior'] as const;
 
 /**
- * "By channel" (ia §7.2 item 9): spend and impressions per channel, each row applying its
- * channel, then Delivery per channel from each channel's own operands with the DSP viewable
- * rate. No attributed figure: per-channel return has its one home on the Scorecard.
+ * "By channel" (ia §7.2 item 9): Delivery per channel from each channel's own operands with the
+ * DSP viewable rate. No attributed figure and, since UX sweep fix 6, no spend table: spend and
+ * return per channel have their one home on the Scorecard.
  */
-function ByChannel({ comparedText, onFilter, scorecardStep, view }: {
+function ByChannel({ comparedText, scorecardStep, view }: {
   /** "{option} · {window} compared with {prior}", each table's caption note. */
   readonly comparedText: string;
-  readonly onFilter: (filterId: string) => void;
   readonly scorecardStep: InsightNextStep | null;
   readonly view: CampaignChannelView;
 }) {
@@ -787,22 +786,8 @@ function ByChannel({ comparedText, onFilter, scorecardStep, view }: {
     <div className="panel-head"><div>
       <h2 id="by-channel-heading">By channel</h2>
     </div></div>
-    <DataTable className="channel-table" title="Spend and impressions per channel" note={comparedText}>
-      <DtHead><DtRow>
-        <DtColumn>Channel</DtColumn>
-        <DtColumn className="num">Ad spend</DtColumn>
-        <DtColumn className="num">Impressions</DtColumn>
-        <DtColumn className="l">Campaigns</DtColumn>
-      </DtRow></DtHead>
-      <DtBody>{view.by_channel.map((row) => <DtRow key={row.channel}>
-        <DtRowHeader className="name">{row.label}</DtRowHeader>
-        <DtCell className="num" label="Ad spend"><ChannelCell comparison={row.spend} figure={`Ad spend, ${row.label}`} slot="spend" /></DtCell>
-        <DtCell className="num" label="Impressions"><ChannelCell comparison={row.impressions} figure={`Impressions, ${row.label}`} slot="impressions" /></DtCell>
-        <DtCell className="l" label="Campaigns">
-          <button type="button" className="btn link" aria-label={`Show campaigns · ${row.label}`} onClick={() => onFilter(row.channel)}>Show campaigns</button>
-        </DtCell>
-      </DtRow>)}</DtBody>
-    </DataTable>
+    {/* UX sweep fix 6 (readout A.4): the spend-per-channel table repeated the Scorecard, so only
+        delivery per channel renders here; spend and return per channel live on the Scorecard. */}
     <DataTable className="channel-table" title="Delivery per channel" note={comparedText}>
       <DtHead><DtRow>
         <DtColumn>Channel</DtColumn>
@@ -1400,7 +1385,6 @@ export function CampaignPortfolioV2View({ child, closedCampaign = null, detailSt
         {view === null ? null : <>
           <ByChannel
             comparedText={`${selectedLabel(parent.channel_filter)} · ${windowText} compared with ${formatIsoDateRange(parent.prior_period.start, parent.prior_period.end)}`}
-            onFilter={(id) => onFilter?.(id)}
             scorecardStep={scorecardStep}
             view={view}
           />

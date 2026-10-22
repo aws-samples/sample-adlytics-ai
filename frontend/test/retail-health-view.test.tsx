@@ -10,6 +10,7 @@ import { ADS_BESIDE_RETAIL_COPY, RetailHealthBandTitle, RetailHealthView } from 
 import { sourceIssueText, type OverviewSource } from '../lib/overview';
 import { parsePresentationResultCalendarV2, scorecardPresentationV2, type ScorecardPresentation } from '../lib/presentation-v2';
 import scorecard7d from './fixtures/scorecard-7d-v2.json';
+import { formatIsoDateRange } from '../lib/exact-format';
 import { provenanceLine } from '../lib/provenance';
 import type { ManifestTab } from '../lib/route-manifest';
 import { parseRetailHealthArtifact, type RetailHealthArtifact } from '../lib/retail-health';
@@ -129,7 +130,8 @@ test('A retail money tile shows the served two-place display, never the exact fo
   const view = render(<RetailHealthView artifact={completeArtifact(revenue)} />);
   assert.ok(screen.getAllByText('75,459.64 USD').length >= 1);
   assert.ok([...view.container.querySelectorAll('.chg.favourable')].some((chip) => chip.textContent?.includes('+75,457.64 USD')));
-  assert.ok(screen.getAllByText('Prior: 2.00 USD').length >= 1);
+  // The prior names its own served window (UX sweep fix 9, C6).
+  assert.ok(screen.getAllByText(`${formatIsoDateRange(prior.start, prior.end)}: 2.00 USD`).length >= 1);
   assert.equal(view.container.textContent?.includes('75,459.6400'), false);
 });
 
