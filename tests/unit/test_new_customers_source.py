@@ -19,6 +19,7 @@ from bake_application_support import apply_with_deadline, legacy_application, re
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from preset_artifact_support import published_result
 from publication_support import StubPublications
 
 from adapters.config import PresetArtifactBakeSettings
@@ -86,10 +87,8 @@ from domain.presentation.page_schemas import (
     TemporalPresetId,
 )
 from domain.presentation.preset_artifacts import (
-    ArtifactBodyWriteResult,
     PresetArtifactPage,
     PresetArtifactPointerAdvanceOutcome,
-    PresetArtifactPointerAdvanceResult,
     PresetArtifactPublicationRequest,
     PresetArtifactPublicationResult,
     PresetArtifactVariant,
@@ -1245,13 +1244,7 @@ class _Persistence:
         self, request: PresetArtifactPublicationRequest, **_deadline: object
     ) -> PresetArtifactPublicationResult:
         self.published.append(request)
-        body = request.body
-        return PresetArtifactPublicationResult(
-            ArtifactBodyWriteResult(
-                body.page, body.variant, body.revision, body.key, body.digest, None
-            ),
-            PresetArtifactPointerAdvanceResult(PresetArtifactPointerAdvanceOutcome.ADVANCED),
-        )
+        return published_result(request, PresetArtifactPointerAdvanceOutcome.ADVANCED)
 
 
 def test_the_hand_off_entry_composes_the_application_and_its_calendar_variants_bake(

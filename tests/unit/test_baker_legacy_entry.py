@@ -19,6 +19,7 @@ from bake_application_support import (
     bake_parts,
     compose_baker,
 )
+from preset_artifact_support import published_result
 from refusal_telemetry_support import Telemetry, capture
 
 from adapters.inbound.tool_handlers.gateway import contracts_root
@@ -57,20 +58,18 @@ from domain.operations.execution_graph_release import (
     DurableBakeEffectInvalidError,
 )
 from domain.presentation.preset_artifacts import (
-    ArtifactBodyWriteResult,
     PresetArtifactBody,
-    PresetArtifactCustodyManifest,
+    PresetArtifactCustodyHeader,
     PresetArtifactPage,
-    PresetArtifactPointer,
     PresetArtifactPointerAdvanceOutcome,
-    PresetArtifactPointerAdvanceRequest,
-    PresetArtifactPointerAdvanceResult,
+    PresetArtifactPointerTemplate,
     PresetArtifactPublicationRequest,
     PresetArtifactPublicationResult,
     PresetArtifactRevision,
     PresetArtifactSiblingBody,
     PresetArtifactSiblingCustody,
     PresetArtifactSiblingIdentity,
+    PresetArtifactSiblingStream,
     PresetArtifactVariant,
     canonical_preset_artifact_json,
 )
@@ -252,12 +251,11 @@ def _request_for(intent: BakeIntent, siblings: int = 0) -> PresetArtifactPublica
         )
         for name in names
     )
-    custody = PresetArtifactCustodyManifest(
-        page, variant, revision, canonical_preset_artifact_json({"parent": "c"})
-    )
-    pointer = PresetArtifactPointer(page, variant, revision, body.digest, 1, None, custody.digest)
     return PresetArtifactPublicationRequest(
-        body, PresetArtifactPointerAdvanceRequest(pointer), custody, publics, privates
+        body,
+        PresetArtifactPointerTemplate(page, variant, revision, body.digest, 1),
+        PresetArtifactCustodyHeader(canonical_preset_artifact_json({"parent": "c"})),
+        PresetArtifactSiblingStream.of(zip(publics, privates, strict=True)),
     )
 
 
@@ -293,14 +291,8 @@ class _Writes:
         tail_seconds: float,
     ) -> PresetArtifactPublicationResult:
         del remaining_ms, tail_seconds
-        body = request.body
         self.events.extend(("body", "pointer"))
-        return PresetArtifactPublicationResult(
-            ArtifactBodyWriteResult(
-                body.page, body.variant, body.revision, body.key, body.digest, None
-            ),
-            PresetArtifactPointerAdvanceResult(PresetArtifactPointerAdvanceOutcome.ADVANCED),
-        )
+        return published_result(request, PresetArtifactPointerAdvanceOutcome.ADVANCED)
 
 
 def _isolating(  # noqa: PLR0913 -- the recorders, the source, its store and its parts

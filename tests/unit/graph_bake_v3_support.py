@@ -30,6 +30,7 @@ from graph_consumer_support import (
     publish_settled,
     sqs_record,
 )
+from preset_artifact_support import staged_advance, staged_result
 from publication_support import _PublicationSpec, successful_publication
 
 from adapters.jobs.execution_graph.dispatcher import DispatchContext, dispatch_shard
@@ -71,13 +72,11 @@ from domain.operations.execution_graph_release import (
     unavailable_reason,
 )
 from domain.presentation.preset_artifacts import (
-    ArtifactBodyWriteResult,
-    CustodyManifestWriteResult,
     PresetArtifactBody,
-    PresetArtifactCustodyManifest,
+    PresetArtifactCustodyHeader,
     PresetArtifactPage,
     PresetArtifactPointer,
-    PresetArtifactPointerAdvanceRequest,
+    PresetArtifactPointerTemplate,
     PresetArtifactPublicationRequest,
     PresetArtifactRevision,
     PresetArtifactStageResult,
@@ -126,7 +125,7 @@ class PointerKeys(FakeDynamo):
         """
         page, variant = key.split("#")
         request = _publication(BakeIntent(page, variant), identity, None)
-        items = pointer_transaction_items(POINTER_TABLE, request.pointer_advance)
+        items = pointer_transaction_items(POINTER_TABLE, staged_advance(request))
         self.transact_write_items(TransactItems=list(items))
 
 
@@ -339,27 +338,18 @@ def _publication(
     body = PresetArtifactBody(
         page, variant, revision, canonical_preset_artifact_json({"identity": identity})
     )
-    custody = PresetArtifactCustodyManifest(
-        page,
-        variant,
-        revision,
-        canonical_preset_artifact_json({"body_digest": body.digest}),
-    )
-    pointer = PresetArtifactPointer(
-        page,
-        variant,
-        revision,
-        body.digest,
-        1 if current is None else current.forward_token + 1,
-        None if current is None else current.revision,
-        custody.digest,
-    )
     return PresetArtifactPublicationRequest(
         body,
-        PresetArtifactPointerAdvanceRequest(
-            pointer, None if current is None else NOW + timedelta(days=30)
+        PresetArtifactPointerTemplate(
+            page,
+            variant,
+            revision,
+            body.digest,
+            1 if current is None else current.forward_token + 1,
+            None if current is None else current.revision,
+            None if current is None else NOW + timedelta(days=30),
         ),
-        custody,
+        PresetArtifactCustodyHeader(canonical_preset_artifact_json({"body_digest": body.digest})),
     )
 
 
@@ -382,17 +372,7 @@ class Stage:
         self.calls.append((remaining_ms(), tail_seconds))
         body = request.body
         self.staged.append(f"{body.page.value}#{body.variant.value}")
-        custody = request.custody
-        return PresetArtifactStageResult(
-            ArtifactBodyWriteResult(
-                body.page, body.variant, body.revision, body.key, body.digest, "v1"
-            ),
-            None
-            if custody is None
-            else CustodyManifestWriteResult(
-                custody.page, custody.variant, custody.revision, custody.key, custody.digest, "v1"
-            ),
-        )
+        return staged_result(request)
 
 
 @dataclass(frozen=True)

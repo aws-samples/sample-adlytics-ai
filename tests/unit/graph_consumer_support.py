@@ -21,6 +21,7 @@ from aws_lambda_powertools import Logger
 from execution_graph_dispatch_support import NOW, SpySender, now_text, write_text
 from execution_graph_release_support import granted_run, release_store, settle_publish
 from execution_graph_support import FakeDynamo
+from preset_artifact_support import staged_result
 
 from adapters.inbound.ingestion_handlers.graph_publish import publish_effect_record
 from adapters.jobs.execution_graph.dispatcher import DispatchContext, dispatch_shard
@@ -46,13 +47,12 @@ from domain.operations.execution_graph_release import (
     CohortOutcome,
 )
 from domain.presentation.preset_artifacts import (
-    ArtifactBodyWriteResult,
     PresetArtifactBody,
     PresetArtifactPage,
     PresetArtifactPointer,
     PresetArtifactPointerAdvanceOutcome,
-    PresetArtifactPointerAdvanceRequest,
     PresetArtifactPointerAdvanceResult,
+    PresetArtifactPointerTemplate,
     PresetArtifactPublicationRequest,
     PresetArtifactPublicationResult,
     PresetArtifactRevision,
@@ -203,18 +203,16 @@ def publication(
     body = PresetArtifactBody(
         page, variant, revision, canonical_preset_artifact_json({"identity": identity})
     )
-    pointer = PresetArtifactPointer(
-        page,
-        variant,
-        revision,
-        body.digest,
-        1 if current is None else current.forward_token + 1,
-        None if current is None else current.revision,
-    )
     return PresetArtifactPublicationRequest(
         body,
-        PresetArtifactPointerAdvanceRequest(
-            pointer, None if current is None else NOW + timedelta(days=30)
+        PresetArtifactPointerTemplate(
+            page,
+            variant,
+            revision,
+            body.digest,
+            1 if current is None else current.forward_token + 1,
+            None if current is None else current.revision,
+            None if current is None else NOW + timedelta(days=30),
         ),
     )
 
@@ -292,7 +290,8 @@ class Persistence:
         self, request: PresetArtifactPublicationRequest, **_deadline: object
     ) -> PresetArtifactPublicationResult:
         """Advance the pointer table unless an outcome or an error is scripted for the key."""
-        pointer = request.pointer_advance.pointer
+        staged = staged_result(request)
+        pointer = request.pointer_template.complete(staged.custody_digest).pointer
         name = pointer.partition_key
         if self.before_publish is not None:
             self.before_publish(request)
@@ -304,12 +303,12 @@ class Persistence:
             self.pointers.current_by_key[name] = pointer
         if self.after_publish is not None:
             self.after_publish(request)
-        body = request.body
         return PresetArtifactPublicationResult(
-            ArtifactBodyWriteResult(
-                body.page, body.variant, body.revision, body.key, body.digest, None
-            ),
+            staged.body,
             PresetArtifactPointerAdvanceResult(outcome),
+            staged.custody,
+            staged.pairs,
+            staged.written_bytes,
         )
 
 

@@ -357,6 +357,7 @@ def test_a_failed_execution_keeps_its_span_with_the_terminal_state_and_no_statis
 def test_a_stage_call_traces_each_body_custody_chain_with_its_size(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from preset_artifact_support import template_of  # noqa: PLC0415
     from test_preset_artifacts import (  # noqa: PLC0415 -- the body and recording-store fixtures
         RecordingBodies,
         RecordingPointers,
@@ -372,7 +373,7 @@ def test_a_stage_call_traces_each_body_custody_chain_with_its_size(
     spans = _traced(monkeypatch)
     body = _body()
     request = PresetArtifactPublicationRequest(
-        body, PresetArtifactPointerAdvanceRequest(_pointer(body))
+        body, template_of(PresetArtifactPointerAdvanceRequest(_pointer(body)))
     )
     events: list[str] = []
     store = artifacts_module.PresetArtifactPersistence(
@@ -397,6 +398,7 @@ def test_a_stage_call_traces_each_body_custody_chain_with_its_size(
 def test_a_legacy_artifact_write_outside_a_cohort_writes_and_records_no_cohort_fields(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from preset_artifact_support import template_of  # noqa: PLC0415
     from test_preset_artifacts import (  # noqa: PLC0415 -- the body and recording-store fixtures
         RecordingBodies,
         RecordingPointers,
@@ -417,7 +419,9 @@ def test_a_legacy_artifact_write_outside_a_cohort_writes_and_records_no_cohort_f
     )
 
     store.stage(
-        PresetArtifactPublicationRequest(body, PresetArtifactPointerAdvanceRequest(_pointer(body))),
+        PresetArtifactPublicationRequest(
+            body, template_of(PresetArtifactPointerAdvanceRequest(_pointer(body)))
+        ),
         remaining_ms=lambda: 600_000,
         tail_seconds=30.0,
     )
