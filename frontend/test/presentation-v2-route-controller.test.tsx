@@ -11,6 +11,7 @@ import {
 } from '@/components/PresentationV2RouteController';
 import { audiencesRouteAdapter } from '@/components/AudiencesRouteAdapter';
 import { campaignRouteAdapter } from '@/components/CampaignRouteAdapter';
+import { BuiltLine } from '@/components/EvidenceStatusSheet';
 import { InsightNextStepControl } from '@/components/InsightCard';
 import { newCustomersRouteAdapter } from '@/components/NewCustomersRouteAdapter';
 import { reachRouteAdapter } from '@/components/ReachRouteAdapter';
@@ -117,7 +118,7 @@ test('V2 route controller clears parent output before a returned temporal select
   await act(async () => first.resolve(parent('initial')));
   assert.equal(await screen.findByLabelText('parent').then((node) => node.textContent), 'initial');
 
-  await user.click(screen.getByRole('radio', { name: '7D' }));
+  await user.click(screen.getByRole('radio', { name: '7 days' }));
   await waitFor(() => assert.equal(loadParent.mock.calls.length, 2));
   assert.deepEqual(loadParent.mock.calls[1]?.slice(0, 2), [
     'session-a',
@@ -200,7 +201,7 @@ test('V2 route controller aborts child work on temporal replacement without carr
 
   await user.click(screen.getByRole('button', { name: 'Load child' }));
   await waitFor(() => assert.equal(childSignals.length, 1));
-  await user.click(screen.getByRole('radio', { name: '14D' }));
+  await user.click(screen.getByRole('radio', { name: '14 days' }));
   assert.equal(childSignals[0]?.aborted, true);
   assert.equal(screen.queryByLabelText('parent'), null);
 
@@ -336,29 +337,31 @@ test('V2 route controller retains the served generation beside the window while 
     loadParent,
     pageIssueClass: () => 'invariant',
     render: (state) => state.kind === 'parent_ready'
-      ? <output aria-label="parent">{state.parent.id}</output>
+      ? <><output aria-label="parent">{state.parent.id}</output><BuiltLine /></>
       : null,
+    renderLoading: () => <BuiltLine />,
     route: 'campaigns',
     temporal: (value) => value.temporal,
     windowUnavailable: unavailableParent,
   };
-  const footnote = () => document.querySelector('.footnote.win-note')?.textContent ?? '';
+  // T1L-8: the controller provides the served (or retained) generation to the Coverage sheet.
+  const footnote = () => document.querySelector('[data-slot="pg-built"]')?.textContent ?? '';
   const user = userEvent.setup();
   render(<PresentationV2RouteController adapter={adapter} sessionId="session-a" />);
 
   await act(async () => first.resolve({ ...parent('initial'), generation: { built_at: '2026-08-22T06:12:04Z' } }));
   await screen.findByLabelText('parent');
-  assert.match(footnote(), /built 2026-08-22 06:12:04 UTC\./);
+  assert.match(footnote(), /Built 2026-08-22 06:12:04 UTC\./);
 
-  await user.click(screen.getByRole('radio', { name: '7D' }));
+  await user.click(screen.getByRole('radio', { name: '7 days' }));
   await waitFor(() => assert.equal(loadParent.mock.calls.length, 2));
   assert.equal(screen.queryByLabelText('parent'), null);
-  assert.match(footnote(), /built 2026-08-22 06:12:04 UTC\./);
+  assert.match(footnote(), /Built 2026-08-22 06:12:04 UTC\./);
 
   // Control: the new parent's own generation replaces the retained one once it resolves.
   await act(async () => second.resolve({ ...parent('preset'), generation: { built_before: '2026-10-09T21:06:31Z' } }));
   await screen.findByLabelText('parent');
-  assert.match(footnote(), /built before 2026-10-09 21:06:31 UTC\./);
+  assert.match(footnote(), /Built before 2026-10-09 21:06:31 UTC\./);
 });
 
 test('a card preset step selects the preset like the date control and leaves focus on it', async () => {
@@ -396,7 +399,7 @@ test('a card preset step selects the preset like the date control and leaves foc
     temporal: { ...fourteen, resolved: { ...fourteen.resolved, selection: { kind: 'preset', preset_id: '14d' }, window: { end: '2026-08-21', start: '2026-08-08' } } },
   }));
   // ia §2: a preset change isn't a route change, so focus is on the date control's preset.
-  const fourteenControl = screen.getByRole('radio', { name: '14D' });
+  const fourteenControl = screen.getByRole('radio', { name: '14 days' });
   // Compare identities only: printing two DOM nodes in a failure message never finishes.
   await waitFor(() => assert.ok(document.activeElement === fourteenControl, 'focus is not on the 14D preset'));
 });
@@ -471,7 +474,7 @@ test('a window change re-opens the entity when exactly one row matches, and othe
   await screen.findByLabelText('parent');
   await user.click(screen.getByRole('button', { name: 'Open detail' }));
   await screen.findByLabelText('child');
-  await user.click(screen.getByRole('radio', { name: '14D' }));
+  await user.click(screen.getByRole('radio', { name: '14 days' }));
   assert.equal((await screen.findByLabelText('child')).textContent, 'child-of-14d');
   assert.equal(back.mock.calls.length, 0);
   reopened.unmount();
@@ -480,7 +483,7 @@ test('a window change re-opens the entity when exactly one row matches, and othe
   await screen.findByLabelText('parent');
   await user.click(screen.getByRole('button', { name: 'Open detail' }));
   await screen.findByLabelText('child');
-  await user.click(screen.getByRole('radio', { name: '14D' }));
+  await user.click(screen.getByRole('radio', { name: '14 days' }));
   assert.equal((await screen.findByLabelText('closed')).textContent, 'child-of-7d');
   assert.equal(screen.queryByLabelText('child'), null);
   assert.equal(back.mock.calls.length, 1);

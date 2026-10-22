@@ -18,7 +18,7 @@ import { InsightCard } from './InsightCard';
 import { InsightFocusDialog, type InsightFocusSurface } from './InsightFocusDialog';
 import { MetricFocusDialog, type MetricFocusSurface } from './MetricFocusDialog';
 import { useVisibleTabs } from './NextStepContext';
-import { RetailTileGroups, retailMetricLabel, retailValue } from './RetailTiles';
+import { RetailLeakTiles, RetailTileGroups, retailMetricLabel, retailValue } from './RetailTiles';
 import { ScorecardTile } from './ScorecardView';
 import { windowText } from '@/lib/answer';
 import { sourceIssueText, type OverviewSource } from '@/lib/overview';
@@ -403,15 +403,20 @@ export function RetailHealthView({ ads, artifact, closedProduct = null, loadingR
       <span>Product detail closed. Choose a product from the list to open its detail for this window.</span>
     </div>}
     <AnswerSentence answer={retailHealthAnswer(artifact, '')} />
-    <RetailTileGroups
-      absences={artifact.absences}
-      idPrefix="retail-section"
-      onOpen={openFocus}
-      returnReasons={statuses.return_reasons.reason}
-      scope="page"
-      totals={artifact.totals}
-    />
+    <RetailLeakTiles onOpen={openFocus} totals={artifact.totals} />
     {ads === undefined ? null : <AdsBesideRetail ads={ads} />}
+    {/* UX sweep fix 4: every other figure, under the same shared groups, in one disclosure. */}
+    <details className="about more-figures" data-slot="rh-more">
+      <summary>More figures</summary>
+      <RetailTileGroups
+        absences={artifact.absences}
+        idPrefix="retail-section"
+        onOpen={openFocus}
+        returnReasons={statuses.return_reasons.reason}
+        scope="page"
+        totals={artifact.totals}
+      />
+    </details>
     <section className="metric-section" aria-labelledby="retail-insights-heading">
       <div className="sec-head"><h2 id="retail-insights-heading">Insights</h2></div>
       <div className="narr-row">

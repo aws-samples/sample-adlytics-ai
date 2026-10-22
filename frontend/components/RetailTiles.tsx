@@ -135,6 +135,26 @@ function AbsentTile({ label, reason, value }: { readonly label: string; readonly
   </article>;
 }
 
+/** UX sweep fix 4 (readout A.9): the three "where sales leak" rates, from the served totals. */
+export const RETAIL_LEAK_METRICS: readonly Metric[] = ['fulfilment_rate', 'conversion_rate_retail', 'return_rate'];
+
+/** The leak tiles: each served total that is one of `RETAIL_LEAK_METRICS`, in that order. */
+export function RetailLeakTiles({ onOpen, totals }: {
+  readonly onOpen: (metric: Metric, origin: HTMLButtonElement) => void;
+  readonly totals: readonly RetailComparison[];
+}) {
+  const tiles = RETAIL_LEAK_METRICS
+    .map((metric) => totals.find((comparison) => comparison.metric === metric))
+    .filter((comparison) => comparison !== undefined);
+  if (tiles.length === 0) return null;
+  return <section className="metric-section" aria-labelledby="retail-leak-heading" data-slot="rh-leak">
+    <div className="sec-head"><h2 id="retail-leak-heading">Where sales leak</h2></div>
+    <div className="tiles">
+      {tiles.map((comparison) => <RetailTile comparison={comparison} key={comparison.metric} onOpen={onOpen} scope="page" />)}
+    </div>
+  </section>;
+}
+
 export function RetailTileGroups({ absences, idPrefix, onOpen, returnReasons, scope, totals }: {
   readonly absences: readonly { readonly metric: string; readonly reason: string }[];
   /** Keeps heading ids unique when the page renders more than one set of groups. */

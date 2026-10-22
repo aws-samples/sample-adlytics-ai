@@ -3,11 +3,10 @@
 
 import { Fragment, useEffect, useRef, useState, type FormEvent } from 'react';
 
-import { formatIsoDate, formatIsoDateRange, formatIsoDateRangeShort, formatIsoInstant } from '@/lib/exact-format';
+import { formatIsoDate, formatIsoDateRange, formatIsoDateRangeShort } from '@/lib/exact-format';
 import { isCalendarPreset, type TemporalPresetId } from '@/lib/page-bindings';
 import type {
   AnyTemporalControl,
-  PageGenerationV1,
   TemporalControlV1,
   TemporalControlV2,
   TemporalPresetV2,
@@ -35,14 +34,23 @@ function validCustomSelection(start: string, end: string, bounds: NonNullable<Te
   return Number.isSafeInteger(duration) && duration >= bounds.min_duration_days && duration <= bounds.max_duration_days;
 }
 
-/** The page's one freshness line: the window's end and, when known, its generation's build time. */
-function throughCopy(control: TemporalControlV1, generation: PageGenerationV1 | undefined): string {
-  const through = `Data through ${formatIsoDate(control.resolved.window.end)}`;
-  if (generation === undefined) return `${through}.`;
-  return 'built_at' in generation
-    ? `${through}, built ${formatIsoInstant(generation.built_at)}.`
-    : `${through}, built before ${formatIsoInstant(generation.built_before)}.`;
+/**
+ * The page's one freshness line: the window's end. The generation's build time reads in the
+ * Coverage sheet (T1L-8), from the controller's `PageGenerationContext`.
+ */
+function throughCopy(control: TemporalControlV1): string {
+  return `Data through ${formatIsoDate(control.resolved.window.end)}.`;
 }
+/**
+ * UX sweep fix 9: a v1 rolling preset reads as its days ("7 days"), as the v2 control's served
+ * labels do; the served "7D" is the same preset, relabelled only for display.
+ */
+export const V1_PRESET_LABELS: Readonly<Record<string, string>> = { '14D': '14 days', '1D': '1 day', '30D': '30 days', '7D': '7 days' };
+export function v1PresetLabel(label: string): string {
+  return V1_PRESET_LABELS[label] ?? label;
+}
+/** UX sweep fix 9: an unavailable preset reads "Not available yet", as on the v2 control. */
+export const PRESET_NOT_AVAILABLE_YET = 'Not available yet';
 function unavailablePresetCopy(label: string): string {
   return `${label} is not available for the currently published coverage. Choose another available reporting window.`;
 }
@@ -158,12 +166,10 @@ export function VintageControl({ control }: { readonly control: VintageControlV2
   if (control.resolved === null) return null;
   return <div className="controls"><p className="scope-band">{control.resolved.label_text}</p></div>;
 }
-export function TemporalControl({ control, defaultPreset, generation, onFocusRestored, onSelect, pending = false, refusal, restoreFocus = false }: {
+export function TemporalControl({ control, defaultPreset, onFocusRestored, onSelect, pending = false, refusal, restoreFocus = false }: {
   readonly control: AnyTemporalControl;
   /** The page's declared default; a version-2 preset control marks it when omitted. */
   readonly defaultPreset?: TemporalPresetId | undefined;
-  /** The served generation's build time (S6 §2.9), when the page carries one. */
-  readonly generation?: PageGenerationV1 | undefined;
   readonly onFocusRestored?: () => void;
   readonly onSelect: (selection: TemporalSelectionV1 | undefined) => void;
   readonly pending?: boolean;
@@ -184,7 +190,6 @@ export function TemporalControl({ control, defaultPreset, generation, onFocusRes
   }
   return <TemporalControlV1View
     control={control}
-    generation={generation}
     onFocusRestored={onFocusRestored}
     onSelect={onSelect}
     pending={pending}
@@ -193,9 +198,8 @@ export function TemporalControl({ control, defaultPreset, generation, onFocusRes
   />;
 }
 
-function TemporalControlV1View({ control, generation, onFocusRestored, onSelect, pending = false, refusal, restoreFocus = false }: {
+function TemporalControlV1View({ control, onFocusRestored, onSelect, pending = false, refusal, restoreFocus = false }: {
   readonly control: TemporalControlV1;
-  readonly generation?: PageGenerationV1 | undefined;
   readonly onFocusRestored?: (() => void) | undefined;
   readonly onSelect: (selection: TemporalSelectionV1 | undefined) => void;
   readonly pending?: boolean;
@@ -256,14 +260,14 @@ function TemporalControlV1View({ control, generation, onFocusRestored, onSelect,
           type="button"
           className="win-card"
           role="radio"
-          aria-label={preset.label}
+          aria-label={v1PresetLabel(preset.label)}
           aria-checked={checked}
           aria-describedby={unavailable ? `period-status-${preset.id}` : undefined}
           disabled={pending || unavailable}
           onClick={() => onSelect({ kind: 'preset', preset_id: preset.id })}
         >
-          <span className="w">{preset.label}</span>
-          {checked ? <span className="s">{range(control)}</span> : unavailable ? <span className="s">Not published</span> : null}
+          <span className="w">{v1PresetLabel(preset.label)}</span>
+          {checked ? <span className="s">{range(control)}</span> : unavailable ? <span className="s">{PRESET_NOT_AVAILABLE_YET}</span> : null}
         </button>;
       })}
       {bounds !== null && placement !== null ? <button
@@ -292,8 +296,8 @@ function TemporalControlV1View({ control, generation, onFocusRestored, onSelect,
       </form> : null}
     </div>
     {/* Text diet (UI refresh 1.4, D5): one line names the window and how far the data runs. */}
-    <p className="footnote win-note" data-slot="pg-through">{range(control)} · {resolvedDays} {resolvedDays === 1 ? 'day' : 'days'} · {throughCopy(control, generation)}</p>
-    {control.presets.filter((preset) => preset.availability === 'unavailable').map((preset) => <p key={preset.id} id={`period-status-${preset.id}`} className="sr-only">{unavailablePresetCopy(preset.label)}</p>)}
+    <p className="footnote win-note" data-slot="pg-through">{range(control)} · {resolvedDays} {resolvedDays === 1 ? 'day' : 'days'} · {throughCopy(control)}</p>
+    {control.presets.filter((preset) => preset.availability === 'unavailable').map((preset) => <p key={preset.id} id={`period-status-${preset.id}`} className="sr-only">{unavailablePresetCopy(v1PresetLabel(preset.label))}</p>)}
     {refusal ? <p role="status" aria-live="polite" className="state-note bad win-note"><span className="badge">Comparison unavailable</span>This reporting window cannot be compared safely. {refusal.recovery}</p> : null}
   </>;
 }

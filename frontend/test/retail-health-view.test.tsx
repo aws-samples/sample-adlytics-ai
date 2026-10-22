@@ -343,9 +343,14 @@ test('Retail health shows the four shared tile groups, the return-reasons absenc
   const artifact = parseRetailHealthArtifact(format8Payload());
   render(<RetailHealthView artifact={artifact} />);
   const headings = screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent);
-  assert.deepEqual(headings.slice(0, 4), ['Demand and conversion', 'Sales and fulfilment', 'Traffic value and margin', 'Returns']);
+  // UX sweep fix 4: the three leak rates lead; the four shared groups sit in a closed "More figures".
+  assert.deepEqual(headings.slice(0, 5), ['Where sales leak', 'Demand and conversion', 'Sales and fulfilment', 'Traffic value and margin', 'Returns']);
   const group = (name: string) => screen.getByRole('region', { name });
   const keys = (name: string) => [...group(name).querySelectorAll('.tile .k')].map((key) => key.textContent);
+  assert.deepEqual(keys('Where sales leak'), ['Fulfilment rate', 'Units per 1,000 product page views', 'Return rate']);
+  const more = document.querySelector('[data-slot="rh-more"]') as HTMLDetailsElement;
+  assert.equal(more.open, false);
+  assert.ok(more.contains(group('Demand and conversion')));
   assert.deepEqual(keys('Demand and conversion'), ['Product page views', 'Units per 1,000 product page views', 'Ordered revenue', 'Ordered units']);
   assert.deepEqual(keys('Sales and fulfilment'), ['Shipped revenue', 'Shipped units', 'Fulfilment rate', 'Average selling price']);
   assert.deepEqual(keys('Traffic value and margin'), ['Revenue per product page view', 'Cost of goods shipped', "Amazon's margin on your products (not yours)"]);
