@@ -114,6 +114,9 @@ export const TEST_CONFIG: AppConfig = {
     enabled: false,
     enforcement: 'LOG_ONLY',
   },
+  // Off, matching what the repository ships (ADR-150), so every existing stack assertion is also
+  // the flag-OFF baseline. `everyStack()` turns it on, so the repo-wide gates see its resources.
+  externalMcp: { enabled: false, targetsAttached: false, wafRateLimitPerFiveMinutes: Number.NaN },
   evaluationQuality: {
     worstLabel: { periodHours: 6, minimumVerdicts: 5, shareThreshold: 0.2 },
     noDispatch: { periodMinutes: 30, periods: 3 },

@@ -107,6 +107,9 @@ const DEPLOYMENT_ENV = [
   'ADLYTICS_QUALITY_REVIEW_VALIDATION_PASSWORD_AUTH',
   'ADLYTICS_SPAN_INDEXING_PERCENT',
   'ADLYTICS_TRACE_SAMPLE_RATIO',
+  'ADLYTICS_EXTERNAL_MCP_GATEWAY',
+  'ADLYTICS_EXTERNAL_MCP_TARGETS_ATTACHED',
+  'ADLYTICS_EXTERNAL_MCP_WAF_RATE_LIMIT_PER_FIVE_MINUTES',
 ] as const;
 
 /**
@@ -737,6 +740,60 @@ describe('what this repository ships', () => {
   it('pins the Python runtime to 3.14', () => {
     expect(defaultConfig('dev').pythonRuntime).toBe('python3.14');
     expect(defaultConfig('acme-staging').pythonRuntime).toBe('python3.14');
+  });
+});
+
+describe('the external MCP gateway flag (ADR-150)', () => {
+  const ON = { ...CORE_ENVIRONMENT_SUPPLIED, ADLYTICS_EXTERNAL_MCP_GATEWAY: 'true' };
+
+  it('ships off everywhere, and an unset rate is no gap while it is off (positive control)', () => {
+    withDeploymentEnv(CORE_ENVIRONMENT_SUPPLIED, () => {
+      const config = getConfig('dev');
+      expect(config.externalMcp.enabled).toBe(false);
+      expect(config.externalMcp.targetsAttached).toBe(false);
+      expect(config.externalMcp.wafRateLimitPerFiveMinutes).toBeNaN();
+    });
+    withoutCdkEnv(() => {
+      for (const envName of ['dev', 'prod']) {
+        expect(defaultConfig(envName).externalMcp.enabled).toBe(false);
+      }
+    });
+  });
+
+  it('refuses the flag on with no rate, naming the path and its variable', () => {
+    withDeploymentEnv(ON, () => {
+      const error = captureIncomplete('dev');
+      expect(error.problems).toEqual([{ path: 'externalMcp.wafRateLimitPerFiveMinutes', kind: 'unset' }]);
+      expect(error.format()).toContain('ADLYTICS_EXTERNAL_MCP_WAF_RATE_LIMIT_PER_FIVE_MINUTES');
+    });
+  });
+
+  it('turns on in dev with a rate (control for the refusals below)', () => {
+    withDeploymentEnv({ ...ON, ADLYTICS_EXTERNAL_MCP_WAF_RATE_LIMIT_PER_FIVE_MINUTES: '1000' }, () => {
+      expect(getConfig('dev').externalMcp).toStrictEqual({
+        enabled: true,
+        targetsAttached: false,
+        wafRateLimitPerFiveMinutes: 1000,
+      });
+    });
+  });
+
+  it('refuses the flag outside dev', () => {
+    withDeploymentEnv({ ...ON, ADLYTICS_EXTERNAL_MCP_WAF_RATE_LIMIT_PER_FIVE_MINUTES: '1000' }, () => {
+      for (const envName of ['prod', 'staging']) {
+        expect(() => getConfig(envName)).toThrow(
+          'ADLYTICS_EXTERNAL_MCP_GATEWAY may be enabled only for ENV=dev (ADR-150).',
+        );
+      }
+    });
+  });
+
+  it('refuses targets without the gateway', () => {
+    withDeploymentEnv({ ...CORE_ENVIRONMENT_SUPPLIED, ADLYTICS_EXTERNAL_MCP_TARGETS_ATTACHED: 'true' }, () => {
+      expect(() => getConfig('dev')).toThrow(
+        'ADLYTICS_EXTERNAL_MCP_TARGETS_ATTACHED requires ADLYTICS_EXTERNAL_MCP_GATEWAY=true (ADR-150).',
+      );
+    });
   });
 });
 
