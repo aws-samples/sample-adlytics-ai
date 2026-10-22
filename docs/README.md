@@ -12,7 +12,7 @@ This is the entry point for the current design. It contains navigation only: eac
 | Building analytical experiences | [Analytics Discovery](capabilities/analytics-discovery/README.md) → [UI page contracts](ui/README.md) |
 | Building evaluation | [Agent Quality Loop](capabilities/agent-quality-loop/README.md) → [Protected Quality Review API](capabilities/protected-quality-review-api/README.md) |
 | Building deferred ML | [Forecasting](capabilities/forecasting/README.md) → [Saturation](capabilities/saturation/README.md) |
-| Operating a deployment | [Repository README](../README.md) → [Repo Structure](repo-structure.md) → [Validation results](../validation/RESULTS.md) |
+| Operating a deployment | [Repository README](../README.md) → [Repo Structure](repo-structure.md) → [Validation results](../validation/RESULTS.md) → [Use Adlytics in Amazon Quick](amazon-quick.md) |
 | Working with an AI assistant | [Build with an AI assistant](kiro.md) → [AGENTS.md](../AGENTS.md) |
 
 ## Documentation levels

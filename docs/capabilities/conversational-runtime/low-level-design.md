@@ -180,6 +180,32 @@ key and a new `kid` [verified 2026-09-25,
   per-conversation namespace (`semantic-publication-v2`) are not migrated. The strategies, their
   namespaces and how the Harness retrieves them are in [Long-term memory](#long-term-memory).
 
+**External MCP gateway** ([ADR-150](../../decisions/adr-150-expose-the-governed-tools-to-amazon-quick-through-a-user-authorized-mcp-gateway.md);
+built, off in every environment and refused outside dev; not yet deployed). A second entry to the
+same two tool functions, for Amazon Quick. Setup and the demo are in
+[Use Adlytics in Amazon Quick](../../amazon-quick.md).
+
+- **Gateway:** `CUSTOM_JWT` with the user pool's discovery URL, `allowedClients` = the MCP client
+  (SSM `mcpClientId`), `allowedScopes` = `openid`, and one custom claim, `quality_review_levels`
+  CONTAINS `mcp_tool_use`; MCP 2025-06-18 and 2025-03-26, no search type, and the
+  `external_client_rule` from `contracts/generated/tools.json` as its instructions. A regional web
+  ACL is associated with it, with `FAIL_CLOSE`. Its tool targets are named `catalog` and
+  `measurement`, as in-app, and attach only once every web ACL rule blocks; each tool definition's
+  description ends with the same rule.
+- **Interceptor:** its own function on `require_bearer_handler`, the same module's stricter entry
+  point: every JSON-RPC method needs a bearer and is forwarded with it, or is refused with HTTP 401
+  and JSON-RPC `-32001`. Its terminal record states the real `bearer_present` for every method.
+- **Tool:** with `ADL_MCP_CLIENT_ID` set, the unverified header's `kid` selects the check. The token
+  service's `kid` runs the check above, unchanged. Any other `kid` is verified against the user
+  pool's key set (cached per container, one refresh on an unknown `kid`): signature, `exp`
+  (inclusive), `iss` = the pool issuer, `client_id` = the MCP client, and `token_use=access`. The
+  level `mcp_tool_use` is then required, or the refusal is `ADLY-CALLER-0001` with the cause
+  `entitlement_missing`. A key-set read failure refuses with `key_set_unavailable` and reports the
+  dependency failure. The principal is `CallerPrincipal(sub, the MCP client)`. Without
+  `ADL_MCP_CLIENT_ID`, any token but the token service's is refused as `assertion_refused`.
+- **Audit:** this path has no route, so no conversation audit receipt and no evaluation. That is the
+  owner-accepted risk ADR-150 records.
+
 ### Long-term memory
 
 The retained `MemoryStack` declares three long-term strategies. The Harness derives one retrieval
@@ -343,3 +369,4 @@ Fictional dev acceptance must prove dynamic governed tool selection, natural age
 - [ADR-082](../../decisions/adr-082-govern-the-agent-by-evaluation-and-audit-not-text-heuristics.md)
 - [ADR-083](../../decisions/adr-083-stream-the-agent-answer-and-govern-it-by-audit-and-evaluation.md)
 - [ADR-147](../../decisions/adr-147-treat-long-term-memory-as-context-never-evidence.md) (proposed, deployed to dev; [long-term memory](#long-term-memory))
+- [ADR-150](../../decisions/adr-150-expose-the-governed-tools-to-amazon-quick-through-a-user-authorized-mcp-gateway.md) (proposed, dev-only demo flag; [caller identity contract](#caller-identity-contract-mandated-by-adr-077-deployed-end-to-end))

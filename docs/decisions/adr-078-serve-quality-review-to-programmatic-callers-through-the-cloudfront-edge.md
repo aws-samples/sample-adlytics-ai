@@ -52,6 +52,11 @@ distribution). Attribution and reviewer access logging are owned by
 > - **Rollback trigger.** After the edge deploy, a non-exempt body over 8 KB that reaches API Gateway,
 >   or a body over 32 KB on the exempt route that does, redeploys the prior edge commit at once.
 >   Dated evidence is in [validation results](../../validation/RESULTS.md).
+> **Amended 2026-10-22 by [ADR-150](adr-150-expose-the-governed-tools-to-amazon-quick-through-a-user-authorized-mcp-gateway.md)
+> — a third credential binding (§3; demo slice, dev only).** An access token issued to the Amazon
+> Quick MCP client is valid only at the external MCP gateway; every app route refuses it. The two
+> bindings above are unchanged. The current table is
+> [authentication's credential binding](../concepts/authentication.md#credential-binding-adr-078).
 
 ## Context
 

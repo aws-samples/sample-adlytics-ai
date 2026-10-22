@@ -4,7 +4,7 @@
 |---|---|
 | **Level** | L2 — concept |
 | **Status** | Current cross-capability accuracy invariant. |
-| **Last updated** | 2026-09-29 |
+| **Last updated** | 2026-10-22 |
 | **Owns** | The acceptance criterion that a released analytical claim preserves evidence, identity, time, compatible aggregation, coverage, and qualification meaning end to end. |
 | **Applied by** | [Data Layer](../capabilities/data-layer/README.md) · [Load Path](../capabilities/load-path/README.md) · [Publication State](../capabilities/publication-state/README.md) · [Query Path](../capabilities/query-path/README.md) · [Conversational Runtime](../capabilities/conversational-runtime/README.md) |
 | **Conventions** | [Documentation conventions](../conventions.md) |
@@ -27,7 +27,7 @@ A capability may narrow or refuse a claim. It may not replace missing semantics 
 
 > **Takeaway.** A released claim is accurate only when every owner preserves the same meaning across its boundary.
 
-The acceptance matrix is distributed: provenance is checked by [Provenance Chain](provenance-chain.md), current authority by [Publication State](../capabilities/publication-state/README.md), compatibility by [Query Path](../capabilities/query-path/README.md), and customer release by [Conversational Runtime](../capabilities/conversational-runtime/README.md). A conversational answer is not checked before the user sees it: evaluation measures each complete turn against its governed evidence and answer obligations after release ([ADR-083](../decisions/adr-083-stream-the-agent-answer-and-govern-it-by-audit-and-evaluation.md)).
+The acceptance matrix is distributed: provenance is checked by [Provenance Chain](provenance-chain.md), current authority by [Publication State](../capabilities/publication-state/README.md), compatibility by [Query Path](../capabilities/query-path/README.md), and customer release by [Conversational Runtime](../capabilities/conversational-runtime/README.md). A conversational answer is not checked before the user sees it: evaluation measures each complete turn against its governed evidence and answer obligations after release ([ADR-083](../decisions/adr-083-stream-the-agent-answer-and-govern-it-by-audit-and-evaluation.md)). That figure-verification guarantee covers in-app chat only: an answer an external MCP client such as Amazon Quick writes from the same governed tool results has no audit receipt and no evaluation, an owner-accepted risk ([ADR-150](../decisions/adr-150-expose-the-governed-tools-to-amazon-quick-through-a-user-authorized-mcp-gateway.md)).
 
 ## 4. Rejected alternatives
 
@@ -46,6 +46,7 @@ The acceptance matrix is distributed: provenance is checked by [Provenance Chain
 | Exact coverage and `CURRENT` authority | [ADR-047](../decisions/adr-047-separate-attempts-leases-publications-and-coverage.md) |
 | Executable publication and grounded-release gates | [ADR-049](../decisions/adr-049-make-validation-and-grounded-narration-part-of-publication-accuracy.md) |
 | Streamed conversational answer governed by audit and evaluation | [ADR-083](../decisions/adr-083-stream-the-agent-answer-and-govern-it-by-audit-and-evaluation.md) |
+| The figure-verification guarantee scoped to in-app chat; external MCP clients | [ADR-150](../decisions/adr-150-expose-the-governed-tools-to-amazon-quick-through-a-user-authorized-mcp-gateway.md) |
 
 ## 6. Open items
 
