@@ -212,6 +212,8 @@ _INGESTION_ENV = {
     "ADL_STAGE1_MAX_GROUP_MEMBERS": "4",
     "ADL_STAGE1_MAX_POINTERS_PER_TABLE": "37",
     "ADL_STAGE1_MAX_OBJECT_REFS_PER_UNIT": "37",
+    "ADL_STAGE1_MAX_ROWS_PER_UNIT": "50000",
+    "ADL_STAGE1_MAX_ROWS_PER_DELIVERY": "20000",
     "ADL_STAGE1_ATHENA_MAX_STATEMENT_BYTES": "200000",
     "ADL_STAGE1_MAX_ENCODED_IDENTITY_BYTES": "128",
     "ADL_STAGE1_MAX_PARTITION_IDENTITY_BYTES": "256",
@@ -4229,3 +4231,51 @@ class _LazyError(Exception):
     def __init__(self, build: Any) -> None:
         super().__init__("lazy")
         self.build = build
+
+
+# --- ADR-149 slice S4: the unit row ceiling in GRAPH formation (T-11 e) ----------------------
+
+
+def _row_ceiling(writer: Any, monkeypatch: pytest.MonkeyPatch, rows: int) -> None:
+    monkeypatch.setattr(
+        writer, "WRITER_SETTINGS", replace(writer.WRITER_SETTINGS, max_rows_per_unit=rows)
+    )
+
+
+@pytest.mark.covers("ADR-149")
+def test_t11e_a_union_past_the_row_ceiling_starts_a_new_group(
+    writer: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    world = _batch_world(writer, monkeypatch, 3)
+    _row_ceiling(writer, monkeypatch, 2)  # each member has one row
+
+    assert world.process().acknowledge is True
+
+    assert world.inline.sets() == [{_publication(0), _publication(1)}, {_publication(2)}]
+    assert _states(world) == ["SUCCEEDED"] * 3
+    # Control: at a ceiling equal to the union's rows the three members form one group.
+    control = _batch_world(writer, monkeypatch, 3)
+    _row_ceiling(writer, monkeypatch, 3)
+    assert control.process().acknowledge is True
+    assert control.inline.sets() == [{_publication(0), _publication(1), _publication(2)}]
+
+
+@pytest.mark.covers("ADR-149")
+def test_slice7_ar5_3_row_cap_a_member_alone_over_the_row_ceiling_is_its_own_failure(
+    writer: Any, monkeypatch: pytest.MonkeyPatch, reported: list[BaseException]
+) -> None:
+    _batch_shaper(writer, monkeypatch, rows={1: 10, 2: 9})
+    entries = tuple(_unit_entry_for(index) for index in range(3))
+    world = _graph_batch_world(writer, entries=entries, inline=_BatchInline())
+    _row_ceiling(writer, monkeypatch, 9)
+
+    result = world.process(receive_count=1)
+
+    nodes = world.nodes()
+    assert [node.state.value for node in nodes] == ["SUCCEEDED", "FAILED", "SUCCEEDED"]
+    assert nodes[1].failure_reason == "unit_rows_exceed_cap"
+    assert nodes[1].return_reason is None  # settled final on this receive, never member_failed
+    # Control: the 9-row member at the ceiling is shaped and runs (alone: 1 + 9 > 9 rows).
+    assert world.inline.sets() == [{_publication(0)}, {_publication(2)}]
+    assert result.acknowledge is True
+    assert len(reported) == 1  # the one final failure is alarmed once

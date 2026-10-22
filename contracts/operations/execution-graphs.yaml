@@ -83,12 +83,14 @@ routes:
   bake: {max_receive_count: 3}
   precompute: {max_receive_count: 3}
 # Slice 7 (1b, D40, D42, D43): the scheduling allowance per composed statement for a write_unit
-# execution set in a batch of more than one member. 45,000 ms is 2 x probe 2's largest in-bound
-# client wall (22,193 ms), rounded up to the next 1,000 ms (design §2.5 step 4). Null is accepted
-# here so the slice builds, but `make check-execution-graph-deployable` refuses it before deploy.
-# It sits outside `bounds`, so the bounds digest does not move.
+# execution set in a batch of more than one member. Null is accepted here so a slice builds, but
+# `make check-execution-graph-deployable` refuses it before deploy. It sits outside `bounds`, so
+# the bounds digest does not move. ADR-149 (2026-10-22) re-derived it at N = maxRowsPerUnit
+# (50,000 rows, widest table): ceil_1000(2 x max(stage wall + re-shape, decode, render and hash
+# + MERGE client wall = 21,891 ms; verification client wall = 3,892 ms)) = 44,000 ms, and
+# 120,000 + 3 x 44,000 <= 900,000 holds. It was 45,000 ms (2 x probe 2's 22,193 ms) before.
 write_unit_batching:
-  statement_allowance_ms: 45000
+  statement_allowance_ms: 44000
 
 # GRAPH serving coalescing (design §§2-3): closed pure protocol vocabulary. These controls sit
 # outside `bounds`, so the pre-cutover v1 bounds digest and its route/ceiling controls do not move.

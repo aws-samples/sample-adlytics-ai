@@ -772,7 +772,7 @@ describe('permanent V2 runtime configuration', () => {
     // container at import. The Lambda never sends a queue message, so no queue URL is named.
     const env = functionEnvironment(synth());
     expect(env).toEqual(expect.objectContaining(stage1LimitsEnvironment(TEST_CONFIG)));
-    expect(Object.keys(stage1LimitsEnvironment(TEST_CONFIG))).toHaveLength(23);
+    expect(Object.keys(stage1LimitsEnvironment(TEST_CONFIG))).toHaveLength(25);
     expect(env.ADL_PROJECTION_HANDOFF_STATE).toBe(TEST_CONFIG.ingestion.projectionHandoffState);
     expect(env.ADL_PROJECTION_COMPOSITION).toBeUndefined();
     expect(env.ADL_SEMANTIC_WRITE_QUEUE_URL).toBeUndefined();

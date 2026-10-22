@@ -299,6 +299,46 @@ def test_over_budget_rosters_refuse_typed_with_the_closed_reason(
     assert caught.value.context["reason"] == reason
 
 
+def _rows(unit: delivery_plan.PlannedUnit) -> int:
+    return sum(len(records) for _, records in unit.workload.records_by_identity)
+
+
+@pytest.mark.covers("ADR-149")
+def test_t12_a_unit_or_delivery_over_its_row_ceiling_refuses_and_one_at_it_proceeds() -> None:
+    roster = published_roster(PublishedRosterRequest(published(row_count=3), TARGET, CATALOG))
+    widest = max(_rows(unit) for unit in roster.units)
+    total = sum(_rows(unit) for unit in roster.units)
+    groups = prepared().groups
+    assert widest == 3  # units and grain: one row per record
+    cases = (
+        (replace(SETTINGS, max_rows_per_unit=widest - 1), "unit_rows_exceed_cap"),
+        (replace(SETTINGS, max_rows_per_delivery=total - 1), "delivery_rows_exceed_cap"),
+    )
+    for settings, reason in cases:
+        with pytest.raises(ValidationError) as caught:
+            require_feasible(FeasibilityCheck(roster, groups, settings))
+        assert caught.value.code == FEASIBILITY_REFUSED
+        assert caught.value.context["reason"] == reason
+    # Control: exactly at each ceiling the same roster is feasible.
+    at = replace(SETTINGS, max_rows_per_unit=widest, max_rows_per_delivery=total)
+    assert isinstance(require_feasible(FeasibilityCheck(roster, groups, at)), FeasibleProjection)
+
+
+@pytest.mark.covers("ADR-149")
+def test_t12_prepared_and_published_rosters_count_the_same_rows_and_hold_no_body() -> None:
+    prepared_units = prepared_roster(PreparedRosterRequest(prepared(), TARGET, CATALOG, NOW))
+    published_units = published_roster(PublishedRosterRequest(published(), TARGET, CATALOG))
+    assert [_rows(unit) for unit in prepared_units.units] == [
+        _rows(unit) for unit in published_units.units
+    ]
+    for unit in (*prepared_units.units, *published_units.units):
+        merge = unit.composition.merges[0]
+        assert merge.staged is not None
+        assert merge.staged.rows == _rows(unit)
+        assert not hasattr(merge.staged, "body")
+        assert not hasattr(unit, "body")
+
+
 # --- §5.3 acknowledgment classifier ---------------------------------------------------------------
 
 INTENT_ID = "8595e699935a8ec7ee6d3d87d3e0214300e09831da6a4808f10c9fab4174269b"

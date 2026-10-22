@@ -48,6 +48,7 @@ from adapters.config import (
 )
 from adapters.graph_authority import provisioned_graph_table
 from adapters.inbound.ingestion_handlers import graph_publish, graph_unit
+from adapters.inbound.ingestion_handlers.delivery_plan import FEASIBILITY_REFUSED
 from adapters.inbound.ingestion_handlers.graph_claim import (
     ClaimDisposition,
     GraphClaimInput,
@@ -236,6 +237,7 @@ from domain.shared_kernel.errors import (
     DomainError,
     ErrorCode,
     InvariantError,
+    ValidationError,
 )
 from ports.outbound.canonical import CanonicalDestination
 from ports.outbound.execution_graph_dispatch import ClaimRecord, GraphDispatchStore, NodeRecord
@@ -2697,22 +2699,27 @@ def _identities(member: _BatchMember) -> frozenset[str]:
     return member.summarized().identities
 
 
-def _group_members(ready: Sequence[_BatchMember]) -> list[tuple[_BatchMember, ...]]:
+def _group_members(ready: Sequence[_BatchMember], max_rows: int) -> list[tuple[_BatchMember, ...]]:
     """Step 3 (D10): member groups from summaries alone, in member order; composes nothing.
 
-    A group ends before a member whose identities overlap it. State-blind, so the same members
-    always form the same groups.
+    A group ends before a member whose identities overlap it, or whose rows would take the
+    group past ``max_rows`` (the unit row ceiling, ADR-149 decision 4). State-blind, so the
+    same members always form the same groups.
     """
     groups: list[tuple[_BatchMember, ...]] = []
     current: list[_BatchMember] = []
     identities: set[str] = set()
+    rows = 0
     for member in ready:
         own = _identities(member)
-        if current and own & identities:
+        own_rows = member.summarized().rows
+        if current and (own & identities or rows + own_rows > max_rows):
             groups.append(tuple(current))
-            current, identities = [], set()
+            current, rows = [], 0
+            identities = set[str]()
         current.append(member)
         identities |= own
+        rows += own_rows
     if current:
         groups.append(tuple(current))
     return groups
@@ -2898,11 +2905,22 @@ class _Batch:
             member.summary = summary
 
     def _shape_alone(self, entry: CanonicalUnitEntry) -> _MemberSummary:
-        """Shape and compose one member alone; its workload is dropped when this returns."""
+        """Shape and compose one member alone; its workload is dropped when this returns.
+
+        A member alone over the unit row ceiling (the config changed after feasibility) is that
+        member's own typed refusal, settled final with reason `unit_rows_exceed_cap`.
+        """
         shaped = _shape_unit(self.runtime, entry)
+        summary = _summarize(shaped)
+        if summary.rows > WRITER_SETTINGS.max_rows_per_unit:
+            raise ValidationError(
+                FEASIBILITY_REFUSED,
+                "a write unit's rows exceed the unit row ceiling.",
+                context={"reason": "unit_rows_exceed_cap"},
+            )
         alone = compose_unit_statements(_compose(shaped.workload, self.runtime.target))
         unit_statement_kinds(alone.merge_count)  # AR5-3: the built refusal, kept
-        return _summarize(shaped)
+        return summary
 
     # --- step 3 --------------------------------------------------------------------------------
 
@@ -2979,7 +2997,7 @@ class _Batch:
         An empty result for shaped members is a defect (N1).
         """
         ready = [m for m in self.members if m.summary is not None and m.member_class is None]
-        groups = _group_members(ready)
+        groups = _group_members(ready, WRITER_SETTINGS.max_rows_per_unit)
         if ready and not groups:
             raise _composition_defect(
                 self.batch_id, "execution-set formation yielded no set for shaped members."

@@ -22,6 +22,8 @@ _VALID_INGESTION_ENV = {
     "ADL_STAGE1_MAX_GROUP_MEMBERS": "4",
     "ADL_STAGE1_MAX_POINTERS_PER_TABLE": "37",
     "ADL_STAGE1_MAX_OBJECT_REFS_PER_UNIT": "37",
+    "ADL_STAGE1_MAX_ROWS_PER_UNIT": "50000",
+    "ADL_STAGE1_MAX_ROWS_PER_DELIVERY": "20000",
     "ADL_STAGE1_ATHENA_MAX_STATEMENT_BYTES": "200000",
     "ADL_STAGE1_MAX_ENCODED_IDENTITY_BYTES": "128",
     "ADL_STAGE1_MAX_PARTITION_IDENTITY_BYTES": "256",
@@ -91,6 +93,9 @@ def test_six_accessors_project_one_frozen_strict_ingestion_owner(
 
     assert delivery.max_units == 15
     assert delivery.athena_max_statement_bytes == 200_000
+    assert (delivery.max_rows_per_unit, delivery.max_rows_per_delivery) == (50_000, 20_000)
+    assert writer.max_rows_per_unit == 50_000
+    assert not hasattr(writer, "max_rows_per_delivery")
     assert not hasattr(delivery, "semantic_write_queue_url")
     assert writer.table_writer_timeout_seconds == 900
     assert writer.table_writer_cleanup_reserve_ms == 60_000
@@ -126,6 +131,8 @@ def test_stage1_values_do_not_enter_broad_settings() -> None:
         "max_group_members",
         "max_pointers_per_table",
         "max_object_refs_per_unit",
+        "max_rows_per_unit",
+        "max_rows_per_delivery",
         "athena_max_statement_bytes",
         "max_encoded_identity_bytes",
         "table_writer_timeout_seconds",
@@ -203,6 +210,8 @@ def test_missing_values_are_reported_together_without_values(
             "ADL_STAGE1_MAX_UNITS",
             "ADL_TABLE_WRITER_CONCURRENCY",
             "ADL_SEMANTIC_WRITE_QUEUE_URL",
+            "ADL_STAGE1_MAX_ROWS_PER_UNIT",
+            "ADL_STAGE1_MAX_ROWS_PER_DELIVERY",
         }
     }
     _set_environment(monkeypatch, values)
@@ -214,6 +223,8 @@ def test_missing_values_are_reported_together_without_values(
     assert "ADL_STAGE1_MAX_UNITS" in rendered
     assert "ADL_TABLE_WRITER_CONCURRENCY" in rendered
     assert "ADL_SEMANTIC_WRITE_QUEUE_URL" in rendered
+    assert "ADL_STAGE1_MAX_ROWS_PER_UNIT" in rendered
+    assert "ADL_STAGE1_MAX_ROWS_PER_DELIVERY" in rendered
 
 
 def test_unknown_projection_handoff_state_is_rejected_without_echo(
@@ -258,6 +269,11 @@ def test_unknown_projection_handoff_state_is_rejected_without_echo(
             {"ADL_TABLE_WRITER_VISIBILITY_MARGIN_SECONDS": "59"},
             "ADL_TABLE_WRITER_VISIBILITY_MARGIN_SECONDS",
         ),
+        # ADR-149: the reviewed row ceilings; any other value refuses, either side.
+        ({"ADL_STAGE1_MAX_ROWS_PER_UNIT": "50001"}, "ADL_STAGE1_MAX_ROWS_PER_UNIT"),
+        ({"ADL_STAGE1_MAX_ROWS_PER_UNIT": "49999"}, "ADL_STAGE1_MAX_ROWS_PER_UNIT"),
+        ({"ADL_STAGE1_MAX_ROWS_PER_DELIVERY": "20001"}, "ADL_STAGE1_MAX_ROWS_PER_DELIVERY"),
+        ({"ADL_STAGE1_MAX_ROWS_PER_DELIVERY": "19999"}, "ADL_STAGE1_MAX_ROWS_PER_DELIVERY"),
         (
             {
                 "ADL_TABLE_ATTEMPT_RECONCILE_BASE_BACKOFF_SECONDS": "901",

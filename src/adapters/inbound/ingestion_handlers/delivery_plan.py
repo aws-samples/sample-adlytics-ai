@@ -459,6 +459,32 @@ def _refuse(reason: str, description: str) -> ValidationError:
     )
 
 
+def _unit_rows(unit: PlannedUnit) -> int:
+    return sum(len(records) for _, records in unit.workload.records_by_identity)
+
+
+def _require_rows_within_ceilings(roster: DeliveryRoster, settings: Stage1DeliverySettings) -> None:
+    """ADR-149 decision 4: refuse a unit or delivery whose rows exceed the reviewed ceilings.
+
+    The ceilings protect the writers' memory and invocation time, which rows still drive once a
+    unit always composes two statements; refusing here mutates nothing.
+    """
+    for unit in roster.units:
+        rows = _unit_rows(unit)
+        if rows > settings.max_rows_per_unit:
+            raise _refuse(
+                "unit_rows_exceed_cap",
+                f"unit {unit.entry.unit_key!r} has {rows} rows, beyond "
+                f"{settings.max_rows_per_unit}.",
+            )
+    total = sum(_unit_rows(unit) for unit in roster.units)
+    if total > settings.max_rows_per_delivery:
+        raise _refuse(
+            "delivery_rows_exceed_cap",
+            f"the delivery has {total} rows, beyond {settings.max_rows_per_delivery}.",
+        )
+
+
 def require_feasible(check: FeasibilityCheck) -> FeasibleProjection:
     """Prove the §2.1 clean-attempt formula and the §11 roster bounds, or refuse typed.
 
@@ -501,6 +527,7 @@ def require_feasible(check: FeasibilityCheck) -> FeasibleProjection:
                 f"unit {unit.entry.unit_key!r} names {len(unit.servable)} pointers, beyond "
                 f"{settings.max_pointers_per_table}.",
             )
+    _require_rows_within_ceilings(roster, settings)
     result = validate_projection_feasibility(
         ProjectionFeasibilityRequest(
             units=roster.entries,

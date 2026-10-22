@@ -593,6 +593,10 @@ export interface IngestionConfig {
   readonly maxGroupMembers: 4;
   readonly maxPointersPerTable: 37;
   readonly maxObjectRefsPerUnit: 37;
+  /** ADR-149 decision 4: one unit's rows, from probe P-4/P-5 (writer memory and time). */
+  readonly maxRowsPerUnit: 50000;
+  /** ADR-149 decision 4: one delivery's rows, from probe P-5 (delivery function memory). */
+  readonly maxRowsPerDelivery: 20000;
   readonly athenaMaxStatementBytes: 200000;
   readonly maxEncodedIdentityBytes: 128;
   readonly maxPartitionIdentityBytes: 256;
@@ -676,6 +680,10 @@ export function validateIngestionConfig(config: IngestionConfig): void {
     maxGroupMembers: 4,
     maxPointersPerTable: 37,
     maxObjectRefsPerUnit: 37,
+    // ADR-149 (2026-10-22): the row ceilings design §4.6 derives from probe P-4/P-5; they
+    // replace the per-unit statement cap's SQL-size refusal. Write-discipline §11 carries them.
+    maxRowsPerUnit: 50000,
+    maxRowsPerDelivery: 20000,
     athenaMaxStatementBytes: 200000,
     maxEncodedIdentityBytes: 128,
     maxPartitionIdentityBytes: 256,
@@ -754,6 +762,8 @@ const DEFAULT_INGESTION_CONFIG: IngestionConfig = Object.freeze({
   maxGroupMembers: 4,
   maxPointersPerTable: 37,
   maxObjectRefsPerUnit: 37,
+  maxRowsPerUnit: 50000,
+  maxRowsPerDelivery: 20000,
   athenaMaxStatementBytes: 200000,
   maxEncodedIdentityBytes: 128,
   maxPartitionIdentityBytes: 256,

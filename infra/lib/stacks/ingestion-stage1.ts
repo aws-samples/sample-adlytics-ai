@@ -160,6 +160,8 @@ export function stage1LimitsEnvironment(config: AppConfig): Record<string, strin
     ADL_STAGE1_MAX_GROUP_MEMBERS: String(value.maxGroupMembers),
     ADL_STAGE1_MAX_POINTERS_PER_TABLE: String(value.maxPointersPerTable),
     ADL_STAGE1_MAX_OBJECT_REFS_PER_UNIT: String(value.maxObjectRefsPerUnit),
+    ADL_STAGE1_MAX_ROWS_PER_UNIT: String(value.maxRowsPerUnit),
+    ADL_STAGE1_MAX_ROWS_PER_DELIVERY: String(value.maxRowsPerDelivery),
     ADL_STAGE1_ATHENA_MAX_STATEMENT_BYTES: String(value.athenaMaxStatementBytes),
     ADL_STAGE1_MAX_ENCODED_IDENTITY_BYTES: String(value.maxEncodedIdentityBytes),
     ADL_STAGE1_MAX_PARTITION_IDENTITY_BYTES: String(value.maxPartitionIdentityBytes),
