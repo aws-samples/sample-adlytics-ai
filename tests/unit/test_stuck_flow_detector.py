@@ -65,7 +65,6 @@ from domain.operations.stuck_flow import (
     sweep,
     unarmed_contribution_candidates,
 )
-from domain.shared_kernel.errors import DependencyError, ErrorCode
 from ports.outbound.execution_graph import (
     AdmissionCommit,
     EffectKind,
@@ -758,12 +757,15 @@ def test_f9_a_real_bake_recovery_item_counts_through_the_shard_query() -> None:
     bake.dispatch(run)
     first, second = bake.roster.keys
     bake.sources.extra_on_task.add(first)  # fatal: a bound count differing from the pin
-    bake.queries.fail[second] = DependencyError(ErrorCode("FICTIONAL", 1), "throttled")
     bake.task(run, first)
+    # ADR-142 §3.3: a page's own query dependency on its final receive is that page's designed
+    # absence, not a recovery item; the task's pin read failing on every receive still exhausts.
+    bake.tables.fail_query = "{'S': 'BAKE_'}"  # the task's `read_durable_bake_sources`
     bake.task(run, second, receive_count=1)
     claim = (f"EXEC_CLAIM#{bake.node(run, task_node_name(second)).node_id}", "CLAIM")
     bake.tables.items[claim]["lease_expires_at"] = {"S": "2000-01-01T00:00:00+00:00"}
     bake.task(run, second, receive_count=3)
+    bake.tables.fail_query = None
 
     _emitted, failures, reading = _sweep_at(bake.tables, BAKE_NOW)
 
