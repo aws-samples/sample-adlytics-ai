@@ -215,6 +215,7 @@ for q in adlytics-<env>-ingestion adlytics-<env>-semantic-write.fifo; do
     --queue-url "$(aws sqs get-queue-url --profile <your-profile> --queue-name "$q" --query QueueUrl --output text)"
 done
 ```
+An update from a version without the sharded sibling index ([ADR-145](docs/decisions/adr-145-serve-ten-thousand-campaigns-with-a-sharded-roster-and-streamed-writes.md)) shows Campaigns and Retail health in their failed state, and raises an alarm, until each page's next bake. No command starts that bake yet, so deploy shortly before a delivery lands and check both pages after it ([publisher](docs/ui/preset-artifact-publisher.md#first-bake-and-recovery)).
 
 To deploy one stack on its own, run `make deploy STACK=Adlytics-<Area>-<env> PROFILE=<your-profile> ENV=<env> APPROVE=1`; it deploys exactly that stack. It takes no deploy lock, and it isn't for a `src/` change on a shared environment: every function-bearing stack shares one Lambda source asset, so deploy that change to every stack with `make deploy-all-locked` ([ADR-136](docs/decisions/adr-136-deploy-a-shared-asset-change-as-one-deploy-all-from-one-declared-source.md)).
 
