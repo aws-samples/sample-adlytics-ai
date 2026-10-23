@@ -112,6 +112,12 @@ DEEP_INPUT_REVISIONS: Final[tuple[tuple[str, str], ...]] = (
     # ui-refresh 3.8: an optional customer question on a page's navigation block. Named .5
     # because the Tier 2 integration tree deployed its merge closure to dev as 2026-10-22.4.
     ("2026-10-22.5", "2bf390bc02ee31a1bf09bce266bd3e7a618d4d487f705a2e74e5ea5d108174ee"),
+    # Scale limits b1 and b2 replayed onto public main 04d7877c: statement waits and
+    # throttled-start retries (ADR-144), bake row ceilings, transports and folds (ADR-143), the
+    # isolated-refusal table (ADR-142) and streamed writes with the sharded sibling index
+    # (ADR-145). That branch's own 2026-10-21.1, 2026-10-22.1 and 2026-10-22.2 never deployed and
+    # collided with the names above, so they fold into this one entry.
+    ("2026-10-23.1", "5cfa98be72392bd3bc65c0cc5dc4e8885639ee568adf5385c7943d1517620b77"),
 )
 DEEP_INPUT_REVISION: Final[str] = DEEP_INPUT_REVISIONS[-1][0]
 """The revision every deep cache key carries (``#DEEPINPUT#<revision>``)."""
