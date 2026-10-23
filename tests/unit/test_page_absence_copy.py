@@ -53,6 +53,16 @@ def test_the_catalog_doc_and_the_domain_catalog_are_equal() -> None:
         "ABS-CAMP-2",
         "ABS-RH-1",
         "ABS-RH-2",
+        # Retail health empty and insufficient bodies (OD-UX-9 E1), browser-owned.
+        "ABS-RH-3",
+        "ABS-RH-4",
+        # Overview band absences (ADR-151), browser-owned.
+        "ABS-OV-1",
+        "ABS-OV-2",
+        # Scorecard channel cards without a joined New customers row (UI refresh 2.3).
+        "ABS-SC-CH",
+        # The paid-feature cards' who-acts line (E4), browser-owned.
+        "PAID-NEXT",
     }
 
 

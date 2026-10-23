@@ -83,7 +83,7 @@ change when its target's page entry, with a `navigation` block, lands.
 | Figure | Label |
 |---|---|
 | Channel attributed revenue and ROAS | "Amazon-attributed · 14-day · conversion date · excludes brand halo" |
-| ROAS with brand halo | "Amazon-attributed · 14-day · includes brand halo" |
+| ROAS with brand halo (the page shows "Return incl. other products of your brand"; [glossary](../../glossary.md#customer-labels)) | "Amazon-attributed · 14-day · includes brand halo" |
 | Network headline | "Deduplicated across DSP and sponsored · {model} · 14-day · includes brand halo" |
 | TACoS | "Mixed basis: ad spend ÷ Vendor shipped revenue" |
 
@@ -111,6 +111,8 @@ this response's own served string from the field that supplies it. That case is 
 | "Up", "Down", "favourable", "unfavourable" (spoken before a change chip) | The shared change chip ([ADR-121](../../decisions/adr-121-declare-change-direction-and-sentiment-on-the-server.md)), from the served `direction` and `sentiment` |
 | The window control's "Window" legend and the insight dialog's chrome | Shared components ([temporal-control contract](../temporal-control-contract.md), [insight presentation contract](../insight-presentation-contract.md) §3) |
 | [PI-DOMAIN](../page-absence-copy.md#pi-domain): "This page's latest data is still being checked before it's shown. Try again later." | The shared `PageIssue` fallback when a `domain` refusal carries no server text |
+| `SCORECARD_CARD_COPY` (`frontend/components/ScorecardView.tsx`): "How credit is shared:", "What each channel does for you", "Pays back", "Wins new customers", "Share of sales from first-time buyers", "Ad cost per first-time-buyer purchase", "Campaigns on {served channel label} ›", "New customers ›", "Return:", "First-time-buyer share:", "Show the channel table", and the one line on why channel returns aren't added and the headline can read lower | The channel cards and disclosures (UI refresh 2.3, UX sweep fix 3); no figure and no claim about any one value |
+| [ABS-SC-CH](../page-absence-copy.md#abs-sc-ch): "New-customer figures aren't available for this window." | A channel card with no served New customers row for the same window |
 
 The page name in a page-level callout is the governed `display_name` from the page entry. "Not
 available", the "Channel" row header, the "This campaign's channel" tag, the text for an
@@ -135,6 +137,23 @@ narration are served fields. Money and multipliers render from their served two-
 | No complete calendar period | The `no_complete_period_measured` text from the server; no scope band ([information architecture](../information-architecture/README.md#6-shared-patterns)) |
 | No published body for the preset (page-level) | Page-level absence: [ABS-SC-1](../page-absence-copy.md#abs-sc-1) (rolling) or [ABS-SC-2](../page-absence-copy.md#abs-sc-2) (calendar), with [ABS-ALT](../page-absence-copy.md#abs-alt) when another preset is published; no scope band |
 
+### Channel cards (UI refresh 2.3, readout A.3, OD-UX-4)
+With one network card, the "By channel" section renders "What each channel does for you": one card
+per served channel row, in served order, and the channel table moves into a closed "Show the channel
+table" disclosure (with two cards the table stays open and no cards render). Each card shows the
+row's served `ad_spend` and change, the served `channel-share-of-network-spend` insight card for that
+channel (headline and body), `roas_attributed_14d` and `roas_attributed_incl_halo_14d` with their
+served changes, and two New customers figures: `ntb_revenue_share` with its change and
+`cost_per_ntb_purchase`. `ScorecardRouteAdapter` requests the New customers presentation for the
+same preset (the Scorecard's default when the URL names none) and settles it on its own, so it never
+blocks the page. The join is exact on governed keys: each NC `ad_product_key` maps to its channel
+through `ad_product_channels`, which the page-binding generator projects from
+`contracts/shared/media-taxonomy.yaml` (one ad product per channel), and only when the two windows
+and currencies are the same. Any other case reads the served absence or ABS-SC-CH; names are never
+matched. No halo-sales row renders: nothing serves `attributed_revenue_halo_14d` (D3). The basis
+line shows once below the cards. The ranking and the model selector each sit in a closed
+disclosure: the ranking under its served `ranking.heading`, the selector and its served
+`model_note` under "How credit is shared: {selected option}".
 ### Channel row links
 
 Each channel row opens `/campaigns/?preset={preset}&channel={channel key}` when Campaigns declares that

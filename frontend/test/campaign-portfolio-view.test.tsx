@@ -310,7 +310,7 @@ test('Campaign window recovery keeps closed outcome tokens internal', () => {
   const view = render(<PageAbsence {...campaignRouteAdapter.absence(parent)} />);
   const rendered = view.container.textContent?.toLowerCase() ?? '';
 
-  assert.ok(screen.getByText(/Campaign reporting is unavailable for the selected period\./));
+  assert.ok(screen.getByText(/No campaign results are published for this period\./));
   assert.equal(rendered.includes('complete'), false);
   assert.equal(rendered.includes('empty'), false);
   assert.equal(rendered.includes('insufficient'), false);
@@ -383,14 +383,14 @@ test('Campaign Portfolio view gives each insight state its designed treatment an
   // Filled: narration, evidence line, output-class tag.
   assert.ok(screen.getByText('Spend was the clearest contributor to the portfolio movement.'));
   assert.ok(document.querySelector('.narr-card .ev'));
-  assert.ok(screen.getByText('Perspective'));
+  assert.ok(screen.getByText('Reading'));
   // Each absence states its served reason verbatim under its contract-owned tag.
   assert.ok(screen.getByText('No campaign direction materially diverges from the portfolio direction.'));
   assert.ok(screen.getByText('Nothing noteworthy'));
   assert.ok(screen.getByText(/requires a governed delivery follow-up read/));
-  assert.ok(screen.getByText('Needs data'));
+  assert.ok(screen.getByText('Not enough data yet'));
   assert.ok(screen.getByText(/retries automatically and appears on a later view/));
-  assert.ok(screen.getByText('Retrying'));
+  assert.ok(screen.getByText('Loading'));
   // Treatment is carried by the card class, never by graying the served words.
   assert.ok(view.container.querySelector('.narr-card.quiet'));
   assert.ok(view.container.querySelector('.narr-card.callout'));
@@ -617,7 +617,7 @@ test('An insufficient delivery renders one opener card and the served-words stat
   // No raw condition code, no browser label, and no "written by the server" line (F32).
   assert.equal(dialog.textContent?.includes('incomplete_daily_series'), false);
   assert.equal(dialog.textContent?.includes('Every line below is written by the server'), false);
-  assert.equal(dialog.textContent?.includes('Needs data'), false);
+  assert.equal(dialog.textContent?.includes('Not enough data yet'), false);
   const rows = within(dialog).getAllByRole('row');
   assert.equal(rows.length, 31 + 1);
   assert.ok(within(dialog).getByRole('region', { name: 'What each figure needs' }));
@@ -1061,8 +1061,8 @@ test('A typed-absent ratio renders an em dash with its reason and no change chip
   // Additive control: zero spend renders 0.00 with its chip.
   assert.match(cells[0]?.textContent ?? '', /0\.00/);
   assert.notEqual(cells[0]?.querySelector('.chg'), null);
-  // Positive control: CTR with a real denominator still renders its value and chip.
-  assert.match(cells[3]?.textContent ?? '', /0\.1/);
+  // Positive control: CTR with a real denominator still renders its value and chip, as a rate (D4).
+  assert.match(cells[3]?.textContent ?? '', /10\.00%/);
   assert.notEqual(cells[3]?.querySelector('.chg'), null);
 });
 
@@ -1292,4 +1292,21 @@ test('A step to another tab\'s view renders no chip, and no complete body lacks 
   assert.throws(() => parseCampaignPortfolioArtifact(steppedPayload({
     kind: 'open_evidence_status', label: 'See why', reason: 'A fictional reason.', target: null,
   }, { ...completePayload('spend', 'desc'), evidence_status: null })), { name: 'CampaignAttributionContractError' });
+});
+
+test('the campaign table carries one page freshness line instead of a badge per row (UX sweep fix 6)', () => {
+  const served = structuredClone(completeArtifact('spend', 'desc')) as unknown as {
+    rows: { freshness_qualifiers: string[] }[];
+  };
+  const current = portfolioView(served as unknown as CampaignPortfolioArtifact);
+  assert.match(current.container.querySelector('[data-slot="cp-page-fresh"]')?.textContent ?? '', /^Latest data [A-Z][a-z]{2} \d{1,2}, \d{4}$/);
+  assert.equal(current.container.querySelectorAll('tbody .pill').length, 0);
+  current.unmount();
+  served.rows[0]!.freshness_qualifiers = ['Fictional source arrived late'];
+  const late = portfolioView(served as unknown as CampaignPortfolioArtifact);
+  // Each distinct served qualifier reads once for the page, with See why opening Coverage.
+  const line = late.container.querySelectorAll('[data-slot="cp-page-fresh"]');
+  assert.equal(line.length, 1);
+  assert.equal(line[0]?.textContent, 'Late data Fictional source arrived late See why');
+  assert.equal(late.container.querySelectorAll('tbody .pill').length, 0);
 });

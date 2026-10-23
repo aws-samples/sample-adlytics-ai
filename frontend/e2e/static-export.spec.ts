@@ -491,7 +491,7 @@ test('/retention/ renders monthly, quarterly and status states with blocking acc
   await page.reload();
   for (const market of ['US', 'UK'] as const) {
     await expect(page.getByRole('heading', { level: 2, name: `${market} marketplace` })).toBeVisible();
-    await expect(page.getByRole('region', { name: `${market} marketplace Repeat purchase by cohort` })).toBeVisible();
+    await expect(page.getByRole('region', { name: `${market} marketplace By cohort: bought again in that period` })).toBeVisible();
   }
   await captureState('two-market');
 });

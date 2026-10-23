@@ -4,6 +4,8 @@
  * model selector, the channel table and its links, highlight, pointer lines, dialogs, loading
  * and absence states, and axe. Each passing case sits beside its failing control.
  */
+import { scorecardAnswer } from '../lib/scorecard';
+import { CUSTOMER_METRIC_LABELS } from '../lib/glossary';
 import assert from 'node:assert/strict';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -13,7 +15,9 @@ import { InsightFocusDialog, type InsightDialogSlot, type InsightFocusSurface } 
 import { VisibleTabsContext } from '@/components/NextStepContext';
 import { PageAbsence } from '@/components/PageAbsence';
 import { scorecardRouteAdapter } from '@/components/ScorecardRouteAdapter';
-import { ScorecardControlsSkeleton, ScorecardSkeleton, ScorecardView } from '@/components/ScorecardView';
+import { CHANNEL_NEW_CUSTOMERS_ABSENT, SCORECARD_CARD_COPY, ScorecardControlsSkeleton, ScorecardSkeleton, ScorecardView } from '@/components/ScorecardView';
+import { newCustomersPresentationV2, type NewCustomersPresentation } from '@/lib/presentation-v2';
+import newCustomers7d from './fixtures/new-customers-7d-v2.json';
 import { formatCurrency, formatRatio } from '@/lib/exact-format';
 import { bindingByRoute } from '@/lib/page-bindings';
 import { parsePresentationResultCalendarV2, scorecardPresentationV2 } from '@/lib/presentation-v2';
@@ -58,7 +62,7 @@ test('the sections render in the tab order with the server scope band and texts'
   assert.deepEqual(headings, [
     'Amazon · US marketplace · USD',
     'Insights',
-    'By channel',
+    'What each channel does for you',
     'Ad spend and retail sales',
   ]);
   assert.equal(view.container.querySelector('.scope-band')?.textContent, artifact.scope_text);
@@ -91,9 +95,10 @@ test('switching the model changes only the headline, never the ranking or the ch
 
 test('a channel row links to Campaigns on that channel with the served dates', () => {
   render(<ScorecardView artifact={artifactOf(weekly)} />);
-  const link = screen.getByRole('link', { name: /Open Campaigns for Sponsored Products/ });
-  assert.equal(link.getAttribute('href'), '/campaigns/?channel=amazon_sponsored_products');
-  assert.equal(link.textContent, 'Open · Sep 9–15');
+  // The card and the table in its disclosure both carry the served link and its served name.
+  const links = screen.getAllByRole('link', { name: /Open Campaigns for Sponsored Products/ });
+  assert.deepEqual(links.map((link) => link.getAttribute('href')), ['/campaigns/?channel=amazon_sponsored_products', '/campaigns/?channel=amazon_sponsored_products']);
+  assert.deepEqual(links.map((link) => link.textContent), ['Campaigns on Sponsored Products ›', 'Open · Sep 9–15']);
   assert.ok(screen.getByRole('link', { name: /Open Retail health · Sep 5–11/ }));
 });
 
@@ -359,7 +364,7 @@ test('the TACoS change goes through its served coverage entry, like every other 
   const artifact = artifactOf(weekly);
   const tacos = artifact.tacos[0];
   assert.equal(tacos?.coverage_slot, 'tacos:amazon:amazon_us');
-  const tile = (view: ReturnType<typeof render>) => [...view.container.querySelectorAll('.tile')].find((node) => node.querySelector('.k')?.textContent === 'TACoS') as HTMLElement;
+  const tile = (view: ReturnType<typeof render>) => [...view.container.querySelectorAll('.tile')].find((node) => node.querySelector('.k')?.textContent === 'Ad spend as a share of shipped sales') as HTMLElement;
   const complete = render(<ScorecardView artifact={artifact} />);
   assert.equal(tile(complete).querySelectorAll('.chg').length, 1);
   assert.equal(tile(complete).querySelector('.tile-absence'), null);
@@ -381,7 +386,7 @@ test('the TACoS change goes through its served coverage entry, like every other 
   assert.equal(tile(gated).querySelectorAll('.chg').length, 0);
   assert.equal(tile(gated).querySelectorAll('.chg-absent').length, 1);
   assert.match(tile(gated).querySelector('.tile-absence')?.textContent ?? '', /Sep 12/);
-  assert.ok(within(tile(gated)).getByRole('button', { name: /TACoS/ }));
+  assert.ok(within(tile(gated)).getByRole('button', { name: /Ad spend as a share of shipped sales/ }));
 });
 
 /** Every string one served response carries, from that response alone (never another state's). */
@@ -459,7 +464,8 @@ function strayTexts(container: HTMLElement, served: ReadonlySet<string>, allowli
 /** Render a served response the way the route does: through the Scorecard route adapter. */
 function renderRoute(fixture: unknown) {
   const presentation = scorecardPresentationV2(parsePresentationResultCalendarV2(fixture, 'scorecard'));
-  const parent = { ...presentation, highlight: 'amazon_dsp' };
+  // The New customers fetch rejected: each card reads the band's absence (plan 2.3).
+  const parent = { ...presentation, highlight: 'amazon_dsp', newCustomers: { issue: 'dependency', kind: 'rejected' } as const, preset: '7d' as const };
   const noop = () => undefined;
   // ADR-139: the controller renders a window_unavailable parent through PageAbsence.
   const node = parent.kind === 'window_unavailable'
@@ -470,19 +476,24 @@ function renderRoute(fixture: unknown) {
 }
 
 // Scorecard LLD "Browser-owned copy": the only words the browser writes on a served page.
-const ALLOWLIST = new Set(['Read more ›']);
+// Plus the glossary's customer labels for served metric labels (UI refresh D5).
+// The channel cards' words (UI refresh 2.3) are declared once in ScorecardView and the LLD.
+const ALLOWLIST = new Set(['Read more ›', '›', ...CUSTOMER_METRIC_LABELS, ...Object.values(SCORECARD_CARD_COPY), CHANNEL_NEW_CUSTOMERS_ABSENT]);
 const WALKED = { absentCell, alsoChanged, defaultBody, emptyBody, modelSensitive, monthly, needsVendor, noCredit, noDsp, noPeriod, pending, twoAlsoChanged, twoMarketplaces, weekly };
 
 test('every visible text is exactly a string or figure its own response served, or allowlisted', () => {
   for (const [name, fixture] of Object.entries(WALKED)) {
     const { artifact, view } = renderRoute(fixture);
-    const served = new Set([...servedStrings(fixture), ...servedFigures(artifact), bindingByRoute.scorecard.display_name]);
+    // Each card's answer sentence is a fixed template over served values (UI refresh 1.5).
+    const answers = artifact === null || artifact.outcome !== 'complete' ? [] : artifact.cards.map((card) => scorecardAnswer(artifact, card, card.headline.default_model).text);
+    const served = new Set([...servedStrings(fixture), ...servedFigures(artifact), bindingByRoute.scorecard.display_name, ...answers]);
     assert.ok((view.container.textContent ?? '').length > 0, name);
     assert.deepEqual(strayTexts(view.container, served, ALLOWLIST), [], `browser-written text in ${name}`);
     view.unmount();
   }
   // Paired controls in the same walk. A browser-written sentence is caught.
-  const own = new Set([...servedStrings(weekly), ...servedFigures(artifactOf(weekly)), bindingByRoute.scorecard.display_name]);
+  const weeklyArtifact = artifactOf(weekly);
+  const own = new Set([...servedStrings(weekly), ...servedFigures(weeklyArtifact), bindingByRoute.scorecard.display_name, ...weeklyArtifact.cards.map((card) => scorecardAnswer(weeklyArtifact, card, card.headline.default_model).text)]);
   const planted = render(<div><ScorecardView artifact={artifactOf(weekly)} /><p>This window is not ready.</p></div>);
   assert.deepEqual(strayTexts(planted.container, own, ALLOWLIST), ['This window is not ready.']);
   planted.unmount();
@@ -673,7 +684,7 @@ test('the A.3 states render their served ranking, card line and TACoS absence', 
   assert.equal(undelivered.container.querySelector('.scorecard-card p.small.dim')?.textContent, 'No DSP delivery in this window');
   assert.equal(undelivered.container.querySelectorAll('tr[data-channel="amazon_dsp"]').length, 0);
   undelivered.unmount();
-  const tacosTile = (container: HTMLElement) => [...container.querySelectorAll('.tile')].find((node) => node.querySelector('.k')?.textContent === 'TACoS');
+  const tacosTile = (container: HTMLElement) => [...container.querySelectorAll('.tile')].find((node) => node.querySelector('.k')?.textContent === 'Ad spend as a share of shipped sales');
   const vendor = render(<ScorecardView artifact={artifactOf(needsVendor)} />);
   assert.equal(tacosTile(vendor.container)?.querySelector('.v')?.textContent, 'Not available');
   assert.equal(tacosTile(vendor.container)?.querySelector('.reason')?.textContent, 'Needs Vendor Central sales');
@@ -720,4 +731,51 @@ test('a quiet insights section shows the server reason, never a blank (SC9A-GATE
   // Paired: a silent slot with no reason renders blank, which is why the decoder refuses it.
   const blank = render(<ScorecardView artifact={{ ...quiet, insights: { ...silent, absence_reason: null } }} />);
   assert.equal(quietReason(blank.container), null);
+});
+
+/** The served 7-day New customers presentation, its window set to the Scorecard fixture's (test-only). */
+function newCustomersOn(artifact: NetworkScorecardArtifact): { kind: 'served'; presentation: Extract<NewCustomersPresentation, { kind: 'parent' }> } {
+  const fixture = structuredClone(newCustomers7d);
+  const presentation = newCustomersPresentationV2(parsePresentationResultCalendarV2(fixture, 'new-customers'));
+  if (presentation.kind !== 'parent') throw new Error('expected a parent');
+  return { kind: 'served', presentation: { ...presentation, artifact: { ...presentation.artifact, period: artifact.period } } };
+}
+
+test('each channel card joins its New customers row on the governed taxonomy key (plan 2.3)', () => {
+  const artifact = artifactOf(weekly);
+  const view = render(<VisibleTabsContext.Provider value={[NEW_CUSTOMERS]}>
+    <ScorecardView artifact={artifact} newCustomers={newCustomersOn(artifact)} preset="7d" />
+  </VisibleTabsContext.Provider>);
+  const card = (channel: string) => view.container.querySelector(`.ch-card[data-channel="${channel}"]`) as HTMLElement;
+  // Scorecard `amazon_sponsored_products` is NC `sponsored_products` in media-taxonomy.yaml.
+  assert.match(card('amazon_dsp').querySelector('[data-slot="ch-amazon_dsp-ntb-share"]')?.textContent ?? '', /^Share of sales from first-time buyers41\.00%/);
+  assert.equal(card('amazon_dsp').querySelector('[data-slot="ch-amazon_dsp-cost-ntb"] dd')?.textContent, '35.08 USD');
+  assert.match(card('amazon_sponsored_products').querySelector('[data-slot="ch-amazon_sponsored_products-ntb-share"]')?.textContent ?? '', /18\.00%/);
+  assert.equal(card('amazon_sponsored_products').querySelector('[data-slot="ch-amazon_sponsored_products-cost-ntb"] dd')?.textContent, '11.21 USD');
+  // The served share-of-spend finding and the served return figures, in served channel order.
+  assert.deepEqual([...view.container.querySelectorAll('.ch-card h3')].map((node) => node.textContent), artifact.cards[0]?.channel_table.rows.map((row) => row.channel_label));
+  assert.match(card('amazon_dsp').textContent ?? '', /Amazon DSP took 40% of Amazon spend/);
+  assert.equal(within(card('amazon_dsp')).getByRole('link', { name: 'New customers ›' }).getAttribute('href'), '/new-customers/?preset=7d');
+  // No halo-sales row: nothing serves it (D3).
+  assert.equal(/other products' sales|Sales of your other products/.test(view.container.textContent ?? ''), false);
+  assert.ok(screen.getByText(SCORECARD_CARD_COPY.why));
+});
+
+test('a New customers key that is not the governed ad product joins nothing, never by name', () => {
+  const artifact = artifactOf(weekly);
+  // Rows keyed by the Scorecard's channel id instead of the ad product key: no taxonomy entry.
+  const served = newCustomersOn(artifact);
+  const market = served.presentation.artifact.markets[0]!;
+  const rekeyed = { ...market, new_to_brand: { ...market.new_to_brand, rows: market.new_to_brand.rows.map((row) => ({ ...row, ad_product_key: `amazon_${row.ad_product_key}` })) } };
+  const mismatched = { ...served, presentation: { ...served.presentation, artifact: { ...served.presentation.artifact, markets: [rekeyed] } } };
+  const view = render(<ScorecardView artifact={artifact} newCustomers={mismatched} preset="7d" />);
+  assert.equal(view.container.querySelectorAll('[data-slot$="-ntb-share"]').length, 0);
+  assert.equal(view.container.querySelectorAll('[data-slot$="-ntb-absent"]').length, artifact.cards[0]?.channel_table.rows.length);
+  assert.ok(screen.getAllByText(CHANNEL_NEW_CUSTOMERS_ABSENT).length > 0);
+  view.unmount();
+  // A New customers window that isn't the Scorecard's joins nothing either.
+  const other = newCustomersOn(artifact);
+  const shifted = { ...other, presentation: { ...other.presentation, artifact: { ...other.presentation.artifact, period: { end: '2026-09-20', start: '2026-09-14' } } } };
+  const second = render(<ScorecardView artifact={artifact} newCustomers={shifted} preset="7d" />);
+  assert.equal(second.container.querySelectorAll('[data-slot$="-ntb-share"]').length, 0);
 });

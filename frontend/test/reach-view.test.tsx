@@ -5,7 +5,8 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { afterEach, test } from 'vitest';
 
-import { ReachAndFunnelView } from '../components/ReachAndFunnelView';
+import { ReachAndFunnelView, reachChangeText, reachDisplayText, reachFigureText } from '../components/ReachAndFunnelView';
+import { reachAnswer } from '../lib/reach';
 import { parseReachAndFunnelArtifact } from '../lib/reach';
 import {
   cloneReachFixture,
@@ -57,13 +58,20 @@ test('renders the complete surface in section order using only served display te
   assert.deepEqual(headings, ['Overlap between DSP and sponsored ads', 'Full funnel by exposure group', 'Insights', 'Frequency']);
   assert.ok(container.textContent?.includes('30.00%'));
   assert.ok(container.textContent?.includes('2000 served'));
+  // C6: without a served prior label every served prior is named as the previous period.
+  const priors = [...container.querySelectorAll('.reach-prior')].map((node) => node.textContent);
+  assert.equal(priors.length, 6);
+  assert.ok(priors.every((text) => text?.startsWith('Previous month: ')), priors.join(' | '));
+  assert.ok(priors.includes('Previous month: 29.00%'));
+  assert.ok(priors.includes('Previous month: 2900 served'));
   assert.ok(container.textContent?.includes('2.50 USD'));
-  assert.ok(container.textContent?.includes('2.50x'));
+  // Plan D4: the served "2.50x" reads in the shared multiplier style; its rounding is the server's.
+  assert.ok(container.textContent?.includes('2.50×'));
+  assert.equal(container.textContent?.includes('2.50x'), false);
   assert.ok(container.textContent?.includes('4.00%'));
   assert.equal(container.textContent?.includes('0.9876'), false);
   assert.equal(container.textContent?.includes('9.8765'), false);
   assert.equal(container.textContent?.includes('$'), false);
-  assert.equal(container.textContent?.includes('×'), false);
 
   const notes = container.querySelectorAll('.reach-caveat');
   assert.equal(notes.length, 2);
@@ -71,12 +79,35 @@ test('renders the complete surface in section order using only served display te
   assertInOrder(notes[1]?.textContent ?? '', FREQUENCY_CAVEAT);
   assert.ok(notes[0]?.nextElementSibling?.classList.contains('dt-wrap'));
   assert.ok(notes[1]?.nextElementSibling?.textContent?.includes('Ads seen within 14 days'));
+  // OD-UX-7: one visible line per visual; the disclosure holds every served caveat string.
+  for (const [note, lines] of [[notes[0], FUNNEL_CAVEAT], [notes[1], FREQUENCY_CAVEAT]] as const) {
+    assert.deepEqual([...(note?.children ?? [])].filter((child) => child.tagName === 'P').map((child) => child.textContent), [lines[0]]);
+    const disclosure = note?.querySelector('details');
+    assert.equal(disclosure?.open, false);
+    assert.deepEqual([...(disclosure?.querySelectorAll('.precision-evidence__body p') ?? [])].map((line) => line.textContent), [...lines]);
+  }
+});
+
+test('a served count change reads with grouped digits; any other change text stays as served (T1L-4)', () => {
+  assert.equal(reachChangeText('+155963'), '+155,963');
+  assert.equal(reachChangeText('\u221216310'), '\u221216,310');
+  assert.equal(reachChangeText('+1.5 pts'), '+1.5 pts');
+  assert.equal(reachChangeText('No change'), 'No change');
+});
+
+test('every served prior carries the served prior period label in the tiles and the account cells (C6)', () => {
+  const { container } = render(<ReachAndFunnelView artifact={parseReachAndFunnelArtifact(reachCompleteFineFixture)} priorPeriodLabel="August 2026" />);
+  const priors = [...container.querySelectorAll('.reach-prior')].map((node) => node.textContent);
+  assert.deepEqual(priors, [
+    'August 2026: 29.00%', 'August 2026: 25.00%', 'August 2026: 21.00%',
+    'August 2026: 2900 served', 'August 2026: 3900 served', 'August 2026: 4900 served',
+  ]);
 });
 
 test('the overlap table gives every value its group and server-owned identity-space heading', () => {
   view();
-  const region = screen.getByRole('region', { name: 'Amazon account IDs' });
-  assert.ok(within(region).getByRole('columnheader', { name: 'All ID types' }));
+  const region = screen.getByRole('region', { name: 'Signed-in shoppers' });
+  assert.ok(within(region).getByRole('columnheader', { name: 'All shoppers incl. devices' }));
   assert.ok(screen.getByText('Saw both within 14 days of their first ad · all ID types · overlap is understated'));
   assert.equal(screen.getAllByText('Shoppers reached in September 2026, grouped by the ads they saw within 14 days of their first ad in that month.').length, 1);
 
@@ -87,7 +118,7 @@ test('the overlap table gives every value its group and server-owned identity-sp
       const headings = (cell.getAttribute('headers') ?? '')
         .split(' ')
         .map((id) => document.getElementById(id)?.textContent);
-      assert.deepEqual(headings, [rowHeader.textContent, index === 0 ? 'Amazon account IDs' : 'All ID types']);
+      assert.deepEqual(headings, [rowHeader.textContent, index === 0 ? 'Signed-in shoppers' : 'All shoppers incl. devices']);
     }
   }
 });
@@ -95,7 +126,9 @@ test('the overlap table gives every value its group and server-owned identity-sp
 test('renders fine and coarse server bucket rosters without browser-composed bands or totals', () => {
   const fine = view();
   assert.equal(fine.container.querySelectorAll('.reach-chart-item').length, 10);
-  assert.equal(fine.container.querySelectorAll('.reach-frequency-tables tbody tr').length, 12);
+  // The per-channel grid is all one served absence here, so it reads as one line per channel (E3).
+  assert.equal(fine.container.querySelectorAll('.reach-frequency-tables tbody tr').length, 10);
+  assert.equal(fine.container.querySelectorAll('.reach-channel-absent li').length, 2);
   assert.equal(screen.queryByText(/total/i), null);
   fine.unmount();
 
@@ -120,12 +153,12 @@ test('not-returned buckets leave a chart gap and state the exact absence in char
 test('keeps no-credit channel rows separate and places each served platform return beside them', () => {
   const { container } = view();
   const regions = screen.getAllByRole('region');
-  const channelRegion = regions.find((region) => region.getAttribute('aria-labelledby')?.split(' ').some((id) => document.getElementById(id)?.textContent === 'Return per channel by frequency'));
-  const platformRegion = regions.find((region) => region.getAttribute('aria-labelledby')?.split(' ').some((id) => document.getElementById(id)?.textContent === 'Platform return'));
-  assert.ok(channelRegion);
+  const platformRegion = regions.find((region) => region.getAttribute('aria-labelledby')?.split(' ').some((id) => document.getElementById(id)?.textContent === 'Return on ad spend, all Amazon ads'));
   assert.ok(platformRegion);
-  assert.deepEqual(within(channelRegion).getAllByRole('rowheader').map((cell) => cell.textContent), ['Sponsored Products', 'Amazon DSP']);
-  assert.equal(within(channelRegion).getAllByText('Not available per channel').length, 20);
+  // E3: every channel cell carries the same served absence, so the grid is one line per channel.
+  const channelGroup = screen.getByRole('group', { name: 'Return per channel by frequency' });
+  assert.deepEqual([...channelGroup.querySelectorAll('li')].map((item) => item.textContent), ['Sponsored Products Not available per channel', 'Amazon DSP Not available per channel']);
+  assert.equal(within(channelGroup).getAllByText('Not available per channel').length, 2);
   assert.equal(within(platformRegion).getAllByRole('rowheader').length, 10);
   assert.equal(container.querySelector('.reach-frequency-tables')?.children.length, 2);
   assert.equal(screen.queryByText(/total/i), null);
@@ -200,16 +233,24 @@ function responseStrings(value: unknown, into = new Set<string>()): Set<string> 
 }
 
 const BROWSER_COPY = new Set([
-  'Overlap between DSP and sponsored ads', 'Amazon account IDs', 'Full funnel by exposure group',
+  'Overlap between DSP and sponsored ads', 'Signed-in shoppers', 'All shoppers incl. devices', 'Full funnel by exposure group',
   'Insights', 'Frequency', 'About these figures', 'Association, not cause', 'Not available',
   'Read more ›', 'Show values', 'Purchaser rate by number of ads seen', 'Ads seen',
-  'Purchaser rate', 'Return per channel by frequency', 'Channel', 'Platform return',
+  'Purchaser rate', 'Return per channel by frequency', 'Channel', 'Return on ad spend, all Amazon ads',
+  'Previous month:', 'Purchase rate compared with sponsored-only shoppers',
+  // OD-UX-7: the caveat disclosure's summary (ADR-102 amendment).
+  'Why this is association, not cause',
 ]);
 
 test('a same-response copy walk refuses invented or borrowed visible text', () => {
   const fixture = cloneReachFixture(reachCompleteFineFixture);
   const allowed = responseStrings(fixture);
+  // The served text in the shared figure style (plan D4) is the same served string, regrouped.
+  for (const line of [...allowed]) for (const unit of ['count', 'multiplier'] as const) allowed.add(reachDisplayText(line, unit));
+  for (const line of [...allowed]) allowed.add(reachChangeText(line));
   for (const line of BROWSER_COPY) allowed.add(line);
+  // The answer sentence is a fixed template over served values (UI refresh 1.5), pinned by its builder's tests.
+  allowed.add(reachAnswer(parseReachAndFunnelArtifact(fixture), reachFigureText).text);
   const { container } = view(fixture);
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
   const unexpected: string[] = [];
@@ -236,3 +277,13 @@ test('complete and absence surfaces are axe-clean in narrow and wide containers 
   delete document.documentElement.dataset.theme;
   // Eight full-page axe runs exceed vitest's 5 s default when the gates share the machine.
 }, 20_000);
+
+test('served counts read grouped and served multipliers with a times sign, nothing recomputed (plan D4)', () => {
+  assert.equal(reachDisplayText('438444', 'count'), '438,444');
+  assert.equal(reachDisplayText('1.75x', 'multiplier'), '1.75×');
+  // Anything else stays exactly as served.
+  assert.equal(reachDisplayText('2000 served', 'count'), '2000 served');
+  assert.equal(reachDisplayText('25.93%', 'share'), '25.93%');
+  assert.equal(reachDisplayText('2.50 USD', 'currency'), '2.50 USD');
+});
+

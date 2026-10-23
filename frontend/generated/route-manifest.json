@@ -2,6 +2,23 @@
   "hubs": [
     {
       "audience": "customer",
+      "hub_id": "overview",
+      "label": "Overview",
+      "short_label": "Overview",
+      "tabs": [
+        {
+          "description": "Whether your advertising is growing your business, on one screen",
+          "entitlement": null,
+          "kind": "composed",
+          "label": "Overview",
+          "order": 1,
+          "route": "/",
+          "tab_id": "overview"
+        }
+      ]
+    },
+    {
+      "audience": "customer",
       "hub_id": "performance",
       "label": "Performance",
       "short_label": "Performance",
@@ -123,7 +140,7 @@
   ],
   "root": {
     "route": "/",
-    "tab_id": "campaigns"
+    "tab_id": "overview"
   },
   "version": 1
 }

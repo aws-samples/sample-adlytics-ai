@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: MIT-0
 'use client';
 
+import { retentionAnswer } from '@/lib/retention';
+import { metricLabel } from '@/lib/glossary';
+import { AnswerSentence } from './AnswerSentence';
+import { PAID_FEATURE_NEXT_STEP } from './PageAbsence';
 import { useState } from 'react';
 
 import type { RetentionCohortArtifact, RetentionEvidenceStatusSlot, RetentionGrid, RetentionGroup, RetentionMarket } from '@/lib/retention';
@@ -35,7 +39,7 @@ function Triangle({ grid, legend, marketplaceText }: { readonly grid: RetentionG
 
 function Curve({ labelledBy, market }: { readonly labelledBy: string; readonly market: RetentionMarket }) {
   return <section className="section retention-curve" aria-labelledby={labelledBy}>
-    <h2 id={`curve-${market.marketplace_key}`}>{market.curve.label}</h2>
+    <h2 id={`curve-${market.marketplace_key}`}>{metricLabel(market.curve.metric, market.curve.label)}</h2>
     <div className="retention-curve-lines">
       {market.curve.lines.map((line) => <article key={line.group}>
         <h3>{line.label}</h3>
@@ -45,6 +49,9 @@ function Curve({ labelledBy, market }: { readonly labelledBy: string; readonly m
   </section>;
 }
 
+/** UX sweep fix 7: the grid's heading and its one line on how it differs from the cumulative curve. */
+export const RETENTION_GRID_HEADING = 'By cohort: bought again in that period';
+export const RETENTION_GRID_NOTE = 'Each cell counts repeat buyers in that period only; the curve above adds up every period so far.';
 function Market({ market }: { readonly market: RetentionMarket }) {
   const [group, setGroup] = useState<RetentionGroup>('sponsored_only');
   const [path, setPath] = useState<'standard' | 'paid'>('standard');
@@ -63,13 +70,16 @@ function Market({ market }: { readonly market: RetentionMarket }) {
   const selected = grids[selectedIndex]!;
   return <div className="retention-market">
     {heading}
-    <p className="scope-band">{market.scope_band}</p>
-    {market.grain_note === null ? null : <p className="state-note">{market.grain_note}</p>}
+    {/* UX sweep fix 7 (T1L-5): the served scope and grain note read as plain lines, not boxes. */}
+    <p className="scope-band">{market.scope_band}{market.grain_note === null ? null : <> {market.grain_note}</>}</p>
+    {/* The cumulative curve leads (readout A.8); the grid below is each period on its own. */}
+    <Curve labelledBy={named(`curve-${market.marketplace_key}`)} market={market} />
     <section className="section" aria-labelledby={named(`triangle-${market.marketplace_key}`)}>
-      <h2 id={`triangle-${market.marketplace_key}`}>Repeat purchase by cohort</h2>
+      <h2 id={`triangle-${market.marketplace_key}`}>{RETENTION_GRID_HEADING}</h2>
+      <p className="footnote">{RETENTION_GRID_NOTE}</p>
       {market.path.paid.state === 'observed' ? <fieldset className="retention-switch"><legend>Purchase path</legend>
-        <label><input type="radio" name={`path-${market.marketplace_key}`} checked={shownPath === 'standard'} onChange={() => setPath('standard')} />Ad-touched repeat</label>
-        <label><input type="radio" name={`path-${market.marketplace_key}`} checked={shownPath === 'paid'} onChange={() => setPath('paid')} />All Amazon purchases</label>
+        <label><input type="radio" name={`path-${market.marketplace_key}`} checked={shownPath === 'standard'} onChange={() => setPath('standard')} />Repeat after an ad</label>
+        <label><input type="radio" name={`path-${market.marketplace_key}`} checked={shownPath === 'paid'} onChange={() => setPath('paid')} />Any repeat purchase</label>
       </fieldset> : null}
       <fieldset className="datectl retention-groups"><legend>Acquired through</legend><div className="seg compact">
         {GROUPS.map((id, index) => {
@@ -80,8 +90,7 @@ function Market({ market }: { readonly market: RetentionMarket }) {
       <Triangle grid={selected} legend={market.triangle.legend} marketplaceText={market.marketplace_text} />
       {shownPath === 'standard' ? <p className="footnote">{market.triangle.identity_caveat}</p> : null}
     </section>
-    {market.path.paid.state === 'not_observed' ? <section className="callout paid"><h2>Available with the paid feature</h2><p>{market.path.paid.callout}</p></section> : null}
-    <Curve labelledBy={named(`curve-${market.marketplace_key}`)} market={market} />
+    {market.path.paid.state === 'not_observed' ? <section className="callout paid"><h2>Available with the paid feature</h2><p>{market.path.paid.callout}</p><p className="small">{PAID_FEATURE_NEXT_STEP}</p></section> : null}
     <section className="section retention-insights" aria-labelledby={named(`insights-${market.marketplace_key}`)}><h2 id={`insights-${market.marketplace_key}`}>Insights</h2>
       {market.insights.map((slot) => <article className="insight" key={slot.id}><span className="kind">Retention shift</span><p>{slot.text ?? slot.absence_reason}</p>{slot.evidence_line === null ? null : <p className="footnote">{slot.evidence_line}</p>}</article>)}
     </section>
@@ -103,6 +112,7 @@ function EvidenceTrace({ slots }: { readonly slots: readonly RetentionEvidenceSt
 
 export function RetentionView({ artifact }: { readonly artifact: RetentionCohortArtifact }) {
   return <div className="retention-view">
+    <AnswerSentence answer={retentionAnswer(artifact)} />
     {artifact.markets.map((market) => <Market key={market.marketplace_key} market={market} />)}
     <EvidenceTrace slots={artifact.evidence_status.slots} />
     <details className="about"><summary>About these figures</summary><div className="body">{artifact.boundary.map((item) => <p key={item}>{item}</p>)}</div></details>

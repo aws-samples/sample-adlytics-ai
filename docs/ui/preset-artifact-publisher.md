@@ -282,9 +282,13 @@ that the publisher can materialize that page.
 
 Stream records do not guarantee a first artifact after a fresh deployment or declaration change. The
 publisher custom resource carries a **content-derived generation of the declared page input** and
-backfills the complete declared page/variant set only when those declarations change. A deploy that
-changes only code or contracts leaves the property unchanged, so CloudFormation sends no event and the
-backfill does not fire; such a change reaches existing artifacts through the next publication bake.
+backfills the complete declared page/variant set only when those declarations change, and only on the
+legacy entry. In `GRAPH` mode the changed declaration still fires the event, but the backfill sends
+nothing: the gate closes on `BACKFILL_AFTER_CUTOVER`, because a legacy send would be a second,
+ungranted bake writer, and the next granted run's bake re-evaluates every registered page instead
+(`src/adapters/jobs/preset_artifact_publisher/backfill.py`, T1L-2 correction of 2026-10-22). A deploy
+that changes only code or contracts leaves the property unchanged, so CloudFormation sends no event and
+the backfill does not fire; such a change reaches existing artifacts through the next publication bake.
 No repository-owned operator backfill interface exists today; adding one with explicit target inputs and
 flow identity is a required recovery capability. The custom-resource path remains idempotent at the
 revision/pointer boundary, but neither substitutes for dependency-aware scheduling or objective

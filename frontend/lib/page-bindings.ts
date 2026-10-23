@@ -453,7 +453,7 @@ function parseBinding(value: unknown, expectedPageId: DeclaredPageId): PageBindi
 export function parsePageBindings(value: unknown): readonly PageBinding[] {
   const document = record(
     value,
-    ['pages', 'presentation_result_version', 'temporal_control_version', 'version'],
+    ['ad_product_channels', 'metric_display', 'pages', 'presentation_result_version', 'temporal_control_version', 'version'],
     'page bindings',
   );
   if (
@@ -484,8 +484,9 @@ export function parsePageBindings(value: unknown): readonly PageBinding[] {
   const rootCompatibilityOwners = parsed
     .filter((page) => page.compatibility_routes.includes('/'))
     .map((page) => page.page_id);
-  if (rootCompatibilityOwners.length !== 1 || rootCompatibilityOwners[0] !== 'campaigns') {
-    throw new TypeError('Root compatibility route must resolve only to Campaign Portfolio.');
+  // ADR-151: the composed Overview tab owns the root in the route manifest, so no page binding may.
+  if (rootCompatibilityOwners.length !== 0) {
+    throw new TypeError('No page binding may own the root route; the Overview does.');
   }
   return parsed;
 }
@@ -495,6 +496,56 @@ export function needsTemporalV2(page: PageBinding): boolean {
   return page.vintage_policy !== undefined
     || page.temporal_policy.candidate_presets.some(isCalendarPreset);
 }
+
+/** A governed metric's unit and ratio scale, projected from the metric dictionary (plan D4). */
+export interface MetricDisplay {
+  readonly ratio_scale: 'multiplier' | 'rate' | null;
+  readonly units: 'count' | 'currency' | 'ratio';
+}
+
+/** Decode the generated `metric_display` block: one unit per metric, a scale exactly on ratios. */
+export function parseMetricDisplay(value: unknown): ReadonlyMap<string, MetricDisplay> {
+  const document = record(value, ['ad_product_channels', 'metric_display', 'pages', 'presentation_result_version', 'temporal_control_version', 'version'], 'page bindings');
+  const block = document.metric_display;
+  if (typeof block !== 'object' || block === null || Array.isArray(block) || Object.keys(block).length === 0) {
+    throw new TypeError('Metric display must be a nonempty object.');
+  }
+  const displays = new Map<string, MetricDisplay>();
+  for (const [metric, raw] of Object.entries(block as UnknownRecord)) {
+    const entry = record(raw, ['ratio_scale', 'units'], `metric display ${metric}`);
+    const units = enumValue(entry.units, ['count', 'currency', 'ratio'] as const, `metric display ${metric} units`);
+    const scale = entry.ratio_scale === null
+      ? null
+      : enumValue(entry.ratio_scale, ['multiplier', 'rate'] as const, `metric display ${metric} ratio scale`);
+    if ((units === 'ratio') !== (scale !== null)) throw new TypeError(`Metric display ${metric} must scale exactly a ratio.`);
+    displays.set(metric, { ratio_scale: scale, units });
+  }
+  return displays;
+}
+
+/**
+ * Decode the generated `ad_product_channels` block (UI refresh 2.3): each governed ad product's
+ * channel from `contracts/shared/media-taxonomy.yaml`, one ad product per channel, so a New
+ * customers row joins its Scorecard channel row on governed keys and never by name.
+ */
+export function parseAdProductChannels(value: unknown): ReadonlyMap<string, string> {
+  const document = record(value, ['ad_product_channels', 'metric_display', 'pages', 'presentation_result_version', 'temporal_control_version', 'version'], 'page bindings');
+  const block = document.ad_product_channels;
+  if (typeof block !== 'object' || block === null || Array.isArray(block) || Object.keys(block).length === 0) {
+    throw new TypeError('Ad product channels must be a nonempty object.');
+  }
+  const channels = new Map<string, string>();
+  for (const [product, channel] of Object.entries(block as UnknownRecord)) {
+    if (typeof channel !== 'string' || !channel.trim() || !product.trim()) throw new TypeError(`Ad product ${product} has no channel.`);
+    channels.set(product, channel);
+  }
+  if (new Set(channels.values()).size !== channels.size) throw new TypeError('Each channel has exactly one ad product.');
+  return channels;
+}
+/** Each governed ad product's channel, keyed by ad product. */
+export const adProductChannels = parseAdProductChannels(generatedDocument as unknown);
+/** Every governed metric's display rule, keyed by metric id. */
+export const metricDisplay = parseMetricDisplay(generatedDocument as unknown);
 
 /** Every declared page binding, whether or not this frontend renders it. */
 export const pageBindings = parsePageBindings(generatedDocument as unknown);

@@ -111,10 +111,11 @@ function FocusEvidence({ focus }: { readonly focus: MetricFocusV4 }) {
       dates={series.points.map((point) => point.date)}
       kind={kind}
       {...(hasPrior ? { prior: series.points.map((point) => point.prior ?? '') } : {})}
+      zeroBased={kind !== 'ratio'}
     />
     <ChartLegend prior={hasPrior} />
     <details className="exact">
-      <summary>Exact returned values</summary>
+      <summary>Show exact values</summary>
       <div className="scroll" tabIndex={0}>
         <table>
           <caption className="sr-only">Exact returned {focus.metric.label} values from {formatIsoDateRange(focus.period.start, focus.period.end)}</caption>

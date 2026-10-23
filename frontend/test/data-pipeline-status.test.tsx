@@ -72,7 +72,7 @@ test('not provisioned: the set-up absence and Go to the root tab, nothing else',
   render(<DataPipelineStatusView access="not-provisioned" />);
   assert.deepEqual(headings(), [NOT_SET_UP]);
   assert.ok(screen.getByText("This page reads an operations API that this deployment doesn't include."));
-  assert.equal(screen.getByRole('link', { name: 'Go to Campaigns' }).getAttribute('href'), '/');
+  assert.equal(screen.getByRole('link', { name: 'Go to Overview' }).getAttribute('href'), '/');
   assert.equal(screen.queryByRole('table'), null);
   cleanup();
   // Positive control: the no-access state shows its own heading in the same place.
@@ -84,7 +84,7 @@ test('provisioned without access: the access absence and Go to the root tab, not
   render(<DataPipelineStatusView access="no-access" />);
   assert.deepEqual(headings(), [NO_ACCESS]);
   assert.ok(screen.getByText('Data pipeline status is for operators in the operations group.'));
-  assert.equal(screen.getByRole('link', { name: 'Go to Campaigns' }).getAttribute('href'), '/');
+  assert.equal(screen.getByRole('link', { name: 'Go to Overview' }).getAttribute('href'), '/');
   assert.equal(screen.queryByRole('table'), null);
   cleanup();
   // Positive control: the granted state renders the table this one withholds.
@@ -156,6 +156,6 @@ test('dark: the committed manifest lists and routes no Data pipeline status, eve
   assert.equal(routes(visibleHubs({ can_manage_prompts: true, can_read_operational_status: false }, lit)).includes(ROUTE), false);
   assert.deepEqual(
     visibleHubs({ can_read_operational_status: false }, lit).map((hub) => hub.hub_id),
-    ['performance', 'reach', 'customers', 'retail'],
+    ['overview', 'performance', 'reach', 'customers', 'retail'],
   );
 });

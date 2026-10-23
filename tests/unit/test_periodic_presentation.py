@@ -171,6 +171,7 @@ def _v2_page(
         visuals=(),
         sections=sections,
         actions=(),
+        # The composed Overview owns `/` (ADR-151), so no synthetic page entry carries it.
         compatibility_routes=(),
     )
 

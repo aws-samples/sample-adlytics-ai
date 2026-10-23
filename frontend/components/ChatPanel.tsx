@@ -46,12 +46,15 @@ type Message =
       readonly blocks: readonly PublicConversationBlock[];
       /** The turn's support reference (ADR-081 §2), shown once the turn has ended. */
       readonly reference?: string;
+      /** The governed tools the turn called, in order (OD-UX-8 trace). */
+      readonly trace?: readonly string[];
     }
   | {
       /** The V4 streamed Markdown answer (ADR-083), accumulated from its text deltas. */
       readonly kind: 'assistant-markdown';
       readonly text: string;
       readonly reference?: string;
+      readonly trace?: readonly string[];
     }
   | {
       readonly kind: 'assistant-text';
@@ -71,6 +74,45 @@ const PROGRESS_LABELS: Readonly<Record<ChatActivityEvent['stage'], string>> = {
 
 export function friendlyChatProgress(stage: ChatActivityEvent['stage']): string {
   return PROGRESS_LABELS[stage];
+}
+
+/**
+ * OD-UX-8 (views/chat.md fix 3): each governed tool's plain step, keyed by its declared name in
+ * `contracts/generated/tools.json` (a test pins the keys); an undeclared name reads the generic step.
+ */
+export const TOOL_STEP_LABELS: Readonly<Record<string, string>> = {
+  catalog_describe_metric: 'Looked up how a metric is defined',
+  catalog_list_metrics: 'Listed the metrics this workspace defines',
+  measurement_compare_windows: 'Compared a metric across two windows',
+  measurement_metric_by_grain: "Read a metric's breakdown or trend",
+  measurement_top_n: 'Ranked a metric',
+};
+export function toolStepLabel(toolName: string): string {
+  return TOOL_STEP_LABELS[toolName] ?? 'Read governed data';
+}
+
+/** "How this was answered": the turn's tool steps, collapsed, each with its governed tool name. */
+function AnswerTrace({ trace }: { readonly trace: readonly string[] }) {
+  if (trace.length === 0) return null;
+  return <details className="msg-trace">
+    <summary>How this was answered</summary>
+    <ol>{trace.map((name, index) => <li key={`${index}:${name}`}>{toolStepLabel(name)} <code>{name}</code></li>)}</ol>
+  </details>;
+}
+
+/** The turn's support reference behind one button (views/chat.md fix 2), never printed raw. */
+function CopyReference({ reference }: { readonly reference: string }) {
+  const [copied, setCopied] = useState(false);
+  return <p className="msg-reference">
+    <button
+      type="button"
+      className="btn link"
+      onClick={() => {
+        void navigator.clipboard?.writeText(reference).then(() => setCopied(true), () => setCopied(false));
+      }}
+    >Copy reference</button>
+    <span className="sr-only" role="status">{copied ? 'Reference copied.' : ''}</span>
+  </p>;
 }
 
 /** Deliberate transparency: the declared governed tool is named to the user (ADR-065). */
@@ -453,9 +495,12 @@ export function ChatPanel({
     let blocks: readonly PublicConversationBlock[] = Object.freeze([]);
     let answer = '';
     // A V3 stream yields blocks and a V4 stream yields Markdown text; one stream never both.
+    // The governed tools this turn called, in order, for its collapsed trace (OD-UX-8).
+    const trace: string[] = [];
     const answerMessages = (reference: { readonly reference?: string }): Message[] => {
-      if (blocks.length > 0) return [{ kind: 'assistant-blocks', blocks, ...reference }];
-      if (answer) return [{ kind: 'assistant-markdown', text: answer, ...reference }];
+      const traced = trace.length === 0 ? {} : { trace: [...trace] };
+      if (blocks.length > 0) return [{ kind: 'assistant-blocks', blocks, ...reference, ...traced }];
+      if (answer) return [{ kind: 'assistant-markdown', text: answer, ...reference, ...traced }];
       return [];
     };
     setQuestion('');
@@ -491,6 +536,7 @@ export function ChatPanel({
             }
           },
           onTool: (item) => {
+            if (activeRequest.current === request && item.status === 'requested') trace.push(item.tool_name);
             if (activeRequest.current === request) {
               setProgress((feed) => nextProgressFeed(
                 feed,
@@ -702,9 +748,8 @@ export function ChatPanel({
                   : message.kind === 'assistant-markdown'
                     ? <AssistantMarkdown text={message.text} />
                     : message.text}
-                {message.reference !== undefined && (
-                  <p className="msg-reference">Reference: {message.reference}</p>
-                )}
+                {message.kind === 'assistant-text' || message.trace === undefined ? null : <AnswerTrace trace={message.trace} />}
+                {message.reference === undefined ? null : <CopyReference reference={message.reference} />}
               </div>
             )
           ))
@@ -740,7 +785,7 @@ export function ChatPanel({
           rows={2}
         />
         <div className="send">
-          <span>Managed assistant response</span>
+          <span aria-hidden="true" />
           <button className="btn primary" type="submit" disabled={busy || !question.trim()}>
             {busy ? 'Working' : 'Submit'}
           </button>

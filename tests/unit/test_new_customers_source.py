@@ -897,7 +897,8 @@ POLICY = PresentationTemporalPolicy(
         TemporalPresetId.LAST_COMPLETE_WEEK,
         TemporalPresetId.LAST_COMPLETE_MONTH,
     ),
-    default_preset=TemporalPresetId.SEVEN_DAYS,
+    # OD-UX-6 (2026-10-22): New customers opens on Last full week.
+    default_preset=TemporalPresetId.LAST_COMPLETE_WEEK,
     custom_enabled=False,
     custom_min_duration_days=1,
     custom_max_duration_days=90,
@@ -1153,7 +1154,7 @@ HANDOFF_ENTRY = """\
     compatibility_routes: []
     temporal_policy:
       candidate_presets: [7d, 30d, last_complete_week, last_complete_month]
-      default_preset: 7d
+      default_preset: last_complete_week
       custom: {enabled: false, min_duration_days: 1, max_duration_days: 90}
       comparison_policy: optional_equal_prior
       display_grains: [period]

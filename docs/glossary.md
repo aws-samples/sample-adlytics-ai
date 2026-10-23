@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Living. Grows when a term appears in a second document |
-| **Last updated** | 2026-09-25 |
+| **Last updated** | 2026-10-22 |
 | **Scope** | Acronyms and terms used across these documents, with a pointer to whoever owns each |
 | **Related** | [conventions](conventions.md) §9 · [understanding-the-data-model](understanding-the-data-model.md) · [business-context](business-context.md) |
 
@@ -103,3 +103,33 @@ Terms specific to one document are defined there and deliberately absent from th
 | **G-nn** | Something missing that nothing accounts for — [gap register](decision-coverage-registry.md#gap-register-g-nn) |
 | **Q-nn** | An open decision — [question register](decision-coverage-registry.md#question-register-q-nn) |
 | **D-nn** | A made decision, indexed in [architecture](architecture.md) §11 and owned by an ADR |
+
+## Customer labels
+
+The words customer pages show for a governed metric whose served label is jargon (UI refresh 2026-10-22, D5). Only the label changes; the metric, its value and its basis stay as served. [`frontend/lib/glossary.ts`](../frontend/lib/glossary.ts) owns the table; this list mirrors it for reviewers.
+
+| Governed id | Customer label |
+|---|---|
+| `roas_deduplicated_incl_halo_14d` | Return on ad spend, each sale counted once |
+| `roas_attributed_14d`, `portfolio_roas_attributed_14d` | Return on ad spend |
+| `roas_attributed_incl_halo_14d` | Return incl. other products of your brand |
+| `tacos` | Ad spend as a share of shipped sales |
+| `cumulative_repeat_rate_account_ids` (Retention curve heading) | Bought again by then · signed-in shoppers |
+| `glance_views` | Product page views |
+| `revenue_per_glance_view` | Revenue per product page view |
+| `amazon_margin_proxy` | Amazon's margin on your products (not yours) |
+| `purchaser_rate_index_vs_sponsored_only` | Purchase rate compared with sponsored-only shoppers |
+| Insight output classes `observed`, `perspective`, `hypothesis` | Fact, Reading, Idea to check |
+
+Fixed page words that aren't metric labels change in the component that renders them (cross-cutting §2.1). The served string stays in the artifact.
+
+| Page | Was | Customer words | Component |
+|---|---|---|---|
+| Reach | Amazon account IDs (overlap table) | Signed-in shoppers | `ReachAndFunnelView.tsx` |
+| Reach | All ID types (served `all_ids_label`, decoder-pinned) | All shoppers incl. devices | `ReachAndFunnelView.tsx` |
+| Reach | Platform return | Return on ad spend, all Amazon ads | `ReachAndFunnelView.tsx` |
+| Reach | an unlabelled prior figure | {served prior period label}: {served prior}, or "Previous {grain}:" without a label | `ReachAndFunnelView.tsx` |
+| Retention | Ad-touched repeat / All Amazon purchases | Repeat after an ad / Any repeat purchase | `RetentionView.tsx` |
+| Retail health | Manufacturing view / Sourcing view | Ordered and shipped figures / Shipped figures only | `RetailHealthView.tsx` |
+| Retail health | glance views (tile basis lines) | product page views | `RetailTiles.tsx` |
+| Every insight card | Needs data / Retrying | Not enough data yet / Loading | `InsightCard.tsx` |

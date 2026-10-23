@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT-0
+import { metricDisplay } from './page-bindings';
 
 const CANONICAL_DECIMAL = /^([+-]?)(0|[1-9][0-9]*)(\.[0-9]+)?$/;
 const ISO_DATE = /^([0-9]{4})-([0-9]{2})-([0-9]{2})$/;
@@ -202,4 +203,69 @@ export function formatRatePercent(value: string, places: number): string {
   const fraction = places === 0 ? '' : `.${text.slice(text.length - places)}`;
   const sign = parts.sign !== '' && scaled !== 0n ? parts.sign : '';
   return `${sign}${groupedInteger(whole)}${fraction}%`;
+}
+
+/** Round a canonical decimal half up (away from zero) to `places`, only for display. */
+function roundedDecimal(value: string, places: number): string {
+  const parts = decimalParts(value);
+  const fraction = parts.fraction.replace('.', '');
+  const kept = fraction.slice(0, places).padEnd(places, '0');
+  let scaled = BigInt(`${parts.integer}${kept}`);
+  if ((fraction[places] ?? '0') >= '5') scaled += 1n;
+  const text = scaled.toString().padStart(places + 1, '0');
+  const whole = text.slice(0, text.length - places);
+  const tail = places === 0 ? '' : `.${text.slice(text.length - places)}`;
+  const sign = parts.sign === '-' && scaled !== 0n ? '-' : '';
+  return `${sign}${groupedInteger(whole)}${tail}`;
+}
+
+/**
+ * Render a served multiplier (2.2437) at a fixed number of places with a times sign ("2.24×"),
+ * rounding half up only for display. The exact value stays in the exact-values disclosure.
+ */
+export function formatMultiplier(value: string, places: number): string {
+  return `${roundedDecimal(value, places)}×`;
+}
+
+/** A served figure's display text and its exact text for the "Show exact values" disclosure. */
+export interface DisplayedFigure {
+  readonly exact: string;
+  readonly text: string;
+}
+
+/**
+ * Display one served figure of a governed metric by its dictionary unit and ratio scale (plan
+ * D4): a rate as a 2-place percentage, a multiplier as a 2-place "×", a count grouped, and money
+ * as the server's 2-place `display_value` with its ISO code (ADR-084). Nothing is computed: the
+ * text only shifts the decimal point and rounds for display.
+ */
+export function displayFigure(
+  metric: string,
+  value: string,
+  unitKind: string,
+  currencyCode: string | null,
+  displayValue: string | null = null,
+): DisplayedFigure {
+  const rule = metricDisplay.get(metric);
+  if (rule === undefined) throw new RangeError(`No governed display rule for ${JSON.stringify(metric)}.`);
+  if (rule.units !== unitKind) throw new RangeError(`${metric} is served as ${unitKind}, not ${rule.units}.`);
+  if (rule.units === 'currency') {
+    if (currencyCode === null) throw new RangeError(`${metric} is money without a currency code.`);
+    return { exact: formatCurrency(value, currencyCode), text: formatCurrency(displayValue ?? value, currencyCode) };
+  }
+  if (rule.units === 'count') {
+    const text = value.includes('.') ? formatCanonicalDecimal(value) : formatCount(value);
+    return { exact: text, text };
+  }
+  if (rule.ratio_scale === 'rate') return { exact: formatPercent(shiftedPercent(value)), text: formatRatePercent(value, 2) };
+  return { exact: formatRatio(value), text: formatMultiplier(value, 2) };
+}
+
+/** The exact percentage of a served rate: the decimal point moved two places, nothing rounded. */
+function shiftedPercent(value: string): string {
+  const parts = decimalParts(value);
+  const fraction = parts.fraction.replace('.', '').padEnd(2, '0');
+  const integer = `${parts.integer}${fraction.slice(0, 2)}`.replace(/^0+(?=\d)/, '');
+  const rest = fraction.slice(2);
+  return `${parts.sign}${integer}${rest === '' ? '' : `.${rest}`}`;
 }

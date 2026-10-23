@@ -353,6 +353,37 @@ def _v2_vintage_policy(value: object) -> None:
         raise PageSchemaError("V2 vintage policy has an unknown value.")
 
 
+_METRIC_UNITS = frozenset({"count", "currency", "ratio"})
+_RATIO_SCALES = frozenset({"rate", "multiplier"})
+
+
+def _metric_display(raw: object) -> None:
+    """Refuse a metric display projection that isn't one unit, with a scale exactly on ratios."""
+    if not isinstance(raw, dict) or not raw:
+        raise PageSchemaError("V2 page bindings metric_display must be a nonempty object.")
+    for name, spec in cast("dict[object, object]", raw).items():
+        entry = _record(spec, {"ratio_scale", "units"}, f"V2 metric_display {name!s}")
+        units, scale = entry["units"], entry["ratio_scale"]
+        if not isinstance(name, str) or units not in _METRIC_UNITS:
+            raise PageSchemaError(f"V2 metric_display {name!s} has an unknown unit.")
+        if (units == "ratio") != (scale in _RATIO_SCALES):
+            raise PageSchemaError(f"V2 metric_display {name!s} must scale exactly a ratio.")
+        if units != "ratio" and scale is not None:
+            raise PageSchemaError(f"V2 metric_display {name!s} must scale exactly a ratio.")
+
+
+def _ad_product_channels(raw: object) -> None:
+    """Refuse an ad-product channel projection that isn't nonblank text, one product per channel."""
+    if not isinstance(raw, dict) or not raw:
+        raise PageSchemaError("V2 page bindings ad_product_channels must be a nonempty object.")
+    pairs = cast("dict[object, object]", raw)
+    if not all(
+        isinstance(key, str) and key and isinstance(value, str) and value
+        for key, value in pairs.items()
+    ) or len(set(pairs.values())) != len(pairs):
+        raise PageSchemaError("V2 ad_product_channels must map each ad product to its own channel.")
+
+
 def load_v2_page_bindings(  # noqa: PLR0912, PLR0915 -- exact wire-shape validation
     root: Path,
     *,
@@ -368,9 +399,18 @@ def load_v2_page_bindings(  # noqa: PLR0912, PLR0915 -- exact wire-shape validat
         raise PageSchemaError(f"frontend page bindings are invalid: {error}") from error
     top = _record(
         document,
-        {"pages", "presentation_result_version", "temporal_control_version", "version"},
+        {
+            "ad_product_channels",
+            "metric_display",
+            "pages",
+            "presentation_result_version",
+            "temporal_control_version",
+            "version",
+        },
         "V2 page bindings",
     )
+    _ad_product_channels(top["ad_product_channels"])
+    _metric_display(top["metric_display"])
     pages_raw = top["pages"]
     if (
         top["version"] != _V2_VERSION
@@ -556,8 +596,9 @@ def load_v2_page_bindings(  # noqa: PLR0912, PLR0915 -- exact wire-shape validat
     if routes & compatibility_routes:
         raise PageSchemaError("V2 compatibility routes must not be analytical bindings.")
     root_owners = tuple(page.page_id for page in pages if "/" in page.compatibility_routes)
-    if root_owners != ("campaigns",):
-        raise PageSchemaError("V2 root compatibility route must resolve only to campaigns.")
+    # ADR-151: the composed Overview tab owns `/` in navigation.yaml, so no page binding may.
+    if root_owners != ():
+        raise PageSchemaError("V2 page bindings must not own the root route; the Overview does.")
     for page in pages:
         if any(action.target_route not in routes for action in page.actions):
             raise PageSchemaError("V2 action targets an unknown route.")

@@ -1,4 +1,493 @@
 {
+  "ad_product_channels": {
+    "amazon_dsp": "amazon_dsp",
+    "sponsored_brands": "amazon_sponsored_brands",
+    "sponsored_display": "amazon_sponsored_display",
+    "sponsored_products": "amazon_sponsored_products",
+    "sponsored_television": "amazon_sponsored_television"
+  },
+  "metric_display": {
+    "ad_spend": {
+      "ratio_scale": null,
+      "units": "currency"
+    },
+    "amazon_margin_proxy": {
+      "ratio_scale": null,
+      "units": "currency"
+    },
+    "aov_attributed": {
+      "ratio_scale": null,
+      "units": "currency"
+    },
+    "asp_shipped": {
+      "ratio_scale": null,
+      "units": "currency"
+    },
+    "attributed_revenue_14d": {
+      "ratio_scale": null,
+      "units": "currency"
+    },
+    "attributed_revenue_deduplicated_incl_halo_14d": {
+      "ratio_scale": null,
+      "units": "currency"
+    },
+    "attributed_revenue_halo_14d": {
+      "ratio_scale": null,
+      "units": "currency"
+    },
+    "attributed_revenue_incl_halo_14d": {
+      "ratio_scale": null,
+      "units": "currency"
+    },
+    "avg_frequency": {
+      "ratio_scale": "multiplier",
+      "units": "ratio"
+    },
+    "buyers_attributed": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "buyers_new_to_brand_12mo": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "click_to_purchase_rate": {
+      "ratio_scale": "rate",
+      "units": "ratio"
+    },
+    "clicks": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "cogs_shipped": {
+      "ratio_scale": null,
+      "units": "currency"
+    },
+    "cohort_buyers_account_ids": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "cohort_buyers_new_to_brand_12mo": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "cohort_first_repeat_buyers": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "cohort_repeat_buyers": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "cohort_repeat_buyers_account_ids": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "cohort_repeat_buyers_cumulative": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "cohort_repeat_buyers_cumulative_account_ids": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "cohort_repeat_purchases": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "cohort_repeat_revenue": {
+      "ratio_scale": null,
+      "units": "currency"
+    },
+    "conversion_rate_retail": {
+      "ratio_scale": "rate",
+      "units": "ratio"
+    },
+    "conversions": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "cost_per_new_to_brand_buyer_12mo": {
+      "ratio_scale": null,
+      "units": "currency"
+    },
+    "cost_per_ntb": {
+      "ratio_scale": null,
+      "units": "currency"
+    },
+    "cost_per_purchase": {
+      "ratio_scale": null,
+      "units": "currency"
+    },
+    "cost_per_reach": {
+      "ratio_scale": null,
+      "units": "currency"
+    },
+    "cpc": {
+      "ratio_scale": null,
+      "units": "currency"
+    },
+    "cpm": {
+      "ratio_scale": null,
+      "units": "currency"
+    },
+    "ctr": {
+      "ratio_scale": "rate",
+      "units": "ratio"
+    },
+    "cumulative_repeat_rate": {
+      "ratio_scale": "rate",
+      "units": "ratio"
+    },
+    "cumulative_repeat_rate_account_ids": {
+      "ratio_scale": "rate",
+      "units": "ratio"
+    },
+    "cumulative_repeat_rate_arp": {
+      "ratio_scale": "rate",
+      "units": "ratio"
+    },
+    "customer_returns": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "detail_page_view_shoppers_in_window": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "dsp_only_reach_share": {
+      "ratio_scale": "rate",
+      "units": "ratio"
+    },
+    "dsp_window_spend_in_frequency_bucket": {
+      "ratio_scale": null,
+      "units": "currency"
+    },
+    "dsp_window_spend_on_shoppers": {
+      "ratio_scale": null,
+      "units": "currency"
+    },
+    "fulfilment_rate": {
+      "ratio_scale": "rate",
+      "units": "ratio"
+    },
+    "glance_views": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "impressions": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "impressions_in_frequency_bucket": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "impressions_in_window": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "matched_purchase_credit_deduplicated_incl_halo_14d": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "measurable_impressions": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "ntb_purchasers_in_frequency_bucket": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "ntb_purchasers_in_window": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "ntb_rate_12mo": {
+      "ratio_scale": "rate",
+      "units": "ratio"
+    },
+    "ntb_revenue_share": {
+      "ratio_scale": "rate",
+      "units": "ratio"
+    },
+    "overlap_share": {
+      "ratio_scale": "rate",
+      "units": "ratio"
+    },
+    "overlap_share_all_ids": {
+      "ratio_scale": "rate",
+      "units": "ratio"
+    },
+    "portfolio_roas_attributed_14d": {
+      "ratio_scale": "multiplier",
+      "units": "ratio"
+    },
+    "profiled_buyers_total": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "profiled_exposed_total": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "purchase_rate_of_conversions": {
+      "ratio_scale": "rate",
+      "units": "ratio"
+    },
+    "purchaser_rate": {
+      "ratio_scale": "rate",
+      "units": "ratio"
+    },
+    "purchaser_rate_by_frequency": {
+      "ratio_scale": "rate",
+      "units": "ratio"
+    },
+    "purchaser_rate_index_vs_sponsored_only": {
+      "ratio_scale": "multiplier",
+      "units": "ratio"
+    },
+    "purchasers_in_frequency_bucket": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "purchasers_in_window": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "purchases": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "purchases_in_frequency_bucket": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "purchases_in_window": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "purchases_incl_halo": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "purchases_new_to_brand_12mo": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "purchases_new_to_brand_incl_halo_12mo": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "reach_users": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "repeat_buyer_rate": {
+      "ratio_scale": "rate",
+      "units": "ratio"
+    },
+    "repeat_buyer_rate_account_ids": {
+      "ratio_scale": "rate",
+      "units": "ratio"
+    },
+    "repeat_buyer_rate_arp": {
+      "ratio_scale": "rate",
+      "units": "ratio"
+    },
+    "retail_asp_purchased": {
+      "ratio_scale": null,
+      "units": "currency"
+    },
+    "retail_revenue_purchased": {
+      "ratio_scale": null,
+      "units": "currency"
+    },
+    "retail_revenue_shipped": {
+      "ratio_scale": null,
+      "units": "currency"
+    },
+    "retail_units_purchased": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "return_rate": {
+      "ratio_scale": "rate",
+      "units": "ratio"
+    },
+    "returns_value_estimate_retail": {
+      "ratio_scale": null,
+      "units": "currency"
+    },
+    "revenue_incl_halo_in_frequency_bucket": {
+      "ratio_scale": null,
+      "units": "currency"
+    },
+    "revenue_incl_halo_in_window": {
+      "ratio_scale": null,
+      "units": "currency"
+    },
+    "revenue_new_to_brand_12mo": {
+      "ratio_scale": null,
+      "units": "currency"
+    },
+    "revenue_ordered": {
+      "ratio_scale": null,
+      "units": "currency"
+    },
+    "revenue_per_exposed_shopper": {
+      "ratio_scale": null,
+      "units": "currency"
+    },
+    "revenue_per_glance_view": {
+      "ratio_scale": null,
+      "units": "currency"
+    },
+    "roas_attributed_14d": {
+      "ratio_scale": "multiplier",
+      "units": "ratio"
+    },
+    "roas_attributed_incl_halo_14d": {
+      "ratio_scale": "multiplier",
+      "units": "ratio"
+    },
+    "roas_blended": {
+      "ratio_scale": "multiplier",
+      "units": "ratio"
+    },
+    "roas_deduplicated_incl_halo_14d": {
+      "ratio_scale": "multiplier",
+      "units": "ratio"
+    },
+    "roas_incl_halo_by_frequency": {
+      "ratio_scale": "multiplier",
+      "units": "ratio"
+    },
+    "search_rate": {
+      "ratio_scale": "rate",
+      "units": "ratio"
+    },
+    "search_shoppers_in_window": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "segment_attributed_revenue": {
+      "ratio_scale": null,
+      "units": "currency"
+    },
+    "segment_buyer_share": {
+      "ratio_scale": "rate",
+      "units": "ratio"
+    },
+    "segment_buyers": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "segment_buyers_new_to_brand": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "segment_cpm": {
+      "ratio_scale": null,
+      "units": "currency"
+    },
+    "segment_exposed_share": {
+      "ratio_scale": "rate",
+      "units": "ratio"
+    },
+    "segment_exposed_shoppers": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "segment_impressions": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "segment_index": {
+      "ratio_scale": "multiplier",
+      "units": "ratio"
+    },
+    "segment_purchase_rate": {
+      "ratio_scale": "rate",
+      "units": "ratio"
+    },
+    "segment_purchasers": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "segment_purchases": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "segment_reach": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "segment_roas_attributed": {
+      "ratio_scale": "multiplier",
+      "units": "ratio"
+    },
+    "segment_spend": {
+      "ratio_scale": null,
+      "units": "currency"
+    },
+    "shoppers_in_frequency_bucket": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "shoppers_reached": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "sponsored_window_spend_in_frequency_bucket": {
+      "ratio_scale": null,
+      "units": "currency"
+    },
+    "sponsored_window_spend_on_shoppers": {
+      "ratio_scale": null,
+      "units": "currency"
+    },
+    "tacos": {
+      "ratio_scale": "rate",
+      "units": "ratio"
+    },
+    "units_attributed": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "units_attributed_incl_halo": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "units_ordered": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "units_per_purchase": {
+      "ratio_scale": "multiplier",
+      "units": "ratio"
+    },
+    "units_shipped": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "viewable_impressions": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "viewable_impressions_estimated": {
+      "ratio_scale": null,
+      "units": "count"
+    },
+    "viewable_rate": {
+      "ratio_scale": "rate",
+      "units": "ratio"
+    },
+    "window_spend_in_frequency_bucket": {
+      "ratio_scale": null,
+      "units": "currency"
+    }
+  },
   "pages": [
     {
       "actions": [],
@@ -24,9 +513,7 @@
         }
       ],
       "boundary_required": true,
-      "compatibility_routes": [
-        "/"
-      ],
+      "compatibility_routes": [],
       "display_name": "Campaign Portfolio",
       "mode": "selectable_parent_child",
       "page_id": "campaigns",
@@ -785,7 +1272,7 @@
           "max_duration_days": 90,
           "min_duration_days": 1
         },
-        "default_preset": "7d",
+        "default_preset": "last_complete_week",
         "display_grains": [
           "period"
         ],

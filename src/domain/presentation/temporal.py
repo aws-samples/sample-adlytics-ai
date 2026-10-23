@@ -970,6 +970,11 @@ def _custom_control(
 def _default_window(
     policy: PresentationTemporalPolicy, intervals: tuple[DateRange, ...]
 ) -> tuple[DateRange | None, TemporalReportingWindowStatus | None]:
+    if is_calendar_preset(policy.default_preset):
+        # A calendar default (New customers opens on Last full week, OD-UX-6) has no day count:
+        # an explicit rolling preset still resolves on its own, and the calendar default itself
+        # is resolved by the version-2 calendar-period path, never here.
+        return None, None
     required = policy.comparison_policy is TemporalComparisonPolicy.REQUIRED_EQUAL_PRIOR
     preferred = _latest_window(
         intervals, preset_days(policy.default_preset), require_equal_prior=required

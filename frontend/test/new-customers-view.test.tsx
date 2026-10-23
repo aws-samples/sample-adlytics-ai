@@ -6,6 +6,7 @@
  * insight dialog, the "Show Latest measured week" action, loading, absence states, the copy walk
  * and axe. Each passing case sits beside its failing control.
  */
+import { newCustomersAnswer } from '../lib/new-customers';
 import assert from 'node:assert/strict';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -175,7 +176,8 @@ test('late tiles read their line with no table, and See why opens the coverage s
     [tilesMissing, "Figures for Week of 14–20 Sep 2026 didn't arrive."],
   ] as const) {
     const view = render(<NewCustomersView artifact={artifactOf(fixture)} />);
-    assert.ok(within(view.container).getByText(line, { exact: false }));
+    // Once on the page outside the answer sentence, which may lead with the same served line.
+    assert.equal(within(view.container).getAllByText(line, { exact: false }).filter((node) => node.closest('[data-slot="answer"]') === null).length, 1);
     assert.equal(view.container.querySelector('.tiles.two'), null);
     assert.equal(within(view.container).queryByRole('region', { name: 'New buyers per channel' }), null);
     const why = within(view.container).getByRole('button', { name: 'See why: New buyers' });
@@ -469,12 +471,14 @@ test('every visible text is exactly a string or figure its own response served, 
     const view = render(<VisibleTabsContext.Provider value={[AUDIENCES, RETENTION]}>
       <PresetStepContext.Provider value={(presetId) => () => { void presetId; }}><NewCustomersView artifact={artifact} /></PresetStepContext.Provider>
     </VisibleTabsContext.Provider>);
-    const served = new Set([...servedStrings(fixture), ...servedFigures(artifact), page]);
+    // The answer sentence is a fixed template over served values (UI refresh 1.5), pinned by its builder's tests.
+    const answer = newCustomersAnswer(artifact)?.text;
+    const served = new Set([...servedStrings(fixture), ...servedFigures(artifact), page, ...(answer === undefined ? [] : [answer])]);
     assert.deepEqual(strayTexts(view.container, served), [], `browser-written text in ${name}`);
     view.unmount();
   }
   // Paired controls in the same walk: a browser sentence, a cut word and another state's text.
-  const own = new Set([...servedStrings(month), ...servedFigures(artifactOf(month)), page]);
+  const own = new Set([...servedStrings(month), ...servedFigures(artifactOf(month)), page, newCustomersAnswer(artifactOf(month))?.text ?? '']);
   const planted = render(<div><NewCustomersView artifact={artifactOf(month)} /><p>No buyers yet.</p></div>);
   assert.deepEqual(strayTexts(planted.container, own), ['No buyers yet.']);
   planted.unmount();

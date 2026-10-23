@@ -7,7 +7,8 @@
  * server's; the browser only shifts a decimal point to show a rate as a percentage or per 1,000.
  */
 
-import { formatCanonicalDecimal, formatCount, formatCurrency } from '@/lib/exact-format';
+import { metricLabel } from '@/lib/glossary';
+import { formatCanonicalDecimal, formatCount, formatCurrency, formatIsoDateRange, formatRatePercent } from '@/lib/exact-format';
 import type { Metric, RetailComparison, RetailMetricValue } from '@/lib/retail-health';
 import { TileAbsence, TileChange, useWithheld } from './Coverage';
 
@@ -27,18 +28,18 @@ export const RETAIL_TILE_GROUPS: readonly {
 ];
 
 const LABELS: Record<Metric, string> = {
-  amazon_margin_proxy: 'Amazon margin proxy',
+  amazon_margin_proxy: metricLabel('amazon_margin_proxy', 'Amazon margin proxy'),
   asp_shipped: 'Average selling price',
   cogs_shipped: 'Cost of goods shipped',
-  conversion_rate_retail: 'Units per 1,000 glance views',
+  conversion_rate_retail: 'Units per 1,000 product page views',
   customer_returns: 'Customer returns',
   fulfilment_rate: 'Fulfilment rate',
-  glance_views: 'Glance views',
+  glance_views: metricLabel('glance_views', 'Glance views'),
   retail_revenue_shipped: 'Shipped revenue',
   return_rate: 'Return rate',
   returns_value_estimate_retail: 'Estimated revenue withheld by returns',
   revenue_ordered: 'Ordered revenue',
-  revenue_per_glance_view: 'Revenue per glance view',
+  revenue_per_glance_view: metricLabel('revenue_per_glance_view', 'Revenue per glance view'),
   units_ordered: 'Ordered units',
   units_shipped: 'Shipped units',
 };
@@ -50,12 +51,12 @@ export function retailMetricLabel(metric: Metric): string {
 /** Each tile's basis line: how the figure is defined, in the dictionary's terms. */
 function basisLine(metric: Metric, scope: RetailTileScope): string | null {
   switch (metric) {
-    case 'glance_views': return 'Vendor Central · glance views';
-    case 'conversion_rate_retail': return 'Ordered units ÷ glance views × 1,000';
+    case 'glance_views': return 'Vendor Central · product page views';
+    case 'conversion_rate_retail': return 'Ordered units ÷ product page views × 1,000';
     case 'retail_revenue_shipped': return 'Vendor Central · shipped revenue';
     case 'fulfilment_rate': return 'Shipped units ÷ ordered units';
     case 'asp_shipped': return 'Shipped revenue ÷ shipped units';
-    case 'revenue_per_glance_view': return 'Shipped revenue ÷ glance views';
+    case 'revenue_per_glance_view': return 'Shipped revenue ÷ product page views';
     case 'cogs_shipped': return "Amazon's wholesale cost for shipped units: what Amazon paid you";
     case 'amazon_margin_proxy': return "Shipped revenue − cost of goods shipped · Amazon's margin, not yours";
     case 'return_rate': return 'Customer returns ÷ shipped units';
@@ -82,7 +83,8 @@ const PERCENT_RATES: readonly Metric[] = ['return_rate', 'fulfilment_rate'];
 /** Render one served value: money from its server display value, rates by a point shift. */
 export function retailValue(metric: Metric, value: Pick<RetailMetricValue, 'units' | 'value'> & { readonly display_value?: string | null }): string {
   const source = typeof value.value === 'number' ? String(value.value) : value.value;
-  if (PERCENT_RATES.includes(metric)) return `${shiftDecimal(source, 2)}%`;
+  // Plan D4: a governed rate reads as a 2-place percentage, rounded only for display.
+  if (PERCENT_RATES.includes(metric)) return formatRatePercent(source, 2);
   if (metric === 'conversion_rate_retail') return formatCanonicalDecimal(shiftDecimal(source, 3));
   if (value.units.kind === 'currency' && value.units.currency_code !== null && value.display_value != null) {
     return formatCurrency(value.display_value, value.units.currency_code);
@@ -107,7 +109,8 @@ function RetailTile({ comparison, onOpen, scope }: {
     <div className="row">
       <div>
         <p className="v">{retailValue(comparison.metric, comparison.current)}</p>
-        <p className="prior">Prior: {retailValue(comparison.metric, comparison.prior)}</p>
+        {/* UX sweep fix 9 (C6): the prior names its own served window. */}
+        <p className="prior">{formatIsoDateRange(comparison.prior.period.start, comparison.prior.period.end)}: {retailValue(comparison.metric, comparison.prior)}</p>
       </div>
       <TileChange change={comparison.change} slot={comparison.metric} />
     </div>
@@ -131,6 +134,26 @@ function AbsentTile({ label, reason, value }: { readonly label: string; readonly
     <p className="v">{value}</p>
     <p className="prior">{reason}</p>
   </article>;
+}
+
+/** UX sweep fix 4 (readout A.9): the three "where sales leak" rates, from the served totals. */
+export const RETAIL_LEAK_METRICS: readonly Metric[] = ['fulfilment_rate', 'conversion_rate_retail', 'return_rate'];
+
+/** The leak tiles: each served total that is one of `RETAIL_LEAK_METRICS`, in that order. */
+export function RetailLeakTiles({ onOpen, totals }: {
+  readonly onOpen: (metric: Metric, origin: HTMLButtonElement) => void;
+  readonly totals: readonly RetailComparison[];
+}) {
+  const tiles = RETAIL_LEAK_METRICS
+    .map((metric) => totals.find((comparison) => comparison.metric === metric))
+    .filter((comparison) => comparison !== undefined);
+  if (tiles.length === 0) return null;
+  return <section className="metric-section" aria-labelledby="retail-leak-heading" data-slot="rh-leak">
+    <div className="sec-head"><h2 id="retail-leak-heading">Where sales leak</h2></div>
+    <div className="tiles">
+      {tiles.map((comparison) => <RetailTile comparison={comparison} key={comparison.metric} onOpen={onOpen} scope="page" />)}
+    </div>
+  </section>;
 }
 
 export function RetailTileGroups({ absences, idPrefix, onOpen, returnReasons, scope, totals }: {

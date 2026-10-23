@@ -21,6 +21,7 @@ import {
 } from '@/lib/presentation-route-state';
 import { usePublishAssistantPage, type AssistantPage } from './AssistantPageContext';
 import { PresetStepContext, type PresetStep } from './NextStepContext';
+import { PageGenerationContext } from './EvidenceStatusSheet';
 import { PageAbsence } from './PageAbsence';
 import { PageError } from './StatePanels';
 import { TemporalControl } from './TemporalControl';
@@ -482,7 +483,6 @@ export function PresentationV2RouteController<
     <TemporalControl
       control={temporal}
       defaultPreset={bindingByRoute[adapter.route].temporal_policy?.default_preset}
-      generation={generation}
       onFocusRestored={() => setRestoreTemporalFocus(false)}
       onSelect={(nextSelection) => {
         setRetainedTemporal(temporal);
@@ -556,6 +556,7 @@ export function PresentationV2RouteController<
   return (
     <>
       {status}
+      <PageGenerationContext.Provider value={generation}>
       <PresetStepContext.Provider value={presetStep}>
         <div className={bandTitle === null ? 'band band-bare' : 'band'}>
           {bandTitle === null ? null : <div className="band-title">{bandTitle}</div>}
@@ -563,6 +564,7 @@ export function PresentationV2RouteController<
         </div>
         {content}
       </PresetStepContext.Provider>
+      </PageGenerationContext.Provider>
     </>
   );
 }

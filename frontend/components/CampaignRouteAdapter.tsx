@@ -159,9 +159,9 @@ export function prefetchCampaignSegment(sort: CampaignPortfolioSort, segment: nu
 type CampaignAbsence = Extract<CampaignParentPresentation, { readonly kind: 'window_unavailable' }>;
 
 /** Catalog ABS-CAMP-1 / ABS-CAMP-2 (`docs/ui/page-absence-copy.md`). */
-export const CAMPAIGN_ABSENCE_TITLE = 'Campaign portfolio is unavailable for this period';
-export const CAMPAIGN_ABSENCE_OTHER_PERIODS = 'Campaign reporting is unavailable for the selected period. Choose another available period to view campaign results.';
-export const CAMPAIGN_ABSENCE_NO_PERIOD = "Campaign reporting isn't ready to show yet. It's built from your Amazon Ads data. When it's ready, you'll see the campaign results your data supports for each published window.";
+export const CAMPAIGN_ABSENCE_TITLE = 'No campaign results for this period';
+export const CAMPAIGN_ABSENCE_OTHER_PERIODS = 'No campaign results are published for this period. Choose another period above.';
+export const CAMPAIGN_ABSENCE_NO_PERIOD = "Campaign results aren't ready to show yet. They're built from your Amazon Ads data, which your administrator connects. When they're ready, you'll see the campaign results your data supports for each published window.";
 export const campaignRouteAdapter: V2RouteAdapter<
   CampaignParentPresentation,
   CampaignChildPresentation,

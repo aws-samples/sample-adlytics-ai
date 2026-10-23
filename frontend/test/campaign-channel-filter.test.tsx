@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { test } from 'vitest';
 
-import { CampaignPortfolioV2View, PortfolioBandTitle } from '../components/CampaignPortfolioV2View';
+import { CAMPAIGNS_PICK_CHANNEL, CampaignPortfolioV2View, PortfolioBandTitle } from '../components/CampaignPortfolioV2View';
 import { campaignUrlState } from '../components/CampaignRouteAdapter';
 import { CampaignAttributionContractError, parseCampaignPortfolioArtifact } from '../lib/campaign-attribution';
 import { PresentationResponseError } from '../lib/presentation';
@@ -38,8 +38,9 @@ test('All channels totals spend and impressions only and shows purchases and ROA
   assert.deepEqual(page.artifact.totals.map((item) => item.metric), ['spend', 'impressions']);
   assert.equal(page.artifact.trend?.spend_only, true);
   view(everything);
-  assert.equal(screen.getAllByText('Not added across channels').length, 2);
-  assert.ok(screen.getAllByText('Choose a channel to see it.').length >= 2);
+  // UX sweep fix 6: one line replaces the two served "Not added across channels" tiles.
+  assert.equal(screen.queryByText('Not added across channels'), null);
+  assert.equal(screen.getAllByText(CAMPAIGNS_PICK_CHANNEL).length, 1);
   assert.ok(screen.getByText('Choose a channel to see purchases and ROAS over time.'));
   // Divergence reads a portfolio ROAS, so it isn't scheduled; the server line says what runs.
   assert.ok(screen.getByText(/Under All channels, insights cover spend and single-campaign changes/));
@@ -48,20 +49,10 @@ test('All channels totals spend and impressions only and shows purchases and ROA
   assert.equal(screen.queryByRole('group', { name: 'Portfolio trend metric' }), null);
 });
 
-test('By channel lists spend and impressions per channel, each row applying its channel', () => {
-  const chosen: string[] = [];
-  view(everything, (filterId) => { chosen.push(filterId); });
-  const table = screen.getByRole('region', { name: 'Spend and impressions per channel' });
-  const rows = within(table).getAllByRole('row').slice(1);
-  assert.deepEqual(rows.map((row) => within(row).getByRole('rowheader').textContent), [
-    'Amazon DSP', 'Sponsored Products', 'Sponsored Brands',
-  ]);
-  // No attributed column: per-channel return has one home, the Scorecard.
-  assert.deepEqual(within(table).getAllByRole('columnheader').map((cell) => cell.textContent), [
-    'Channel', 'Ad spend', 'Impressions', 'Campaigns',
-  ]);
-  fireEvent.click(within(table).getByRole('button', { name: 'Show campaigns · Sponsored Brands' }));
-  assert.deepEqual(chosen, ['amazon_sponsored_brands']);
+test('By channel no longer repeats the Scorecard spend table; delivery and the Scorecard line stay (fix 6)', () => {
+  view(everything);
+  assert.equal(screen.queryByRole('region', { name: 'Spend and impressions per channel' }), null);
+  assert.ok(screen.getByRole('region', { name: 'Delivery per channel' }));
   assert.ok(screen.getByText('Return on ad spend per channel is on the Scorecard.'));
 });
 

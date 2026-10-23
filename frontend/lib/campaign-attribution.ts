@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: MIT-0
+import { type Answer, changeClause, windowText } from './answer';
+import { displayFigure, formatCount, formatCurrency } from './exact-format';
 import { type Change, CHANGE_KEY, comparisonFields, PERCENTAGE_KEY, parseChange } from './change';
 import { isDisplayValue } from './display-value';
 import { coverageEntry, EVIDENCE_STATUS_KEY, type EvidenceStatusV2, isWithheld, parseEvidenceStatus } from './evidence-status';
@@ -2076,4 +2078,38 @@ export function parseCampaignPortfolioArtifact(value: unknown): CampaignPortfoli
     totals,
     trend,
   };
+}
+
+/**
+ * The Campaigns answer (plan template): the served campaign count and total spend with its served
+ * change, or, with one channel chosen, that channel's served return on its spend. Empty and
+ * insufficient portfolios read their served absence copy (`absenceText`).
+ */
+export function campaignsAnswer(artifact: CampaignPortfolioArtifact, absenceText: string): Answer {
+  if (artifact.outcome !== 'complete') return { kind: 'fallback', text: absenceText };
+  const spend = artifact.totals.find((entry) => entry.metric === 'spend') ?? null;
+  const money = spend === null || spend.current.display_value === null || spend.current.units.currency_code === null
+    ? null
+    : formatCurrency(spend.current.display_value, spend.current.units.currency_code);
+  if (money === null) return { kind: 'fallback', text: absenceText };
+  const window = windowText(artifact.period);
+  const channel = artifact.channel_view === null
+    ? artifact.channel_filter.options.find((option) => option.filter_id === artifact.channel_filter.selected)?.label ?? null
+    : null;
+  if (channel !== null) {
+    const roas = artifact.totals.find((entry) => entry.metric === 'portfolio_roas_attributed_14d') ?? null;
+    if (roas === null || roas.current.value === null) {
+      return { kind: 'fallback', text: `${channel} spent ${money} in ${window}; its return isn't available for this window.` };
+    }
+    return { kind: 'answer', text: `${channel} returned ${formatMultiplierText(roas.current.value)} on ${money} in ${window}.` };
+  }
+  const count = `${formatCount(String(artifact.total_count))} ${artifact.total_count === 1 ? 'campaign' : 'campaigns'}`;
+  const moved = spend?.withheld === true ? null : changeClause(spend?.change ?? null);
+  const lead = `${count} spent ${money} in ${window}`;
+  return { kind: 'answer', text: moved === null ? `${lead}.` : `${lead}, ${moved} on ${windowText(artifact.prior_period)}.` };
+}
+
+/** A served multiplier at two places with the times sign, as the page's tiles show it (D4). */
+function formatMultiplierText(value: string | number): string {
+  return displayFigure('portfolio_roas_attributed_14d', String(value), 'ratio', null).text;
 }

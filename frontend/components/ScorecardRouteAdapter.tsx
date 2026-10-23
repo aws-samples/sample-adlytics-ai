@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: MIT-0
 'use client';
 import { ScorecardControlsSkeleton, ScorecardSkeleton, ScorecardView } from './ScorecardView';
-import { bindingByRoute } from '@/lib/page-bindings';
+import { bindingByRoute, type TemporalPresetId } from '@/lib/page-bindings';
 import { PresentationRequestError, PresentationResponseError, type PresentationErrorClass } from '@/lib/presentation';
 import {
+  fetchNewCustomersPresentationV2,
   fetchScorecardPresentationV2,
+  type NewCustomersPresentation,
   type ScorecardPresentation,
+  type TemporalSelectionV1,
 } from '@/lib/presentation-v2';
+import type { OverviewSource } from '@/lib/overview';
 import type { V2RouteAdapter, V2RouteUrlState } from './PresentationV2RouteController';
 
 /** The channel row a campaign's step asks the Scorecard to outline (ADR-122 `highlight_channel`). */
@@ -14,8 +18,15 @@ export interface ScorecardParentIntent {
   readonly highlight?: string;
 }
 
-/** A served Scorecard with the highlight its URL validated, so render reads one source. */
-export type ScorecardRouteParent = ScorecardPresentation & { readonly highlight: string | null };
+/**
+ * A served Scorecard with the highlight its URL validated, plus the served New customers
+ * presentation for the same preset (plan 2.3), settled on its own so it never blocks the page.
+ */
+export type ScorecardRouteParent = ScorecardPresentation & {
+  readonly highlight: string | null;
+  readonly newCustomers: OverviewSource<NewCustomersPresentation>;
+  readonly preset: TemporalPresetId;
+};
 
 const GOVERNED_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const policy = bindingByRoute.scorecard.temporal_policy;
@@ -58,16 +69,36 @@ export const scorecardRouteAdapter: V2RouteAdapter<ScorecardRouteParent, never, 
   bandTitle: () => null,
   bandTitleLoading: () => null,
   initialParentIntent: {},
-  loadParent: async (session, selection, signal, intent) => ({
-    ...await fetchScorecardPresentationV2(session, selection, signal),
-    highlight: intent.highlight ?? null,
-  }),
+  loadParent: async (session, selection, signal, intent) => {
+    // The same preset for both: the Scorecard's default when the URL names none, because the
+    // two pages declare different defaults.
+    const preset = selection?.kind === 'preset' ? selection.preset_id : policy.default_preset;
+    const sameSelection: TemporalSelectionV1 = { kind: 'preset', preset_id: preset };
+    const [scorecard, newCustomers] = await Promise.allSettled([
+      fetchScorecardPresentationV2(session, selection, signal),
+      fetchNewCustomersPresentationV2(session, sameSelection, signal),
+    ]);
+    if (scorecard.status === 'rejected') throw scorecard.reason;
+    return {
+      ...scorecard.value,
+      highlight: intent.highlight ?? null,
+      newCustomers: newCustomers.status === 'fulfilled'
+        ? { kind: 'served', presentation: newCustomers.value }
+        : { issue: pageIssueClass(newCustomers.reason), kind: 'rejected' },
+      preset,
+    };
+  },
   pageIssueClass,
   // A page-level absence (no complete period, an empty body) offers no context.
   pageContext: (parent) => parent.kind === 'parent' && parent.artifact.outcome === 'complete' ? parent.page_context : null,
   render: (state) => {
     if (state.kind !== 'parent_ready' || state.parent.kind !== 'parent') return null;
-    return <ScorecardView artifact={state.parent.artifact} highlight={state.parent.highlight} />;
+    return <ScorecardView
+      artifact={state.parent.artifact}
+      highlight={state.parent.highlight}
+      newCustomers={state.parent.newCustomers}
+      preset={state.parent.preset === bindingByRoute['new-customers'].temporal_policy.default_preset ? null : state.parent.preset}
+    />;
   },
   renderLoading: () => <ScorecardSkeleton />,
   renderLoadingControls: () => <ScorecardControlsSkeleton />,

@@ -14,7 +14,7 @@ import {
 
 import { clearConversationSessionId } from "@/lib/conversation-session";
 import type { RouteName } from "@/lib/page-bindings";
-import { locateRoute } from "@/lib/route-manifest";
+import { locateRoute, type ComposedTabId } from "@/lib/route-manifest";
 import { conversationSessionId } from "@/lib/presentation";
 import { beginLogin, fetchSession, SessionExpiredError } from "@/lib/session";
 import { AppShell } from "./AppShell";
@@ -24,6 +24,7 @@ import { campaignRouteAdapter } from "./CampaignRouteAdapter";
 import { retailHealthRouteAdapter } from "./RetailHealthRouteAdapter";
 import { scorecardRouteAdapter } from "./ScorecardRouteAdapter";
 import { newCustomersRouteAdapter } from "./NewCustomersRouteAdapter";
+import { overviewRouteAdapter } from "./OverviewRouteAdapter";
 import { reachRouteAdapter } from "./ReachRouteAdapter";
 import { retentionRouteAdapter } from "./RetentionRouteAdapter";
 import { PresentationV2RouteController } from "./PresentationV2RouteController";
@@ -200,7 +201,8 @@ export function useApplicationState(): ApplicationState {
   return value;
 }
 
-export type PresentationRoute = RouteName;
+/** A v2 page tab, or a composed tab over served page presentations (ADR-151). */
+export type PresentationRoute = RouteName | ComposedTabId;
 
 export function PresentationController({
   route,
@@ -224,6 +226,9 @@ function RoutePresentationController({
   readonly route: PresentationRoute;
   readonly sessionId: string;
 }) {
+  if (route === 'overview') {
+    return <PresentationV2RouteController adapter={overviewRouteAdapter} sessionId={sessionId} />;
+  }
   if (route === 'campaigns') {
     return <PresentationV2RouteController adapter={campaignRouteAdapter} sessionId={sessionId} />;
   }

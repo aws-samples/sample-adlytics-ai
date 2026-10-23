@@ -129,6 +129,13 @@ The browser renders only the returned choices, selected state, resolved dates, d
 - render an exact-data alternative for every eligible visual; and
 - preserve equivalent controls, evidence, labels, and focus behavior in wide, regular, and compact layouts.
 
+Display labels (UI refresh, UX sweep fix 9, 2026-10-22): a version-1 preset's served label reads as
+its days ("1 day", "7 days", "14 days", "30 days"), in its visible text and its accessible name, and
+an unavailable preset reads "Not available yet". The served `label` is unchanged on the wire. The
+footnote under a version-1 control reads "{window} · {n} days · Data through {date}."; the served
+generation's build time reads in the page's Coverage sheet ("Built {instant}."), which the route
+controller supplies through `PageGenerationContext` (T1L-8).
+
 A page-level absence (`window_unavailable`) renders the adapter's required `absence` (the page's
 title and the server's message) in the shared `PageAbsence` callout, which carries no live role, and
 never calls the adapter's body render. The route controller owns one persistent status region: one

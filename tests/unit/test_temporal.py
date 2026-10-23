@@ -277,6 +277,44 @@ def test_resolver_returns_canonical_controls_and_preferred_default_from_exact_co
     )
 
 
+def test_a_calendar_default_still_resolves_an_explicit_rolling_preset() -> None:
+    """New customers opens on Last full week (OD-UX-6); its rolling presets still bake."""
+    policy = PresentationTemporalPolicy(
+        candidate_presets=(
+            TemporalPresetId.SEVEN_DAYS,
+            TemporalPresetId.THIRTY_DAYS,
+            TemporalPresetId.LAST_COMPLETE_WEEK,
+            TemporalPresetId.LAST_COMPLETE_MONTH,
+        ),
+        default_preset=TemporalPresetId.LAST_COMPLETE_WEEK,
+        custom_enabled=False,
+        custom_min_duration_days=1,
+        custom_max_duration_days=90,
+        comparison_policy=TemporalComparisonPolicy.OPTIONAL_EQUAL_PRIOR,
+        display_grains=(PageTime.PERIOD,),
+    )
+    coverage = (DateRange(date(2026, 1, 1), date(2026, 1, 31)),)
+    rolling = resolve_temporal(
+        TemporalResolutionRequest(
+            policy=policy,
+            coverage_intervals=coverage,
+            selection=TemporalSelection(
+                kind=TemporalSelectionKind.PRESET, preset_id=TemporalPresetId.SEVEN_DAYS
+            ),
+            comparison_requested=True,
+        )
+    )
+    assert isinstance(rolling, TemporalResolutionAvailable)
+    assert rolling.control.resolved.window == DateRange(date(2026, 1, 25), date(2026, 1, 31))
+    # Paired: the omitted selection has no day-count default here and fabricates no window.
+    omitted = resolve_temporal(
+        TemporalResolutionRequest(policy=policy, coverage_intervals=coverage)
+    )
+    assert isinstance(omitted, TemporalResolutionUnavailable)
+    assert omitted.reason_code is TemporalUnavailableReason.NO_COMMON_INTERVAL
+    assert omitted.control is None
+
+
 def test_resolver_preserves_a_short_omitted_window_as_partial_default() -> None:
     result = resolve_temporal(
         TemporalResolutionRequest(

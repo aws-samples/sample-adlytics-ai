@@ -11,7 +11,7 @@
  */
 
 import type { Change } from '@/lib/change';
-import { formatCanonicalDecimal, formatCount, formatCurrency, formatIsoDate } from '@/lib/exact-format';
+import { displayFigure, formatCanonicalDecimal, formatCount, formatCurrency, formatIsoDate } from '@/lib/exact-format';
 
 import { Icon } from './Icon';
 
@@ -35,9 +35,14 @@ export interface DisplayedValue {
  * Display a served metric value: money shows the server's two-place `display_value` with its
  * code (ADR-084); counts and ratios show the exact value. Exact-values tables use `numberText`.
  */
-export function displayValueText(value: DisplayedValue, kind: ValueKind): string {
+export function displayValueText(value: DisplayedValue, kind: ValueKind, metric?: string): string {
   if (kind === 'currency' && value.display_value !== null && value.units.currency_code !== null) {
     return formatCurrency(value.display_value, value.units.currency_code);
+  }
+  // A governed ratio reads by its dictionary scale: a rate as 2-place %, a multiplier as 2-place ×
+  // (plan D4). The exact value stays in the "Show exact values" disclosure, via `numberText`.
+  if (kind === 'ratio' && metric !== undefined) {
+    return displayFigure(metric, String(value.value), 'ratio', null).text;
   }
   return numberText(value.value, kind, value.units.currency_code);
 }

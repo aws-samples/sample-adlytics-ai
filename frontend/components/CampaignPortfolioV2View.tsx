@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT-0
 'use client';
 
+import { campaignsAnswer } from '@/lib/campaign-attribution';
+import { AnswerSentence } from './AnswerSentence';
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type RefObject } from 'react';
 
 import type { Change } from '@/lib/change';
@@ -18,7 +20,7 @@ import type {
   CampaignPortfolioRow,
   CampaignSelectionCapability,
 } from '@/lib/campaign-attribution';
-import { formatCount, formatIsoDateRange } from '@/lib/exact-format';
+import { formatCount, formatIsoDate, formatIsoDateRange } from '@/lib/exact-format';
 import type { InsightNextStep, InsightNextStepHandlers } from '@/lib/insight-next-step';
 import type { MetricFocusV4 } from '@/lib/metric-focus';
 import { bindingByRoute } from '@/lib/page-bindings';
@@ -40,7 +42,7 @@ import { DataTable, DtBody, DtCell, DtColumn, DtHead, DtRow, DtRowHeader } from 
 import { PAGE_HEADING_ID } from './Dialog';
 import { ChangeChip, ChartLegend, displayValueText, numberText, SeriesChart, type ValueKind } from './ChartPrimitives';
 import { seedAssistantQuestion } from './ChatPanel';
-import { CoverageBasis, CoverageProvider, FigureChange, TileAbsence, TileChange, useCoverageText } from './Coverage';
+import { CoverageBasis, CoverageProvider, FigureChange, SeeWhy, TileAbsence, TileChange, useCoverageText } from './Coverage';
 import { EvidenceStatusSheet } from './EvidenceStatusSheet';
 import { InsightCard, InsightNextStepControl } from './InsightCard';
 import { InsightFocusDialog, type InsightFocusSurface } from './InsightFocusDialog';
@@ -70,8 +72,16 @@ function campaignName(row: Pick<CampaignPortfolioRow, 'signature'>): string {
   return row.signature.effective_name ?? 'Name unavailable';
 }
 
-function metric(value: CampaignMetricValue | null, kind: ValueKind): string {
-  return value === null ? 'Not available for this reporting window' : displayValueText(value, kind);
+/** A campaign slot's governed metric id, for its dictionary display rule (plan D4). */
+function governedMetric(slot: string): string {
+  if (slot === 'spend') return 'ad_spend';
+  if (slot === 'attributed_roas') return 'roas_attributed_14d';
+  return slot;
+}
+function metric(value: CampaignMetricValue | null, kind: ValueKind, slot?: string): string {
+  return value === null
+    ? 'Not available for this reporting window'
+    : displayValueText(value, kind, slot === undefined ? undefined : governedMetric(slot));
 }
 
 /** Why a portfolio ratio is typed absent: its denominator is zero in the window (ADR-087). */
@@ -93,9 +103,24 @@ export function PortfolioValue({ metric: metricName, value }: {
     const description = `Not applicable: ${reason} in this window`;
     return <span className="not-applicable" role="img" aria-label={description} title={description}>—</span>;
   }
-  return <>{displayValueText({ ...value, value: value.value }, value.units.kind)}</>;
+  return <>{displayValueText({ ...value, value: value.value }, value.units.kind, governedMetric(metricName))}</>;
 }
 
+/** UX sweep fix 6: the one line under All channels in place of the "Not added" tiles. */
+export const CAMPAIGNS_PICK_CHANNEL = 'Pick a channel to see its sales and return.';
+/** UX sweep fix 6: the table's decision hint; the change itself happens in Amazon Ads. */
+export const CAMPAIGNS_SORT_HINT = 'Sort by Attributed ROAS to find campaigns to fix; you make the change in Amazon Ads.';
+
+/**
+ * One freshness line for the campaign table (cp-page-fresh, UX sweep fix 6), not a badge per row:
+ * "Latest data {date}" when no row carries a served staleness qualifier, else each distinct served
+ * qualifier once, with "See why" opening the page's one coverage sheet.
+ */
+function PageFreshness({ end, qualifiers }: { readonly end: string; readonly qualifiers: readonly string[] }) {
+  const distinct = [...new Set(qualifiers)];
+  if (distinct.length === 0) return <p className="footnote" data-slot="cp-page-fresh"><span className="pill good">Latest data {formatIsoDate(end)}</span></p>;
+  return <p className="footnote" data-slot="cp-page-fresh"><span className="pill warn">Late data</span> {distinct.join(' · ')} <SeeWhy figure="campaign freshness" /></p>;
+}
 /** Whether both sides are defined; an undefined comparison has no change (ADR-087). */
 function comparable(comparison: CampaignPortfolioComparison): boolean {
   return comparison.current.value !== null && comparison.prior.value !== null;
@@ -304,7 +329,7 @@ function PortfolioTiles({ artifact, filterId, focus, sessionId, temporalSelectio
         <div className="row">
           <div>
             <p className="v"><PortfolioValue metric={comparison.metric} value={comparison.current} /></p>
-            <p className="prior">Prior: <PortfolioValue metric={comparison.metric} value={comparison.prior} /></p>
+            <p className="prior">{formatIsoDateRange(artifact.prior_period.start, artifact.prior_period.end)}: <PortfolioValue metric={comparison.metric} value={comparison.prior} /></p>
           </div>
           {comparable(comparison) ? <TileChange change={comparison.change} slot={comparison.metric} /> : null}
         </div>
@@ -319,13 +344,10 @@ function PortfolioTiles({ artifact, filterId, focus, sessionId, temporalSelectio
           Open the focus view for {label(comparison.metric).toLowerCase()}
         </button>
       </article>)}
-      {/* An attributed total is never added across channels; the tile says so in place. */}
-      {(artifact.channel_view?.not_added ?? []).map((tile) => <article className="tile not-added" key={tile.metric}>
-        <p className="k">{tile.label}</p>
-        <p className="v na">{tile.value_text}</p>
-        <p className="prior">{tile.reason}</p>
-      </article>)}
     </div>
+    {/* UX sweep fix 6 (readout A.4): an attributed total is never added across channels, so one
+        line replaces the served "Not added across channels" tiles. */}
+    {(artifact.channel_view?.not_added ?? []).length === 0 ? null : <p className="section-line" data-slot="cp-pick-channel">{CAMPAIGNS_PICK_CHANNEL}</p>}
     {focusMetric !== null ? <MetricFocusDialog
       key={`portfolio-${windowText}`}
       metricId={focusMetric}
@@ -357,7 +379,6 @@ function PortfolioTrend({ artifact }: { readonly artifact: CampaignPortfolioArti
   return <section className="panel" aria-label="Portfolio trend">
     <div className="panel-head">
       <div>
-        <p className="eyebrow">Visual evidence</p>
         <h2 id="portfolio-trend-heading">{label(selected)}</h2>
         <p className="footnote">{formatIsoDateRange(trend.period.start, trend.period.end)}</p>
       </div>
@@ -376,12 +397,13 @@ function PortfolioTrend({ artifact }: { readonly artifact: CampaignPortfolioArti
       current={values}
       dates={trend.points.map((point) => point.date)}
       kind={kind}
+      zeroBased={kind !== 'ratio'}
     />
     <ChartLegend prior={false} />
     {absent ? <div className="dt-legend"><span>— {NO_SPEND_DAY}.</span></div> : null}
     {artifact.channel_view === null ? null : <p className="section-line">{artifact.channel_view.trend_line}</p>}
     <details className="exact">
-      <summary>Exact returned values</summary>
+      <summary>Show exact values</summary>
       <div className="scroll">
         <table>
           <caption className="sr-only">Exact returned {label(selected)} values for {formatIsoDateRange(trend.period.start, trend.period.end)}</caption>
@@ -621,9 +643,10 @@ function PortfolioTable({ artifact, onFilter, onSegment, onSegmentApproach, onSe
   return <section className="panel" aria-labelledby="campaign-table-heading">
     <div className="panel-head">
       <div>
-        <p className="eyebrow">Server ordering</p>
         <h2 id="campaign-table-heading">Campaigns</h2>
-        <p className="footnote">Order and changes are returned by the server. Selecting a header requests a new ordered portfolio; paging walks baked segments of the same publication.</p>
+        <p className="footnote">Sorted by {sortLabel(artifact.sort)}. Select a column header to sort by it.</p>
+        {artifact.channel_view === null ? <p className="footnote" data-slot="cp-sort-hint">{CAMPAIGNS_SORT_HINT}</p> : null}
+        <PageFreshness end={artifact.period.end} qualifiers={artifact.rows.flatMap((row) => row.freshness_qualifiers)} />
       </div>
     </div>
     <div className="table-toolbar">
@@ -646,7 +669,6 @@ function PortfolioTable({ artifact, onFilter, onSegment, onSegmentApproach, onSe
               <button type="button" onClick={() => requestSort(field)}>{label(field)}</button>
             </DtColumn>
           ))}
-          <DtColumn className="l">Coverage</DtColumn>
         </DtRow></DtHead>
         <DtBody>{displayRows.map((row) => {
           const expired = isCapabilityExpired(row.capability.expires_at, () => clock);
@@ -668,9 +690,6 @@ function PortfolioTable({ artifact, onFilter, onSegment, onSegmentApproach, onSe
               <span><strong><PortfolioValue metric={comparison.metric} value={comparison.current} /></strong>{' '}
               <PortfolioChange comparison={comparison} figure={`${label(comparison.metric)}, ${campaignName(row)}`} /></span>
             </DtCell>)}
-            <DtCell className="l" label="Coverage">{row.freshness_qualifiers.length === 0
-              ? <span className="pill good">Current coverage</span>
-              : <span className="coverage-note">{row.freshness_qualifiers.join(', ')}</span>}</DtCell>
           </DtRow>;
         })}</DtBody>
     </DataTable>
@@ -740,7 +759,7 @@ function ChannelCell({ comparison, figure, roles, slot }: {
     <strong>{value.value === null
       // The same words as the delivery legend's line for this "—" (server-served).
       ? <span className="not-applicable" role="img" aria-label={`Not applicable: ${undefinedRatioReason[comparison.metric] ?? 'no denominator'} in this window`}>—</span>
-      : displayValueText({ ...value, value: value.value }, value.units.kind)}</strong>{' '}
+      : displayValueText({ ...value, value: value.value }, value.units.kind, governedMetric(comparison.metric))}</strong>{' '}
     {comparison.current.value !== null && comparison.prior.value !== null
       ? <FigureChange change={comparison.change} figure={figure} slot={slot} {...(roles === undefined ? {} : { roles })} />
       : null}
@@ -751,14 +770,13 @@ function ChannelCell({ comparison, figure, roles, slot }: {
 const VIEWABLE_ROLES = ['current', 'prior'] as const;
 
 /**
- * "By channel" (ia §7.2 item 9): spend and impressions per channel, each row applying its
- * channel, then Delivery per channel from each channel's own operands with the DSP viewable
- * rate. No attributed figure: per-channel return has its one home on the Scorecard.
+ * "By channel" (ia §7.2 item 9): Delivery per channel from each channel's own operands with the
+ * DSP viewable rate. No attributed figure and, since UX sweep fix 6, no spend table: spend and
+ * return per channel have their one home on the Scorecard.
  */
-function ByChannel({ comparedText, onFilter, scorecardStep, view }: {
+function ByChannel({ comparedText, scorecardStep, view }: {
   /** "{option} · {window} compared with {prior}", each table's caption note. */
   readonly comparedText: string;
-  readonly onFilter: (filterId: string) => void;
   readonly scorecardStep: InsightNextStep | null;
   readonly view: CampaignChannelView;
 }) {
@@ -768,22 +786,8 @@ function ByChannel({ comparedText, onFilter, scorecardStep, view }: {
     <div className="panel-head"><div>
       <h2 id="by-channel-heading">By channel</h2>
     </div></div>
-    <DataTable className="channel-table" title="Spend and impressions per channel" note={comparedText}>
-      <DtHead><DtRow>
-        <DtColumn>Channel</DtColumn>
-        <DtColumn className="num">Ad spend</DtColumn>
-        <DtColumn className="num">Impressions</DtColumn>
-        <DtColumn className="l">Campaigns</DtColumn>
-      </DtRow></DtHead>
-      <DtBody>{view.by_channel.map((row) => <DtRow key={row.channel}>
-        <DtRowHeader className="name">{row.label}</DtRowHeader>
-        <DtCell className="num" label="Ad spend"><ChannelCell comparison={row.spend} figure={`Ad spend, ${row.label}`} slot="spend" /></DtCell>
-        <DtCell className="num" label="Impressions"><ChannelCell comparison={row.impressions} figure={`Impressions, ${row.label}`} slot="impressions" /></DtCell>
-        <DtCell className="l" label="Campaigns">
-          <button type="button" className="btn link" aria-label={`Show campaigns · ${row.label}`} onClick={() => onFilter(row.channel)}>Show campaigns</button>
-        </DtCell>
-      </DtRow>)}</DtBody>
-    </DataTable>
+    {/* UX sweep fix 6 (readout A.4): the spend-per-channel table repeated the Scorecard, so only
+        delivery per channel renders here; spend and return per channel live on the Scorecard. */}
     <DataTable className="channel-table" title="Delivery per channel" note={comparedText}>
       <DtHead><DtRow>
         <DtColumn>Channel</DtColumn>
@@ -912,8 +916,8 @@ function DetailTiles({ detail, focusSelectionReference, focusSessionId }: { read
           <p className="k">{label(metricName)}</p>
           <div className="row">
             <div>
-              <p className="v">{metric(value, valueKind(metricName))}</p>
-              <p className="prior">Prior: {metric(focusValue(detail, metricName, true), valueKind(metricName))}</p>
+              <p className="v">{metric(value, valueKind(metricName), metricName)}</p>
+              <p className="prior">Prior: {metric(focusValue(detail, metricName, true), valueKind(metricName), metricName)}</p>
             </div>
             <ChangeChip change={focusChange(detail, metricName)} />
           </div>
@@ -975,7 +979,7 @@ function deliverySeries(
 function ExactValues({ detail, metricName, series }: { readonly detail: CampaignAttributionDetailV2; readonly metricName: CampaignDeliverySlot; readonly series: { readonly current: readonly (number | string)[]; readonly dates: readonly string[]; readonly prior: readonly (number | string)[] } }) {
   const currencyCode = detail.delivery.summary.find((item) => item.slot === metricName)?.value?.units.currency_code ?? null;
   return <details className="exact" open>
-    <summary>Exact returned values</summary>
+    <summary>Show exact values</summary>
     <div className="scroll" tabIndex={0}>
       <table>
         <caption className="sr-only">Exact returned current and aligned-prior values for {label(metricName)} from {formatIsoDateRange(detail.period.start, detail.period.end)}</caption>
@@ -1014,7 +1018,6 @@ function DetailChart({ detail }: { readonly detail: CampaignAttributionDetailV2 
   return <section className="panel" aria-label="Campaign trend">
     <div className="panel-head">
       <div>
-        <p className="eyebrow">Visual evidence</p>
         <h2 id="campaign-trend-heading">{label(activeMetric)}</h2>
         <p className="footnote">{formatIsoDateRange(detail.period.start, detail.period.end)}</p>
       </div>
@@ -1037,6 +1040,7 @@ function DetailChart({ detail }: { readonly detail: CampaignAttributionDetailV2 
           dates={series.dates}
           kind={valueKind(activeMetric)}
           prior={series.prior}
+          zeroBased={valueKind(activeMetric) !== 'ratio'}
         />
         <ChartLegend prior />
         <p className="footnote">Aligned prior values are returned by the server.</p>
@@ -1058,8 +1062,8 @@ function DeliveryValues({ detail }: { readonly detail: CampaignAttributionDetail
       <DtHead><DtRow><DtColumn>Metric</DtColumn><DtColumn>Current</DtColumn><DtColumn>Aligned prior</DtColumn></DtRow></DtHead>
       <DtBody>{deliveryMetrics.map((metricName) => <DtRow key={metricName}>
         <DtRowHeader>{label(metricName)}</DtRowHeader>
-        <DtCell label="Current">{metric(deliveryMetricValue(detail, metricName), valueKind(metricName))}</DtCell>
-        <DtCell label="Aligned prior">{metric(deliveryMetricValue(detail, metricName, true), valueKind(metricName))}</DtCell>
+        <DtCell label="Current">{metric(deliveryMetricValue(detail, metricName), valueKind(metricName), metricName)}</DtCell>
+        <DtCell label="Aligned prior">{metric(deliveryMetricValue(detail, metricName, true), valueKind(metricName), metricName)}</DtCell>
       </DtRow>)}</DtBody>
     </DataTable>
     {detail.delivery.dsp_quality.outcome === 'unavailable' ? <p className="footnote">DSP quality values are not available for this campaign type in this reporting window.</p> : null}
@@ -1260,12 +1264,10 @@ export function PortfolioBandTitle({ artifact, onFilter }: {
       {artifact === null
         ? <span className="pill">Reporting window unavailable</span>
         : <>
-          {filter === null ? null : <span className="pill">{filter.options.find((option) => option.filter_id === filter.selected)?.label}</span>}
-          <span className="pill">{artifact.total_count} authorized {artifact.total_count === 1 ? 'campaign' : 'campaigns'}</span>
+          {/* Text diet (D5): the channel select already names the option; readiness shows only when absent. */}
+          <span className="pill">{formatCount(String(artifact.total_count))} {artifact.total_count === 1 ? 'campaign' : 'campaigns'}</span>
           <span className="pill">Ad-attributed</span>
-          {artifact.outcome === 'complete'
-            ? <span className="pill good">{portfolioOutcomeCopy(artifact.outcome).status}</span>
-            : <span className="pill warn">{portfolioOutcomeCopy(artifact.outcome).status}</span>}
+          {artifact.outcome === 'complete' ? null : <span className="pill warn">{portfolioOutcomeCopy(artifact.outcome).status}</span>}
         </>}
     </div>
   </>;
@@ -1378,11 +1380,11 @@ export function CampaignPortfolioV2View({ child, closedCampaign = null, detailSt
     </div>}
     {parent.outcome === 'complete'
       ? <CoverageProvider status={parent.evidence_status} subject="Campaigns">
+        <AnswerSentence answer={campaignsAnswer(parent, portfolioOutcomeCopy(parent.outcome).description)} />
         <PortfolioTiles artifact={parent} filterId={filterId} focus={portfolioFocus} sessionId={focusSessionId} temporalSelection={focusTemporalSelection} />
         {view === null ? null : <>
           <ByChannel
             comparedText={`${selectedLabel(parent.channel_filter)} · ${windowText} compared with ${formatIsoDateRange(parent.prior_period.start, parent.prior_period.end)}`}
-            onFilter={(id) => onFilter?.(id)}
             scorecardStep={scorecardStep}
             view={view}
           />

@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: MIT-0
 """Project the governed navigation file into the shell's route manifest and the 404 allowlist.
 
-ADR-115: ``presentation/navigation.yaml`` lists hubs and operator static routes, and a v2 page
-entry that is a tab carries a ``navigation`` block. One generator writes two committed
+ADR-115: ``presentation/navigation.yaml`` lists hubs, composed customer tabs (ADR-151) and
+operator static routes, and a v2 page entry that is a tab carries a ``navigation`` block. One
+generator writes two committed
 projections, one per consumer: ``frontend/generated/route-manifest.json`` for the shell, and
 ``contracts/generated/route-allowlist.json`` for the ``StaticRouteRewrite`` allowlist (ADR-123).
 """
@@ -55,16 +56,21 @@ class NavigationHub:
 
 @dataclass(frozen=True, slots=True)
 class NavigationTab:
-    """One routed tab: a v2 presentation page or an operator static route."""
+    """One routed tab: a v2 presentation page, a composed tab, or an operator static route.
+
+    ADR-151: a composed tab renders the served presentations of its ``sources`` (routed v2 page
+    tabs) on one customer tab; it owns no page entry, artifact or API route.
+    """
 
     tab_id: str
-    kind: Literal["page", "static"]
+    kind: Literal["page", "composed", "static"]
     hub_id: str
     route: str
     label: str
     description: str
     order: int
     entitlement: str | None
+    sources: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,6 +149,39 @@ def _static_tabs(value: object, where: str) -> tuple[NavigationTab, ...]:
     return tuple(tabs)
 
 
+def _composed_tabs(value: object, where: str) -> tuple[NavigationTab, ...]:
+    """ADR-151: composed customer tabs; never entitled, each naming its served source pages."""
+    tabs: list[NavigationTab] = []
+    for index, item in enumerate(_sequence(value, where)):
+        context = f"{where}[{index}]"
+        raw = _mapping(item, context)
+        _exact(
+            raw,
+            {"route", "hub_id", "tab_id", "tab_label", "tab_description", "order", "sources"},
+            context,
+        )
+        sources = tuple(
+            _nonblank(source, f"{context}.sources[]")
+            for source in _sequence(raw["sources"], f"{context}.sources")
+        )
+        if not sources or len(set(sources)) != len(sources):
+            raise PageSchemaError(f"{context}.sources: expected unique source page ids.")
+        tabs.append(
+            NavigationTab(
+                tab_id=_nonblank(raw["tab_id"], f"{context}.tab_id"),
+                kind="composed",
+                hub_id=_nonblank(raw["hub_id"], f"{context}.hub_id"),
+                route=_canonical_route(raw["route"], f"{context}.route"),
+                label=_nonblank(raw["tab_label"], f"{context}.tab_label"),
+                description=_nonblank(raw["tab_description"], f"{context}.tab_description"),
+                order=_positive_integer(raw["order"], f"{context}.order"),
+                entitlement=None,
+                sources=sources,
+            )
+        )
+    return tuple(tabs)
+
+
 def _not_found_outputs(value: object, where: str) -> tuple[str, ...]:
     outputs = tuple(_nonblank(item, f"{where}[]") for item in _sequence(value, where))
     if len(set(outputs)) != len(outputs) or NOT_FOUND_PAGE not in outputs:
@@ -176,7 +215,7 @@ def _root_tab_id(pages: PresentationPageSchemaSet, tabs: tuple[NavigationTab, ..
         for page in pages.pages
         if page.page_id in routed
         and (page.route == ROOT_ROUTE or ROOT_ROUTE in page.compatibility_routes)
-    )
+    ) + tuple(tab.tab_id for tab in tabs if tab.kind == "composed" and tab.route == ROOT_ROUTE)
     if len(owners) != 1:
         raise PageSchemaError("exactly one routed tab must serve the root route /.")
     return owners[0]
@@ -186,22 +225,37 @@ def load_navigation(root: Path) -> Navigation:
     """Load and cross-check the navigation file against the v2 page declaration."""
     path = root / NAVIGATION_PATH
     raw = _load_yaml_mapping(path)
-    _exact(raw, {"version", "hubs", "static_routes", "not_found_outputs"}, str(path))
+    _exact(
+        raw, {"version", "hubs", "composed_routes", "static_routes", "not_found_outputs"}, str(path)
+    )
     if raw["version"] != 1:
         raise PageSchemaError(f"{path}.version: expected 1.")
     hubs = _hubs(raw["hubs"], f"{path}.hubs")
     pages = load_v2_page_schemas(root)
-    tabs = _page_tabs(pages) + _static_tabs(raw["static_routes"], f"{path}.static_routes")
+    page_tabs = _page_tabs(pages)
+    composed = _composed_tabs(raw["composed_routes"], f"{path}.composed_routes")
+    tabs = page_tabs + composed + _static_tabs(raw["static_routes"], f"{path}.static_routes")
     audiences = {hub.hub_id: hub.audience for hub in hubs}
+    # ADR-151: a composed tab is a customer tab, and every source is a routed v2 page tab, so
+    # each figure it shows has a drill-down tab serving the same presentation.
+    routed_pages = {tab.tab_id for tab in page_tabs}
+    for tab in composed:
+        if audiences.get(tab.hub_id) == "operator":
+            raise PageSchemaError(f"{tab.tab_id}: a composed tab belongs to a customer hub.")
+        unknown = [source for source in tab.sources if source not in routed_pages]
+        if unknown:
+            raise PageSchemaError(
+                f"{tab.tab_id}: composed sources must be routed v2 page tabs, not {unknown!r}."
+            )
     for tab in tabs:
         audience = audiences.get(tab.hub_id)
         if audience is None:
             raise PageSchemaError(f"{tab.tab_id}: navigation names unknown hub {tab.hub_id!r}.")
-        # A presentation page has no entitlement; an operator surface always has one.
+        # A presentation or composed tab has no entitlement; an operator surface always has one.
         if (audience == "operator") != (tab.entitlement is not None):
             raise PageSchemaError(
                 f"{tab.tab_id}: an operator hub lists only entitled static routes, "
-                "and a customer hub only presentation pages."
+                "and a customer hub only presentation pages and composed tabs."
             )
     for label, values in (
         ("tab ids", tuple(tab.tab_id for tab in tabs)),

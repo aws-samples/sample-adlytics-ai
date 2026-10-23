@@ -8,9 +8,25 @@
  * no code-to-label map and writes no coverage copy.
  */
 
-import type { RefObject } from 'react';
+import { createContext, useContext, type RefObject } from 'react';
 import type { EvidenceStatusV2 } from '@/lib/evidence-status';
-import { formatIsoDateRange } from '@/lib/exact-format';
+import { formatIsoDateRange, formatIsoInstant } from '@/lib/exact-format';
+import type { PageGenerationV1 } from '@/lib/presentation-v2';
+
+/**
+ * The served generation's build time (S6 §2.9), provided by the route controller. T1L-8 / UX sweep
+ * fix 4: it reads in the Coverage sheet, not on the page's "Data through" line.
+ */
+export const PageGenerationContext = createContext<PageGenerationV1 | undefined>(undefined);
+
+/** "Built 2026-08-22 06:12:04 UTC." or "Built before …", or nothing when no generation is served. */
+export function BuiltLine() {
+  const generation = useContext(PageGenerationContext);
+  if (generation === undefined) return null;
+  return <p className="built-line" data-slot="pg-built">{'built_at' in generation
+    ? `Built ${formatIsoInstant(generation.built_at)}.`
+    : `Built before ${formatIsoInstant(generation.built_before)}.`}</p>;
+}
 import { DataTable, DtBody, DtCell, DtColumn, DtHead, DtRow, DtRowHeader } from './DataTable';
 import { Dialog } from './Dialog';
 
@@ -36,6 +52,7 @@ export function EvidenceStatusSheet({ onClose, opener, status, subject }: {
     </>}
   >
     <p className="coverage-summary">{status.summary}</p>
+    <BuiltLine />
     <DataTable className="coverage-table" title="What each figure needs">
       <DtHead><DtRow>
         <DtColumn>Figure</DtColumn>

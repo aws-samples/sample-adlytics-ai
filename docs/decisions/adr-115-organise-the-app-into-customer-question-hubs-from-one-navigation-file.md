@@ -7,6 +7,10 @@ owner objection. Not implemented. The proposed design is in
 [Information architecture](../ui/information-architecture/README.md), and the build order is in
 [Delivery slices](../ui/information-architecture/delivery-slices.md).
 
+> **Amended 2026-10-22 by [ADR-151](adr-151-compose-a-customer-tab-from-served-page-presentations.md):**
+> `navigation.yaml` also lists composed customer tabs (`composed_routes`), and the composed Overview
+> owns `/`.
+
 ## Context
 
 The app has three rendered pages, Campaign portfolio, Retail health and Prompt administration, and

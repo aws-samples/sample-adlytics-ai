@@ -1357,9 +1357,10 @@ class PresentationPageSchemaSet:
                 "V2 presentation compatibility routes must not be canonical analytical routes."
             )
         root_owners = tuple(page.page_id for page in self.pages if "/" in page.compatibility_routes)
-        if root_owners != ("campaigns",):
+        # ADR-151: the composed Overview tab owns `/` in navigation.yaml, so no page entry may.
+        if root_owners != ():
             raise PageSchemaError(
-                "V2 presentation root compatibility route must resolve only to campaigns."
+                "V2 presentation pages must not own the root route; the composed Overview does."
             )
         page_ids = {page.page_id for page in self.pages}
         for page in self.pages:

@@ -226,6 +226,15 @@ browser never reorders. The campaign row count is bounded by the artifact declar
 > right after its own, which withholds the change and names the days (ADR-118 decision 5). Rows
 > no longer carry `spend_spark`, and the table has no Spend trend column: a 30-day spark on 50 rows
 > put the served body over the cap, and a campaign's daily spend has its home in detail.
+>
+> Render since UI refresh (UX sweep fix 6, 2026-10-22; the served body is unchanged): the two served
+> "Not added across channels" tiles render as one line, "Pick a channel to see its sales and
+> return." (`CAMPAIGNS_PICK_CHANNEL`); "By channel" renders only "Delivery per channel", because the
+> spend-and-impressions table repeated the Scorecard; the campaign table has no per-row Coverage
+> column, and one line above it reads "Latest data {date}" or each distinct served staleness
+> qualifier once with "See why" opening the coverage sheet; under a one-channel option the table
+> adds "Sort by Attributed ROAS to find campaigns to fix; you make the change in Amazon Ads."
+> (`CAMPAIGNS_SORT_HINT`). Tile priors name their served prior window ("Aug 8–14, 2026: …").
 > `campaigns`, `portfolio-metric-focus` and `insight-deep-dive` take `filter_id`; a well-formed id
 > the preset doesn't offer is refused with `ADLY-PRESENTATION-0005`, and the browser shows All
 > channels for that code alone. The page-context chip names the option, All channels included.

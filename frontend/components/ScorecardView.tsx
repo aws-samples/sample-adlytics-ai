@@ -7,6 +7,8 @@
  * which served headline shows, with no request; nothing here adds, ranks or converts a figure.
  * Attributed returns appear only on a channel row of one network card (ia §8.5).
  */
+import { AnswerSentence } from './AnswerSentence';
+import { metricLabel } from '@/lib/glossary';
 import { Fragment, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 
 import { CoverageProvider, FigureChange, TileAbsence, TileChange } from './Coverage';
@@ -16,13 +18,18 @@ import { InsightNextStepControl } from './InsightCard';
 import { useVisibleTabs } from './NextStepContext';
 import { SCORECARD_CHANNEL_SECTION } from '@/lib/insight-next-step';
 import { formatCurrency, formatRatePercent, formatRatio } from '@/lib/exact-format';
-import { bindingByRoute, isCalendarPreset } from '@/lib/page-bindings';
+import { adProductChannels, bindingByRoute, isCalendarPreset } from '@/lib/page-bindings';
+import type { NewCustomersPresentation } from '@/lib/presentation-v2';
+import type { StepOneRow } from '@/lib/new-customers';
+import type { OverviewSource } from '@/lib/overview';
+import { ChangeChip } from './ChartPrimitives';
 import type {
   NetworkScorecardArtifact,
   ScorecardCard,
   ScorecardFigure,
   ScorecardInsightCard,
 } from '@/lib/scorecard';
+import { scorecardAnswer } from '@/lib/scorecard';
 
 /**
  * A served figure's value text: money and multipliers from their two-place served display value
@@ -43,7 +50,7 @@ export function figureText(figure: ScorecardFigure, prior = false): string | nul
  * chip (or its withheld text, from the coverage `slot` the server wrote). The metric focus
  * openers ("Details ›") wait for the Scorecard metric focus path, so none renders yet.
  */
-function Tile({ figure, notAvailable, slot, market = null, children }: {
+export function ScorecardTile({ figure, notAvailable, slot, market = null, children }: {
   readonly figure: ScorecardFigure;
   /** The served marketplace a retail tile measures, when the page shows more than one. */
   readonly market?: string | null;
@@ -57,13 +64,13 @@ function Tile({ figure, notAvailable, slot, market = null, children }: {
   const value = figureText(figure);
   const prior = figureText(figure, true);
   return <div className={value === null ? 'tile na' : 'tile'}>
-    <span className="k">{figure.label}</span>
+    <span className="k">{metricLabel(figure.metric, figure.label)}</span>
     {market === null ? null : <span className="market">{market}</span>}
     <span className="v num">{value ?? notAvailable}</span>
     {value === null ? <span className="reason">{figure.absence_text}</span> : null}
     {prior === null || figure.prior_label === null ? null : <span className="prior">{figure.prior_label}: {prior}</span>}
     <span className="basis">{figure.basis}</span>
-    {value === null ? null : <TileAbsence slot={slot} figure={figure.label} />}
+    {value === null ? null : <TileAbsence slot={slot} figure={metricLabel(figure.metric, figure.label)} />}
     <div className="foot">
       {/* The chip, or nothing while coverage withholds it: TileAbsence then says why, once. */}
       {figure.change === null ? <span /> : <TileChange change={figure.change} slot={slot} />}
@@ -72,7 +79,9 @@ function Tile({ figure, notAvailable, slot, market = null, children }: {
   </div>;
 }
 
-function NetworkCardSection({ card, highlight, notAvailable, several }: {
+function NetworkCardSection({ artifact, card, highlight, notAvailable, several }: {
+  /** The page body, whose served windows the answer sentence names. */
+  readonly artifact: NetworkScorecardArtifact;
   readonly card: ScorecardCard;
   readonly highlight: string | null;
   readonly notAvailable: string;
@@ -91,21 +100,27 @@ function NetworkCardSection({ card, highlight, notAvailable, several }: {
       {card.networks_text === null ? null : <span className="note">{card.networks_text}</span>}
     </div>
     {card.dsp_absence_text === null ? null : <p className="small dim">{card.dsp_absence_text}</p>}
-    <div className="tiles three">
-      <Tile figure={selected.figure} notAvailable={notAvailable} slot={`headline:${card.card_id}`} />
-      <Tile figure={card.spend} notAvailable={notAvailable} slot={`spend:${card.card_id}`} />
-      <div className="tile">
+    <AnswerSentence answer={scorecardAnswer(artifact, card, selected.model)} />
+    {/* UX sweep fix 3: the model explainer folds into one "How credit is shared" disclosure. */}
+    <details className="about sc-model">
+      <summary>{SCORECARD_CARD_COPY.modelSummary} {selected.option_label}</summary>
+      <div className="body">
         <div className="select-wrap">
           <label htmlFor={selectId}>{card.headline.selector_label}</label>
           <select id={selectId} value={model} onChange={(event) => setModel(event.currentTarget.value)}>
             {card.headline.models.map((item) => <option key={item.model} value={item.model}>{item.option_label}</option>)}
           </select>
         </div>
-        <span className="basis">{card.headline.model_note}</span>
+        <p>{card.headline.model_note}</p>
       </div>
+    </details>
+    <div className="tiles two">
+      <ScorecardTile figure={selected.figure} notAvailable={notAvailable} slot={`headline:${card.card_id}`} />
+      <ScorecardTile figure={card.spend} notAvailable={notAvailable} slot={`spend:${card.card_id}`} />
     </div>
-    <div className="rank-block">
-      <h3>{ranking.heading}</h3>
+    {/* UX sweep fix 3 (readout A.2): the ranking sits in a closed disclosure under its served heading. */}
+    <details className="about rank-block">
+      <summary>{ranking.heading}</summary>
       <p className="rank-outcome">{ranking.outcome_text}</p>
       {ranking.outcome === 'insufficient' ? null : <DataTable title={ranking.caption} note={ranking.caption_detail} nameLeadId={several ? headingId : undefined}>
         <DtHead>
@@ -125,8 +140,134 @@ function NetworkCardSection({ card, highlight, notAvailable, several }: {
         </DtBody>
       </DataTable>}
       <p className="dt-foot">{ranking.foot}</p>
-    </div>
+    </details>
   </section>;
+}
+
+/** One channel's served New customers row, or the served reason the band shows none (plan 2.3). */
+export type ChannelNewCustomers =
+  | { readonly kind: 'rows'; readonly rows: ReadonlyMap<string, StepOneRow>; readonly share_basis: string; readonly not_available: string }
+  | { readonly kind: 'absent'; readonly text: string };
+
+/** The channel cards' and disclosures' browser-owned words (Scorecard LLD "Browser-owned copy"). */
+export const SCORECARD_CARD_COPY = {
+  campaignsOn: 'Campaigns on',
+  heading: 'What each channel does for you',
+  modelSummary: 'How credit is shared:',
+  newCustomers: 'New customers ›',
+  ntbBasis: 'First-time-buyer share:',
+  ntbCost: 'Ad cost per first-time-buyer purchase',
+  ntbShare: 'Share of sales from first-time buyers',
+  paysBack: 'Pays back',
+  returnBasis: 'Return:',
+  table: 'Show the channel table',
+  why: "Each channel counts the sales Amazon credits to it, so one sale can count in two channels. That's why channel figures aren't added up, and why the headline, which counts each sale once, can read lower than a channel's own return.",
+  winsNew: 'Wins new customers',
+} as const;
+
+/** ABS-SC-CH (`docs/ui/page-absence-copy.md`): no served New customers row for this channel and window. */
+export const CHANNEL_NEW_CUSTOMERS_ABSENT = "New-customer figures aren't available for this window.";
+
+/**
+ * Join the served New customers rows to the Scorecard's channels on the governed taxonomy keys
+ * (`ad_product_channels`), never by name; only for the same marketplace and the same window.
+ */
+export function channelNewCustomers(
+  artifact: NetworkScorecardArtifact,
+  source: OverviewSource<NewCustomersPresentation> | null,
+): ChannelNewCustomers {
+  if (source === null || source.kind === 'rejected') return { kind: 'absent', text: CHANNEL_NEW_CUSTOMERS_ABSENT };
+  const presentation = source.presentation;
+  if (presentation.kind === 'window_unavailable') return { kind: 'absent', text: presentation.message };
+  const body = presentation.artifact;
+  const market = body.outcome === 'complete' && body.markets.length === 1 && artifact.cards.length === 1 ? body.markets[0] : undefined;
+  const sameWindow = body.period.start === artifact.period.start && body.period.end === artifact.period.end;
+  if (market === undefined || !sameWindow || market.currency_code !== artifact.cards[0]?.currency_code) {
+    return { kind: 'absent', text: body.outcome_text ?? CHANNEL_NEW_CUSTOMERS_ABSENT };
+  }
+  const rows = new Map<string, StepOneRow>();
+  for (const row of market.new_to_brand.rows) {
+    const channel = adProductChannels.get(row.ad_product_key);
+    if (channel !== undefined) rows.set(channel, row);
+  }
+  return { kind: 'rows', not_available: body.page_text.not_available_text, rows, share_basis: market.new_to_brand.share_basis };
+}
+
+function newCustomerFigure(figure: StepOneRow['ntb_revenue_share'], notAvailable: string): string {
+  if (figure.display_text !== null) return figure.display_text;
+  if (figure.display_value !== null && figure.currency_code !== null) return formatCurrency(figure.display_value, figure.currency_code);
+  return figure.absence?.text ?? notAvailable;
+}
+
+/** "What each channel does for you" (readout A.3, OD-UX-4): one card per served channel row. */
+function ChannelCards({ artifact, card, highlight, newCustomers, notAvailable, preset }: {
+  readonly artifact: NetworkScorecardArtifact;
+  readonly card: ScorecardCard;
+  readonly highlight: string | null;
+  readonly newCustomers: ChannelNewCustomers;
+  readonly notAvailable: string;
+  readonly preset: string | null;
+}) {
+  const table = card.channel_table;
+  const query = preset === null ? '' : `?preset=${preset}`;
+  const shareCard = (channel: string) => artifact.insight_cards.find((entry) => entry.card_id === card.card_id && entry.channel === channel && entry.finding_id === 'channel-share-of-network-spend');
+  const returnBasis = table.columns.find((column) => column.column === 'roas_attributed_14d')?.basis ?? null;
+  const tabs = useVisibleTabs();
+  const newCustomersTab = tabs.find((tab) => tab.tab_id === 'new-customers');
+  return <>
+    <div className="ch-cards">
+      {table.rows.map((row) => {
+        const [spend, , roas, halo] = row.figures;
+        const share = shareCard(row.channel);
+        const ntb = newCustomers.kind === 'rows' ? newCustomers.rows.get(row.channel) ?? null : null;
+        const highlighted = row.channel === highlight;
+        return <article key={row.channel} className={highlighted ? 'ch-card highlight-card' : 'ch-card'} data-channel={row.channel} data-slot={`ch-${row.channel}`}>
+          <h3>{row.channel_label}</h3>
+          {highlighted ? <span className="ch-tag">{table.highlight_tag}</span> : null}
+          <p className="ch-spend">
+            <span className="v num" data-slot={`ch-${row.channel}-spend`}>{figureText(spend) ?? notAvailable}</span>
+            {spend.change === null ? null : <FigureChange change={spend.change} slot={`channels:${card.card_id}`} figure={`${row.channel_label} ${metricLabel(spend.metric, spend.label)}`} />}
+          </p>
+          {share === undefined ? null : <p className="small" data-slot={`ch-${row.channel}-share`}>{share.headline}. {share.body}</p>}
+          <h4>{SCORECARD_CARD_COPY.paysBack}</h4>
+          <dl className="ch-figures">
+            {[roas, halo].map((figure) => <div key={figure.metric} data-slot={`ch-${row.channel}-${figure.metric === 'roas_attributed_14d' ? 'roas' : 'roas-halo'}`}>
+              <dt>{metricLabel(figure.metric, figure.label)}</dt>
+              <dd>
+                {figureText(figure) ?? <span className="cell-na">{notAvailable}<span className="reason">{figure.absence_text}</span></span>}
+                {figure.change === null ? null : <FigureChange change={figure.change} slot={`channels:${card.card_id}`} figure={`${row.channel_label} ${metricLabel(figure.metric, figure.label)}`} />}
+              </dd>
+            </div>)}
+          </dl>
+          <h4>{SCORECARD_CARD_COPY.winsNew}</h4>
+          {ntb === null
+            ? <p className="small dim" data-slot={`ch-${row.channel}-ntb-absent`}>{newCustomers.kind === 'absent' ? newCustomers.text : CHANNEL_NEW_CUSTOMERS_ABSENT}</p>
+            : <dl className="ch-figures">
+              <div data-slot={`ch-${row.channel}-ntb-share`}>
+                <dt>{SCORECARD_CARD_COPY.ntbShare}</dt>
+                <dd>
+                  {newCustomerFigure(ntb.ntb_revenue_share, newCustomers.kind === 'rows' ? newCustomers.not_available : notAvailable)}
+                  {ntb.ntb_revenue_share_change.change === null ? null : <ChangeChip change={ntb.ntb_revenue_share_change.change} />}
+                </dd>
+              </div>
+              <div data-slot={`ch-${row.channel}-cost-ntb`}>
+                <dt>{SCORECARD_CARD_COPY.ntbCost}</dt>
+                <dd>{newCustomerFigure(ntb.cost_per_ntb_purchase, newCustomers.kind === 'rows' ? newCustomers.not_available : notAvailable)}</dd>
+              </div>
+            </dl>}
+          <p className="ch-links">
+            {row.link === null ? null : <a href={row.link.href} aria-label={row.link.label}>{SCORECARD_CARD_COPY.campaignsOn} {row.channel_label} ›</a>}
+            {newCustomersTab === undefined ? null : <a href={`${newCustomersTab.route}${query}`}>{SCORECARD_CARD_COPY.newCustomers}</a>}
+          </p>
+        </article>;
+      })}
+    </div>
+    <p className="small dim" data-slot="ch-why">{SCORECARD_CARD_COPY.why}</p>
+    <p className="small dim" data-slot="ch-basis">
+      {returnBasis === null ? null : <>{SCORECARD_CARD_COPY.returnBasis} {returnBasis}.</>}
+      {newCustomers.kind === 'rows' ? <> {SCORECARD_CARD_COPY.ntbBasis} {newCustomers.share_basis}.</> : null}
+    </p>
+  </>;
 }
 
 function ChannelTable({ card, highlight, notAvailable, several }: {
@@ -139,11 +280,14 @@ function ChannelTable({ card, highlight, notAvailable, several }: {
   const table = card.channel_table;
   return <>
     <p className="fresh">{table.fresh_text}</p>
+    {/* One card shows the channel cards above, so the table is a closed disclosure; two cards keep it open. */}
+    <details className="exact ch-table" open={several}>
+      <summary>{SCORECARD_CARD_COPY.table}</summary>
     <DataTable title={table.caption} note={table.caption_detail} nameWithNote={several}>
       <DtHead>
         <DtRow>
           <DtColumn className="l">{table.row_header_label}</DtColumn>
-          {table.columns.map((column) => <DtColumn key={column.column} basis={column.basis}>{column.label}</DtColumn>)}
+          {table.columns.map((column) => <DtColumn key={column.column} basis={column.basis}>{metricLabel(column.column, column.label)}</DtColumn>)}
           <DtColumn className="l">{table.link_column}</DtColumn>
         </DtRow>
       </DtHead>
@@ -160,13 +304,13 @@ function ChannelTable({ card, highlight, notAvailable, several }: {
               const value = figureText(figure);
               return <DtCell
                 key={figure.metric}
-                label={table.columns[index]?.label ?? figure.label}
+                label={metricLabel(figure.metric, table.columns[index]?.label ?? figure.label)}
                 absent={value === null}
                 basis={{ coverage: null, text: table.columns[index]?.basis ?? null }}
               >
                 {/* "Not available over hiding": the word and the server's reason, both visible. */}
                 {value ?? <span className="cell-na">{notAvailable}<span className="reason">{figure.absence_text}</span></span>}
-                {figure.change === null ? null : <FigureChange change={figure.change} slot={`channels:${card.card_id}`} figure={`${row.channel_label} ${figure.label}`} />}
+                {figure.change === null ? null : <FigureChange change={figure.change} slot={`channels:${card.card_id}`} figure={`${row.channel_label} ${metricLabel(figure.metric, figure.label)}`} />}
               </DtCell>;
             })}
             <DtCell label={table.link_column} className="cell-link nw">
@@ -176,6 +320,7 @@ function ChannelTable({ card, highlight, notAvailable, several }: {
         })}
       </DtBody>
     </DataTable>
+    </details>
     <p className="dt-foot">{table.foot}{table.absent_lines.map((line) => <span key={line}> {line}</span>)}</p>
   </>;
 }
@@ -229,9 +374,9 @@ function RetailSales({ artifact, notAvailable }: { readonly artifact: NetworkSco
   return <section className="section" aria-labelledby={headingId}>
     <h2 id={headingId}>{artifact.retail_sales_heading}</h2>
     <div className="tiles two">
-      {artifact.tacos.map((row) => <Tile key={row.coverage_slot} figure={row.figure} notAvailable={notAvailable} slot={row.coverage_slot} market={row.marketplace_text}>
+      {artifact.tacos.map((row) => <ScorecardTile key={row.coverage_slot} figure={row.figure} notAvailable={notAvailable} slot={row.coverage_slot} market={row.marketplace_text}>
         {row.link === null ? null : <a className="chip-link" href={row.link.href} aria-label={row.link.label}>{row.link.text}</a>}
-      </Tile>)}
+      </ScorecardTile>)}
       {artifact.cross_network_spend.map((row) => <div key={row.row_id} className={row.figure === null ? 'tile na' : 'tile'}>
         <span className="k">{row.label}</span>
         {row.marketplace_text === null ? null : <span className="market">{row.marketplace_text}</span>}
@@ -257,10 +402,14 @@ function useSectionArrival(ready: boolean) {
   }, [ready]);
 }
 
-export function ScorecardView({ artifact, highlight = null }: {
+export function ScorecardView({ artifact, highlight = null, newCustomers = null, preset = null }: {
   readonly artifact: NetworkScorecardArtifact;
   /** The channel a campaign's step asks to outline; only a served channel is honoured. */
   readonly highlight?: string | null;
+  /** The served New customers presentation for the same preset (plan 2.3), or null when not asked. */
+  readonly newCustomers?: OverviewSource<NewCustomersPresentation> | null;
+  /** The preset both were served on, carried on the New customers link. */
+  readonly preset?: string | null;
 }) {
   const [insight, setInsight] = useState<string | null>(null);
   const insightOrigin = useRef<HTMLButtonElement | null>(null);
@@ -336,7 +485,7 @@ export function ScorecardView({ artifact, highlight = null }: {
   return <CoverageProvider status={artifact.evidence_status} subject="Scorecard">
     <div className="scorecard">
       <p className="scope-band" aria-live="polite">{artifact.scope_text}</p>
-      {artifact.cards.map((card) => <NetworkCardSection key={card.card_id} card={card} highlight={highlightFor(card)} notAvailable={notAvailable} several={several} />)}
+      {artifact.cards.map((card) => <NetworkCardSection key={card.card_id} artifact={artifact} card={card} highlight={highlightFor(card)} notAvailable={notAvailable} several={several} />)}
       <section className="section" aria-labelledby={insightsHeading}>
         <h2 id={insightsHeading}>{artifact.insights_heading}</h2>
         <InsightCards artifact={artifact} onRead={openInsight} />
@@ -358,8 +507,11 @@ export function ScorecardView({ artifact, highlight = null }: {
         </ul>
       </section>}
       <section className="section" id={SCORECARD_CHANNEL_SECTION} tabIndex={-1} aria-labelledby={channelHeading}>
-        <h2 id={channelHeading}>{artifact.cards[0]?.channel_table.heading}</h2>
-        {artifact.cards.map((card) => <ChannelTable key={card.card_id} card={card} highlight={highlightFor(card)} notAvailable={notAvailable} several={several} />)}
+        <h2 id={channelHeading}>{several ? artifact.cards[0]?.channel_table.heading : SCORECARD_CARD_COPY.heading}</h2>
+        {artifact.cards.map((card) => <Fragment key={card.card_id}>
+          {several ? null : <ChannelCards artifact={artifact} card={card} highlight={highlightFor(card)} newCustomers={channelNewCustomers(artifact, newCustomers)} notAvailable={notAvailable} preset={preset} />}
+          <ChannelTable card={card} highlight={highlightFor(card)} notAvailable={notAvailable} several={several} />
+        </Fragment>)}
         <Pointers artifact={artifact} />
       </section>
       <RetailSales artifact={artifact} notAvailable={notAvailable} />

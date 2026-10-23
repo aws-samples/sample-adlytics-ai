@@ -55,8 +55,23 @@ def test_negotiated_declarations_load_frozen_v1_and_canonical_v2_independently()
         "audiences",
     )
     assert all(page.route.startswith("/") and page.route.endswith("/") for page in v2.pages)
-    assert v2.pages[0].compatibility_routes == ("/",)
-    assert all(not page.compatibility_routes for page in v2.pages[1:])
+    owners = {
+        page.page_id: page.compatibility_routes for page in v2.pages if page.compatibility_routes
+    }
+    # ADR-151: the composed Overview owns `/` in navigation.yaml, so no page entry does.
+    assert owners == {}
+
+
+def test_a_v2_page_binding_that_owns_the_root_is_refused(tmp_path: Path) -> None:
+    document = generated_document(ROOT, schema_version=2)
+    pages = cast("list[dict[str, object]]", document["pages"])
+    scorecard = next(page for page in pages if page["page_id"] == "scorecard")
+    scorecard["compatibility_routes"] = ["/"]
+    path = tmp_path / "v2-bindings.json"
+    path.write_text(json.dumps(document))
+
+    with pytest.raises(PageSchemaError, match="must not own the root route"):
+        load_v2_page_bindings(tmp_path, path=Path(path.name))
 
 
 def test_v2_generator_projects_temporal_artifacts_visuals_and_section_roles(tmp_path: Path) -> None:
@@ -93,6 +108,40 @@ def test_v2_binding_validator_rejects_unknown_temporal_policy_field(tmp_path: Pa
     path.write_text(json.dumps(document))
 
     with pytest.raises(PageSchemaError, match="V2 temporal policy binding must contain exactly"):
+        load_v2_page_bindings(tmp_path, path=Path(path.name))
+
+
+def test_v2_generator_projects_each_metric_unit_and_ratio_scale(tmp_path: Path) -> None:
+    """Plan D4: the browser formats a rate as % and a multiplier with a times sign."""
+    document = generated_document(ROOT, schema_version=2)
+    display = cast("dict[str, dict[str, object]]", document["metric_display"])
+    assert display["ctr"] == {"ratio_scale": "rate", "units": "ratio"}
+    assert display["roas_attributed_14d"] == {"ratio_scale": "multiplier", "units": "ratio"}
+    assert display["impressions"] == {"ratio_scale": None, "units": "count"}
+    assert display["ad_spend"] == {"ratio_scale": None, "units": "currency"}
+    path = tmp_path / "v2-bindings.json"
+    broken_entries: tuple[dict[str, object], ...] = (
+        {"ratio_scale": None, "units": "ratio"},
+        {"ratio_scale": "rate", "units": "count"},
+    )
+    for broken in broken_entries:
+        display["ctr"] = broken
+        path.write_text(json.dumps(document))
+        with pytest.raises(PageSchemaError, match="must scale exactly a ratio"):
+            load_v2_page_bindings(tmp_path, path=Path(path.name))
+
+
+def test_v2_generator_projects_each_ad_products_governed_channel(tmp_path: Path) -> None:
+    """UI refresh 2.3: New customers rows join Scorecard channel rows on taxonomy keys only."""
+    document = generated_document(ROOT, schema_version=2)
+    channels = cast("dict[str, str]", document["ad_product_channels"])
+    assert channels["amazon_dsp"] == "amazon_dsp"
+    assert channels["sponsored_products"] == "amazon_sponsored_products"
+    assert channels["sponsored_brands"] == "amazon_sponsored_brands"
+    path = tmp_path / "v2-bindings.json"
+    channels["sponsored_brands"] = "amazon_sponsored_products"
+    path.write_text(json.dumps(document))
+    with pytest.raises(PageSchemaError, match="each ad product to its own channel"):
         load_v2_page_bindings(tmp_path, path=Path(path.name))
 
 

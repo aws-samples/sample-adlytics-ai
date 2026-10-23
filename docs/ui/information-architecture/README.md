@@ -177,7 +177,10 @@ landmark order, h1 focus and `document.title` on a route change; sentence-case n
 10. Detail opens in place with the campaign as h1, the channel as a pill and Back closing it. The deep
     section renders or shows a neutral callout, failures show at the top with focus, a Reach slot
     shows on the 1-day preset, and the channel step targets the Scorecard.
-11. `/` stops rendering Campaigns and becomes the Overview.
+11. `/` stops rendering Campaigns and becomes the Overview. From UI refresh slice 2.1 (2026-10-22) `/`
+    is the composed Overview › Growth check tab ([ADR-151](../../decisions/adr-151-compose-a-customer-tab-from-served-page-presentations.md),
+    [Overview](../overview/README.md)) listed under `composed_routes` in `presentation/navigation.yaml`,
+    and no `pages.yaml` entry carries `/`. Between OD-UX-3 and that slice, `/` opened the Scorecard.
 
 **Retail health.** One-tab hub header; products table titled "Shipped revenue per product", with the
 title first and ASIN second, a per-row Stale pill and stacked rows when narrow; server change chips;
@@ -216,6 +219,10 @@ Activate buttons, primary only in the confirmation; no overflow; a wrapped promp
 | Alerts | Deferred: "Also changed" per tab and the Overview's "What changed" card |
 | Budget simulator | Plan › Budget simulator, listed when it ships. Plan totals and modelled ROAS show per channel only, and the budget change is totalled across channels, as the owner chose on 2026-10-07. The Amazon DSP forecast curve sits beside the custom curve, labelled and outside totals |
 
+(OD-UX-4, 2026-10-22: the Scorecard's channel cards show each channel's served new-to-brand share and
+cost per first-time-buyer purchase beside its return, reversing the "new-to-brand moves to New
+customers" amendment below for those two figures; New customers still owns them, and the cards read
+its served rows. [Scorecard LLD](../scorecard/low-level-design.md#channel-cards-ui-refresh-23-readout-a3-od-ux-4).)
 The business outcomes design's owner applies its amendments: new-to-brand moves to New customers, the
 Scorecard reach band and channel-group subtotal rows go, Repeat purchase by product joins navigation,
 the Reach slot moves to campaign detail, alerts gain `filter_id`, baked findings ship either way, and
