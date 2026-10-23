@@ -488,3 +488,71 @@ def test_the_full_gate_runs_every_check(gate: ModuleType) -> None:
         "RUN_RECORD_MISSING",
         "EXPORT_GATE_FAILED",
     ]
+
+
+REVIEWED_VULN = "GHSA-xcq7-p3pf-p88h"
+OTHER_VULN = "GHSA-0000-0000-0000"
+PIP_AUDIT_FINDING = "Found 1 known vulnerability in 1 package"
+
+
+def _audit_uv_lock(  # noqa: PLR0913, PLR0917 - three fixtures and the findings
+    gate: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, found: list[str]
+) -> tuple[list[Any], list[list[str]]]:
+    """Run check_audit on a changed uv.lock against a stand-in pip-audit that reports `found`.
+
+    The stand-in honours `--ignore-vuln` the way pip-audit does: it exits 0 when every finding is
+    ignored, else 1 with pip-audit's summary line. Every argv the check ran is returned.
+    """
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], cwd: Path, **_: object) -> Any:  # noqa: ARG001
+        calls.append(list(argv))
+        if "pip-audit" not in argv:
+            return gate.subprocess.CompletedProcess(argv, 0, b"", b"")
+        ignored = {argv[i + 1] for i, arg in enumerate(argv) if arg == "--ignore-vuln"}
+        if all(vuln in ignored for vuln in found):
+            clean = b"No known vulnerabilities found\n"
+            return gate.subprocess.CompletedProcess(argv, 0, clean, b"")
+        return gate.subprocess.CompletedProcess(argv, 1, f"{PIP_AUDIT_FINDING}\n".encode(), b"")
+
+    def changed_lockfiles(*_args: object, **_kw: object) -> bytes:
+        return b"uv.lock\0"
+
+    monkeypatch.setattr(gate, "git_bytes", changed_lockfiles)
+    monkeypatch.setattr(gate, "_run", fake_run)
+    ctx = gate.Context(
+        root=tmp_path, base="b", head="h", tree="t", runs_root=tmp_path, work=tmp_path
+    )
+    return gate.check_audit(ctx), calls
+
+
+def test_pip_audit_ignores_exactly_the_reviewed_advisory(
+    gate: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert gate.PIP_AUDIT_REVIEWED == (("GHSA-xcq7-p3pf-p88h", "O-OTEL-TRACESTATE-001"),)
+    refusals, calls = _audit_uv_lock(gate, tmp_path, monkeypatch, [REVIEWED_VULN])
+    assert refusals == []
+    audit = next(argv for argv in calls if "pip-audit" in argv)
+    assert "--strict" in audit
+    assert [audit[i + 1] for i, arg in enumerate(audit) if arg == "--ignore-vuln"] == [
+        REVIEWED_VULN
+    ]
+
+
+def test_any_other_pip_audit_finding_still_refuses(
+    gate: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    refusals, _ = _audit_uv_lock(gate, tmp_path, monkeypatch, [REVIEWED_VULN, OTHER_VULN])
+    assert [(r.code, r.detail) for r in refusals] == [
+        ("AUDIT_FINDING", f"pip-audit uv.lock exited 1: {PIP_AUDIT_FINDING}")
+    ]
+
+
+def test_every_reviewed_advisory_names_a_dispositions_row(gate: ModuleType) -> None:
+    dispositions = (SCRIPTS.parent / "docs" / "security-dispositions.md").read_text("utf-8")
+    for vuln, row in gate.PIP_AUDIT_REVIEWED:
+        line = next(
+            (entry for entry in dispositions.splitlines() if entry.startswith(f"| {row} |")), ""
+        )
+        assert "NOT AFFECTED" in line
+        assert vuln in line
