@@ -154,6 +154,19 @@ matched. No halo-sales row renders: nothing serves `attributed_revenue_halo_14d`
 line shows once below the cards. The ranking and the model selector each sit in a closed
 disclosure: the ranking under its served `ranking.heading`, the selector and its served
 `model_note` under "How credit is shared: {selected option}".
+### Ideal state with one card (UI refresh 3.1, readout A.2, T2L-3)
+With one network card the page reads, top to bottom: the answer, the selected model's served
+`figure.basis` under it (`sc-basis`), "How credit is shared", one tile row (`sc-tiles`: the card's
+served `spend`, its `tacos` row with its link, and the served cross-network spend row), the channel
+cards, "What changed" (`sc-changed`), the ranking disclosure under its served `ranking.heading`, and
+About these figures. The answer states the headline return, so it isn't repeated as a tile, and the
+separate "Ad spend and retail sales" and "Insights" sections don't render. "What changed" shows every
+served insight card other than the `channel-share-of-network-spend` sentences, which each channel card
+already reads, then the first served spend-share card, at most three, in served order
+(`whatChangedCards`); with no card it reads the served quiet reason. Under the cards the channel
+table's served `foot` doesn't render, because the cards' "why" line says the same; its served
+`absent_lines` and the New customers pointer stay. With two cards the page is as before.
+
 ### Channel row links
 
 Each channel row opens `/campaigns/?preset={preset}&channel={channel key}` when Campaigns declares that

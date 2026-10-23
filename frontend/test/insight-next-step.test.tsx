@@ -31,8 +31,8 @@ const TARGETS: { readonly [K in InsightNextStep['kind']]: unknown } = {
 };
 
 const TABS: readonly ManifestTab[] = [
-  { description: 'Every campaign', entitlement: null, kind: 'page', label: 'Campaigns', order: 2, route: '/campaigns/', tab_id: 'campaigns' },
-  { description: 'Retail actuals', entitlement: null, kind: 'page', label: 'Retail health', order: 1, route: '/retail-health/', tab_id: 'retail-health' },
+  { description: 'Every campaign', entitlement: null, kind: 'page', label: 'Campaigns', order: 2, question: null, route: '/campaigns/', tab_id: 'campaigns' },
+  { description: 'Retail actuals', entitlement: null, kind: 'page', label: 'Retail health', order: 1, question: null, route: '/retail-health/', tab_id: 'retail-health' },
 ];
 
 function filled(nextStep: InsightNextStep | null): InsightSlotView {

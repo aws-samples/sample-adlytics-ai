@@ -105,7 +105,7 @@ test('navigation comes from the route manifest and lists only hubs with a shippe
   const hubs = screen.getByRole('navigation', { name: 'Hubs' });
   const links = within(hubs).getAllByRole('link');
   assert.deepEqual(links.map((link) => [link.getAttribute('aria-label'), link.getAttribute('href')]), [
-    ['Adlytics AI, go to Overview', '/'],
+    ['Adlytics AI, go to Growth check', '/'],
     // ADR-151: the composed Overview owns the root and is the first hub.
     ['Overview', '/'],
     // UI slice 9a: the Scorecard is the Performance hub's first tab.
@@ -140,7 +140,8 @@ test('landmarks come in order and the h1 is the tab name, focused on a route cha
   assert.equal(screen.getByRole('link', { name: 'Skip to assistant' }).getAttribute('href'), '#chat-question');
   const heading = screen.getByRole('heading', { level: 1, name: 'Campaigns' });
   assert.equal(document.activeElement, heading);
-  assert.ok(screen.getByText('Every campaign, for all channels, sponsored ads only or one channel'));
+  // UI refresh 3.8: the tab's question is its lead line, in place of the description.
+  assert.equal(document.querySelector('.hubhead .desc.lead-q')?.textContent, 'Which campaigns should get more or less?');
   assert.equal(document.title, 'Campaigns · Performance · Adlytics AI');
   assert.deepEqual(
     within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getAllByRole('listitem').map((item) => item.textContent),
@@ -150,19 +151,24 @@ test('landmarks come in order and the h1 is the tab name, focused on a route cha
   rerender(shell('/retail-health/'));
   assert.equal(document.activeElement, screen.getByRole('heading', { level: 1, name: 'Retail health' }));
   assert.equal(document.title, 'Retail health · Adlytics AI');
-  // A hub whose one tab carries its name has a one-item crumb and no tab strip.
+  // A tab that carries its hub's name has a one-item crumb; Products and ads (UI refresh 3.7)
+  // gives the hub a tab strip, each tab with its question under its label (3.8).
   assert.deepEqual(
     within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getAllByRole('listitem').map((item) => item.textContent),
     ['Retail health'],
   );
-  assert.equal(screen.queryByRole('navigation', { name: /Sections of/ }), null);
+  const strip = screen.getByRole('navigation', { name: 'Sections of Retail health' });
+  assert.deepEqual(within(strip).getAllByRole('link').map((link) => link.textContent), ['Retail healthAre my products selling?', 'Products and ads']);
+  assert.ok(within(strip).getByRole('link', { name: 'Retail health' }));
 });
 
 test('the root route is the composed Overview tab (ADR-151)', () => {
   installMediaQuery();
   render(shell('/'));
-  assert.ok(screen.getByRole('heading', { level: 1, name: 'Overview' }));
-  assert.equal(document.title, 'Overview · Adlytics AI');
+  // UI refresh 3.8: the Overview hub's one tab is the Growth check, led by its question.
+  assert.ok(screen.getByRole('heading', { level: 1, name: 'Growth check' }));
+  assert.ok(screen.getByText('Is your advertising growing your business?'));
+  assert.equal(document.title, 'Growth check · Overview · Adlytics AI');
 });
 
 test('a direct visit without the entitlement names only the page and marks no navigation current', () => {
@@ -236,7 +242,7 @@ test('below 881 px the menu button opens a modal sheet with hubs, Theme and Sign
   assert.ok(within(sheet).getByText('Performance / Campaigns'));
   const hubs = within(sheet).getByRole('navigation', { name: 'Hubs' });
   // The current hub lists its tabs under it in the sheet.
-  assert.deepEqual(within(hubs).getAllByRole('link').map((link) => link.textContent), ['Overview', 'Performance', 'Scorecard', 'Campaigns', 'Reach and audiences', 'Reach and funnel', 'Audiences', 'Customers', 'New customers', 'Retention', 'Retail health', 'Operations']);
+  assert.deepEqual(within(hubs).getAllByRole('link').map((link) => link.textContent), ['Overview', 'Performance', 'Scorecard', 'Campaigns', 'Reach and audiences', 'Reach and funnel', 'Audiences', 'Customers', 'New customers', 'Retention', 'Retail health', 'Retail health', 'Products and ads', 'Operations']);
   assert.equal(document.getElementById('app-root')?.inert, true);
   await user.click(within(sheet).getByRole('radio', { name: 'Light' }));
   assert.equal(document.documentElement.dataset.theme, 'light');

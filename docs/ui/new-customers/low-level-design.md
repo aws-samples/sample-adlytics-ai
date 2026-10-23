@@ -265,6 +265,12 @@ Every text is a server field. The browser never maps a reason code. A typed abse
 | Loading | — | Skeletons in the order of the sections, and a status "Loading New customers" for assistive technology |
 | No published body for the preset (page-level) | the page's `window_unavailable` | Page-level absence: [ABS-NC-1](../page-absence-copy.md#abs-nc-1) (rolling) or [ABS-NC-2](../page-absence-copy.md#abs-nc-2) (calendar), with [ABS-ALT](../page-absence-copy.md#abs-alt) when another preset is published; no artifact and no scope band |
 
+### Ideal state (UI refresh 3.5, readout A.7, T1L-5, 2026-10-22)
+The served boundary reads in one closed "How we count" disclosure. When no insight card is served, the
+slot isn't filled, and its served absence reason is already part of the served scope text (the
+calendar presets' "No comparison for calendar periods."), the Insights section doesn't render, so the
+reason reads once. Only that deterministic reason is compared, never narration.
+
 ### Insight contract: `portfolio-acquisition` v1
 
 Output class perspective (design §6.2) with no prompt: the card text comes from a fixed rule, and the dialog

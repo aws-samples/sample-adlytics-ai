@@ -25,6 +25,7 @@ import { retailHealthRouteAdapter } from "./RetailHealthRouteAdapter";
 import { scorecardRouteAdapter } from "./ScorecardRouteAdapter";
 import { newCustomersRouteAdapter } from "./NewCustomersRouteAdapter";
 import { overviewRouteAdapter } from "./OverviewRouteAdapter";
+import { productsAndAdsRouteAdapter } from "./ProductsAndAdsRouteAdapter";
 import { reachRouteAdapter } from "./ReachRouteAdapter";
 import { retentionRouteAdapter } from "./RetentionRouteAdapter";
 import { PresentationV2RouteController } from "./PresentationV2RouteController";
@@ -228,6 +229,9 @@ function RoutePresentationController({
 }) {
   if (route === 'overview') {
     return <PresentationV2RouteController adapter={overviewRouteAdapter} sessionId={sessionId} />;
+  }
+  if (route === 'products-and-ads') {
+    return <PresentationV2RouteController adapter={productsAndAdsRouteAdapter} sessionId={sessionId} />;
   }
   if (route === 'campaigns') {
     return <PresentationV2RouteController adapter={campaignRouteAdapter} sessionId={sessionId} />;

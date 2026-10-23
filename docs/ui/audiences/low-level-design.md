@@ -134,6 +134,14 @@ month.
 
 The callout never says the customer isn't subscribed.
 
+### Ideal state (UI refresh 3.4, readout A.6, 2026-10-22)
+Under the answer one browser-owned line reads "You can build a similar audience in your own tools.
+Adlytics doesn't create or activate audiences." (`AUDIENCES_ACTIVATE_LINE`). In All buyers each served
+segment row, in served order, adds two decorative bars on one 0–100% scale: its served
+`segment_buyer_share` and `segment_exposed_share`; the cells beside them carry the served text. "DSP
+campaigns by segment" folds into a closed "Where this campaign's sales came from" disclosure. The
+in-profile paid-feature callout carries the PAID-NEXT line.
+
 ### Insight contract: `segment-over-index` v1
 
 Perspective class. It names top segments by index only where `segment_buyers` is at least `B_min` (policy,

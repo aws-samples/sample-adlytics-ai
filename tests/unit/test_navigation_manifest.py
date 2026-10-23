@@ -87,6 +87,7 @@ def test_only_hubs_with_a_shipped_tab_are_listed_in_navigation_order() -> None:
         "/new-customers/",
         "/retention/",
         "/retail-health/",
+        "/products-and-ads/",
         "/admin/prompts/",
     ]
     assert manifest["root"] == {"route": "/", "tab_id": "overview"}
@@ -113,12 +114,48 @@ def test_the_composed_overview_owns_the_root_over_routed_source_pages() -> None:
             "description": overview.description,
             "entitlement": None,
             "kind": "composed",
-            "label": "Overview",
+            "label": "Growth check",
             "order": 1,
+            "question": "Is your advertising growing your business?",
             "route": "/",
             "tab_id": "overview",
         }
     ]
+
+
+def test_every_customer_page_tab_carries_its_question_and_a_blank_one_is_refused(
+    tmp_path: Path,
+) -> None:
+    """UI refresh 3.8: the question is navigation text, optional, and never blank."""
+    manifest = json.loads((ROOT / ROUTE_MANIFEST_PATH).read_text())
+    questions = {tab["tab_id"]: tab["question"] for hub in manifest["hubs"] for tab in hub["tabs"]}
+    assert questions["scorecard"] == "Is my ad spend paying back?"
+    assert questions["products-and-ads"] is None
+    assert questions["prompt-admin"] is None
+    root = _workspace(
+        tmp_path,
+        navigation=_navigation_text().replace(
+            "question: Is your advertising growing your business?", 'question: " "'
+        ),
+    )
+
+    with pytest.raises(PageSchemaError, match="question"):
+        load_navigation(root)
+    pages = (ROOT / PRESENTATION_PAGE_SCHEMAS_PATH).read_text()
+    blank_page = _workspace(
+        tmp_path / "pages",
+        pages=pages.replace("question: Is my ad spend paying back?", 'question: " "'),
+    )
+    with pytest.raises(PageSchemaError, match="question"):
+        load_navigation(blank_page)
+    unknown_key = _workspace(
+        tmp_path / "unknown",
+        pages=pages.replace(
+            "question: Is my ad spend paying back?", "subtitle: Is my ad spend paying back?"
+        ),
+    )
+    with pytest.raises(PageSchemaError, match="unknown subtitle"):
+        load_navigation(unknown_key)
 
 
 def test_a_composed_source_that_is_not_a_routed_page_tab_is_refused(tmp_path: Path) -> None:
@@ -197,6 +234,7 @@ def test_a_page_without_a_navigation_block_is_not_routed() -> None:
             "/audiences/",
             "/campaigns/",
             "/new-customers/",
+            "/products-and-ads/",
             "/reach/",
             "/retail-health/",
             "/retention/",

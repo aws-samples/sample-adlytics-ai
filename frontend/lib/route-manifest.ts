@@ -19,7 +19,7 @@ export type SessionField = typeof sessionFields[number];
 export type SessionEntitlements = Readonly<Partial<Record<SessionField, boolean>>>;
 
 /** ADR-151: the composed tabs this frontend renders, each over its sources' served presentations. */
-export const composedTabIds = ['overview'] as const;
+export const composedTabIds = ['overview', 'products-and-ads'] as const;
 export type ComposedTabId = typeof composedTabIds[number];
 
 export interface ManifestTab {
@@ -28,6 +28,8 @@ export interface ManifestTab {
   readonly kind: 'composed' | 'page' | 'static';
   readonly label: string;
   readonly order: number;
+  /** UI refresh 3.8: the customer question the tab answers, or null. */
+  readonly question: string | null;
   readonly route: string;
   readonly tab_id: string;
 }
@@ -81,7 +83,7 @@ function route(value: unknown, context: string): string {
 }
 
 function parseTab(value: unknown, audience: ManifestHub['audience']): ManifestTab {
-  const tab = record(value, ['description', 'entitlement', 'kind', 'label', 'order', 'route', 'tab_id'], 'manifest tab');
+  const tab = record(value, ['description', 'entitlement', 'kind', 'label', 'order', 'question', 'route', 'tab_id'], 'manifest tab');
   const kind = oneOf(tab.kind, ['composed', 'page', 'static'] as const, 'manifest tab kind');
   let entitlement: ManifestTab['entitlement'] = null;
   if (tab.entitlement !== null) {
@@ -118,6 +120,7 @@ function parseTab(value: unknown, audience: ManifestHub['audience']): ManifestTa
     kind,
     label: text(tab.label, 'manifest tab label'),
     order: tab.order as number,
+    question: tab.question === null ? null : text(tab.question, 'manifest tab question'),
     route: tabRoute,
     tab_id: tabId,
   };

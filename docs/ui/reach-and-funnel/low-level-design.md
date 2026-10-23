@@ -85,6 +85,17 @@ Display only (UI refresh, plan D4, T1L-4): a served count and a served integer c
 | Per-channel return | "Credited revenue ÷ spend · linear model · 14-day lookback from each shopper's first ad · includes brand halo · {period}" |
 | Funnel column for `search_rate` (revised at `2026-10-09.2`) | "Search rate". Never "branded search", because AMC's documentation doesn't say these searches are branded (§10) |
 
+**Ideal state (UI refresh 3.3, readout A.5, UX sweep fix 8, 2026-10-22).** Under the overlap bar a
+legend names each served group with its served count (`rf-bar-legend`), so the bar isn't read by colour
+alone; the signed-in and all-shoppers counts fold into a closed "Show shopper counts" disclosure. The
+funnel section reads "What they did next", with the served `index_note` as the index column's basis
+(T2L-5). The frequency section reads "When more ads stop paying" and opens with "Sales per ad dollar,
+all Amazon ads: {first} at {first bucket}, {last} at {last bucket}." from the first and last served
+`platform_return`; it compares nothing. The bars are zero-based with their top at the largest served
+purchaser rate (T2L-2), the served platform return reads under each bucket (`rf-freq-return`), and
+"Show values" lists both per bucket. The per-channel line reads "Not available per channel: {served
+unavailable_reason}" as one sentence (T2L-5).
+
 The **caveat block** sits inside the full-funnel and frequency visuals, above the chart. Since UI refresh 2.4 (OD-UX-7, [ADR-102](../../decisions/adr-102-flag-association-only-metrics-and-require-their-caveat.md) amendment of 2026-10-22) it shows the first served line, and every served line in a closed "Why this is association, not cause" disclosure beneath it. The served lines are:
 "This shows association, not cause. Shoppers were not randomly assigned to groups.", "Shoppers can see an ad
 after they buy, so groups that include DSP retargeting may look stronger." and "Sponsored ads appear when

@@ -25,6 +25,13 @@ Amazon. The platform is read-only.
 
 Hubs and tabs are listed in navigation order. A hub with one visible tab has no tab strip.
 
+Tab questions (UI refresh 3.8, 2026-10-22): a page tab's `navigation.question` in
+`presentation/pages/v2/pages.yaml`, or a composed tab's `question` in `presentation/navigation.yaml`,
+is an optional customer question, the readout mockup's words verbatim. The route manifest carries it;
+the tab strip shows it under the tab label and the page shows it as its lead line in place of the tab
+description. It's navigation text only: no page context, artifact or bake carries it. From the same
+slice the Overview hub's one tab reads "Growth check".
+
 | Hub or group | Customer question | Tab and route | Tab description |
 |---|---|---|---|
 | Overview | "What needs my attention this week?" | Overview, `/` | What needs your attention this week, with a few headline figures for one window. |
@@ -36,6 +43,7 @@ Hubs and tabs are listed in navigation order. A hub with one visible tab has no 
 | | | Retention, `/retention/` | Cohorts of new customers your ads brought in, and when they buy again |
 | | | Repeat purchase by product, `/repeat-purchase/` | Orders, customers and repeat revenue per product, reported by Amazon Brand Analytics |
 | Retail health | "How is my retail business doing on Amazon?" | Retail health, `/retail-health/` | Sales, traffic, conversion and returns from Vendor Central, per product |
+| | | Products and ads, `/products-and-ads/` (composed, UI refresh 3.7) | Each product's sales, beside what one ad channel credits to it |
 | Plan (listed when the simulator ships) | "What might happen if I moved budget?" | Budget simulator, `/simulator/` | Try a budget move and see its modelled effect. Nothing changes in Amazon. |
 | Operations group (operators only) | "Is the data current, and are the prompts right?" | Prompt administration, `/admin/prompts/` | Version, check and activate the prompts that write insights |
 | | | Data pipeline status, `/admin/status/` | Whether each data feed is landing, and which pages are current |

@@ -330,6 +330,10 @@ button { font: inherit; }
 .tabs a:hover { color: var(--text); }
 .tabs a[aria-current="page"] { color: var(--text); border-bottom-color: var(--accent); font-weight: 650; }
 .desc { color: var(--text-dim); max-width: 72ch; }
+/* UI refresh 3.8: a tab names its question under its label, and the page leads with it. */
+.tabs a:has(.q) { flex-direction: column; align-items: flex-start; justify-content: center; gap: 1px; }
+.tabs a .q { font-size: 12px; font-weight: 450; color: var(--text-dim); }
+.desc.lead-q { color: var(--text); font-size: 15px; font-weight: 600; }
 
 /* slide-out menu sheet (below 881 px) */
 .scrim.sheet-scrim { display: block; padding: 0; place-items: unset; }
@@ -1268,6 +1272,17 @@ textarea.prompt-text:focus-visible { outline: 2px solid var(--ai); outline-offse
 .reach-overlap-segment.dsp_only { background: var(--accent); }
 .reach-overlap-segment.sponsored_only { background: var(--ai); }
 .reach-overlap-segment.dsp_and_sponsored { background: var(--good); }
+/* UI refresh 3.3: each overlap segment named with its served count (not colour only). */
+.reach-overlap-legend { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; }
+.reach-overlap-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.reach-overlap-swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.reach-overlap-swatch.dsp_only { background: var(--accent); }
+.reach-overlap-swatch.sponsored_only { background: var(--ai); }
+.reach-overlap-swatch.dsp_and_sponsored { background: var(--good); }
+.reach-counts { margin-top: 10px; }
+.reach-lead { font-size: 15px; font-weight: 600; margin: 4px 0 8px; }
+.reach-return-row { display: flex; gap: 8px; padding: 6px 14px 0; font-size: 13px; }
+.reach-return-row > span { flex: 1 1 0; text-align: center; }
 .reach-notes { display: flex; flex-direction: column; gap: 4px; }
 .reach-caveat {
   display: flex; flex-direction: column; gap: 5px; padding: 10px 12px;
@@ -1292,7 +1307,8 @@ textarea.prompt-text:focus-visible { outline: 2px solid var(--ai); outline-offse
 .reach-chart-item .reach-absence { overflow-wrap: anywhere; }
 .reach-values summary, .reach-about summary { cursor: pointer; font-weight: 650; }
 .reach-values summary:focus-visible, .reach-about summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 5px; }
-.reach-frequency-tables { display: grid; grid-template-columns: minmax(0, 2fr) minmax(220px, 1fr); gap: 12px; align-items: start; }
+/* UI refresh 3.3: the platform return reads under the bars, so the basis and the per-channel line stack. */
+.reach-frequency-tables { display: grid; grid-template-columns: 1fr; gap: 8px; align-items: start; }
 .reach-frequency-tables > div { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
 .reach-frequency-tables .dt-wrap { margin-top: 0; }
 .reach-about { border-top: 1px solid var(--line); padding-top: 10px; }
@@ -1383,3 +1399,38 @@ textarea.prompt-text:focus-visible { outline: 2px solid var(--ai); outline-offse
   color: var(--text);
 }
 .answer-sentence.fallback { font-size: 15px; font-weight: 500; }
+
+/* UI refresh 3.4 (readout A.6): paired share bars on Audiences, decorative beside the served text. */
+.au-bars { display: flex; flex-direction: column; gap: 3px; min-width: 120px; }
+.au-bar { display: inline-block; height: 8px; border-radius: 3px; min-width: 2px; }
+.au-bar.buyers { background: var(--accent); }
+.au-bar.reached { background: repeating-linear-gradient(90deg, var(--text-dim) 0 2px, transparent 2px 4px); border: 1px solid var(--text-dim); }
+.au-legend { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-dim); }
+.au-legend .au-bar { width: 18px; }
+.au-legend .au-bar.reached { margin-left: 10px; }
+.au-activate { margin: 8px 0 12px; }
+
+/* UI refresh 3.5 (readout A.8): the Retention repeat curve. */
+.retention-chart { margin: 8px 0; }
+.rt-line { fill: none; stroke-width: 2.5; }
+.rt-line.dsp_only { stroke: var(--accent); }
+.rt-line.sponsored_only { stroke: var(--ai); }
+.rt-line.dsp_and_sponsored { stroke: var(--good); }
+.rt-x { justify-content: space-between; }
+.rt-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; margin-top: 6px; }
+.rt-legend span { display: inline-flex; align-items: center; gap: 6px; }
+
+/* UI refresh 3.2 (readout A.4): highest and lowest return lists, in served order. */
+.cp-return-lists { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin: 12px 0; }
+.cp-return-list h3 { margin: 0; font-size: 16px; }
+.cp-return-list ol { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.cp-return-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: baseline; border-top: 1px solid var(--line); padding-top: 6px; font-size: 13px; }
+.cp-return-list .name { display: flex; flex-direction: column; overflow-wrap: anywhere; }
+.cp-return-list .sub { color: var(--text-dim); font-size: 12px; }
+.cp-return-list .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.retail-health details.rh-fresh { margin: 4px 0 8px; }
+.retail-health details.rh-fresh summary { cursor: pointer; }
+.retail-health details.rh-fresh ul { margin: 6px 0; padding-left: 18px; }
+.products-ads .channel-seg { margin: 8px 0; }
+.products-ads .pa-absent .reason { color: var(--text-dim); font-size: 12px; white-space: normal; }
+.scorecard .answer-basis { font-size: 13px; color: var(--text-dim); margin: -4px 0 8px; }

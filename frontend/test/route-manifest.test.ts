@@ -36,7 +36,11 @@ test('routes resolve with or without the trailing slash, and the root resolves t
   assert.equal(locateRoute('/')?.tab.tab_id, 'overview');
   assert.equal(locateRoute('/')?.tab.kind, 'composed');
   assert.equal(locateRoute('/channel-performance/'), null);
-  assert.equal(rootTab().label, 'Overview');
+  assert.equal(rootTab().label, 'Growth check');
+  // UI refresh 3.8: a tab carries its customer question, or null.
+  assert.equal(rootTab().question, 'Is your advertising growing your business?');
+  assert.equal(locateRoute('/products-and-ads/')?.tab.kind, 'composed');
+  assert.equal(locateRoute('/products-and-ads/')?.tab.question, null);
 });
 
 test('an exported index.html locates as its route, as the edge serves it; other dotted paths do not', () => {
@@ -59,7 +63,7 @@ test('document titles follow ia §3.5', () => {
   assert.equal(documentTitle(locateRoute('/reach/')), 'Reach and funnel · Reach and audiences · Adlytics AI');
   assert.equal(documentTitle(locateRoute('/audiences/')), 'Audiences · Reach and audiences · Adlytics AI');
   assert.equal(documentTitle(locateRoute('/admin/prompts/')), 'Prompt administration · Operations · Adlytics AI');
-  assert.equal(documentTitle(locateRoute('/')), 'Overview · Adlytics AI');
+  assert.equal(documentTitle(locateRoute('/')), 'Growth check · Overview · Adlytics AI');
   assert.equal(documentTitle(null), 'Page not found · Adlytics AI');
 });
 

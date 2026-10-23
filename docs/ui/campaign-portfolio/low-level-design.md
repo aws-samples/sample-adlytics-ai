@@ -234,6 +234,14 @@ browser never reorders. The campaign row count is bounded by the artifact declar
 > column, and one line above it reads "Latest data {date}" or each distinct served staleness
 > qualifier once with "See why" opening the coverage sheet; under a one-channel option the table
 > adds "Sort by Attributed ROAS to find campaigns to fix; you make the change in Amazon Ads."
+>
+> UI refresh 3.2 (readout A.4, D10, 2026-10-22): "Highest return" and "Lowest return" list the first
+> five served rows of segment 0 of the server's own `attributed_roas` orderings, `desc` and `asc`
+> (both baked for every preset, `bakeability.py` `CAMPAIGN_ORDERING_COUNT`), for the same window and
+> channel option; rows whose ROAS is undefined sort last on the server and are skipped. The browser
+> never sorts: if either answer isn't that ordering, window and option, or a request fails, both
+> lists are omitted (`RETURN_LISTS_COPY`). "Delivery per channel" folds into a closed disclosure
+> below the campaign table.
 > (`CAMPAIGNS_SORT_HINT`). Tile priors name their served prior window ("Aug 8–14, 2026: …").
 > `campaigns`, `portfolio-metric-focus` and `insight-deep-dive` take `filter_id`; a well-formed id
 > the preset doesn't offer is refused with `ADLY-PRESENTATION-0005`, and the browser shows All

@@ -71,6 +71,8 @@ class NavigationTab:
     order: int
     entitlement: str | None
     sources: tuple[str, ...] = ()
+    # UI refresh 3.8: the customer question a customer tab answers, or None.
+    question: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -155,9 +157,11 @@ def _composed_tabs(value: object, where: str) -> tuple[NavigationTab, ...]:
     for index, item in enumerate(_sequence(value, where)):
         context = f"{where}[{index}]"
         raw = _mapping(item, context)
+        # UI refresh 3.8: `question` is the one optional key of a composed tab.
         _exact(
             raw,
-            {"route", "hub_id", "tab_id", "tab_label", "tab_description", "order", "sources"},
+            {"route", "hub_id", "tab_id", "tab_label", "tab_description", "order", "sources"}
+            | ({"question"} & set(raw)),
             context,
         )
         sources = tuple(
@@ -177,6 +181,9 @@ def _composed_tabs(value: object, where: str) -> tuple[NavigationTab, ...]:
                 order=_positive_integer(raw["order"], f"{context}.order"),
                 entitlement=None,
                 sources=sources,
+                question=(
+                    _nonblank(raw["question"], f"{context}.question") if "question" in raw else None
+                ),
             )
         )
     return tuple(tabs)
@@ -202,6 +209,7 @@ def _page_tabs(pages: PresentationPageSchemaSet) -> tuple[NavigationTab, ...]:
             description=page.navigation.tab_description,
             order=page.navigation.order,
             entitlement=None,
+            question=page.navigation.question,
         )
         for page in pages.pages
         if page.navigation is not None
@@ -301,6 +309,7 @@ def route_manifest_document(navigation: Navigation) -> dict[str, object]:
                         "kind": tab.kind,
                         "label": tab.label,
                         "order": tab.order,
+                        "question": tab.question,
                         "route": tab.route,
                         "tab_id": tab.tab_id,
                     }

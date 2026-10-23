@@ -15,7 +15,7 @@ import { InsightFocusDialog, type InsightDialogSlot, type InsightFocusSurface } 
 import { VisibleTabsContext } from '@/components/NextStepContext';
 import { PageAbsence } from '@/components/PageAbsence';
 import { scorecardRouteAdapter } from '@/components/ScorecardRouteAdapter';
-import { CHANNEL_NEW_CUSTOMERS_ABSENT, SCORECARD_CARD_COPY, ScorecardControlsSkeleton, ScorecardSkeleton, ScorecardView } from '@/components/ScorecardView';
+import { CHANNEL_NEW_CUSTOMERS_ABSENT, SCORECARD_CARD_COPY, ScorecardControlsSkeleton, ScorecardSkeleton, ScorecardView, whatChangedCards } from '@/components/ScorecardView';
 import { newCustomersPresentationV2, type NewCustomersPresentation } from '@/lib/presentation-v2';
 import newCustomers7d from './fixtures/new-customers-7d-v2.json';
 import { formatCurrency, formatRatio } from '@/lib/exact-format';
@@ -23,7 +23,7 @@ import { bindingByRoute } from '@/lib/page-bindings';
 import { parsePresentationResultCalendarV2, scorecardPresentationV2 } from '@/lib/presentation-v2';
 import { PROVENANCE_READINGS } from '@/lib/provenance';
 import { visibleHubs, type ManifestTab } from '@/lib/route-manifest';
-import type { NetworkScorecardArtifact, ScorecardFigure } from '@/lib/scorecard';
+import type { NetworkScorecardArtifact, ScorecardFigure, ScorecardInsightCard } from '@/lib/scorecard';
 import absentCell from './fixtures/scorecard-absent-cell-v2.json';
 import alsoChanged from './fixtures/scorecard-also-changed-v2.json';
 import weekly from './fixtures/scorecard-7d-v2.json';
@@ -50,10 +50,37 @@ const NEW_CUSTOMERS: ManifestTab = {
   entitlement: null,
   kind: 'page',
   label: 'New customers',
-  order: 1,
+  order: 1, question: null,
   route: '/new-customers/',
   tab_id: 'new-customers',
 };
+
+test('one card: the tiles are spend, its share of retail sales and networks; what changed skips the cards\' share sentences', () => {
+  const artifact = artifactOf(weekly);
+  const view = render(<ScorecardView artifact={artifact} />);
+  const tiles = [...view.container.querySelectorAll('[data-slot="sc-tiles"] .tile .k')].map((node) => node.textContent);
+  assert.equal(tiles[0], 'Ad spend');
+  assert.ok(tiles.includes('Ad spend as a share of shipped sales'));
+  // The headline figure isn't repeated as a tile: the answer states it.
+  assert.equal(tiles.includes('Return on ad spend, each sale counted once'), false);
+  const expected = whatChangedCards(artifact.insight_cards).map((card) => card.headline);
+  const shown = [...view.container.querySelectorAll('[data-slot="sc-changed"] .insight h3')].map((node) => node.textContent);
+  assert.deepEqual(shown, expected);
+  // The ranking follows what changed, in its closed disclosure.
+  const order = [...view.container.querySelectorAll('[data-slot="sc-changed"], .rank-block')].map((node) => node.className);
+  assert.deepEqual(order, ['section', 'about rank-block']);
+});
+
+test('what changed keeps served order: other findings first, then the first spend-share sentence, at most three', () => {
+  const card = (finding_id: string, channel: string) => ({ finding_id, channel, headline: `${finding_id}:${channel}` }) as unknown as ScorecardInsightCard;
+  const share = 'channel-share-of-network-spend';
+  assert.deepEqual(
+    whatChangedCards([card(share, 'a'), card('roas', 'b'), card(share, 'c')]).map((item) => item.headline),
+    ['roas:b', `${share}:a`],
+  );
+  assert.deepEqual(whatChangedCards([card(share, 'a'), card(share, 'c')]).map((item) => item.headline), [`${share}:a`]);
+  assert.equal(whatChangedCards([card('a', '1'), card('b', '2'), card('c', '3'), card(share, 'd')]).length, 3);
+});
 
 test('the sections render in the tab order with the server scope band and texts', () => {
   const artifact = artifactOf(weekly);
@@ -61,14 +88,16 @@ test('the sections render in the tab order with the server scope band and texts'
   const headings = within(view.container).getAllByRole('heading', { level: 2 }).map((node) => node.textContent);
   assert.deepEqual(headings, [
     'Amazon · US marketplace · USD',
-    'Insights',
     'What each channel does for you',
-    'Ad spend and retail sales',
+    // UI refresh 3.1 (readout A.2): what changed follows the cards; the retail tiles sit in the card.
+    'What changed',
   ]);
   assert.equal(view.container.querySelector('.scope-band')?.textContent, artifact.scope_text);
   assert.equal(view.container.querySelector('.scope-band')?.getAttribute('aria-live'), 'polite');
   assert.ok(screen.getByText('Sponsored Products leads under all three models.'));
-  assert.ok(screen.getByText(/Attributed sales aren't added across channels/));
+  // T2L-3: with one card the table's foot no longer repeats the cards' "why" line.
+  assert.equal(screen.queryByText(/Attributed sales aren't added across channels/), null);
+  assert.ok(screen.getByText(SCORECARD_CARD_COPY.why));
   // No total or subtotal row: the channel table lists exactly the served channels.
   const table = screen.getByRole('region', { name: 'Spend and attributed return per channel' });
   assert.deepEqual(
@@ -86,7 +115,8 @@ test('switching the model changes only the headline, never the ranking or the ch
   const view = render(<ScorecardView artifact={artifact} />);
   const tables = () => [...view.container.querySelectorAll('table')].map((table) => table.textContent);
   const before = tables();
-  const headline = () => view.container.querySelector('.tile .basis')?.textContent;
+  // UI refresh 3.1: the selected model's served basis reads under the answer.
+  const headline = () => view.container.querySelector('[data-slot="sc-basis"]')?.textContent;
   assert.match(headline() ?? '', /First touch/);
   await user.selectOptions(screen.getByLabelText('Attribution model for deduplicated ROAS'), 'linear_v1');
   assert.match(headline() ?? '', /Linear/);
@@ -237,7 +267,8 @@ test('every multiplier shows its served two-place display value, never the exact
   const view = render(<ScorecardView artifact={artifact} />);
   const row = view.container.querySelector('tr[data-channel="amazon_sponsored_products"]') as HTMLElement;
   assert.match(row.textContent ?? '', /4\.50×/);
-  assert.match(view.container.querySelector('.scorecard-card .tile .v')?.textContent ?? '', /^3\.96×$/);
+  // UI refresh 3.1: the headline return reads in the answer, from its served display value.
+  assert.match(view.container.querySelector('.answer-sentence')?.textContent ?? '', / 3\.96 USD in sales for every 1 USD/);
   assert.deepEqual(longRatios(view.container), []);
   view.unmount();
   // Paired: the same page fed an exact value as its display value shows the long form, which
@@ -249,7 +280,7 @@ test('every multiplier shows its served two-place display value, never the exact
     cards: [{ ...card, headline: { ...card.headline, models: card.headline.models.map((model) => ({ ...model, figure: { ...model.figure, display_value: model.figure.value } })) } }],
   };
   const long = render(<ScorecardView artifact={exact} />);
-  assert.deepEqual(longRatios(long.container), ['3.9600×']);
+  assert.match(long.container.querySelector('.answer-sentence')?.textContent ?? '', / 3\.9600 USD in sales/);
 });
 
 /** Whether every served marketplace shows as its own card and its own named retail rows. */

@@ -172,7 +172,7 @@ persistent status region announces it ([temporal contract §6](temporal-control-
 - Title: "Not enough Vendor Central data for this period"
 - Text: "There isn't enough Vendor Central data to show this period safely. Choose another period above. If this keeps happening, ask your administrator to check the Vendor Central connection."
 ### PAID-NEXT
-- Surface: every paid-feature card (Retail health and Retail product "Retail purchases from Amazon Marketing Cloud", Retention "Any repeat purchase", Audiences paid profile)
+- Surface: every paid-feature card (Retail health and Retail product "Retail purchases from Amazon Marketing Cloud", Retention "Any repeat purchase", Audiences paid profile and its in-profile callout, UI refresh 3.9)
 - Trigger: the card renders; the line follows the served paid-feature text and says who acts (E4, UX sweep fix 10).
 - Text: "Ask your administrator about turning on this paid feature for your workspace."
 ### ABS-SC-CH

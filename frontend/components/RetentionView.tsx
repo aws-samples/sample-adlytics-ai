@@ -5,6 +5,7 @@ import { retentionAnswer } from '@/lib/retention';
 import { metricLabel } from '@/lib/glossary';
 import { AnswerSentence } from './AnswerSentence';
 import { PAID_FEATURE_NEXT_STEP } from './PageAbsence';
+import { HOW_WE_COUNT } from './NewCustomersView';
 import { useState } from 'react';
 
 import type { RetentionCohortArtifact, RetentionEvidenceStatusSlot, RetentionGrid, RetentionGroup, RetentionMarket } from '@/lib/retention';
@@ -37,21 +38,72 @@ function Triangle({ grid, legend, marketplaceText }: { readonly grid: RetentionG
   </>;
 }
 
+/** The three lines' dash patterns, so groups differ by shape as well as colour. */
+const LINE_STYLE: Readonly<Record<RetentionGroup, string>> = { dsp_and_sponsored: '2 6', dsp_only: '', sponsored_only: '10 5' };
+
+/**
+ * UI refresh 3.5 (readout A.8 rt-curve-*): one line per served group over the served points, on a
+ * zero-based axis whose top is the largest served rate (display scale only). The legend names each
+ * line with its served last-point text; the exact values sit in "Show values".
+ */
+function CurveChart({ market }: { readonly market: RetentionMarket }) {
+  const lines = market.curve.lines;
+  const values = lines.flatMap((line) => line.points.flatMap((point) => point.rate === null ? [] : [Number(point.rate.value)])).filter((value) => Number.isFinite(value));
+  const top = Math.max(0, ...values);
+  const count = Math.max(1, ...lines.map((line) => line.points.length));
+  if (top === 0) return null;
+  const x = (index: number) => (count === 1 ? 500 : 20 + (index * 960) / (count - 1));
+  const y = (value: number) => 190 - (value / top) * 180;
+  const maxText = lines.flatMap((line) => line.points).find((point) => point.rate !== null && Number(point.rate.value) === top)?.rate?.text ?? '';
+  const labels = lines[0]?.points.map((point) => point.label) ?? [];
+  return <figure className="retention-chart">
+    <div className="series-chart">
+      <div className="y-axis" aria-hidden="true"><span className="axis-label">{maxText}</span><span className="axis-label">0%</span></div>
+      <svg className="chart" viewBox="0 0 1000 200" preserveAspectRatio="none" role="img" aria-label={`${metricLabel(market.curve.metric, market.curve.label)}, one line per group`}>
+        <line className="grid" x1={20} x2={980} y1={10} y2={10} />
+        <line className="grid" x1={20} x2={980} y1={190} y2={190} />
+        {lines.map((line) => <polyline
+          className={`series rt-line ${line.group}`}
+          key={line.group}
+          points={line.points.flatMap((point, index) => point.rate === null ? [] : [`${x(index)},${y(Number(point.rate.value))}`]).join(' ')}
+          strokeDasharray={LINE_STYLE[line.group] || undefined}
+        />)}
+      </svg>
+      <div className="x-axis rt-x" aria-hidden="true">{labels.map((label) => <span className="axis-label" key={label}>{label}</span>)}</div>
+    </div>
+    <figcaption className="legend rt-legend">
+      {lines.map((line) => {
+        const last = [...line.points].reverse().find((point) => point.rate !== null);
+        return <span key={line.group}><svg aria-hidden="true" width="22" height="8"><line className={`series rt-line ${line.group}`} x1={0} x2={22} y1={4} y2={4} strokeDasharray={LINE_STYLE[line.group] || undefined} /></svg>{line.label}{last?.rate == null ? null : <> · {last.label} {last.rate.text}</>}</span>;
+      })}
+    </figcaption>
+  </figure>;
+}
+
 function Curve({ labelledBy, market }: { readonly labelledBy: string; readonly market: RetentionMarket }) {
   return <section className="section retention-curve" aria-labelledby={labelledBy}>
     <h2 id={`curve-${market.marketplace_key}`}>{metricLabel(market.curve.metric, market.curve.label)}</h2>
+    <CurveChart market={market} />
+    <details className="reach-values">
+    <summary>Show values</summary>
     <div className="retention-curve-lines">
       {market.curve.lines.map((line) => <article key={line.group}>
         <h3>{line.label}</h3>
         <ol>{line.points.map((point) => <li key={point.offset}><span>{point.label}</span><strong>{point.rate?.text ?? point.text}</strong></li>)}</ol>
       </article>)}
     </div>
+    </details>
   </section>;
 }
 
 /** UX sweep fix 7: the grid's heading and its one line on how it differs from the cumulative curve. */
-export const RETENTION_GRID_HEADING = 'By cohort: bought again in that period';
-export const RETENTION_GRID_NOTE = 'Each cell counts repeat buyers in that period only; the curve above adds up every period so far.';
+export const RETENTION_GRID_HEADING = 'By cohort';
+/**
+ * UI refresh 3.5 (readout A.8): why the grid reads differently from the curve. The grid binds the
+ * all-ID `repeat_buyer_rate` per period; the curve binds account-ID cumulative rates (LLD "Rates
+ * on the grid and the curve").
+ */
+export const RETENTION_GRID_NOTE = 'Each cell counts all shoppers, including device IDs, in that period only; the curve above counts signed-in shoppers and adds up every period so far, so the two read differently.';
 function Market({ market }: { readonly market: RetentionMarket }) {
   const [group, setGroup] = useState<RetentionGroup>('sponsored_only');
   const [path, setPath] = useState<'standard' | 'paid'>('standard');
@@ -115,6 +167,6 @@ export function RetentionView({ artifact }: { readonly artifact: RetentionCohort
     <AnswerSentence answer={retentionAnswer(artifact)} />
     {artifact.markets.map((market) => <Market key={market.marketplace_key} market={market} />)}
     <EvidenceTrace slots={artifact.evidence_status.slots} />
-    <details className="about"><summary>About these figures</summary><div className="body">{artifact.boundary.map((item) => <p key={item}>{item}</p>)}</div></details>
+    <details className="about" data-slot="rt-how-we-count"><summary>{HOW_WE_COUNT}</summary><div className="body">{artifact.boundary.map((item) => <p key={item}>{item}</p>)}</div></details>
   </div>;
 }

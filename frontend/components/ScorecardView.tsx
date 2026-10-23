@@ -93,7 +93,6 @@ function NetworkCardSection({ artifact, card, highlight, notAvailable, several }
   const [model, setModel] = useState(card.headline.default_model);
   const selected = card.headline.models.find((item) => item.model === model) ?? card.headline.models[0];
   if (selected === undefined) return null;
-  const ranking = card.ranking;
   return <section className="card section scorecard-card" aria-labelledby={headingId}>
     <div className="section-head">
       <h2 id={headingId}>{card.title}</h2>
@@ -101,6 +100,8 @@ function NetworkCardSection({ artifact, card, highlight, notAvailable, several }
     </div>
     {card.dsp_absence_text === null ? null : <p className="small dim">{card.dsp_absence_text}</p>}
     <AnswerSentence answer={scorecardAnswer(artifact, card, selected.model)} />
+    {/* Readout A.2: the selected model's served basis under the answer (sc-basis). */}
+    {several ? null : <p className="answer-basis" data-slot="sc-basis">{selected.figure.basis}</p>}
     {/* UX sweep fix 3: the model explainer folds into one "How credit is shared" disclosure. */}
     <details className="about sc-model">
       <summary>{SCORECARD_CARD_COPY.modelSummary} {selected.option_label}</summary>
@@ -114,12 +115,31 @@ function NetworkCardSection({ artifact, card, highlight, notAvailable, several }
         <p>{card.headline.model_note}</p>
       </div>
     </details>
-    <div className="tiles two">
-      <ScorecardTile figure={selected.figure} notAvailable={notAvailable} slot={`headline:${card.card_id}`} />
+    {several ? <>
+      <div className="tiles two">
+        <ScorecardTile figure={selected.figure} notAvailable={notAvailable} slot={`headline:${card.card_id}`} />
+        <ScorecardTile figure={card.spend} notAvailable={notAvailable} slot={`spend:${card.card_id}`} />
+      </div>
+      <RankingDisclosure card={card} highlight={highlight} notAvailable={notAvailable} several={several} headingId={headingId} />
+    </> : <div className="tiles three" data-slot="sc-tiles">
+      {/* UI refresh 3.1 (readout A.2): the answer states the return, so the tiles are spend, its
+          share of retail sales and the networks loaded, each from its served row. */}
       <ScorecardTile figure={card.spend} notAvailable={notAvailable} slot={`spend:${card.card_id}`} />
-    </div>
-    {/* UX sweep fix 3 (readout A.2): the ranking sits in a closed disclosure under its served heading. */}
-    <details className="about rank-block">
+      <RetailTiles artifact={artifact} notAvailable={notAvailable} />
+    </div>}
+  </section>;
+}
+
+/** The ranking in a closed disclosure under its served heading (UX sweep fix 3, readout A.2). */
+function RankingDisclosure({ card, headingId, highlight, notAvailable, several }: {
+  readonly card: ScorecardCard;
+  readonly headingId?: string;
+  readonly highlight: string | null;
+  readonly notAvailable: string;
+  readonly several: boolean;
+}) {
+  const ranking = card.ranking;
+  return <details className="about rank-block">
       <summary>{ranking.heading}</summary>
       <p className="rank-outcome">{ranking.outcome_text}</p>
       {ranking.outcome === 'insufficient' ? null : <DataTable title={ranking.caption} note={ranking.caption_detail} nameLeadId={several ? headingId : undefined}>
@@ -140,8 +160,7 @@ function NetworkCardSection({ artifact, card, highlight, notAvailable, several }
         </DtBody>
       </DataTable>}
       <p className="dt-foot">{ranking.foot}</p>
-    </details>
-  </section>;
+    </details>;
 }
 
 /** One channel's served New customers row, or the served reason the band shows none (plan 2.3). */
@@ -161,6 +180,7 @@ export const SCORECARD_CARD_COPY = {
   paysBack: 'Pays back',
   returnBasis: 'Return:',
   table: 'Show the channel table',
+  whatChanged: 'What changed',
   why: "Each channel counts the sales Amazon credits to it, so one sale can count in two channels. That's why channel figures aren't added up, and why the headline, which counts each sale once, can read lower than a channel's own return.",
   winsNew: 'Wins new customers',
 } as const;
@@ -321,7 +341,9 @@ function ChannelTable({ card, highlight, notAvailable, several }: {
       </DtBody>
     </DataTable>
     </details>
-    <p className="dt-foot">{table.foot}{table.absent_lines.map((line) => <span key={line}> {line}</span>)}</p>
+    {/* One card: the cards' ch-why line already says the table's foot (T2L-3), so only the
+        served absent lines stay, in the basis block. */}
+    <p className="dt-foot">{several ? table.foot : null}{table.absent_lines.map((line) => <span key={line}> {line}</span>)}</p>
   </>;
 }
 
@@ -336,15 +358,16 @@ function Pointers({ artifact }: { readonly artifact: NetworkScorecardArtifact })
   </>;
 }
 
-function InsightCards({ artifact, onRead }: {
+function InsightCards({ artifact, cards = artifact.insight_cards, onRead }: {
   readonly artifact: NetworkScorecardArtifact;
+  readonly cards?: readonly ScorecardInsightCard[];
   readonly onRead: (id: string, source: HTMLButtonElement) => void;
 }) {
-  if (artifact.insight_cards.length === 0) {
+  if (cards.length === 0) {
     return <div className="insight quiet"><p>{artifact.insights.absence_reason ?? artifact.insights.text}</p></div>;
   }
   return <div className="insights">
-    {artifact.insight_cards.map((card) => <article key={cardKey(card)} className="insight">
+    {cards.map((card) => <article key={cardKey(card)} className="insight">
       {/* With two marketplaces the eyebrow says whose figures the card narrates (SC9A-GATE-001). */}
       <span className="kind">{card.kind_label}{card.marketplace_text === null ? null : <> · <span className="market">{card.marketplace_text}</span></>}</span>
       <h3>{card.headline}</h3>
@@ -368,12 +391,9 @@ function cardKey(card: { readonly card_id: string; readonly channel: string; rea
   return `${card.finding_id}:${card.card_id}:${card.channel}`;
 }
 
-function RetailSales({ artifact, notAvailable }: { readonly artifact: NetworkScorecardArtifact; readonly notAvailable: string }) {
-  const headingId = useId();
-  if (artifact.tacos.length === 0 && artifact.cross_network_spend.length === 0) return null;
-  return <section className="section" aria-labelledby={headingId}>
-    <h2 id={headingId}>{artifact.retail_sales_heading}</h2>
-    <div className="tiles two">
+/** The served TACoS and cross-network spend rows as tiles (one card: in the card's tile row). */
+function RetailTiles({ artifact, notAvailable }: { readonly artifact: NetworkScorecardArtifact; readonly notAvailable: string }) {
+  return <>
       {artifact.tacos.map((row) => <ScorecardTile key={row.coverage_slot} figure={row.figure} notAvailable={notAvailable} slot={row.coverage_slot} market={row.marketplace_text}>
         {row.link === null ? null : <a className="chip-link" href={row.link.href} aria-label={row.link.label}>{row.link.text}</a>}
       </ScorecardTile>)}
@@ -384,8 +404,29 @@ function RetailSales({ artifact, notAvailable }: { readonly artifact: NetworkSco
         {row.reason === null ? null : <span className="reason">{row.reason}</span>}
         {row.figure === null ? null : <span className="basis">{row.figure.basis}</span>}
       </div>)}
-    </div>
+  </>;
+}
+
+function RetailSales({ artifact, notAvailable }: { readonly artifact: NetworkScorecardArtifact; readonly notAvailable: string }) {
+  const headingId = useId();
+  if (artifact.tacos.length === 0 && artifact.cross_network_spend.length === 0) return null;
+  return <section className="section" aria-labelledby={headingId}>
+    <h2 id={headingId}>{artifact.retail_sales_heading}</h2>
+    <div className="tiles two"><RetailTiles artifact={artifact} notAvailable={notAvailable} /></div>
   </section>;
+}
+
+/** The served finding the channel cards don't already narrate (T2L-3, readout A.2 sc-changed). */
+const SHARE_FINDING = 'channel-share-of-network-spend';
+/**
+ * "What changed" with one card: every served finding other than the spend-share sentences, which
+ * each channel card already reads, then the first served spend-share finding; at most three, in
+ * served order. Nothing is ranked or rewritten.
+ */
+export function whatChangedCards(cards: readonly ScorecardInsightCard[]): readonly ScorecardInsightCard[] {
+  const others = cards.filter((card) => card.finding_id !== SHARE_FINDING);
+  const share = cards.find((card) => card.finding_id === SHARE_FINDING);
+  return [...others, ...(share === undefined ? [] : [share])].slice(0, 3);
 }
 
 /**
@@ -486,10 +527,10 @@ export function ScorecardView({ artifact, highlight = null, newCustomers = null,
     <div className="scorecard">
       <p className="scope-band" aria-live="polite">{artifact.scope_text}</p>
       {artifact.cards.map((card) => <NetworkCardSection key={card.card_id} artifact={artifact} card={card} highlight={highlightFor(card)} notAvailable={notAvailable} several={several} />)}
-      <section className="section" aria-labelledby={insightsHeading}>
+      {several ? <section className="section" aria-labelledby={insightsHeading}>
         <h2 id={insightsHeading}>{artifact.insights_heading}</h2>
         <InsightCards artifact={artifact} onRead={openInsight} />
-      </section>
+      </section> : null}
       {artifact.also_changed === null ? null : <section className="section" aria-labelledby={alsoHeading}>
         <h2 id={alsoHeading}>{artifact.also_changed.heading}</h2>
         <p className="small dim">{artifact.also_changed.intro}</p>
@@ -514,7 +555,14 @@ export function ScorecardView({ artifact, highlight = null, newCustomers = null,
         </Fragment>)}
         <Pointers artifact={artifact} />
       </section>
-      <RetailSales artifact={artifact} notAvailable={notAvailable} />
+      {several ? <RetailSales artifact={artifact} notAvailable={notAvailable} /> : <>
+        {/* UI refresh 3.1 (readout A.2): what changed after the channel cards, then the ranking. */}
+        <section className="section" aria-labelledby={insightsHeading} data-slot="sc-changed">
+          <h2 id={insightsHeading}>{SCORECARD_CARD_COPY.whatChanged}</h2>
+          <InsightCards artifact={artifact} cards={whatChangedCards(artifact.insight_cards)} onRead={openInsight} />
+        </section>
+        {artifact.cards.map((card) => <RankingDisclosure key={card.card_id} card={card} highlight={highlightFor(card)} notAvailable={notAvailable} several={false} />)}
+      </>}
       <details className="about">
         <summary>{artifact.boundary_heading}</summary>
         <div className="body">{artifact.boundary.map((line) => <p key={line}>{line}</p>)}</div>

@@ -99,7 +99,8 @@ test('renders the quarterly grain note and server-owned curve values without for
   render(<RetentionView artifact={parseRetentionCohortArtifact(fixture)} />);
   assert.ok(screen.getByText(/grouped by quarter from Q4 2026/));
   assert.ok(screen.getAllByText('Quarter 1').length > 0);
-  assert.ok(screen.getAllByText('20.0%').length === 9);
+  // Nine served points in Show values, plus the chart's top axis label, the largest served rate.
+  assert.ok(screen.getAllByText('20.0%').length === 10);
 });
 test('a refreshed artifact without paid grids shows the standard path instead of the removed one', () => {
   const observed = retentionFixture();
@@ -123,7 +124,7 @@ test('two markets each lead with their marketplace heading and distinct landmark
   const regions = screen.getAllByRole('region').map((region) => region.getAttribute('aria-label') ?? '');
   assert.equal(new Set(regions.filter((name) => name.startsWith('Share of each cohort'))).size, 2);
   for (const market of ['US', 'UK'] as const) {
-    for (const section of ['By cohort: bought again in that period', 'Insights']) assert.ok(screen.getByRole('region', { name: `${market} marketplace ${section}` }));
+    for (const section of ['By cohort', 'Insights']) assert.ok(screen.getByRole('region', { name: `${market} marketplace ${section}` }));
     assert.ok(screen.getByRole('region', { name: `Share of each cohort that bought again, by period after acquisition · ${market} marketplace` }));
   }
   view.unmount();
@@ -131,5 +132,18 @@ test('two markets each lead with their marketplace heading and distinct landmark
   render(<RetentionView artifact={parseRetentionCohortArtifact(retentionFixture())} />);
   assert.equal(screen.queryByRole('heading', { name: /marketplace$/ }), null);
   assert.ok(screen.getByRole('region', { name: 'Share of each cohort that bought again, by period after acquisition' }));
-  assert.ok(screen.getByRole('region', { name: 'By cohort: bought again in that period' }));
+  assert.ok(screen.getByRole('region', { name: 'By cohort' }));
+});
+
+test('the repeat curve draws one line per served group on a zero-based chart, with its values in Show values (UI refresh 3.5)', () => {
+  const { container } = render(<RetentionView artifact={parseRetentionCohortArtifact(retentionFixture())} />);
+  const chart = container.querySelector('.retention-chart svg[role="img"]');
+  assert.ok(chart);
+  assert.equal(chart.querySelectorAll('polyline').length, 3);
+  assert.equal(container.querySelector('.retention-chart .y-axis')?.lastElementChild?.textContent, '0%');
+  const values = container.querySelector('.retention-curve details') as HTMLDetailsElement;
+  assert.equal(values.open, false);
+  assert.equal(values.querySelectorAll('.retention-curve-lines article').length, 3);
+  assert.equal(container.querySelector('[data-slot="rt-how-we-count"] summary')?.textContent, 'How we count');
+  cleanup();
 });

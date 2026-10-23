@@ -109,7 +109,7 @@ test('detail shows the shared tile groups and per-channel ad rows with no total 
   assert.equal(back.mock.calls.length, 1);
 });
 
-const repeatPurchaseTab = (tabId: string): ManifestTab => ({ description: 'Repeat purchases per product', entitlement: null, kind: 'page', label: 'Repeat purchase by product', order: 1, route: '/repeat-purchase/', tab_id: tabId });
+const repeatPurchaseTab = (tabId: string): ManifestTab => ({ description: 'Repeat purchases per product', entitlement: null, kind: 'page', label: 'Repeat purchase by product', order: 1, question: null, route: '/repeat-purchase/', tab_id: tabId });
 test('the Repeat purchase pointer renders from the manifest tab repeat-purchase-by-product, and the old tab id renders none', () => {
   const view = (tabId: string) => <VisibleTabsContext.Provider value={[repeatPurchaseTab(tabId)]}>
     <RetailProductDetailView

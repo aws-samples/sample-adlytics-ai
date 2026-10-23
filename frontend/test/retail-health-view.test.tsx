@@ -6,7 +6,7 @@ import { test } from 'vitest';
 
 import { CoverageProvider, TileAbsence, TileChange } from '../components/Coverage';
 import { VisibleTabsContext } from '../components/NextStepContext';
-import { ADS_BESIDE_RETAIL_COPY, RetailHealthBandTitle, RetailHealthView } from '../components/RetailHealthView';
+import { ADS_BESIDE_RETAIL_COPY, RETAIL_FRESHNESS_CHIP, RetailHealthBandTitle, RetailHealthView } from '../components/RetailHealthView';
 import { sourceIssueText, type OverviewSource } from '../lib/overview';
 import { parsePresentationResultCalendarV2, scorecardPresentationV2, type ScorecardPresentation } from '../lib/presentation-v2';
 import scorecard7d from './fixtures/scorecard-7d-v2.json';
@@ -345,8 +345,9 @@ test('Retail health shows the four shared tile groups, the return-reasons absenc
   const artifact = parseRetailHealthArtifact(format8Payload());
   render(<RetailHealthView artifact={artifact} />);
   const headings = screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent);
-  // UX sweep fix 4: the three leak rates lead; the four shared groups sit in a closed "More figures".
-  assert.deepEqual(headings.slice(0, 5), ['Where sales leak', 'Demand and conversion', 'Sales and fulfilment', 'Traffic value and margin', 'Returns']);
+  // UX sweep fix 4: the three leak rates lead; the four shared groups sit in a closed "More figures",
+  // which UI refresh 3.6 (readout A.9) places after the trend, the products and the insights.
+  assert.deepEqual(headings.slice(0, 8), ['Where sales leak', 'Shipped revenue', 'Products', 'Insights', 'Demand and conversion', 'Sales and fulfilment', 'Traffic value and margin', 'Returns']);
   const group = (name: string) => screen.getByRole('region', { name });
   const keys = (name: string) => [...group(name).querySelectorAll('.tile .k')].map((key) => key.textContent);
   assert.deepEqual(keys('Where sales leak'), ['Fulfilment rate', 'Units per 1,000 product page views', 'Return rate']);
@@ -367,7 +368,7 @@ test('Retail health shows the four shared tile groups, the return-reasons absenc
   assert.equal(screen.queryByRole('link', { name: 'Repeat purchase by product' }), null);
 });
 
-const repeatPurchaseTab = (tabId: string): ManifestTab => ({ description: 'Repeat purchases per product', entitlement: null, kind: 'page', label: 'Repeat purchase by product', order: 1, route: '/repeat-purchase/', tab_id: tabId });
+const repeatPurchaseTab = (tabId: string): ManifestTab => ({ description: 'Repeat purchases per product', entitlement: null, kind: 'page', label: 'Repeat purchase by product', order: 1, question: null, route: '/repeat-purchase/', tab_id: tabId });
 test('The Repeat purchase pointer renders from the manifest tab repeat-purchase-by-product, and the old tab id renders none', () => {
   const artifact = parseRetailHealthArtifact(format8Payload());
   const shown = render(<VisibleTabsContext.Provider value={[repeatPurchaseTab('repeat-purchase-by-product')]}><RetailHealthView artifact={artifact} /></VisibleTabsContext.Provider>);
@@ -430,7 +431,7 @@ test('an empty and an insufficient Retail health body each say what is missing a
 });
 
 const SCORECARD_TAB: ManifestTab = {
-  description: 'Return on ad spend per network and channel', entitlement: null, kind: 'page', label: 'Scorecard', order: 1, route: '/scorecard/', tab_id: 'scorecard',
+  description: 'Return on ad spend per network and channel', entitlement: null, kind: 'page', label: 'Scorecard', order: 1, question: null, route: '/scorecard/', tab_id: 'scorecard',
 };
 
 test('Ads beside retail: the served 7-day spend and TACoS, one line on other presets, the absence when it fails', () => {
@@ -470,4 +471,20 @@ test('Product freshness reads once for the page, opening Coverage, never as a pi
   assert.equal(lines[0]?.textContent?.split(qualifier).length, 2);
   assert.ok(within(lines[0] as HTMLElement).getByRole('button', { name: 'See why: product freshness' }));
   assert.equal(view.container.querySelectorAll('.retail-products .pill').length, 0);
+  view.unmount();
+  // T2L-1: rows with different served qualifiers show one closed chip, each qualifier once inside.
+  const varied = { ...base, rows: base.rows.map((row, index) => ({ ...row, freshness_qualifiers: [`${qualifier} ${index}`] })) };
+  const second = render(<CoverageProvider status={varied.evidence_status} subject="Retail health"><RetailHealthView artifact={varied} /></CoverageProvider>);
+  const chip = second.container.querySelector('[data-slot="rh-fresh"]') as HTMLDetailsElement;
+  assert.equal(chip.open, false);
+  assert.equal(chip.querySelector('summary')?.textContent, RETAIL_FRESHNESS_CHIP);
+  assert.equal(chip.querySelectorAll('li').length, varied.rows.length);
+});
+
+test('Ads beside retail points to Products and ads when the session lists it (readout A.9)', () => {
+  const artifact = parseRetailHealthArtifact(format8Payload());
+  const products: ManifestTab = { description: 'Each product', entitlement: null, kind: 'composed', label: 'Products and ads', order: 2, question: null, route: '/products-and-ads/', tab_id: 'products-and-ads' };
+  const view = render(<VisibleTabsContext.Provider value={[SCORECARD_TAB, products]}><RetailHealthView ads={null} artifact={artifact} /></VisibleTabsContext.Provider>);
+  const section = view.container.querySelector('[data-slot="rh-ads"]') as HTMLElement;
+  assert.equal(within(section).getByRole('link', { name: ADS_BESIDE_RETAIL_COPY.products }).getAttribute('href'), '/products-and-ads/');
 });
