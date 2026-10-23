@@ -413,6 +413,41 @@ def test_a_dependency_error_retries_on_receive_1_and_is_unavailable_on_receive_3
     assert telemetry.datapoints == [("dependency", 1)] and writes.events == []
 
 
+@dataclass
+class _DownWrites:
+    """A legacy persistence whose stage or pointer write stays down."""
+
+    attempts: list[str] = field(default_factory=list[str])
+
+    def publish(
+        self,
+        request: PresetArtifactPublicationRequest,
+        *,
+        remaining_ms: Callable[[], int],
+        tail_seconds: float,
+    ) -> PresetArtifactPublicationResult:
+        del request, remaining_ms, tail_seconds
+        self.attempts.append("publish")
+        raise DependencyError(ErrorCode("FICTIONAL", 42), "s3 down")
+
+
+def test_a_stage_write_that_stays_down_retries_then_is_unavailable_and_not_dead_lettered(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Design 02 §3.6: both entries alarm a write that stays down the same way."""
+    telemetry = capture(monkeypatch)
+    writes = _DownWrites()
+    application = _isolating(telemetry, _Source(), writes)
+    assert apply_with_deadline(_event(CAMPAIGNS, 1), application) == ("m1",)  # retries
+    assert telemetry.spans == [] and telemetry.datapoints == []
+    assert apply_with_deadline(_event(CAMPAIGNS, 3), application) == ()  # acknowledged
+    assert writes.attempts == ["publish", "publish"]
+    assert telemetry.triples() == [("page", "dependency_unavailable", 1)]
+    (line,) = telemetry.refusal_lines()
+    assert (line.details["entry"], line.details["error_code"]) == ("legacy", "ADLY-FICTIONAL-0042")
+    assert telemetry.datapoints == [("dependency", 1)]
+
+
 @pytest.mark.usefixtures("fake_request_keys")
 def test_over_the_certified_count_is_a_batch_item_failure_and_at_the_bound_is_not(
     monkeypatch: pytest.MonkeyPatch,
