@@ -5,8 +5,11 @@
  * allowlist's page routes to the bake roster's pages and runs this derivation.
  */
 
-/** Allowlisted routes that are not roster pages: the root and the prompt admin. */
-export const NOT_ROSTER_PAGES = Object.freeze(['/', '/admin/prompts/']);
+/**
+ * Allowlisted routes that are not roster pages: the composed tabs (ADR-151: the root and Products and
+ * ads, UI refresh 3.7) and the prompt admin.
+ */
+export const NOT_ROSTER_PAGES = Object.freeze(['/', '/admin/prompts/', '/products-and-ads/']);
 
 /** Roster pages the probe's earlier blocks walk in depth. */
 export const WALKED_IN_DEPTH = Object.freeze(['/campaigns/', '/retail-health/']);

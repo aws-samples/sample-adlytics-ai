@@ -25,8 +25,8 @@ _MODULE = _ROOT / "validation" / "roster_routes.mjs"
 _ALLOWLIST = _ROOT / "contracts" / "generated" / "route-allowlist.json"
 _IN_DEPTH = {"/campaigns/", "/retail-health/"}
 """The roster pages the browser probe's earlier blocks walk in depth."""
-_NOT_ROSTER_PAGES = {"/", "/admin/prompts/"}
-"""Allowlisted routes that are not roster pages: the root and the prompt admin."""
+_NOT_ROSTER_PAGES = {"/", "/admin/prompts/", "/products-and-ads/"}
+"""Allowlisted routes that are not roster pages: the composed tabs and the prompt admin."""
 
 
 def _derive(routes: list[str]) -> subprocess.CompletedProcess[str]:
@@ -70,8 +70,14 @@ def test_the_browser_walks_every_roster_page_route_not_walked_in_depth() -> None
 @pytest.mark.parametrize(
     ("routes", "message"),
     [
-        (["/", "/admin/prompts/", "/campaigns/", "/retail-health/"], "leaves no page"),
-        (["/", "/admin/prompts/", "/campaigns/", "/reach/"], "no longer carries /retail-health/"),
+        (
+            ["/", "/admin/prompts/", "/products-and-ads/", "/campaigns/", "/retail-health/"],
+            "leaves no page",
+        ),
+        (
+            ["/", "/admin/prompts/", "/products-and-ads/", "/campaigns/", "/reach/"],
+            "no longer carries /retail-health/",
+        ),
         ([], "no longer carries /"),
     ],
     ids=["empty_after_exclusion", "stale_in_depth_route", "empty_allowlist"],
