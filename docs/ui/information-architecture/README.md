@@ -34,7 +34,7 @@ slice the Overview hub's one tab reads "Growth check".
 
 | Hub or group | Customer question | Tab and route | Tab description |
 |---|---|---|---|
-| Overview | "What needs my attention this week?" | Overview, `/` | What needs your attention this week, with a few headline figures for one window. |
+| Overview | "Is my advertising growing my business?" (UI refresh 2.1, 2026-10-22; was "What needs my attention this week?") | Overview, `/` | Whether your advertising is growing your business, on one screen ([Growth check](../overview/README.md)) |
 | Performance | "Is my ad spend paying back, by network, channel and campaign?" | Scorecard, `/scorecard/` | Return on ad spend per network and channel |
 | | | Campaigns, `/campaigns/` | Every campaign, for all channels, sponsored ads only or one channel |
 | Reach and audiences | "Who did my ads reach, how often, and which audiences responded?" | Reach and funnel, `/reach/` | How many shoppers your ads reached, how often, and what they did next |

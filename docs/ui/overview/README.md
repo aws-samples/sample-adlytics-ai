@@ -2,7 +2,7 @@
 | | |
 |---|---|
 | **Level** | Delivery page package |
-| **Status** | Built on `feat/ui-refresh` (UI refresh slice 2.2, 2026-10-22); not deployed yet. A composed tab ([ADR-151](../../decisions/adr-151-compose-a-customer-tab-from-served-page-presentations.md)) |
+| **Status** | Built (UI refresh slice 2.2, 2026-10-22), on `main` since PR #8; live on dev since 2026-10-22. A composed tab ([ADR-151](../../decisions/adr-151-compose-a-customer-tab-from-served-page-presentations.md)) |
 | **Owns** | The Growth check's bands, the source of each figure, and its answer template |
 | **Parent** | [Decision Workspace UI](../README.md) · [Information architecture](../information-architecture/README.md) (Overview hub) |
 ## 1. Purpose
