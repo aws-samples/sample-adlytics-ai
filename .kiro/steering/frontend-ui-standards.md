@@ -1,6 +1,6 @@
 ---
 inclusion: fileMatch
-fileMatchPattern: ["frontend/**"]
+fileMatchPattern: ["**/frontend/**"]
 description: Governs window-scope integrity, temporal labels, designed absence states, and progressive loading when editing frontend surfaces.
 ---
 

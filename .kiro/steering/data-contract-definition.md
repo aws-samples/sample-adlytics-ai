@@ -1,6 +1,6 @@
 ---
 inclusion: fileMatch
-fileMatchPattern: ["contracts/amc/*.yaml", "contracts/vendor-central/*.yaml"]
+fileMatchPattern: ["**/contracts/amc/*.yaml", "**/contracts/vendor-central/*.yaml"]
 description: Governs source-dataset-to-curated-table YAML definitions, including scope, grain, field mapping, null, currency, and versioning rules, when editing AMC or Vendor Central data contracts.
 ---
 

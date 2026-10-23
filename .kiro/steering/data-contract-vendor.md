@@ -1,6 +1,6 @@
 ---
 inclusion: fileMatch
-fileMatchPattern: ["contracts/vendor-central/**"]
+fileMatchPattern: ["**/contracts/vendor-central/**"]
 description: Governs Vendor Central contract grain separation, report-option identity, null semantics, restatement monotonicity, source-time handling, and currency mapping when editing Vendor Central contracts.
 ---
 

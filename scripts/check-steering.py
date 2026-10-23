@@ -83,7 +83,13 @@ def _load_front_matter(value: str) -> dict[str, Any]:
     return loaded
 
 
+WORKTREE_PREFIX = ".worktrees/*/"
+
+
 def _pattern_matches_file(pattern: str) -> bool:
+    # A clean checkout holds no git worktrees, so a worktree pattern is checked
+    # against the repository-root path it mirrors.
+    pattern = pattern.removeprefix(WORKTREE_PREFIX)
     expanded = f"{pattern}/*" if pattern.endswith("/**") else pattern
     return any(candidate.is_file() for candidate in ROOT.glob(expanded))
 
