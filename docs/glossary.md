@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Living. Grows when a term appears in a second document |
-| **Last updated** | 2026-10-22 |
+| **Last updated** | 2026-10-23 |
 | **Scope** | Acronyms and terms used across these documents, with a pointer to whoever owns each |
 | **Related** | [conventions](conventions.md) §9 · [understanding-the-data-model](understanding-the-data-model.md) · [business-context](business-context.md) |
 
@@ -65,6 +65,8 @@ Terms specific to one document are defined there and deliberately absent from th
 
 | Term | Gloss | Owner |
 |---|---|---|
+| **answer sentence** | The one sentence a customer page opens with: a fixed template filled with served figures, never a computed one | [UI guardrails](ui/README.md#8-shared-implementation-guardrails) |
+| **Growth check** | The Overview tab at `/`, composed from the Scorecard, Retail health, New customers and Campaigns presentations | [Overview › Growth check](ui/overview/README.md), [ADR-151](decisions/adr-151-compose-a-customer-tab-from-served-page-presentations.md) |
 | **ADOT** | AWS Distro for OpenTelemetry. The tracing SDK, chosen over the X-Ray SDK | [ADR-009](decisions/adr-009-observability-instrumentation.md) |
 | **ADR** | Architecture Decision Record. Owns *why*, and the history of why | [conventions](conventions.md) §7 |
 | **AgentCore** | Bedrock AgentCore. Runtime, Memory, Gateway and Policy — the agent layer | [ADR-006](decisions/adr-006-agentcore-agentic-layer.md) |
