@@ -44,6 +44,7 @@ from collections.abc import Callable, Generator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
+from itertools import pairwise
 from time import monotonic
 from typing import TYPE_CHECKING, Any, Final, Literal, Protocol, cast
 
@@ -1352,6 +1353,10 @@ class _OverBudget:
         return cls(float(cast("float", values[0])), float(cast("float", values[1])))
 
 
+_STORED_GROUPS_MAX: Final = len(RefusalScope) * len(IsolatedRefusalReason)
+"""A settlement stores at most one group per `(scope, reason)` pair (`group_refusals`)."""
+
+
 @dataclass(frozen=True, slots=True)
 class _Stored:
     """What a settled task stored for its emission: its groups and its over-budget report."""
@@ -1652,13 +1657,22 @@ def _replay_settled(  # noqa: PLR0913, PLR0917 -- the ports, delivery, observati
     if found is None or found.state is not NodeState.SUCCEEDED or found.effect_record is None:
         return
     try:
-        parsed = cast("dict[str, object]", json.loads(found.effect_record))
+        decoded: object = json.loads(found.effect_record)
+        if not isinstance(decoded, dict):
+            raise ValueError("a settled task's stored record is an object.")
+        parsed = cast("dict[str, object]", decoded)
         listed = parsed.get("isolated_refusals")
         if listed is not None and not isinstance(listed, list):
             raise ValueError("stored isolated refusals are a list.")
-        groups = tuple(
-            RefusalGroup.from_record(item) for item in cast("list[object]", listed or [])
-        )
+        items = cast("list[object]", listed or [])
+        if len(items) > _STORED_GROUPS_MAX:
+            raise ValueError("stored isolated refusals hold at most one group per pair.")
+        groups = tuple(RefusalGroup.from_record(item) for item in items)
+        keys = [(group.scope.value, group.reason.value) for group in groups]
+        # `group_refusals` stores one group per (scope, reason), sorted: anything else would
+        # replay a group twice, so it is the stored-record defect, never a second emission.
+        if any(first >= second for first, second in pairwise(keys)):
+            raise ValueError("stored isolated refusals are sorted, one per (scope, reason).")
         over_budget = _OverBudget.from_record(parsed.get("over_budget"))
     except (TypeError, ValueError) as error:
         invalid = InvariantError(

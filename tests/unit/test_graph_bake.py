@@ -2051,6 +2051,50 @@ def test_a_stored_list_that_does_not_validate_is_reported_and_acknowledged(
     assert telemetry.spans == []
 
 
+def _restored(bake: Bake, task: tuple[str, str], record: object) -> None:
+    """Overwrite a settled task node's (run, key) stored effect record with `record`."""
+    run, key = task
+    node = bake.node(run, task_node_name(key))
+    (item,) = [
+        stored
+        for (pk, _sk), stored in bake.tables.items.items()
+        if pk == f"RUN#{run}" and stored.get("effect_record", {}).get("S") == node.effect_record
+    ]
+    item["effect_record"] = {"S": json.dumps(record, sort_keys=True, separators=(",", ":"))}
+
+
+@pytest.mark.parametrize("shape", ["duplicated_group", "array_record"])
+def test_a_stored_record_outside_one_sorted_group_per_pair_is_the_stored_refusal_defect(
+    monkeypatch: pytest.MonkeyPatch, shape: str
+) -> None:
+    """A duplicate would replay the alarm twice; an array record escaped the typed invariant."""
+    bake, telemetry, run, key = _replay_world(monkeypatch, notes=True)
+    parsed = json.loads(cast("str", bake.node(run, task_node_name(key)).effect_record))
+    (group,) = parsed["isolated_refusals"]
+    if shape == "duplicated_group":
+        parsed["isolated_refusals"] = [group, group]
+        _restored(bake, (run, key), parsed)
+    else:
+        _restored(bake, (run, key), [parsed])
+    replay = bake.task(run, key, receive_count=2)
+    assert (replay.acknowledge, replay.outcome) == (True, "graph_already_settled")
+    assert bake.invariants == [BAKE_INTENT_INVARIANT]  # the alarmed baker invariant signal
+    assert telemetry.spans == [] and telemetry.datapoints == []
+    # Paired: the record rewritten with its one stored group replays it once (2 data items).
+    control, control_telemetry, control_run, control_key = _replay_world(monkeypatch, notes=True)
+    kept = json.loads(
+        cast("str", control.node(control_run, task_node_name(control_key)).effect_record)
+    )
+    assert kept["isolated_refusals"] == [group]
+    _restored(control, (control_run, control_key), kept)
+    assert control.task(control_run, control_key, receive_count=2).outcome == (
+        "graph_already_settled"
+    )
+    assert control.invariants == []
+    assert control_telemetry.triples() == [("item", "history_gap", 2)]
+    assert control_telemetry.datapoints == [("data", 2)]
+
+
 def test_a_node_read_that_raises_on_replay_is_a_batch_item_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
