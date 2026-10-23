@@ -321,6 +321,15 @@ flow identity is a required recovery capability. The custom-resource path remain
 revision/pointer boundary, but neither substitutes for dependency-aware scheduling or objective
 attainment evidence.
 
+**Updating to the sharded sibling index ([ADR-145](../decisions/adr-145-serve-ten-thousand-campaigns-with-a-sharded-roster-and-streamed-writes.md)).**
+Campaigns render format 12 and Retail health render format 10 name their siblings and product-detail
+children only through the sibling index, and serving reads no other shape. A Campaigns (format 11) or
+Retail health (format 9) pointer baked before the update has no index, so from the deploy until that
+page's next bake every view of it is the malformed-artifact refusal: the page shows its failed state
+and the ERROR invariant alarms. The update changes only code, so the backfill above doesn't fire, and
+no repository-owned re-bake command exists yet: the next publication bake of each page rebuilds it.
+Deploy the update shortly before a delivery for both pages lands, and check both pages after that bake.
+
 ## Page isolation
 
 A bake limit or failure is one of two things ([ADR-142](../decisions/adr-142-isolate-a-bake-refusal-to-its-own-scope-and-alarm-on-defects.md);
