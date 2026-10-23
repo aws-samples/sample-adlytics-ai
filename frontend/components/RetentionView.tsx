@@ -101,9 +101,11 @@ export const RETENTION_GRID_HEADING = 'By cohort';
 /**
  * UI refresh 3.5 (readout A.8): why the grid reads differently from the curve. The grid binds the
  * all-ID `repeat_buyer_rate` per period; the curve binds account-ID cumulative rates (LLD "Rates
- * on the grid and the curve").
+ * on the grid and the curve"). It names device IDs, so it reads only on the standard path.
  */
 export const RETENTION_GRID_NOTE = 'Each cell counts all shoppers, including device IDs, in that period only; the curve above counts signed-in shoppers and adds up every period so far, so the two read differently.';
+/** The paid-path grid binds account IDs only (served "All Amazon purchases · Amazon account IDs only"). */
+export const RETENTION_PAID_GRID_NOTE = 'Each cell counts repeat buyers in that period only; the curve above adds up every period so far.';
 function Market({ market }: { readonly market: RetentionMarket }) {
   const [group, setGroup] = useState<RetentionGroup>('sponsored_only');
   const [path, setPath] = useState<'standard' | 'paid'>('standard');
@@ -128,7 +130,7 @@ function Market({ market }: { readonly market: RetentionMarket }) {
     <Curve labelledBy={named(`curve-${market.marketplace_key}`)} market={market} />
     <section className="section" aria-labelledby={named(`triangle-${market.marketplace_key}`)}>
       <h2 id={`triangle-${market.marketplace_key}`}>{RETENTION_GRID_HEADING}</h2>
-      <p className="footnote">{RETENTION_GRID_NOTE}</p>
+      <p className="footnote">{shownPath === 'standard' ? RETENTION_GRID_NOTE : RETENTION_PAID_GRID_NOTE}</p>
       {market.path.paid.state === 'observed' ? <fieldset className="retention-switch"><legend>Purchase path</legend>
         <label><input type="radio" name={`path-${market.marketplace_key}`} checked={shownPath === 'standard'} onChange={() => setPath('standard')} />Repeat after an ad</label>
         <label><input type="radio" name={`path-${market.marketplace_key}`} checked={shownPath === 'paid'} onChange={() => setPath('paid')} />Any repeat purchase</label>

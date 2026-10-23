@@ -118,6 +118,19 @@ test('a refreshed artifact without paid grids shows the standard path instead of
   assert.ok(within(region()).getByText(/Won by sponsored ads only · ad-touched repeat only/));
   assert.ok(screen.getByText('Amazon account IDs only.'));
 });
+test('the paid path grid note never names device IDs; the standard path note does (Tier 3 review M1)', () => {
+  const observed = retentionFixture();
+  const market = (observed.markets as Record<string, unknown>[])[0]!;
+  const triangle = market.triangle as Record<string, unknown>;
+  market.path = { paid: { callout: null, state: 'observed' }, standard: { available: true } };
+  triangle.paid = structuredClone(triangle.standard);
+  render(<RetentionView artifact={parseRetentionCohortArtifact(observed)} />);
+  const grid = () => screen.getByRole('region', { name: 'By cohort' });
+  assert.ok(within(grid()).getByText(/including device IDs/));
+  fireEvent.click(screen.getByRole('radio', { name: 'Any repeat purchase' }));
+  assert.equal(within(grid()).queryByText(/device IDs/), null);
+  assert.ok(within(grid()).getByText('Each cell counts repeat buyers in that period only; the curve above adds up every period so far.'));
+});
 test('two markets each lead with their marketplace heading and distinct landmark names', () => {
   const view = render(<RetentionView artifact={parseRetentionCohortArtifact(retentionTwoMarketFixture())} />);
   assert.deepEqual(screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent).filter((text) => text?.endsWith('marketplace')), ['US marketplace', 'UK marketplace']);
