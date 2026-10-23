@@ -4,7 +4,7 @@
 |---|---|
 | **Type** | Primer. Assumes no technical background |
 | **Status** | **Partial, deliberately.** §1–§5 are derived from what is built and verified. §6 lists the product questions that are still open, as questions rather than guesses |
-| **Last updated** | 2026-10-01 |
+| **Last updated** | 2026-10-23 |
 | **Read next** | [understanding-the-data-model](understanding-the-data-model.md) for how it works · [answerable-questions](answerable-questions.md) for the capability surface |
 
 ## About the gaps in this document
@@ -28,6 +28,29 @@ That split is deliberate. The source docs in this repo mark every claim `[verifi
 **Brand managers, primarily.** Analytics leads and agencies working on a vendor's behalf are real secondary readers, and the boundary is genuinely moving — this work has traditionally sat with agencies, and first-party teams are increasingly trying to own insight rather than receive it. That shift is part of why a self-deployed tool is the right shape: it puts the analysis inside the vendor rather than behind a retainer.
 
 Practically it means the product cannot assume a data specialist is reading it. A brand manager needs the answer and the caveat in a sentence, which is why the narration obligations in §5 are not decoration.
+
+**Personas** (adopted 2026-10-22 with the UI refresh). Each one makes the decision in their own tools; the product is read-only.
+
+| Persona | Top question | Decisions they make |
+|---|---|---|
+| **Brand or category manager (primary)** | Is my advertising actually growing my business? Are new customers coming in, and do they come back? | The channel budget split; which products to push or fix; what to raise with Amazon |
+| **Media buyer**, at an agency or an in-house retail-media manager | Which campaign do I cut or scale? Does DSP reach shoppers search misses? Which audiences buy? | Scale, hold or cut campaigns; the DSP frequency cap; which audiences to build in Amazon DSP |
+| **Finance or CMO** | What did we spend, what came back, and did retail sales move with it? | Hold, grow or question the overall Amazon ad budget |
+| **Analyst** | Which basis, window and source is this, and why do two numbers differ? | Signing off figures before they go to finance or a client |
+
+**Who each view is for.** Every built view answers one question that leads to one decision. Routes and tab names are owned by [`presentation/navigation.yaml`](../presentation/navigation.yaml); each view's design is in [UI page contracts](ui/README.md).
+
+| View | Primary readers | Question | Decision it leads to |
+|---|---|---|---|
+| Overview › Growth check | Brand manager, finance or CMO | Is advertising growing my business? | Whether to act this week, and where |
+| Performance › Scorecard, with its channel cards | Brand manager, media buyer | Is my ad spend paying back, by channel, and which channel wins new customers? | The budget split between channels |
+| Performance › Campaigns | Media buyer | Which campaigns do I scale or fix? | Scale, hold or cut, in Amazon Ads |
+| Reach and audiences › Reach and funnel | Media buyer | Does DSP reach shoppers sponsored ads miss, and when do more ads stop paying? | DSP's role and its frequency cap |
+| Reach and audiences › Audiences | Media buyer | Who buys, compared with who we reach? | Which audience to build |
+| Customers › New customers | Brand manager | Are ads winning first-time buyers, and at what cost? | Which ad type to fund for new customers |
+| Customers › Retention | Brand manager, finance or CMO | Do the customers we win come back? | Which acquisition to defend |
+| Retail health | Brand manager | Are products selling, and where do sales leak? | What to raise with Amazon about shipping or returns |
+| Assistant | Everyone; the analyst opens its trace | Why did it move? | What to look at first |
 
 Three properties define it, and each is a deliberate constraint rather than a feature:
 

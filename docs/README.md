@@ -32,7 +32,7 @@ This is the entry point for the current design. It contains navigation only: eac
 
 | Document | Audience |
 |---|---|
-| [Business Context](business-context.md) | Product purpose, boundaries, and vocabulary. |
+| [Business Context](business-context.md) | Product purpose, boundaries, vocabulary, personas, and who each view is for. |
 | [Understanding the Data Model](understanding-the-data-model.md) | Canonical analytical model from first principles. |
 | [Answerable Questions](answerable-questions.md) | Customer-facing supported and refused question boundaries. |
 
