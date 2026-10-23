@@ -59,7 +59,7 @@ requires an explicit target environment.
 | Ingestion drain observation | `probe_ingestion_drain.py` | Read-only exact-stack queue/lifecycle/performance observer with fail-closed error and DLQ detection; raw samples and aggregate output stay under ignored `evidence/` |
 | Isolated ingestion latency diagnostic | `probe_ingestion_end_to_end_latency.py` | Dev-only single-delivery measurement from empty ingestion queue through exact semantic `CURRENT`, followed by explicitly non-authoritative bake-queue observation; raw cutover output stays under ignored `evidence/` |
 | Deployed acceptance | `probe_ingestion_cutover.py` | V2-only synthetic ingestion acceptance: immutable landing, exact attempt success, exact `CURRENT` advancement, and unchanged DLQ depth |
-| README screenshots | `capture_screenshots.mjs` | Drives a deployment loaded with synthetic data as a logged-in user in the light theme and writes the README gallery to `docs/images/`. Both chat images are scripted fixtures served in the browser, so no question reaches the deployed agent. Never mutates the deployment; fails on a missing surface or past the 6 MiB image budget; prints image names and sizes only |
+| README screenshots | `capture_screenshots.mjs` | Drives a deployment loaded with synthetic data as a logged-in user in the light theme and writes the README gallery to `docs/images/`. Every chat image is a scripted fixture served in the browser, so no question reaches the deployed agent. Never mutates the deployment; fails on a missing surface or past the 6 MiB image budget; prints image names and sizes only |
 
 ## Running deployed AMC cadence acceptance
 
@@ -1698,14 +1698,21 @@ set -a; source validation/.env.local; set +a
 node validation/capture_screenshots.mjs
 ```
 
+In place of `ADL_REFRESH` and `ADL_CSRF`, `ADL_SESSION` may carry one access token for a synthetic
+dev persona, signed in as `probe_footnote_readback.py` does (`cognito_personas.py`); the script
+sends it as the `adl_session` cookie and never prints it.
+
 It exits 0 when every image was captured, 2 when a data-dependent surface was not available and
 was skipped (it prints a `SKIPPED` line naming the image, and the old file is left in place), and
-1 on anything else. A person views every image before committing it.
+1 on anything else, including a page that would show an email address other than the fixture
+author's, or the deployment's host. A person views every image before committing it.
 
-`ADL_CAPTURE_SKIP=campaign-detail` leaves out campaign detail (the Sponsored Products and Amazon
-DSP details and their close-ups) when that surface is broken on the target; each is reported as
-`SKIPPED` and the run exits 2, so a stale image is never mistaken for a fresh one. A detail whose
-delivery reads "Not enough data for this window" fails the run.
+`ADL_CAPTURE_SKIP` takes a comma-separated list. `campaign-detail` leaves out campaign detail (the
+Sponsored Products and Amazon DSP details and their close-ups) when that surface is broken on the
+target. `prompt-administration` leaves out the two Prompt administration images when the
+signed-in user is not in the prompt-admin group. Each is reported as `SKIPPED` and the run exits 2,
+so a stale image is never mistaken for a fresh one. A detail whose delivery reads "Not enough data
+for this window" fails the run.
 
 **Last capture, 2026-10-19.** Every image the root README embeds was captured from 04:50 to 04:51
 UTC with `node validation/capture_screenshots.mjs` and no skip option. The target was the dev

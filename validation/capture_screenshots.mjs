@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT-0
 /** Regenerate the README screenshot gallery from a synthetic-data deployment without printing page or credential values. */
 
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { mkdir, readdir, stat, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 
@@ -11,16 +11,21 @@ const { chromium } = require('@playwright/test');
 const BASE_URL = (process.env.ADL_BASE_URL?.trim() ?? '').replace(/\/$/, '');
 const refresh = process.env.ADL_REFRESH?.trim() ?? '';
 const csrf = process.env.ADL_CSRF?.trim() ?? '';
-if (!BASE_URL || !refresh || !csrf) {
-  throw new Error('Source validation/.env.local (ADL_BASE_URL, ADL_REFRESH, ADL_CSRF) before running this script.');
+// Or one access token for a synthetic persona, sent as the `adl_session` cookie (the same
+// sign-in as probe_footnote_readback.py); it is never printed.
+const session = process.env.ADL_SESSION?.trim() ?? '';
+if (!BASE_URL || !(session || (refresh && csrf))) {
+  throw new Error('Set ADL_BASE_URL and either ADL_SESSION or ADL_REFRESH with ADL_CSRF before running this script.');
 }
 
-// Captures the operator names to leave out, comma-separated (today only `campaign-detail`, which
-// covers the Sponsored Products and Amazon DSP details), for a surface that is broken on the
-// target. Each skipped image is reported and the run exits 2.
+// Captures the operator names to leave out, comma-separated, for a surface that is broken on the
+// target or that the signed-in user can't open: `campaign-detail` (the Sponsored Products and
+// Amazon DSP details) and `prompt-administration` (needs the prompt-admin group). Each skipped
+// image is reported and the run exits 2.
+const SKIPPABLE = new Set(['campaign-detail', 'prompt-administration']);
 const SKIP = new Set((process.env.ADL_CAPTURE_SKIP ?? '').split(',').map((item) => item.trim()).filter(Boolean));
 for (const item of SKIP) {
-  if (item !== 'campaign-detail') throw new Error(`ADL_CAPTURE_SKIP names an unknown capture: ${item}.`);
+  if (!SKIPPABLE.has(item)) throw new Error(`ADL_CAPTURE_SKIP names an unknown capture: ${item}.`);
 }
 
 const OUT = new URL('../docs/images/', import.meta.url);
@@ -172,11 +177,16 @@ async function assertLight(page) {
   if (theme !== 'light') throw new Error(`The page did not render in the light theme (theme=${theme}).`);
 }
 
+/** Every shot passes here first: refuse a page that shows an address or the origin's host. */
 async function quiet(page) {
   await page.mouse.move(1, 1);
-  await page.evaluate(() => {
+  const leaks = await page.evaluate(({ host, fixture }) => {
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
-  });
+    const text = document.body.innerText;
+    const emails = (text.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g) ?? []).filter((item) => item !== fixture);
+    return emails.length + (text.includes(host) ? 1 : 0);
+  }, { host: new URL(BASE_URL).host, fixture: FIXTURE_AUTHOR_EMAIL });
+  if (leaks > 0) throw new Error(`A shot would show ${leaks} email address(es) or the deployment host.`);
 }
 
 async function scrollTop(page) {
@@ -330,7 +340,8 @@ async function captureInsightDialogs(page) {
       });
       await fitDialog(page, dialog);
       await settled(page, dialog);
-      await withoutBackdrop(page, () => shotElement(page, 'insight-dialog.png', dialog, 'device'));
+      // CSS scale: the full dialog is tall, and device scale would take most of the image budget.
+      await withoutBackdrop(page, () => shotElement(page, 'insight-dialog.png', dialog, 'css'));
       await restoreViewport(page);
       await closeDialog(page, dialog);
       return;
@@ -390,7 +401,8 @@ async function captureMetricFocus(page) {
   await settled(page, dialog);
   await fitDialog(page, dialog);
   await settled(page, dialog);
-  await withoutBackdrop(page, () => shotElement(page, 'metric-focus-dialog.png', dialog, 'device'));
+  // CSS scale, as the insight dialog: the full dialog is tall.
+  await withoutBackdrop(page, () => shotElement(page, 'metric-focus-dialog.png', dialog, 'css'));
   await restoreViewport(page);
   await closeDialog(page, dialog);
 }
@@ -483,9 +495,34 @@ async function captureRetail(page) {
   }
   await setAssistant(page, true);
   await shotViewport(page, 'retail-health.png', 'css');
+  // "Ads beside retail" (7 days only): ad spend and its share of shipped sales beside the retail
+  // headline, at the full page width.
+  await setAssistant(page, false);
+  await shotSection(page, 'retail-ads-beside-retail.png', page.locator('section[data-slot="rh-ads"]'));
+  await setAssistant(page, true);
+}
+
+/** Growth check at `/`: one page shot with the assistant docked, then its answer band. */
+async function captureGrowthCheck(page) {
+  await page.goto(`${BASE_URL}/`, { waitUntil: 'domcontentloaded' });
+  await assertLight(page);
+  await page.getByRole('heading', { name: 'Is your advertising growing your business?', level: 2 }).waitFor({ timeout: 60_000 });
+  await settled(page, page.locator('main'));
+  await setAssistant(page, true);
+  await shotViewport(page, 'growth-check.png', 'css');
+  // The question, its answer sentence, the four tiles and the two daily charts.
+  await setAssistant(page, false);
+  await shotSection(page, 'growth-check-answer.png', page.locator('.overview > section.card').first());
+  await setAssistant(page, true);
 }
 
 async function capturePromptAdministration(page) {
+  if (SKIP.has('prompt-administration')) {
+    for (const name of ['prompt-administration.png', 'prompt-version-calibration.png']) {
+      skipped.push(`${name}: skipped by ADL_CAPTURE_SKIP`);
+    }
+    return;
+  }
   await page.goto(`${BASE_URL}/admin/prompts/`, { waitUntil: 'domcontentloaded' });
   await assertLight(page);
   await page.getByRole('heading', { name: 'Prompt administration', level: 1 }).waitFor({ timeout: 60_000 });
@@ -575,7 +612,7 @@ const ROSTER_PAGES = [
     path: '/scorecard/',
     title: 'Scorecard',
     image: 'scorecard.png',
-    closeups: [{ heading: 'By channel', image: 'scorecard-by-channel.png' }],
+    closeups: [{ heading: 'What each channel does for you', image: 'scorecard-by-channel.png' }],
   },
   {
     path: '/new-customers/',
@@ -587,7 +624,11 @@ const ROSTER_PAGES = [
     path: '/reach/',
     title: 'Reach and funnel',
     image: 'reach.png',
-    closeups: [{ heading: 'Frequency', image: 'reach-frequency.png' }],
+    closeups: [
+      { heading: 'Frequency', image: 'reach-frequency.png' },
+      // The first association caveat, one line with its reasons behind a disclosure.
+      { selector: '.reach-caveat', image: 'reach-caveat.png' },
+    ],
   },
   {
     path: '/retention/',
@@ -650,6 +691,16 @@ async function captureChat(page, refusals) {
   await page.evaluate(() => window.__adlStream.controller.close());
   await panel.locator('.msg.agent .msg-reference').first().waitFor({ timeout: 10_000 });
   await panel.locator('ol.progress').waitFor({ state: 'detached', timeout: 10_000 });
+  // The finished answer with "How this was answered" opened: one step per governed tool call.
+  const answer = panel.locator('.msg.agent', { has: page.locator('details.msg-trace') }).last();
+  const trace = answer.locator('details.msg-trace');
+  await trace.locator('summary').click();
+  await page.waitForFunction(() => document.querySelectorAll('aside.assistant details.msg-trace[open] li').length === 3, null, { timeout: 10_000 });
+  if (await answer.getByRole('button', { name: 'Copy reference', exact: true }).count() !== 1) {
+    throw new Error('chat-answer-trace.png: the answer has no Copy reference button.');
+  }
+  await shotPadded(page, 'chat-answer-trace.png', answer, 'device', 8);
+  await trace.locator('summary').click();
 
   await composer.fill(REFUSAL_QUESTION);
   await submit.click();
@@ -675,10 +726,15 @@ try {
     colorScheme: 'light',
     reducedMotion: 'reduce',
   });
-  await context.addCookies([
-    { name: 'adl_refresh', value: refresh, url: BASE_URL, httpOnly: true, secure: true, sameSite: 'Lax' },
-    { name: 'adl_csrf', value: csrf, url: BASE_URL, httpOnly: false, secure: true, sameSite: 'Lax' },
-  ]);
+  await context.addCookies(session
+    ? [
+      { name: 'adl_session', value: session, url: BASE_URL, httpOnly: true, secure: true, sameSite: 'Lax' },
+      { name: 'adl_csrf', value: randomBytes(16).toString('hex'), url: BASE_URL, httpOnly: false, secure: true, sameSite: 'Lax' },
+    ]
+    : [
+      { name: 'adl_refresh', value: refresh, url: BASE_URL, httpOnly: true, secure: true, sameSite: 'Lax' },
+      { name: 'adl_csrf', value: csrf, url: BASE_URL, httpOnly: false, secure: true, sameSite: 'Lax' },
+    ]);
   await context.addInitScript(() => {
     try { localStorage.setItem('adlytics.theme', 'light'); } catch { /* the assertion below reports it */ }
   });
@@ -731,6 +787,7 @@ try {
     }
   });
 
+  await captureGrowthCheck(page);
   await openPortfolio(page);
   // B4 ordering check (ADR-084): a four-place ad spend tile means the deploy or the frontend
   // publish has not landed, so the capture stops before it writes any image.
@@ -747,9 +804,14 @@ try {
   const band = page.locator('*:has(> [role="radiogroup"][aria-label="Available reporting periods"]):has(> p.win-note)');
   if (await radios.count() !== 1) throw new Error('time-window-control.png: the period control is missing.');
   await shotPadded(page, 'time-window-control.png', band, 'device');
+  // The answer sentence, the tiles under it and, under All channels, the line that asks for a
+  // channel in place of the purchases and ROAS tiles.
+  const answer = page.locator('main [data-slot="answer"]').first();
   const tiles = page.locator('.tiles').first();
-  if (await tiles.locator('.tile').count() < 4) throw new Error('metric-tiles.png: the portfolio shows fewer than four tiles.');
-  await shotPadded(page, 'metric-tiles.png', tiles, 'device');
+  if (await answer.count() === 0) throw new Error('metric-tiles.png: the portfolio shows no answer sentence.');
+  if (await tiles.locator('.tile').count() < 2) throw new Error('metric-tiles.png: the portfolio shows fewer than two tiles.');
+  await scrollTop(page);
+  await shotUnion(page, 'metric-tiles.png', [answer, tiles, page.getByText('Pick a channel to see its sales and return.', { exact: true })], 'device');
   await capturePortfolioEvidence(page);
   await captureMetricFocus(page);
   await captureInsightDialogs(page);
