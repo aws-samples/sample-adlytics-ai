@@ -1,6 +1,6 @@
 ---
 inclusion: fileMatch
-fileMatchPattern: ["README.md"]
+fileMatchPattern: ["README.md", ".worktrees/*/README.md"]
 description: Governs root README commands, delegation to canonical owners, unenforced sequences, and manual-versus-automatic wording when editing the repository README.
 ---
 

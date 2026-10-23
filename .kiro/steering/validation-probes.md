@@ -1,6 +1,6 @@
 ---
 inclusion: fileMatch
-fileMatchPattern: ["validation/**"]
+fileMatchPattern: ["**/validation/**"]
 description: Governs validation-probe authorship, explicit target inputs, result interpretation, local evidence custody, and sanitized publication when editing probes or results under `validation/`.
 ---
 

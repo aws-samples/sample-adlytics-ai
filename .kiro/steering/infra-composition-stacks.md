@@ -1,6 +1,6 @@
 ---
 inclusion: fileMatch
-fileMatchPattern: ["infra/lib/stacks/**/*.ts"]
+fileMatchPattern: ["**/infra/lib/stacks/**/*.ts"]
 description: Governs CDK stack boundaries, resource lifecycle separation, SSM-based cross-stack value exchange, deployment-order ownership, and stack naming when editing infrastructure stacks.
 ---
 

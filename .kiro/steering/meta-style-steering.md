@@ -1,6 +1,6 @@
 ---
 inclusion: fileMatch
-fileMatchPattern: [".kiro/steering/**/*.md"]
+fileMatchPattern: ["**/.kiro/steering/**/*.md"]
 description: Governs steering-file descriptions, per-rule actionability, canonical ownership, tracked-versus-local content boundaries, scope, and inclusion-mode selection when editing workspace steering files.
 ---
 

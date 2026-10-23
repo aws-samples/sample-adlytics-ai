@@ -1,6 +1,6 @@
 ---
 inclusion: fileMatch
-fileMatchPattern: ["src/**/*.py"]
+fileMatchPattern: ["**/src/**/*.py"]
 description: Governs hexagonal dependency direction, domain and adapter responsibilities, typed request and result signatures, and outbound port boundaries when editing Python application code.
 ---
 

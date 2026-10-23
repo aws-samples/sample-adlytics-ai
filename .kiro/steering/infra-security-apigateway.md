@@ -1,6 +1,6 @@
 ---
 inclusion: fileMatch
-fileMatchPattern: ["infra/lib/constructs/api/**", "infra/lib/constructs/edge/**", "infra/lib/stacks/api-stack.ts", "infra/lib/stacks/auth-stack.ts", "infra/lib/stacks/edge-security-stack.ts", "infra/lib/stacks/frontend-stack.ts", "infra/lib/stacks/token-service-stack.ts"]
+fileMatchPattern: ["**/infra/lib/constructs/api/**", "**/infra/lib/constructs/edge/**", "**/infra/lib/stacks/api-stack.ts", "**/infra/lib/stacks/auth-stack.ts", "**/infra/lib/stacks/edge-security-stack.ts", "**/infra/lib/stacks/frontend-stack.ts", "**/infra/lib/stacks/token-service-stack.ts"]
 description: Governs CDK API edge wiring, Lambda authorizer caching, same-origin cookie authentication, CloudFront forwarding, Cognito restrictions, and edge WAF when editing API infrastructure.
 ---
 

@@ -1,6 +1,6 @@
 ---
 inclusion: fileMatch
-fileMatchPattern: ["src/adapters/inbound/auth_handlers/**"]
+fileMatchPattern: ["**/src/adapters/inbound/auth_handlers/**"]
 description: Governs Cognito-backed cookie sessions, authorizer verification, CSRF, refresh rotation, and logout revocation when editing backend authentication handlers.
 ---
 

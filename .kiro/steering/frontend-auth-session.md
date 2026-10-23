@@ -1,6 +1,6 @@
 ---
 inclusion: fileMatch
-fileMatchPattern: ["frontend/lib/**"]
+fileMatchPattern: ["**/frontend/lib/**"]
 description: Governs browser cookie-only sessions, CSRF propagation, refresh and retry behavior, correlation headers, and same-origin API configuration when editing the frontend client layer.
 ---
 
