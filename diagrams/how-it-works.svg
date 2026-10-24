@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1460 490" role="img" focusable="false" aria-labelledby="how-it-works-title how-it-works-desc">
   <title id="how-it-works-title">Call-flow diagram: from your data delivery to an answer in the browser</title>
-  <desc id="how-it-works-desc">Your extraction pipeline lands each result in an S3 landing bucket; ingestion validates it against the data contracts and publishes an immutable version to the data lake, which the measurement tools read. A browser question reaches the Conversation API, which checks it with Amazon Bedrock Guardrails and invokes the AgentCore agent as the signed-in user; the agent calls the tools through AgentCore Gateway, and its answer streams back to the browser with an audit record written before the stream ends.</desc>
+  <desc id="how-it-works-desc">Your extraction pipeline runs the AMC SQL (Vendor Central reports can't be landed yet) and lands each result in an S3 landing bucket; ingestion validates it against the data contracts and publishes an immutable version to the data lake, which the measurement tools read. A browser question reaches the Conversation API, which checks it with Amazon Bedrock Guardrails and invokes the AgentCore agent as the signed-in user; the agent calls the tools through AgentCore Gateway, and its answer streams back to the browser with an audit record written before the stream ends.</desc>
   <defs>
     <marker id="how-it-works-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#536275"/></marker>
   </defs>
@@ -38,8 +38,8 @@
       <text x="1330" y="393">Measurement tools</text>
     </g>
     <g font-size="13" fill="#536275">
-      <text x="130" y="117">AMC SQL,</text>
-      <text x="130" y="133">Vendor Central reports</text>
+      <text x="130" y="117">AMC SQL</text>
+      <text x="130" y="133">(Vendor Central: not yet)</text>
       <text x="530" y="122">Lambda, Glue, Athena</text>
       <text x="930" y="126">S3, Glue Data Catalog,</text>
       <text x="930" y="142">DynamoDB</text>

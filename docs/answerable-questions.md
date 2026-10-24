@@ -1,9 +1,9 @@
-# Answerable questions — what Semantic V2 can and cannot tell a customer
+# Answerable questions — what Adlytics can and cannot tell you
 
 | | |
 |---|---|
 | **Status** | Deterministic authorized campaign/entity/metric/period/operation resolution is implemented and passes local tests [verified 2026-08-24]. [Validation results](../validation/RESULTS.md) record a development deployment with AMC query-pack execution against an internal demo instance (2026-08-29) and authenticated browser acceptance (from 2026-09-15); none of that is customer-volume or production acceptance. A deployment is answerable only where its required successful current publications and exact selected coverage exist. |
-| **Last updated** | 2026-10-01 |
+| **Last updated** | 2026-10-24 |
 | **Related** | [canonical-model](canonical-model.md) §5 · `contracts/shared/metric-dictionary.yaml` · [semantic resolution](concepts/semantic-resolution.md) · [ADR-053](decisions/adr-053-resolve-campaign-identity-and-hierarchy-before-measurement.md) · [Conversational Runtime](capabilities/conversational-runtime/architecture.md) §5 |
 
 ## 1. Why this document exists
@@ -26,7 +26,7 @@ So every question below lands in one of four buckets, and the axis is **what kin
 | **C** | Answerable, with an obligatory caveat | nothing — but the number is incomplete without a sentence | the narration layer |
 | **D** | **Never answerable from these sources** | nothing will change it | say so plainly and offer the nearest true thing |
 
-> **A and B are not "contract written" versus "contract missing".** That was the original axis and it stopped discriminating once every writable contract was written. **Everything** in A and B alike waits on the foundation — Iceberg tables, the curation pipeline, `dim_product` loaded — so that is a shared precondition rather than a distinction. What separates them is whether anything *other than building* is still outstanding.
+> **A and B are not "contract written" versus "contract missing".** That was the original axis and it stopped discriminating once every writable contract was written. What separates them is whether anything *other than building* is still outstanding.
 
 **Bucket D is the most valuable section here.** A product that refuses precisely is trusted; one that answers everything is not.
 
@@ -59,7 +59,7 @@ This is the shared precondition for buckets A and B alike, which is why it sits 
 
 | Tier | Customer needs | Unlocks |
 |---|---|---|
-| **Retail only** | Vendor Central reports landed in S3 | what sold, what Amazon paid, returns, glance views, and retail conversion rate for a product resolved from an exact ASIN or effective title plus marketplace; brand and parent selection or rollups remain unavailable |
+| **Retail only** | Vendor Central reports landed in S3 (not possible in a customer deployment yet; [README Known limits](../README.md#known-limits)) | what sold, what Amazon paid, returns, glance views, and retail conversion rate for a product resolved from an exact ASIN or effective title plus marketplace; brand and parent selection or rollups remain unavailable |
 | **+ Advertising** | an AMC instance with the ads accounts mapped to it | spend, impressions, clicks, viewability, reach, frequency, **ROAS**, halo, new-to-brand — most of the product |
 | **+ Paid features** | an **AMC Paid Features subscription**, theirs not ours | organic-versus-ad-attributed split, 60 months of retail history, the AMC-to-vendor reconciliation anchor |
 
@@ -69,11 +69,8 @@ Two consequences worth stating plainly:
 
 **No capability is descoped by a customer lacking the subscription.** The paid-feature contracts stay in the repository and simply do not run for that deployment. This is the same shape as [ADR-019](decisions/adr-019-grain-viability-is-measured.md), where a grain's viability is measured per customer rather than declared once — capability is a property of the deployment.
 
-**A retail-only deployment is coherent, not crippled.** It answers product-and-marketplace retail
-questions from an exact ASIN or one effective title alias, while refusing advertising questions and
-brand or parent selection and rollups with a stated reason rather than an error. Worth knowing
-because it is likely the easiest deployment for a first customer: Vendor Central access is far more
-common than a mapped AMC instance.
+A retail-only deployment will be coherent once Vendor Central reports can be landed. It will answer
+product-and-marketplace retail questions and refuse advertising questions with a stated reason.
 
 The deployment-time prerequisites are in the [repository README](../README.md).
 
@@ -223,7 +220,9 @@ brand and parent joins exist.
 *Offer instead:* aggregate reach and frequency.
 
 **D-4 · "Break this down by age / income / household status"**
-AMC does not carry demographics. `household_size` exists as a bucketed string, and nothing else.
+AMC has no age, income or marital-status field; `household_size` exists as a bucketed string, and
+nothing else. Where Amazon DSP offers an age or gender audience segment, Audiences shows it as a
+segment like any other, never as a breakdown of your shoppers.
 
 **D-5 · "Which specific ad caused this specific purchase?"**
 AMC gives attributed aggregates, not a per-event causal chain. `request_tag` links events but the docs warn duplicates occur and it is explicitly not recommended as a join key.

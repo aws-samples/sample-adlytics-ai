@@ -13,7 +13,8 @@ The essentials, for any assistant:
 - **Prove it locally.** Run the gates [CONTRIBUTING](CONTRIBUTING.md#run-the-gates) lists for the
   surface you changed before saying a change works. There is no remote CI.
 - **Explicit AWS target.** Every command that reaches AWS takes `PROFILE=` and `ENV=` with no
-  default. Run `make deploy-all` without `APPROVE=1` first and show the diff.
+  default. Run `make deploy-all` without `APPROVE=1` first, show the user the account, Region and
+  diff it prints, and add `APPROVE=1` only after they confirm.
 - **Ask first** before destroying an environment, deleting a retained resource, turning off
   deletion protection, or weakening any authentication, WAF or IAM control.
 - **Keep secrets out.** Never commit `.env`, session cookies, credentials or real account

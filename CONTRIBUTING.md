@@ -31,7 +31,7 @@ To send us a pull request, please:
 
 1. Fork the repository.
 2. Modify the source; please focus on the specific change you are contributing. If you also reformat all the code, it will be hard for us to focus on your change.
-3. Run the gates and say in the pull request which ones you ran. See [What a change carries](#what-a-change-carries).
+3. Run the gates and say in the pull request which ones you ran. See [Run the gates](#run-the-gates).
 4. Commit to your fork using clear commit messages.
 5. Send us a pull request, answering any default questions in the pull request interface.
 6. Stay involved in the conversation.
@@ -41,77 +41,30 @@ GitHub provides additional document on [forking a repository](https://help.githu
 
 ## What a change carries
 
-**There is no remote CI and none is planned** ([ADR-015](docs/decisions/adr-015-no-remote-ci.md)). Nothing re-runs these after you push, so a pull request that has not been through them locally has not been through them at all. That is also why this list is short: everything on it is either checkable by a command or reviewable by a person, and nothing is here as an aspiration.
-
-### Maintainer tools
-
-The publication and release gates need these tools at exactly these versions, and refuse any
-other version; a row marked `any current` is required but not pinned. This table is the one place
-each version is pinned; `scripts/tool_versions.py` reads it.
-
-| Tool | Version | Used by |
-|---|---|---|
-| gitleaks | 8.30.1 | make publication-gate |
-| ASH (automated-security-helper) | 3.7.0 | make release-gate |
-| finch or Docker | any current | make release-gate (ASH container mode) |
+**There is no remote CI and none is planned** ([ADR-015](docs/decisions/adr-015-no-remote-ci.md)). Nothing re-runs these after you push, so a pull request that has not been through them locally has not been through them at all.
 
 ### Run the gates
 
+Outside contributors stop after these gates and open the pull request; maintainers then follow
+[Maintainer publishing](#maintainer-publishing).
+
 ```bash
-make verify          # lint, typecheck, boundaries, contracts, unit tests
-make check           # every documentation and model gate
-make lint-boundaries # the hexagonal dependency rule
+make install                                       # once per clone, and after uv.lock changes
+(cd infra && npm ci) && (cd frontend && npm ci) && (cd scripts && npm ci)  # once per clone, and after a lockfile changes
+make verify   # lint, typecheck, import boundaries, contracts, unit tests
+make check    # every documentation and model gate
 ```
 
 Changes under `infra/` also need `make infra-typecheck` and `make infra-test`. Changes under
 `frontend/` also need `make frontend-typecheck` and `make frontend-test`, then `npm run lint` and
-`npm run build` from `frontend/`.
+`npm run build` from `frontend/`. `make verify-clean` runs all of these except `make infra-typecheck`,
+in a clean export of HEAD, so commit first.
 
 Every test, acceptance and scan target (`make test`, `make verify`, `make frontend-test`,
 `make infra-test`, `make test-integration`, every `make accept-*` and the gates below) writes a
 write-once [run record](docs/test-run-records.md) under the gitignored `.runs/`, and `make check`
 refuses a target that does not. A claim that tests pass cites the record for that exact tree. `make gate-status` shows
 the runs in progress and the recent records.
-
-Maintainers publishing upstream gate in three tiers, each on a clean tree, and change main only
-through a pull request. This section owns which gate runs before which action; each script's
-section in [scripts/README.md](scripts/README.md) owns what it checks and its refusal codes, and
-[meta-delivery-git](.kiro/steering/meta-delivery-git.md#remotes-and-publication) owns what may
-reach the public remote.
-
-| Tier | Before | Gate |
-|---|---|---|
-| Commit | every commit | the pre-commit hook, `scripts/commit_gate.py` on the staged changes |
-| Push | every push | `make publication-gate` over the pushed range, which `make publish` runs |
-| Merge | every merge to main | `make release-gate` on the exact tree being merged, which `make merge-pr` requires |
-
-A change reaches main from a feature branch based on the current public main:
-
-```bash
-make install-hooks                # once per clone: the commit tier (pre-commit) and the push tier (pre-push)
-make verify-clean                 # the test records of HEAD's tree that the push gate requires
-make publish                      # push tier: pushes the current feature branch, never main and never a tag
-make pr                           # opens or updates the branch's pull request: its commits and gate records
-make release-gate                 # merge tier, on the pull request's head; run make pr again to list its record
-make merge-pr PR=<n> CONFIRM=yes  # after the owner's go: squash-merges, then fast-forwards local main
-```
-
-- Commit tier: the [hooks](scripts/README.md#commit_gatepy-and-githooks) are a fast early warning
-  on staged changes, not the boundary; `make uninstall-hooks` removes them.
-- Push tier: `make publish` fetches `public`, reuses a passing push-gate record of HEAD on that
-  tip or runs `make publication-gate` itself, so a skipped or uninstalled hook never bypasses it.
-  Run `make publication-gate` alone to check without pushing; `BASE` defaults to `public/main`, so
-  run `git fetch public` first. The gate requires the test records verify-clean writes
-  ([which records](docs/test-run-records.md#which-records-the-publication-gate-accepts)).
-- Merge tier: `make release-gate` reuses a recorded verify-clean of the same tree instead of
-  re-running it ([which record](docs/test-run-records.md#which-verify-clean-record-the-release-gate-reuses)).
-  A new commit on the branch changes the tree, so the push and merge tiers run again for it.
-- The owner's go: `CONFIRM=yes` on the make command line is the owner's go for that merge. It has
-  no default, and a `CONFIRM` set in the environment or carried in an inherited `MAKEFLAGS` does
-  not count. `make merge-pr` keeps the
-  remote branch unless `DELETE_BRANCH=yes` is given the same way.
-- `DRY_RUN=1` on `make publish`, `make pr` or `make merge-pr` runs every check and prints each
-  command that would change something instead of running it.
 
 ### Deployed checks (maintainer-run)
 
@@ -176,17 +129,73 @@ Two rules that are specific to this product and are the reason it exists:
 - **No figure in an answer may originate from the model.** Every number comes from a tool result. A change that lets a model-authored figure reach a user is the one defect class this codebase is built to prevent.
 - **Never assert on a bare number in a test.** Assert its units and its grain too. A correct figure at the wrong grain is the failure mode a reader cannot detect.
 
-### Getting a development environment
+### Without a deployment
 
-You do not need a deployment to contribute. `make verify` and `make check` run with no AWS profile and no network, and that is deliberate — keep it that way.
+You do not need a deployment to contribute. After the one-time installs, `make verify` and
+`make check` need no AWS profile and no network; keep it that way.
 
-`.kiro/steering/` holds optional rules for contributors using the Kiro IDE and is not needed to build or deploy.
+Using an AI assistant? See [Build with an AI assistant](docs/kiro.md); it is optional for building and deploying.
 
-For operational deployment and getting-data instructions, see [Getting data in](README.md#load-your-data). The only fixture jobs are the V2-only `adapters.jobs.land_fixtures` and `adapters.jobs.ingest_delivery`. Both are dev-only and operate on immutable, version-bound deliveries. There is no supported V1 path and no reset, truncate, or raw-deletion job.
+For deploying and loading data, see [Load your data](README.md#load-your-data). [Development
+seeding](docs/concepts/dev-seeding.md) owns the fixture sets and how they land; every fixture job is
+dev-only and lands immutable, version-bound deliveries. Before you change the load path or a
+fixture, keep its deliberate traps (suppressed nulls, a restatement pair sharing one window,
+option-dependent absences, negative units, mixed currency) and the two fixtures that exist only to
+be rejected. Editing a fixture lands a new delivery; it never changes or resets one already landed.
 
-The fixture bundle is worth understanding before you change anything in the load path. **The fixtures are chosen, not generated.** The traps are the point: suppressed nulls, a restatement pair sharing one window deliberately, option-dependent absences, negative units, mixed currency. Generated volume cannot express any of those, so a path exercised only against clean generated rows would never meet the cases this platform exists to handle. Two fixtures are deliberately never landed, because they exist to be *rejected* and a bundle whose purpose is a working environment should not contain a poisoned delivery.
+### Maintainer publishing
 
-Each landed fixture uses an immutable delivery path. Editing a fixture creates different content; it does not mutate or reset an existing delivery. Preserve the deliberate restatement and rejection cases when changing fixtures or ingestion behavior.
+Maintainers publishing upstream gate in three tiers, each on a clean tree, and change main only
+through a pull request. This section owns which gate runs before which action; each script's
+section in [scripts/README.md](scripts/README.md) owns what it checks and its refusal codes, and
+[meta-delivery-git](.kiro/steering/meta-delivery-git.md#remotes-and-publication) owns what may
+reach the public remote.
+
+| Tier | Before | Gate |
+|---|---|---|
+| Commit | every commit | the pre-commit hook, `scripts/commit_gate.py` on the staged changes |
+| Push | every push | `make publication-gate` over the pushed range, which `make publish` runs |
+| Merge | every merge to main | `make release-gate` on the exact tree being merged, which `make merge-pr` requires |
+
+A change reaches main from a feature branch based on the current public main:
+
+```bash
+make install-hooks                # once per clone: the commit tier (pre-commit) and the push tier (pre-push)
+make verify-clean                 # the test records of HEAD's tree that the push gate requires
+make publish                      # push tier: pushes the current feature branch, never main and never a tag
+make pr                           # opens or updates the branch's pull request: its commits and gate records
+make release-gate                 # merge tier, on the pull request's head; run make pr again to list its record
+make merge-pr PR=<n> CONFIRM=yes  # after the owner's go: squash-merges, then fast-forwards local main
+```
+
+- Commit tier: the [hooks](scripts/README.md#commit_gatepy-and-githooks) are a fast early warning
+  on staged changes, not the boundary; `make uninstall-hooks` removes them.
+- Push tier: `make publish` fetches `public`, reuses a passing push-gate record of HEAD on that
+  tip or runs `make publication-gate` itself, so a skipped or uninstalled hook never bypasses it.
+  Run `make publication-gate` alone to check without pushing; `BASE` defaults to `public/main`, so
+  run `git fetch public` first. The gate requires the test records verify-clean writes
+  ([which records](docs/test-run-records.md#which-records-the-publication-gate-accepts)).
+- Merge tier: `make release-gate` reuses a recorded verify-clean of the same tree instead of
+  re-running it ([which record](docs/test-run-records.md#which-verify-clean-record-the-release-gate-reuses)).
+  A new commit on the branch changes the tree, so the push and merge tiers run again for it.
+- The owner's go: `CONFIRM=yes` on the make command line is the owner's go for that merge. It has
+  no default, and a `CONFIRM` set in the environment or carried in an inherited `MAKEFLAGS` does
+  not count. `make merge-pr` keeps the
+  remote branch unless `DELETE_BRANCH=yes` is given the same way.
+- `DRY_RUN=1` on `make publish`, `make pr` or `make merge-pr` runs every check and prints each
+  command that would change something instead of running it.
+
+### Maintainer tools
+
+The publication and release gates need these tools at exactly these versions, and refuse any
+other version; a row marked `any current` is required but not pinned. This table is the one place
+each version is pinned; `scripts/tool_versions.py` reads it.
+
+| Tool | Version | Used by |
+|---|---|---|
+| gitleaks | 8.30.1 | make publication-gate |
+| ASH (automated-security-helper) | 3.7.0 | make release-gate |
+| finch or Docker | any current | make release-gate (ASH container mode) |
 
 
 ## Finding contributions to work on
@@ -204,7 +213,7 @@ If you discover a potential security issue in this project we ask that you notif
 
 ### If a secret is pushed
 
-`make publication-gate` exists so this never happens ([Run the gates](#run-the-gates)). If a secret
+`make publication-gate` exists so this never happens ([Maintainer publishing](#maintainer-publishing)). If a secret
 reaches the public repository anyway, treat it as compromised from the moment it was public:
 
 1. Rotate first. Revoke or rotate the credential at its issuer, then review the issuer's access

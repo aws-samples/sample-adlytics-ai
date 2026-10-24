@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Level** | Proposed design for the whole app's organisation and rendering |
-| **Status** | Proposed. The owner reviewed and approved the mockups on 2026-10-07. The workflow orchestrator approved the design the same day under the owner's delegated overnight authorization, with the owner's open decisions taken as recommended except where an ADR names the owner's own call. Not implemented, and no implementation is authorized by this document alone: each build slice in [Delivery slices](delivery-slices.md) carries its own approvals. When accepted, each page package gains its own design docs and joins the [design manifest](../design-manifest.yaml). The Scorecard, Reach and funnel, Audiences, Retention and Repeat purchase by product packages joined it at revision `2026-10-08.1` |
+| **Status** | Implemented for the hubs and tabs [`presentation/navigation.yaml`](../../../presentation/navigation.yaml) declares ([ADR-115](../../decisions/adr-115-organise-the-app-into-customer-question-hubs-from-one-navigation-file.md)); each page's build state is in the [page roster](../README.md#2-approved-page-roster). The alert badge and inbox are deferred (OD-7). The owner approved the mockups on 2026-10-07; formal acceptance of this design is the owner's call |
 | **Owns** | The proposed hub and tab roster, where each capability lives, what happens to every existing page and API, the render-more re-audit, and the change list for every existing page |
 | **Parent** | [Decision Workspace UI](../README.md) |
 

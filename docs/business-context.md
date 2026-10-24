@@ -4,16 +4,12 @@
 |---|---|
 | **Type** | Primer. Assumes no technical background |
 | **Status** | **Partial, deliberately.** §1–§5 are derived from what is built and verified. §6 lists the product questions that are still open, as questions rather than guesses |
-| **Last updated** | 2026-10-23 |
+| **Last updated** | 2026-10-24 |
 | **Read next** | [understanding-the-data-model](understanding-the-data-model.md) for how it works · [answerable-questions](answerable-questions.md) for the capability surface |
 
 ## About the gaps in this document
 
-**Everything in §1–§5 is traceable to something built, verified against Amazon's documentation, or decided in an ADR.** Everything still open is in §6 as a question.
-
-That split is deliberate. The source docs in this repo mark every claim `[verified]`, `[snippet]` or `[unverified]` because they are the basis for schema decisions, and a business-context doc deserves the same discipline. A plausible-sounding value proposition that nobody actually asserted is worse than a blank space, because the blank space gets filled and the plausible paragraph gets quoted.
-
-**This document is also half of an answer to an open question.** [Q-11](decision-coverage-registry.md#question-register-q-nn) asks for the list of business outcomes the product should deliver, and that list is open. [answerable-questions](answerable-questions.md) answers it **bottom-up**: what the data supports. This document is the **top-down** half: what the product is meant to unlock. Q-11 closes when the two meet. **Where they disagree is the signal**: an outcome named here that turns out to be structurally impossible is a limit to know before relying on the product.
+§1–§5 state only what is built, verified or decided. Open product questions are in §6, as questions.
 
 ---
 
@@ -49,14 +45,15 @@ Practically it means the product cannot assume a data specialist is reading it. 
 | Reach and audiences › Audiences | Media buyer | Who buys, compared with who we reach? | Which audience to build |
 | Customers › New customers | Brand manager | Are ads winning first-time buyers, and at what cost? | Which ad type to fund for new customers |
 | Customers › Retention | Brand manager, finance or CMO | Do the customers we win come back? | Which acquisition to defend |
-| Retail health | Brand manager | Are products selling, and where do sales leak? | What to raise with Amazon about shipping or returns |
+| Retail health › Retail health | Brand manager | Are products selling, and where do sales leak? | What to raise with Amazon about shipping or returns |
+| Retail health › Products and ads | Brand manager | Which products do my ads lean on? | Which products to advertise, feature or fix |
 | Assistant | Everyone; the analyst opens its trace | Why did it move? | What to look at first |
 
 Three properties define it, and each is a deliberate constraint rather than a feature:
 
 | Property | What it means |
 |---|---|
-| **No figure is fabricated** | Every governed figure is computed by a tool. The language model selects which tool to call and reasons over what it returns, stating only those figures and ones validly derived from them; every figure it states is scored against that evidence ([ADR-082](decisions/adr-082-govern-the-agent-by-evaluation-and-audit-not-text-heuristics.md)) |
+| **No figure is fabricated** | Every governed figure is computed by a tool. The language model chooses which tool to call and explains what it returns, stating only those figures and ones validly derived from them. With the optional online evaluation on, a sample of answers is scored against that evidence ([ADR-082](decisions/adr-082-govern-the-agent-by-evaluation-and-audit-not-text-heuristics.md)); answers outside the sample are not checked |
 | **Single-tenant by deployment** | It is a template deployed into the customer's account, not a hosted service. There is no shared environment and customer data never leaves their account |
 | **It refuses** | When a question cannot be answered honestly, the product says so and says why, rather than returning the nearest plausible number |
 
@@ -91,11 +88,7 @@ The full list with grains and caveats is [answerable-questions](answerable-quest
 | **Retail performance** | What did I sell, what did Amazon pay me, what came back, what converted? |
 | **Reach and frequency** | How many distinct shoppers saw my ads, and how often? |
 
-**The Vendor source supplies effective-dated product titles, brand, and parent attributes.** The
-current resolver can map one unambiguous effective title to an exact product key before measurement.
-Brand and parent selection or rollups still require governed dimension joins and remain unavailable.
-The source capability does not require a paid subscription. Recorded in
-[ADR-020](decisions/adr-020-vendor-sources-split-by-capability.md).
+Brand and parent-product rollups aren't available yet; [answerable questions](answerable-questions.md) §2a says why.
 
 ## 4. What it will never answer
 
@@ -105,7 +98,7 @@ These are not gaps in the build. They are properties of what Amazon provides, an
 |---|---|
 | **Actual retail sales attributed to a campaign** | Vendor Central has no campaign dimension at all. Advertising and retail can only be compared at product × date × marketplace, never finer |
 | **Anything about an individual shopper** | Amazon's privacy model forbids person-level output structurally. All person-level work happens inside Amazon and emits only aggregates |
-| **Demographics** | Age, income and marital status are not available |
+| **Demographics of your shoppers** | AMC has no age, income or marital-status field. Where Amazon DSP offers an age or gender audience segment, Audiences shows it as a segment like any other, never as a breakdown of your shoppers |
 | **Competitor activity** | Neither source contains it |
 | **A single reconciled revenue figure** | Ad-attributed and retail-actual revenue are different measurement systems. The product reports both and labels them; it will never merge them into one number |
 
@@ -115,7 +108,7 @@ The full list with the phrasing to use when refusing is [answerable-questions](a
 
 This is the part most worth understanding, because it explains where the engineering effort has gone.
 
-**A language model asked to compute a number will occasionally be confidently wrong.** In a reporting product that is not a rough edge, it is disqualifying — one plausible wrong figure in a board deck costs more trust than fifty correct ones earn. So every governed figure comes from deterministic tools, never from the model: the tools compute them from the source data, where the failure modes below live. The agent then reasons over those figures as an analyst reads a report, deriving changes, shares, and labelled projections, and never fabricates one. Every figure it states is scored against the evidence it had, and the customer can audit each turn ([ADR-082](decisions/adr-082-govern-the-agent-by-evaluation-and-audit-not-text-heuristics.md)).
+**A language model asked to compute a number will occasionally be confidently wrong.** In a reporting product that is not a rough edge, it is disqualifying — one plausible wrong figure in a board deck costs more trust than fifty correct ones earn. So every governed figure comes from deterministic tools, never from the model: the tools compute them from the source data, where the failure modes below live. The agent then reasons over those figures as an analyst reads a report, deriving changes, shares, and labelled projections, and never fabricates one. Every turn writes an audit record of the tools it used, and with online evaluation on, a sample of answers is scored against the evidence they had ([ADR-082](decisions/adr-082-govern-the-agent-by-evaluation-and-audit-not-text-heuristics.md)).
 
 **The failure modes being defended against are specific and invisible.** Each of these was found in Amazon's own documentation or by probing a live instance, and each produces a number that looks entirely reasonable:
 
@@ -152,7 +145,7 @@ The platform can compute new-to-brand rate by campaign, but how much customers v
 
 ### The outcome list, [Q-11](decision-coverage-registry.md#question-register-q-nn)
 
-The business outcomes the product should deliver, referred to as O1–O20, have not been enumerated.
+Seven outcomes are designed ([business outcome measurement](concepts/business-outcome-measurement.md) §1). The complete list Q-11 asks for is still open.
 
 ### How the product should behave without a paid subscription, [Q-07](decision-coverage-registry.md#question-register-q-nn)
 
@@ -160,10 +153,7 @@ The AMC Paid Features subscription belongs to whoever deploys this template, so 
 
 What remains open is a product question: on a deployment without the subscription, should the three affected capabilities be **silently absent**, or **shown as available with the subscription**? The second is more honest, and it's the owner-approved default for the business outcomes (open decision 1, 2026-10-06). The catalog now tells "impossible for anyone" apart from "not licensed here": a paid metric with no delivery in its last three periods refuses as `not_observed_in_deployment`, never as unsupported ([ADR-107](decisions/adr-107-derive-paid-feature-availability-from-delivery-evidence.md); [business outcome measurement](concepts/business-outcome-measurement.md)).
 
-Three paid-feature capabilities are affected. Brand and variation hierarchy are not among them because Vendor supplies those attributes without a
-subscription. An effective title can resolve one exact product key before measurement; current query
-plans still do not join brand or parent attributes, so brand and parent selection and rollups remain
-unavailable for a separate reason.
+Three paid-feature capabilities are affected. Brand and variation hierarchy are not among them, because Vendor Central supplies those attributes without a subscription.
 
 ### How answers get consumed
 

@@ -746,6 +746,87 @@ the source keys and any unequal or incomplete stack.
 - The records name stack, alarm and queue names and the account's caller identity. Keep them in
   ignored evidence, never in a tracked file.
 
+## Remove the audit tables
+
+The two audit tables hold only audit records and bill on demand, so with no traffic they cost close to nothing. You can leave them. Their resource policy denies `UpdateTable`, `DeleteTable` and `DeleteResourcePolicy` to every principal except the deployment's CloudFormation execution role, so no IAM user or role can turn off their deletion protection directly. To remove them, import them into a throwaway stack that runs as that role, turn the protection off through it, then delete the stack. `cdk-hnb659fds-cfn-exec-role-<account-id>-<region>` is the role's name under the default CDK bootstrap.
+
+Save this template as `import.yaml`, with `<env>` replaced:
+
+```yaml
+Resources:
+  Audit:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: adlytics-<env>-agent-quality-audit
+      BillingMode: PAY_PER_REQUEST
+      DeletionProtectionEnabled: true
+      KeySchema:
+        - { AttributeName: audit_id, KeyType: HASH }
+        - { AttributeName: item_key, KeyType: RANGE }
+      AttributeDefinitions:
+        - { AttributeName: audit_id, AttributeType: S }
+        - { AttributeName: item_key, AttributeType: S }
+        - { AttributeName: correlation_id, AttributeType: S }
+        - { AttributeName: correlation_audit_id, AttributeType: S }
+        - { AttributeName: turns_day, AttributeType: S }
+        - { AttributeName: turns_created_at, AttributeType: S }
+      GlobalSecondaryIndexes:
+        - IndexName: correlation-audit
+          KeySchema:
+            - { AttributeName: correlation_id, KeyType: HASH }
+            - { AttributeName: correlation_audit_id, KeyType: RANGE }
+          Projection: { ProjectionType: KEYS_ONLY }
+        - IndexName: turns-by-day
+          KeySchema:
+            - { AttributeName: turns_day, KeyType: HASH }
+            - { AttributeName: turns_created_at, KeyType: RANGE }
+          Projection:
+            ProjectionType: INCLUDE
+            NonKeyAttributes: [terminal_outcome, correlation_id, expires_at]
+      StreamSpecification: { StreamViewType: KEYS_ONLY }
+      SSESpecification: { SSEEnabled: true, SSEType: KMS }
+  Findings:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: adlytics-<env>-agent-quality-findings
+      BillingMode: PAY_PER_REQUEST
+      DeletionProtectionEnabled: true
+      KeySchema:
+        - { AttributeName: audit_id, KeyType: HASH }
+        - { AttributeName: item_key, KeyType: RANGE }
+      AttributeDefinitions:
+        - { AttributeName: audit_id, AttributeType: S }
+        - { AttributeName: item_key, AttributeType: S }
+      StreamSpecification: { StreamViewType: KEYS_ONLY }
+      SSESpecification: { SSEEnabled: true, SSEType: KMS }
+```
+
+Then import, unprotect and delete, running each step as the execution role:
+
+```bash
+STACK=adlytics-<env>-audit-table-cleanup
+ROLE=arn:aws:iam::<account-id>:role/cdk-hnb659fds-cfn-exec-role-<account-id>-<region>
+aws cloudformation create-change-set --profile <your-profile> --stack-name "$STACK" --change-set-name import \
+  --change-set-type IMPORT --role-arn "$ROLE" --template-body file://import.yaml \
+  --resources-to-import '[{"ResourceType":"AWS::DynamoDB::Table","LogicalResourceId":"Audit","ResourceIdentifier":{"TableName":"adlytics-<env>-agent-quality-audit"}},{"ResourceType":"AWS::DynamoDB::Table","LogicalResourceId":"Findings","ResourceIdentifier":{"TableName":"adlytics-<env>-agent-quality-findings"}}]'
+aws cloudformation wait change-set-create-complete --profile <your-profile> --stack-name "$STACK" --change-set-name import
+aws cloudformation execute-change-set --profile <your-profile> --stack-name "$STACK" --change-set-name import
+aws cloudformation wait stack-import-complete --profile <your-profile> --stack-name "$STACK"
+sed -e 's/DeletionPolicy: Retain/DeletionPolicy: Delete/' \
+  -e 's/DeletionProtectionEnabled: true/DeletionProtectionEnabled: false/' import.yaml > unprotect.yaml
+aws cloudformation update-stack --profile <your-profile> --stack-name "$STACK" --role-arn "$ROLE" \
+  --template-body file://unprotect.yaml
+aws cloudformation wait stack-update-complete --profile <your-profile> --stack-name "$STACK"
+aws cloudformation delete-stack --profile <your-profile> --stack-name "$STACK" --role-arn "$ROLE"
+aws cloudformation wait stack-delete-complete --profile <your-profile> --stack-name "$STACK"
+```
+
+Deleting the stack deletes both tables and every record in them.
+
 ## Appendix: fresh-environment deploy and destroy, 2026-10-19
 
 A customer-zero check of the README's deploy path, run before publication: a throwaway environment

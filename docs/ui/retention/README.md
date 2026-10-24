@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Level** | Delivery page package |
-| **Status** | New at `2026-10-08.1`, built from the UI and information-architecture mockups and design. Approved under the owner's UI/IA approval of 2026-10-07 (`owner-decisions-ui.md`). Carried forward unchanged at `2026-10-09.1`. Revised at `2026-10-09.2` (owner scope for packs 14–15): a designed state for a vintage built on calendar-quarter cohorts, which switches on automatically per marketplace when too many monthly cells come back not available, and the scope band names the cohort grain; approved under the same UI/IA approval, with owner ratification pending (business outcomes wave 2b, stop item S-B1). Not implemented: its packs, fact, artifact, materializer, route and insight contract arrive in their own build slices |
+| **Status** | Built; live-accepted on dev 2026-10-18 ([D2 live acceptance](../../../validation/RESULTS.md#d2-pages-and-graph-control-plane-live-acceptance-on-dev--2026-10-18)). Owner ratification of revision `2026-10-09.2` is pending. Revision history: [design manifest](../design-manifest.yaml). |
 | **Design revision** | `2026-10-09.2` |
 | **Owns** | Cohorts of new customers the ads brought in and when they buy again: the cohort grid per acquisition group, the cross-group repeat curve, and their vintages |
 | **Parent** | [Decision Workspace UI](../README.md) · [Information architecture](../information-architecture/README.md) (Customers hub) |

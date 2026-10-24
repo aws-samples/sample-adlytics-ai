@@ -2,7 +2,7 @@
 | | |
 |---|---|
 | **Level** | Delivery page package |
-| **Status** | Built on `feat/ui-refresh` (UI refresh slice 3.7, 2026-10-22); not deployed yet. A composed tab ([ADR-151](../../decisions/adr-151-compose-a-customer-tab-from-served-page-presentations.md) amendment) |
+| **Status** | Built; on `main` since PR #12; captured on dev 2026-10-23. A composed tab ([ADR-151](../../decisions/adr-151-compose-a-customer-tab-from-served-page-presentations.md) amendment) |
 | **Owns** | The tab's columns, the source of each figure, its answer template, its states and its browser-owned copy |
 | **Parent** | [Decision Workspace UI](../README.md) · [Information architecture](../information-architecture/README.md) (Retail health hub) · [Retail health](../retail-health/README.md) |
 

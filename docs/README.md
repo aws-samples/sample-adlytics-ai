@@ -6,13 +6,14 @@ This is the entry point for the current design. It contains navigation only: eac
 
 | Reader | Read |
 |---|---|
-| New to the project | [Business Context](business-context.md) → [Understanding the Data Model](understanding-the-data-model.md) → [Architecture](architecture.md) |
+| Evaluating it, or new to it | [Business Context](business-context.md) → [Understanding the Data Model](understanding-the-data-model.md) → [Architecture](architecture.md) → [Answerable Questions](answerable-questions.md) |
+| Extending or contributing | [README › Extend it](../README.md#extend-it) → [Repo Structure](repo-structure.md) → [CONTRIBUTING › Run the gates](../CONTRIBUTING.md#run-the-gates) |
 | Building data capabilities | [Source Acquisition](capabilities/source-acquisition/README.md) → [Data Layer](capabilities/data-layer/README.md) → [Load Path](capabilities/load-path/README.md) → [Publication State](capabilities/publication-state/README.md) → [Query Path](capabilities/query-path/README.md) |
 | Building conversation | [Conversational Runtime](capabilities/conversational-runtime/README.md) → [Agent Quality Loop](capabilities/agent-quality-loop/README.md) |
 | Building analytical experiences | [Analytics Discovery](capabilities/analytics-discovery/README.md) → [UI page contracts](ui/README.md) |
 | Building evaluation | [Agent Quality Loop](capabilities/agent-quality-loop/README.md) → [Protected Quality Review API](capabilities/protected-quality-review-api/README.md) |
-| Building deferred ML | [Forecasting](capabilities/forecasting/README.md) → [Saturation](capabilities/saturation/README.md) |
-| Operating a deployment | [Repository README](../README.md) → [Repo Structure](repo-structure.md) → [Validation results](../validation/RESULTS.md) |
+| Planned, not built: forecasting and saturation | [Forecasting](capabilities/forecasting/README.md) → [Saturation](capabilities/saturation/README.md) |
+| Operating a deployment | [Repository README](../README.md) → [Operator tools](capabilities/operational-data-flow-status/operator-tools.md) → [Validation results](../validation/RESULTS.md) |
 | Working with an AI assistant | [Build with an AI assistant](kiro.md) → [AGENTS.md](../AGENTS.md) |
 
 ## Documentation levels
@@ -38,4 +39,4 @@ This is the entry point for the current design. It contains navigation only: eac
 
 ## Governance
 
-[Conventions](conventions.md) define fact ownership, document templates, and diagram notation. [Delivery practice](delivery-practice.md) defines the decision-weighting rubric, review effort by risk, and when a slice may merge. [Glossary](glossary.md) defines shared vocabulary. Deployment, cost, and teardown belong to the [repository README](../README.md).
+[Conventions](conventions.md) define fact ownership, document templates, and diagram notation. [Delivery practice](delivery-practice.md) defines the decision-weighting rubric, review effort by risk, and when a slice may merge. [Glossary](glossary.md) defines shared vocabulary. Deployment, cost, and teardown belong to the [repository README](../README.md); the audit-table removal procedure belongs to [operator tools](capabilities/operational-data-flow-status/operator-tools.md#remove-the-audit-tables).
