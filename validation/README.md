@@ -61,6 +61,11 @@ requires an explicit target environment.
 | Deployed acceptance | `probe_ingestion_cutover.py` | V2-only synthetic ingestion acceptance: immutable landing, exact attempt success, exact `CURRENT` advancement, and unchanged DLQ depth |
 | README screenshots | `capture_screenshots.mjs` | Drives a deployment loaded with synthetic data as a logged-in user in the light theme and writes the README gallery to `docs/images/`. Every chat image is a scripted fixture served in the browser, so no question reaches the deployed agent. Never mutates the deployment; fails on a missing surface or past the 6 MiB image budget; prints image names and sizes only |
 
+As of 2026-10-19, two strings in the validation tooling cite operator-local files that aren't
+published: the `source` field of `fixtures/graph-hold-clear-migration-v1.json` (an `acceptance.md`)
+and a reason string in `probe_turn_latency.py` (an `owner-decisions.md`). Neither file is in the
+repository.
+
 ## Running deployed AMC cadence acceptance
 
 `probe_amc_current_invariants.py` is a read-only dev gate for the fictional customer-cadence
