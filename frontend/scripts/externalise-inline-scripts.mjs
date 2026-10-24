@@ -24,26 +24,25 @@
  * sequence and at the same point in the document. Every other inline script becomes a
  * classic `src` script at its own position, so it runs where it did.
  *
- * The closing check reads every `<script>` element, not just the shapes moved here: any
- * inline script the CSP would block fails the build.
+ * Script elements are found by an HTML parser (jsdom's, spec-conformant), not a pattern, so
+ * tag and attribute names match case-insensitively, `src` and `type` are read as attributes
+ * rather than substrings, and text that only looks like a tag (`<scr<script>ipt>`) is not
+ * taken for one. The page is rebuilt in one pass from the parser's source offsets, so every
+ * byte outside a moved script, and every moved body, is copied unchanged.
+ *
+ * The closing check parses each rewritten page again and reads every script element, not
+ * just the shapes moved here: any inline script the CSP would block fails the build,
+ * including one the rewrite itself formed by joining the text around a removed block.
  */
 
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { JSDOM, VirtualConsole } from 'jsdom';
 
 const OUT_DIR = 'out';
 const CHUNK_DIR = join(OUT_DIR, '_next', 'static', 'chunks');
-
-/** Every script element. Attributes are captured so a `src` or data-block type is seen. */
-const SCRIPT_ELEMENT = /<script\b([^>]*)>([\s\S]*?)<\/script>/g;
-
-/** Next Flight bootstrap blocks, with or without Next 16's async serialization. */
-const FLIGHT_ATTRIBUTES = /^(?:\s+async="")?$/;
-
-const HAS_SRC = /\ssrc\s*=/i;
-const TYPE_ATTRIBUTE = /\stype\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i;
 
 /**
  * Script types the browser runs, so `script-src` applies to them (HTML "prepare the script
@@ -53,19 +52,57 @@ const TYPE_ATTRIBUTE = /\stype\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i;
 const JAVASCRIPT_MIME = /^(?:(?:text|application)\/(?:x-)?(?:javascript|ecmascript)|text\/(?:jscript|livescript)|text\/javascript1\.[0-5])$/;
 const EXECUTED_NON_MIME = new Set(['module', 'importmap', 'speculationrules']);
 
-const PLACEHOLDER = '__adlytics_inline_script_placeholder__';
-
-function scriptType(attributes) {
-  const match = TYPE_ATTRIBUTE.exec(attributes);
-  if (match === null) return '';
-  return (match[1] ?? match[2] ?? match[3] ?? '').trim().toLowerCase();
+/**
+ * Every script element the parser builds from `html`, in source order, with its exact source
+ * text. Template contents are included: inert until script copies them into the document,
+ * where they then run under the same CSP.
+ */
+function scriptElements(html) {
+  const dom = new JSDOM(html, { includeNodeLocations: true, virtualConsole: new VirtualConsole() });
+  try {
+    const { HTMLTemplateElement } = dom.window;
+    const roots = [dom.window.document];
+    const scripts = [];
+    for (let index = 0; index < roots.length; index += 1) {
+      for (const element of roots[index].querySelectorAll('script, template')) {
+        if (element instanceof HTMLTemplateElement) {
+          roots.push(element.content);
+          continue;
+        }
+        const location = dom.nodeLocation(element);
+        if (!location?.startTag) throw new Error('a script element has no source location');
+        const open = location.startTag;
+        // A script still open at end of file is never run (HTML "in text" insertion mode, EOF).
+        const body = location.endTag === undefined
+          ? ''
+          : html.slice(open.endOffset, location.endTag.startOffset);
+        scripts.push({
+          start: location.startOffset,
+          end: location.endOffset,
+          startTag: html.slice(open.startOffset, open.endOffset),
+          body,
+          attributes: [...element.attributes].map(({ name, value }) => ({ name, value })),
+          hasSrc: element.hasAttribute('src'),
+          type: (element.getAttribute('type') ?? '').trim().toLowerCase(),
+        });
+      }
+    }
+    return scripts.sort((a, b) => a.start - b.start);
+  } finally {
+    dom.window.close();
+  }
 }
 
 /** Whether `script-src 'self'` blocks this element: it runs, has no `src` and has a body. */
-function blockedByCsp(attributes, body) {
-  if (HAS_SRC.test(attributes) || body.length === 0) return false;
-  const type = scriptType(attributes);
+function blockedByCsp({ hasSrc, body, type }) {
+  if (hasSrc || body.length === 0) return false;
   return type === '' || JAVASCRIPT_MIME.test(type) || EXECUTED_NON_MIME.has(type);
+}
+
+/** Next Flight bootstrap blocks, with or without Next 16's async serialization. */
+function isFlight({ attributes }) {
+  return attributes.length === 0
+    || (attributes.length === 1 && attributes[0].name === 'async' && attributes[0].value === '');
 }
 
 function chunkFile(code) {
@@ -83,44 +120,47 @@ const chunkSrc = (name) => `/_next/static/chunks/${name}`;
 export function externaliseHtml(original) {
   const flight = [];
   const files = [];
+  // Untouched source runs alternate with replacements, so the page is rebuilt in one pass.
+  const parts = [];
+  let cursor = 0;
+  let flightPart = -1;
 
-  // Replacement uses a function so a `$` in the payload is never read as a
-  // substitution pattern. The Flight payload is full of them.
-  const stripped = original.replace(SCRIPT_ELEMENT, (match, attributes, body) => {
-    if (!blockedByCsp(attributes, body)) return match;
-    if (FLIGHT_ATTRIBUTES.test(attributes)) {
-      const first = flight.length === 0;
-      flight.push(body.endsWith(';') ? body : `${body};`);
-      return first ? PLACEHOLDER : '';
-    }
-    const type = scriptType(attributes);
-    if (type === 'importmap' || type === 'speculationrules') {
+  for (const script of scriptElements(original)) {
+    if (!blockedByCsp(script)) continue;
+    if (script.start < cursor) throw new Error('script elements overlap in the source');
+    let replacement;
+    if (isFlight(script)) {
+      // The first block's slot receives the combined script once every block is read.
+      if (flight.length === 0) flightPart = parts.length + 1;
+      flight.push(script.body.endsWith(';') ? script.body : `${script.body};`);
+      replacement = '';
+    } else if (script.type === 'importmap' || script.type === 'speculationrules') {
       // Neither has an external form; leave it for the closing check to refuse.
-      return match;
+      continue;
+    } else {
+      const file = chunkFile(script.body);
+      files.push(file);
+      // The start tag minus its `>`, so every attribute is kept as written.
+      replacement = `${script.startTag.slice(0, -1)} src="${chunkSrc(file.name)}"></script>`;
     }
-    const file = chunkFile(body);
-    files.push(file);
-    return `<script${attributes} src="${chunkSrc(file.name)}"></script>`;
-  });
+    parts.push(original.slice(cursor, script.start), replacement);
+    cursor = script.end;
+  }
+  parts.push(original.slice(cursor));
 
-  let html = stripped;
   if (flight.length > 0) {
     const file = chunkFile(flight.join('\n'));
     files.unshift(file);
-    html = stripped.replace(PLACEHOLDER, () => `<script src="${chunkSrc(file.name)}"></script>`);
+    parts[flightPart] = `<script src="${chunkSrc(file.name)}"></script>`;
   }
-  return { html, files, flightBlocks: flight.length };
+  return { html: parts.join(''), files, flightBlocks: flight.length };
 }
 
 /** A short description of each inline script in `html` that `script-src 'self'` blocks. */
 export function blockedInlineScripts(html) {
-  const found = [];
-  for (const [, attributes, body] of html.matchAll(SCRIPT_ELEMENT)) {
-    if (blockedByCsp(attributes, body)) {
-      found.push(`<script${attributes}>${body.slice(0, 60)}`);
-    }
-  }
-  return found;
+  return scriptElements(html)
+    .filter(blockedByCsp)
+    .map((script) => `${script.startTag}${script.body.slice(0, 60)}`);
 }
 
 /** Recursive walk rather than a glob: fs.globSync needs Node 22 and this runs on 20. */

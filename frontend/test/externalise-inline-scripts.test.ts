@@ -62,6 +62,65 @@ test('only scripts the browser runs inline count as blocked', () => {
   assert.equal(blockedInlineScripts("<script nonce='n' data-x>a()</script>").length, 1);
 });
 
+test('an upper- or mixed-case script tag, with whitespace or a slash before its attributes, is still checked and moved', () => {
+  // HTML tag and attribute names are case-insensitive, so the browser runs every one of
+  // these and `script-src 'self'` blocks it. Before the parser, the check saw none of them.
+  const blocked = [
+    '<SCRIPT>a()</SCRIPT>',
+    '<Script Type="Module">a()</sCrIpT >',
+    '<script\nid="n">a()</script\t>',
+    '<script/id="s">a()</script>',
+    '<template><SCRIPT id="t">a()</SCRIPT></template>',
+  ];
+  for (const page of blocked) {
+    assert.equal(blockedInlineScripts(page).length, 1, page);
+    const { html, files } = externaliseHtml(page);
+    assert.deepEqual(blockedInlineScripts(html), [], page);
+    assert.equal(files.length, 1, page);
+    assert.equal(files[0]?.code.replace(/;$/, ''), 'a()', page);
+  }
+  const { html, files: [file] } = externaliseHtml('<SCRIPT ID="x">a()\r\nb()</SCRIPT>');
+  assert.ok(file);
+  assert.equal(file.code, 'a()\r\nb()', 'the body is copied byte for byte');
+  assert.equal(html, `<SCRIPT ID="x" src="/_next/static/chunks/${file.name}"></script>`);
+});
+
+test('src and type are read as attributes, so a quoted " src=" or ">" in another value neither hides nor splits a script', () => {
+  assert.equal(blockedInlineScripts('<script data-x=" src=y">a()</script>').length, 1);
+  assert.equal(blockedInlineScripts('<script data-x=" type=application/json">a()</script>').length, 1);
+  const { html, files } = externaliseHtml('<script data-x="a>b">a()</script>');
+  const [file] = files;
+  assert.equal(files.length, 1);
+  assert.ok(file);
+  assert.equal(file.code, 'a()');
+  assert.equal(html, `<script data-x="a>b" src="/_next/static/chunks/${file.name}"></script>`);
+});
+
+test('an overlapping <scr<script>ipt> is not a script element, and removing a block never forms one', () => {
+  // The browser reads `<scr<script>` as one start tag named "scr<script", so only `first()`
+  // runs here. A pattern match took `<script>second()</script>` for a Flight block, removed
+  // it, and joined `<scr` to `ipt>`: the output then held a new inline `<script>third()`.
+  const tail = '<scr<script>second()</script>ipt>third()</script>';
+  const page = `<script>first()</script>${tail}`;
+  assert.equal(blockedInlineScripts(page).length, 1);
+  const { html, files: [file], flightBlocks } = externaliseHtml(page);
+  assert.equal(flightBlocks, 1);
+  assert.ok(file);
+  assert.equal(file.code, 'first();');
+  assert.equal(html, `<script src="/_next/static/chunks/${file.name}"></script>${tail}`);
+  assert.deepEqual(blockedInlineScripts(html), []);
+});
+
+test('a script formed by joining the text around a removed Flight block fails the closing check', () => {
+  // `<<script>` is a literal `<` then a real script. Removing that second Flight block joins
+  // the `<` to `script>c()`, so the rewritten page holds an inline script the original did
+  // not. The rewrite can't see it; the closing check, run on the output, refuses it.
+  const page = '<script>a()</script><<script>b()</script>script>c()</script>';
+  assert.equal(blockedInlineScripts(page).length, 2);
+  const { html } = externaliseHtml(page);
+  assert.equal(blockedInlineScripts(html).length, 1);
+});
+
 test('an inline import map has no external form, so it is left for the build check to refuse', () => {
   const page = '<script type="importmap">{"imports":{}}</script>';
   const { html, files } = externaliseHtml(page);
