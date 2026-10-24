@@ -297,6 +297,20 @@ function cardKey(card: NewCustomersInsightCard): string {
   return `${card.finding_id}:${card.marketplace}:${card.ad_product_key}`;
 }
 
+/** UI refresh 3.5 (readout A.7, A.8): the one disclosure of the served boundary, in the mockup's words. */
+export const HOW_WE_COUNT = 'How we count';
+
+/**
+ * Whether the quiet insights state would only repeat the scope line: no card, no narration, and
+ * its served absence reason is already part of the served scope text (both deterministic).
+ */
+export function quietRepeatsScope(artifact: NewCustomersArtifact): boolean {
+  // Only a server absence reason is compared, never narration, which may be model-written.
+  if (artifact.insight_cards.length > 0 || artifact.insights.state === 'filled') return false;
+  const reason = artifact.insights.absence_reason;
+  return reason !== null && reason !== '' && artifact.scope_text.includes(reason);
+}
+
 function InsightCards({ artifact, onRead }: {
   readonly artifact: NewCustomersArtifact;
   readonly onRead: (id: string, source: HTMLButtonElement) => void;
@@ -376,10 +390,11 @@ export function NewCustomersView({ artifact }: { readonly artifact: NewCustomers
         <h2 id={stepOneHeading}>{artifact.markets[0]?.new_to_brand.heading}</h2>
         {artifact.markets.map((market) => <StepOneTable key={market.marketplace} market={market} text={text} />)}
       </section>
-      <section className="section" aria-labelledby={insightsHeading}>
+      {/* T1L-5: a quiet insight whose served reason the scope line already reads isn't repeated. */}
+      {quietRepeatsScope(artifact) ? null : <section className="section" aria-labelledby={insightsHeading}>
         <h2 id={insightsHeading}>{text.insights_heading}</h2>
         <InsightCards artifact={artifact} onRead={(id, source) => { insightOrigin.current = source; setInsight(id); }} />
-      </section>
+      </section>}
       <section className="card section" aria-labelledby={buyersHeading}>
         <h2 id={buyersHeading} ref={buyersRef} tabIndex={-1}>{text.new_buyers_heading}</h2>
         {artifact.markets.map((market) => <NewBuyersSection key={market.marketplace} market={market} status={artifact.evidence_status} text={text} />)}
@@ -389,8 +404,8 @@ export function NewCustomersView({ artifact }: { readonly artifact: NewCustomers
         {artifact.markets.map((market) => <GatewayProducts key={market.marketplace} market={market} text={text} />)}
       </section>
       <Pointers artifact={artifact} />
-      <details className="about">
-        <summary>{text.boundary_heading}</summary>
+      <details className="about" data-slot="nc-how-we-count">
+        <summary>{HOW_WE_COUNT}</summary>
         <div className="body">{artifact.boundary.map((line) => <p key={line}>{line}</p>)}</div>
       </details>
     </div>

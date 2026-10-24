@@ -99,7 +99,8 @@ test('renders the quarterly grain note and server-owned curve values without for
   render(<RetentionView artifact={parseRetentionCohortArtifact(fixture)} />);
   assert.ok(screen.getByText(/grouped by quarter from Q4 2026/));
   assert.ok(screen.getAllByText('Quarter 1').length > 0);
-  assert.ok(screen.getAllByText('20.0%').length === 9);
+  // Nine served points in Show values, plus the chart's top axis label, the largest served rate.
+  assert.ok(screen.getAllByText('20.0%').length === 10);
 });
 test('a refreshed artifact without paid grids shows the standard path instead of the removed one', () => {
   const observed = retentionFixture();
@@ -117,13 +118,26 @@ test('a refreshed artifact without paid grids shows the standard path instead of
   assert.ok(within(region()).getByText(/Won by sponsored ads only · ad-touched repeat only/));
   assert.ok(screen.getByText('Amazon account IDs only.'));
 });
+test('the paid path grid note never names device IDs; the standard path note does (Tier 3 review M1)', () => {
+  const observed = retentionFixture();
+  const market = (observed.markets as Record<string, unknown>[])[0]!;
+  const triangle = market.triangle as Record<string, unknown>;
+  market.path = { paid: { callout: null, state: 'observed' }, standard: { available: true } };
+  triangle.paid = structuredClone(triangle.standard);
+  render(<RetentionView artifact={parseRetentionCohortArtifact(observed)} />);
+  const grid = () => screen.getByRole('region', { name: 'By cohort' });
+  assert.ok(within(grid()).getByText(/including device IDs/));
+  fireEvent.click(screen.getByRole('radio', { name: 'Any repeat purchase' }));
+  assert.equal(within(grid()).queryByText(/device IDs/), null);
+  assert.ok(within(grid()).getByText('Each cell counts repeat buyers in that period only; the curve above adds up every period so far.'));
+});
 test('two markets each lead with their marketplace heading and distinct landmark names', () => {
   const view = render(<RetentionView artifact={parseRetentionCohortArtifact(retentionTwoMarketFixture())} />);
   assert.deepEqual(screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent).filter((text) => text?.endsWith('marketplace')), ['US marketplace', 'UK marketplace']);
   const regions = screen.getAllByRole('region').map((region) => region.getAttribute('aria-label') ?? '');
   assert.equal(new Set(regions.filter((name) => name.startsWith('Share of each cohort'))).size, 2);
   for (const market of ['US', 'UK'] as const) {
-    for (const section of ['By cohort: bought again in that period', 'Insights']) assert.ok(screen.getByRole('region', { name: `${market} marketplace ${section}` }));
+    for (const section of ['By cohort', 'Insights']) assert.ok(screen.getByRole('region', { name: `${market} marketplace ${section}` }));
     assert.ok(screen.getByRole('region', { name: `Share of each cohort that bought again, by period after acquisition · ${market} marketplace` }));
   }
   view.unmount();
@@ -131,5 +145,18 @@ test('two markets each lead with their marketplace heading and distinct landmark
   render(<RetentionView artifact={parseRetentionCohortArtifact(retentionFixture())} />);
   assert.equal(screen.queryByRole('heading', { name: /marketplace$/ }), null);
   assert.ok(screen.getByRole('region', { name: 'Share of each cohort that bought again, by period after acquisition' }));
-  assert.ok(screen.getByRole('region', { name: 'By cohort: bought again in that period' }));
+  assert.ok(screen.getByRole('region', { name: 'By cohort' }));
+});
+
+test('the repeat curve draws one line per served group on a zero-based chart, with its values in Show values (UI refresh 3.5)', () => {
+  const { container } = render(<RetentionView artifact={parseRetentionCohortArtifact(retentionFixture())} />);
+  const chart = container.querySelector('.retention-chart svg[role="img"]');
+  assert.ok(chart);
+  assert.equal(chart.querySelectorAll('polyline').length, 3);
+  assert.equal(container.querySelector('.retention-chart .y-axis')?.lastElementChild?.textContent, '0%');
+  const values = container.querySelector('.retention-curve details') as HTMLDetailsElement;
+  assert.equal(values.open, false);
+  assert.equal(values.querySelectorAll('.retention-curve-lines article').length, 3);
+  assert.equal(container.querySelector('[data-slot="rt-how-we-count"] summary')?.textContent, 'How we count');
+  cleanup();
 });

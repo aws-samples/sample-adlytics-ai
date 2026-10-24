@@ -526,12 +526,15 @@ def _v2_assistant(value: object, where: str) -> StarterQuestionTemplates:
 
 def _v2_navigation(value: object, where: str) -> PresentationPageNavigation:
     raw = _mapping(value, where)
-    _exact(raw, {"hub_id", "tab_label", "tab_description", "order"}, where)
+    required = {"hub_id", "tab_label", "tab_description", "order"}
+    # UI refresh 3.8: `question` is the one optional navigation key.
+    _exact(raw, required | ({"question"} & set(raw)), where)
     return PresentationPageNavigation(
         hub_id=_string(raw["hub_id"], f"{where}.hub_id"),
         tab_label=_string(raw["tab_label"], f"{where}.tab_label"),
         tab_description=_string(raw["tab_description"], f"{where}.tab_description"),
         order=_positive_integer(raw["order"], f"{where}.order"),
+        question=_string(raw["question"], f"{where}.question") if "question" in raw else None,
     )
 
 

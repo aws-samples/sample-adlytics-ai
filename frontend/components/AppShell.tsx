@@ -224,7 +224,12 @@ function HubHeader({ place, entity }: { readonly place: PagePlace; readonly enti
         <nav className="tabs" aria-label={`Sections of ${hub.label}`}>
           <ul>{hub.tabs.map((candidate) => (
             <li key={candidate.tab_id}>
-              <Link href={candidate.route} aria-current={candidate.tab_id === tab.tab_id ? 'page' : undefined}>{candidate.label}</Link>
+              <Link href={candidate.route} aria-current={candidate.tab_id === tab.tab_id ? 'page' : undefined}>
+                {candidate.label}
+                {/* UI refresh 3.8: each tab names the question it answers (readout persona framing). */}
+                {/* Hidden from assistive tech so the link's name stays the tab label; the open tab reads it as its lead line. */}
+                {candidate.question === null ? null : <span className="q" aria-hidden="true">{candidate.question}</span>}
+              </Link>
             </li>
           ))}</ul>
         </nav>
@@ -235,7 +240,8 @@ function HubHeader({ place, entity }: { readonly place: PagePlace; readonly enti
         </p>
       )}
       <h1 id={PAGE_HEADING_ID} tabIndex={-1}>{entity?.name ?? tab.label}</h1>
-      {entity === null ? <p className="desc">{tab.description}</p> : null}
+      {/* The tab's question is the page's lead line when it has one; otherwise its description. */}
+      {entity === null ? <p className={tab.question === null ? 'desc' : 'desc lead-q'}>{tab.question ?? tab.description}</p> : null}
     </div>
   );
 }

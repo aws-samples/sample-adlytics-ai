@@ -1189,12 +1189,16 @@ class PresentationPageNavigation:
     tab_label: str
     tab_description: str
     order: int
+    # UI refresh 3.8: the customer question the tab answers, shown under its label and as the
+    # page's lead line. Navigation text only: no page context or artifact carries it.
+    question: str | None = None
 
     def __post_init__(self) -> None:
         for label, value in (
             ("hub id", self.hub_id),
             ("tab label", self.tab_label),
             ("tab description", self.tab_description),
+            *(() if self.question is None else (("question", self.question),)),
         ):
             if not value.strip():
                 raise PageSchemaError(f"page navigation requires a nonblank {label}.")

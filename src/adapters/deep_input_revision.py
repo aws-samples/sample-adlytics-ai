@@ -109,6 +109,9 @@ DEEP_INPUT_REVISIONS: Final[tuple[tuple[str, str], ...]] = (
     # ui-refresh 2.1 (ADR-151): no page entry owns `/`. Named .3 because the Tier 1 integration
     # tree deployed its merge closure to dev as 2026-10-22.2.
     ("2026-10-22.3", "4af6dfa54bb3d1c68024986fbbe60383998b551af9e4d0ed4703c7c0ef63bec7"),
+    # ui-refresh 3.8: an optional customer question on a page's navigation block. Named .5
+    # because the Tier 2 integration tree deployed its merge closure to dev as 2026-10-22.4.
+    ("2026-10-22.5", "2bf390bc02ee31a1bf09bce266bd3e7a618d4d487f705a2e74e5ea5d108174ee"),
 )
 DEEP_INPUT_REVISION: Final[str] = DEEP_INPUT_REVISIONS[-1][0]
 """The revision every deep cache key carries (``#DEEPINPUT#<revision>``)."""

@@ -28,6 +28,7 @@ import { isCapabilityExpired, type PresentationErrorClass } from '@/lib/presenta
 import {
   campaignFocusMetrics,
   fetchCampaignMetricFocus,
+  fetchCampaignPresentationV2,
   fetchInsightDeepDive,
   fetchPortfolioMetricFocus,
   multiChannelFocusMetrics,
@@ -108,6 +109,8 @@ export function PortfolioValue({ metric: metricName, value }: {
 
 /** UX sweep fix 6: the one line under All channels in place of the "Not added" tiles. */
 export const CAMPAIGNS_PICK_CHANNEL = 'Pick a channel to see its sales and return.';
+/** UI refresh 3.2: the delivery-per-channel disclosure's name. */
+export const DELIVERY_SUMMARY = 'Delivery per channel';
 /** UX sweep fix 6: the table's decision hint; the change itself happens in Amazon Ads. */
 export const CAMPAIGNS_SORT_HINT = 'Sort by Attributed ROAS to find campaigns to fix; you make the change in Amazon Ads.';
 
@@ -714,6 +717,85 @@ function PortfolioTable({ artifact, onFilter, onSegment, onSegmentApproach, onSe
       </span>
     </nav>}
   </section>;
+}
+
+/* ---------- highest and lowest return (UI refresh 3.2, readout A.4, D10) ---------- */
+
+/** The lists' browser-owned words (Campaigns LLD "Highest and lowest return"). */
+export const RETURN_LISTS_COPY = {
+  high: 'Highest return',
+  low: 'Lowest return',
+  order: 'Attributed ROAS · in the order the server returns',
+  size: 5,
+} as const;
+
+type ReturnOrder =
+  | { readonly kind: 'pending' }
+  | { readonly kind: 'served'; readonly high: readonly CampaignPortfolioRow[]; readonly low: readonly CampaignPortfolioRow[] }
+  | { readonly kind: 'omitted' };
+
+function definedReturn(row: CampaignPortfolioRow): boolean {
+  return row.comparisons.some((comparison) => comparison.metric === 'attributed_roas' && comparison.current.value !== null);
+}
+
+/**
+ * The first served rows of the server's own Attributed ROAS orderings, descending and ascending
+ * (segment 0 of each, ADR-071), for the same window and channel option. The browser never sorts:
+ * if either ordering isn't served for this window and option, both lists are omitted (D10).
+ * Rows whose ROAS is undefined sort last on the server in both directions, so they're skipped.
+ */
+function ReturnLists({ parent, sessionId, temporalSelection }: {
+  readonly parent: CampaignPortfolioArtifact;
+  readonly sessionId: string;
+  readonly temporalSelection: TemporalSelectionV1 | undefined;
+}) {
+  const option = parent.channel_filter.selected;
+  const selectionKey = JSON.stringify(temporalSelection ?? null);
+  const { end, start } = parent.period;
+  // Each answer is kept with the request it answers, so a changed window or option reads as pending.
+  const requestKey = JSON.stringify([sessionId, selectionKey, option, start, end]);
+  const [answered, setAnswered] = useState<{ readonly key: string; readonly order: ReturnOrder } | null>(null);
+  const order: ReturnOrder = answered?.key === requestKey ? answered.order : { kind: 'pending' };
+  useEffect(() => {
+    if (sessionId === '') return;
+    const setOrder = (next: ReturnOrder) => setAnswered({ key: requestKey, order: next });
+    const controller = new AbortController();
+    const selection = (JSON.parse(selectionKey) as TemporalSelectionV1 | null) ?? undefined;
+    const filter = option === 'all' ? undefined : option;
+    const ordering = (direction: CampaignPortfolioSort['direction']) => fetchCampaignPresentationV2(sessionId, selection, controller.signal, { direction, field: 'attributed_roas' }, 0, filter);
+    Promise.all([ordering('desc'), ordering('asc')]).then(([high, low]) => {
+      const rows = (served: typeof high, direction: CampaignPortfolioSort['direction']) => (
+        served.kind === 'parent' && served.artifact.outcome === 'complete' &&
+        served.artifact.sort.field === 'attributed_roas' && served.artifact.sort.direction === direction &&
+        served.artifact.period.start === start && served.artifact.period.end === end &&
+        served.artifact.channel_filter.selected === option
+          ? served.artifact.rows.filter(definedReturn).slice(0, RETURN_LISTS_COPY.size)
+          : null
+      );
+      const highRows = rows(high, 'desc');
+      const lowRows = rows(low, 'asc');
+      setOrder(highRows === null || lowRows === null || highRows.length === 0 ? { kind: 'omitted' } : { high: highRows, kind: 'served', low: lowRows });
+    }).catch(() => { if (!controller.signal.aborted) setOrder({ kind: 'omitted' }); });
+    return () => controller.abort();
+  }, [end, option, requestKey, selectionKey, sessionId, start]);
+  if (order.kind !== 'served') return null;
+  const list = (title: string, rows: readonly CampaignPortfolioRow[], slot: string) => <section className="card section cp-return-list" aria-labelledby={`${slot}-heading`} data-slot={slot}>
+    <h3 id={`${slot}-heading`}>{title}</h3>
+    <p className="footnote">{RETURN_LISTS_COPY.order}</p>
+    <ol>{rows.map((row) => {
+      const roas = row.comparisons.find((comparison) => comparison.metric === 'attributed_roas');
+      const spend = row.comparisons.find((comparison) => comparison.metric === 'spend');
+      return <li key={row.capability.selection_reference}>
+        <span className="name">{campaignName(row)}<span className="sub">{row.signature.channel}</span></span>
+        <span className="num"><strong>{roas === undefined ? null : <PortfolioValue metric="attributed_roas" value={roas.current} />}</strong></span>
+        <span className="num">{spend === undefined ? null : <PortfolioValue metric="spend" value={spend.current} />}</span>
+      </li>;
+    })}</ol>
+  </section>;
+  return <div className="cp-return-lists">
+    {list(RETURN_LISTS_COPY.high, order.high, 'cp-top')}
+    {list(RETURN_LISTS_COPY.low, order.low, 'cp-low')}
+  </div>;
 }
 
 /* ---------- channel filter (ADR-127) ---------- */
@@ -1382,13 +1464,7 @@ export function CampaignPortfolioV2View({ child, closedCampaign = null, detailSt
       ? <CoverageProvider status={parent.evidence_status} subject="Campaigns">
         <AnswerSentence answer={campaignsAnswer(parent, portfolioOutcomeCopy(parent.outcome).description)} />
         <PortfolioTiles artifact={parent} filterId={filterId} focus={portfolioFocus} sessionId={focusSessionId} temporalSelection={focusTemporalSelection} />
-        {view === null ? null : <>
-          <ByChannel
-            comparedText={`${selectedLabel(parent.channel_filter)} · ${windowText} compared with ${formatIsoDateRange(parent.prior_period.start, parent.prior_period.end)}`}
-            scorecardStep={scorecardStep}
-            view={view}
-          />
-        </>}
+        <ReturnLists parent={parent} sessionId={focusSessionId} temporalSelection={focusTemporalSelection} />
         <InsightRow
           campaignSegment={parent.pagination?.segment_index ?? 0}
           campaignSort={parent.sort}
@@ -1404,6 +1480,15 @@ export function CampaignPortfolioV2View({ child, closedCampaign = null, detailSt
         />
         <PortfolioTrend artifact={parent} />
         <PortfolioTable artifact={parent} onSelect={onSelect} selection={selection} {...(onFilter === undefined ? {} : { onFilter })} {...(onSort === undefined ? {} : { onSort })} {...(onSegment === undefined ? {} : { onSegment })} {...(onSegmentApproach === undefined ? {} : { onSegmentApproach })} />
+        {/* UI refresh 3.2 (readout A.4): delivery per channel is a media buyer's detail, so it folds below the table. */}
+        {view === null ? null : <details className="about cp-delivery" data-slot="cp-delivery">
+          <summary>{DELIVERY_SUMMARY}</summary>
+          <ByChannel
+            comparedText={`${selectedLabel(parent.channel_filter)} · ${windowText} compared with ${formatIsoDateRange(parent.prior_period.start, parent.prior_period.end)}`}
+            scorecardStep={scorecardStep}
+            view={view}
+          />
+        </details>}
       </CoverageProvider>
       : <ClosedState description={outcome.description} title={outcome.title} />}
     {selection.kind === 'unavailable' ? <p role="alert" className="state-note bad"><span className="badge">Unavailable</span>{issueCopy(selection.issueClass)}</p> : null}

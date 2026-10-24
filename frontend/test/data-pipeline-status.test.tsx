@@ -72,7 +72,7 @@ test('not provisioned: the set-up absence and Go to the root tab, nothing else',
   render(<DataPipelineStatusView access="not-provisioned" />);
   assert.deepEqual(headings(), [NOT_SET_UP]);
   assert.ok(screen.getByText("This page reads an operations API that this deployment doesn't include."));
-  assert.equal(screen.getByRole('link', { name: 'Go to Overview' }).getAttribute('href'), '/');
+  assert.equal(screen.getByRole('link', { name: 'Go to Growth check' }).getAttribute('href'), '/');
   assert.equal(screen.queryByRole('table'), null);
   cleanup();
   // Positive control: the no-access state shows its own heading in the same place.
@@ -84,7 +84,7 @@ test('provisioned without access: the access absence and Go to the root tab, not
   render(<DataPipelineStatusView access="no-access" />);
   assert.deepEqual(headings(), [NO_ACCESS]);
   assert.ok(screen.getByText('Data pipeline status is for operators in the operations group.'));
-  assert.equal(screen.getByRole('link', { name: 'Go to Overview' }).getAttribute('href'), '/');
+  assert.equal(screen.getByRole('link', { name: 'Go to Growth check' }).getAttribute('href'), '/');
   assert.equal(screen.queryByRole('table'), null);
   cleanup();
   // Positive control: the granted state renders the table this one withholds.
@@ -133,7 +133,7 @@ function withPipelineStatusEntry(): unknown {
     entitlement: { group: 'operations-status-read', session_field: 'can_read_operational_status' },
     kind: 'static',
     label: 'Data pipeline status',
-    order: 2,
+    order: 2, question: null,
     route: ROUTE,
     tab_id: 'pipeline-status',
   });

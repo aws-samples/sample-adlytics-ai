@@ -60,6 +60,9 @@ export function ManifestPointer({ lead, tabId, text }: { readonly lead: string; 
   return <p className="pointer">{lead} <a href={tab.route}>{text}</a></p>;
 }
 
+/** T2L-1: the page's one freshness chip over the rows' served qualifiers (Retail health LLD). */
+export const RETAIL_FRESHNESS_CHIP = 'Data notes for these products';
+
 /** The paid-feature section both retail pages show, in the server's words (ia §8.4). */
 export function AmcRetailPurchases({ headingId, text }: { readonly headingId: string; readonly text: string }) {
   return <section className="metric-section" aria-labelledby={headingId}>
@@ -79,6 +82,7 @@ export function AmcRetailPurchases({ headingId, text }: { readonly headingId: st
 export const ADS_BESIDE_RETAIL_COPY = {
   heading: 'Ads beside retail',
   link: 'Open Scorecard ›',
+  products: 'Each product beside its ad credit ›',
   sevenDaysOnly: 'Ad spend beside retail sales is shown for 7 days.',
 } as const;
 
@@ -87,8 +91,14 @@ export const ADS_BESIDE_RETAIL_COPY = {
  * retail. Neither is attributed sales or a return, so the page's served boundary stays true (D7).
  */
 export function AdsBesideRetail({ ads }: { readonly ads: OverviewSource<ScorecardPresentation> | null }) {
-  const scorecardTab = useVisibleTabs().find((tab) => tab.tab_id === 'scorecard');
-  const link = scorecardTab === undefined ? null : <a className="chip-link" href={scorecardTab.route}>{ADS_BESIDE_RETAIL_COPY.link}</a>;
+  const tabs = useVisibleTabs();
+  const scorecardTab = tabs.find((tab) => tab.tab_id === 'scorecard');
+  const productsTab = tabs.find((tab) => tab.tab_id === 'products-and-ads');
+  const link = <>
+    {scorecardTab === undefined ? null : <a className="chip-link" href={scorecardTab.route}>{ADS_BESIDE_RETAIL_COPY.link}</a>}
+    {/* Readout A.9: the strip points to Products and ads, the one place ad credit meets each product. */}
+    {productsTab === undefined ? null : <a className="chip-link" href={productsTab.route}>{ADS_BESIDE_RETAIL_COPY.products}</a>}
+  </>;
   const body = ads !== null && ads.kind === 'served' && ads.presentation.kind === 'parent' && ads.presentation.artifact.outcome === 'complete'
     ? ads.presentation.artifact
     : null;
@@ -249,7 +259,12 @@ function ProductTable({ artifact, loadingReference, onOpenProduct }: {
   const qualifiers = [...new Set(artifact.rows.flatMap((row) => row.freshness_qualifiers))];
   return <section className="metric-section" aria-labelledby="retail-products-heading">
     <div className="sec-head"><h2 id="retail-products-heading">Products</h2></div>
-    {qualifiers.length === 0 ? null : <p className="footnote rh-fresh" data-slot="rh-fresh">{qualifiers.join(' · ')} <SeeWhy figure="product freshness" /></p>}
+    {/* T2L-1: one chip in place of every row's qualifier; the served qualifiers, each once, open beneath it. */}
+    {qualifiers.length === 0 ? null : <details className="rh-fresh" data-slot="rh-fresh">
+      <summary><span className="pill warn">{RETAIL_FRESHNESS_CHIP}</span></summary>
+      <ul className="footnote">{qualifiers.map((line) => <li key={line}>{line}</li>)}</ul>
+      <SeeWhy figure="product freshness" />
+    </details>}
     <DataTable
       className="camp-table retail-products"
       title="Shipped revenue per product"
@@ -407,18 +422,13 @@ export function RetailHealthView({ ads, artifact, closedProduct = null, loadingR
     <AnswerSentence answer={retailHealthAnswer(artifact, '')} />
     <RetailLeakTiles onOpen={openFocus} totals={artifact.totals} />
     {ads === undefined ? null : <AdsBesideRetail ads={ads} />}
-    {/* UX sweep fix 4: every other figure, under the same shared groups, in one disclosure. */}
-    <details className="about more-figures" data-slot="rh-more">
-      <summary>More figures</summary>
-      <RetailTileGroups
-        absences={artifact.absences}
-        idPrefix="retail-section"
-        onOpen={openFocus}
-        returnReasons={statuses.return_reasons.reason}
-        scope="page"
-        totals={artifact.totals}
-      />
-    </details>
+    <RetailTrend artifact={artifact} />
+    <ProductTable
+      artifact={artifact}
+      loadingReference={loadingReference}
+      onOpenProduct={onOpenProduct === undefined ? undefined : (row) => onOpenProduct(row)}
+    />
+    {/* UI refresh 3.6 (readout A.9): the reads, then every other figure, after the products. */}
     <section className="metric-section" aria-labelledby="retail-insights-heading">
       <div className="sec-head"><h2 id="retail-insights-heading">Insights</h2></div>
       <div className="narr-row">
@@ -432,12 +442,18 @@ export function RetailHealthView({ ads, artifact, closedProduct = null, loadingR
         />)}
       </div>
     </section>
-    <RetailTrend artifact={artifact} />
-    <ProductTable
-      artifact={artifact}
-      loadingReference={loadingReference}
-      onOpenProduct={onOpenProduct === undefined ? undefined : (row) => onOpenProduct(row)}
-    />
+    {/* UX sweep fix 4: every other figure, under the same shared groups, in one disclosure. */}
+    <details className="about more-figures" data-slot="rh-more">
+      <summary>More figures</summary>
+      <RetailTileGroups
+        absences={artifact.absences}
+        idPrefix="retail-section"
+        onOpen={openFocus}
+        returnReasons={statuses.return_reasons.reason}
+        scope="page"
+        totals={artifact.totals}
+      />
+    </details>
     {artifact.reconciliation === null ? null : <Reconciliation reconciliation={artifact.reconciliation} />}
     <AmcRetailPurchases headingId="retail-amc-heading" text={statuses.amc_retail_purchases.text} />
     <ManifestPointer

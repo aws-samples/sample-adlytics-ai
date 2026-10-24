@@ -16,6 +16,7 @@ const listing = [
   'index.html',
   // Slice 9 New customers: the Customers hub's first tab.
   'new-customers/index.html',
+  'products-and-ads/index.html',
   'reach/index.html',
   'retention/index.html',
   'retail-health/index.html',

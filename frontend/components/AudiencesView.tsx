@@ -7,8 +7,14 @@ import { PAID_FEATURE_NEXT_STEP } from './PageAbsence';
 import { displayFigure, formatCount } from '@/lib/exact-format';
 import { useId, useMemo, useState } from 'react';
 
+import type { AudienceShare } from '@/lib/audiences';
 import type { AudienceDelivery, AudienceMarket, AudienceProfileArtifact, AudienceSegmentNames, AudienceView, AudienceViewId } from '@/lib/audiences';
 import { DataTable, DtBody, DtCell, DtColumn, DtHead, DtRow, DtRowHeader } from './DataTable';
+
+/** UI refresh 3.4 (readout A.6): who acts on a segment, in the mockup's words. */
+export const AUDIENCES_ACTIVATE_LINE = "You can build a similar audience in your own tools. Adlytics doesn't create or activate audiences.";
+/** UI refresh 3.4: campaigns by segment fold into one disclosure under this name. */
+export const AUDIENCES_CAMPAIGNS_SUMMARY = "Where this campaign's sales came from";
 
 /** A served count, digit-grouped (UI refresh D4). The decoder pins it to the count's own digits (`countPair`). */
 const groupedCount = (text: string | null): string | null => text === null ? null : formatCount(text);
@@ -37,6 +43,20 @@ function UnavailableSegmentRow({ buyerMode, reason, row }: {
   </DtRow>;
 }
 
+/**
+ * UI refresh 3.4 (readout A.6): the served buyer share and reached share as two bars on one
+ * zero-based 0–100% scale, so a segment over its reach share reads at a glance. Decorative: the
+ * cells beside them carry the served text.
+ */
+function PairedBars({ buyer, reached }: { readonly buyer: AudienceShare | null; readonly reached: AudienceShare | null }) {
+  if (buyer === null || reached === null) return null;
+  const width = (share: AudienceShare) => `${Math.max(0, Math.min(1, Number(share.value))) * 100}%`;
+  return <span className="au-bars" aria-hidden="true">
+    <span className="au-bar buyers" style={{ width: width(buyer) }} />
+    <span className="au-bar reached" style={{ width: width(reached) }} />
+  </span>;
+}
+
 function SegmentTable({ buyerMode, delivery, view }: {
   readonly buyerMode: 'all' | 'new';
   readonly delivery: AudienceDelivery;
@@ -51,12 +71,14 @@ function SegmentTable({ buyerMode, delivery, view }: {
     {delivery.total_text === null ? null : <p className="state-note">{delivery.total_text}</p>}
     {delivery.first_month_note === null ? null : <p className="sec-line">{delivery.first_month_note}</p>}
     {delivery.roster_note === null ? null : <p className="sec-line">{delivery.roster_note}</p>}
+    {buyerMode === 'all' ? <p className="au-legend" aria-hidden="true"><span className="au-bar buyers" /> Share of buyers <span className="au-bar reached" /> Share of reached shoppers</p> : null}
     <DataTable title="Segments your buyers belong to, compared with shoppers your ads reached" note={`${view.caption} · ${delivery.label}`} nameWithNote>
       <DtHead><DtRow>
         <DtColumn className="l">Segment</DtColumn>
         <DtColumn>{buyerMode === 'all' ? 'Share of buyers' : 'New-to-brand buyers'}</DtColumn>
         <DtColumn>Share of reached shoppers</DtColumn>
         <DtColumn>Index</DtColumn>
+        {buyerMode === 'all' ? <DtColumn><span className="sr-only">Shares side by side</span></DtColumn> : null}
       </DtRow></DtHead>
       <DtBody>
         {/* The decoder pins every not_available row's text to TOTAL_NOT_AVAILABLE_TEXT, so the inline branch never sees one. */}
@@ -67,6 +89,7 @@ function SegmentTable({ buyerMode, delivery, view }: {
             <DtCell label={metricLabels(buyerMode)[0]}>{buyerMode === 'all' ? row.segment_buyer_share?.text ?? row.text : groupedCount(row.segment_buyers_new_to_brand_text)}</DtCell>
             <DtCell label="Share of reached shoppers">{row.segment_exposed_share?.text ?? row.text}</DtCell>
             <DtCell label="Index">{row.segment_index === null ? row.text : displayFigure('segment_index', row.segment_index, 'ratio', null).text}</DtCell>
+            {buyerMode === 'all' ? <DtCell label="Shares side by side"><PairedBars buyer={row.segment_buyer_share} reached={row.segment_exposed_share} /></DtCell> : null}
           </DtRow>)}
         {unavailable.map((row) => <UnavailableSegmentRow buyerMode={buyerMode} key={`${row.profile_path}:${row.segment_id}`} reason={row.text} row={row} />)}
       </DtBody>
@@ -105,7 +128,7 @@ function ProfileSection({ market }: { readonly market: AudienceMarket }) {
         <label className="seg-opt"><input type="radio" name="audience-buyers" checked={buyerMode === 'all'} onChange={() => setBuyerMode('all')} /><span className="l">All buyers</span></label>
         <label className="seg-opt"><input type="radio" name="audience-buyers" checked={buyerMode === 'new'} onChange={() => setBuyerMode('new')} /><span className="l">New-to-brand buyers</span></label>
       </div></fieldset>
-      {selected.paid_state === 'not_observed' ? <div className="callout audience-state" role="status"><p>{selected.callout}</p></div> : selected.deliveries.map((delivery) => <SegmentTable buyerMode={buyerMode} delivery={delivery} key={delivery.profile_path} view={selected} />)}
+      {selected.paid_state === 'not_observed' ? <div className="callout audience-state" role="status"><p>{selected.callout}</p><p className="small">{PAID_FEATURE_NEXT_STEP}</p></div> : selected.deliveries.map((delivery) => <SegmentTable buyerMode={buyerMode} delivery={delivery} key={delivery.profile_path} view={selected} />)}
       <p className="footnote">{selected.segment_ids_sentence}</p>
       <p className="footnote">{selected.buyer_label}</p>
     </section>
@@ -121,7 +144,9 @@ function CampaignSection({ market }: { readonly market: AudienceMarket }) {
   const selected = options.some(([key]) => key === chosen) ? chosen : options[0]?.[0] ?? null;
   const rows = selected === null ? [] : campaigns.rows.filter((row) => row.campaign_ref === selected);
   const title = options.find(([key]) => key === selected)?.[1];
-  return <section className="card section audience-campaigns" aria-labelledby="audience-campaign-heading">
+  return <details className="about audience-campaigns" data-slot="au-campaigns">
+    <summary>{AUDIENCES_CAMPAIGNS_SUMMARY}</summary>
+    <section className="card section" aria-labelledby="audience-campaign-heading">
     <h2 id="audience-campaign-heading">DSP campaigns by segment</h2>
     <p className="sec-line">{campaigns.limit_text}</p>
     {campaigns.pending_text === null ? null : <p className="state-note" role="status">{campaigns.pending_text}</p>}
@@ -137,7 +162,8 @@ function CampaignSection({ market }: { readonly market: AudienceMarket }) {
       </DtRow>)}</DtBody>
     </DataTable>}
     <p className="footnote">{campaigns.segment_ids_sentence}</p>
-  </section>;
+    </section>
+  </details>;
 }
 
 function Evidence({ artifact }: { readonly artifact: AudienceProfileArtifact }) {
@@ -159,6 +185,7 @@ function Outcome({ artifact }: { readonly artifact: AudienceProfileArtifact }) {
   return <>
     <MonthScope artifact={artifact} />
     <AnswerSentence answer={audiencesAnswer(artifact)} />
+    <p className="callout au-activate" data-slot="au-activate">{AUDIENCES_ACTIVATE_LINE}</p>
     <ProfileSection market={market} />
     <CampaignSection market={market} />
   </>;

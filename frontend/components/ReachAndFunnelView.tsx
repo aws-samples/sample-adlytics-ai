@@ -27,6 +27,28 @@ const ACCOUNT_IDS_LABEL = 'Signed-in shoppers';
 /** The decoder pins the served `all_ids_label` to "All ID types", so this relabels exactly that one string. */
 const ALL_IDS_LABEL = 'All shoppers incl. devices';
 const PLATFORM_RETURN_LABEL = 'Return on ad spend, all Amazon ads';
+/** UI refresh 3.3 (readout A.5): the reframed section names and lines, all browser-owned. */
+export const SHOW_COUNTS = 'Show shopper counts';
+const SHOPPERS = 'shoppers';
+export const FUNNEL_HEADING = 'What they did next';
+export const FREQUENCY_HEADING = 'When more ads stop paying';
+const AXIS_NOTE = 'Bars: share who bought. Axis starts at 0%.';
+
+/**
+ * "Sales per ad dollar, all Amazon ads: {first} at {first bucket}, {last} at {last bucket}." from
+ * the first and last served buckets (UX sweep fix 8). It names both and compares nothing.
+ */
+export function frequencyLead(frequency: ReachFrequency): string | null {
+  const first = frequency.buckets[0];
+  const last = frequency.buckets[frequency.buckets.length - 1];
+  if (first === undefined || last === undefined || first === last) return null;
+  if (first.platform_return.display_text === null || last.platform_return.display_text === null) return null;
+  return `Sales per ad dollar, all Amazon ads: ${reachFigureText(first.platform_return)} at ${first.label}, ${reachFigureText(last.platform_return)} at ${last.label}.`;
+}
+function FrequencyLead({ frequency }: { readonly frequency: ReachFrequency }) {
+  const text = frequencyLead(frequency);
+  return text === null ? null : <p className="reach-lead" data-slot="rf-freq-lead">{text}</p>;
+}
 const INSIGHT_LABELS: Readonly<Record<ReachInsightId, string>> = {
   'frequency-saturation': 'Frequency',
   'full-funnel-association': 'Association, not cause',
@@ -126,6 +148,15 @@ function OverlapSection({ market, priorLabel }: { readonly market: ReachMarket; 
           style={{ flexGrow: group.account.value === null ? 0 : Number(group.account.value) }}
         />)}
       </div>
+      {/* UX sweep fix 8 (readout A.5 rf-bar-*): each segment is named with its served count, not by colour alone. */}
+      <ul className="reach-overlap-legend" data-slot="rf-bar-legend">
+        {overlap.groups.map((group) => <li key={group.exposure_group}>
+          <span aria-hidden="true" className={`reach-overlap-swatch ${group.exposure_group}`} />
+          {group.label} <strong>{reachFigureText(group.account)}</strong> {SHOPPERS}
+        </li>)}
+      </ul>
+      <details className="reach-values reach-counts" data-slot="rf-counts">
+      <summary>{SHOW_COUNTS}</summary>
       <DataTable title={ACCOUNT_IDS_LABEL}>
         <DtHead><DtRow>
           <DtColumn><span className="sr-only">Overlap between DSP and sponsored ads</span></DtColumn>
@@ -143,6 +174,7 @@ function OverlapSection({ market, priorLabel }: { readonly market: ReachMarket; 
           </DtRow>;
         })}</DtBody>
       </DataTable>
+      </details>
       <div className="reach-notes">{overlap.window_notes.map((line) => <p key={line}>{line}</p>)}</div>
     </>}
   </section>;
@@ -152,20 +184,20 @@ function FunnelSection({ market }: { readonly market: ReachMarket }) {
   const funnel = market.funnel;
   if (funnel === null) return null;
   return <section className="section reach-section">
-    <h2>Full funnel by exposure group</h2>
+    <h2>{FUNNEL_HEADING}</h2>
     {funnel.state !== 'figures' ? <SectionState text={funnel.text ?? ''} /> : <>
       <Caveat lines={funnel.caveat} />
       <DataTable title="Full funnel by exposure group">
         <DtHead><DtRow>
           <DtColumn><span className="sr-only">Full funnel by exposure group</span></DtColumn>
-          {funnel.columns.map((column) => <DtColumn key={column.metric}>{metricLabel(column.metric, column.label)}</DtColumn>)}
+          {/* T2L-5: the served index note is the index column's basis, as the page design draws it. */}
+          {funnel.columns.map((column, index) => <DtColumn key={column.metric} basis={index === funnel.columns.length - 1 ? funnel.index_note : null}>{metricLabel(column.metric, column.label)}</DtColumn>)}
         </DtRow></DtHead>
         <DtBody>{funnel.rows.map((row) => <DtRow key={row.exposure_group}>
           <DtRowHeader>{row.label}</DtRowHeader>
           {funnel.columns.map((column) => <DtCell key={column.metric} label={metricLabel(column.metric, column.label)}><Figure figure={row.figures[column.metric]} /></DtCell>)}
         </DtRow>)}</DtBody>
       </DataTable>
-      {funnel.index_note === null ? null : <p className="reach-notes">{funnel.index_note}</p>}
     </>}
   </section>;
 }
@@ -214,12 +246,16 @@ function InsightsSection({ artifact, market }: { readonly artifact: ReachAndFunn
 }
 
 function FrequencyChart({ frequency }: { readonly frequency: ReachFrequency }) {
+  // T2L-2: a zero-based axis whose top is the largest served rate, so the bars read; display scale only.
+  const served = frequency.buckets.flatMap((bucket) => bucket.purchaser_rate.value === null ? [] : [Number(bucket.purchaser_rate.value)]);
+  const top = Math.max(0, ...served.filter((value) => Number.isFinite(value)));
+  const height = (value: string | null) => value === null || top === 0 ? 0 : Math.max(0, Math.min(1, Number(value) / top)) * 100;
   return <>
     <div className="reach-chart" role="img" aria-label="Purchaser rate by number of ads seen" tabIndex={0}>
       <div className="reach-chart-bars">
         {frequency.buckets.map((bucket) => <div className={bucket.purchaser_rate.absence === null ? 'reach-chart-item' : 'reach-chart-item gap'} key={bucket.bucket}>
           <div className="reach-bar-space" aria-hidden="true">
-            {bucket.purchaser_rate.value === null ? null : <span className="reach-bar" style={{ height: `${Math.max(0, Math.min(1, Number(bucket.purchaser_rate.value))) * 100}%` }} />}
+            {bucket.purchaser_rate.value === null ? null : <span className="reach-bar" style={{ height: `${height(bucket.purchaser_rate.value)}%` }} />}
           </div>
           <span className="reach-chart-value">{bucket.purchaser_rate.display_text ?? NOT_AVAILABLE}</span>
           {bucket.purchaser_rate.absence === null ? null : <span className="reach-absence">{bucket.purchaser_rate.absence.text}</span>}
@@ -227,13 +263,19 @@ function FrequencyChart({ frequency }: { readonly frequency: ReachFrequency }) {
         </div>)}
       </div>
     </div>
+    <p className="reach-notes">{AXIS_NOTE}</p>
+    {/* UX sweep fix 8 (readout A.5 rf-freq-return-*): the served platform return under each bucket. */}
+    <div className="reach-return-row" role="group" aria-label={PLATFORM_RETURN_LABEL} data-slot="rf-freq-return">
+      {frequency.buckets.map((bucket) => <span key={bucket.bucket}><span className="sr-only">{`${bucket.label}: `}</span><strong>{reachFigureText(bucket.platform_return)}</strong></span>)}
+    </div>
     <details className="reach-values">
       <summary>Show values</summary>
       <DataTable title="Purchaser rate by number of ads seen">
-        <DtHead><DtRow><DtColumn>Ads seen</DtColumn><DtColumn>Purchaser rate</DtColumn></DtRow></DtHead>
+        <DtHead><DtRow><DtColumn>Ads seen</DtColumn><DtColumn>Purchaser rate</DtColumn><DtColumn>{PLATFORM_RETURN_LABEL}</DtColumn></DtRow></DtHead>
         <DtBody>{frequency.buckets.map((bucket) => <DtRow key={bucket.bucket}>
           <DtRowHeader>{bucket.label}</DtRowHeader>
           <DtCell label="Purchaser rate"><Figure figure={bucket.purchaser_rate} /></DtCell>
+          <DtCell label={PLATFORM_RETURN_LABEL}><Figure figure={bucket.platform_return} /></DtCell>
         </DtRow>)}</DtBody>
       </DataTable>
     </details>
@@ -246,29 +288,27 @@ function FrequencyTables({ frequency }: { readonly frequency: ReachFrequency }) 
   // E3 (OD-UX-9): the decoder admits only the served "not available per channel" absence in this
   // grid (lib/reach.ts), so it reads as one line per channel instead of rows of the same words.
   const reason = table.rows[0] === undefined ? null : Object.values(table.rows[0].cells)[0]?.absence?.text ?? null;
+  // The return row above is the platform view; its served basis reads once beneath it.
   return <div className="reach-frequency-tables">
+    <p className="reach-notes" data-slot="rf-freq-return-basis">{`${PLATFORM_RETURN_LABEL}: ${table.platform_label}`}</p>
     <div className="reach-channel-absent" role="group" aria-label="Return per channel by frequency">
       <h3>Return per channel by frequency</h3>
       <p className="reach-notes">{table.label}</p>
-      <ul className="reach-notes">{table.rows.map((row) => <li key={row.ad_product_key}><strong>{row.label}</strong> <span>{reason}</span></li>)}</ul>
-      <p className="reach-notes">{table.unavailable_reason}</p>
+      <ul className="reach-notes">{table.rows.map((row) => <li key={row.ad_product_key}><strong>{row.label}</strong></li>)}</ul>
+      {/* T2L-5: the served reason completes the served cell text, as the page design's legend reads. */}
+      <p className="reach-notes">{reason === null ? table.unavailable_reason : `${reason}: ${table.unavailable_reason}`}</p>
       <p className="reach-notes">{table.foot}</p>
     </div>
-    <DataTable title={PLATFORM_RETURN_LABEL} note={table.platform_label} nameWithNote>
-      <DtHead><DtRow><DtColumn>Ads seen</DtColumn><DtColumn>{PLATFORM_RETURN_LABEL}</DtColumn></DtRow></DtHead>
-      <DtBody>{frequency.buckets.map((bucket) => <DtRow key={bucket.bucket}>
-        <DtRowHeader>{bucket.label}</DtRowHeader>
-        <DtCell label={PLATFORM_RETURN_LABEL}><Figure figure={bucket.platform_return} /></DtCell>
-      </DtRow>)}</DtBody>
-    </DataTable>
   </div>;
 }
 
 function FrequencySection({ market }: { readonly market: ReachMarket }) {
   const frequency = market.frequency;
   return <section className="section reach-section">
-    <h2>Frequency</h2>
+    <h2>{FREQUENCY_HEADING}</h2>
     {frequency.state !== 'figures' ? <SectionState text={frequency.text ?? ''} /> : <>
+      {/* UX sweep fix 8: the section opens with the served return at the first and last bucket. */}
+      <FrequencyLead frequency={frequency} />
       <Caveat lines={frequency.caveat} />
       <p className="reach-section-line">{frequency.axis_label}</p>
       <FrequencyChart frequency={frequency} />

@@ -5,7 +5,7 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { afterEach, test } from 'vitest';
 
-import { ReachAndFunnelView, reachChangeText, reachDisplayText, reachFigureText } from '../components/ReachAndFunnelView';
+import { FREQUENCY_HEADING, FUNNEL_HEADING, frequencyLead, ReachAndFunnelView, reachChangeText, reachDisplayText, reachFigureText, SHOW_COUNTS } from '../components/ReachAndFunnelView';
 import { reachAnswer } from '../lib/reach';
 import { parseReachAndFunnelArtifact } from '../lib/reach';
 import {
@@ -55,7 +55,8 @@ function assertInOrder(text: string, values: readonly string[]) {
 test('renders the complete surface in section order using only served display text', () => {
   const { container } = view();
   const headings = Array.from(container.querySelectorAll('.reach-view > .reach-section > h2')).map((node) => node.textContent);
-  assert.deepEqual(headings, ['Overlap between DSP and sponsored ads', 'Full funnel by exposure group', 'Insights', 'Frequency']);
+  // UI refresh 3.3 (readout A.5): the funnel and frequency sections read as the mockup's questions.
+  assert.deepEqual(headings, ['Overlap between DSP and sponsored ads', FUNNEL_HEADING, 'Insights', FREQUENCY_HEADING]);
   assert.ok(container.textContent?.includes('30.00%'));
   assert.ok(container.textContent?.includes('2000 served'));
   // C6: without a served prior label every served prior is named as the previous period.
@@ -127,7 +128,9 @@ test('renders fine and coarse server bucket rosters without browser-composed ban
   const fine = view();
   assert.equal(fine.container.querySelectorAll('.reach-chart-item').length, 10);
   // The per-channel grid is all one served absence here, so it reads as one line per channel (E3).
-  assert.equal(fine.container.querySelectorAll('.reach-frequency-tables tbody tr').length, 10);
+  // The platform return reads under each bar and in the values table beside the purchaser rate.
+  assert.equal(fine.container.querySelectorAll('[data-slot="rf-freq-return"] > span').length, 10);
+  assert.equal(within(screen.getByRole('region', { name: 'Purchaser rate by number of ads seen' })).getAllByRole('rowheader').length, 10);
   assert.equal(fine.container.querySelectorAll('.reach-channel-absent li').length, 2);
   assert.equal(screen.queryByText(/total/i), null);
   fine.unmount();
@@ -152,14 +155,16 @@ test('not-returned buckets leave a chart gap and state the exact absence in char
 
 test('keeps no-credit channel rows separate and places each served platform return beside them', () => {
   const { container } = view();
-  const regions = screen.getAllByRole('region');
-  const platformRegion = regions.find((region) => region.getAttribute('aria-labelledby')?.split(' ').some((id) => document.getElementById(id)?.textContent === 'Return on ad spend, all Amazon ads'));
-  assert.ok(platformRegion);
-  // E3: every channel cell carries the same served absence, so the grid is one line per channel.
+  // UX sweep fix 8: the served platform return sits under its bucket and in the values table.
+  const values = screen.getByRole('region', { name: 'Purchaser rate by number of ads seen' });
+  assert.ok(within(values).getByRole('columnheader', { name: 'Return on ad spend, all Amazon ads' }));
+  assert.equal(within(values).getAllByRole('rowheader').length, 10);
+  assert.ok(screen.getByRole('group', { name: 'Return on ad spend, all Amazon ads' }));
+  // E3: every channel cell carries the same served absence, so the grid is one line per channel,
+  // and (T2L-5) the served reason completes the served cell text as one sentence.
   const channelGroup = screen.getByRole('group', { name: 'Return per channel by frequency' });
-  assert.deepEqual([...channelGroup.querySelectorAll('li')].map((item) => item.textContent), ['Sponsored Products Not available per channel', 'Amazon DSP Not available per channel']);
-  assert.equal(within(channelGroup).getAllByText('Not available per channel').length, 2);
-  assert.equal(within(platformRegion).getAllByRole('rowheader').length, 10);
+  assert.deepEqual([...channelGroup.querySelectorAll('li')].map((item) => item.textContent), ['Sponsored Products', 'Amazon DSP']);
+  assert.ok(within(channelGroup).getByText(/^Not available per channel: one purchase can follow ads on several channels/));
   assert.equal(container.querySelector('.reach-frequency-tables')?.children.length, 2);
   assert.equal(screen.queryByText(/total/i), null);
   assert.ok(container.textContent?.includes("Attributed sales aren't added across channels, because one purchase can be credited to more than one channel."));
@@ -240,6 +245,8 @@ const BROWSER_COPY = new Set([
   'Previous month:', 'Purchase rate compared with sponsored-only shoppers',
   // OD-UX-7: the caveat disclosure's summary (ADR-102 amendment).
   'Why this is association, not cause',
+  // UI refresh 3.3 and UX sweep fix 8.
+  FUNNEL_HEADING, FREQUENCY_HEADING, SHOW_COUNTS, 'shoppers', 'Bars: share who bought. Axis starts at 0%.',
 ]);
 
 test('a same-response copy walk refuses invented or borrowed visible text', () => {
@@ -251,6 +258,15 @@ test('a same-response copy walk refuses invented or borrowed visible text', () =
   for (const line of BROWSER_COPY) allowed.add(line);
   // The answer sentence is a fixed template over served values (UI refresh 1.5), pinned by its builder's tests.
   allowed.add(reachAnswer(parseReachAndFunnelArtifact(fixture), reachFigureText).text);
+  // Fixed lines over served strings: the frequency lead, the return row's bucket names, the
+  // platform basis and the per-channel reason with its served cell text.
+  const parsed = parseReachAndFunnelArtifact(fixture).markets[0]!.frequency;
+  allowed.add(frequencyLead(parsed) ?? '');
+  for (const bucket of parsed.buckets) allowed.add(`${bucket.label}:`);
+  if (parsed.per_channel !== null) {
+    allowed.add(`Return on ad spend, all Amazon ads: ${parsed.per_channel.platform_label}`);
+    allowed.add(`Not available per channel: ${parsed.per_channel.unavailable_reason}`);
+  }
   const { container } = view(fixture);
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
   const unexpected: string[] = [];
@@ -278,6 +294,20 @@ test('complete and absence surfaces are axe-clean in narrow and wide containers 
   // Eight full-page axe runs exceed vitest's 5 s default when the gates share the machine.
 }, 20_000);
 
+test('the frequency section opens with the served return at its first and last bucket (UX sweep fix 8)', () => {
+  const { container } = view();
+  const parsed = parseReachAndFunnelArtifact(cloneReachFixture(reachCompleteFineFixture)).markets[0]!.frequency;
+  const first = parsed.buckets[0]!;
+  const last = parsed.buckets[parsed.buckets.length - 1]!;
+  assert.equal(container.querySelector('[data-slot="rf-freq-lead"]')?.textContent, `Sales per ad dollar, all Amazon ads: ${reachFigureText(first.platform_return)} at ${first.label}, ${reachFigureText(last.platform_return)} at ${last.label}.`);
+  // Each overlap segment is named with its served count (not colour only), and the counts table folds.
+  const legend = [...container.querySelectorAll('[data-slot="rf-bar-legend"] li')].map((item) => item.textContent);
+  assert.equal(legend.length, 3);
+  assert.equal(container.querySelector('[data-slot="rf-counts"] summary')?.textContent, SHOW_COUNTS);
+  // T2L-2: the tallest served rate fills the bar space (zero-based, scaled to the served maximum).
+  const heights = [...container.querySelectorAll('.reach-bar')].map((bar) => (bar as HTMLElement).style.height);
+  assert.ok(heights.includes('100%'));
+});
 test('served counts read grouped and served multipliers with a times sign, nothing recomputed (plan D4)', () => {
   assert.equal(reachDisplayText('438444', 'count'), '438,444');
   assert.equal(reachDisplayText('1.75x', 'multiplier'), '1.75×');

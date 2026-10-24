@@ -53,7 +53,7 @@ function artifactOf(fixture: unknown): NewCustomersArtifact {
 }
 
 const tab = (tab_id: string, label: string, route: string): ManifestTab => ({
-  description: label, entitlement: null, kind: 'page', label, order: 1, route, tab_id,
+  description: label, entitlement: null, kind: 'page', label, order: 1, question: null, route, tab_id,
 });
 const AUDIENCES = tab('audiences', 'Audiences', '/audiences/');
 const RETENTION = tab('retention', 'Retention', '/retention/');
@@ -70,7 +70,8 @@ test('the sections render in the LLD order with the server scope band and texts'
   const scope = view.container.querySelector('.scope-band');
   assert.equal(scope?.textContent, artifact.scope_text);
   assert.equal(scope?.getAttribute('aria-live'), 'polite');
-  assert.ok(screen.getByText('About these figures'));
+  // UI refresh 3.5: the one disclosure of the served boundary is "How we count".
+  assert.ok(screen.getByText('How we count'));
   // The step-1 table's columns are the served ones, change in share included on a rolling preset.
   const table = screen.getByRole('region', { name: 'New-to-brand purchases per channel' });
   assert.deepEqual(
@@ -313,7 +314,9 @@ test('the insight card opens its dialog with the served provenance and returns f
   // Paired control: a calendar preset's slot is silent, so no card and no dialog opener.
   const quiet = render(<NewCustomersView artifact={artifactOf(week)} />);
   assert.equal(within(quiet.container).queryByRole('button', { name: /^Read more/ }), null);
-  assert.ok(within(quiet.container).getByText(artifactOf(week).insights.absence_reason ?? ''));
+  // T1L-5: its served reason already reads in the scope line, so no Insights section repeats it.
+  assert.equal(within(quiet.container).queryByRole('heading', { name: 'Insights' }), null);
+  assert.equal(quiet.container.querySelector('.scope-band')?.textContent?.includes(artifactOf(week).insights.absence_reason ?? '-'), true);
 });
 
 test('"Show Latest measured week" selects that preset through the date control path', async () => {
@@ -359,8 +362,9 @@ test('a load that fails after "Show Latest measured week" drops the arrival focu
 test('a calendar preset\'s quiet insight says nothing was compared; a quiet rolling one names its threshold', () => {
   for (const fixture of [week, month]) {
     const view = render(<NewCustomersView artifact={artifactOf(fixture)} />);
-    const quiet = view.container.querySelector('.insight.quiet p');
-    assert.equal(quiet?.textContent, 'No comparison for calendar periods.');
+    // T1L-5: the calendar reason reads once, in the scope line, not again as a quiet card.
+    assert.equal(view.container.querySelector('.insight.quiet'), null);
+    assert.equal(view.container.textContent?.split('No comparison for calendar periods.').length, 2);
     assert.equal(view.container.textContent?.includes('equal prior window'), false);
     view.unmount();
   }
@@ -458,7 +462,7 @@ function strayTexts(container: HTMLElement, served: ReadonlySet<string>): string
 
 // The words the browser writes on a served page: the shared card's opener and the shared
 // "See why" control (the Scorecard LLD's browser-owned copy).
-const BROWSER_OWNED = new Set(['Read more ›', 'See why']);
+const BROWSER_OWNED = new Set(['Read more ›', 'See why', 'How we count']);
 const WALKED = {
   empty, gatewayNotCovered, gatewayNotMeasured, month, noAdSpend, noChannels, perChannelMissing, perChannelPending, rolling, rowNoNewBuyers,
   rollingQuiet, stepOneAbsences, thirty, tileNoNewBuyers, tilesMissing, tilesNotReturned, tilesPending, twoMarketplaces, week,

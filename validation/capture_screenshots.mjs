@@ -506,11 +506,12 @@ async function captureRetail(page) {
 async function captureGrowthCheck(page) {
   await page.goto(`${BASE_URL}/`, { waitUntil: 'domcontentloaded' });
   await assertLight(page);
-  await page.getByRole('heading', { name: 'Is your advertising growing your business?', level: 2 }).waitFor({ timeout: 60_000 });
+  // The tab's question now comes from navigation (UI refresh 3.8); the band opens on its answer.
+  await page.locator('.overview > section.card [data-slot="answer"]').first().waitFor({ timeout: 60_000 });
   await settled(page, page.locator('main'));
   await setAssistant(page, true);
   await shotViewport(page, 'growth-check.png', 'css');
-  // The question, its answer sentence, the four tiles and the two daily charts.
+  // The answer sentence, the four tiles and the two daily charts.
   await setAssistant(page, false);
   await shotSection(page, 'growth-check-answer.png', page.locator('.overview > section.card').first());
   await setAssistant(page, true);
@@ -602,6 +603,8 @@ async function captureRosterPage(page, { path, title, image, closeups }) {
   await setAssistant(page, false);
   for (const closeup of closeups) {
     const locator = closeup.heading === undefined ? page.locator(closeup.selector) : sectionTitled(page, closeup.heading);
+    // A section behind a disclosure is opened the way a user does, by its summary.
+    if (closeup.open) await locator.first().locator(':scope > summary').click();
     await shotSection(page, closeup.image, locator);
   }
   await setAssistant(page, true);
@@ -625,7 +628,8 @@ const ROSTER_PAGES = [
     title: 'Reach and funnel',
     image: 'reach.png',
     closeups: [
-      { heading: 'Frequency', image: 'reach-frequency.png' },
+      // UI refresh 3.3 renamed the Frequency section to its question.
+      { heading: 'When more ads stop paying', image: 'reach-frequency.png' },
       // The first association caveat, one line with its reasons behind a disclosure.
       { selector: '.reach-caveat', image: 'reach-caveat.png' },
     ],
@@ -640,7 +644,8 @@ const ROSTER_PAGES = [
     path: '/audiences/',
     title: 'Audiences',
     image: 'audiences.png',
-    closeups: [{ heading: 'DSP campaigns by segment', image: 'audiences-campaigns.png' }],
+    // UI refresh 3.5 put the per-campaign segments behind a disclosure under the profile.
+    closeups: [{ first: 'Segment profile', selector: 'details.audience-campaigns', open: true, image: 'audiences-campaigns.png' }],
   },
 ];
 
@@ -661,6 +666,17 @@ async function captureRetailProduct(page) {
   await settled(page, page.locator('main'));
   await setAssistant(page, true);
   await shotViewport(page, 'retail-product-detail.png', 'css');
+}
+
+/** Products and ads (a composed Retail health tab): the page with its product table, assistant docked. */
+async function captureProductsAndAds(page) {
+  await page.goto(`${BASE_URL}/products-and-ads/`, { waitUntil: 'domcontentloaded' });
+  await assertLight(page);
+  await page.getByRole('region', { name: 'Products, top by shipped sales' }).locator('tbody tr').first().waitFor({ timeout: 60_000 });
+  await settled(page, page.locator('main'));
+  await setAssistant(page, true);
+  await scrollTop(page);
+  await shotViewport(page, 'products-and-ads.png', 'css');
 }
 
 async function pushFrames(page, events) {
@@ -818,6 +834,7 @@ try {
   await captureCampaignDetail(page);
   await captureRetail(page);
   await captureRetailProduct(page);
+  await captureProductsAndAds(page);
   for (const rosterPage of ROSTER_PAGES) await captureRosterPage(page, rosterPage);
   await capturePromptAdministration(page);
   await captureChat(page, refusals);

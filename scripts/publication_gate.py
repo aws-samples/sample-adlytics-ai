@@ -30,7 +30,8 @@ The gate runs on the checkout before every push and refuses with a named code:
                              denylist line, never the literal
       IDENTITY_NOT_ALLOWED   an author or committer email outside publication.allowedEmail
                              (git config; falls back to user.email; refuses when both are unset)
-      AUDIT_FINDING          npm audit or pip-audit refuses a changed lockfile, or cannot run
+      AUDIT_FINDING          npm audit or pip-audit refuses a changed lockfile, or cannot run;
+                             pip-audit skips only the reviewed IDs in PIP_AUDIT_REVIEWED
       RUN_RECORD_MISSING     no passing, canonical, clean, verified run record of pytest-unit,
                              frontend-test and infra-test for HEAD's tree (docs/test-run-records.md)
       EXPORT_GATE_FAILED     scripts/check-publication.sh (the export stage) failed
@@ -71,6 +72,13 @@ NPM_LOCKFILES = (
     "scripts/package-lock.json",
 )
 DENYLIST = "local-denylist.txt"
+# The closed set of pip-audit advisories the owner reviewed, each with the docs/security-
+# dispositions.md row that owns it. pip-audit matches the ID and its aliases; every other finding
+# still refuses. Add an entry only with an owner-approved row; remove it when its trigger fires.
+PIP_AUDIT_REVIEWED = (
+    # O-OTEL-TRACESTATE-001 (CVE-2026-114603): NOT AFFECTED, owner 2026-10-23.
+    ("GHSA-xcq7-p3pf-p88h", "O-OTEL-TRACESTATE-001"),
+)
 # The public remote's main, which every push builds on (owner decision, 2026-10-20).
 DEFAULT_BASE = "public/main"
 ALLOWED_EMAIL_KEY = "publication.allowedEmail"
@@ -522,6 +530,7 @@ def check_audit(ctx: Context) -> list[Refusal]:
                 "pip-audit",
                 "--strict",
                 "--disable-pip",
+                *(arg for vuln, _ in PIP_AUDIT_REVIEWED for arg in ("--ignore-vuln", vuln)),
                 "-r",
                 str(requirements),
             ],

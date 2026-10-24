@@ -27,6 +27,16 @@ recovery"), so a new artifact would not reach dev before the customer demo on 20
 4. **The Overview owns `/`.** `_root_tab_id` counts composed tabs at `/`; exactly one tab owns the
    root, so no v2 page entry may carry `/` in `compatibility_routes` (the pins in `page_schemas.py`,
    `bindings.py` and `frontend/lib/page-bindings.ts`).
+## Amendment, 2026-10-22 (UI refresh 3.7)
+
+A second composed tab, Retail health › Products and ads at `/products-and-ads/` (sources
+`[retail-health]`), reads the served Retail health parent and, for each row, its baked product detail
+(ADR-125) over the row's own capability, at most four in flight. It keeps Retail health's window
+control. A detail is used only when it answers for the parent's revision, window and product; any
+other answer, or a failed request, reads as that row's absence. The route allowlist gains the route
+through the navigation generator, as for `/`. Composed tabs may also carry an optional `question`
+(UI refresh 3.8).
+
 ## Consequences
 - The Growth check ships with no bake, and its figures stay equal to the Scorecard, Retail health, New
   customers and Campaigns tabs by construction.

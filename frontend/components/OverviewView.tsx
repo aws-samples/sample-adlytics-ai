@@ -234,7 +234,8 @@ function WhatChanged({ retail, scorecard }: { readonly retail: OverviewSources['
   const sc = scorecardBody(scorecard);
   const rh = retailBody(retail);
   // Served findings only, in served order: up to two Scorecard cards and the retail movers card.
-  const cards = (sc?.insight_cards ?? []).slice(0, 2);
+  // T2L-4: one card per source, as the mockup draws it: the Scorecard's first served finding.
+  const cards = (sc?.insight_cards ?? []).slice(0, 1);
   const movers = rh?.insights.find((slot) => slot.id === 'retail-movers' && slot.state === 'filled') ?? null;
   if (cards.length === 0 && movers === null) return null;
   return <section className="card section" aria-labelledby={headingId}>
@@ -289,6 +290,13 @@ function listed(names: readonly string[]): string {
   return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
 }
 
+/** The served basis of the Scorecard headline's default model, or null without one card. */
+function headlineBasis(sc: NetworkScorecardArtifact | null): string | null {
+  const card = sc === null ? null : overviewCard(sc);
+  if (card === null) return null;
+  return card.headline.models.find((model) => model.model === card.headline.default_model)?.figure.basis ?? null;
+}
+
 function capitalised(text: string): string {
   return text.length === 0 ? text : `${text[0]?.toUpperCase()}${text.slice(1)}`;
 }
@@ -297,9 +305,11 @@ export function OverviewView({ sources }: { readonly sources: OverviewSources })
   const sc = scorecardBody(sources.scorecard);
   const rh = retailBody(sources.retail);
   return <div className="scorecard overview">
+    {/* UI refresh 3.8: the tab's question leads the page from navigation, so the band doesn't repeat it. */}
     <section className="card section">
-      <h2 className="ov-question">Is your advertising growing your business?</h2>
       <AnswerSentence answer={overviewAnswer(sc, rh)} />
+      {/* Readout A.1 ov-basis: the headline return's served basis, under the answer. */}
+      {headlineBasis(sc) === null ? null : <p className="answer-basis" data-slot="ov-basis">{headlineBasis(sc)}</p>}
       <Tiles retail={sources.retail} scorecard={sources.scorecard} />
       <div className="ov-charts">
         <SpendChart source={sources.campaigns} />

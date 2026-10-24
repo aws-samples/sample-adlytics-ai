@@ -24,8 +24,12 @@ Every figure is a served value. The view adds, ranks and recomputes nothing.
 | Daily ad spend | `ov-chart-spend` | Campaigns, all channels | `trend.points[].spend`, zero-based |
 | Daily shipped sales | `ov-chart-retail` | Retail health | `trend[].current/prior` shipped revenue, zero-based |
 | New customers by channel | `ov-ntb-{ad_product}` | New customers | `markets[0].new_to_brand.rows[]` `ntb_revenue_share`, its change, and `cost_per_ntb_purchase`; never summed |
-| What changed | `ov-changed` | Scorecard; Retail health | up to two `insight_cards[].headline`; the filled `retail-movers` text |
+| Answer basis | `ov-basis` | Scorecard | the default model's served `figure.basis`, under the answer (UI refresh 3.8) |
+| What changed | `ov-changed` | Scorecard; Retail health | the first served `insight_cards[].headline` (one card per source, T2L-4); the filled `retail-movers` text as served |
 | Can you rely on these? | `ov-trust-reconciled`, `ov-trust-through` | Retail health; each source | `reconciliation.{outcome,as_of}`; each served `period.end`, one line per date |
+
+The tab's label is "Growth check" and its question, "Is your advertising growing your business?", is the
+page's lead line from navigation (UI refresh 3.8), so the answer band carries no heading of its own.
 
 The Overview reads one network card. With two marketplaces' cards it names none and the band points
 to the Scorecard.

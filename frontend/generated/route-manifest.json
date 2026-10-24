@@ -10,8 +10,9 @@
           "description": "Whether your advertising is growing your business, on one screen",
           "entitlement": null,
           "kind": "composed",
-          "label": "Overview",
+          "label": "Growth check",
           "order": 1,
+          "question": "Is your advertising growing your business?",
           "route": "/",
           "tab_id": "overview"
         }
@@ -29,6 +30,7 @@
           "kind": "page",
           "label": "Scorecard",
           "order": 1,
+          "question": "Is my ad spend paying back?",
           "route": "/scorecard/",
           "tab_id": "scorecard"
         },
@@ -38,6 +40,7 @@
           "kind": "page",
           "label": "Campaigns",
           "order": 2,
+          "question": "Which campaigns should get more or less?",
           "route": "/campaigns/",
           "tab_id": "campaigns"
         }
@@ -55,6 +58,7 @@
           "kind": "page",
           "label": "Reach and funnel",
           "order": 1,
+          "question": "Who do my ads reach?",
           "route": "/reach/",
           "tab_id": "reach"
         },
@@ -64,6 +68,7 @@
           "kind": "page",
           "label": "Audiences",
           "order": 2,
+          "question": "Who buys, compared with who we reach?",
           "route": "/audiences/",
           "tab_id": "audiences"
         }
@@ -81,6 +86,7 @@
           "kind": "page",
           "label": "New customers",
           "order": 1,
+          "question": "How many, at what cost?",
           "route": "/new-customers/",
           "tab_id": "new-customers"
         },
@@ -90,6 +96,7 @@
           "kind": "page",
           "label": "Retention",
           "order": 2,
+          "question": "Do won customers buy again?",
           "route": "/retention/",
           "tab_id": "retention"
         }
@@ -107,8 +114,19 @@
           "kind": "page",
           "label": "Retail health",
           "order": 1,
+          "question": "Are my products selling?",
           "route": "/retail-health/",
           "tab_id": "retail-health"
+        },
+        {
+          "description": "Each product's sales, beside what one ad channel credits to it",
+          "entitlement": null,
+          "kind": "composed",
+          "label": "Products and ads",
+          "order": 2,
+          "question": null,
+          "route": "/products-and-ads/",
+          "tab_id": "products-and-ads"
         }
       ]
     },
@@ -127,6 +145,7 @@
           "kind": "static",
           "label": "Prompt administration",
           "order": 1,
+          "question": null,
           "route": "/admin/prompts/",
           "tab_id": "prompt-admin"
         }

@@ -75,8 +75,8 @@ test('the page: h1, one sentence, "Go to {root tab}" and the customer hubs only'
   assert.equal(document.activeElement, heading);
   assert.equal(screen.getAllByRole('heading', { level: 1 }).length, 1);
   assert.ok(screen.getByText("This page doesn't exist or has moved."));
-  // The root tab's own label: the composed Overview owns "/" (ADR-151).
-  const root = screen.getByRole('link', { name: 'Go to Overview' });
+  // The root tab's own label: the composed Growth check owns "/" (ADR-151, UI refresh 3.8).
+  const root = screen.getByRole('link', { name: 'Go to Growth check' });
   assert.equal(root.getAttribute('href'), '/');
   assert.equal(root.className, 'btn primary');
   const hubs = screen.getByRole('heading', { level: 2, name: 'Hubs' }).nextElementSibling as HTMLElement;
@@ -141,7 +141,7 @@ test('the brief signed-out shell below 881 px: the menu sheet offers Sign in ins
   await user.click(screen.getByRole('button', { name: 'Menu' }));
   const sheet = screen.getByRole('dialog', { name: 'Menu' });
   assert.equal(within(sheet).queryByRole('button', { name: 'Sign out' }), null);
-  assert.deepEqual(within(within(sheet).getByRole('navigation', { name: 'Hubs' })).getAllByRole('link').map((link) => link.textContent), ['Overview', 'Performance', 'Scorecard', 'Campaigns', 'Reach and audiences', 'Reach and funnel', 'Audiences', 'Customers', 'New customers', 'Retention', 'Retail health']);
+  assert.deepEqual(within(within(sheet).getByRole('navigation', { name: 'Hubs' })).getAllByRole('link').map((link) => link.textContent), ['Overview', 'Performance', 'Scorecard', 'Campaigns', 'Reach and audiences', 'Reach and funnel', 'Audiences', 'Customers', 'New customers', 'Retention', 'Retail health', 'Retail health', 'Products and ads']);
   // No path heads the sheet: the page isn't in any hub.
   assert.equal(sheet.querySelector('.path'), null);
   await user.click(within(sheet).getByRole('button', { name: 'Sign in' }));

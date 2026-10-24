@@ -14,6 +14,7 @@ pages:
       hub_id: performance
       tab_label: Campaigns
       tab_description: Every campaign, for all channels, sponsored ads only or one channel
+      question: Which campaigns should get more or less?
       order: 2
     assistant:
       starter_questions:
@@ -246,6 +247,7 @@ pages:
       hub_id: retail
       tab_label: Retail health
       tab_description: Sales, traffic, conversion and returns from Vendor Central, per product
+      question: Are my products selling?
       order: 1
     assistant:
       starter_questions:
@@ -321,6 +323,7 @@ pages:
       hub_id: performance
       tab_label: Scorecard
       tab_description: Return on ad spend per network and channel
+      question: Is my ad spend paying back?
       order: 1
     assistant:
       starter_questions:
@@ -377,6 +380,7 @@ pages:
       hub_id: customers
       tab_label: New customers
       tab_description: Shoppers buying from your brand for the first time in 12 months
+      question: How many, at what cost?
       order: 1
     assistant:
       starter_questions:
@@ -431,6 +435,7 @@ pages:
       hub_id: reach
       tab_label: Reach and funnel
       tab_description: How many shoppers your ads reached, how often, and what they did next
+      question: Who do my ads reach?
       order: 1
     assistant:
       starter_questions:
@@ -486,6 +491,7 @@ pages:
       hub_id: customers
       tab_label: Retention
       tab_description: Cohorts of new customers your ads brought in, and when they buy again
+      question: Do won customers buy again?
       order: 2
     assistant:
       starter_questions:
@@ -525,6 +531,7 @@ pages:
       hub_id: reach
       tab_label: Audiences
       tab_description: Which Amazon audience segments your buyers belong to, compared with the shoppers your ads reached, and how DSP campaigns did per segment
+      question: Who buys, compared with who we reach?
       order: 2
     assistant:
       starter_questions:

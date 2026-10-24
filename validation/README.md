@@ -1727,6 +1727,17 @@ carries at `5f48abb6`.
   shows synthetic data, with no error, skeleton or "Not enough data" state, except the designed
   absences the README captions as such: Gateway products, New customers' missing new-buyer week,
   Reach "last quarter" and the per-channel frequency cells.
+- **Re-capture of the UI refresh's third tier, 2026-10-23 20:50 UTC.** Same command, persona and
+  skip, against the same dev origin, which then served the tier 3 UI (`feat/ui-refresh` with
+  `public/main` `776b0ce6`). Exit 2 for the same two Prompt administration images. The script now
+  waits on the Growth check's answer (the tab question moved to navigation), names Reach's
+  renamed "When more ads stop paying" section, opens Audiences' per-campaign disclosure before
+  its close-up, and writes `products-and-ads.png`. Committed: the 21 images of pages tier 3
+  changed plus `products-and-ads.png`; the metric and insight dialogs, `insight-cards.png`,
+  `campaign-delivery.png` and the three chat images were left from the 02:50 capture, because
+  tier 3 didn't change those surfaces. The operator agent viewed each committed image: synthetic
+  data only, no email address, host name or token, and no error or skeleton state beyond the
+  designed absences the README captions. `docs/images/` totals 5,751,459 bytes within budget.
 - `reach-absence-light.png` and `reach-absence-dark.png` belong to
   [page absence copy](../docs/ui/page-absence-copy.md), not the README, and this script does not
   write them.

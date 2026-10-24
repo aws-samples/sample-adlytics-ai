@@ -201,6 +201,12 @@ actions:
   `repeat-purchase-by-product` page entry (business outcomes slice S4.3). Until then the manifest doesn't
   list the tab, so no dead link renders.
 
+### Ideal order (UI refresh 3.6, readout A.9)
+The page reads: the answer, "Where sales leak", "Ads beside retail" (7 days), the trend, the products,
+the insights, "More figures", the reconciliation, the paid feature and About these figures. The strip
+also links "Each product beside its ad credit ›" to [Products and ads](../products-and-ads/README.md)
+when the session lists it.
+
 ### Ads beside retail (UI refresh 2.5, OD-UX-13, added 2026-10-22)
 On the 7-day preset, `RetailHealthRouteAdapter` also requests the served 7-day Scorecard and settles
 it on its own, so it never blocks the page. The "Ads beside retail" section shows that body's
@@ -211,9 +217,11 @@ and 30 days the section reads one line, "Ad spend beside retail sales is shown f
 link. A failed Scorecard request reads [ABS-OV-1](../page-absence-copy.md#abs-ov-1) naming the
 Scorecard; a served Scorecard absence reads its own served text. The words are
 `ADS_BESIDE_RETAIL_COPY` (`frontend/components/RetailHealthView.tsx`).
-### Product freshness (UI refresh, UX sweep fix 2, 2026-10-22)
-The products table has no per-row status column. Each distinct served `freshness_qualifiers` string
-reads once in one line above the table, with "See why" opening the page's Coverage sheet. A product
+### Product freshness (UI refresh, UX sweep fix 2, 2026-10-22; T2L-1)
+The products table has no per-row status column. Above the table one closed chip, "Data notes for these
+products" (`RETAIL_FRESHNESS_CHIP`), opens to each distinct served `freshness_qualifiers` string once,
+with "See why" opening the page's Coverage sheet. Rows whose qualifiers differ only by load time no
+longer print a paragraph of near-identical sentences; the browser never parses them. A product
 title breaks between words, never inside one, in a column at least 22 characters wide.
 ### Insight-slot prerequisite
 

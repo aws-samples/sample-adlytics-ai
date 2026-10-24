@@ -22,10 +22,20 @@ composed_routes:
   - route: /
     hub_id: overview
     tab_id: overview
-    tab_label: Overview
+    tab_label: Growth check
     tab_description: Whether your advertising is growing your business, on one screen
+    question: Is your advertising growing your business?
     order: 1
     sources: [scorecard, retail-health, new-customers, campaigns]
+  # UI refresh 3.7 (readout A.10): each product's served shipped sales beside what one ad channel
+  # credits to it, from the Retail health rows and each row's baked product detail.
+  - route: /products-and-ads/
+    hub_id: retail
+    tab_id: products-and-ads
+    tab_label: Products and ads
+    tab_description: Each product's sales, beside what one ad channel credits to it
+    order: 2
+    sources: [retail-health]
 static_routes:
   # /admin/status/ (Data pipeline status, order 2, entitlement operations-status-read) is added in
   # the slice that ships that page, so the export check never sees a route without a page.

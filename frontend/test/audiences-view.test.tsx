@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, test } from 'vitest';
 
-import { AudiencesView } from '@/components/AudiencesView';
+import { AUDIENCES_ACTIVATE_LINE, AUDIENCES_CAMPAIGNS_SUMMARY, AudiencesView } from '@/components/AudiencesView';
 import { parseAudienceProfileArtifact } from '@/lib/audiences';
 import fixture from './fixtures/audiences-complete-v2.json';
 import inRosterUnavailableFixture from './fixtures/audiences-in-roster-unavailable-v2.json';
@@ -52,6 +52,16 @@ test('renders DSP profile, campaign figures and server text without browser form
   // Plan D4: the served count's own digits, grouped; the ungrouped string is gone.
   assert.ok(screen.getByText('30,000'));
   assert.equal(container.textContent?.includes('30000'), false);
+});
+test('the activation line shows, share bars pair each served row, and campaigns fold into one disclosure (UI refresh 3.4)', () => {
+  const { container } = view();
+  assert.ok(screen.getByText(AUDIENCES_ACTIVATE_LINE));
+  const rows = container.querySelectorAll('.audience-delivery tbody tr:not(.na-row)');
+  assert.ok(rows.length > 0);
+  for (const row of rows) assert.equal(row.querySelectorAll('.au-bars .au-bar').length, 2);
+  const campaigns = container.querySelector('[data-slot="au-campaigns"]') as HTMLDetailsElement;
+  assert.equal(campaigns.open, false);
+  assert.equal(campaigns.querySelector('summary')?.textContent, AUDIENCES_CAMPAIGNS_SUMMARY);
 });
 
 test('renders a roster gap with one reason and described visual-only markers in both buyer modes', () => {
