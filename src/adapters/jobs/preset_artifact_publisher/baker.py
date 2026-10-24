@@ -56,7 +56,6 @@ from adapters.jobs.preset_artifact_publisher.page_bake import (
     PageRender,
     PageWindow,
     RefusalLineage,
-    classify_page_error,
     emit_isolated_refusals,
     guarded,
     page_absence,
@@ -164,7 +163,7 @@ from domain.presentation.preset_artifacts import (
 from domain.presentation.reach import REACH_PAGE_ID
 from domain.presentation.retention import RETENTION_PAGE_ID
 from domain.semantics.analytical_resolution import AuthorizedAnalyticalScope
-from domain.shared_kernel.errors import DependencyError, ErrorCode, InvariantError
+from domain.shared_kernel.errors import ErrorCode, InvariantError
 from ports.outbound.preset_artifacts import (
     LegacyPointerAfterCutoverError,
     PresetArtifactPersistencePort,
@@ -991,20 +990,11 @@ class PresetArtifactBakeApplication:
                 )
             )
             return None
-        except DependencyError as error:
-            # ADR-142 (design 02 §3.6), as the graph entry classifies its stage: a write that
-            # stays down is the page's `dependency_unavailable` on the final receive, not a dead
-            # letter; before it, the record retries.
-            refusal = classify_page_error(error, final=window.final)
-            if refusal is None:
-                raise
-            published = refusal
         durations = _BakeStageDurations(source_ms, int((monotonic() - persist_started) * 1_000))
         if isinstance(published, IsolatedRefusal):
-            # ADR-145: the write deadline came first or a sibling the stream rendered refused
-            # the page, so `publish` wrote no pointer and the page keeps its last good legacy
-            # pointer; or (above) a write stayed down, and the pointer moved only if its write
-            # landed. The page's one group replaces the item notes.
+            # ADR-145: the write deadline came first, or a sibling the stream rendered refused
+            # the page. `publish` wrote no pointer, so the page keeps its last good legacy
+            # pointer; its one page group replaces the item notes.
             absence = page_absence(intent)
             _report_bake(_BakeResultReport(intent, "unavailable", durations, context, observed))
             self._settled(group_refusals((published,)), intent, window, (started, context))
