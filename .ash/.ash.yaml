@@ -64,6 +64,11 @@ global_settings:
     - path: docs/capabilities/load-path/write-discipline.md
       rule_id: SECRET-HEX-HIGH-ENTROPY-STRING
       reason: "A-ENTROPY-IDENTIFIER-001: synthetic vector members and digests, bound by test_ash_secret_suppression_scope"
+    # A-ENTROPY-IDENTIFIER-001: the base renderer's git blob id in the ADR-149 staged-value golden,
+    # which scripts/generate-staged-value-golden.py writes. JSON cannot carry a marker.
+    - path: tests/unit/golden/staged_value_text.json
+      rule_id: SECRET-HEX-HIGH-ENTROPY-STRING
+      reason: "A-ENTROPY-IDENTIFIER-001: base renderer git blob id, bound by test_ash_secret_suppression_scope"
     # O-ASH-BANDIT-NOSEC-001: bandit tests outside the publication gate's reviewed nosec set
     # (scripts/check-publication-boundary.py REVIEWED_BANDIT_IDS), scoped to the one file each.
     - path: scripts/lambda_layer_packaging.py

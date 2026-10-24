@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING
 
 import boto3
 import pytest
+from botocore import UNSIGNED
+from botocore.config import Config
 from botocore.stub import Stubber
 
 from adapters.outbound.s3.unit_staging import S3UnitStager, staging_object_key
@@ -64,8 +66,7 @@ def s3() -> Iterator[tuple[S3Client, Stubber]]:
     client: S3Client = boto3.client(
         "s3",
         region_name="us-east-1",
-        aws_access_key_id="fixture",
-        aws_secret_access_key="fixture",
+        config=Config(signature_version=UNSIGNED),
     )
     with Stubber(client) as stubber:
         yield client, stubber

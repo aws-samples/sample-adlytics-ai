@@ -29,6 +29,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 RENDERER = ROOT / "src" / "adapters" / "outbound" / "athena" / "semantic_storage.py"
+# pragma: allowlist nextline secret (A-ENTROPY-IDENTIFIER-001)
 BASE_BLOB = "d5346b39ac87b94a276ec0bbb9d2ffa4a9127c76"
 
 

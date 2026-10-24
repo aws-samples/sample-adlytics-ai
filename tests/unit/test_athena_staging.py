@@ -32,6 +32,7 @@ from ports.outbound.unit_staging import (
 pytestmark = [pytest.mark.unit, pytest.mark.covers("ADR-149")]
 
 GOLDEN = Path(__file__).parent / "golden"
+# pragma: allowlist nextline secret (A-ENTROPY-IDENTIFIER-001)
 BASE_RENDERER_BLOB = "d5346b39ac87b94a276ec0bbb9d2ffa4a9127c76"
 BOUND = 200_000
 

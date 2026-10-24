@@ -538,7 +538,8 @@ def test_projection_statement_spans_record_cost_without_sql(
 
 # --- ADR-149: the staged MERGE, the set-based verification and its acceptance rule ---------------
 
-_DIGEST = "0123456789abcdef" * 4
+# A patterned key: a 64-hex literal of high entropy reads as a secret to detect-secrets.
+_DIGEST = "0f" * 32
 _SOURCE = StagedSource("db_staging", _DIGEST)
 _PIN_TABLE = V2Table(
     name="fct_pin_rows",
@@ -558,7 +559,7 @@ _PIN_MERGE = (
     'CAST("amount" AS decimal(38,4)) AS "amount", '
     'CAST("label" AS varchar) AS "label" '
     'FROM "db_staging"."fct_pin_rows" WHERE "staging_key" = '
-    "'0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef') AS incoming "
+    "'0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f') AS incoming "
     'ON target."publication_id" = incoming."publication_id" AND '
     '(target."segment_id" = incoming."segment_id" OR '
     '(target."segment_id" IS NULL AND incoming."segment_id" IS NULL)) '
@@ -573,7 +574,7 @@ _PIN_VERIFICATION = (
     'CAST("amount" AS decimal(38,4)) AS "amount", '
     'CAST("label" AS varchar) AS "label" '
     'FROM "db_staging"."fct_pin_rows" WHERE "staging_key" = '
-    "'0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'), "
+    "'0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f'), "
     't AS (SELECT "publication_id", "segment_id", "amount", "label" FROM "fct_pin_rows" '
     'WHERE "publication_id" IN (CAST(? AS varchar), CAST(? AS varchar))), '
     'm AS (SELECT t."publication_id" AS identity, s."stg_ordinal" AS ordinal FROM t JOIN s '
