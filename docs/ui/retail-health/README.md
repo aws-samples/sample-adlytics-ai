@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Level** | Delivery page package |
-| **Status** | Built; live-accepted on dev 2026-09-24 ([dated result](../../../validation/RESULTS.md#2026-09-24--command-center-revision-2026-09234-live-acceptance-and-visual-conformance)). The UI refresh added its answer sentence and the Ads beside retail strip (2026-10-22). A customer deployment can't load its Vendor Central data yet ([README Known limits](../../../README.md#known-limits)). Revision history: [design manifest](../design-manifest.yaml). |
+| **Status** | Built; live-accepted on dev 2026-09-24 ([dated result](../../../validation/RESULTS.md#2026-09-24--command-center-revision-2026-09-234-live-acceptance-and-visual-conformance)). The UI refresh added its answer sentence and the Ads beside retail strip (2026-10-22). A customer deployment can't load its Vendor Central data yet ([README Known limits](../../../README.md#known-limits)). Revision history: [design manifest](../design-manifest.yaml). |
 | **Design revision** | `2026-10-09.2` |
 | **Owns** | The 1P vendor retail surface: shipped/ordered outcomes, returns, traffic, reconciliation, and their insight slots |
 | **Parent** | [Decision Workspace UI](../README.md) |

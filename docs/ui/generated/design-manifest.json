@@ -9,7 +9,7 @@
       "members": [
         {
           "path": "docs/ui/campaign-portfolio/README.md",
-          "sha256": "058d37ded579e64ba0dc59d3f9b0de28be300849861e928b7608140d3f9cb73e"
+          "sha256": "a071b52e08d4f04c4a2f15a0ff0205e8d18cea01ad685c2058e958ead851162b"
         },
         {
           "path": "docs/ui/campaign-portfolio/high-level-design.md",
@@ -67,7 +67,7 @@
       "members": [
         {
           "path": "docs/ui/retail-health/README.md",
-          "sha256": "3113effd5a07d8be9e16c8f1ac1c31e47bd72c5591e611ba5118a39ba149c0e8"
+          "sha256": "8166dddd184b4db9bf6e0fe65b3b7d8d69992330842d6c5b2515fd305e324854"
         },
         {
           "path": "docs/ui/retail-health/high-level-design.md",

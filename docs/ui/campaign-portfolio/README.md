@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Level** | Delivery page package |
-| **Status** | Built; live-accepted on dev 2026-09-24 ([dated result](../../../validation/RESULTS.md#2026-09-24--command-center-revision-2026-09234-live-acceptance-and-visual-conformance)). The UI refresh added its answer sentence ([UI index §8](../README.md#8-shared-implementation-guardrails)). Revision history: [design manifest](../design-manifest.yaml). |
+| **Status** | Built; live-accepted on dev 2026-09-24 ([dated result](../../../validation/RESULTS.md#2026-09-24--command-center-revision-2026-09-234-live-acceptance-and-visual-conformance)). The UI refresh added its answer sentence ([UI index §8](../README.md#8-shared-implementation-guardrails)). Revision history: [design manifest](../design-manifest.yaml). |
 | **Design revision** | `2026-10-09.2` |
 | **Owns** | Campaign Portfolio → Campaign Detail business outcome, delivery scope, insight-slot roster, metric focus view, and page-level acceptance |
 | **Parent** | [Decision Workspace UI](../README.md) |
