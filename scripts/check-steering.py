@@ -84,6 +84,26 @@ def _load_front_matter(value: str) -> dict[str, Any]:
 
 
 WORKTREE_PREFIX = ".worktrees/*/"
+ANYWHERE_PREFIX = "**/"
+GLOB_CHARACTERS = frozenset("*?[{")
+
+
+def _worktree_findings(name: str, patterns: list[str]) -> list[str]:
+    # Kiro matches a pattern against the workspace root with no implicit leading **/, so a
+    # root-anchored pattern never loads for an agent editing under .worktrees/<name>/. A root
+    # literal may instead sit beside its .worktrees/*/ twin, so it does not match nested copies.
+    findings: list[str] = []
+    for pattern in patterns:
+        if pattern.startswith((ANYWHERE_PREFIX, WORKTREE_PREFIX)):
+            continue
+        if GLOB_CHARACTERS.isdisjoint(pattern) and f"{WORKTREE_PREFIX}{pattern}" in patterns:
+            continue
+        findings.append(
+            f"{name}: fileMatchPattern never matches inside a git worktree: {pattern}; "
+            f"prefix it with {ANYWHERE_PREFIX} or pair a root literal with "
+            f"{WORKTREE_PREFIX}{pattern}"
+        )
+    return findings
 
 
 def _pattern_matches_file(pattern: str) -> bool:
@@ -147,6 +167,7 @@ def _validate_file_match(name: str, value: object) -> list[str]:
             issues.append(f"{name}: fileMatchPattern must stay inside the repository: {pattern}")
         elif not _pattern_matches_file(pattern):
             issues.append(f"{name}: fileMatchPattern matches no current file: {pattern}")
+    issues.extend(_worktree_findings(name, patterns))
     return issues
 
 
