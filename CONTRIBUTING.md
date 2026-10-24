@@ -213,7 +213,7 @@ If you discover a potential security issue in this project we ask that you notif
 
 ### If a secret is pushed
 
-`make publication-gate` exists so this never happens ([Run the gates](#run-the-gates)). If a secret
+`make publication-gate` exists so this never happens ([Maintainer publishing](#maintainer-publishing)). If a secret
 reaches the public repository anyway, treat it as compromised from the moment it was public:
 
 1. Rotate first. Revoke or rotate the credential at its issuer, then review the issuer's access
