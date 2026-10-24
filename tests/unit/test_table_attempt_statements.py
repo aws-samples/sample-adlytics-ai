@@ -437,15 +437,17 @@ def _without_key(sql: str, key: str) -> str:
     return sql.replace(key, "<key>")
 
 
-def test_t1_a_large_tier_delivery_composes_two_statements_per_unit_at_any_row_count() -> None:
-    """3,000 active ASINs a day, 30-day chunk: about 270,000 rows across three units (§9).
+def test_t1_units_compose_two_statements_each_at_any_row_count() -> None:
+    """A composer-only claim: 3,000 rows per identity over 37 canonical identities (§13 T-1).
 
-    Each unit composes exactly one MERGE and one verification (M(u) = 1), and neither SQL text
-    nor parameters depend on rows: a one-record unit over the same identities composes the
-    same statements apart from the staging key. So the 200,000-byte statement bound and the
-    10-per-unit and 32-per-plan attempt caps no longer move with the delivery's rows.
+    The units hold 312,001 rows, far past `maxRowsPerUnit` and `maxRowsPerDelivery`, which
+    refuse before composition; here only the composer is under test. Each unit composes
+    exactly one MERGE and one verification (M(u) = 1), and neither SQL text nor parameters
+    depend on rows: a one-record unit over the same identities composes the same statements
+    apart from the staging key. So the 200,000-byte statement bound and the 10-per-unit and
+    32-per-plan attempt caps no longer move with rows.
     """
-    days = tuple(f"pub-day-{day:02d}" for day in range(30))
+    days = tuple(f"pub-day-{day:02d}" for day in range(37))  # 37: the per-unit object cap
     source = _synthetic(_table("sa_vendor_sales_by_asin"), ("src-pub-0001",), 90_001)
     retail = _table("fct_retail_sales")
     candidate = _synthetic(retail, days, 3_000)
@@ -455,7 +457,7 @@ def test_t1_a_large_tier_delivery_composes_two_statements_per_unit_at_any_row_co
         ("b-candidate", "candidate", candidate),
         ("c-current", "current", current),
     )
-    assert sum(len(r) for _, _, w in units for _, r in w.records_by_identity) == 270_001
+    assert sum(len(r) for _, _, w in units for _, r in w.records_by_identity) == 312_001
     entries: list[CanonicalUnitEntry] = []
     for unit_key, table_kind, workload in units:
         composition = compose_unit_statements(_request(workload))
