@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Level** | Delivery page package |
-| **Status** | New at `2026-10-09.1`, built from the information-architecture New customers mockup and the business outcomes design §6.2. Approved under the owner's UI/IA approval of 2026-10-07 (`owner-decisions-ui.md`), as the five packages of `2026-10-08.1` were; owner ratification of this package is pending (business outcomes wave 2, stop item S-1). Revised at `2026-10-09.2` (owner S-3 revision, 2026-10-09): step 2 adds new buyers and cost per new buyer per channel under the platform tiles, and the artifact moves to `NewCustomersArtifact` v2; approved under the same UI/IA approval, with owner ratification of the revision pending (business outcomes wave 2b, stop item S-B1). Not implemented: its artifact, materializer, insight contract, page entries, route and tab arrive in their own build slices |
+| **Status** | Built; live-accepted on dev 2026-10-18 ([D2 live acceptance](../../../validation/RESULTS.md#d2-pages-and-graph-control-plane-live-acceptance-on-dev--2026-10-18)). Owner ratification of this package and of revision `2026-10-09.2` is pending. Revision history: [design manifest](../design-manifest.yaml). |
 | **Design revision** | `2026-10-09.2` |
 | **Owns** | New-to-brand purchases per channel, new buyers and cost per new buyer for complete weeks and months, for the whole network and per channel, gateway products one channel at a time, and this page's insight |
 | **Parent** | [Decision Workspace UI](../README.md) · [Information architecture](../information-architecture/README.md) (Customers hub) |

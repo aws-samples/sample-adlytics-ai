@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Level** | Delivery page package |
-| **Status** | New at `2026-10-08.1`, built from the UI and information-architecture mockups and design. Approved under the owner's UI/IA approval of 2026-10-07 (`owner-decisions-ui.md`). Carried forward unchanged at `2026-10-09.1`. Revised at `2026-10-09.2` (owner decision 2 of 2026-10-09 and P-BO-4): each segment is labelled by its provider, Amazon or third party, and the page states that DSP behaviour segments and Amazon audience segments use different IDs and are never linked; approved under the same UI/IA approval, with owner ratification pending (business outcomes wave 2b, stop item S-B1). Not implemented: its packs, facts, dimension, artifact, materializer, route and insight contract arrive in their own build slice |
+| **Status** | Built; live-accepted on dev 2026-10-18 ([D2 live acceptance](../../../validation/RESULTS.md#d2-pages-and-graph-control-plane-live-acceptance-on-dev--2026-10-18)). Owner ratification of revision `2026-10-09.2` is pending. Revision history: [design manifest](../design-manifest.yaml). |
 | **Design revision** | `2026-10-09.2` |
 | **Owns** | Which Amazon audience segments buyers belong to compared with the shoppers the ads reached, and how DSP campaigns did per segment |
 | **Parent** | [Decision Workspace UI](../README.md) · [Information architecture](../information-architecture/README.md) (Reach and audiences hub) |

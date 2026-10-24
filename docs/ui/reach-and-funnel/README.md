@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Level** | Delivery page package |
-| **Status** | New at `2026-10-08.1`, built from the UI and information-architecture mockups and design. Approved under the owner's UI/IA approval of 2026-10-07 (`owner-decisions-ui.md`). Carried forward unchanged at `2026-10-09.1`. Revised at `2026-10-09.2` (business outcomes wave 2b, plan D13): AMC's documentation doesn't say `searchConversion` is a branded search, so the funnel's first rate is `search_rate`, labelled "Search rate", never "branded search"; approved under the same UI/IA approval, with owner ratification pending (stop item S-B1). Not implemented: its packs, facts, artifact, materializer, route and insight contracts arrive in their own build slices |
+| **Status** | Built; week and month live-accepted on dev 2026-10-18, quarter not ([D2 live acceptance](../../../validation/RESULTS.md#d2-pages-and-graph-control-plane-live-acceptance-on-dev--2026-10-18)). Owner ratification of revision `2026-10-09.2` is pending. Revision history: [design manifest](../design-manifest.yaml). |
 | **Design revision** | `2026-10-09.2` |
 | **Owns** | How many shoppers the ads reached in one complete period, how the DSP and sponsored audiences overlap, what each exposure group did next, and how purchase rates move with the number of ads seen |
 | **Parent** | [Decision Workspace UI](../README.md) · [Information architecture](../information-architecture/README.md) (Reach and audiences hub) |

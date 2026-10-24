@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Level** | Delivery page package |
-| **Status** | New at `2026-10-08.1`, built from the UI and information-architecture mockups and design. Approved under the owner's UI/IA approval of 2026-10-07 (`owner-decisions-ui.md`). Carried forward at `2026-10-09.1` with no design change: its open item for New customers now points to the [New customers](../new-customers/README.md) package. Carried forward at `2026-10-09.2` with no design change: that open item now names `NewCustomersArtifact` v2 and its per-channel new buyers. Not implemented: the page, its artifact, materializer, route and insight contract arrive in their own build slice |
+| **Status** | Built; live-accepted on dev 2026-10-18 ([D2 live acceptance](../../../validation/RESULTS.md#d2-pages-and-graph-control-plane-live-acceptance-on-dev--2026-10-18)). The UI refresh added the channel cards, on `main` since PR #8. Revision history: [design manifest](../design-manifest.yaml). |
 | **Design revision** | `2026-10-09.2` |
 | **Owns** | Return on ad spend per network and channel: the deduplicated network headline, the ranking under each attribution model, the channel table, TACoS and spend across networks, and this page's insight and "Also changed" rows |
 | **Parent** | [Decision Workspace UI](../README.md) · [Information architecture](../information-architecture/README.md) (Performance hub) |

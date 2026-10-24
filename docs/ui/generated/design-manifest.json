@@ -9,7 +9,7 @@
       "members": [
         {
           "path": "docs/ui/campaign-portfolio/README.md",
-          "sha256": "0398faff4e21f440cc40766dc873b23c193dab68df30f1f12ac0a0d9c067181d"
+          "sha256": "058d37ded579e64ba0dc59d3f9b0de28be300849861e928b7608140d3f9cb73e"
         },
         {
           "path": "docs/ui/campaign-portfolio/high-level-design.md",
@@ -67,7 +67,7 @@
       "members": [
         {
           "path": "docs/ui/retail-health/README.md",
-          "sha256": "f4d1d590d3a24f3938a1f1a49249d474ddcf0cfb2f4abf0c5eeef51095506d4e"
+          "sha256": "3113effd5a07d8be9e16c8f1ac1c31e47bd72c5591e611ba5118a39ba149c0e8"
         },
         {
           "path": "docs/ui/retail-health/high-level-design.md",
@@ -98,7 +98,7 @@
       "members": [
         {
           "path": "docs/ui/prompt-administration/README.md",
-          "sha256": "cd0302fdd34013e70bfbb28fb14ed57eca4619f7ba5b663f3894f1c75b92740f"
+          "sha256": "6045cac67ecb7d5ec1fe955c68629ea20b704df4a549f4c274972fdfc07d06b7"
         },
         {
           "path": "docs/ui/prompt-administration/high-level-design.md",
@@ -127,7 +127,7 @@
       "members": [
         {
           "path": "docs/ui/scorecard/README.md",
-          "sha256": "ef4bc6e4a702e95732ce9da529652e87027d915ccbe23276d29ea818dc065263"
+          "sha256": "163e02c4af5d650e47aa57bdb443b02c6d210fc9c7ba65b8e9cd9aeeaccdc9bf"
         },
         {
           "path": "docs/ui/scorecard/high-level-design.md",
@@ -189,7 +189,7 @@
       "members": [
         {
           "path": "docs/ui/new-customers/README.md",
-          "sha256": "66c7091a0d1537cd1a464df17a4c2bdfedcdac237574279fdc34de63c2fbd53b"
+          "sha256": "6d1845420d37707f2ab433264ff9d763cc626961b480c2e0311569aeb9a2adf5"
         },
         {
           "path": "docs/ui/new-customers/high-level-design.md",
@@ -242,7 +242,7 @@
       "members": [
         {
           "path": "docs/ui/reach-and-funnel/README.md",
-          "sha256": "7ac7a9dfcb568f2c1e8118e89cecf6ec519a8b667eb50f2b2b6087eecbda770f"
+          "sha256": "018281e79f3d95724bd9ad16cd2cf7d6a23d4e75646213d18473ef61a87075b0"
         },
         {
           "path": "docs/ui/reach-and-funnel/high-level-design.md",
@@ -308,7 +308,7 @@
       "members": [
         {
           "path": "docs/ui/audiences/README.md",
-          "sha256": "e0a89085368f9ab26c7f76ec05802f5815639b226ebf9100e2fc13d01cdb382a"
+          "sha256": "c037fd1cd2a3d2cecae1d3a3648cc8864a0d8f0fea9c5a95c32631b9df1133ff"
         },
         {
           "path": "docs/ui/audiences/high-level-design.md",
@@ -358,7 +358,7 @@
       "members": [
         {
           "path": "docs/ui/retention/README.md",
-          "sha256": "c5eb586d7be5f3788fe029b5f0dab2cc96457f3048fb290b79247e6919bf8cd7"
+          "sha256": "4c5e06c9fc36240f3d09919d65dc0a58023360b7543d58033173ed980b9d4379"
         },
         {
           "path": "docs/ui/retention/high-level-design.md",
@@ -442,8 +442,8 @@
     "implementation_decision_date": "2026-10-07",
     "implementation_disposition": "approved_for_implementation",
     "path": "docs/ui/README.md",
-    "sha256": "a236fcc1a08fa464d8fa772909ddcc0946c47f3a15d143a2a29f7558664caf15",
-    "status": "Approved for implementation — manifest revision `2026-10-09.2` (revised 2026-10-09 — business outcomes wave 2b revises four page packages: New customers adds new buyers and cost per new buyer per channel under the platform tiles, with `NewCustomersArtifact` v2; Audiences labels each segment by its provider, Amazon or third party, and states that DSP behaviour segments and Amazon audience segments use different IDs and are never linked; Retention adds the designed state for a vintage built on calendar-quarter cohorts, and its scope band names the cohort grain; Reach and funnel relabels the funnel's branded-search rate as search rate, because AMC's documentation doesn't say searchConversion is a branded search; approved under the owner's UI/IA approval of 2026-10-07 (owner-decisions-ui.md) with owner ratification of the revision pending; the Scorecard's open item for New customers names the v2 artifact, with no change to the Scorecard's design; every other package is carried forward unchanged. Prior revision `2026-10-09.1` (2026-10-09) — adds the New customers page package, built from the information-architecture New customers mockup and the business outcomes design, approved under the owner's UI/IA approval of 2026-10-07 (owner-decisions-ui.md) with owner ratification of the package pending; the Scorecard's open item for New customers now points to that package, with no change to the Scorecard's design; every other package is carried forward unchanged. Prior revision `2026-10-08.1` (2026-10-08) — adds the Scorecard, Reach and funnel, Audiences, Retention and Repeat purchase by product page packages, built from the UI and information-architecture mockups and design, and one Retail health page action that links to Repeat purchase by product, with no change to its time model; approved under the owner's UI/IA approval of 2026-10-07 (owner-decisions-ui.md); the campaign-portfolio and prompt-administration packages are carried forward unchanged. Prior revision `2026-10-01.1` (2026-10-01) — monetary values display at two decimal places from a server-derived display value on the campaign portfolio, campaign detail, retail health, and the metric-focus dialog, which moves to `MetricFocus.v3` (ADR-084), and prompt versions state who created them, by email resolved at read time (ADR-069 amendment); the campaign-portfolio mockup is carried forward unchanged. Prior revision `2026-09-25.1` (2026-09-25) — the insight and metric-focus dialogs rebalance — the deep analysis renders as a full-width band beneath the dialog's evidence with readings three-up wide, the insight dialog goes single-column, provenance collapses to one customer-word strip, and no citations or internal vocabulary render anywhere customer-facing — grounding verification stays server-side. Prior revision `2026-09-24.1` (2026-09-24) — the campaign detail summary metrics render as a uniform two-row × four-column grid of equal tiles, superseding the labeled section grouping and, for that strip only, the single-row card-group rule; also carries the ADR-076 slice D prompt-administration wire-contract amendment, tier dimension and fragment digests. Prior revision `2026-09-23.4` carried insight absence states per the [insight-presentation contract](insight-presentation-contract.md) and the 2026-09-23 UX revisions — single-row equal-height card groups, raised type-tier contrast with full-strength card body text, full-width retail insight rows, 10-row display paging, and the in-detail campaign switcher; accepted 2026-09-23; frontend implementation delivered and live-verified 2026-09-24)"
+    "sha256": "962462e59b31c48df727d31cb8639cc8d62c326bd21bd732301b448c26cdf847",
+    "status": "Approved for implementation at manifest revision `2026-10-09.2` ([`design-manifest.yaml`](design-manifest.yaml)). The UI refresh added the Overview › Growth check and Retail health › Products and ads composed tabs ([ADR-151](../decisions/adr-151-compose-a-customer-tab-from-served-page-presentations.md)) and the shared answer-sentence and ratio-display rules in §8. Owner ratification of revisions `2026-10-09.1` and `2026-10-09.2` is pending. Earlier revisions are in this file's history."
   },
   "revision": "2026-10-09.2",
   "shared_owners": [
@@ -540,7 +540,7 @@
       "members": [
         {
           "path": "docs/ui/information-architecture/README.md",
-          "sha256": "d25242061706ac3437fcf498c6137799d061ee4c96a5fe6f54720e85a2097191"
+          "sha256": "5276000535cabb99c4b4ba670f5d54f7f6444812bee58ae0ee3f591622279304"
         },
         {
           "path": "docs/ui/information-architecture/delivery-slices.md",
