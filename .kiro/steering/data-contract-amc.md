@@ -1,6 +1,6 @@
 ---
 inclusion: fileMatch
-fileMatchPattern: ["contracts/amc/**"]
+fileMatchPattern: ["**/contracts/amc/**"]
 description: Governs AMC contract source facts, suppression-safe mappings, governed query-pack parameterization, and unresolved source semantics when editing files under `contracts/amc/`.
 ---
 

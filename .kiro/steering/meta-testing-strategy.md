@@ -1,6 +1,6 @@
 ---
 inclusion: fileMatch
-fileMatchPattern: ["tests/**"]
+fileMatchPattern: ["**/tests/**"]
 description: Governs test-tier placement, real-AWS integration boundaries, synthetic fixture evidence, traceability, assertions, and coverage interpretation when editing tests.
 ---
 

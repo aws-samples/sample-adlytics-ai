@@ -1,6 +1,6 @@
 ---
 inclusion: fileMatch
-fileMatchPattern: ["infra/bin/**/*.ts", "infra/lib/**/*.ts", "infra/test/**/*.ts", "infra/cdk.json", "infra/package.json", "infra/tsconfig.json"]
+fileMatchPattern: ["**/infra/bin/**/*.ts", "**/infra/lib/**/*.ts", "**/infra/test/**/*.ts", "**/infra/cdk.json", "**/infra/package.json", "**/infra/tsconfig.json"]
 description: Governs CDK versioning, typed infrastructure configuration, cross-cutting mixins, construct-library inspection, and stable construct-level selection when editing infrastructure code or configuration.
 ---
 

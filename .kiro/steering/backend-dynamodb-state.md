@@ -1,6 +1,6 @@
 ---
 inclusion: fileMatch
-fileMatchPattern: ["src/adapters/outbound/dynamodb/**"]
+fileMatchPattern: ["**/src/adapters/outbound/dynamodb/**"]
 description: Governs conditional writes, fencing monotonicity, lease transitions, conflict handling, and key-space ownership when editing or adding DynamoDB state adapters.
 ---
 

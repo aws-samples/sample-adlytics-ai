@@ -1,6 +1,6 @@
 ---
 inclusion: fileMatch
-fileMatchPattern: ["src/adapters/jobs/fixture_generation/**", "src/adapters/jobs/land_fixtures/**", "contracts/shared/synthetic-entity-catalog.yaml"]
+fileMatchPattern: ["**/src/adapters/jobs/fixture_generation/**", "**/src/adapters/jobs/land_fixtures/**", "**/contracts/shared/synthetic-entity-catalog.yaml"]
 description: Governs fixture generation and dev-lake seeding — delivery-shaped output, declared scenario shapes, landing path, and immutability — when editing the fixture generator, the landing job, or the synthetic entity catalog.
 ---
 

@@ -1,6 +1,6 @@
 ---
 inclusion: fileMatch
-fileMatchPattern: ["contracts/prompts/**", "src/domain/conversation/**", "src/domain/evaluation/**", "src/adapters/outbound/agentcore/**", "src/adapters/inbound/tool_handlers/schemas.py"]
+fileMatchPattern: ["**/contracts/prompts/**", "**/src/domain/conversation/**", "**/src/domain/evaluation/**", "**/src/adapters/outbound/agentcore/**", "**/src/adapters/inbound/tool_handlers/schemas.py"]
 description: Governs semantic-authority routing, refusal evidence, answer claim rules, tool-description authority, and audit capture when editing agent prompts, tool schemas, conversation or evaluation domain code, or the AgentCore harness adapter.
 ---
 

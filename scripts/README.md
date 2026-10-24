@@ -70,7 +70,7 @@ uv run python scripts/check-steering.py
 | **Front matter** | file opens with one exact, terminated YAML block with unique keys |
 | **Mode schema** | `inclusion` is `always`, `auto`, `fileMatch`, or `manual`, with only the fields valid for that mode |
 | **Auto identity** | every `auto` file has a unique lowercase dashed `name` |
-| **File matching** | patterns form a nonempty unique list, stay inside the repository, and currently match a file |
+| **File matching** | patterns form a nonempty unique list, stay inside the repository, and currently match a file (a `.worktrees/*/` pattern is checked against the root path it mirrors) |
 | **Description** | every description is a unique one-sentence concern and mode-appropriate activation boundary |
 | **Plain text** | body contains no Markdown tables, Markdown links, or bold text |
 | **Path citations** | a prose path under a known top-level directory exists, is tracked (not merely present on disk), is not gitignored custody, and any `§N` after it matches a heading |

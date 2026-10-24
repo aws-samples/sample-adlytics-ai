@@ -1,6 +1,6 @@
 ---
 inclusion: fileMatch
-fileMatchPattern: ["src/adapters/jobs/reprocess_semantic_v2/**", "src/adapters/jobs/ingest_delivery/**", "src/adapters/jobs/preset_artifact_publisher/**", "validation/probe_stage_latency.py"]
+fileMatchPattern: ["**/src/adapters/jobs/reprocess_semantic_v2/**", "**/src/adapters/jobs/ingest_delivery/**", "**/src/adapters/jobs/preset_artifact_publisher/**", "**/validation/probe_stage_latency.py"]
 description: Governs trace bootstrap, structured progress, heartbeat, terminal evidence, and cancellation lineage when editing or diagnosing long-running AWS operator jobs and background processing workflows.
 ---
 

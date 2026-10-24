@@ -1,6 +1,6 @@
 ---
 inclusion: fileMatch
-fileMatchPattern: ["src/adapters/inbound/tool_handlers/**"]
+fileMatchPattern: ["**/src/adapters/inbound/tool_handlers/**"]
 description: Governs tool-handler response envelopes, identity boundaries, in-tool decoration, SQL construction, response sizing, pagination, and collocation when editing tool-handler code.
 ---
 

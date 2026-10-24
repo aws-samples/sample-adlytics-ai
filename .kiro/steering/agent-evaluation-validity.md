@@ -1,6 +1,6 @@
 ---
 inclusion: fileMatch
-fileMatchPattern: ["contracts/prompts/**", "validation/**", "src/adapters/jobs/evaluation_writer/**", "src/domain/evaluation/**"]
+fileMatchPattern: ["**/contracts/prompts/**", "**/validation/**", "**/src/adapters/jobs/evaluation_writer/**", "**/src/domain/evaluation/**"]
 description: Governs released-response evaluation fidelity, evaluator calibration, invariant precedence, and scenario evidence when editing evaluator prompts, calibration corpora, evaluation domain code, or the evaluation writer.
 ---
 
