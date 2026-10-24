@@ -21,7 +21,9 @@ describe('the composed ESLint config', () => {
   it('loads the Next plugin, so the guard below is about the config lint really runs', async () => {
     const config = await composedConfig();
     expect(config.some((entry) => entry.plugins?.['@next/next'] !== undefined)).toBe(true);
-  });
+    // The first test pays the cold import of the whole ESLint config, past vitest's 5 s default
+    // when the gates share the machine.
+  }, 20_000);
 
   it('sets no settings.next, so the plugin never resolves a rootDir glob', async () => {
     const config = await composedConfig();

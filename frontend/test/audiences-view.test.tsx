@@ -164,7 +164,8 @@ test('Audiences complete, paid-unavailable, in-roster-unavailable and insufficie
     rendered.unmount();
   }
   delete document.documentElement.dataset.theme;
-});
+  // Sixteen full-page axe runs exceed vitest's 5 s default when the gates share the machine.
+}, 30_000);
 test('a refreshed artifact without the chosen campaign shows the campaign it still carries', () => {
   const two = clone(fixture) as Json;
   const campaigns = object(objects(two.markets)[0]!.campaign_audiences);
