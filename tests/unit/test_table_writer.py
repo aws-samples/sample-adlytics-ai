@@ -3808,15 +3808,29 @@ def test_t8_the_merge_stages_before_its_begin_and_the_verification_never_stages(
 
 
 @pytest.mark.covers("ADR-149")
-def test_t8_a_failing_stage_begins_nothing_reserves_nothing_and_retries(writer: Any) -> None:
+def test_t8_a_failing_stage_begins_nothing_reserves_nothing_and_retries(
+    writer: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from ports.outbound.unit_staging import StagingUnavailableError  # noqa: PLC0415
 
+    failed_lines: list[Any] = []
+    real = writer.report_operation
+
+    def capture(log: Any, logger: Any) -> None:
+        if log.operation == "semantic_statement_failed":
+            failed_lines.append(log)
+        real(log, logger)
+
+    monkeypatch.setattr(writer, "report_operation", capture)
     harness = _harness(writer)
     harness.stager.failure = StagingUnavailableError("injected throttle")
 
     result = harness.process(receive_count=1)
 
     assert result == writer._UnitResult(acknowledge=False, outcome="statement_retryable")
+    (line,) = failed_lines  # T-9: the staging failure is logged once, as retryable
+    assert (line.details["retryable"], line.details["receive_count"]) == (True, 1)
+    assert line.outcome == UnitFailureReason.STATEMENT_RETRIES_EXHAUSTED.value
     assert "begin_table_attempt" not in harness.calls
     assert "start" not in harness.calls
     assert harness.world.unit_item is not None
@@ -3905,6 +3919,84 @@ def test_t9_a_failed_count_read_still_attests_with_a_null_count_reported_once(
     (line,) = logged
     assert line.details["accepted_attempts"] is None
     assert [type(error).__name__ for error in errors] == ["DependencyError"]
+
+
+def _reconcile_parked(world: _World) -> None:
+    """Apply the reconciler's effect on a parked attempt: complete it, clear fence and lease.
+
+    It completes an existing attempt and reserves none (§4.8), so the unit's stored
+    reservation count is untouched.
+    """
+    fence = world.fence
+    assert fence is not None and fence.state == "parked"
+    attempt_id = str(fence.attempt_id)
+    world.attempts[attempt_id] = replace(
+        world.attempts[attempt_id],
+        state=ProviderTerminalState.CANCELLED.value,
+        athena_usage_state="unsettled",
+    )
+    world.fence = None
+    world.lease = None
+    unit = world.unit_item
+    assert unit is not None
+    references = cast("list[object]", unit.get("attempt_references", []))
+    unit["attempt_references"] = [*references, attempt_id]
+    unit["ordinal"] = int(str(unit["ordinal"])) + 1
+    del unit["current_attempt_id"]
+
+
+@pytest.mark.covers("ADR-149")
+def test_t9_a_park_at_the_verification_makes_the_next_receive_attest_with_four_attempts(
+    writer: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Accepted attempts accumulate across receives; §4.8's `2 <= n <= 2(k+1)` rule needs it."""
+    logged: list[Any] = []
+    real = writer.report_operation
+
+    def capture(log: Any, logger: Any) -> None:
+        if log.operation in {"semantic_unit_attested", "semantic_attempt_parked"}:
+            logged.append(log)
+        real(log, logger)
+
+    monkeypatch.setattr(writer, "report_operation", capture)
+    first = _harness(writer)
+    merge_terminal = first.terminals.observe
+
+    def verification_never_ends(query_execution_id: str) -> ObserveTableAttemptResult:
+        if query_execution_id == "q-2":  # the verification runs past the safety deadline
+            first.calls.append("observe")
+            return ProviderNonterminal(reason="nonterminal")
+        return merge_terminal(query_execution_id)
+
+    def stop_ignored(query_execution_id: str) -> None:
+        assert query_execution_id == "q-2"
+
+    first.terminals.observe = verification_never_ends  # type: ignore[method-assign]
+    first.terminals.stop = stop_ignored  # type: ignore[method-assign]
+
+    assert first.process(receive_count=1).outcome == "attempt_parked"
+    begins = [r for r in first.coordinator.requests if isinstance(r, BeginTableAttemptRequest)]
+    # The park is at the verification: both statements reached Begin on this receive.
+    assert [begin.statement_kind for begin in begins] == ["merge", "verification"]
+    world = first.world
+    assert world.unit_item is not None and world.unit_item["unit_reservation_count"] == 2
+    _reconcile_parked(world)
+    second = _harness(writer, world)
+
+    assert second.process(receive_count=2).outcome == "attested"
+
+    parked, attested = logged
+    assert (parked.operation, parked.details["receive_count"]) == ("semantic_attempt_parked", 1)
+    assert parked.details["unit_key"] == attested.details["unit_key"] == UNIT_KEY
+    assert (attested.operation, attested.details["receive_count"]) == ("semantic_unit_attested", 2)
+    # Statements that reached Begin, summed over receives: 2 on the parked receive, 2 on the clean.
+    assert attested.details["accepted_attempts"] == 4
+    assert attested.details["accepted_attempts"] == world.unit_item["unit_reservation_count"]
+    # Control: a clean first receive attests at 2, with no parked line.
+    logged.clear()
+    assert _harness(writer).process(receive_count=1).outcome == "attested"
+    (clean,) = logged
+    assert (clean.operation, clean.details["accepted_attempts"]) == ("semantic_unit_attested", 2)
 
 
 @pytest.mark.covers("ADR-149")
