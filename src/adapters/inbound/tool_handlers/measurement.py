@@ -81,7 +81,7 @@ from domain.measurement.answers import (
 )
 from domain.measurement.comparison import RankOrder, RankRequest, compare, rank
 from domain.measurement.figures import measure
-from domain.measurement.folds import Fold, FoldResult, require_foldable
+from domain.measurement.folds import Fold, FoldResult, KeyedColumn, require_foldable
 from domain.measurement.lenses import LENS_DEFAULTS
 from domain.measurement.pack_coverage import PackDayVersions, pack_versioned_columns
 from domain.measurement.periodic import (
@@ -805,7 +805,7 @@ def prepare_batch(requests: tuple[MeasurementToolRequest, ...]) -> PreparedMeasu
         current = plan(request.catalog, later, shape)
         prior = plan(request.catalog, earlier, shape) if earlier is not None else None
         if request.reduction is not None:
-            require_foldable(current)
+            require_foldable(current, per_row=isinstance(request.reduction, KeyedColumn))
         operations.append(
             PreparedMeasurementOperation(
                 request=request,

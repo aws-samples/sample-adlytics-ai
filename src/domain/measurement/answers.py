@@ -62,7 +62,7 @@ from domain.measurement.figures import (
     total_of,
     varying_columns,
 )
-from domain.measurement.folds import Fold, FoldResult, require_foldable
+from domain.measurement.folds import Fold, FoldResult, KeyedColumn, require_foldable
 from domain.measurement.lenses import LENS_DEFAULTS, defaults_for
 from domain.measurement.periodic import GRAIN_SET_COLUMN
 from domain.measurement.planning import GRAIN_NAMES, MEASURE_ALIAS, Combination, QueryPlan
@@ -387,7 +387,7 @@ class FoldingAnswer:
     """
 
     def __init__(self, plan: QueryPlan, fold: Fold[Any]) -> None:
-        require_foldable(plan)
+        require_foldable(plan, per_row=isinstance(fold, KeyedColumn))
         self._plan = plan
         self._fold = fold
         self._currency = CurrencyAccumulator(plan)
