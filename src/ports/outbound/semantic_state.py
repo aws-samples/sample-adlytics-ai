@@ -110,7 +110,7 @@ class CommitPublicationRequest:
 
 
 MAX_COMMIT_GROUP_MEMBERS = 20
-MAX_EXACT_CURRENT_PARTITIONS = 4_800
+MAX_EXACT_CURRENT_PARTITIONS = 1_000
 """The most partitions one verified exact read attests: a cost bound, not a consistency one.
 
 The read is ADR-070's chunked two-pass snapshot: heads, immutables and heads again, each in
@@ -118,10 +118,11 @@ transactions of at most 100 items, accepted only when both head passes agree. Fo
 make that agreement one instant at any size; DynamoDB calls grow by one per 100 partitions per pass.
 
 Derived (ADR-070, 2026-10-25): the largest N whose worst serving read, 3 attempts x 3 x
-ceil(N / 100) transactions, fits the tightest caller budget, chat's quick turn (120 s,
-`agent.quickChat.timeoutSeconds`), at the slowest per-transaction latency measured on dev,
-276.0 ms: floor(120,000 / (9 x 276.0)) = 48 transactions per pass, so N = 4,800. A slower
-measurement or a tighter turn budget re-derives it.
+ceil(N / 100) transactions, fits the tightest budget of any invocation that runs one. That's the
+presentation function: 29 s, less the 20 s an interactive Athena statement keeps after it
+(`INTERACTIVE_THROTTLED_START_MAX_WAIT_SECONDS`), so 9 s. At the p95 in-Region `TransactGetItems`
+latency measured on dev, 95.0 ms: floor(9,000 / (9 x 95.0)) = 10 transactions per pass, so
+N = 1,000. A slower measurement or a tighter budget re-derives it.
 """
 
 

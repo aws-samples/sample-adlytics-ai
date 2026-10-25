@@ -2,7 +2,7 @@
 
 Date: 2026-09-15
 Status: Accepted — parent artifact serving implemented in development; displayed-detail bake remains pending
-> **Amendment, 2026-10-25 — the exact read is a chunked two-pass snapshot of up to 4,800
+> **Amendment, 2026-10-25 — the exact read is a chunked two-pass snapshot of up to 1,000
 > partitions.** The verified A/B/C read of 2026-09-22 already reads each phase in transactions of
 > at most 100 items, and accepts only when both head passes agree. Heads only move forward, so that
 > agreement proves one instant however many transactions a pass takes: it's the two-pass verified
@@ -11,15 +11,30 @@ Status: Accepted — parent artifact serving implemented in development; display
 > each chunk-edge partition, and every pair of window-edge gaps. The 100 was a leftover of the
 > one-transaction attestation, so `MAX_EXACT_CURRENT_PARTITIONS` is a cost bound: DynamoDB calls
 > grow by one per 100 partitions per pass. That's not the constant-only increase the alternatives
-> reject, which rested on the old two-item attestation. **Derived, 4,800:** the largest N whose
-> worst serving read (3 attempts × 3 × ⌈N/100⌉ transactions) fits the tightest caller budget, chat's
-> quick turn (120 s, `agent.quickChat.timeoutSeconds`), at the slowest per-transaction latency
-> measured on dev on 2026-10-25: 276.0 ms (Reach quarter, 184 partitions, read-only). The
-> integration test measured 213.2 ms at 184 and 209.9 ms at 1,000 (max of 10 reads each).
-> ⌊120,000 / (9 × 276.0)⌋ = 48 transactions per pass, so N = 4,800; a slower measurement or a
-> tighter turn budget re-derives it. The bake policy `MAX_PRESET_SNAPSHOT_PARTITIONS` stays equal
-> to it. In the bakeability gate's model (days, doubled for a compared prior, one lens) that's a
-> 2,400-day preset; a pack with two lenses reaches it at half that. The Reach quarter reads
+> reject, which rested on the old two-item attestation. **Derived, 1,000:** the largest N whose
+> worst serving read (3 attempts × 3 × ⌈N/100⌉ transactions) fits the tightest budget of any
+> invocation that runs one.
+>
+> - *Budget.* The presentation function: 29 s, at API Gateway's integration ceiling. An Athena
+>   statement follows the read in the same invocation, and the interactive wait keeps it at least
+>   20 s (`INTERACTIVE_THROTTLED_START_MAX_WAIT_SECONDS`, ADR-144), so the read gets 9 s. The other
+>   callers are looser: chat's MeasurementTool function has 60 s less a 30 s Athena wait, and
+>   chat's quick turn has 120 s.
+> - *Latency.* The p95 of in-Region `TransactGetItems` on dev, 95.0 ms. That's 1,512 calls from
+>   every caller, 2026-10-25 18:56–22:56Z (Logs Insights over `aws/spans`). The p95 is used because
+>   the 3 attempts already make it the worst read. Charging all 90 calls at the single slowest
+>   (317.0 ms, a bake task) models a sequence that never ran. The serving callers' own maximum was
+>   99.8 ms.
+> - *Arithmetic.* ⌊9,000 / (9 × 95.0)⌋ = 10 transactions per pass, so N = 1,000. At 99.8 ms it's
+>   still 10. Even at 317.0 ms for every call, 90 × 317.0 ms = 28.5 s, inside the function's 29 s.
+>   The pointer reads P and P' (one transaction each per attempt while a window is staged) and the
+>   two retry pauses (up to 0.3 s) aren't in the formula. At N = 1,000 they take about 0.9 s of
+>   the statement's 20 s.
+>
+> A slower measurement or a tighter budget re-derives N. The bake policy
+> `MAX_PRESET_SNAPSHOT_PARTITIONS` stays equal to it: no declared preset comes near it, and the
+> Baker's own budget is longer. In the bakeability gate's model (days, doubled for a compared prior,
+> one lens) that's a 500-day preset; a pack with two lenses reaches it at half that. The Reach quarter reads
 > 184 (92 days × 2 lenses in one pack on dev, 2026-10-18,
 > [ADR-146](adr-146-publish-the-reach-quarter-or-retire-it-on-measured-partitions.md)) and bakes.
 > Chat's selection-wide bound is the same constant. A pack is still attested by one verified read, never
@@ -266,7 +281,7 @@ are the paved road, and the escape hatch returns only with a derived bound.
 | Alternative | Why rejected |
 |---|---|
 | Chunk the request-time snapshot into per-pack transactions and keep live measurement | Buys headroom for 7D/14D but 30D with prior needs 60 day-partitions per pack — 120 items, over the 100-item cap even alone. Request cost also stays linear in window size and packs; the page contract remains unservable. Per-pack snapshots are adopted, but at bake time. |
-| Raise `MAX_EXACT_CURRENT_PARTITIONS` without changing the read protocol | Pinned by transport: the old attestation used 2 items per partition against DynamoDB's 100-item transactional-read cap. A constant-only increase remains rejected. *(Superseded in scope 2026-09-22: the verified A/B/C servable-head protocol uses at most one item per partition in each transaction and safely raises the serving capability; [Generation Coordination](../ui/generation-coordination.md) retains a separate bake policy. 2026-10-25: that protocol's chunked passes carry the bound to a derived 4,800; see the amendment at the top.)* |
+| Raise `MAX_EXACT_CURRENT_PARTITIONS` without changing the read protocol | Pinned by transport: the old attestation used 2 items per partition against DynamoDB's 100-item transactional-read cap. A constant-only increase remains rejected. *(Superseded in scope 2026-09-22: the verified A/B/C servable-head protocol uses at most one item per partition in each transaction and safely raises the serving capability; [Generation Coordination](../ui/generation-coordination.md) retains a separate bake policy. 2026-10-25: that protocol's chunked passes carry the bound to a derived 1,000; see the amendment at the top.)* |
 | Shrink presets until live measurement fits | 6 days with prior is the largest fitting window. Surrenders the page contract to an implementation bound and still pays a wide snapshot plus a measurement batch per page view. |
 | Keep both paths: serve baked artifacts, fall back to live measurement | The refused-selection failure returns as a nondeterministic tail, and two serving paths for one contract is standing tech debt. Explicitly rejected in favor of one path. |
 | Bake all eight sort variants | Eightfold storage and bake work for a deterministic reordering of identical rows. *(Superseded 2026-09-17: valid only while the population fits one artifact; ADR-071 bakes orderings because a 50-row reorder cannot express a population ranking.)* |
