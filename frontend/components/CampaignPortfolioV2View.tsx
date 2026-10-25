@@ -580,12 +580,15 @@ function useRoster(artifact: CampaignPortfolioArtifact, source: RosterSource | u
       },
     );
   };
-  // The parent reloaded after a shard of another revision: load the new roster at once.
+  // The parent reloaded after a shard of another revision: load the new roster at once, from a
+  // callback rather than the effect body.
   useEffect(() => {
-    if (pendingRosterLoad && key !== null) {
+    if (!pendingRosterLoad || key === null) return undefined;
+    const timer = window.setTimeout(() => {
       pendingRosterLoad = false;
       start();
-    }
+    }, 0);
+    return () => window.clearTimeout(timer);
   });
   return [state, start] as const;
 }
@@ -685,13 +688,10 @@ export function FindCampaign({ artifact, filter, hinted = false, id, onFilter, o
     </ul>
     {/* The roster this field searches: a one-channel option's is that channel's alone. */}
     {hinted ? <p className="find-hint" id={hintId}>Enter on a match opens that campaign&apos;s detail. Matches come from {scope}.</p> : null}
-    {/* Mounted empty, so the roster's loading and failure lines are announced when they fill. */}
-    <p className="find-roster" role="status">
+    {/* Mounted empty, so the roster's loading, failure and no-match lines are announced. */}
+    <p className="find-none" role="status">
       {names.kind === 'loading' ? ROSTER_LOADING_TEXT : null}
       {names.kind === 'failed' ? <>{ROSTER_FAILED_TEXT}{' '}<button type="button" className="btn link" onClick={loadNames}>Try again</button></> : null}
-    </p>
-    {/* Mounted empty, so the no-match line is announced when it fills. */}
-    <p className="find-none" role="status">
       {!none ? null : allChannels
         ? <>No campaign matches &ldquo;{query.trim()}&rdquo;.</>
         : <>No {selectedLabel(filter)} campaign matches &ldquo;{query.trim()}&rdquo;.{' '}
