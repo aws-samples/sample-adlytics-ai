@@ -51,6 +51,15 @@ def test_observed_keys_one_more_than_max_kept_overflows_and_keeps_no_more() -> N
     assert ("c4",) not in fold.value()
 
 
+def test_observed_keys_among_ignores_every_key_not_asked_about_and_never_overflows() -> None:
+    """A history walk holds the campaigns it grades, not every campaign history retains."""
+    fold = ObservedKeys(("campaign_key",), max_kept=2, among=frozenset({("c2",), ("c9",)}))
+    for key in ("c1", "c2", "c3", "c4", "c9", "c2"):
+        fold.add(_figure(campaign_key=key))
+    assert fold.value() == (("c2",), ("c9",))
+    assert not fold.overflowed
+
+
 def test_keys_by_group_at_max_kept_and_one_more_count_the_total_over_groups() -> None:
     exact = KeysByGroup("campaign_key", "segment_id", max_kept=4)
     for group, key in (("a", "s1"), ("a", "s2"), ("b", "s1"), ("c", "s1"), ("a", "s1")):

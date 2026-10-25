@@ -127,18 +127,30 @@ def _value(figure: Figure, column: str) -> str:
 
 
 class ObservedKeys(_Bounded):
-    """The set of key tuples with at least one defined figure, at most `max_kept` of them."""
+    """The set of key tuples with at least one defined figure, at most `max_kept` of them.
 
-    def __init__(self, columns: tuple[str, ...], max_kept: int) -> None:
+    `among`, when given, names the only keys asked about: any other key is ignored, so a fold
+    bounded by `len(among)` can't overflow however many other keys the read returns.
+    """
+
+    def __init__(
+        self,
+        columns: tuple[str, ...],
+        max_kept: int,
+        among: frozenset[tuple[str, ...]] | None = None,
+    ) -> None:
         super().__init__(max_kept)
         if not columns:
             raise ValueError("observed keys read at least one column.")
         self._columns = columns
+        self._among = among
         self._keys: set[tuple[str, ...]] = set()
 
     def add(self, figure: Figure) -> None:
-        """Keep the figure's key tuple, once, within the bound."""
+        """Keep the figure's key tuple, once, within the bound, if it is one asked about."""
         key = tuple(_value(figure, column) for column in self._columns)
+        if self._among is not None and key not in self._among:
+            return
         if key in self._keys or not self._room():
             return
         self._keys.add(key)
