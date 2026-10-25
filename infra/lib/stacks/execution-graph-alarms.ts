@@ -276,9 +276,8 @@ export const BAKE_ALARMS: readonly GraphAlarmSpec[] = [
       + 'users see an absence there; every other page published. Read the baker isolated_refusal '
       + 'line for the entry, page and reason. For dependency_unavailable: once the dependency is '
       + 'healthy, run a declarative re-bake (operator-tools.md); otherwise the page keeps its '
-      + 'last-good body until the next landing, because freshness is landing-driven. For '
-      + 'quarter_manifest_absent: run the quarter-manifest backfill with its readback '
-      + '(quarter_manifest_backfill), then re-bake.',
+      + 'last-good body until the next landing, because freshness is landing-driven. For a '
+      + 'limit reason, the line names the operator action.',
   },
   {
     id: 'BakeTaskOverBudget',

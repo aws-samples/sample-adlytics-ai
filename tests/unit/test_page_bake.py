@@ -467,7 +467,14 @@ def test_the_legacy_lineage_carries_the_execution_and_a_replay_says_so(
 ) -> None:
     telemetry = capture(monkeypatch)
     groups = group_refusals(
-        (IsolatedRefusal(IsolatedRefusalReason.QUARTER_MANIFEST_ABSENT, RefusalScope.PAGE),)
+        (
+            IsolatedRefusal(
+                IsolatedRefusalReason.PARTITIONS_OVER_BOUND,
+                RefusalScope.PAGE,
+                required_partitions=1_001,
+                maximum_partitions=1_000,
+            ),
+        )
     )
     lineage = RefusalLineage("legacy", "reach", "last_complete_quarter", execution_id="e")
     emit_isolated_refusals(LOGGER, groups, lineage, replayed=True, metric=telemetry.metric)

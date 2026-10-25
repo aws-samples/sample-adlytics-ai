@@ -999,6 +999,40 @@ def test_scope_discovery_returns_strong_current_pointers_for_exact_buckets(
     ]
 
 
+@pytest.mark.covers("ADR-070")
+def test_a_quarter_sized_exact_read_attests_184_partitions_in_chunked_passes(
+    probe: str,
+    publications: DynamoPublicationStore,
+    settings: Settings,
+) -> None:
+    """The Reach quarter's 184 day partitions, over the former 100, read as one verified vector."""
+    now = datetime.now(UTC).replace(microsecond=0)
+    leases = DynamoLeaseStore(settings.semantic_leases_table)
+    expected: list[SuccessfulPublication] = []
+    for offset in range(184):
+        partition = _partition(probe, date(2026, 4, 1) + timedelta(days=offset))
+        grant = leases.acquire(_lease_request(probe, partition, now)).grant
+        assert grant is not None
+        publication = _publication(
+            probe,
+            grant,
+            _PublicationSpec(published_at=now + timedelta(seconds=1), suffix=f"day-{offset}"),
+        )
+        assert publications.commit(
+            CommitPublicationRequest(publication, grant, _authority(partition))
+        ).accepted
+        expected.append(publication)
+    partitions = tuple(publication.partition for publication in expected)
+
+    assert publications.inspect_exact(partitions).publications == tuple(expected)
+    serving = DynamoCurrentPublications(settings.semantic_publications_table)
+    assert serving.inspect_exact(partitions).publications == tuple(expected)
+    # Paired: one partition never published is a stable absence in its own slot, not a refusal.
+    absent = _partition(probe, date(2026, 4, 1) + timedelta(days=184))
+    inspected = serving.inspect_exact((*partitions, absent)).publications
+    assert inspected[:184] == tuple(expected) and inspected[184] is None
+
+
 @pytest.mark.covers("ADR-075")
 def test_first_publication_seeds_its_own_servable_pointer_under_inline_projection(
     probe: str,

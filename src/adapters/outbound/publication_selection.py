@@ -98,10 +98,9 @@ __all__ = [
 SELECTION_FAILED = ErrorCode("PUBLICATION_SELECTION", 1)
 SELECTION_TOO_LARGE = ErrorCode("PUBLICATION_SELECTION", 2)
 # Product policy for one per-pack artifact-bake snapshot. Each pack is attested by
-# `inspect_exact`, the verified three-phase read (heads, publications, heads again) that
-# Publication State bounds at MAX_EXACT_CURRENT_PARTITIONS (ADR-070, 2026-09-22 amendment).
-# The policy took that bound when Campaigns declared `30d` (ADR-127): 2 x 30 day-partitions per
-# pack fit one verified read, so no snapshot is sub-chunked.
+# `inspect_exact`, the chunked two-pass verified read (heads, publications, heads again) that
+# Publication State bounds at MAX_EXACT_CURRENT_PARTITIONS (ADR-070, 2026-10-25 amendment), so
+# one pack's snapshot is one instant at any size up to that bound.
 MAX_PRESET_SNAPSHOT_PARTITIONS = MAX_EXACT_CURRENT_PARTITIONS
 PACK_SNAPSHOT_TOO_LARGE = ErrorCode("PUBLICATION_SELECTION", 3)
 PIN_NOT_MEASURED = ErrorCode("PUBLICATION_SELECTION", 4)
@@ -1224,7 +1223,7 @@ class PublicationSelector:
 
 
 class PerPackPresentationEvidenceInspection(PublicationSelector):
-    """Bake-scoped inspection that snapshots each source pack in its own transaction.
+    """Bake-scoped inspection that snapshots each source pack in its own verified exact read.
 
     ADR-070 decision point 5: at bake time, a batch's required partitions are grouped by
     source-pack scope identity and each pack's partitions — both comparison windows
@@ -1232,10 +1231,9 @@ class PerPackPresentationEvidenceInspection(PublicationSelector):
     delta within a pack. Cross-pack instant consistency is deliberately not claimed:
     independent sources deliver and restate on independent cadences, so a cross-pack
     single instant would assert nothing semantically real. The whole batch may exceed
-    the one-transaction bound, but no single pack may: the 2026-09-16 ADR-070 amendment
-    withdrew every declared preset that would need sub-chunking, so an over-bound pack
-    snapshot refuses instead. Request serving keeps the strict single-transaction
-    ``PublicationSelector``.
+    the exact-read bound, but no single pack may: an over-bound pack snapshot refuses before
+    its first read, and a pack is never split across independent reads. Request serving
+    keeps the selection-wide ``PublicationSelector``.
     """
 
     def inspect(
@@ -1254,13 +1252,13 @@ class PerPackPresentationEvidenceInspection(PublicationSelector):
             members = groups[scope_identity]
             if len(members) > MAX_PRESET_SNAPSHOT_PARTITIONS:
                 # Refuse before the first read: a partially attested bake snapshot is
-                # exactly the inconsistency the per-pack transaction exists to prevent.
+                # exactly the inconsistency the per-pack snapshot exists to prevent.
                 raise ValidationError(
                     PACK_SNAPSHOT_TOO_LARGE,
                     (
                         "A source pack's bake snapshot requires more exact partitions "
-                        "than one transaction can attest. Shrink the declared preset "
-                        "window; per-pack snapshots are never sub-chunked."
+                        "than one verified exact read attests. Shrink the declared preset "
+                        "window; a pack is never split across independent reads."
                     ),
                     context={
                         "scope": scope_identity,

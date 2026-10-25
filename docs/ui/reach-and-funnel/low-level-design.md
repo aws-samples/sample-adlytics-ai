@@ -147,6 +147,11 @@ records it.
 New, under the ADR-075 pattern. It bakes on pack 5, 6 and 7 publication transitions, one artifact per
 resolved period and preset, and bakes its deterministic findings.
 
+Last quarter is offered and bakes like week and month. Its pin binds every day partition the quarter
+reads (184 of `fct_ad_exposure` on dev, 92 days × 2 lenses, 2026-10-18) in one verified exact read
+per pack, the chunked two-pass snapshot ([Publication State](../../capabilities/publication-state/architecture.md#4-internal-structure);
+ADR-146 branch (a′)).
+
 ## 7. Concepts applied
 
 - [Business outcome measurement](../../concepts/business-outcome-measurement.md)
@@ -162,6 +167,7 @@ resolved period and preset, and bakes its deterministic findings.
 - [ADR-102: association-only flag and caveat](../../decisions/adr-102-flag-association-only-metrics-and-require-their-caveat.md)
 - [ADR-106: outcomes inside one network](../../decisions/adr-106-keep-outcome-metrics-inside-one-network-by-type.md)
 - [ADR-116: one time model and one window per tab](../../decisions/adr-116-give-every-tab-one-time-model-and-one-window.md)
+- [ADR-146: publish the Reach quarter on measured partitions](../../decisions/adr-146-publish-the-reach-quarter-or-retire-it-on-measured-partitions.md)
 
 ## 9. Delivery prerequisites and acceptance
 

@@ -708,8 +708,8 @@ def evaluate_bakeability(
     for page in pages:
         for preset in page.candidate_presets:
             # A per-pack bake snapshot attests both comparison windows — current plus the
-            # required equal prior — of a daily-grain pack in one exact read (ADR-070,
-            # 2026-09-16 amendment), so 2 x preset-days must fit one transaction.
+            # required equal prior — of a daily-grain pack in one verified exact read (ADR-070,
+            # 2026-10-25 amendment), so 2 x preset-days must fit its bound.
             required = preset_partitions(page, preset)
             if required > MAX_PRESET_SNAPSHOT_PARTITIONS:
                 findings.append(

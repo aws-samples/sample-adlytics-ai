@@ -18,9 +18,8 @@ capabilities.
 
 Candidate presets `1d`, `7d`, `14d`; default `7d`; comparison `required_equal_prior`;
 display grains `period`, `day`; `custom.availability` always `"unavailable"`. `30d` is not a
-candidate — the per-pack bake snapshot caps a declared preset at 25 days (ADR-070 amendment,
-2026-09-16) — so the control returns it unavailable pending the future two-pass
-verified-snapshot decision named there. Window
+candidate, so the control returns it unavailable. The bake's chunked two-pass snapshot would read
+it (ADR-070 amendment, 2026-10-25); declaring it is this page's own decision. Window
 resolution anchors to the newest published coverage of this page's vendor sources, never to
 wall-clock today. Default resolution uses the shared bake-time ladder owned by the
 [preset artifact publisher](../preset-artifact-publisher.md); every declared preset must pass

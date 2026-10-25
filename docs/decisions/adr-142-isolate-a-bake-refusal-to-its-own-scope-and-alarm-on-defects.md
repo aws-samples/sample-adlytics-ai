@@ -6,6 +6,7 @@ hold every page. Every time budget and query count becomes a defect alarm derive
 shape that doesn't grow with the seller. Its two alarm-only `infra/` additions need their own
 approval. When accepted, it amends ADR-139 and ADR-140 (markers added there).
 
+> **Amendment, 2026-10-25.** [ADR-146](adr-146-publish-the-reach-quarter-or-retire-it-on-measured-partitions.md) took branch (a′), the chunked two-pass snapshot, so the Reach-quarter isolated refusal it would have needed is gone from decision 1 and from the closed table.
 > **Proposed amendment, 2026-10-25.** [ADR-152](adr-152-read-page-sized-answers-in-sql-with-no-arbitrary-row-ceiling.md) (Proposed) would make a cut read on Retail health, Scorecard, Reach, Retention and New customers a defect instead of `rows_over_ceiling`, because their reads are bounded by their meaning or their governed axes; Audiences keeps it until its reads stream. Every `limit` reason's `isolated_refusal` line would name its operator action. This decision stays as written until ADR-152 is accepted.
 ## Context
 A source's refusal is already one page's designed absence (ADR-140 decision 6). But several ways
@@ -39,8 +40,7 @@ the graph authority too. A fix designed only into the graph task would never rea
    reason is which, and for each reason's allowed log context.
    - **Isolated refusals:** rows over a bake ceiling; a body over its cap before staging; bodies
      over the invocation's write bound, checked before staging and again at runtime by the
-     stage's write deadline; a selection over an exact-partition bound; a precomputed quarter
-     manifest missing for a quarter that has current data (if ADR-146 takes that branch); a
+     stage's write deadline; a selection over an exact-partition bound; a
      statement reaching its invocation deadline; a population over its memory-sized guard; a
      dependency still failing after the pin's bounded retry or on the final receive; any other
      source refusal; a history gap; an incomplete answer.
@@ -118,8 +118,8 @@ page someone.
 ## Will be enforced by
 - `tests/unit/test_bake_refusals.py`: the closed table; an unknown context key raising at
   construction, paired with an allowed key; each error classification; a section claim on an
-  anchor or undeclared section refused; a profile-path item accepted; the quarter-manifest reason
-  going to the alarmed metric.
+  anchor or undeclared section refused; a profile-path item accepted; a limit reason going to the
+  alarmed metric.
 - `tests/unit/test_bake_refusal_sites.py`: a static scan failing any construction site whose keys
   aren't allowlisted, with a mis-keyed control; each source's refusals constructed with the keys it
   really passes.

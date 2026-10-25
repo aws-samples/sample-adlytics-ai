@@ -62,7 +62,6 @@ def test_the_class_table_is_closed_over_every_reason_and_its_allowlists() -> Non
             "body_over_cap",
             "bodies_over_invocation",
             "partitions_over_bound",
-            "quarter_manifest_absent",
             "statement_time_over_invocation",
             "population_over_ceiling",
         },
@@ -252,10 +251,12 @@ def test_a_group_round_trips_through_its_stored_form_and_a_tampered_one_is_refus
             RefusalGroup.from_record(tampered)
 
 
-def test_quarter_manifest_absent_is_a_limit_and_goes_to_the_limit_metric() -> None:
-    absent = IsolatedRefusal(R.QUARTER_MANIFEST_ABSENT, PAGE)
-    assert absent.refusal_class is RefusalClass.LIMIT
-    assert isolated_refusal_metric(absent.refusal_class.value) == BAKE_ISOLATED_REFUSAL_LIMIT_METRIC
+def test_a_limit_refusal_goes_to_the_limit_metric() -> None:
+    over = IsolatedRefusal(
+        R.PARTITIONS_OVER_BOUND, PAGE, required_partitions=1_001, maximum_partitions=1_000
+    )
+    assert over.refusal_class is RefusalClass.LIMIT
+    assert isolated_refusal_metric(over.refusal_class.value) == BAKE_ISOLATED_REFUSAL_LIMIT_METRIC
     # Paired: source_refused is data, counted on the data metric, not alarmed.
     refused = IsolatedRefusal(R.SOURCE_REFUSED, PAGE, error_code="ADLY-PLAN-0008")
     assert isolated_refusal_metric(refused.refusal_class.value) == BAKE_ISOLATED_REFUSAL_DATA_METRIC
