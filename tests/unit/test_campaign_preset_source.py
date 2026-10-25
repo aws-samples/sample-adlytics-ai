@@ -302,6 +302,7 @@ def test_baker_measures_full_population_and_emits_boundless_pagination() -> None
         for pair in request.siblings
         if pair[0].identity == campaign_roster_shard_identity("all", 0)
     )
+    assert artifact.roster_shards is not None
     entries = campaign_roster_shard_from_payload(
         json.loads(shard.payload_json), 0, artifact.roster_shards.revision
     )
