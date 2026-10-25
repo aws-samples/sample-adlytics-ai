@@ -20,29 +20,22 @@ The root passes only when:
 - the run's grant has a serving binding, and every available row's pointer is served under its
   grant's binding as `built_at` its write instant (the presentation routes' own decision).
 
-`audiences_over_bound_verdict` decides the over-bound Audiences acceptance (merge-gate finding
-M2, owner decision 1b: an over-bound month shows the typed unavailable state, never a stale month
-labelled current). `test_d2_audiences_over_bound_acceptance.py` hands it what it read back after
-one GRAPH root over an over-bound month B, and the actual Audiences route's response.
 
 `d2_task_timing_verdict` decides the complete-task timing of the same accepted run (merge-gate
 round 6, F2): each row's one correlated Baker `task_summary` and its `artifact.write` spans,
 bound to the run and the row's `SUCCEEDED` task node, must show render, write and tail fitting
-the row's generated `budget_seconds`. Both live acceptances apply it to the run they decide.
+the row's generated `budget_seconds`. The live acceptance applies it to the run it decides.
 """
 
 from __future__ import annotations
 
-import json
 import sys
 import time
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
-from adapters.jobs.preset_artifact_publisher.bakeability import audiences_row_budget
 from adapters.jobs.preset_artifact_publisher.graph_bake import (
     TASK_PHASES,
     read_task_effect,
@@ -57,13 +50,7 @@ from domain.operations.execution_graph_release import (
 )
 from domain.operations.generated_execution_graphs import BAKE_TASKS
 from domain.operations.run_request import RunState
-from domain.presentation.audiences import (
-    AUDIENCES_UNAVAILABLE_ARTIFACT_TYPE,
-    require_audiences_artifact_payload,
-    require_audiences_unavailable_artifact_payload,
-)
 from domain.presentation.graph_serving import RefreshPendingError, granted_generation
-from domain.shared_kernel.values import DateRange
 
 if TYPE_CHECKING:
     from domain.operations.execution_graph_release import ServingBinding
@@ -71,73 +58,15 @@ if TYPE_CHECKING:
     from ports.outbound.execution_graph_dispatch import NodeRecord, RunRecord
 
 __all__ = [
-    "AUDIENCES_ROW",
     "D2_ROSTER_ROWS",
-    "OVER_BOUND_DECLARATION",
-    "OverBoundReadBack",
-    "audiences_over_bound_verdict",
     "d2_root_verdict",
     "d2_task_timing_verdict",
-    "declared_over_bound_source",
     "live_task_timing_verdict",
     "read_task_timing_evidence",
 ]
 
 D2_ROSTER_ROWS = 20
 """The D2 roster's row count (`execution-graphs.yaml` `bake_tasks.roster`, S0 certificate)."""
-AUDIENCES_ROW = "audiences#last_complete_month"
-"""The Audiences roster row whose over-bound month the M2 acceptance drives."""
-WINDOW_UNAVAILABLE = "window_unavailable"
-PRESET_UNAVAILABLE = "preset_unavailable"
-"""The route's typed pending result for an over-bound month (`_audiences_window_unavailable`)."""
-_HTTP_OK = 200
-
-
-OVER_BOUND_DECLARATION = (
-    Path(__file__).resolve().parents[2] / "validation/fixtures/d2-audiences-over-bound-v1.json"
-)
-"""The tracked declaration of the one over-bound month-B delivery the acceptance accepts."""
-OVER_BOUND_SCHEMA = "d2-audiences-over-bound-v1"
-
-
-def declared_over_bound_source(supplied: str, declaration: Path = OVER_BOUND_DECLARATION) -> str:
-    """Return `supplied` only when it is the tracked declaration's entry, else raise `ValueError`.
-
-    Merge-gate round 4, M1: `over_bound_source` is bound to the declared month-B delivery, never
-    to arbitrary text. The declaration's row floor must exceed the registered Audiences body
-    bound, `audiences_row_budget(1)`, so the declared delivery is over-bound by construction.
-    """
-    document = cast("dict[str, object]", json.loads(declaration.read_text()))
-    if document.get("schema_version") != OVER_BOUND_SCHEMA:
-        raise ValueError("the over-bound declaration has the wrong schema")
-    if document.get("page_row") != AUDIENCES_ROW:
-        raise ValueError("the over-bound declaration names another roster row")
-    floor = document.get("row_floor")
-    if not isinstance(floor, int) or isinstance(floor, bool) or floor <= audiences_row_budget(1):
-        raise ValueError("the over-bound declaration's row floor is not above the body bound")
-    declared = document.get("over_bound_source")
-    if not isinstance(declared, str) or not declared.strip():
-        raise ValueError("the over-bound declaration names no source")
-    if supplied.strip() != declared:
-        raise ValueError("over_bound_source is not the declared over-bound month-B delivery")
-    return declared
-
-
-@dataclass(frozen=True, slots=True)
-class OverBoundReadBack:
-    """What the M2 acceptance strongly read back, and the actual Audiences route's response.
-
-    `before` is month A's pointer and body JSON, read before the root launched; `after` is the
-    pointer and body JSON the root finalized; `route` is the deployed route's status and decoded
-    response for `last_complete_month`.
-    """
-
-    run: RunRecord
-    nodes: tuple[NodeRecord, ...]
-    before: tuple[PresetArtifactPointer | None, str | None]
-    after: tuple[PresetArtifactPointer | None, str | None]
-    binding: Callable[[str], ServingBinding | None]
-    route: tuple[int, Mapping[str, object]]
 
 
 def d2_root_verdict(  # noqa: PLR0912, PLR0913, PLR0915, PLR0917 -- one ordered list of closed checks over the read-back
@@ -212,146 +141,6 @@ def d2_root_verdict(  # noqa: PLR0912, PLR0913, PLR0915, PLR0917 -- one ordered 
         "written": written,
         "failures": failures,
     }
-
-
-def _payload_type(payload_json: str | None) -> object:
-    try:
-        decoded = cast("object", json.loads(payload_json or "null"))
-    except json.JSONDecodeError:
-        return None
-    return cast("dict[str, object]", decoded).get("type") if isinstance(decoded, dict) else None
-
-
-def _full_body_month(payload_json: str | None) -> DateRange | None:
-    """Decode a complete Audiences body as the route does and return its month, else `None`.
-
-    The type tag alone is not a full body (merge-gate round 4, M2): a truncated payload carrying
-    `AudienceProfileArtifact` is refused by `require_audiences_artifact_payload`, as the
-    presentation handler refuses it before serving.
-    """
-    try:
-        payload = require_audiences_artifact_payload(cast("object", json.loads(payload_json or "")))
-        month = cast("dict[str, str]", payload["month"])
-        return DateRange(date.fromisoformat(month["start"]), date.fromisoformat(month["end"]))
-    except KeyError, TypeError, ValueError:  # a JSONDecodeError is a ValueError
-        return None
-
-
-def _route_failures(
-    route: tuple[int, Mapping[str, object]], window: Mapping[str, str], label: str
-) -> list[str]:
-    """Require the actual route's typed pending result for month B, never a page."""
-    status, body = route
-    if status != _HTTP_OK:
-        return [f"the Audiences route answered {status}"]
-    failures: list[str] = []
-    if (body.get("kind"), body.get("reason_code")) != (WINDOW_UNAVAILABLE, PRESET_UNAVAILABLE):
-        failures.append(
-            f"the Audiences route served {body.get('kind')!r} ({body.get('reason_code')!r}), "
-            f"not {WINDOW_UNAVAILABLE} ({PRESET_UNAVAILABLE})"
-        )
-    if "page" in body:
-        failures.append("the Audiences route served a page body for the over-bound month")
-    temporal = body.get("temporal")
-    found = (
-        cast("Mapping[str, object]", temporal).get("resolved")
-        if isinstance(temporal, Mapping)
-        else None
-    )
-    resolved: Mapping[str, object] = (
-        cast("Mapping[str, object]", found) if isinstance(found, Mapping) else {}
-    )
-    served = (resolved.get("window"), resolved.get("period_label"))
-    if served != (dict(window), label):
-        failures.append(
-            f"the route resolved {served[0]!r} {served[1]!r}, "
-            f"not month B {dict(window)!r} {label!r}"
-        )
-    return failures
-
-
-def audiences_over_bound_verdict(  # noqa: PLR0912, PLR0915 -- one ordered list of closed checks
-    read: OverBoundReadBack,
-) -> dict[str, object]:
-    """Return the M2 verdict: `failures` is empty exactly when month B is served as pending.
-
-    Accepted only when the run is a `SUCCEEDED` grant with `bake_finalize` `SUCCEEDED`; the
-    Audiences task `SUCCEEDED` and wrote under the run's grant; month A's pointer held a full
-    Audiences body, decoded whole, for the pointer's own window; the finalized pointer is the
-    run's grant-bearing revision for a later month and carries the grant's serving generation;
-    its body is the typed `audiences_body_over_bound`
-    marker for that month; the pointer is served under the grant's binding; and the actual
-    Audiences route answers the typed `window_unavailable` result for that month.
-    """
-    run = read.run
-    failures: list[str] = []
-    grant = run.grant_id
-    if run.state is not RunState.SUCCEEDED or grant is None:
-        failures.append(f"the run is {run.state.value} with grant {grant!r}")
-    by_name: dict[str, list[NodeRecord]] = {}
-    for node in read.nodes:
-        by_name.setdefault(node.name, []).append(node)
-    finalize = [item.state for item in by_name.get(BAKE_FINALIZE_NODE, [])]
-    if finalize != [NodeState.SUCCEEDED]:
-        failures.append(f"bake_finalize is {[state.value for state in finalize]}")
-    verdict: dict[str, object] = {"run_id": run.run_id, "grant_id": grant, "failures": failures}
-    tasks = by_name.get(task_node_name(AUDIENCES_ROW), [])
-    if [item.state for item in tasks] != [NodeState.SUCCEEDED]:
-        failures.append(f"{AUDIENCES_ROW}: task nodes {[item.state.value for item in tasks]}")
-        return verdict
-    effect, _extra = read_task_effect(tasks[0])
-    verdict["effect"] = effect.effect_kind.value
-    if effect.effect_kind is not BakeEffectKind.WRITTEN:
-        failures.append(f"{AUDIENCES_ROW}: the task's effect is {effect.effect_kind.value}")
-    if effect.grant_id != grant or f"{effect.page}#{effect.variant}" != AUDIENCES_ROW:
-        failures.append(f"{AUDIENCES_ROW}: the effect names another grant or row")
-    (before, before_json), (after, after_json) = read.before, read.after
-    if before is None or before.resolved_window is None:
-        failures.append("month A had no Audiences pointer before the root")
-    elif (month_a := _full_body_month(before_json)) is None:
-        failures.append("month A's pointer did not hold a full Audiences body")
-    elif month_a != before.resolved_window:
-        failures.append("month A's body is not for its pointer's window")
-    if after is None or after.grant_id is None or after.resolved_window is None:
-        failures.append(f"{AUDIENCES_ROW}: the finalized pointer is absent or grant-less")
-        return verdict
-    verdict["revision"] = after.revision.value
-    if after.grant_id != grant:
-        failures.append(f"{AUDIENCES_ROW}: the finalized pointer holds another grant")
-    if after.serving_generation != serving_generation(after.grant_id):
-        failures.append(f"{AUDIENCES_ROW}: the pointer's serving generation is not its grant's")
-    if after.revision.value != effect.artifact_revision:
-        failures.append(f"{AUDIENCES_ROW}: the pointer does not hold the effect's revision")
-    if before is not None and before.resolved_window is not None:
-        if after.revision == before.revision:
-            failures.append(f"{AUDIENCES_ROW}: the pointer did not advance past month A")
-        if after.resolved_window.start <= before.resolved_window.end:
-            failures.append(f"{AUDIENCES_ROW}: month B is not after month A")
-    if _payload_type(after_json) != AUDIENCES_UNAVAILABLE_ARTIFACT_TYPE:
-        failures.append(f"{AUDIENCES_ROW}: month B's body is not the over-bound marker")
-        return verdict
-    try:
-        unavailable = require_audiences_unavailable_artifact_payload(json.loads(after_json or ""))
-    except (KeyError, TypeError, ValueError) as error:
-        failures.append(f"{AUDIENCES_ROW}: month B's marker is malformed ({type(error).__name__})")
-        return verdict
-    verdict["reason"] = unavailable.reason_code
-    if unavailable.month != after.resolved_window:
-        failures.append(f"{AUDIENCES_ROW}: the marker's month is not the pointer's window")
-    try:
-        served = granted_generation(after, read.binding(after.grant_id))
-    except (UngrantedGenerationError, RefreshPendingError) as error:
-        failures.append(f"{AUDIENCES_ROW}: not served ({type(error).__name__})")
-    else:
-        verdict["served_built_at"] = served.built_at
-        if served.built_at is None or served.built_at != after.written_at:
-            failures.append(f"{AUDIENCES_ROW}: served as {served}, not built_at its write instant")
-    window = {
-        "start": after.resolved_window.start.isoformat(),
-        "end": after.resolved_window.end.isoformat(),
-    }
-    failures.extend(_route_failures(read.route, window, unavailable.month_label))
-    return verdict
 
 
 TASK_SUMMARY = "task_summary"

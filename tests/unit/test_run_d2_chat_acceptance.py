@@ -260,31 +260,34 @@ def test_turn_attribution_counts_measured_spans_and_extra_tool_round_trips() -> 
     assert leg.turn_attribution(times, {}, [])["model_ms"] is None
 
 
-# --- C3: outside the Audiences top-N, from pack 8's own ranking ------------------------------
+# --- C3: the lowest-ranked Audiences campaign, from pack 8's own ranking --------------------
 
 
-def test_the_selection_is_the_first_campaign_beyond_the_bound_by_impressions() -> None:
+def test_the_selection_is_the_campaign_ranked_last_by_impressions_then_key() -> None:
     rows = [
         ("campaign:zz", Decimal(900)),
         ("campaign:aa", Decimal(100)),
-        ("campaign:mm", Decimal(500)),
+        ("campaign:mm", Decimal(100)),
         ("campaign:bb", Decimal(500)),
     ]
-    selection = leg.audiences_outside_selection(rows, 2)
-    # Ties rank by key, as the bake ranks them; the lexically last key is shown, not selected.
-    assert selection["shown"] == ["campaign:zz", "campaign:bb"]
+    selection = leg.audiences_lowest_ranked_selection(rows)
+    # Ties rank by key, as the bake ranks them: of the two 100s, the later key ranks last.
     assert selection["selected_item"] == "campaign:mm"
-    assert selection["selected_rank"] == 3
-    assert selection["listed"] == 4
+    assert (selection["selected_rank"], selection["listed"]) == (4, 4)
+    assert selection["selection"] == "audiences-lowest-ranked-campaign-v2"
 
 
-def test_the_selection_is_refused_when_no_campaign_lies_beyond_the_bound() -> None:
-    with pytest.raises(ValueError, match="none beyond"):
-        leg.audiences_outside_selection([("campaign:aa", Decimal(1))], 1)
+def test_the_selection_is_refused_when_pack_8_lists_no_campaign_or_repeats_one() -> None:
+    with pytest.raises(ValueError, match="no campaign"):
+        leg.audiences_lowest_ranked_selection([])
     with pytest.raises(ValueError, match="repeats"):
-        leg.audiences_outside_selection(
-            [("campaign:aa", Decimal(1)), ("campaign:aa", Decimal(2))], 1
+        leg.audiences_lowest_ranked_selection(
+            [("campaign:aa", Decimal(1)), ("campaign:aa", Decimal(2))]
         )
+    # Control: one campaign is its own lowest rank.
+    assert (
+        leg.audiences_lowest_ranked_selection([("campaign:aa", Decimal(1))])["selected_rank"] == 1
+    )
 
 
 def test_the_exposure_expectation_reads_only_current_publications() -> None:
@@ -524,9 +527,8 @@ def test_the_reach_week_read_back_from_the_lake_is_bound_never_formatted() -> No
 
 
 def test_the_campaign_name_read_back_from_the_lake_is_bound_never_formatted() -> None:
-    bound = leg.audiences_runtime_campaign_bound(1)
     ranked: list[list[str | None]] = [
-        [f"campaign:c{index:03d}", str(10_000 - index)] for index in range(bound + 1)
+        [f"campaign:c{index:03d}", str(10_000 - index)] for index in range(8)
     ]
     name = "O'Brien's -- Fall Sale"
     client = _LakeClient(

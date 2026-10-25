@@ -1633,6 +1633,7 @@ def test_history_past_the_selection_bound_is_refused_as_the_rosters_own_answer()
     )
     assert refused.value.context == {
         "roster": RosterKind.SEGMENT.value,
+        "roster_refusal": "unreadable",
         "reason": str(SELECTION_TOO_LARGE),
     }
     assert refused.value.__cause__ is too_large

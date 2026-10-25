@@ -51,13 +51,6 @@ persistent status region announces it ([temporal contract §6](temporal-control-
 - Today: "This window isn't published yet. Choose another window."
 - Text: "Audiences for {period_label} isn't ready to show yet. It's built from your Amazon Marketing Cloud audience segment data. When it's ready, you'll see which audience segments your buyers belong to, where there are enough shoppers to show them."
 
-### ABS-AUD-2
-
-- Surface: Audiences
-- Trigger: the month's body is `AudienceProfileUnavailable` with `audiences_body_over_bound`.
-- Today: "This window isn't published yet. Choose another window."
-- Text: "Audiences for {period_label} has more segment and campaign detail than this page can show. Ask the assistant about a DSP campaign to see its figures."
-
 ### ABS-RET-1
 
 - Surface: Retention
@@ -195,9 +188,7 @@ and ABS-REACH-1 promises no single Reach section: overlap and the full funnel ne
 ads on one instance, and frequency is not shown for the week preset or with fewer than four active
 campaigns ([Reach LLD](reach-and-funnel/low-level-design.md)). The Scorecard reads Vendor Central
 sales only for TACoS, so an account without it still gets a Scorecard ([Scorecard
-LLD](scorecard/low-level-design.md)). `audiences_body_over_bound` fires on too many profile or
-campaign rows or an over-cap body, and only DSP campaigns have a governed assistant read ([Audiences
-LLD](audiences/low-level-design.md)). New buyers are a calendar-period section, so ABS-NC-1 (rolling
+LLD](scorecard/low-level-design.md)). New buyers are a calendar-period section, so ABS-NC-1 (rolling
 presets) promises only new-to-brand purchases ([New customers LLD](new-customers/low-level-design.md)).
 Every closing clause is conditioned on the data because a ready page can still bake an `empty` or
 `insufficient` outcome.

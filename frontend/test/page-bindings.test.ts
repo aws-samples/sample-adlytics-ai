@@ -125,7 +125,7 @@ test('generated V2 bindings expose the routed Audiences declaration', () => {
   assert.equal(audiences.route, '/audiences/');
   assert.deepEqual(audiences.artifacts, [{
     artifact_id: 'audiences', outcomes: ['complete', 'empty', 'insufficient'],
-    type: 'AudienceProfileArtifact', version: 1,
+    type: 'AudienceProfileArtifact', version: 2,
   }]);
   assert.deepEqual(audiences.temporal_policy.candidate_presets, ['last_complete_month']);
   assert.equal(audiences.temporal_policy.default_preset, 'last_complete_month');

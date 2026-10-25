@@ -10,10 +10,6 @@ import pytest
 
 from adapters.jobs.presentation_validation.loader import load_v2_page_schemas
 from adapters.jobs.preset_artifact_publisher import bakeability
-from adapters.jobs.preset_artifact_publisher.audiences_source import (
-    audiences_bake_plan_count,
-    audiences_marketplace_count,
-)
 from adapters.jobs.preset_artifact_publisher.bakeability import (
     BAKER_LAMBDA_TIMEOUT_SECONDS,
     BAKER_MEMORY_BYTES,
@@ -30,12 +26,8 @@ from adapters.jobs.preset_artifact_publisher.bakeability import (
     ArtifactServedPage,
     BakeStorageEstimate,
     artifact_served_pages,
-    audiences_bake_duration_ms,
-    audiences_page_plan_count,
-    audiences_row_budget,
-    audiences_runtime_campaign_bound,
-    audiences_storage_estimate,
-    audiences_timeout_headroom_campaigns,
+    audiences_object_count,
+    audiences_phases,
     campaign_bake_object_count,
     certify_roster_tasks,
     evaluate_bakeability,
@@ -86,7 +78,9 @@ _STORAGE = {
     "retention": BakeStorageEstimate(
         1, retention_bake_body_bytes(ROOT), retention_bake_body_bytes(ROOT)
     ),
-    "audiences": audiences_storage_estimate(1, audiences_row_budget(1)),
+    "audiences": BakeStorageEstimate(
+        audiences_object_count(), 256_000, audiences_object_count() * 256_000
+    ),
     "synthetic": BakeStorageEstimate(2, 256_000, 512_000),
     "over-declared": BakeStorageEstimate(2, 256_000, 512_000),
     "unregistered": BakeStorageEstimate(2, 256_000, 512_000),
@@ -120,10 +114,7 @@ def test_todays_declared_presets_and_real_bake_batches_pass_the_gate() -> None:
             "new-customers": new_customers_bake_plan_count(ROOT),
             "reach": reach_bake_plan_count(ROOT),
             "retention": len(STANDARD_METRICS),
-            "audiences": audiences_bake_plan_count(
-                audiences_marketplace_count(ROOT),
-                audiences_runtime_campaign_bound(audiences_marketplace_count(ROOT)),
-            ),
+            "audiences": sum(audiences_phases(1)),
         },
         _STORAGE,
     )
@@ -147,39 +138,47 @@ def test_todays_declared_presets_and_real_bake_batches_pass_the_gate() -> None:
     assert _STORAGE["campaigns"].maximum_body_bytes < 256_000
 
 
-def test_the_audiences_bounds_fit_the_gate_and_one_more_fires_it() -> None:
-    """The timeout estimator and the row budget are the gate's own boundaries.
+@pytest.mark.covers("ADR-141")
+def test_audiences_is_certified_at_24_plans_whatever_its_campaigns() -> None:
+    """Design 01 §6: every campaign read is grouped, so no phase grows with the seller."""
+    from domain.operations.execution_graph_release import BakeRoster  # noqa: PLC0415
 
-    The estimator is not the page limit (TD-D2-AUDIENCES-CAMPAIGN-LIMIT).
-    """
+    # Phase 1: 3 profile rosters + the count pass's 3 figures and R1; phase 2: 15 profile
+    # figures + the history walk's older months; phase 3: its withheld part.
+    assert audiences_phases(1) == (7, 16, 1)
+    assert sum(audiences_phases(1)) == 24
+    certified = {row.key: row.certified_plan_count for row in BakeRoster.from_contract().rows}
+    assert certified["audiences#last_complete_month"] == 24
+    # Its write term is the whole allowance, so its budget is the counter's, not a fixed 300 s.
+    write = bakeability.page_write_seconds("audiences")
+    assert (write.seconds, write.marker) == (450.0, "derived")
+    assert bakeability.phased_task_seconds(audiences_phases(1), CERTIFIED_QUERY_CAP, 450.0) == 600
+    assert BAKE_TASKS["budget_seconds"]["audiences#last_complete_month"] == 600
+    # The write term writes 4,500 objects one after another at 100 ms; the stage writes more.
+    assert audiences_object_count() == 4_500
     page = ArtifactServedPage("audiences", ())
-    bound, rows = audiences_timeout_headroom_campaigns(1), audiences_row_budget(1)
-    # The renderer executes list, roster and measurement barriers separately. Eleven campaigns
-    # fit nine waves with render, write and positive tail margin; twelve need ten query waves.
-    assert (bound, audiences_bake_plan_count(1, bound)) == (11, 63)
-    assert audiences_bake_duration_ms(1, bound) < BAKER_TIMEOUT_SECONDS * 1_000
-    assert audiences_bake_duration_ms(1, bound + 1) > BAKER_TIMEOUT_SECONDS * 1_000
-    # Paired pre-fix control: the former aggregate N=13 choice also exceeds the phase budget.
-    assert audiences_bake_duration_ms(1, 13) > BAKER_TIMEOUT_SECONDS * 1_000
-    assert rows == 300
+    storage = {
+        "audiences": BakeStorageEstimate(4_500, 256_000, 4_500 * 256_000),
+    }
+    assert evaluate_bakeability((page,), {"audiences": 24}, storage) == ()
+    # Paired control: one more sequential object than the term holds overruns the 600 s budget.
+    over = {"audiences": BakeStorageEstimate(4_801, 256_000, 4_801 * 256_000)}
+    assert {item.rule for item in evaluate_bakeability((page,), {"audiences": 24}, over)} == {
+        "bake-write-budget"
+    }
 
-    def findings(campaigns: int, body_rows: int) -> set[str]:
-        return {
-            finding.rule
-            for finding in evaluate_bakeability(
-                (page,),
-                {"audiences": audiences_bake_plan_count(1, campaigns)},
-                {"audiences": audiences_storage_estimate(1, body_rows)},
-            )
-        }
 
-    assert findings(bound, rows) == set()
-    # The generic aggregate check remains an independent backstop after the phase-aware bound.
-    # It waves at the certified Q10, so 91 plans (bound + 7) are the first over 300 s, and
-    # 83 plans (bound + 5) still fit their waves but leave no time for the write.
-    assert findings(bound + 5, rows) == {"bake-write-budget"}
-    assert findings(bound + 7, rows) == {"bake-budget"}
-    assert findings(bound, rows + 1) == {"artifact-storage-bound"}
+@pytest.mark.covers("ADR-141")
+def test_the_gate_prints_audiences_from_its_one_certificate(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """LOW-1: `main()` prints the page and task counts from the one model, with no override."""
+    assert bakeability.main() == 0
+    out = capsys.readouterr().out
+    assert "  audiences: presets [last_complete_month], 24 plans" in out
+    assert bakeability.d2_main() == 0
+    d2 = capsys.readouterr().out
+    assert "  audiences#last_complete_month: count 24, phases [7, 16, 1], write 450.0 s" in d2
 
 
 def test_the_retention_body_bound_fits_one_marketplace_and_refuses_two() -> None:
@@ -402,18 +401,6 @@ def test_a_contract_source_horizon_its_page_does_not_derive_is_a_finding(
     assert (finding.page_id, finding.rule) == ("campaigns", "source-horizon")
 
 
-def test_the_page_level_audiences_gate_uses_the_one_campaign_authority() -> None:
-    """TD-D2-AUDIENCES-CAMPAIGN-LIMIT: the page-level count fits the certified row count."""
-    from domain.operations.execution_graph_release import BakeRoster  # noqa: PLC0415
-
-    bound = audiences_runtime_campaign_bound(1)
-    certified = {row.key: row.certified_plan_count for row in BakeRoster.from_contract().rows}
-    assert bound < audiences_timeout_headroom_campaigns(1)
-    gated = audiences_page_plan_count(ROOT)
-    assert gated == audiences_bake_plan_count(1, bound)
-    assert gated <= certified["audiences#last_complete_month"]
-
-
 def test_every_row_write_term_fits_the_derived_write_allowance() -> None:
     """ADR-144: half the contract's Lambda timeout, derived; every row fits today (16.6 s)."""
     assert bakeability.WRITE_ALLOWANCE_SECONDS == BAKE_TASKS["lambda_timeout_seconds"] / 2 == 450
@@ -509,9 +496,9 @@ def test_the_widths_are_read_from_the_batches_the_sources_build() -> None:
 
 @pytest.mark.covers("ADR-152")
 def test_the_ceiling_is_derived_from_the_bakers_memory_by_the_binding_row() -> None:
-    """V at 1,024 MiB is 10,835; the gate recomputes the intercept and slope it uses."""
-    assert BAKE_MAX_ROWS_FOR_TEST == bake_max_rows(1024 * 1024 * 1024) == 10_835
-    assert bake_max_rows(2048 * 1024 * 1024) == 21_755
+    """V at 1,024 MiB is 15,696; the gate recomputes the intercept and slope it uses."""
+    assert BAKE_MAX_ROWS_FOR_TEST == bake_max_rows(1024 * 1024 * 1024) == 15_696
+    assert bake_max_rows(2048 * 1024 * 1024) == 31_514
     pairs = tuple(
         zip(
             bakeability.memory_models(ROOT),
@@ -522,9 +509,9 @@ def test_the_ceiling_is_derived_from_the_bakers_memory_by_the_binding_row() -> N
     bound = bakeability.binding_row(pairs)
     assert (bound.key, bound.fixed_bytes, bound.bytes_per_row, bound.ceiling) == (
         "audiences#last_complete_month",
-        4_101_580,
-        49_167,
-        10_835,
+        4_099_720,
+        33_941,
+        15_696,
     )
     assert not [
         item for item in bakeability.memory_findings(ROOT) if item.rule == "bake-memory-derivation"
@@ -535,7 +522,7 @@ def test_the_ceiling_is_derived_from_the_bakers_memory_by_the_binding_row() -> N
 def test_a_declared_slope_the_batches_dont_produce_is_a_finding(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(bakeability, "BAKE_BYTES_PER_ROW", 49_166)
+    monkeypatch.setattr(bakeability, "BAKE_BYTES_PER_ROW", 33_940)
     assert "bake-memory-derivation" in {item.rule for item in bakeability.memory_findings(ROOT)}
 
 
@@ -585,8 +572,8 @@ def test_the_gate_prints_the_memory_model_and_its_binding_row(
     assert bakeability.main() == 0
     out = capsys.readouterr().out
     assert f"BAKE_MAX_ROWS={BAKE_MAX_ROWS_FOR_TEST}" in out
-    assert "1024 MiB Baker: BAKE_MAX_ROWS=10835 (binding audiences#last_complete_month)" in out
-    assert "10240 MiB Baker: BAKE_MAX_ROWS=109109" in out
+    assert "1024 MiB Baker: BAKE_MAX_ROWS=15696 (binding audiences#last_complete_month)" in out
+    assert "10240 MiB Baker: BAKE_MAX_ROWS=158056" in out
     for row in BAKE_TASKS["roster"]:
         assert f"memory {row['page']}#{row['variant']}: W " in out
 
