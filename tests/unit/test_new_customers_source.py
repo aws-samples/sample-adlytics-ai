@@ -149,7 +149,10 @@ _CONVERSION: dict[str, dict[tuple[str, str], tuple[Decimal, Decimal]]] = {
     "revenue_new_to_brand_12mo": {SP: (Decimal(1200), Decimal(850))},
     "revenue_attributed": {SP: (Decimal(3000), Decimal(2500))},
 }
-_GATEWAY_PRODUCTS = {(SP, "amazon_asin:B0GATE0001"): 5, (SP, "amazon_asin:B0GATE0002"): 3}
+_GATEWAY_PRODUCTS: dict[tuple[tuple[str, str], str], int] = {
+    (SP, "amazon_asin:B0GATE0001"): 5,
+    (SP, "amazon_asin:B0GATE0002"): 3,
+}
 _BUYERS_COUNT = Decimal(4400)
 _WEEK_SPEND = Decimal(5500)
 _CHANNEL_BUYERS: dict[tuple[str, str], Decimal] = {SP: Decimal(300), SB: Decimal(120)}
@@ -208,14 +211,14 @@ class NewCustomersQueries:
         for (channel, ad_product, asin, _market), count in totals.items():
             if count > 0:
                 partitions.setdefault((channel, ad_product), []).append((asin, count))
-        rows = []
+        ranked_rows: list[QueryRow] = []
         population: list[RankedPopulation] = []
         for partition in sorted(partitions):
             ranked = sorted(partitions[partition], key=lambda item: (-item[1], item[0]))
             population.append(
                 RankedPopulation(partition, len(ranked), (), suppressed=self.gateway_suppressed)
             )
-            rows.extend(
+            ranked_rows.extend(
                 cast(
                     "QueryRow",
                     {
@@ -229,9 +232,9 @@ class NewCustomersQueries:
                 for asin, count in ranked[: restriction.n]
             )
         return QueryResult(
-            tuple(rows[: request.max_rows]),
+            tuple(ranked_rows[: request.max_rows]),
             1_024,
-            len(rows) > request.max_rows,
+            len(ranked_rows) > request.max_rows,
             Suppression(
                 rows_suppressed=self.gateway_suppressed,
                 reason="withheld" if self.gateway_suppressed else None,
