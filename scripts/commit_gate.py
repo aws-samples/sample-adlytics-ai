@@ -30,6 +30,7 @@ import importlib.util
 import shutil
 import sys
 import tempfile
+import tomllib
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from types import ModuleType
@@ -189,12 +190,28 @@ def lint_targets(paths: Sequence[str]) -> list[str]:
     return [p for p in paths if p.startswith(LINT_ROOTS) and p.endswith(LINT_SUFFIXES)]
 
 
+def format_excluded(root: Path) -> frozenset[str]:
+    """Return the files `make lint` never formats: pyproject's `[tool.ruff.format] exclude`.
+
+    Ruff applies that list to a path it is given, not to stdin under `--stdin-filename`, so the
+    gate reads it itself; a generated module there is still `ruff check`ed.
+    """
+    config = root / "pyproject.toml"
+    if not config.exists():
+        return frozenset()
+    tool = tomllib.loads(config.read_text(encoding="utf-8")).get("tool", {})
+    return frozenset(tool.get("ruff", {}).get("format", {}).get("exclude", ()))
+
+
 def check_lint(root: Path) -> list[Refusal]:
     """Run ruff check and ruff format --check on the staged content of each lintable file."""
     refusals: list[Refusal] = []
+    unformatted = format_excluded(root)
     for path in lint_targets(staged_paths(root)):
         content = publication_gate.git_bytes(root, "show", f":{path}")
         for tool in (["check", "--output-format", "concise"], ["format", "--check"]):
+            if tool[0] == "format" and path in unformatted:
+                continue
             argv = [sys.executable, "-m", "ruff", *tool, "--force-exclude"]
             result = publication_gate._run(
                 [*argv, "--stdin-filename", path, "-"], root, stdin=content

@@ -247,6 +247,19 @@ def test_lint_refuses_unformatted_staged_content(gate: ModuleType, repo: Path) -
     ]
 
 
+def test_lint_formats_nothing_the_formatter_excludes_and_still_checks_it(
+    gate: ModuleType, repo: Path
+) -> None:
+    """A generated module the formatter excludes commits; paired with the refusal above."""
+    (repo / "pyproject.toml").write_text(
+        '[tool.ruff.format]\nexclude = ["src/generated.py"]\n', encoding="utf-8"
+    )
+    _stage(repo, {"src/generated.py": '"""Fixture."""\n\nx=1\n'})
+    assert gate.check_lint(repo) == []
+    _stage(repo, {"src/generated.py": '"""Fixture."""\n\nimport os\n'})
+    assert [r.code for r in gate.check_lint(repo)] == ["LINT_FAILED"]
+
+
 def test_lint_reads_only_the_make_lint_scope(gate: ModuleType, repo: Path) -> None:
     _stage(repo, {"scripts/tool.py": "import os\n", "docs/x.md": "import os\n"})
     assert gate.lint_targets(gate.staged_paths(repo)) == []
