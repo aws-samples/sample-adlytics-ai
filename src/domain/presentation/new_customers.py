@@ -983,23 +983,29 @@ class GatewayEntry:
         return None if not self.more_count else f"And {self.more_count} more products."
 
 
-def gateway_entry(
+def gateway_entry(  # noqa: PLR0913 -- the channel, its two answers and its listed count
     channel: tuple[str, str],
     products: dict[str, tuple[str, int]],
     channel_total: int | None,
+    *,
+    listed_count: int,
 ) -> GatewayEntry:
     """Build one channel's covered gateway entry from its two planned answers.
 
     `products` maps each ASIN to (title, halo-inclusive new-to-brand purchases summed across this
-    channel's campaigns); `channel_total` is the same metric at this ad product's grain, the share's
-    denominator (never step 1's halo-excluding count). Zero or no row there reads the "no
-    purchases were credited" text, whatever step 1 shows.
+    channel's campaigns): the query's top `GATEWAY_LIMIT` (ADR-152). `listed_count` is how many
+    products with a purchase the channel has in all, which the "N more" line counts from.
+    `channel_total` is the same metric at this ad product's grain, the share's denominator
+    (never step 1's halo-excluding count). Zero or no row there reads the "no purchases were
+    credited" text, whatever step 1 shows.
     """
     ad_product_key, channel_label = channel
     listed = sorted(
         ((asin, title, count) for asin, (title, count) in products.items() if count > 0),
         key=lambda item: (-item[2], item[0]),
     )
+    if listed_count < len(listed):
+        raise ValueError("a channel lists at least the products it shows.")
     if not channel_total:
         if listed:
             raise ValueError("a channel with product purchases has a channel total above 0.")
@@ -1021,7 +1027,7 @@ def gateway_entry(
         channel_label,
         GatewayState.ROWS,
         rows=shown,
-        more_count=len(listed) - len(shown),
+        more_count=listed_count - len(shown),
     )
 
 

@@ -6,6 +6,7 @@ hold every page. Every time budget and query count becomes a defect alarm derive
 shape that doesn't grow with the seller. Its two alarm-only `infra/` additions need their own
 approval. When accepted, it amends ADR-139 and ADR-140 (markers added there).
 
+> **Proposed amendment, 2026-10-25.** [ADR-152](adr-152-read-page-sized-answers-in-sql-with-no-arbitrary-row-ceiling.md) (Proposed) would make a cut read on Retail health, Scorecard, Reach, Retention and New customers a defect instead of `rows_over_ceiling`, because their reads are bounded by their meaning or their governed axes; Audiences keeps it until its reads stream. Every `limit` reason's `isolated_refusal` line would name its operator action. This decision stays as written until ADR-152 is accepted.
 ## Context
 A source's refusal is already one page's designed absence (ADR-140 decision 6). But several ways
 data scale or a passing outage reaches the cohort are fatal, so one page's problem stales every

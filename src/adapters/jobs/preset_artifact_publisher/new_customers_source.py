@@ -79,6 +79,12 @@ from domain.measurement.pack_coverage import (
     pack_coverage_verdict,
     pack_versioned_columns,
 )
+from domain.measurement.ranking import (
+    RankedMembership,
+    RankedPopulation,
+    RankedProjection,
+    RankedRestriction,
+)
 from domain.measurement.rosters import Roster, apply_roster, coarser_grain_set
 from domain.narrative.shaped_response import UnitKind
 from domain.presentation.compared_metrics import new_customers_change_semantics
@@ -92,6 +98,7 @@ from domain.presentation.insights import (
     horizon_role_for,
 )
 from domain.presentation.new_customers import (
+    GATEWAY_LIMIT,
     NEW_BUYERS_DECLARED_PERIODS,
     NEW_CUSTOMERS_ARTIFACT_TYPE,
     NEW_CUSTOMERS_ARTIFACT_VERSION,
@@ -227,7 +234,8 @@ _BUYERS_CONTRACT = "amc-new-to-brand-buyers-platform"
 _CHANNEL_CONTRACT = "amc-new-to-brand-buyers-channel"
 _BUYERS_FACT = "fct_new_to_brand_buyers"
 _STEP_ONE_GRAINS = ("ecosystem", "platform", "channel", "ad_product", "marketplace")
-_GATEWAY_PRODUCT_GRAINS = ("channel", "ad_product", "product")
+_GATEWAY_PRODUCT_GRAINS = ("channel", "ad_product", "product", "marketplace")
+"""The gateway's ranked grain: each (channel, ad product) partition keeps its own top products."""
 _GATEWAY_TOTAL_GRAINS = ("channel", "ad_product")
 _STEP_TWO_GRAINS = ("marketplace",)
 _PER_CHANNEL_GRAINS = ("channel", "ad_product")
@@ -386,6 +394,10 @@ class _Reduction:
     answers: dict[_Label, GroupedAnswer]
     rosters: dict[_Label, Roster] = field(default_factory=dict[_Label, Roster])
     """The ad-product roster each per-channel plan was planned against (plan D4)."""
+    populations: dict[_Label, tuple[RankedPopulation, ...]] = field(
+        default_factory=dict[_Label, tuple[RankedPopulation, ...]]
+    )
+    """The gateway's population per (channel, ad product): how many products it lists."""
 
     def rows(self, label: _Label) -> GroupedAnswer:
         """Return one parsed answer by (marketplace, section, metric, role)."""
@@ -406,6 +418,21 @@ class _RostersOnce:
         return self.read[request]
 
 
+def gateway_restriction(window: DateRange) -> RankedRestriction:
+    """Rank each ad product's products by new-to-brand purchases, above 0 (the gateway)."""
+    return RankedRestriction(
+        key="product",
+        rank_metric=_GATEWAY,
+        rank_window=window,
+        population_metrics=(_GATEWAY,),
+        population_windows=(window,),
+        n=GATEWAY_LIMIT,
+        projection=RankedProjection.RANKED_KEYS,
+        partition_by=("channel", "ad_product"),
+        membership=RankedMembership.POSITIVE,
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class _BatchBuilder:
     """Build one preset's measurement batch and its slot labels, with no I/O."""
@@ -413,6 +440,8 @@ class _BatchBuilder:
     catalog: Catalog
     contracts: tuple[DataContract, ...]
     clock: Callable[[], datetime]
+    ad_product_count: int
+    """The governed ad products: the gateway keeps at most `GATEWAY_LIMIT` rows for each."""
 
     def request(  # noqa: PLR0913 — one plan's coordinates, by keyword
         self,
@@ -422,6 +451,7 @@ class _BatchBuilder:
         *,
         filters: Mapping[str, str],
         prior: DateRange | None = None,
+        ranked: RankedRestriction | None = None,
     ) -> MeasurementToolRequest:
         return MeasurementToolRequest(
             tool=MeasurementTool.METRIC_BY_GRAIN
@@ -436,8 +466,9 @@ class _BatchBuilder:
             computed_at=self.clock(),
             correlation_id=_CORRELATION_ID,
             filters=filters,
-            max_rows=BAKE_MAX_ROWS,
+            max_rows=BAKE_MAX_ROWS if ranked is None else GATEWAY_LIMIT * self.ad_product_count,
             row_ceiling=RowCeiling.BAKE,
+            ranked=ranked,
         )
 
     def batch(
@@ -459,12 +490,22 @@ class _BatchBuilder:
             if prior is not None:
                 labels.append((market, "step1", _SHARE, "prior"))
             if plan.gateway.covered:
-                for section, grains in (
-                    ("gateway_products", _GATEWAY_PRODUCT_GRAINS),
-                    ("gateway_total", _GATEWAY_TOTAL_GRAINS),
-                ):
-                    requests.append(self.request(_GATEWAY, grains, window, filters=pinned))
-                    labels.append((market, section, _GATEWAY, "current"))
+                # ADR-152: each ad product's top products and its product count are ranked in
+                # the query, so the read is page-sized at any catalog size.
+                requests.append(
+                    self.request(
+                        _GATEWAY,
+                        _GATEWAY_PRODUCT_GRAINS,
+                        window,
+                        filters=pinned,
+                        ranked=gateway_restriction(window),
+                    )
+                )
+                labels.append((market, "gateway_products", _GATEWAY, "current"))
+                requests.append(
+                    self.request(_GATEWAY, _GATEWAY_TOTAL_GRAINS, window, filters=pinned)
+                )
+                labels.append((market, "gateway_total", _GATEWAY, "current"))
             period = request.calendar_period
             if period is not None and plan.buyers_published:
                 periodic = {
@@ -565,9 +606,9 @@ class NewCustomersArtifactRenderer:
     def render_new_customers(self, request: NewCustomersRenderInput) -> NewCustomersRenderResult:
         """Measure every marketplace, reduce it, and bake the deterministic insight."""
         plans = self._market_plans(request)
-        requests, labels = _BatchBuilder(self.catalog, self.contracts, self.clock).batch(
-            request, plans
-        )
+        requests, labels = _BatchBuilder(
+            self.catalog, self.contracts, self.clock, len(self.labels.ad_products)
+        ).batch(request, plans)
         # Buyers and cost per buyer read one roster per marketplace: read it once per bake.
         rosters_once = None if self.tooling.rosters is None else _RostersOnce(self.tooling.rosters)
         prepared = prepare_batch(
@@ -616,7 +657,14 @@ class NewCustomersArtifactRenderer:
         answers = self._parsed(request, executed.slots, labels)
         if answers is None:
             return NewCustomersRenderResult(None, ())
-        artifact = self._artifact(_Reduction(request, plans, answers, rosters), measured)
+        populations = {
+            label: answer.population
+            for answer, label in zip(executed.slots, labels, strict=True)
+            if label[1] == "gateway_products"
+        }
+        artifact = self._artifact(
+            _Reduction(request, plans, answers, rosters, populations), measured
+        )
         return NewCustomersRenderResult(artifact, measured if artifact is not None else ())
 
     def _parsed(
@@ -863,7 +911,9 @@ class NewCustomersArtifactRenderer:
         channels = tuple((row.ad_product_key, row.ad_product_label) for row in step_one)
         if not plan.gateway.covered:
             return tuple(gateway_not_covered(channel, plan.gateway) for channel in channels)
-        products = reduction.rows((plan.marketplace, "gateway_products", _GATEWAY, "current")).rows
+        label = (plan.marketplace, "gateway_products", _GATEWAY, "current")
+        products = reduction.rows(label).rows
+        listed_counts = {item.partition: item.count for item in reduction.populations[label]}
         totals = reduction.rows((plan.marketplace, "gateway_total", _GATEWAY, "current")).rows
         identities = (
             None if self.titles is None else self.titles.hierarchy(reduction.request.period)
@@ -875,7 +925,7 @@ class NewCustomersArtifactRenderer:
         for ad_product, label in channels:
             listed: dict[str, tuple[str, int]] = {}
             pair = (channel_of[ad_product], ad_product)
-            for (channel, product, asin), value in products.items():
+            for (channel, product, asin, _market), value in products.items():
                 if (channel, product) != pair or value is None:
                     continue
                 identity = titles.get(asin)
@@ -887,7 +937,12 @@ class NewCustomersArtifactRenderer:
                     listed[identity.child_asin] = (identity.title, int(value))
             total = totals.get(pair)
             entries.append(
-                gateway_entry((ad_product, label), listed, None if total is None else int(total))
+                gateway_entry(
+                    (ad_product, label),
+                    listed,
+                    None if total is None else int(total),
+                    listed_count=listed_counts.get(pair, 0),
+                )
             )
         return tuple(entries)
 
@@ -1051,6 +1106,7 @@ def new_customers_bake_plan_count(root: Path) -> int:
         catalog,
         tuple(contract for _, contract in load_contracts(root)),
         lambda: datetime(2026, 1, 15, tzinfo=UTC),
+        len(labels.ad_products),
     )
     _requests, slots = builder.batch(
         NewCustomersRenderInput(

@@ -1819,6 +1819,8 @@ def test_a_page_refusal_settles_unavailable_and_its_sibling_is_written(
         "replayed",
         "rows_read",
         "max_rows",
+        "operator_action",
+        "memory_mib",
     }
     assert line.details["task_id"] == bake.node(run, task_node_name(refused)).node_id
 

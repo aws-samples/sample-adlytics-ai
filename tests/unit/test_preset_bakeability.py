@@ -57,6 +57,7 @@ from adapters.jobs.preset_artifact_publisher.retention_source import (
 )
 from adapters.jobs.preset_artifact_publisher.scorecard_source import scorecard_bake_plan_count
 from adapters.outbound.media_taxonomy import load_media_taxonomy
+from domain.operations.bake_memory import bake_max_rows
 from domain.operations.generated_execution_graphs import BAKE_TASKS
 from domain.presentation.page_schemas import TemporalPresetId
 from domain.semantics.identity import ChannelKey
@@ -304,7 +305,7 @@ def test_the_sibling_envelope_counts_every_governed_channel() -> None:
 
 
 def test_each_roster_task_is_counted_at_its_own_window_never_a_page_total() -> None:
-    """Plan 4.2: each task at its own window; Retail ranks in the query, so 47 at any window."""
+    """Plan 4.2: each task at its own window; Retail ranks in the query, so 49 at any window."""
     counts = roster_plan_counts(ROOT)
 
     assert counts == {
@@ -312,9 +313,9 @@ def test_each_roster_task_is_counted_at_its_own_window_never_a_page_total() -> N
         "campaigns#7d": 26,
         "campaigns#14d": 30,
         "campaigns#30d": 34,
-        "retail-health#1d": 47,
-        "retail-health#7d": 47,
-        "retail-health#14d": 47,
+        "retail-health#1d": 49,
+        "retail-health#7d": 49,
+        "retail-health#14d": 49,
     }
     assert list(counts) == [
         f"{row['page']}#{row['variant']}"
@@ -460,7 +461,7 @@ def test_every_roster_rows_resident_bytes_are_derived_term_by_term() -> None:
         held = max(
             (
                 bakeability._certified_width(  # pyright: ignore[reportPrivateUsage]
-                    plan, width, bakeability.audiences_marketplace_count(ROOT)
+                    plan, width, bakeability.fixed_axes(ROOT)
                 )
                 for plan, width in zip(certificate.plans, certificate.widths, strict=False)
             ),
@@ -476,34 +477,106 @@ def test_every_roster_rows_resident_bytes_are_derived_term_by_term() -> None:
 
 @pytest.mark.covers("ADR-143")
 def test_a_row_past_its_share_fails_and_its_terms_name_why() -> None:
-    """Paired with the certified rows above: the same row at a far wider ceiling fails."""
-    key, certificate = next(
-        item for item in bakeability.roster_certificates(ROOT) if item[0] == "retail-health#14d"
-    )
-    fits = bakeability.resident(certificate, key)
+    """Paired with the certified rows above: the binding row one row past V fails."""
+    binding = "audiences#last_complete_month"
+    certificate = dict(bakeability.roster_certificates(ROOT))[binding]
+    axes = bakeability.fixed_axes(ROOT)
+    fits = bakeability.resident(certificate, binding, axes=axes)
     assert fits.certified
-    over = bakeability.resident(certificate, key, ceiling=50 * BAKE_MAX_ROWS_FOR_TEST)
+    one_past = BAKE_MAX_ROWS_FOR_TEST + 1
+    over = bakeability.resident(certificate, binding, ceiling=one_past, axes=axes)
     assert not over.certified and over.shaped > fits.shaped
 
 
-@pytest.mark.covers("ADR-143")
+@pytest.mark.covers("ADR-143", "ADR-152")
 def test_the_widths_are_read_from_the_batches_the_sources_build() -> None:
-    """Retail's widths: the ranked 50, its 50 x 31 series bound, and the bake ceiling."""
+    """Retail's widths: the movers' 3, the ranked 50, 50 x 5 ad rows, 50 x 31 series, totals."""
     widths = dict(bakeability.roster_certificates(ROOT))["retail-health#7d"].widths
-    assert set(widths) == {50, 50 * bakeability.BAKE_LONGEST_WINDOW_DAYS, BAKE_MAX_ROWS_FOR_TEST}
+    assert set(widths) == {
+        3,
+        50,
+        50 * 5,
+        50 * bakeability.BAKE_LONGEST_WINDOW_DAYS,
+        BAKE_MAX_ROWS_FOR_TEST,
+    }
+    # Only the totals and trends ask for the ceiling, and they group by fixed axes alone.
+    axes = bakeability.fixed_axes(ROOT)
+    certificate = dict(bakeability.roster_certificates(ROOT))["retail-health#7d"]
+    assert all(
+        bakeability._certified_width(plan, width, axes) < width  # pyright: ignore[reportPrivateUsage]
+        for plan, width in zip(certificate.plans, certificate.widths, strict=True)
+        if width == BAKE_MAX_ROWS_FOR_TEST
+    )
 
 
-@pytest.mark.covers("ADR-143")
-def test_the_longest_bake_window_is_held_equal_to_the_longest_daily_read(
+@pytest.mark.covers("ADR-152")
+def test_the_ceiling_is_derived_from_the_bakers_memory_by_the_binding_row() -> None:
+    """V at 1,024 MiB is 10,835; the gate recomputes the intercept and slope it uses."""
+    assert BAKE_MAX_ROWS_FOR_TEST == bake_max_rows(1024 * 1024 * 1024) == 10_835
+    assert bake_max_rows(2048 * 1024 * 1024) == 21_755
+    pairs = tuple(
+        zip(
+            bakeability.memory_models(ROOT),
+            bakeability.memory_models(ROOT, ceiling=BAKE_MAX_ROWS_FOR_TEST + 1),
+            strict=True,
+        )
+    )
+    bound = bakeability.binding_row(pairs)
+    assert (bound.key, bound.fixed_bytes, bound.bytes_per_row, bound.ceiling) == (
+        "audiences#last_complete_month",
+        4_101_580,
+        49_167,
+        10_835,
+    )
+    assert not [
+        item for item in bakeability.memory_findings(ROOT) if item.rule == "bake-memory-derivation"
+    ]
+
+
+@pytest.mark.covers("ADR-152")
+def test_a_declared_slope_the_batches_dont_produce_is_a_finding(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr(bakeability, "BAKE_BYTES_PER_ROW", 49_166)
+    assert "bake-memory-derivation" in {item.rule for item in bakeability.memory_findings(ROOT)}
+
+
+@pytest.mark.covers("ADR-152")
+def test_governed_taxonomy_axes_are_fixed_and_a_catalog_axis_is_not() -> None:
+    """Scorecard's channel read is bounded by the taxonomy; a campaign read by the ceiling."""
+    axes = bakeability.fixed_axes(ROOT)
+    assert {key: axes[key] for key in ("ecosystem_key", "platform_key", "channel_key")} == {
+        "ecosystem_key": 1,
+        "platform_key": 2,
+        "channel_key": 5,
+    }
+    assert (axes["ad_product_key"], axes["exposure_group"], axes["acquisition_channel_group"]) == (
+        5,
+        3,
+        3,
+    )
+    rows = dict(bakeability.roster_certificates(ROOT))
+    scorecard = bakeability.resident(rows["scorecard#7d"], "scorecard#7d", axes=axes)
+    assert scorecard.shaped < 1_000 * bakeability.BAKE_MEMORY_TERMS.shaped
+    audiences = bakeability.resident(
+        rows["audiences#last_complete_month"], "audiences#last_complete_month", axes=axes
+    )
+    assert audiences.shaped > BAKE_MAX_ROWS_FOR_TEST * bakeability.BAKE_MEMORY_TERMS.shaped
+
+
+@pytest.mark.covers("ADR-143", "ADR-152")
+def test_every_daily_series_fits_the_longest_bake_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Retail's 14-day series is the longest; Reach's 92-day campaign count is no series."""
     rows = bakeability.roster_certificates(ROOT)
-    assert bakeability.longest_daily_window_days(rows) == bakeability.BAKE_LONGEST_WINDOW_DAYS == 31
+    assert bakeability.longest_daily_window_days(rows) == 14
+    assert bakeability.BAKE_LONGEST_WINDOW_DAYS == 31
     assert not [
         item for item in bakeability.memory_findings(ROOT) if item.rule == "bake-longest-window"
     ]
-    # Control: a constant one day short is a finding.
-    monkeypatch.setattr(bakeability, "BAKE_LONGEST_WINDOW_DAYS", 30)
+    # Control: a constant one day shorter than the longest series is a finding.
+    monkeypatch.setattr(bakeability, "BAKE_LONGEST_WINDOW_DAYS", 13)
     assert [item.rule for item in bakeability.memory_findings(ROOT)] == ["bake-longest-window"]
 
 
@@ -514,12 +587,13 @@ def test_the_gate_prints_the_memory_model_and_its_binding_row(
     assert bakeability.main() == 0
     out = capsys.readouterr().out
     assert f"BAKE_MAX_ROWS={BAKE_MAX_ROWS_FOR_TEST}" in out
-    assert "binding row: " in out
+    assert "1024 MiB Baker: BAKE_MAX_ROWS=10835 (binding audiences#last_complete_month)" in out
+    assert "10240 MiB Baker: BAKE_MAX_ROWS=109109" in out
     for row in BAKE_TASKS["roster"]:
         assert f"memory {row['page']}#{row['variant']}: W " in out
 
 
-@pytest.mark.covers("ADR-143")
+@pytest.mark.covers("ADR-143", "ADR-152")
 def test_the_retail_estate_at_the_bake_ceiling_stays_within_its_modelled_bytes() -> None:
     """Local estate at the bound (03 §3.5): BAKE_MAX_ROWS products bake within `resident`.
 
@@ -560,9 +634,5 @@ def test_the_retail_estate_at_the_bake_ceiling_stays_within_its_modelled_bytes()
     assert rendered.artifact is not None
     assert rendered.artifact.total_count == BAKE_MAX_ROWS_FOR_TEST
     certificate = dict(bakeability.roster_certificates(ROOT))["retail-health#7d"]
-    model = bakeability.resident(
-        certificate,
-        "retail-health#7d",
-        marketplaces=bakeability.audiences_marketplace_count(ROOT),
-    )
+    model = bakeability.resident(certificate, "retail-health#7d", axes=bakeability.fixed_axes(ROOT))
     assert peak <= model.total, model.terms()

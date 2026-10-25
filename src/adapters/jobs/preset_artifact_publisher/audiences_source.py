@@ -77,6 +77,7 @@ from domain.measurement.rosters import (
     apply_roster,
     roster_filters,
 )
+from domain.operations.bake_refusals import IsolatedRefusal, IsolatedRefusalReason, RefusalScope
 from domain.presentation.audiences import (
     AUDIENCES_ARTIFACT_TYPE,
     AUDIENCES_ARTIFACT_VERSION,
@@ -698,6 +699,8 @@ class AudiencesArtifactRenderer:
                 query_batch_max_concurrency=self.tooling.query_batch_max_concurrency,
             ),
         )
+        for slot in executed.slots:
+            _refuse_cut(slot)
         parsed = tuple(parse_grouped_answer(slot, period.window, grains) for slot in executed.slots)
         if any(item is None or not grouped_answer_complete(item, period.window) for item in parsed):
             return None
@@ -1057,6 +1060,21 @@ def _render_inputs_identity(
     return f"{_RENDER_INPUTS_IDENTITY_PREFIX}{digest}"
 
 
+def _refuse_cut(answer: PresentationMeasurementAnswerSlot) -> None:
+    """Refuse the page a read cut at its declared width feeds (`rows_over_ceiling`, ADR-142).
+
+    Audiences' campaign-grain reads still hold the population until they stream (r2): the
+    refusal carries the width (`max_rows`, the rows the read kept).
+    """
+    shaped = answer.answer
+    if shaped is not None and shaped.metadata.truncated:
+        raise IsolatedRefusal(
+            IsolatedRefusalReason.ROWS_OVER_CEILING,
+            RefusalScope.PAGE,
+            max_rows=shaped.metadata.row_count,
+        )
+
+
 def _parsed(
     slots: tuple[PresentationMeasurementAnswerSlot, ...], batch: _Batch, period: CalendarPeriod
 ) -> dict[_Label, GroupedAnswer] | None:
@@ -1064,6 +1082,7 @@ def _parsed(
     parsed: dict[_Label, GroupedAnswer] = {}
     for answer, label in zip(slots, batch.labels, strict=True):
         grains = TOTAL_GRAINS if label[2] in TOTAL_METRICS else SEGMENT_GRAINS
+        _refuse_cut(answer)
         item = parse_grouped_answer(answer, period.window, grains)
         if item is None or not grouped_answer_complete(item, period.window):
             # Every month planned has a CURRENT publication, so anything short of a complete

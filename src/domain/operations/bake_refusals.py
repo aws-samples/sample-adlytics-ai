@@ -30,6 +30,8 @@ __all__ = [
     "BAKE_REFUSAL",
     "ISOLATABLE_SECTIONS",
     "ITEM_SECTIONS",
+    "MEMORY_SIZED",
+    "OPERATOR_ACTIONS",
     "PARTITION_BOUND_CODES",
     "REFUSAL_CLASSES",
     "REFUSAL_CONTEXT",
@@ -110,6 +112,26 @@ REFUSAL_CLASSES: Final[Mapping[IsolatedRefusalReason, RefusalClass]] = {
     _R.EVIDENCE_INCOMPLETE: RefusalClass.DATA,
 }
 """The one class table: limit and dependency alarm; data is counted, not alarmed."""
+
+_RAISE_MEMORY: Final = (
+    "raise the Baker memory; the ceiling grows with it (make check-bakeability prints it per size)"
+)
+OPERATOR_ACTIONS: Final[Mapping[IsolatedRefusalReason, str]] = {
+    _R.ROWS_OVER_CEILING: _RAISE_MEMORY,
+    _R.POPULATION_OVER_CEILING: _RAISE_MEMORY,
+    _R.BODY_OVER_CAP: "report the page and variant: a body over the cap needs a source change",
+    _R.BODIES_OVER_INVOCATION: "raise the Baker memory: it scales CPU and network for the writes",
+    _R.PARTITIONS_OVER_BOUND: "none yet: the preset reads more partitions than a snapshot takes",
+    _R.QUARTER_MANIFEST_ABSENT: "none yet: the quarter manifest is not built (ADR-146)",
+    _R.STATEMENT_TIME_OVER_INVOCATION: (
+        "check the bake workgroup's Athena queueing; the page re-bakes on the next landing"
+    ),
+}
+"""What an operator does about each `limit` refusal; the `isolated_refusal` line states it.
+
+A unit test holds its keys equal to the `limit` reasons (ADR-152)."""
+MEMORY_SIZED: Final = frozenset({_R.ROWS_OVER_CEILING, _R.POPULATION_OVER_CEILING})
+"""The limits the Baker's memory sizes: their line also states the memory the model assumed."""
 
 REFUSAL_CONTEXT: Final[Mapping[IsolatedRefusalReason, frozenset[str]]] = {
     _R.ROWS_OVER_CEILING: frozenset({"rows_read", "max_rows"}),

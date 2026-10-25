@@ -64,6 +64,7 @@ from adapters.outbound.telemetry.generated_spans import PRESET_ARTIFACT_DELIVERY
 from adapters.outbound.telemetry.reporting import OperationLog, Report
 from domain.measurement.pack_coverage import PackDayVersions
 from domain.measurement.planning import measure_alias
+from domain.measurement.ranking import RankedPopulation
 from domain.measurement.rosters import Roster, RosterEntry
 from domain.operations.execution_graph_release import BakeRoster
 from domain.presentation.insights import InsightSlotId, InsightSlotState
@@ -176,6 +177,67 @@ class NewCustomersQueries:
     channel_currency: str | None = None
     """The currency the per-channel cost answer carries; None is the marketplace's own."""
     seen: list[QueryRequest] = field(default_factory=list[QueryRequest])
+    gateway: dict[tuple[tuple[str, str], str], int] = field(
+        default_factory=lambda: dict(_GATEWAY_PRODUCTS)
+    )
+    """Fictional halo-inclusive new-to-brand purchases per (ad product, product)."""
+    gateway_suppressed: bool = False
+    """Whether Amazon withheld a gateway row somewhere in the product population."""
+
+    def _gateway(self, request: QueryRequest, market: str) -> QueryResult:
+        """Stand in for the ranked gateway read: each partition's top n above 0, and its count."""
+        plan = request.plan.logical
+        totals: dict[tuple[str, ...], int] = {}
+        for (media, asin), count in self.gateway.items():
+            key = (*media, asin, market) if "amazon_asin" in plan.group_by else media
+            totals[key] = totals.get(key, 0) + count
+        if request.ranked is None:
+            rows = [
+                cast(
+                    "QueryRow",
+                    {
+                        **dict(zip(plan.group_by, key, strict=True)),
+                        measure_alias(0): Decimal(count),
+                    },
+                )
+                for key, count in totals.items()
+            ]
+            return QueryResult(tuple(rows), 1_024, False, Suppression(rows_suppressed=False))
+        restriction = request.ranked.restriction
+        partitions: dict[tuple[str, str], list[tuple[str, int]]] = {}
+        for (channel, ad_product, asin, _market), count in totals.items():
+            if count > 0:
+                partitions.setdefault((channel, ad_product), []).append((asin, count))
+        rows = []
+        population: list[RankedPopulation] = []
+        for partition in sorted(partitions):
+            ranked = sorted(partitions[partition], key=lambda item: (-item[1], item[0]))
+            population.append(
+                RankedPopulation(partition, len(ranked), (), suppressed=self.gateway_suppressed)
+            )
+            rows.extend(
+                cast(
+                    "QueryRow",
+                    {
+                        "channel_key": partition[0],
+                        "ad_product_key": partition[1],
+                        "amazon_asin": asin,
+                        "marketplace_key": market,
+                        measure_alias(0): Decimal(count),
+                    },
+                )
+                for asin, count in ranked[: restriction.n]
+            )
+        return QueryResult(
+            tuple(rows[: request.max_rows]),
+            1_024,
+            len(rows) > request.max_rows,
+            Suppression(
+                rows_suppressed=self.gateway_suppressed,
+                reason="withheld" if self.gateway_suppressed else None,
+            ),
+            population=tuple(population),
+        )
 
     def _channel_rows(self, request: QueryRequest, market: str) -> list[QueryRow]:
         """Rows of the channel grain set: one per returned ad product, never a total."""
@@ -242,21 +304,7 @@ class NewCustomersQueries:
         if periodic.get("grain_set") == "channel":
             rows = self._channel_rows(request, market)
         elif plan.metric.name == "purchases_new_to_brand_incl_halo_12mo":
-            by_product = "amazon_asin" in plan.group_by
-            totals: dict[tuple[object, ...], int] = {}
-            for (media, asin), count in _GATEWAY_PRODUCTS.items():
-                key = (*media, asin) if by_product else media
-                totals[key] = totals.get(key, 0) + count
-            rows = [
-                cast(
-                    "QueryRow",
-                    {
-                        **dict(zip(plan.group_by, key, strict=True)),
-                        measure_alias(0): Decimal(count),
-                    },
-                )
-                for key, count in totals.items()
-            ]
+            return self._gateway(request, market)
         elif plan.group_by == ("marketplace_key",):
             row: dict[str, str | int | Decimal | None] = {"marketplace_key": market}
             for column in plan.carried_columns:
@@ -554,7 +602,45 @@ def test_an_uncovered_window_bakes_every_channel_s_coverage_text_and_plans_no_ga
         request.plan.logical.group_by
         for request in covered.seen
         if request.plan.logical.metric.name == "purchases_new_to_brand_incl_halo_12mo"
-    ] == [("channel_key", "ad_product_key", "amazon_asin"), ("channel_key", "ad_product_key")]
+    ] == [
+        ("channel_key", "ad_product_key", "amazon_asin", "marketplace_key"),
+        ("channel_key", "ad_product_key"),
+    ]
+
+
+def _gateway_products(count: int) -> dict[tuple[tuple[str, str], str], int]:
+    return {(SP, f"amazon_asin:B0GATE{index:06d}"): count - index for index in range(count)}
+
+
+@pytest.mark.covers("ADR-152")
+@pytest.mark.parametrize(
+    ("products", "shown", "more"),
+    [(9, 9, 0), (10, 10, 0), (11, 10, 1), (50_000, 10, 49_990)],
+)
+def test_the_gateway_is_ranked_in_the_query_and_counts_every_listed_product(
+    products: int, shown: int, more: int
+) -> None:
+    """One ranked read per marketplace keeps 10 per ad product; "N more" is its count."""
+    queries = NewCustomersQueries(PERIOD, gateway=_gateway_products(products))
+    result = _renderer(queries).render_new_customers(ROLLING)
+    assert result.artifact is not None
+    (market,) = result.artifact.markets
+    entry = next(item for item in market.gateway if item.ad_product_key == SP[1])
+    assert (len(entry.rows), entry.more_count) == (shown, more)
+    assert entry.rows[0].asin == "B0GATE000000"  # the most purchases, ASIN the tie
+    (ranked,) = (item for item in queries.seen if item.ranked is not None)
+    assert ranked.ranked is not None
+    restriction = ranked.ranked.restriction
+    assert (restriction.n, restriction.partition_by) == (10, ("channel", "ad_product"))
+    assert ranked.max_rows == 10 * len(LABELS.ad_products)
+
+
+@pytest.mark.covers("ADR-152")
+def test_a_gateway_population_amazon_withheld_bakes_nothing() -> None:
+    """Paired with the ordinary bake: a withheld population is incomplete evidence."""
+    assert _rendered() is not None
+    queries = NewCustomersQueries(PERIOD, gateway_suppressed=True)
+    assert _renderer(queries).render_new_customers(ROLLING).artifact is None
 
 
 def test_each_marketplace_is_its_own_batch_and_section_in_its_own_currency() -> None:

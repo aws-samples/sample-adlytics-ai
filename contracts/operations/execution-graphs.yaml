@@ -169,9 +169,9 @@ bake_tasks:
     "campaigns#7d": 26
     "campaigns#14d": 30
     "campaigns#30d": 34
-    "retail-health#1d": 47
-    "retail-health#7d": 47
-    "retail-health#14d": 47
+    "retail-health#1d": 49
+    "retail-health#7d": 49
+    "retail-health#14d": 49
     "scorecard#7d": 19
     "scorecard#30d": 19
     "scorecard#last_complete_week": 11

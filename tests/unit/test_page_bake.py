@@ -448,7 +448,15 @@ def test_each_group_emits_one_failed_span_one_line_and_one_datapoint(
         "warning",
         "page_bake",
     )
-    assert set(second.details) - set(first.details) == {"rows_read", "max_rows"}
+    # ADR-152: a limit names its operator action; a memory-sized one, the memory assumed.
+    assert set(second.details) - set(first.details) == {
+        "rows_read",
+        "max_rows",
+        "operator_action",
+        "memory_mib",
+    }
+    assert second.details["memory_mib"] == 1024
+    assert str(second.details["operator_action"]).startswith("raise the Baker memory")
     # Paired: no groups, nothing emitted.
     emit_isolated_refusals(LOGGER, (), lineage, replayed=False, metric=telemetry.metric)
     assert len(telemetry.spans) == len(telemetry.datapoints) == 2

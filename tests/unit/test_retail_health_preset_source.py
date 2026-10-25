@@ -18,7 +18,7 @@ from preset_artifact_support import staged_custody, staged_index, staged_pointer
 from publication_support import PublicationSpec, StubPublications, successful_publication
 
 from adapters.config import PresetArtifactBakeSettings
-from adapters.inbound.tool_handlers.measurement import DEFAULT_MAX_ROWS, MeasurementTooling
+from adapters.inbound.tool_handlers.measurement import MeasurementTooling
 from adapters.jobs.contract_validation.insight_loader import load_insight_contracts
 from adapters.jobs.contract_validation.loader import load_contracts
 from adapters.jobs.presentation_validation.loader import load_v2_page_schemas
@@ -58,7 +58,7 @@ from adapters.retail_insight_requests import (
     retail_payload_without_ephemera,
 )
 from domain.measurement.planning import measure_alias
-from domain.measurement.ranking import RANKED_INVARIANT, RankedProjection
+from domain.measurement.ranking import RANKED_INVARIANT, RankBy, RankedPopulation, RankedProjection
 from domain.narrative.shaped_response import UnitKind
 from domain.operations.bake_refusals import IsolatedRefusal, IsolatedRefusalReason, RefusalScope
 from domain.presentation.compared_metrics import presentation_labels
@@ -111,7 +111,6 @@ from domain.presentation.retail_health import (
 from domain.presentation.retail_health_custody import (
     retail_health_custody_manifest_from_payload,
 )
-from domain.presentation.retail_product_detail import RetailDetailReason
 from domain.semantics.analytical_resolution import AuthorizedAnalyticalScope
 from domain.shared_kernel.errors import InvariantError
 from domain.shared_kernel.provenance import Suppression
@@ -243,6 +242,9 @@ class RetailQueries:
     """Current shipped revenue per product, replacing the base value; an absent product has no
     current shipped-revenue row (it is still in the population through the other metrics)."""
 
+    def __post_init__(self) -> None:
+        self._position = {asin: index for index, asin in enumerate(self.products)}
+
     def _omitted(  # noqa: PLR0913 -- one row's plan, product, day and window role
         self, plan: Any, asin: str | None, day: date | None, *, is_current: bool
     ) -> bool:
@@ -260,12 +262,53 @@ class RetailQueries:
             return self.revenue.get(asin, Decimal(0))
         return self._value("retail_revenue_shipped", (asin, None), is_current=True)
 
+    def _shipped(self, asin: str, *, is_current: bool) -> Decimal:
+        if is_current and self.revenue is not None:
+            return self.revenue.get(asin, Decimal(0))
+        return self._value("retail_revenue_shipped", (asin, None), is_current=is_current)
+
     def _ranked(self, request: QueryRequest) -> tuple[str, ...]:
         """Stand in for the statement's `ranked` CTE: every fake product is in the population."""
         ranked = request.ranked
         assert ranked is not None
+        restriction = ranked.restriction
+        if restriction.rank_by is RankBy.ABS_CHANGE:
+            changes = {
+                asin: abs(
+                    self._shipped(asin, is_current=True) - self._shipped(asin, is_current=False)
+                )
+                for asin in self.products
+            }
+            moved = sorted(
+                (asin for asin in self.products if changes[asin]), key=lambda a: (-changes[a], a)
+            )
+            return tuple(moved[: restriction.n])
         order = sorted(self.products, key=lambda asin: (-self._rank_value(asin), asin))
-        return tuple(order[: ranked.restriction.n])
+        return tuple(order[: restriction.n])
+
+    def _population(self) -> RankedPopulation:
+        """Stand in for the CTE population figures: every fake product, two current sums."""
+        return RankedPopulation(
+            (),
+            len(self.products),
+            (
+                (
+                    "retail_revenue_shipped",
+                    sum((self._shipped(a, is_current=True) for a in self.products), Decimal(0)),
+                ),
+                (
+                    "units_shipped",
+                    sum(
+                        (
+                            self._value("units_shipped", (a, None), is_current=True)
+                            for a in self.products
+                        ),
+                        Decimal(0),
+                    ),
+                ),
+            ),
+            suppressed=False,
+        )
 
     def run(self, request: QueryRequest) -> QueryResult:
         self.seen.append(request)
@@ -289,6 +332,7 @@ class RetailQueries:
                 bytes_scanned=1_024,
                 truncated=len(keyed) > request.max_rows,
                 suppression=Suppression(False),
+                population=(self._population(),),
             )
         products = self._ranked(request) if request.ranked is not None else self.products
         product_axis: tuple[str | None, ...] = products if "amazon_asin" in group else (None,)
@@ -345,7 +389,7 @@ class RetailQueries:
         if asin is None:
             # A daily trend value over the single marketplace.
             return Decimal(2) if is_current else Decimal(1)
-        base = Decimal(self.products.index(asin) + 1)
+        base = Decimal(self._position[asin] + 1)
         if day is not None:
             # One shipped-revenue spark point per product per day.
             return base
@@ -523,14 +567,14 @@ def _ranked_renderer(
 
 @pytest.mark.covers("ADR-143")
 @pytest.mark.parametrize("days", [1, 7, 14])
-def test_retail_certifies_47_plans_at_every_preset(days: int) -> None:
-    """42 compares and trends, the ranked keys and four ranked series, at any window."""
-    assert retail_source_module.retail_health_bake_plan_count(ROOT, days) == 47
+def test_retail_certifies_49_plans_at_every_preset(days: int) -> None:
+    """Compares and trends, the ranked keys, four series, the movers and the ads, at any window."""
+    assert retail_source_module.retail_health_bake_plan_count(ROOT, days) == 49
 
 
-@pytest.mark.covers("ADR-143")
-def test_the_series_are_read_once_per_window_for_the_ranked_50_only() -> None:
-    """Four whole-window series reads and one ranked-keys read, each within its bound."""
+@pytest.mark.covers("ADR-143", "ADR-152")
+def test_every_product_grain_read_is_restricted_to_the_ranked_keys_within_its_bound() -> None:
+    """One ranked-keys read; rows, series, ads and movers each semi-join it, page-sized."""
     products = _products(45)
     period = DateRange(date(2026, 8, 6), date(2026, 8, 19))
     prior = DateRange(date(2026, 7, 23), date(2026, 8, 5))
@@ -546,7 +590,7 @@ def test_the_series_are_read_once_per_window_for_the_ranked_50_only() -> None:
         if item.ranked is not None
         and item.ranked.restriction.projection is RankedProjection.RANKED_KEYS
     ]
-    series = [item for item in ranked if item not in keys]
+    series = [item for item in ranked if "date_key" in item.plan.logical.group_by]
     assert len(keys) == 1 and keys[0].max_rows == RETAIL_HEALTH_MAX_ROWS
     assert len(series) == 4
     assert all(
@@ -555,6 +599,13 @@ def test_the_series_are_read_once_per_window_for_the_ranked_50_only() -> None:
         and item.ceiling is RowCeiling.BAKE
         for item in series
     )
+    bounds = sorted(
+        (item.ranked.restriction.n, item.max_rows)
+        for item in ranked
+        if item.ranked is not None and item not in keys and item not in series
+    )
+    # 14 row compares at 50, two movers at 3, four product x channel ads at 50 x 2 channels.
+    assert bounds == [(3, 3)] * 2 + [(50, 50)] * 14 + [(50, 100)] * 4
     # Every read the batch makes asks for a bake ceiling, never chat's narration bound.
     assert all(item.ceiling is RowCeiling.BAKE for item in queries.seen)
     assert not any(
@@ -563,11 +614,9 @@ def test_the_series_are_read_once_per_window_for_the_ranked_50_only() -> None:
     )
 
 
-@pytest.mark.covers("ADR-143")
-def test_a_600_product_catalog_bakes_its_top_50_with_the_stated_total(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Paired: at the bake ceiling 600 products bake 50 rows of 600; at chat's 500 none bake."""
+@pytest.mark.covers("ADR-143", "ADR-152")
+def test_a_600_product_catalog_bakes_its_top_50_with_the_stated_total() -> None:
+    """600 products bake 50 rows of 600; each series read returns at most 50 x days rows."""
     products, _ = _rank_case("products-600")
     queries = RetailQueries(products, PERIOD)
     artifact = (
@@ -589,18 +638,50 @@ def test_a_600_product_catalog_bakes_its_top_50_with_the_stated_total(
         for item in series
     )
 
-    # Control: the compares at chat's 500-row bound truncate, and the page bakes nothing: its
-    # designed absence, refused at the read's width (ADR-142).
-    monkeypatch.setattr(retail_source_module, "BAKE_MAX_ROWS", DEFAULT_MAX_ROWS)
-    with pytest.raises(IsolatedRefusal) as refused:
-        _ranked_renderer(products, RetailQueries(products, PERIOD)).render_retail_health(
-            RetailHealthRenderInput(PERIOD, PRIOR)
-        )
-    assert (refused.value.reason, refused.value.scope) == (
-        IsolatedRefusalReason.ROWS_OVER_CEILING,
-        RefusalScope.PAGE,
+
+@pytest.mark.covers("ADR-152")
+def test_a_100000_product_catalog_bakes_50_rows_its_sums_and_every_childs_ad_section() -> None:
+    """No catalog size refuses or blanks: 50 rows of 100,000, the sums the population's."""
+    count = 100_000
+    rendered = _rendered(count)
+    artifact = rendered.artifact
+    assert artifact is not None
+    assert (len(artifact.rows), artifact.total_count) == (RETAIL_HEALTH_MAX_ROWS, count)
+    reconciliation = artifact.reconciliation
+    assert reconciliation is not None and reconciliation.outcome == "reconciled"
+    assert len(rendered.children) == RETAIL_HEALTH_MAX_ROWS
+    for child in rendered.children:
+        ads = child.artifact.ad_attributed
+        assert ads is not None
+        assert [item.label for item in ads.rows] == list(CHANNEL_LABELS.values())
+
+
+MOVERS_PARITY_FIXTURE = ROOT / "tests" / "fixtures" / "retail-movers-parity-v1.json"
+"""The base's movers, product count and product sums per rank case, captured at 5739e389 from
+the Python whole-population reduction before the movers and sums moved into the query."""
+
+
+@pytest.mark.covers("ADR-152")
+@pytest.mark.parametrize("case", RANK_PARITY_CASES)
+def test_the_sql_movers_count_and_sums_equal_the_base_python_reduction(case: str) -> None:
+    """Golden: movers text, stated total and both product sums are the base's, in USD."""
+    golden = json.loads(MOVERS_PARITY_FIXTURE.read_text(encoding="utf-8"))["cases"][case]
+    products, revenue = _rank_case(case)
+    artifact = (
+        _ranked_renderer(products, RetailQueries(products, PERIOD, revenue=revenue))
+        .render_retail_health(RetailHealthRenderInput(PERIOD, PRIOR))
+        .artifact
     )
-    assert dict(refused.value.refusal_context) == {"max_rows": DEFAULT_MAX_ROWS}
+    assert artifact is not None
+    movers = artifact.insights[3]
+    assert (movers.state.value, movers.text) == (golden["movers_state"], golden["movers_text"])
+    assert artifact.total_count == golden["total_count"]
+    reconciliation = artifact.reconciliation
+    assert reconciliation is not None
+    assert (str(reconciliation.product_revenue), str(reconciliation.product_units)) == (
+        golden["product_revenue"],
+        golden["product_units"],
+    )
 
 
 @pytest.mark.covers("ADR-143")
@@ -1520,12 +1601,12 @@ def test_the_retail_decoder_refuses_a_wrong_count_mixed_or_plotted_display_value
 
 @pytest.mark.covers("ADR-084", "ADR-070")
 def test_retail_movers_are_baked_at_two_places_in_the_shipped_revenue_currency() -> None:
-    """Format 4 added display values and two-place movers; formats 5 to 10 keep them."""
+    """Format 4 added display values and two-place movers; formats 5 to 11 keep them."""
     artifact = _rendered(2).artifact
     assert artifact is not None
     movers = artifact.insights[3]
 
-    assert RETAIL_HEALTH_PRESET_RENDER_FORMAT == 10
+    assert RETAIL_HEALTH_PRESET_RENDER_FORMAT == 11
     assert movers.text is not None
     assert re.search(r"changed by -?[\d,]+\.\d{2} USD", movers.text)
 
@@ -1565,47 +1646,6 @@ def test_a_bake_reduces_one_product_detail_child_per_displayed_row() -> None:
         assert ads is not None
         assert [item.label for item in ads.rows] == list(CHANNEL_LABELS.values())
         assert child.product.value == _canonical_asin(int(row.child_asin.removeprefix("FICT")))
-
-
-def _ceiling_render(count: int) -> RetailHealthRenderResult:
-    products = _products(count)
-    return _renderer(
-        RetailQueries(products, PERIOD),
-        FakeHierarchy(_hierarchy_result(products)),
-        FakeReported(
-            RetailReportedTotals(Decimal(0), Decimal(0), ("reported-total-publication-1",))
-        ),
-    ).render_retail_health(RetailHealthRenderInput(PERIOD, PRIOR))
-
-
-@pytest.mark.covers("ADR-125", "ADR-142")
-def test_an_ad_read_over_the_bake_ceiling_blanks_only_product_details_ad_section() -> None:
-    """At 10,000 products the product x channel ad read (20,000 rows) is cut at its width.
-
-    The ad read never blocks the Retail bake: the page bakes its top 50 of every product, and
-    each child's ad section is its typed absence. Only a Retail-actual read refuses the page.
-    """
-    assert retail_source_module.BAKE_MAX_ROWS == 10_000
-    rendered = _ceiling_render(retail_source_module.BAKE_MAX_ROWS)
-    assert rendered.artifact is not None
-    assert (len(rendered.artifact.rows), rendered.artifact.total_count) == (
-        RETAIL_HEALTH_MAX_ROWS,
-        10_000,
-    )
-    assert len(rendered.children) == RETAIL_HEALTH_MAX_ROWS
-    for child in rendered.children:
-        ads = child.artifact.ad_attributed
-        assert ads is not None
-        assert (ads.rows, ads.reason_code) == ((), RetailDetailReason.MISSING_CURRENT_PUBLICATION)
-    # Paired: under the ceiling (2 x 4,000 ad rows) every child's ad section fills.
-    under = _ceiling_render(4_000)
-    assert under.artifact is not None
-    assert all(
-        child.artifact.ad_attributed is not None
-        and [item.label for item in child.artifact.ad_attributed.rows]
-        == list(CHANNEL_LABELS.values())
-        for child in under.children
-    )
 
 
 @pytest.mark.covers("ADR-125")
@@ -1713,7 +1753,7 @@ def test_an_over_cap_retail_parent_is_the_pages_body_over_cap_before_any_persist
 def test_plan_4_3_every_current_read_precedes_the_first_query() -> None:
     """Make every CURRENT read precede the first query, with an unchanged artifact.
 
-    The bind pass needs the whole read set before any query: both inspections, the hierarchy
+    The bind pass needs the whole read set before any query: the one inspection, the hierarchy
     and the reported totals happen first, and the render still yields its two rows.
     """
     events: list[str] = []
@@ -1755,7 +1795,7 @@ def test_plan_4_3_every_current_read_precedes_the_first_query() -> None:
 
     assert rendered.artifact is not None and len(rendered.artifact.rows) == 2
     first_query = events.index("query")
-    assert events[:first_query] == ["read"] * 4
+    assert events[:first_query] == ["read"] * 3
     assert "read" not in events[first_query:]
 
 
@@ -1780,7 +1820,7 @@ def test_a_ranked_series_states_the_qualifiers_the_merged_per_day_answers_stated
 
     batch = retail_source_module.retail_health_measurement_batch(
         retail_source_module.RetailHealthMeasurementBatchRequest(
-            METRIC_CATALOG, CONTRACTS, PERIOD, PRIOR, NOW
+            METRIC_CATALOG, CONTRACTS, PERIOD, PRIOR, NOW, len(CHANNEL_LABELS)
         )
     )
     (plan,) = (

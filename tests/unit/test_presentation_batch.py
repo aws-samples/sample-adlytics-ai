@@ -86,6 +86,7 @@ class _WatchedQueries:
             bytes_scanned=result.bytes_scanned,
             truncated=result.truncated,
             suppression=result.suppression,
+            population=result.population,
         )
         self.refs.append(weakref.ref(tracked))
         return tracked
@@ -93,7 +94,7 @@ class _WatchedQueries:
 
 def _batch() -> tuple[Any, PresentationEvidenceInspectionResult]:
     prepared = retail_health_measurement_batch(
-        RetailHealthMeasurementBatchRequest(METRIC_CATALOG, CONTRACTS, PERIOD, PRIOR, NOW)
+        RetailHealthMeasurementBatchRequest(METRIC_CATALOG, CONTRACTS, PERIOD, PRIOR, NOW, 2)
     ).prepared
     inspection = StubPublications().inspect(
         PresentationEvidenceInspectionRequest(

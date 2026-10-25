@@ -40,7 +40,8 @@ from enum import StrEnum
 from typing import Final, Protocol, runtime_checkable
 
 from domain.measurement.publications import BoundQueryPlan
-from domain.measurement.ranking import RankedRead
+from domain.measurement.ranking import RankedPopulation, RankedRead
+from domain.operations.bake_memory import BAKER_MEMORY_BYTES, bake_max_rows
 from domain.shared_kernel.provenance import Suppression
 
 type QueryParam = str | int | Decimal | bool
@@ -55,13 +56,13 @@ partial and must say so. Capping the request keeps that decision visible instead
 letting a caller ask for a million rows and quietly receive a page.
 """
 
-BAKE_MAX_ROWS: Final = 10_000
-"""The most rows one publish-time held answer may keep (ADR-143): a memory-sized defect guard.
+BAKE_MAX_ROWS: Final = bake_max_rows(BAKER_MEMORY_BYTES)
+"""The most rows one publish-time held answer may keep (ADR-143, ADR-152): derived, not chosen.
 
-Sized by the baker's memory model only (`bakeability.resident`), never by narration: a bake
-renders a page, it does not narrate. Finite on purpose, because an unbounded fetch crashed dev
-(2026-08-22). Derived by the row-ceiling probe on 2026-10-18 at 1,024 MiB (ADR-143 decision 6);
-re-derived after bodies stream and the baker's memory changes.
+The deployed Baker's memory certifies it (`domain.operations.bake_memory`), never narration: a
+bake renders a page, it does not narrate. Finite on purpose, because an unbounded fetch crashed
+dev (2026-08-22). Only an entity-wide read still holds a population this wide; a larger Baker
+raises it (`make check-bakeability` prints it per Baker size).
 """
 
 BAKE_LONGEST_WINDOW_DAYS: Final = 31
@@ -208,6 +209,13 @@ class QueryResult:
     compute it: suppression is established at extraction, and by the time rows reach
     here the only question is whether the fact survived the journey. See
     docs/concepts/provenance-chain.md.
+    """
+
+    population: tuple[RankedPopulation, ...] = ()
+    """A ranked-keys read's whole population, one entry per partition with a member (ADR-152).
+
+    Empty for every other read. The rows are the ranked keys only; this is what the statement
+    measured about every key before it kept the top `n`.
     """
 
 
