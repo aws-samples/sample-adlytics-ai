@@ -1,14 +1,17 @@
 # SPDX-License-Identifier: MIT-0
-"""A folded answer equals the held one over the same rows (ADR-143, design 03 §3.4).
+"""A folded answer equals the held one over the same rows (ADR-143, design 03 §3.4, ADR-152).
 
 For every eligible plan the catalog declares (a simple one-measure metric with no join), a fold
 that collects every figure returns the held answer's figures, units, suppression, truncation and
-metadata, built by the one metadata builder.
+metadata, built by the one metadata builder. A group-streamed read (`GroupSink`) hands on the
+same figures, one group at a time, so an entity-streamed page never shows other figures than a
+held read would.
 """
 
 from __future__ import annotations
 
 import pathlib
+import threading
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -23,6 +26,7 @@ from adapters.inbound.tool_handlers.measurement import (
     prepare_batch,
 )
 from adapters.jobs.contract_validation.loader import load_contracts
+from adapters.jobs.preset_artifact_publisher.group_stream import GroupSink
 from adapters.outbound.athena.query import (
     _suppression_from,  # pyright: ignore[reportPrivateUsage]
 )
@@ -37,6 +41,7 @@ from domain.measurement.answers import (
 )
 from domain.measurement.figures import Figure
 from domain.measurement.folds import FOLD_INELIGIBLE, ObservedKeys
+from domain.measurement.groups import KeyedGroup
 from domain.measurement.planning import (
     CURRENCY_COLUMN,
     MEASURE_ALIAS,
@@ -193,6 +198,41 @@ def test_every_eligible_fold_equals_its_held_answer(truncated: bool) -> None:
             )
             == held.metadata
         )
+
+
+def _streamed(plan: QueryPlan, rows: tuple[QueryRow, ...]) -> list[KeyedGroup[Figure]]:
+    """Fold the rows through a `GroupSink` on a producer thread and drain its groups here."""
+    sink = GroupSink(plan.group_by[:1], 1_000, threading.Event())
+    producer = threading.Thread(
+        target=fold_answer, args=(_answer_request(plan, rows, truncated=False), rows, sink)
+    )
+    producer.start()
+    groups: list[KeyedGroup[Figure]] = []
+    while isinstance(item := sink.take(producer.is_alive), KeyedGroup):
+        groups.append(item)
+    producer.join()
+    return groups
+
+
+def test_every_eligible_group_streamed_read_hands_on_the_held_figures() -> None:
+    """Each row's figure reaches its group in read order, withheld figures included."""
+    for plan in eligible_plans():
+        rows = _rows(plan)
+        held = answer_measurement(_answer_request(plan, rows, truncated=False))
+        groups = _streamed(plan, rows)
+        figures = tuple(
+            {**dict(figure.dimensions), MEASURE_ALIAS: figure.value}
+            for group in groups
+            for figure in group.members
+        )
+        assert figures == held.data.values, plan.metric.name
+        # Every group is keyed by its own leading column's value.
+        (column,) = plan.group_by[:1]
+        assert all(
+            dict(figure.dimensions)[column] == group.key[0]
+            for group in groups
+            for figure in group.members
+        ), plan.metric.name
 
 
 def test_a_fold_that_overflows_is_truncated_like_a_truncated_read() -> None:
