@@ -2,7 +2,23 @@
 
 Date: 2026-09-15
 Status: Accepted — parent artifact serving implemented in development; displayed-detail bake remains pending
-> **Proposed amendment, 2026-10-18.** [ADR-146](adr-146-publish-the-reach-quarter-or-retire-it-on-measured-partitions.md) (Proposed) would, under its measured branch (a), apply the exact-partition bound per pack at the bake pin, as decision point 5 already attests bakes; or, under branch (d) if the owner chooses it, attest a quarter through one precomputed manifest item per pack that moves in the same transaction as the publications it lists. This decision stays in force, unchanged, until ADR-146 is accepted.
+> **Amendment, 2026-10-25 — the exact read is a chunked two-pass snapshot of up to 1,000
+> partitions.** The verified A/B/C read of 2026-09-22 already reads each phase in transactions of
+> at most 100 items, and accepts only when both head passes agree. Heads only move forward, so that
+> agreement proves one instant however many transactions a pass takes: it's the two-pass verified
+> snapshot named on 2026-09-16 (`tests/unit/test_exact_snapshot_chunks.py` enumerates the
+> interleavings at 1 to 1,000 partitions). The 100 was a leftover of the one-transaction
+> attestation, so `MAX_EXACT_CURRENT_PARTITIONS` becomes 1,000, a cost bound: DynamoDB calls grow
+> by one per 100 partitions per pass. That's not the constant-only increase the alternatives
+> reject, which rested on the old two-item attestation. The bake policy
+> `MAX_PRESET_SNAPSHOT_PARTITIONS` stays equal to it, so the largest bake-able preset is 500 days and
+> the Reach quarter (184 day partitions in one pack on dev, 2026-10-18,
+> [ADR-146](adr-146-publish-the-reach-quarter-or-retire-it-on-measured-partitions.md)) bakes. Chat's
+> selection-wide bound is the same constant. A pack is still attested by one verified read, never
+> split. The 2026-10-08 sentence "The two-pass mechanism named in 2026-09-16 isn't needed" is
+> superseded. Current mechanics: [Publication State](../capabilities/publication-state/architecture.md#4-internal-structure);
+> bake policy: [Generation Coordination](../ui/generation-coordination.md).
+> **Proposed amendment, 2026-10-18.** [ADR-146](adr-146-publish-the-reach-quarter-or-retire-it-on-measured-partitions.md) (Proposed) chooses how the Reach quarter is attested. Its branch is now (a′), the chunked two-pass snapshot of the 2026-10-25 amendment above.
 > **Amendment, 2026-10-16.** [ADR-139](adr-139-serve-designed-absence-and-advance-pages-only-with-a-grantable-cohort.md): a GRAPH cohort moves `CURRENT` only under a binding that authorizes serving, and a page's designed absence serves its typed absence or last-bound body. Current serve semantics: [preset artifact publisher, "The serve path"](../ui/preset-artifact-publisher.md#the-serve-path).
 
 > **Proposed amendments, 2026-10-07.** [ADR-116](adr-116-give-every-tab-one-time-model-and-one-window.md) (Proposed) would add `resolved_window` and `comparison_window` to the pointer, so drill links name the target's dates. [ADR-127](adr-127-serve-the-campaigns-channel-filter-from-render-only-siblings-of-one-bake.md) (Proposed) would bind render-only channel filter siblings under one pointer. This decision stays in force, unchanged, until they're accepted.
@@ -242,7 +258,7 @@ are the paved road, and the escape hatch returns only with a derived bound.
 | Alternative | Why rejected |
 |---|---|
 | Chunk the request-time snapshot into per-pack transactions and keep live measurement | Buys headroom for 7D/14D but 30D with prior needs 60 day-partitions per pack — 120 items, over the 100-item cap even alone. Request cost also stays linear in window size and packs; the page contract remains unservable. Per-pack snapshots are adopted, but at bake time. |
-| Raise `MAX_EXACT_CURRENT_PARTITIONS` without changing the read protocol | Pinned by transport: the old attestation used 2 items per partition against DynamoDB's 100-item transactional-read cap. A constant-only increase remains rejected. *(Superseded in scope 2026-09-22: the verified A/B/C servable-head protocol uses at most one item per partition in each transaction and safely raises the serving capability; [Generation Coordination](../ui/generation-coordination.md) retains a separate bake policy.)* |
+| Raise `MAX_EXACT_CURRENT_PARTITIONS` without changing the read protocol | Pinned by transport: the old attestation used 2 items per partition against DynamoDB's 100-item transactional-read cap. A constant-only increase remains rejected. *(Superseded in scope 2026-09-22: the verified A/B/C servable-head protocol uses at most one item per partition in each transaction and safely raises the serving capability; [Generation Coordination](../ui/generation-coordination.md) retains a separate bake policy. 2026-10-25: that protocol's chunked passes carry the bound to 1,000; see the amendment at the top.)* |
 | Shrink presets until live measurement fits | 6 days with prior is the largest fitting window. Surrenders the page contract to an implementation bound and still pays a wide snapshot plus a measurement batch per page view. |
 | Keep both paths: serve baked artifacts, fall back to live measurement | The refused-selection failure returns as a nondeterministic tail, and two serving paths for one contract is standing tech debt. Explicitly rejected in favor of one path. |
 | Bake all eight sort variants | Eightfold storage and bake work for a deterministic reordering of identical rows. *(Superseded 2026-09-17: valid only while the population fits one artifact; ADR-071 bakes orderings because a 50-row reorder cannot express a population ranking.)* |

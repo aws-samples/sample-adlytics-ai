@@ -109,7 +109,8 @@ def test_todays_declared_presets_and_real_bake_batches_pass_the_gate() -> None:
     # ADR-127 declares 30d on Campaigns: 2 x 30 day-partitions per pack fit one verified read.
     campaigns = next(page for page in pages if page.page_id == "campaigns")
     assert TemporalPresetId.THIRTY_DAYS in campaigns.candidate_presets
-    assert MAX_PRESET_SNAPSHOT_PARTITIONS == MAX_EXACT_CURRENT_PARTITIONS == 100
+    # ADR-070 2026-10-25: the bake policy is the chunked two-pass snapshot's bound.
+    assert MAX_PRESET_SNAPSHOT_PARTITIONS == MAX_EXACT_CURRENT_PARTITIONS == 1_000
     findings = evaluate_bakeability(
         pages,
         {
@@ -362,7 +363,9 @@ def test_a_roster_task_over_its_budget_or_without_a_count_is_a_named_finding() -
     assert certify_roster_tasks(counts)[1] == ()
 
 
-def test_a_calendar_preset_reads_its_longest_period_once_unless_the_page_compares_periods() -> None:
+def test_a_calendar_preset_reads_its_longest_period_once_unless_the_page_compares_periods(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """ADR-100: a month reads 31 day-partitions, 62 with a prior calendar period."""
     month = TemporalPresetId.LAST_COMPLETE_MONTH
     mixed = ArtifactServedPage("synthetic", (month,))
@@ -374,19 +377,14 @@ def test_a_calendar_preset_reads_its_longest_period_once_unless_the_page_compare
     )
     assert bakeability.preset_partitions(periodic, month) == 2
     quarter = TemporalPresetId.LAST_COMPLETE_QUARTER
-    # Paired: a compared quarter (184) is over the 100-partition read; an uncompared one fits.
-    findings = evaluate_bakeability(
-        (ArtifactServedPage("synthetic", (quarter,), calendar_compares=True),),
-        {"synthetic": 8},
-        _STORAGE,
-    )
+    compared_quarter = ArtifactServedPage("synthetic", (quarter,), calendar_compares=True)
+    assert bakeability.preset_partitions(compared_quarter, quarter) == 184
+    # ADR-070 2026-10-25: a compared quarter's 184 day-partitions fit the chunked snapshot.
+    assert evaluate_bakeability((compared_quarter,), {"synthetic": 8}, _STORAGE) == ()
+    # Paired: under the former 100-partition read the same quarter was the snapshot finding.
+    monkeypatch.setattr(bakeability, "MAX_PRESET_SNAPSHOT_PARTITIONS", 100)
+    findings = evaluate_bakeability((compared_quarter,), {"synthetic": 8}, _STORAGE)
     assert [finding.rule for finding in findings] == ["preset-snapshot-bound"]
-    assert (
-        evaluate_bakeability(
-            (ArtifactServedPage("synthetic", (quarter,)),), {"synthetic": 8}, _STORAGE
-        )
-        == ()
-    )
 
 
 def test_a_contract_source_horizon_its_page_does_not_derive_is_a_finding(

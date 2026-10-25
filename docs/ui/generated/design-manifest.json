@@ -21,7 +21,7 @@
         },
         {
           "path": "docs/ui/campaign-portfolio/low-level-design.md",
-          "sha256": "b52d7ecd429f0c0c3fdbe69bc8a98318ed3c9d6a78a83bc9388e6185310fe186"
+          "sha256": "4e8e9df96a716f503284491739d15b3daf85b493b11b94684f0a8ff6ca415c5c"
         },
         {
           "path": "docs/ui/campaign-portfolio/mockup.html",
@@ -79,7 +79,7 @@
         },
         {
           "path": "docs/ui/retail-health/low-level-design.md",
-          "sha256": "304eda4f224ecf607085211b712ddb62c06037b39505db8efbef630941247cd4"
+          "sha256": "0e293d5bd0831d2264bd9345770761b892f8145f2ed330692c9a10b1648ba69a"
         },
         {
           "path": "docs/ui/retail-health/mockup.html",
@@ -250,7 +250,7 @@
         },
         {
           "path": "docs/ui/reach-and-funnel/low-level-design.md",
-          "sha256": "507a74b2eb652299ecec8a0910c6502a3e25b8d93d1a99382b5f2c1061a752e7"
+          "sha256": "f5692fff42bf13b47aa267aa5cfd151121eb2dada152351096087f0b25738a99"
         },
         {
           "path": "docs/ui/reach-and-funnel/mockup.html",

@@ -126,6 +126,20 @@
           "bytes": 71062
         }
       }
+    },
+    "remeasure_2026_10_25_r3": {
+      "note": "re-measured 2026-10-25 after the ADR-070 chunked two-pass snapshot raised the exact-read bound from 100 to 1,000",
+      "measured_on": "4579fa9fdaef6fa7e4c4e6b22a3a1dbca8bb4577",
+      "measured_on_note": "the parent commit plus the uncommitted r3 tree this receipt commits",
+      "cause": "reach#last_complete_quarter's ad_spend plan (184 partitions) now binds, so pin_size.over_cap_plans is empty; no count, phase, second, budget or pin byte changed",
+      "changed_rows": [],
+      "digests": {
+        "pin-section.json": {
+          "before": "sha256:fb72fc6f01267d281f408a4482d0b8706a14e8e39ca17aa3b0324270de586dd8",
+          "after": "sha256:563665eb89fd81e25b9057505bbb7a39e2a17b4e3e1c769716be562887c8a639",
+          "format": "json.dumps(certificate_pin_section(), indent=1, sort_keys=True) + newline"
+        }
+      }
     }
   },
   "owning_design_digest": {
@@ -3383,17 +3397,6 @@
       "aggregate_over_4000000_at_history_days": 381,
       "aggregate_bytes_at_measured_history": 1083300
     },
-    "over_cap_plans": [
-      [
-        "reach#last_complete_quarter",
-        "ad_spend",
-        184
-      ],
-      [
-        "reach#last_complete_quarter",
-        "ad_spend",
-        184
-      ]
-    ]
+    "over_cap_plans": []
   }
 }

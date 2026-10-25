@@ -96,7 +96,7 @@ def test_a_call_summary_counts_per_pack_and_names_no_partition_or_population() -
 
 
 def test_the_recorder_names_the_raising_call_and_its_count(monkeypatch: pytest.MonkeyPatch) -> None:
-    resolved = SimpleNamespace(requirements=(), partitions=tuple(_days("pack-6", 101)))
+    resolved = SimpleNamespace(requirements=(), partitions=tuple(_days("pack-6", 1_001)))
     monkeypatch.setattr(
         PublicationSelector,
         "_resolve_requirements",
@@ -118,18 +118,24 @@ def test_the_recorder_names_the_raising_call_and_its_count(monkeypatch: pytest.M
     assert call["caller"] == "resolve_partitions"
     assert call["raised"] == {
         "code": str(SELECTION_TOO_LARGE),
-        "required_partitions": 101,
-        "maximum_partitions": 100,
+        "required_partitions": 1_001,
+        "maximum_partitions": 1_000,
     }
     verdict = probe.classify([call])
-    assert (verdict["raising_call"], verdict["partitions_total"]) == ("resolve_partitions", 101)
-    assert verdict["max_partitions_in_one_dataset"] == 101
+    assert (verdict["raising_call"], verdict["partitions_total"]) == ("resolve_partitions", 1_001)
+    assert verdict["max_partitions_in_one_dataset"] == 1_001
+    assert verdict["bound"] is False
     # Paired: uninstalling restores the real methods, so nothing outside the probe is wrapped.
     assert PublicationSelector.__dict__["resolve_partitions"].__name__ == "resolve_partitions"
 
 
-def test_a_resolution_within_the_bound_records_no_raise(monkeypatch: pytest.MonkeyPatch) -> None:
-    resolved = SimpleNamespace(requirements=(), partitions=tuple(_days("pack-6", 4)))
+def test_the_measured_quarter_now_binds_and_its_count_is_recorded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The 2026-10-18 quarter: 92 days x 2 lenses, 184 partitions, over the former 100."""
+    resolved = SimpleNamespace(
+        requirements=(), partitions=(*_days("pack-6", 92), *_days("pack-6", 92))
+    )
     monkeypatch.setattr(
         PublicationSelector,
         "_resolve_requirements",
@@ -139,12 +145,16 @@ def test_a_resolution_within_the_bound_records_no_raise(monkeypatch: pytest.Monk
     uninstall = probe.install(recorder)
     try:
         selector = PublicationSelector.__new__(PublicationSelector)
-        assert len(selector.resolve_partitions((), ())) == 4
+        assert len(selector.resolve_partitions((), ())) == 184
     finally:
         uninstall()
     (call,) = [item.summary() for item in recorder.calls]
     assert call["raised"] is None
-    assert probe.classify([call])["raising_call"] is None
+    verdict = probe.classify([call])
+    assert (verdict["bound"], verdict["raising_call"]) == (True, None)
+    assert (verdict["partitions_total"], verdict["max_partitions_in_one_dataset"]) == (184, 184)
+    # Paired: no selection at all is never reported as bound.
+    assert probe.classify([])["bound"] is False
 
 
 @guard_reserved_words

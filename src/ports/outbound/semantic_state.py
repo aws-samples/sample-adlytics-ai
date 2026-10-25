@@ -110,7 +110,13 @@ class CommitPublicationRequest:
 
 
 MAX_COMMIT_GROUP_MEMBERS = 20
-MAX_EXACT_CURRENT_PARTITIONS = 100
+MAX_EXACT_CURRENT_PARTITIONS = 1_000
+"""The most partitions one verified exact read attests: a cost bound, not a consistency one.
+
+The read is ADR-070's chunked two-pass snapshot: heads, immutables and heads again, each in
+transactions of at most 100 items, accepted only when both head passes agree. Forward-only heads
+make that agreement one instant at any size; DynamoDB calls grow by one per 100 partitions per pass.
+"""
 
 
 @dataclass(frozen=True, slots=True)

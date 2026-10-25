@@ -671,14 +671,15 @@ describe('ADR-142 bake alarms in the publisher stack (A1)', () => {
     }
   }
 
-  it('declares exactly the two approved alarms, with the backfill and re-bake texts', () => {
+  it('declares exactly the two approved alarms, with the re-bake and operator-action texts', () => {
     expect(BAKE_ALARMS.map((spec) => [spec.id, spec.metricName])).toEqual([
       ['BakeIsolatedRefusalLimit', 'BakeIsolatedRefusalLimit'],
       ['BakeTaskOverBudget', 'BakeTaskOverBudget'],
     ]);
     const [limit] = BAKE_ALARMS;
     expect(limit?.description).toContain('declarative re-bake');
-    expect(limit?.description).toContain('quarter-manifest backfill');
+    expect(limit?.description).toContain('For a limit reason, the line names the operator action.');
+    expect(limit?.description).not.toContain('manifest');
   });
 
   it('builds both in a synth without the graph authority (an adopter deployment)', () => {

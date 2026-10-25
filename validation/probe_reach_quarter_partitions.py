@@ -6,17 +6,20 @@
         --publications-table <semantic V2 publications table> --graph-table <execution graph \
         table> --run-id <the last dev bake run> --output <path>
 
-The Reach quarter (`reach#last_complete_quarter`) is refused at the bake's pin with
-`SELECTION_TOO_LARGE`, and the count that decides how to fix it was never recorded. This probe
-composes the quarter's render exactly as the bake's pin pass does (the real Reach source, the
-real `PublicationSelector` over the real CURRENT reader, the bake's horizon and its pinned
-clock, a query port that captures and executes nothing) and records, per selection call, which
-call it was, the plans' contracts, metrics and grains, and the partitions it resolved per
-dataset with their bucket grains and window. Then it asks chat's quarterly Reach questions
+The Reach quarter (`reach#last_complete_quarter`) resolved 184 day partitions on dev on
+2026-10-18, over the former 100-partition exact-read bound; under ADR-070's chunked two-pass
+snapshot (bound 1,000) it must now bind. This probe composes the quarter's render exactly as
+the bake's pin pass does (the real Reach source, the real `PublicationSelector` over the real
+CURRENT reader, the bake's horizon and its pinned clock, a query port that captures and
+executes nothing) and records, per selection call, which call it was, the plans' contracts,
+metrics and grains, and the partitions it resolved per dataset with their bucket grains and
+window. Then it asks chat's quarterly Reach questions
 through the measurement tool's own request path, without a horizon, under the same recorder.
 
-Control: the month variant (`reach#last_complete_month`) runs through the same composition and
-must not raise `SELECTION_TOO_LARGE`; if it does, the composition, not the quarter, is wrong.
+It records whether the quarter bound and the largest selection's partition count; a quarter that
+still raises `SELECTION_TOO_LARGE` is reported with its raising call and count. Control: the month
+variant (`reach#last_complete_month`) runs through the same composition and must not raise
+`SELECTION_TOO_LARGE`; if it does, the composition, not the quarter, is wrong.
 
 AWS calls: STS, then DynamoDB reads only (`GetItem`, `Query`, `TransactGetItems`,
 `BatchGetItem`); every other DynamoDB call is refused by the client guard before it is sent.
@@ -73,7 +76,7 @@ from domain.shared_kernel.errors import AdlyticsError, DependencyError
 from domain.shared_kernel.provenance import Suppression
 from ports.outbound.query import QueryResult
 
-SCHEMA: Final = "reach-quarter-partitions/v1"
+SCHEMA: Final = "reach-quarter-partitions/v2"
 _ENVIRONMENT: Final = "dev"
 _REGION: Final = "us-east-1"
 _ROOT: Final = Path(__file__).resolve().parents[1]
@@ -473,18 +476,21 @@ def ask_chat(current: Any, now: datetime) -> dict[str, dict[str, object]]:
 
 
 def classify(quarter_calls: Sequence[Mapping[str, Any]]) -> dict[str, object]:
-    """Name the raising call and its per-dataset counts, for 05 §4's table (not the branch)."""
+    """Whether every selection bound, and the raising or else the largest call's counts."""
     raising = [call for call in quarter_calls if call.get("raised")]
     first = raising[0] if raising else None
+    largest = max(quarter_calls, key=lambda call: int(call["partitions_total"]), default=None)
+    counted = first or largest
     datasets: Mapping[str, Mapping[str, Any]] = (
-        cast("Mapping[str, Mapping[str, Any]]", first["by_dataset"]) if first else {}
+        cast("Mapping[str, Mapping[str, Any]]", counted["by_dataset"]) if counted else {}
     )
     return {
+        "bound": bool(quarter_calls) and first is None,
         "raising_call": None if first is None else first["caller"],
         "raising_code": None
         if first is None
         else cast("Mapping[str, Any]", first["raised"])["code"],
-        "partitions_total": None if first is None else first["partitions_total"],
+        "partitions_total": None if counted is None else counted["partitions_total"],
         "max_partitions_in_one_dataset": max(
             (int(item["partitions"]) for item in datasets.values()), default=None
         ),
@@ -595,10 +601,14 @@ def main(argv: list[str] | None = None, session_factory: Callable[..., Any] = bo
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(document, indent=1, sort_keys=True) + "\n", encoding="utf-8")
     quarter = cast("Mapping[str, object]", measured["quarter"])
+    outcome = (
+        "quarter bound"
+        if quarter["bound"]
+        else f"quarter raised {quarter['raising_code']} at {quarter['raising_call']}"
+    )
     print(
-        f"quarter raised {quarter['raising_code']} at {quarter['raising_call']} with "
-        f"{quarter['partitions_total']} partitions (max {quarter['max_partitions_in_one_dataset']} "
-        f"in one dataset); month control passed: "
+        f"{outcome} with {quarter['partitions_total']} partitions "
+        f"(max {quarter['max_partitions_in_one_dataset']} in one dataset); month control passed: "
         f"{cast('Mapping[str, object]', measured['month_control'])['passed']}"
     )
     print(f"output: {args.output}")

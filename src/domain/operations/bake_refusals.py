@@ -72,7 +72,6 @@ class IsolatedRefusalReason(StrEnum):
     BODY_OVER_CAP = "body_over_cap"
     BODIES_OVER_INVOCATION = "bodies_over_invocation"
     PARTITIONS_OVER_BOUND = "partitions_over_bound"
-    QUARTER_MANIFEST_ABSENT = "quarter_manifest_absent"
     STATEMENT_TIME_OVER_INVOCATION = "statement_time_over_invocation"
     POPULATION_OVER_CEILING = "population_over_ceiling"
     DEPENDENCY_UNAVAILABLE = "dependency_unavailable"
@@ -103,7 +102,6 @@ REFUSAL_CLASSES: Final[Mapping[IsolatedRefusalReason, RefusalClass]] = {
     _R.BODY_OVER_CAP: RefusalClass.LIMIT,
     _R.BODIES_OVER_INVOCATION: RefusalClass.LIMIT,
     _R.PARTITIONS_OVER_BOUND: RefusalClass.LIMIT,
-    _R.QUARTER_MANIFEST_ABSENT: RefusalClass.LIMIT,
     _R.STATEMENT_TIME_OVER_INVOCATION: RefusalClass.LIMIT,
     _R.POPULATION_OVER_CEILING: RefusalClass.LIMIT,
     _R.DEPENDENCY_UNAVAILABLE: RefusalClass.DEPENDENCY,
@@ -121,8 +119,9 @@ OPERATOR_ACTIONS: Final[Mapping[IsolatedRefusalReason, str]] = {
     _R.POPULATION_OVER_CEILING: _RAISE_MEMORY,
     _R.BODY_OVER_CAP: "report the page and variant: a body over the cap needs a source change",
     _R.BODIES_OVER_INVOCATION: "raise the Baker memory: it scales CPU and network for the writes",
-    _R.PARTITIONS_OVER_BOUND: "none yet: the preset reads more partitions than a snapshot takes",
-    _R.QUARTER_MANIFEST_ABSENT: "none yet: the quarter manifest is not built (ADR-146)",
+    _R.PARTITIONS_OVER_BOUND: (
+        "shrink the declared preset: the line states its partitions and the exact-read bound"
+    ),
     _R.STATEMENT_TIME_OVER_INVOCATION: (
         "check the bake workgroup's Athena queueing; the page re-bakes on the next landing"
     ),
@@ -139,7 +138,6 @@ REFUSAL_CONTEXT: Final[Mapping[IsolatedRefusalReason, frozenset[str]]] = {
     _R.BODY_OVER_CAP: frozenset({"encoded_bytes", "max_bytes"}),
     _R.BODIES_OVER_INVOCATION: frozenset({"bodies", "max_bodies", "written"}),
     _R.PARTITIONS_OVER_BOUND: frozenset({"required_partitions", "maximum_partitions"}),
-    _R.QUARTER_MANIFEST_ABSENT: frozenset(),
     _R.STATEMENT_TIME_OVER_INVOCATION: frozenset({"waited_seconds", "wait_limit_seconds"}),
     _R.POPULATION_OVER_CEILING: frozenset({"population", "guard"}),
     _R.DEPENDENCY_UNAVAILABLE: frozenset({"attempts", "error_code"}),

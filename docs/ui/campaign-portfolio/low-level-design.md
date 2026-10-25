@@ -18,12 +18,11 @@ The authorizer supplies owner and correlation identity. Session ID is nonblank/b
 Window resolution anchors to the newest published coverage of the page's sources, never to
 wall-clock today: each preset's dates are derived backward from the coverage end, and an
 unavailable preset states in plain words what coverage it needs. Campaign declares candidate
-`1D`, `7D`, `14D` and no Custom entry: its temporal control returns
+`1D`, `7D`, `14D`, `30D` and no Custom entry: its temporal control returns
 `custom.availability: "unavailable"`
 ([ADR-070](../../decisions/adr-070-serve-declared-preset-windows-from-publish-time-artifacts.md)).
-`30D` is not a candidate — the per-pack bake snapshot caps a declared preset at 25 days
-(ADR-070 amendment, 2026-09-16) — so the control returns it unavailable pending the future
-two-pass verified-snapshot decision named there. `1D` is a served candidate (declaration
+`30D` (60 day-partitions per pack with its prior) is within the bake's exact-read bound (ADR-070
+amendments, 2026-10-08 and 2026-10-25). `1D` is a served candidate (declaration
 exception removed 2026-09-17): the portfolio bakes and serves a one-day window with its
 required one-day prior. A campaign opened at one day returns the declared `insufficient`
 detail outcome with reason `too_short_series`, because V1/V2 purchase-series rendering
