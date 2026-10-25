@@ -172,7 +172,7 @@ page:
 | Budget | Bound | Estimate |
 |---|---|---|
 | Materialization (per message) | `MATERIALIZATION_BUDGET_SECONDS` (initial 240) | `ceil((widest-variant plans + Σ exact-window plans of other variants) / DEFAULT_QUERY_BATCH_CONCURRENCY) × PER_QUERY_SECONDS`, the gate's existing rounding |
-| Render and persist (per variant) | `RENDER_BUDGET_SECONDS` (initial 45) | Bodies + segments + custody + materialization puts at the declared body count (`MAX_BAKE_BODY_COUNT` is per variant), plus one transaction; the message total is `variants × RENDER_BUDGET_SECONDS` |
+| Render and persist (per variant) | `RENDER_BUDGET_SECONDS` (initial 45) | Bodies + segments + custody + materialization puts at the declared body count (`campaign_bake_object_count` is per variant), plus one transaction; the message total is `variants × RENDER_BUDGET_SECONDS` |
 | Materialization size (per variant) | `MAX_MATERIALIZATION_BYTES` | Slots × bounded population rows × encoded answer estimate |
 | Total | `MATERIALIZER_TIMEOUT_SECONDS` (initial 420) ≥ materialization + 3 × render + 30 s claim/checkpoint margin, leaving 15 s slack at the initial constants | — |
 
