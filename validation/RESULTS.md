@@ -169,7 +169,8 @@ a later cohort baked all 20 page rows with no failure and authorized serving wit
 
 **Not exercised live:** probe behaviour added after `76dcf62d` (contract-derived page lists, the
 NOT_PROVEN receipt on a failed render, the refusal-reason names) is unit-proven; the over-bound
-Audiences leg stays deferred (TD-D2-OVERBOUND-LIVE in [validation](README.md)).
+Audiences leg was deferred, and on 2026-10-25 its subject, the page-level over-bound body, was deleted
+([ADR-141](../docs/decisions/adr-141-reach-every-audiences-campaign-through-grouped-reads-and-per-campaign-pages.md)).
 
 ## Path-scoped body-size exclusion on dev (ADR-078) — 2026-10-06
 

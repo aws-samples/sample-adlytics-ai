@@ -4,8 +4,18 @@ Status: Proposed (2026-10-18). The owner approved the direction on 2026-10-18 (U
 queries, per-campaign bodies fetched on selection, a paged profile, and the 7- and 11-campaign caps
 deleted. Acceptance is the owner's review of this file after implementation and live acceptance.
 When accepted, it supersedes the Audiences campaign and body bounds (owner decision 2026-10-14,
-integration gates IG-002 and IG-003) and the dev-only campaign stopgap of 2026-10-17
-(TD-D2-AUDIENCES-CAMPAIGN-LIMIT).
+integration gates IG-002 and IG-003) and the dev-only 7-campaign stopgap of
+2026-10-17.
+
+> **Amendment, 2026-10-25 (UTC), scale-limits r2a ([ADR-152](adr-152-read-page-sized-answers-in-sql-with-no-arbitrary-row-ceiling.md) decision 7).**
+> As built, the three campaign figures and the prior-month segments are group-streamed, one
+> campaign at a time, rather than held or reduced to keys. That changes three points below:
+> - Decision 2: a cut grouped read no longer refuses the campaign section; that section's
+>   `rows_over_ceiling` and its copy are deleted. Only a campaign index past the derived
+>   `BAKE_MAX_ROWS` refuses, as the page's `rows_over_ceiling` with the raise-memory action.
+> - Decision 4: there is no static body bound. The stage's write deadline is the one write limit
+>   (`bodies_over_invocation`), and writes are certified at the whole write allowance (450 s).
+> - Consequences: 24 statements in three phases (7, 16, 1); the derived budget is 600 s.
 
 ## Context
 Audiences answers, for one DSP campaign at a time, which audience segments perform. Today the page
@@ -25,7 +35,7 @@ The model is far from what runs. The same 7-campaign bake ran in 11.6 s against 
 was 16.2 s. The problem is the shape, not the volume.
 
 Separately, one body carries every profile row and every campaign-by-segment row, at most 300. Past
-that, the whole page shows a page-level absence (ABS-AUD-2), profile included. Sellers have 5–20
+that, the whole page shows a page-level absence, profile included. Sellers have 5–20
 DSP campaigns (a small brand) to 50–200 (a large multi-brand vendor), with 20–150 segments each.
 Those counts are assumptions, not catalog facts. Either bound hides campaigns or blanks the page at
 both sizes.
@@ -117,7 +127,7 @@ little, or nothing, at every real size, and the old shape failed the whole cohor
   lowest-ranked campaign.
 - One label read per namespace replaces the per-campaign label reads that the stopgap deferred.
 - New copy (per-campaign, per-path, section, fetch-failed and revision-changed states) needs the
-  owner's copy approval. ABS-AUD-2 is retired.
+  owner's copy approval. The page-level over-bound absence is retired.
 
 ## Alternatives considered
 - **Raise the budget to the 900 s Lambda timeout.** Rejected by (1): still linear in campaigns, and

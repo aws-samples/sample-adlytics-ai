@@ -9,6 +9,9 @@ entity-wide reads of Audiences and Campaigns (R2) amend it later. Amends
 [ADR-142](adr-142-isolate-a-bake-refusal-to-its-own-scope-and-alarm-on-defects.md) and
 [ADR-125](adr-125-serve-retail-product-detail-as-a-baked-child-of-retail-health.md) (markers
 there).
+> **Amendment, 2026-10-25 (UTC), r2a.** Decision 7 adds entity-streamed reads; Audiences is the
+> first. Decision 3's "Audiences keeps it until its reads stream" no longer applies: its campaign
+> section has no `rows_over_ceiling`. Campaigns' part follows in r2b.
 ## Context
 A bake holds every row of each read until its page renders, and one memory-sized ceiling,
 `BAKE_MAX_ROWS` (10,000 at 1,024 MiB), bounded every read on every page. Several pages read the
@@ -48,6 +51,13 @@ whole catalog only to show a summary:
 6. **Chat's `measurement_top_n` is not decided here.** It still ranks in Python under chat's
    500 / 10,000 narration cap, which stays.
 
+7. **An entity-wide page renders one entity at a time.** Each of its reads streams `ORDER BY` its
+   grain through a `GroupSink`, a fold on the existing port that hands one entity's figures at a
+   time across a one-slot queue; the render merges the reads by key. Memory is the groups in
+   flight, never the population. Audiences reads every DSP campaign this way (ADR-141): a count
+   pass in the render builds the index, and a page pass, answered by result reuse, renders each
+   campaign's pages as the stage writes them. Only the index and its segment set stay held, under
+   the one derived `BAKE_MAX_ROWS`.
 ## Consequences
 - Retail health, New customers and Reach bake at any catalog size; Retail runs 49 plans per
   preset. The probe measured Retail's render peak at about 1.57 MB at both 10,000 and 100,000

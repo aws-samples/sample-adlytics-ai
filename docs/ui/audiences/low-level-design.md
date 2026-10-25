@@ -9,7 +9,7 @@ this package that the build slice may still change through review.
 
 | Route | Method and auth | Accepted body | Explicitly forbidden |
 |---|---|---|---|
-| `/api/presentation/audiences` [proposal] | `POST`, the custom request authorizer | `{session_id}`, optionally `temporal_selection: TemporalSelection.v2` restricted to `omitted` or `last_complete_month` | segment IDs, profile paths, campaign IDs or names, rolling presets, custom ranges, unknown fields |
+| `/api/presentation/audiences` [proposal] | `POST`, the custom request authorizer | `{session_id}`, optionally `temporal_selection: TemporalSelection.v2` restricted to `omitted` or `last_complete_month`, and at most one part: `campaign: {ref, page}` (`ref` matches `campaign-[1-9][0-9]{0,5}`, `page` 0–9999), `profile: {path, page}` (one of the three profile paths, `page` 1–9999) or `campaign_index: {shard}` (1–9999) | segment IDs, campaign keys or names, two parts, a non-integer page, rolling presets, custom ranges, unknown fields |
 | `/api/presentation/audiences-metric-focus` [proposal] | `POST`, same authorizer | `{session_id, metric, temporal_selection}` with a declared focusable metric | any segment, campaign or grain field, unknown fields |
 
 ### Page declarations
@@ -20,7 +20,7 @@ the Reach and audiences hub with tab order 2.
 | File | Entry |
 |---|---|
 | `presentation/pages/v1/pages.yaml` | `mode: single_basis`, `grain.time: declared_period`, dimensions `[marketplace]`; metric slots for the profile and segment-delivery metrics, each with `period_grains: [month]` and the `time_grain` exact selector |
-| `presentation/pages/v2/pages.yaml` | `mode: selectable`, `boundary_required: true`, `navigation: {hub_id: reach, tab_label: Audiences, tab_description: Which Amazon audience segments your buyers belong to, compared with the shoppers your ads reached, and how DSP campaigns did per segment, order: 2}`. `temporal_policy`: `candidate_presets: [last_complete_month]`, `default_preset: last_complete_month`, custom disabled, `comparison_policy: prior_calendar_period` (same metric, contract, grain set and profile path across two months), `display_grains: [declared_period]`. Artifact `AudienceProfileArtifact` v1, outcomes `[complete, empty, insufficient]` |
+| `presentation/pages/v2/pages.yaml` | `mode: selectable`, `boundary_required: true`, `navigation: {hub_id: reach, tab_label: Audiences, tab_description: Which Amazon audience segments your buyers belong to, compared with the shoppers your ads reached, and how DSP campaigns did per segment, order: 2}`. `temporal_policy`: `candidate_presets: [last_complete_month]`, `default_preset: last_complete_month`, custom disabled, `comparison_policy: prior_calendar_period` (same metric, contract, grain set and profile path across two months), `display_grains: [declared_period]`. Artifact `AudienceProfileArtifact` v2, outcomes `[complete, empty, insufficient]` |
 
 | Section | `declared_periods` | `period_anchor` | Notes |
 |---|---|---|---|
@@ -31,14 +31,14 @@ the Reach and audiences hub with tab order 2.
 | `campaign-audiences` | `last_complete_month` | false | A late pack 8 shows its pending text for the same month |
 | `evidence-trace`, `boundary` | none | n/a | |
 
-### `AudienceProfileArtifact` v1
+### `AudienceProfileArtifact` v2
 
 | Section | Content | Rendering responsibility |
 |---|---|---|
 | Profile path | The two paths with their paid-feature states, and the default path the server chose | Segmented control "Profile" inside the section; switching selects a server-served path, with no re-request |
 | Segment ranking | Per segment, ordered by index on the server: display name, `provider_label`, `category_level_1` and `category_path` (paid only), `segment_buyer_share`, `segment_exposed_share`, `segment_index`, and `segment_buyers_new_to_brand` for the new-to-brand view; only segments with `segment_buyers` at or above the contract's display minimum carry an index | Table caption "{path} · {month} · segment figures never add up", then the segment-ID sentence below; the provider label under each segment name; roster segments with no row this month listed last as "Not available" with their reason |
 | Insights | Fixed roster `segment-over-index` v1 per profile path | One card per path |
-| Campaign audiences | Per DSP campaign with delivery in the month, per segment: `provider_label`, `segment_impressions`, `segment_cpm`, `segment_roas_attributed` with its basis label. Each campaign carries `campaign_label`, its governed name or chat's placeholder "Unnamed campaign N", and `campaign_ref`, an opaque ordinal within the artifact; its canonical key never reaches the artifact. At most the campaign bound per marketplace (below), ranked; `shown_text` when pack 8 listed more | Campaign selector keyed by `campaign_ref`, the limit sentence, the server's "Showing {shown} of {total} campaigns" when served, and the table, with the provider label under each segment name |
+| Campaign audiences | Every DSP campaign with delivery in the month, ranked: `campaign_count`, `index_shards` and index shard 0. Each index entry carries `campaign_label` (its governed name or chat's placeholder "Unnamed campaign N"), `campaign_ref` (an opaque rank ordinal; the canonical key never reaches the artifact), `segment_count`, `page_count` and `state` (`available`, `withdrawn` or `refused`, with its server `text`). A campaign's segment rows are its campaign pages (below) | Campaign combobox over the index, the limit sentence, then the selected campaign's page |
 | Evidence status | `EvidenceStatus.v2` | Coverage sheet |
 | Page context and starter questions | As the other tabs | Assistant |
 | Boundary | "This describes an audience you can build in your own tools. Adlytics doesn't create or activate audiences." and the segment-ID sentence below | "About these figures", collapsed, on every outcome: complete, empty and insufficient |
@@ -53,28 +53,35 @@ path carry no `period_text`. The page renders the artifact's `month.label` as it
 complete outcomes and before campaign rows on non-complete outcomes; the browser never derives or
 formats that month.
 
-**Campaign and body bounds (owner decision 2026-10-14, integration gate IG-002 and IG-003).** One bake
-must fit the baker's timeout and one body must fit the 256,000-byte artifact cap, so the page shows a bounded
-set of campaigns. **Known limit (dev-only stopgap, owner-approved 2026-10-17; TD-D2-AUDIENCES-CAMPAIGN-LIMIT in
-`validation/README.md`, tracked by the outcome-first redesign):** the page shows at most
-`audiences_runtime_campaign_bound` campaigns, the certifier's bound, 7 at one marketplace (61 certified
-plans). The figures below describe `audiences_timeout_headroom_campaigns`, a 900 s timeout estimator that
-is not the page limit. It derives its count from the bake budget
-model. Per marketplace, one bake runs the campaign list, then the profile and campaign roster
-reads, then the profile and campaign measurements as three separate barriers at the deployed
-concurrency. The model sums each phase's wave ceiling and reserves separate render/finalization,
-body-write and positive non-query margins. With the one governed marketplace the estimator gives 11.
-Campaigns rank on the server by their largest matched-segment impressions, descending, then by campaign key,
-the order that numbers `campaign_ref`. The rank never sums segment impressions, because segment figures
-never add up. When pack 8 listed more campaigns than the page shows, the artifact carries the server's
-`shown_text`, exactly "Showing {shown} of {total} campaigns". The browser renders it and computes nothing.
-`audiences_row_budget` derives the most profile and campaign rows a body holds from per-marketplace envelope
-and per-row byte ceilings, which tests hold with wide rows. A month over that budget, or one whose encoded
-body exceeds the cap, publishes a small typed `AudienceProfileUnavailable` body with the named reason
-`audiences_body_over_bound` and advances the target month's pointer. It is never truncated, and its pointer
-supersedes the prior month's pointer so an older month is never described as latest. Source composition and
-the renderer also refuse any marketplace cardinality other than exactly one before a query port is called.
-This bound is page presentation only. Chat's governed access reads every campaign, as before.
+**Parts.** The parent carries page 0 of each profile path and index shard 0; every other page is a
+part, a sibling body bound by digest through the parent custody's index ([ADR-145](../../decisions/adr-145-serve-ten-thousand-campaigns-with-a-sharded-roster-and-streamed-writes.md)).
+Each part carries `type`, `version` 1 and `parent_revision`, the parent's `revision`.
+
+| Part | Content | Order |
+|---|---|---|
+| `AudienceCampaignPage` | One campaign's `campaign_ref`, `campaign_label`, `page`, `page_count`, `state`, `text`, the server's `paging_text` ("Segments {first}–{last} of {total}") and up to 50 rows: `provider_label`, `segment_impressions`, `segment_cpm`, `segment_roas_attributed`, each with its server text or reason | Impressions, descending (withheld last), then segment name and ID |
+| `AudienceProfilePage` | One profile path's page *n* ≥ 1 of 50 rows, as page 0 | Index, as page 0 |
+| `AudienceCampaignIndex` | Index shard *n* ≥ 1: 100 entries | Rank |
+
+The serve reads a part only through the parent's index: an identity it doesn't list is a 400, and
+a listed part whose bytes or fields disagree with its descriptor is the malformed-artifact refusal.
+The response is `{kind: "audiences_part", session_id, parent_revision, part}`.
+
+**Campaign reach and paging ([ADR-141](../../decisions/adr-141-reach-every-audiences-campaign-through-grouped-reads-and-per-campaign-pages.md), [ADR-152](../../decisions/adr-152-read-page-sized-answers-in-sql-with-no-arbitrary-row-ceiling.md)).**
+The page lists every DSP campaign with delivery in the month; no campaign cap exists. The bake
+reads each campaign figure (impressions, spend, attributed sales) and the prior-month segments once
+for all campaigns, grouped by campaign, 24 statements per marketplace at any campaign count.
+**Campaign figures stream one campaign at a time:** each read arrives ordered by campaign, so a
+count pass builds the index and a page pass renders each campaign's pages as they're written; a
+bake never holds the campaign population's rows. Campaigns rank on the server by their largest
+matched-segment impressions, descending, then by campaign key, the order that numbers
+`campaign_ref`. The rank never sums segment impressions, because segment figures never add up. Each
+campaign is graded against its own segments of the month before; a gap in its own older history
+refuses only that campaign. The only limits are the derived row ceiling on the index (past it, the
+page keeps its last good version and alarms with the raise-memory action) and the stage's write
+deadline ([scale envelope](../preset-artifact-publisher.md#scale-envelope)). Source composition
+and the renderer refuse any marketplace cardinality other than exactly one before a query port is
+called. Chat's governed access reads every campaign, as before.
 
 **Provider labels (revised at `2026-10-09.2`, owner decision 2 of 2026-10-09 about 02:40 UTC).** Every
 segment carries `provider_label`, "Amazon" or "Third party", read from the governed provider classification
@@ -130,7 +137,12 @@ month.
 | Profile insufficient or empty, campaign rows published | The profile callout, then `campaign-audiences` with its rows: campaign evidence is never hidden by the profile outcome |
 | Open decision 5 = no | Demographic segments are removed at load by a governed exclusion list; nothing changes on the page |
 | A segment the provider classification doesn't cover | The segment renders with no provider label [proposal] |
-| No published body for the month, or the month's body is over the page's bound (page-level) | Page-level absence: [ABS-AUD-1](../page-absence-copy.md#abs-aud-1) or [ABS-AUD-2](../page-absence-copy.md#abs-aud-2); no scope band |
+| No published body for the month (page-level) | Page-level absence: [ABS-AUD-1](../page-absence-copy.md#abs-aud-1); no scope band |
+| One campaign's own history gap (AUD-CMP-REFUSED-HISTORY) or its withdrawn roster | Its index entry and page carry the server sentence in place of its table; a refused campaign is never fetched |
+| Campaign figures incomplete for the month (AUD-CMP-SECTION-INCOMPLETE) | The section's server sentence; the profile still renders |
+| One profile path refused (AUD-PROFILE-PATH-REFUSED: history gap or incomplete figures) | That path's server sentence in place of its table; every served path refused is the page-level absence |
+| A part fetch failed (AUD-PAGE-FETCH-FAILED) | A browser row with "Try again" |
+| A part from a newer publication (AUD-PAGE-REVISION-CHANGED) | The parent reloads once and the same campaign or page is asked again, announced in the status region; a second mismatch is the failed row |
 
 The callout never says the customer isn't subscribed.
 
@@ -160,8 +172,8 @@ has no "Also changed" section. A later rule brings it in after the insights row 
 ### Materializer
 
 New, under the ADR-075 pattern. It bakes on pack 8–13 publication transitions for the latest complete month,
-with both profile paths and every DSP campaign's segment rows in one artifact, and bakes its deterministic
-findings.
+with both profile paths and every DSP campaign's segment rows in one publication (a parent and paged parts),
+and bakes its deterministic findings.
 
 ## 7. Concepts applied
 
@@ -186,6 +198,8 @@ findings.
 | Segment IDs | The ranking caption and "About these figures" carry exactly the segment-ID sentence; a test refuses any artifact row, finding or starter question that links a DSP segment to an ASI segment, paired with each path rendering on its own |
 | Roster | Unit tests: a missing roster segment lists as "Not available", a new segment shows, month 1 shows the first-month note, 30% churn under `B_min` isn't withdrawn |
 | Paid states | Unit tests for every paid-feature state, including partial enrolment |
+| Campaign reach | 24 statements per marketplace at any campaign count (`make check-bakeability`); every listed campaign has page 0; group-streamed figures equal held ones (`test_group_stream.py`, `test_segment_profile.py`, `test_audiences_parity.py`) |
+| Parts | The serve's accepted and refused part bodies and the index-bound existence check (`test_audiences_presentation.py`); the browser fetches a campaign only on selection, prefetches at most its next page, and reloads once on a revision mismatch (`frontend/test/audiences-view.test.tsx`) |
 | Insight | `segment-over-index` v1 with its calibration corpus |
 | Read-only | No control on the page writes to Amazon or any other system |
 | Conformance | Rule 4 of the [delivery slices](../information-architecture/delivery-slices.md#2-rules-for-every-slice) against every mockup state, and against this document for the new-to-brand view, the provider labels and the segment-ID sentence, which the mockups don't draw |
