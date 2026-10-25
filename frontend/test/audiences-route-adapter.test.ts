@@ -19,7 +19,7 @@ const control = {
   version: 2,
 };
 function envelope() {
-  return { envelope_version: 2, kind: 'page', page: { actions: [], artifact: structuredClone(fixture), artifact_id: 'audiences', artifact_revision: revision, artifact_type: 'AudienceProfileArtifact', artifact_version: 1, kind: 'audiences', page_context_expires_at: fixture.page_context_expires_at, page_context_label: fixture.page_context_label, page_id: 'audiences', route: '/audiences/', starter_questions: fixture.starter_questions }, session_id: session, temporal: control };
+  return { envelope_version: 2, kind: 'page', page: { actions: [], artifact: structuredClone(fixture), artifact_id: 'audiences', artifact_revision: revision, artifact_type: 'AudienceProfileArtifact', artifact_version: 2, kind: 'audiences', page_context_expires_at: fixture.page_context_expires_at, page_context_label: fixture.page_context_label, page_id: 'audiences', route: '/audiences/', starter_questions: fixture.starter_questions }, session_id: session, temporal: control };
 }
 const decode = (value: unknown) => audiencesPresentationV2(parsePresentationResultCalendarV2(value, 'audiences'));
 afterEach(() => { document.cookie = 'adl_csrf=; Max-Age=0; path=/'; });
@@ -84,7 +84,7 @@ test('the Audiences envelope walks the forbidden canonical keys with no exemptio
   // Under any nested position, a campaign or marketplace key fails at the envelope boundary.
   for (const key of ['campaign_key', 'marketplace_key'] as const) {
     const keyed = envelope();
-    Object.assign(keyed.page.artifact.markets[0]!.campaign_audiences.rows[0]!, { [key]: 'canonical-value' });
+    Object.assign(keyed.page.artifact.markets[0]!.campaign_audiences.index[0]!, { [key]: 'canonical-value' });
     assert.throws(() => parsePresentationResultCalendarV2(keyed, 'audiences'), PresentationResponseError);
   }
 });

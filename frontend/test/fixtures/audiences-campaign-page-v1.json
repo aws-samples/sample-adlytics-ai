@@ -1,0 +1,33 @@
+{
+  "campaign_label": "Fall prospecting",
+  "campaign_ref": "campaign-1",
+  "page": 0,
+  "page_count": 1,
+  "paging_text": null,
+  "parent_revision": "e4a437855de26ff5a48f425bd04cf9b29ea62bd434fa5c4f179a1a096462d9cd",
+  "rows": [
+    {
+      "category_level_1": null,
+      "category_path": null,
+      "cpm_text": null,
+      "display_name": "Demo - Age 25-34 · Amazon",
+      "name": "Demo - Age 25-34",
+      "provider_label": "Amazon",
+      "roas_text": null,
+      "segment_cpm": {
+        "currency": "USD",
+        "text": "7.00 USD",
+        "value": "7.00"
+      },
+      "segment_id": "41001",
+      "segment_impressions": 30000,
+      "segment_impressions_text": "30000",
+      "segment_roas_attributed": "0.59",
+      "segment_roas_attributed_text": "0.59x"
+    }
+  ],
+  "state": "available",
+  "text": null,
+  "type": "AudienceCampaignPage",
+  "version": 1
+}

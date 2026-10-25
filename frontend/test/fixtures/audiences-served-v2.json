@@ -1,6 +1,49 @@
 {
   "envelope_version": 2,
   "kind": "page",
+  "session_id": "conversation-session",
+  "temporal": {
+    "version": 2,
+    "mode": "selectable",
+    "resolved": {
+      "window": {
+        "end": "2026-09-30",
+        "start": "2026-09-01"
+      },
+      "reporting_window_status": "preferred_default",
+      "selection": {
+        "kind": "default",
+        "preset_id": null
+      },
+      "display_grain": "month",
+      "period_label": "September 2026",
+      "as_of_month": null
+    },
+    "comparison": {
+      "policy": "prior_calendar_period",
+      "status": "unavailable",
+      "prior_period_label": "August 2026"
+    },
+    "presets": [
+      {
+        "id": "last_complete_month",
+        "label": "Latest measured month",
+        "availability": "available",
+        "reason_code": null,
+        "reason_text": null,
+        "window": {
+          "end": "2026-09-30",
+          "start": "2026-09-01"
+        },
+        "period_label": "September 2026"
+      }
+    ],
+    "custom": {
+      "availability": "unavailable",
+      "bounds": null,
+      "reason_code": "custom_disabled"
+    }
+  },
   "page": {
     "actions": [],
     "artifact": {
@@ -17,33 +60,22 @@
         {
           "campaign_audiences": {
             "basis_label": "DSP-attributed sales ÷ DSP spend · 14-day attribution, conversion date",
-            "limit_text": "Campaign grain shows which segments perform, not which line item to change.",
-            "pending_text": null,
-            "rows": [
+            "campaign_count": 1,
+            "index": [
               {
                 "campaign_label": "Fall prospecting",
                 "campaign_ref": "campaign-1",
-                "category_level_1": null,
-                "category_path": null,
-                "cpm_text": null,
-                "display_name": "Demo - Age 25-34 · Amazon",
-                "name": "Demo - Age 25-34",
-                "provider_label": "Amazon",
-                "roas_text": null,
-                "segment_cpm": {
-                  "currency": "USD",
-                  "text": "7.00 USD",
-                  "value": "7.00"
-                },
-                "segment_id": "41001",
-                "segment_impressions": 30000,
-                "segment_impressions_text": "30000",
-                "segment_roas_attributed": "0.59",
-                "segment_roas_attributed_text": "0.59x"
+                "page_count": 1,
+                "segment_count": 1,
+                "state": "available",
+                "text": null
               }
             ],
-            "segment_ids_sentence": "DSP behaviour segments and Amazon audience segments (paid) use different IDs, so they're never linked or compared as one list.",
-            "shown_text": null
+            "index_shards": 1,
+            "limit_text": "Campaign grain shows which segments perform, not which line item to change.",
+            "pending_text": null,
+            "refused_text": null,
+            "segment_ids_sentence": "DSP behaviour segments and Amazon audience segments (paid) use different IDs, so they're never linked or compared as one list."
           },
           "default_view": "dsp_exposed_only",
           "outcome": "complete",
@@ -69,6 +101,8 @@
                     }
                   ],
                   "label": "In-market",
+                  "page_count": 0,
+                  "paging_text": null,
                   "paid_state": {
                     "expected_after": "2026-10-16",
                     "feature_observed": true,
@@ -105,6 +139,8 @@
                     }
                   ],
                   "label": "Lifestyle",
+                  "page_count": 0,
+                  "paging_text": null,
                   "paid_state": {
                     "expected_after": "2026-10-16",
                     "feature_observed": true,
@@ -155,6 +191,8 @@
                     }
                   ],
                   "label": "DSP behaviour segments",
+                  "page_count": 1,
+                  "paging_text": null,
                   "paid_state": null,
                   "period_text": null,
                   "profile_path": "dsp_exposed_only",
@@ -252,68 +290,26 @@
       "outcome": "complete",
       "page_context_expires_at": "2026-10-16T13:00:00+00:00",
       "page_context_label": "Audiences · September 2026",
+      "revision": "e4a437855de26ff5a48f425bd04cf9b29ea62bd434fa5c4f179a1a096462d9cd",
       "starter_questions": [
         "Which DSP behaviour segments did September 2026's buyers over-index in?",
         "Which DSP campaigns reached which segments in September 2026?"
       ],
       "type": "AudienceProfileArtifact",
-      "version": 1
+      "version": 2
     },
     "artifact_id": "audiences",
     "artifact_revision": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
     "artifact_type": "AudienceProfileArtifact",
-    "artifact_version": 1,
+    "artifact_version": 2,
     "kind": "audiences",
-    "page_context_expires_at": "2026-10-16T13:00:00+00:00",
-    "page_context_label": "Audiences · September 2026",
     "page_id": "audiences",
     "route": "/audiences/",
+    "page_context_expires_at": "2026-10-16T13:00:00+00:00",
+    "page_context_label": "Audiences · September 2026",
     "starter_questions": [
       "Which DSP behaviour segments did September 2026's buyers over-index in?",
       "Which DSP campaigns reached which segments in September 2026?"
     ]
-  },
-  "session_id": "conversation-session",
-  "temporal": {
-    "comparison": {
-      "policy": "prior_calendar_period",
-      "prior_period_label": "August 2026",
-      "status": "unavailable"
-    },
-    "custom": {
-      "availability": "unavailable",
-      "bounds": null,
-      "reason_code": "custom_disabled"
-    },
-    "mode": "selectable",
-    "presets": [
-      {
-        "availability": "available",
-        "id": "last_complete_month",
-        "label": "Latest measured month",
-        "period_label": "September 2026",
-        "reason_code": null,
-        "reason_text": null,
-        "window": {
-          "end": "2026-09-30",
-          "start": "2026-09-01"
-        }
-      }
-    ],
-    "resolved": {
-      "as_of_month": null,
-      "display_grain": "month",
-      "period_label": "September 2026",
-      "reporting_window_status": "preferred_default",
-      "selection": {
-        "kind": "default",
-        "preset_id": null
-      },
-      "window": {
-        "end": "2026-09-30",
-        "start": "2026-09-01"
-      }
-    },
-    "version": 2
   }
 }
