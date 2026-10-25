@@ -166,15 +166,15 @@ def compose(
     With `ranked` (ADR-143), the statement opens with the `ranked` CTE (`_ranked_cte`) and either
     selects the ranked keys themselves or semi-joins its own read to them.
 
-    `max_rows=None` is a grouped fold's single-fact read (`RowCeiling.BAKE_GROUPED`): no `LIMIT`,
-    and its `ORDER BY` is what keeps each group contiguous.
+    `max_rows=None` is a grouped fold's read (`RowCeiling.BAKE_GROUPED`): no `LIMIT`, and its
+    `ORDER BY` is what keeps each group contiguous. A single-fact read and a drill-across both
+    fold that way; a cross-fact ratio's per-row figure needs both sides of the same row (ADR-152).
+    A ranked read is never folded without a limit: its `n` is the restriction itself.
     """
     request_plan = bound.logical
-    if max_rows is None:
-        if ranked is not None or request_plan.join is not None:
-            raise ValueError("only a single-fact read is folded without a row limit.")
-        return _compose_single(bound, None)
     if ranked is not None:
+        if max_rows is None:
+            raise ValueError("a ranked read is never folded without a row limit.")
         return _compose_ranked(bound, max_rows, ranked)
     if request_plan.join is not None:
         return _compose_drill_across(bound, max_rows)
@@ -491,14 +491,14 @@ def _join_of(plan: QueryPlan) -> JoinSide:
     return join
 
 
-def _compose_drill_across(bound: BoundQueryPlan, max_rows: int) -> ComposedQuery:
+def _compose_drill_across(bound: BoundQueryPlan, max_rows: int | None) -> ComposedQuery:
     """Build the publication-fenced two-subquery join a cross-fact ratio needs.
 
         SELECT   COALESCE(s0.<dim>, s1.<dim>) AS <dim>, s0.value_0, s0.suppressed_0,
                  s1.value_1, s1.suppressed_1
         FROM     (<numerator aggregated>) s0
         FULL JOIN (<denominator aggregated>) s1 ON s0.<dim> = s1.<dim> AND …
-        ORDER BY 1 … LIMIT <max_rows + 1>
+        ORDER BY 1 … LIMIT <max_rows + 1>      (no LIMIT for a grouped fold)
 
     **`FULL JOIN`, not inner.** An inner join silently drops a campaign that spent without
     converting, which is the row somebody asking about waste most needs to see. Keeping it and
@@ -560,8 +560,8 @@ def _compose_drill_across(bound: BoundQueryPlan, max_rows: int) -> ComposedQuery
         f"SELECT {selected} "  # noqa: S608 — see `compose`  # nosec B608
         f"FROM ({numerator.sql}) {numerator.alias} "
         f"FULL JOIN ({denominator.sql}) {denominator.alias} ON {on} "
-        f"ORDER BY {ordering} "
-        f"LIMIT {max_rows + 1}"
+        f"ORDER BY {ordering}"
+        f"{_limit(max_rows)}"
     )
     return ComposedQuery(sql=sql, parameters=(*numerator.parameters, *denominator.parameters))
 

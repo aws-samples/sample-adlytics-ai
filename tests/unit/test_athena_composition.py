@@ -294,6 +294,16 @@ class TestMonetaryDrillAcrossCarriesCurrency:
         assert 'GROUP BY "date_key", "currency_code"' in composed.sql
         assert bound.logical.selected_columns == ("date_key", "currency_code")
 
+    def test_a_grouped_drill_across_drops_only_the_limit(self) -> None:
+        """D1 (dev 2026-10-25): a cross-fact ratio folded per row (`BAKE_GROUPED`) composes."""
+        bound = self._bound("cost_per_purchase")
+        limited = compose(bound, max_rows=10).sql
+        grouped = compose(bound, max_rows=None).sql
+
+        assert "LIMIT" not in grouped
+        assert grouped.endswith('s0."currency_code" = s1."currency_code" ORDER BY 1')
+        assert limited == f"{grouped} LIMIT 11"
+
     def test_two_sided_currency_is_part_of_the_join_key(self) -> None:
         bound = self._bound("cost_per_purchase")
         composed = compose(bound, max_rows=10)

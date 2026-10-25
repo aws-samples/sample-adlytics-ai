@@ -154,6 +154,14 @@ def test_the_ranked_keys_statement_selects_from_ranked_and_orders_by_the_one_rul
     assert composed.sql.count("?") == len(composed.parameters)
 
 
+def test_a_ranked_read_is_never_composed_without_a_row_limit() -> None:
+    keys = _ranked_requests()[0]
+    assert keys.ranked is not None
+    assert compose(keys.plan, keys.max_rows, keys.ranked).sql.endswith("LIMIT 51")
+    with pytest.raises(ValueError, match="a ranked read is never folded without a row limit"):
+        compose(keys.plan, None, keys.ranked)
+
+
 def test_the_population_sums_are_scalar_sums_over_their_own_fenced_reads() -> None:
     """Each sum binds first, in text order: the sums sit in the CTE's outer select list."""
     keys = _ranked_requests()[0]
