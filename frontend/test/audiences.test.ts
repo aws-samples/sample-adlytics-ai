@@ -2,8 +2,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 
-import { parseAudienceProfileArtifact } from '@/lib/audiences';
+import { parseAudienceProfileArtifact, parseAudiencesPart } from '@/lib/audiences';
 import fixture from './fixtures/audiences-complete-v2.json';
+import campaignPage from './fixtures/audiences-campaign-page-v1.json';
 import { audiencesFixture } from './fixtures/audiences-v1-fixtures';
 
 type Json = Record<string, unknown>;
@@ -17,7 +18,14 @@ test('strict Audiences decoder accepts the exact server fixture', () => {
   const artifact = parseAudienceProfileArtifact(fixture);
   assert.equal(artifact.markets[0].views[0].deliveries.length, 2);
   assert.equal(artifact.markets[0].views[1].deliveries[0]?.profile_path, 'dsp_exposed_only');
-  assert.equal(artifact.markets[0].campaign_audiences.rows[0]?.segment_cpm?.text, '7.00 USD');
+  assert.deepEqual(artifact.markets[0].campaign_audiences.index.map((entry) => [entry.campaign_ref, entry.campaign_label]), [['campaign-1', 'Fall prospecting']]);
+  // The campaign's figures are its own part, fetched on selection, under the parent's revision.
+  const served = parseAudiencesPart(campaignPage, { kind: 'campaign', page: 0, ref: 'campaign-1' });
+  assert.equal(served.parent_revision, artifact.revision);
+  assert.equal(served.part.kind === 'campaign' ? served.part.rows[0]?.segment_cpm?.text : null, '7.00 USD');
+  // Paired: the same part asked for as another campaign or page is refused.
+  assert.throws(() => parseAudiencesPart(campaignPage, { kind: 'campaign', page: 0, ref: 'campaign-2' }), TypeError);
+  assert.throws(() => parseAudiencesPart(campaignPage, { kind: 'campaign', page: 1, ref: 'campaign-1' }), TypeError);
 });
 
 test('Audiences refuses unknown fields, multiple markets and reordered semantic rosters', () => {
@@ -55,17 +63,9 @@ test('Audiences cross-checks paid dates plus display and availability pairs', ()
   const stateRow = objects(views(wrongState)[1]!.rows)[0]!;
   stateRow.state = 'below_minimum'; stateRow.text = 'Fewer than 30 buyers, so no index is shown.';
   cases.push(wrongState);
-  const extraMoney = clone(fixture) as Json;
-  const campaigns = object(market(extraMoney).campaign_audiences);
-  object(objects(campaigns.rows)[0]!.segment_cpm).unexpected = true;
-  cases.push(extraMoney);
-  const wrongCpm = clone(fixture) as Json;
-  const wrongCpmRow = objects(object(market(wrongCpm).campaign_audiences).rows)[0]!;
-  object(wrongCpmRow.segment_cpm).text = '99.99 USD';
-  cases.push(wrongCpm);
-  const wrongRoas = clone(fixture) as Json;
-  objects(object(market(wrongRoas).campaign_audiences).rows)[0]!.segment_roas_attributed_text = '88.88x';
-  cases.push(wrongRoas);
+  const wrongPages = clone(fixture) as Json;
+  objects(object(market(wrongPages).campaign_audiences).index)[0]!.page_count = 2;
+  cases.push(wrongPages);
   const unavailableFilled = clone(fixture) as Json;
   const dspDelivery = objects(views(unavailableFilled)[1]!.deliveries)[0]!;
   dspDelivery.returned = false; dspDelivery.total_returned = false;
@@ -77,6 +77,17 @@ test('Audiences cross-checks paid dates plus display and availability pairs', ()
   objects(views(unavailableWithoutReason)[1]!.not_available)[0]!.text = null;
   cases.push(unavailableWithoutReason);
   for (const candidate of cases) assert.throws(() => parseAudienceProfileArtifact(candidate), TypeError);
+  const parts: Json[] = [];
+  const extraMoney = clone(campaignPage) as Json;
+  object(objects(extraMoney.rows)[0]!.segment_cpm).unexpected = true;
+  parts.push(extraMoney);
+  const wrongCpm = clone(campaignPage) as Json;
+  object(objects(wrongCpm.rows)[0]!.segment_cpm).text = '99.99 USD';
+  parts.push(wrongCpm);
+  const wrongRoas = clone(campaignPage) as Json;
+  objects(wrongRoas.rows)[0]!.segment_roas_attributed_text = '88.88x';
+  parts.push(wrongRoas);
+  for (const candidate of parts) assert.throws(() => parseAudiencesPart(candidate, { kind: 'campaign', page: 0, ref: 'campaign-1' }), TypeError);
 });
 
 test('Audiences non-complete fixture requires a displayable status', () => {

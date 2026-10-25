@@ -7,6 +7,7 @@ import { expect, test, type Page } from '@playwright/test';
 import audiencesFixture from '../test/fixtures/audiences-complete-v2.json';
 import audiencesInRosterUnavailableFixture from '../test/fixtures/audiences-in-roster-unavailable-v2.json';
 import audiencesNotObservedFixture from '../test/fixtures/audiences-not-observed-v2.json';
+import audiencesCampaignPage from '../test/fixtures/audiences-campaign-page-v1.json';
 import newCustomersRolling from '../test/fixtures/new-customers-7d-v2.json';
 import newCustomersPending from '../test/fixtures/new-customers-pending-v2.json';
 import {
@@ -78,7 +79,7 @@ function audiencesEnvelope(sessionId: string, fixture: Record<string, unknown>) 
     kind: 'page',
     page: {
       actions: [], artifact: fixture, artifact_id: 'audiences', artifact_revision: 'r'.repeat(43),
-      artifact_type: 'AudienceProfileArtifact', artifact_version: 1, kind: 'audiences',
+      artifact_type: 'AudienceProfileArtifact', artifact_version: 2, kind: 'audiences',
       page_context_expires_at: fixture.page_context_expires_at,
       page_context_label: fixture.page_context_label,
       page_id: 'audiences', route: '/audiences/', starter_questions: fixture.starter_questions,
@@ -500,12 +501,23 @@ test('/audiences/ renders paid-unavailable, paid, DSP and campaign-reason states
   const accepts = await mockAuthenticatedV2(page);
   const bodies: unknown[] = [];
   let fixture = structuredClone(audiencesNotObservedFixture) as Record<string, unknown>;
+  let campaignPart = structuredClone(audiencesCampaignPage) as Record<string, unknown>;
   await page.route('**/api/presentation/audiences', (route) => {
     accepts.push(route.request().headers().accept ?? '');
     const body: unknown = route.request().postDataJSON(); bodies.push(body);
     const sessionId = typeof body === 'object' && body !== null && 'session_id' in body && typeof body.session_id === 'string' ? body.session_id : 'conversation-fictional';
+    // A chosen campaign's page is its own part, under the parent's revision.
+    if (typeof body === 'object' && body !== null && 'campaign' in body) {
+      const part = { ...campaignPart, parent_revision: fixture.revision };
+      return route.fulfill({ body: JSON.stringify({ kind: 'audiences_part', parent_revision: part.parent_revision, part, session_id: sessionId }), contentType: 'application/json', status: 200 });
+    }
     return route.fulfill({ body: JSON.stringify(audiencesEnvelope(sessionId, fixture)), contentType: 'application/json', status: 200 });
   });
+  const openCampaign = async () => {
+    await page.locator('[data-slot="au-campaigns"] > summary').click();
+    await page.getByRole('combobox', { name: 'Campaign' }).click();
+    await page.getByRole('option', { name: 'Fall prospecting' }).click();
+  };
   await page.setViewportSize({ height: 900, width: 1280 });
   const response = await page.goto('/audiences/');
   expect(response?.ok()).toBe(true);
@@ -513,7 +525,6 @@ test('/audiences/ renders paid-unavailable, paid, DSP and campaign-reason states
   await expect(page.getByText('Showing September 2026 (Latest measured month).')).toBeVisible();
   await expect(page.getByRole('radio', { name: 'DSP-exposed buyers only' })).toBeChecked();
   await expect(page.getByRole('radio', { name: 'New-to-brand buyers' })).toBeVisible();
-  await expect(page.getByText('7.00 USD')).toBeVisible();
   await expect(page.getByRole('group', { name: 'Window' })).toHaveCount(0);
   expect(bodies[0]).toEqual({ session_id: expect.any(String) });
   expect(accepts[0]).toBe('application/vnd.adlytics.presentation-v2+json');
@@ -572,10 +583,15 @@ test('/audiences/ renders paid-unavailable, paid, DSP and campaign-reason states
   await captureState('complete-paid');
 
   fixture = structuredClone(audiencesFixture) as Record<string, unknown>;
-  const campaign = (((fixture.markets as Record<string, unknown>[])[0]!.campaign_audiences as Record<string, unknown>).rows as Record<string, unknown>[])[0]!;
+  await page.reload();
+  await openCampaign();
+  await expect(page.getByText('7.00 USD')).toBeVisible();
+  campaignPart = structuredClone(audiencesCampaignPage) as Record<string, unknown>;
+  const campaign = (campaignPart.rows as Record<string, unknown>[])[0]!;
   campaign.segment_cpm = null; campaign.cpm_text = 'Not available: no impressions came back for this segment.';
   campaign.segment_roas_attributed = null; campaign.segment_roas_attributed_text = null; campaign.roas_text = "Not available: attributed sales didn't come back for this segment.";
   await page.reload();
+  await openCampaign();
   await expect(page.getByText('Not available: no impressions came back for this segment.')).toBeVisible();
   await captureState('campaign-reasons');
 

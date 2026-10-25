@@ -4,69 +4,249 @@
     "DSP behaviour segments and Amazon audience segments (paid) use different IDs, so they're never linked or compared as one list."
   ],
   "display_minimum": 30,
-  "evidence_status": { "slots": [], "version": 2 },
-  "markets": [{
-    "campaign_audiences": {
-      "basis_label": "DSP-attributed sales ÷ DSP spend · 14-day attribution, conversion date",
-      "limit_text": "Campaign grain shows which segments perform, not which line item to change.",
-      "pending_text": null,
-      "shown_text": null,
-      "rows": [{
-        "campaign_label": "Fall prospecting", "campaign_ref": "campaign-1", "category_level_1": null, "category_path": null,
-        "cpm_text": null, "display_name": "Demo - Age 25-34 · Amazon", "name": "Demo - Age 25-34", "provider_label": "Amazon", "roas_text": null,
-        "segment_cpm": { "currency": "USD", "text": "7.00 USD", "value": "7.00" }, "segment_id": "41001",
-        "segment_impressions": 30000, "segment_impressions_text": "30000", "segment_roas_attributed": "0.59", "segment_roas_attributed_text": "0.59x"
-      }],
-      "segment_ids_sentence": "DSP behaviour segments and Amazon audience segments (paid) use different IDs, so they're never linked or compared as one list."
-    },
-    "default_view": "dsp_exposed_only", "outcome": "complete",
-    "views": [{
-      "buyer_label": "Ad-touched buyers in the month · may have bought before seeing an ad", "callout": null,
-      "caption": "Amazon audience segments (paid) · September 2026 · segment figures never add up",
-      "deliveries": [{
-        "first_month_note": null,
-        "insights": [{ "absence_class": "ineligible", "absence_reason": "Needs the Amazon Insights paid feature (Audience Segment Insights). No data has arrived for this workspace.", "artifact_revision": "rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr", "evidence_line": null, "id": "segment-over-index", "output_class": "perspective", "prompt_version": "deterministic-v1", "state": "silent", "text": null }],
-        "label": "In-market", "paid_state": { "expected_after": "2026-10-16", "feature_observed": true, "latest_available_period": { "end": "2026-08-31", "start": "2026-08-01" }, "period_published": false },
-        "period_text": "Figures for September 2026 are expected after 16 Oct 2026.", "profile_path": "asi_in_market",
-        "profiled_buyers_total": null, "profiled_buyers_total_text": null, "profiled_exposed_total": null, "profiled_exposed_total_text": null,
-        "returned": false, "roster_note": null, "total_returned": false, "total_text": null
-      }, {
-        "first_month_note": null,
-        "insights": [{ "absence_class": "ineligible", "absence_reason": "Needs the Amazon Insights paid feature (Audience Segment Insights). No data has arrived for this workspace.", "artifact_revision": "rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr", "evidence_line": null, "id": "segment-over-index", "output_class": "perspective", "prompt_version": "deterministic-v1", "state": "silent", "text": null }],
-        "label": "Lifestyle", "paid_state": { "expected_after": "2026-10-16", "feature_observed": true, "latest_available_period": { "end": "2026-08-31", "start": "2026-08-01" }, "period_published": false },
-        "period_text": "Figures for September 2026 are expected after 16 Oct 2026.", "profile_path": "asi_lifestyle",
-        "profiled_buyers_total": null, "profiled_buyers_total_text": null, "profiled_exposed_total": null, "profiled_exposed_total_text": null,
-        "returned": false, "roster_note": null, "total_returned": false, "total_text": null
-      }],
-      "display_minimum_text": "Only segments with at least 30 buyers carry an index.", "label": "Amazon audience segments (paid)", "not_available": [], "paid_state": "observed", "rows": [],
-      "segment_ids_sentence": "DSP behaviour segments and Amazon audience segments (paid) use different IDs, so they're never linked or compared as one list.", "view": "asi_all_exposed"
-    }, {
-      "buyer_label": "Ad-touched buyers in the month · may have bought before seeing an ad", "callout": null,
-      "caption": "DSP-exposed buyers only · September 2026 · segment figures never add up",
-      "deliveries": [{
-        "first_month_note": null,
-        "insights": [{ "absence_class": "evaluated-quiet", "absence_reason": "No segment holds enough buyers with a share clearly above its share of reached shoppers.", "artifact_revision": "rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr", "evidence_line": null, "id": "segment-over-index", "output_class": "perspective", "prompt_version": "deterministic-v1", "state": "silent", "text": null }],
-        "label": "DSP behaviour segments", "paid_state": null, "period_text": null, "profile_path": "dsp_exposed_only",
-        "profiled_buyers_total": 120, "profiled_buyers_total_text": "120", "profiled_exposed_total": 2400, "profiled_exposed_total_text": "2400",
-        "returned": true, "roster_note": "Some breakdowns had too few shoppers and aren't shown.", "total_returned": true, "total_text": null
-      }],
-      "display_minimum_text": "Only segments with at least 30 buyers carry an index.", "label": "DSP-exposed buyers only",
-      "not_available": [{ "category_level_1": null, "category_path": null, "display_name": "Segment 41003 (name not available yet)", "name": null, "profile_path": "dsp_exposed_only", "provider_label": null, "segment_id": "41003", "state": "not_available", "text": "Amazon returned too few shoppers for this segment this month. It was listed last month." }],
-      "paid_state": "standard",
-      "rows": [{
-        "category_level_1": null, "category_path": null, "display_name": "Demo - Age 25-34 · Amazon", "name": "Demo - Age 25-34", "profile_path": "dsp_exposed_only", "provider_label": "Amazon",
-        "segment_buyer_share": { "text": "40.0%", "value": "0.4000" }, "segment_buyers": 48, "segment_buyers_new_to_brand": 19, "segment_buyers_new_to_brand_text": "19", "segment_buyers_text": "48",
-        "segment_exposed_share": { "text": "30.0%", "value": "0.3000" }, "segment_exposed_shoppers": 720, "segment_id": "41001", "segment_index": "1.33", "segment_index_text": "1.33x", "state": "value", "text": null
-      }, {
-        "category_level_1": null, "category_path": null, "display_name": "ExperianDemographicsGenderFemale_LiveRamp · Third party", "name": "ExperianDemographicsGenderFemale_LiveRamp", "profile_path": "dsp_exposed_only", "provider_label": "Third party",
-        "segment_buyer_share": { "text": "11.7%", "value": "0.1167" }, "segment_buyers": 14, "segment_buyers_new_to_brand": 5, "segment_buyers_new_to_brand_text": "5", "segment_buyers_text": "14",
-        "segment_exposed_share": { "text": "12.0%", "value": "0.1200" }, "segment_exposed_shoppers": 288, "segment_id": "41002", "segment_index": null, "segment_index_text": null, "state": "below_minimum", "text": "Fewer than 30 buyers, so no index is shown."
-      }],
-      "segment_ids_sentence": "DSP behaviour segments and Amazon audience segments (paid) use different IDs, so they're never linked or compared as one list.", "view": "dsp_exposed_only"
-    }]
-  }],
-  "month": { "end": "2026-09-30", "label": "September 2026", "start": "2026-09-01" },
-  "outcome": "complete", "page_context_expires_at": "2099-10-16T12:00:00+00:00", "page_context_label": "Audiences · September 2026",
-  "starter_questions": ["Which DSP behaviour segments did September 2026's buyers over-index in?", "Which DSP campaigns reached which segments in September 2026?"],
-  "type": "AudienceProfileArtifact", "version": 1
+  "evidence_status": {
+    "slots": [],
+    "version": 2
+  },
+  "markets": [
+    {
+      "campaign_audiences": {
+        "basis_label": "DSP-attributed sales ÷ DSP spend · 14-day attribution, conversion date",
+        "campaign_count": 1,
+        "index": [
+          {
+            "campaign_label": "Fall prospecting",
+            "campaign_ref": "campaign-1",
+            "page_count": 1,
+            "segment_count": 1,
+            "state": "available",
+            "text": null
+          }
+        ],
+        "index_shards": 1,
+        "limit_text": "Campaign grain shows which segments perform, not which line item to change.",
+        "pending_text": null,
+        "refused_text": null,
+        "segment_ids_sentence": "DSP behaviour segments and Amazon audience segments (paid) use different IDs, so they're never linked or compared as one list."
+      },
+      "default_view": "dsp_exposed_only",
+      "outcome": "complete",
+      "views": [
+        {
+          "buyer_label": "Ad-touched buyers in the month · may have bought before seeing an ad",
+          "callout": null,
+          "caption": "Amazon audience segments (paid) · September 2026 · segment figures never add up",
+          "deliveries": [
+            {
+              "first_month_note": null,
+              "insights": [
+                {
+                  "absence_class": "ineligible",
+                  "absence_reason": "Needs the Amazon Insights paid feature (Audience Segment Insights). No data has arrived for this workspace.",
+                  "artifact_revision": "rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr",
+                  "evidence_line": null,
+                  "id": "segment-over-index",
+                  "output_class": "perspective",
+                  "prompt_version": "deterministic-v1",
+                  "state": "silent",
+                  "text": null
+                }
+              ],
+              "label": "In-market",
+              "page_count": 0,
+              "paging_text": null,
+              "paid_state": {
+                "feature_observed": true,
+                "period_published": false,
+                "expected_after": "2026-10-16",
+                "latest_available_period": {
+                  "start": "2026-08-01",
+                  "end": "2026-08-31"
+                }
+              },
+              "period_text": "Figures for September 2026 are expected after 16 Oct 2026.",
+              "profile_path": "asi_in_market",
+              "profiled_buyers_total": null,
+              "profiled_buyers_total_text": null,
+              "profiled_exposed_total": null,
+              "profiled_exposed_total_text": null,
+              "returned": false,
+              "roster_note": null,
+              "total_returned": false,
+              "total_text": null
+            },
+            {
+              "first_month_note": null,
+              "insights": [
+                {
+                  "absence_class": "ineligible",
+                  "absence_reason": "Needs the Amazon Insights paid feature (Audience Segment Insights). No data has arrived for this workspace.",
+                  "artifact_revision": "rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr",
+                  "evidence_line": null,
+                  "id": "segment-over-index",
+                  "output_class": "perspective",
+                  "prompt_version": "deterministic-v1",
+                  "state": "silent",
+                  "text": null
+                }
+              ],
+              "label": "Lifestyle",
+              "page_count": 0,
+              "paging_text": null,
+              "paid_state": {
+                "feature_observed": true,
+                "period_published": false,
+                "expected_after": "2026-10-16",
+                "latest_available_period": {
+                  "start": "2026-08-01",
+                  "end": "2026-08-31"
+                }
+              },
+              "period_text": "Figures for September 2026 are expected after 16 Oct 2026.",
+              "profile_path": "asi_lifestyle",
+              "profiled_buyers_total": null,
+              "profiled_buyers_total_text": null,
+              "profiled_exposed_total": null,
+              "profiled_exposed_total_text": null,
+              "returned": false,
+              "roster_note": null,
+              "total_returned": false,
+              "total_text": null
+            }
+          ],
+          "display_minimum_text": "Only segments with at least 30 buyers carry an index.",
+          "label": "Amazon audience segments (paid)",
+          "not_available": [],
+          "paid_state": "observed",
+          "rows": [],
+          "segment_ids_sentence": "DSP behaviour segments and Amazon audience segments (paid) use different IDs, so they're never linked or compared as one list.",
+          "view": "asi_all_exposed"
+        },
+        {
+          "buyer_label": "Ad-touched buyers in the month · may have bought before seeing an ad",
+          "callout": null,
+          "caption": "DSP-exposed buyers only · September 2026 · segment figures never add up",
+          "deliveries": [
+            {
+              "first_month_note": null,
+              "insights": [
+                {
+                  "absence_class": "evaluated-quiet",
+                  "absence_reason": "No segment holds enough buyers with a share clearly above its share of reached shoppers.",
+                  "artifact_revision": "rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr",
+                  "evidence_line": null,
+                  "id": "segment-over-index",
+                  "output_class": "perspective",
+                  "prompt_version": "deterministic-v1",
+                  "state": "silent",
+                  "text": null
+                }
+              ],
+              "label": "DSP behaviour segments",
+              "page_count": 1,
+              "paging_text": null,
+              "paid_state": null,
+              "period_text": null,
+              "profile_path": "dsp_exposed_only",
+              "profiled_buyers_total": 120,
+              "profiled_buyers_total_text": "120",
+              "profiled_exposed_total": 2400,
+              "profiled_exposed_total_text": "2400",
+              "returned": true,
+              "roster_note": "Some breakdowns had too few shoppers and aren't shown.",
+              "total_returned": true,
+              "total_text": null
+            }
+          ],
+          "display_minimum_text": "Only segments with at least 30 buyers carry an index.",
+          "label": "DSP-exposed buyers only",
+          "not_available": [
+            {
+              "category_level_1": null,
+              "category_path": null,
+              "display_name": "Segment 41003 (name not available yet)",
+              "name": null,
+              "profile_path": "dsp_exposed_only",
+              "provider_label": null,
+              "segment_id": "41003",
+              "state": "not_available",
+              "text": "Amazon returned too few shoppers for this segment this month. It was listed last month."
+            }
+          ],
+          "paid_state": "standard",
+          "rows": [
+            {
+              "category_level_1": null,
+              "category_path": null,
+              "display_name": "Demo - Age 25-34 · Amazon",
+              "name": "Demo - Age 25-34",
+              "profile_path": "dsp_exposed_only",
+              "provider_label": "Amazon",
+              "segment_buyer_share": {
+                "text": "40.0%",
+                "value": "0.4000"
+              },
+              "segment_buyers": 48,
+              "segment_buyers_new_to_brand": 19,
+              "segment_buyers_new_to_brand_text": "19",
+              "segment_buyers_text": "48",
+              "segment_exposed_share": {
+                "text": "30.0%",
+                "value": "0.3000"
+              },
+              "segment_exposed_shoppers": 720,
+              "segment_id": "41001",
+              "segment_index": "1.33",
+              "segment_index_text": "1.33x",
+              "state": "value",
+              "text": null
+            },
+            {
+              "category_level_1": null,
+              "category_path": null,
+              "display_name": "ExperianDemographicsGenderFemale_LiveRamp · Third party",
+              "name": "ExperianDemographicsGenderFemale_LiveRamp",
+              "profile_path": "dsp_exposed_only",
+              "provider_label": "Third party",
+              "segment_buyer_share": {
+                "text": "11.7%",
+                "value": "0.1167"
+              },
+              "segment_buyers": 14,
+              "segment_buyers_new_to_brand": 5,
+              "segment_buyers_new_to_brand_text": "5",
+              "segment_buyers_text": "14",
+              "segment_exposed_share": {
+                "text": "12.0%",
+                "value": "0.1200"
+              },
+              "segment_exposed_shoppers": 288,
+              "segment_id": "41002",
+              "segment_index": null,
+              "segment_index_text": null,
+              "state": "below_minimum",
+              "text": "Fewer than 30 buyers, so no index is shown."
+            }
+          ],
+          "segment_ids_sentence": "DSP behaviour segments and Amazon audience segments (paid) use different IDs, so they're never linked or compared as one list.",
+          "view": "dsp_exposed_only"
+        }
+      ]
+    }
+  ],
+  "month": {
+    "end": "2026-09-30",
+    "label": "September 2026",
+    "start": "2026-09-01"
+  },
+  "outcome": "complete",
+  "page_context_expires_at": "2099-10-16T12:00:00+00:00",
+  "page_context_label": "Audiences · September 2026",
+  "revision": "e4a437855de26ff5a48f425bd04cf9b29ea62bd434fa5c4f179a1a096462d9cd",
+  "starter_questions": [
+    "Which DSP behaviour segments did September 2026's buyers over-index in?",
+    "Which DSP campaigns reached which segments in September 2026?"
+  ],
+  "type": "AudienceProfileArtifact",
+  "version": 2
 }
