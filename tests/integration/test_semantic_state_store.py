@@ -9,6 +9,7 @@ Every invented hash key starts with the shared probe prefix so session cleanup c
 from __future__ import annotations
 
 import json
+import statistics
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, replace
@@ -1000,20 +1001,28 @@ def test_scope_discovery_returns_strong_current_pointers_for_exact_buckets(
     ]
 
 
+_SERVING_REPEATS = 10
+"""Timed serving reads per size: the read-only stand-in's repeat count (dev, 2026-10-25)."""
+
+
 @pytest.mark.covers("ADR-070")
 @pytest.mark.parametrize("size", [184, 1_000])
 def test_an_exact_read_past_100_partitions_attests_one_vector_in_chunked_passes(  # noqa: PLR0913, PLR0917 -- pytest fixtures and the size
     probe: str,
     publications: DynamoPublicationStore,
     settings: Settings,
-    record_property: Callable[[str, object], None],
+    record_testsuite_property: Callable[[str, object], None],
     size: int,
 ) -> None:
-    """The Reach quarter's 184 day partitions, and the provisional 1,000 bound, as one vector.
+    """The Reach quarter's 184 day partitions, and 1,000, each attested as one vector.
 
-    Each serving read's elapsed time and `TransactGetItems` count go to the run record's junit
-    properties: the measured per-transaction latency that derives the exact-read bound (ADR-070).
+    `_SERVING_REPEATS` serving reads' per-transaction latency (p50 and max) and `TransactGetItems`
+    count go to the run record's junit suite properties, which xunit2 keeps: the measured latency
+    that derives the exact-read bound (ADR-070).
     """
+    # The node name's `[184]` isn't a canonical key character; one key per size, as the
+    # prepublication-family test above derives its own.
+    probe = f"{probe.split('[', maxsplit=1)[0]}-{size}"
     now = datetime.now(UTC).replace(microsecond=0)
     leases = DynamoLeaseStore(settings.semantic_leases_table)
     expected: list[SuccessfulPublication] = []
@@ -1041,16 +1050,27 @@ def test_an_exact_read_past_100_partitions_attests_one_vector_in_chunked_passes(
 
     client.meta.events.register("after-call.dynamodb.TransactGetItems", _counted)
     serving = DynamoCurrentPublications(settings.semantic_publications_table, client)
-    started = time.perf_counter()
-    assert serving.inspect_exact(partitions).publications == tuple(expected)
-    elapsed_ms = (time.perf_counter() - started) * 1_000
-    record_property(
+    vectors: list[float] = []
+    per_read: list[int] = []
+    for _ in range(_SERVING_REPEATS):
+        before = len(transactions)
+        started = time.perf_counter()
+        assert serving.inspect_exact(partitions).publications == tuple(expected)
+        vectors.append((time.perf_counter() - started) * 1_000)
+        per_read.append(len(transactions) - before)
+    # Every repeat is the same steady-state A, B, C read: one transaction per 100 per phase.
+    assert set(per_read) == {3 * -(-size // 100)}
+    per_transaction = sorted(vector / per_read[0] for vector in vectors)
+    record_testsuite_property(
         f"exact_read_{size}_partitions",
         json.dumps(
             {
-                "vector_ms": round(elapsed_ms, 1),
-                "transact_get_items": len(transactions),
-                "ms_per_transaction": round(elapsed_ms / len(transactions), 1),
+                "repeats": _SERVING_REPEATS,
+                "transact_get_items_per_read": per_read[0],
+                "vector_ms_p50": round(statistics.median(vectors), 1),
+                "vector_ms_max": round(max(vectors), 1),
+                "ms_per_transaction_p50": round(statistics.median(per_transaction), 1),
+                "ms_per_transaction_max": round(per_transaction[-1], 1),
             }
         ),
     )
