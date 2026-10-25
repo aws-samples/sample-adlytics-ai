@@ -399,7 +399,7 @@ The one home of each page's own-absence thresholds at publish time. The README's
 | `BAKE_MAX_STREAMED_ROWS`, rows one bake reduction may stream | 31 days x `BAKE_MAX_ROWS` | the reduction's section shows its absence | ADR-143 |
 | Retail health product rows | the top 50 by current shipped revenue, with the count and sums of every product, at any catalog size | none | [Retail LLD](retail-health/low-level-design.md) |
 | Campaigns population | 1,000 campaigns (`CAMPAIGN_PRESET_POPULATION_BOUND`) | the page's own absence | ADR-145 |
-| Exact-read partitions per source pack | 1,000 (`MAX_PRESET_SNAPSHOT_PARTITIONS`, equal to Publication State's exact-read bound): a preset of up to 500 days with its prior; the Reach quarter reads 184 | `make check-bakeability` refuses the declaration; at a bake, that page's `partitions_over_bound` | ADR-070 |
+| Exact-read partitions per source pack | 1,000, provisional until dev validation derives it from measured read latency (`MAX_PRESET_SNAPSHOT_PARTITIONS`, equal to Publication State's exact-read bound). The gate's model, days doubled for the prior and one lens, fits a 500-day preset; the Reach quarter's pin reads 184, 92 days × 2 lenses. Each 100 partitions add 3 sequential DynamoDB transactions per attempt | `make check-bakeability` refuses the declaration; at a bake, that page's `partitions_over_bound` | ADR-070 |
 
 ## Scaling and operational gaps
 

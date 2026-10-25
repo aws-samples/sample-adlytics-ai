@@ -6,15 +6,20 @@ Status: Accepted — parent artifact serving implemented in development; display
 > partitions.** The verified A/B/C read of 2026-09-22 already reads each phase in transactions of
 > at most 100 items, and accepts only when both head passes agree. Heads only move forward, so that
 > agreement proves one instant however many transactions a pass takes: it's the two-pass verified
-> snapshot named on 2026-09-16 (`tests/unit/test_exact_snapshot_chunks.py` enumerates the
-> interleavings at 1 to 1,000 partitions). The 100 was a leftover of the one-transaction
-> attestation, so `MAX_EXACT_CURRENT_PARTITIONS` becomes 1,000, a cost bound: DynamoDB calls grow
-> by one per 100 partitions per pass. That's not the constant-only increase the alternatives
-> reject, which rested on the old two-item attestation. The bake policy
-> `MAX_PRESET_SNAPSHOT_PARTITIONS` stays equal to it, so the largest bake-able preset is 500 days and
-> the Reach quarter (184 day partitions in one pack on dev, 2026-10-18,
-> [ADR-146](adr-146-publish-the-reach-quarter-or-retire-it-on-measured-partitions.md)) bakes. Chat's
-> selection-wide bound is the same constant. A pack is still attested by one verified read, never
+> snapshot named on 2026-09-16. `tests/unit/test_exact_snapshot_chunks.py` drives the real adapter
+> at 1, 100, 101, 184 and 1,000 partitions: one head advance at every gap between transactions for
+> each chunk-edge partition, and every pair of window-edge gaps. The 100 was a leftover of the
+> one-transaction attestation, so `MAX_EXACT_CURRENT_PARTITIONS` becomes 1,000, a cost bound:
+> DynamoDB calls grow by one per 100 partitions per pass. That's not the constant-only increase the
+> alternatives reject, which rested on the old two-item attestation. **The 1,000 is provisional:**
+> chosen, not derived. Pending: dev validation measures per-transaction latency at 184 and 1,000
+> partitions, and the bound becomes the largest N whose worst serving read (3 attempts × 3 ×
+> ⌈N/100⌉ transactions) fits chat's turn budget. The bake policy `MAX_PRESET_SNAPSHOT_PARTITIONS`
+> stays equal to it. In the bakeability gate's model (days, doubled for a compared prior, one lens)
+> that's a 500-day preset; a pack with two lenses reaches it at half that. The Reach quarter reads
+> 184 (92 days × 2 lenses in one pack on dev, 2026-10-18,
+> [ADR-146](adr-146-publish-the-reach-quarter-or-retire-it-on-measured-partitions.md)) and bakes.
+> Chat's selection-wide bound is the same constant. A pack is still attested by one verified read, never
 > split. The 2026-10-08 sentence "The two-pass mechanism named in 2026-09-16 isn't needed" is
 > superseded. Current mechanics: [Publication State](../capabilities/publication-state/architecture.md#4-internal-structure);
 > bake policy: [Generation Coordination](../ui/generation-coordination.md).

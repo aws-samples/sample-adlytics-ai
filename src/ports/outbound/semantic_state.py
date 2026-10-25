@@ -116,6 +116,10 @@ MAX_EXACT_CURRENT_PARTITIONS = 1_000
 The read is ADR-070's chunked two-pass snapshot: heads, immutables and heads again, each in
 transactions of at most 100 items, accepted only when both head passes agree. Forward-only heads
 make that agreement one instant at any size; DynamoDB calls grow by one per 100 partitions per pass.
+
+Provisional (ADR-070, 2026-10-25): 1,000 is chosen, not derived. The derivation is the largest N
+whose worst serving read, 3 attempts x 3 x ceil(N / 100) transactions, fits the tightest caller
+budget (chat's turn) at the per-transaction latency dev validation measures.
 """
 
 

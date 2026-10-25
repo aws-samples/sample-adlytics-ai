@@ -52,7 +52,9 @@ publication paths moves the servable head in one transaction the item could shar
 own mechanism instead: the exact read already reads in chunks of 100 and verifies the heads twice,
 so its bound rises to 1,000 ([ADR-070](adr-070-serve-declared-preset-windows-from-publish-time-artifacts.md)
 amendment, 2026-10-25) and the quarter's 184 partitions bind in one verified read per pack. Chat's
-`ADLY-PLAN-0008` is a planner refusal this doesn't change.
+`ADLY-PLAN-0008` on "reach by channel last quarter" has an untraced cause: the probe recorded no
+selection over 100 for that question, so whether this change lifts it is unknown until the dev probe
+re-runs.
 Decided by rubric item (1) of
 [delivery practice](../delivery-practice.md#5-the-decision-weighting-rubric): a declared view that
 never fills is a broken promise on the page.
@@ -60,8 +62,9 @@ never fills is a broken promise on the page.
 ## Will be enforced by
 - Branch (a) or (c): `tests/unit/test_publication_selection.py` with paired per-pack and
   selection-wide cases, or the gate-equals-pin test.
-- Branch (a′): `tests/unit/test_exact_snapshot_chunks.py`, every interleaving of head advances
-  between chunked passes at 1, 100, 101, 184 and 1,000 partitions; `test_publication_selection.py`'s
+- Branch (a′): `tests/unit/test_exact_snapshot_chunks.py` at 1, 100, 101, 184 and 1,000
+  partitions, one head advance at every gap for each chunk-edge partition and every pair of
+  window-edge gaps; `test_publication_selection.py`'s
   184-partition selection paired with the 1,001 refusal; the probe recording a bound quarter.
 - Any branch: the quarter run through both bake entries, the graph task and the legacy entry
   every deployment outside dev runs.

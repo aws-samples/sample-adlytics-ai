@@ -122,9 +122,9 @@ For each stream record:
    otherwise the transition is irrelevant to that variant (category `out_of_window`, also for a
    restatement older than the widest preset plus its prior). The artifact-bake policy is
    `MAX_PRESET_SNAPSHOT_PARTITIONS` per dataset, held equal to Publication State's exact-read bound
-   (1,000, the chunked two-pass snapshot, ADR-070 2026-10-25); the bakeability gate refuses a
-   declared preset whose target plus prior day-partitions per pack exceed it (184 for a compared
-   quarter, 60 for `30d`). A page declaration still chooses its presets; a wider bound never adds one.
+   (1,000, provisional, the chunked two-pass snapshot, ADR-070 2026-10-25); the bakeability gate
+   refuses a declared preset whose target plus prior day-partitions per pack exceed it (its model
+   counts days, doubled for a compared prior, one lens: 184 for a compared quarter, 60 for `30d`). A page declaration still chooses its presets; a wider bound never adds one.
 5. **Open or join** the generation for `(page, variant, target period, contract_version)` (§4.2). If
    the page/variant's `OPEN#` item names an open generation for a *different* cohort key, that
    generation is first closed `abandoned` with `terminal_reason = period_moved` (§4.2): its target
