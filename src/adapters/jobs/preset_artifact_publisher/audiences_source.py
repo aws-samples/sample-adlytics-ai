@@ -1541,6 +1541,11 @@ def retained_audiences_preset_artifact_source(  # noqa: PLR0913, PLR0917 -- the 
         )
     ):
         return source_closed(AUDIENCES_PAGE_ID, "settings_incomplete")
+    if settings.athena_query_batch_max_concurrency < CAMPAIGN_STREAMED_READS:
+        # The campaign reads stream at once (group_stream); a narrower bound would deadlock them.
+        # Closing only this page keeps every other page composed. The deployed bound is the
+        # certified cap (10), so this closes only a misconfiguration.
+        return source_closed(AUDIENCES_PAGE_ID, "query_bound_below_streamed_reads")
     root = contracts_root()
     if not audiences_policy_declared(load_v2_page_schemas(root)):
         return source_closed(AUDIENCES_PAGE_ID, "page_entry_absent")
