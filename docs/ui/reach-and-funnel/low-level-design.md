@@ -116,7 +116,7 @@ be credited to more than one channel."
 | Period didn't arrive | Page-level: "Figures for {period} didn't arrive. The latest available is {latest}."; the preset button reads "{period}, didn't arrive" |
 | Pack 7 without its credit branch | Every per-channel cell reads "Not available per channel" with "one purchase can follow ads on several channels, and we can't split its credit fairly here. See the platform view.", and the platform figure renders |
 | Instant-access AMC instance (no DSP) | Not page-level: overlap and funnel read "Needs DSP and sponsored ads on one AMC instance"; sponsored-side frequency renders; the scope band still names the period |
-| Fewer than 4 active campaigns | Frequency reads "Needs at least 4 active campaigns" |
+| Fewer than 4 active campaigns | Frequency reads "Needs at least 4 active campaigns". Active means Amazon Ads spend above 0 in the period; the count is one ranked read's population count, so no read lists every campaign ([ADR-152](../../decisions/adr-152-read-page-sized-answers-in-sql-with-no-arbitrary-row-ceiling.md)) |
 | A suppressed cell or bucket | "Not available" with "too few shoppers, or none", never 0 |
 | No published body for the preset (page-level) | Page-level absence: [ABS-REACH-1](../page-absence-copy.md#abs-reach-1), with [ABS-ALT](../page-absence-copy.md#abs-alt) when another preset is published; no scope band |
 
