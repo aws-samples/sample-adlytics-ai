@@ -44,6 +44,9 @@ DAY_ONE = date(2024, 1, 1)
 CHUNK = 100
 """DynamoDB's `TransactGetItems` item cap, which the fake enforces as the service does."""
 SIZES = (1, 100, 101, 184, 1_000)
+"""One chunk, a full chunk, a second chunk, the Reach quarter, and the exact-read bound."""
+MULTI_CHUNK_SIZES = (1, 100, 101, 184)
+"""Sizes for the costlier cases: at 1,000 they'd repeat the multi-chunk shape 101 and 184 cover."""
 
 
 @cache
@@ -228,7 +231,7 @@ def test_one_advance_at_every_gap_refuses_exactly_inside_its_window_and_else_is_
     assert outcomes["accepted"] > 0 and outcomes["refused"] > 0
 
 
-@pytest.mark.parametrize("size", SIZES)
+@pytest.mark.parametrize("size", MULTI_CHUNK_SIZES)
 def test_two_advances_at_every_pair_of_window_edges_refuse_or_accept_one_instant(size: int) -> None:
     chunks = _chunks(size)
     first, last = 0, size - 1
@@ -250,7 +253,7 @@ def test_two_advances_at_every_pair_of_window_edges_refuse_or_accept_one_instant
     assert accepted > 0
 
 
-@pytest.mark.parametrize("size", SIZES)
+@pytest.mark.parametrize("size", MULTI_CHUNK_SIZES)
 def test_a_serving_read_retries_a_change_at_each_window_edge_and_accepts_the_next_stable_vector(
     size: int,
 ) -> None:
@@ -269,7 +272,7 @@ def test_a_serving_read_retries_a_change_at_each_window_edge_and_accepts_the_nex
         assert vector == world.states[world.table.calls - 2 * chunks]
 
 
-@pytest.mark.parametrize("size", SIZES)
+@pytest.mark.parametrize("size", MULTI_CHUNK_SIZES)
 def test_a_serving_read_refuses_after_three_changed_attempts_and_accepts_after_two(
     size: int,
 ) -> None:

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, cast
@@ -1000,16 +1001,23 @@ def test_scope_discovery_returns_strong_current_pointers_for_exact_buckets(
 
 
 @pytest.mark.covers("ADR-070")
-def test_a_quarter_sized_exact_read_attests_184_partitions_in_chunked_passes(
+@pytest.mark.parametrize("size", [184, 1_000])
+def test_an_exact_read_past_100_partitions_attests_one_vector_in_chunked_passes(  # noqa: PLR0913, PLR0917 -- pytest fixtures and the size
     probe: str,
     publications: DynamoPublicationStore,
     settings: Settings,
+    record_property: Callable[[str, object], None],
+    size: int,
 ) -> None:
-    """The Reach quarter's 184 day partitions, over the former 100, read as one verified vector."""
+    """The Reach quarter's 184 day partitions, and the provisional 1,000 bound, as one vector.
+
+    Each serving read's elapsed time and `TransactGetItems` count go to the run record's junit
+    properties: the measured per-transaction latency that derives the exact-read bound (ADR-070).
+    """
     now = datetime.now(UTC).replace(microsecond=0)
     leases = DynamoLeaseStore(settings.semantic_leases_table)
     expected: list[SuccessfulPublication] = []
-    for offset in range(184):
+    for offset in range(size):
         partition = _partition(probe, date(2026, 4, 1) + timedelta(days=offset))
         grant = leases.acquire(_lease_request(probe, partition, now)).grant
         assert grant is not None
@@ -1025,12 +1033,31 @@ def test_a_quarter_sized_exact_read_attests_184_partitions_in_chunked_passes(
     partitions = tuple(publication.partition for publication in expected)
 
     assert publications.inspect_exact(partitions).publications == tuple(expected)
-    serving = DynamoCurrentPublications(settings.semantic_publications_table)
+    client = boto3.client("dynamodb")
+    transactions: list[str] = []
+
+    def _counted(**_: object) -> None:
+        transactions.append("call")
+
+    client.meta.events.register("after-call.dynamodb.TransactGetItems", _counted)
+    serving = DynamoCurrentPublications(settings.semantic_publications_table, client)
+    started = time.perf_counter()
     assert serving.inspect_exact(partitions).publications == tuple(expected)
+    elapsed_ms = (time.perf_counter() - started) * 1_000
+    record_property(
+        f"exact_read_{size}_partitions",
+        json.dumps(
+            {
+                "vector_ms": round(elapsed_ms, 1),
+                "transact_get_items": len(transactions),
+                "ms_per_transaction": round(elapsed_ms / len(transactions), 1),
+            }
+        ),
+    )
     # Paired: one partition never published is a stable absence in its own slot, not a refusal.
-    absent = _partition(probe, date(2026, 4, 1) + timedelta(days=184))
-    inspected = serving.inspect_exact((*partitions, absent)).publications
-    assert inspected[:184] == tuple(expected) and inspected[184] is None
+    absent = _partition(probe, date(2026, 4, 1) + timedelta(days=size))
+    inspected = serving.inspect_exact((*partitions[:-1], absent)).publications
+    assert inspected[:-1] == tuple(expected[:-1]) and inspected[-1] is None
 
 
 @pytest.mark.covers("ADR-075")
