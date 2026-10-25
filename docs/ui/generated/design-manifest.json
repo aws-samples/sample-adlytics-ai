@@ -312,11 +312,11 @@
         },
         {
           "path": "docs/ui/audiences/high-level-design.md",
-          "sha256": "925932c93bb16903ea52edf4e313a96e54046a620cdabade8f4307b94facee23"
+          "sha256": "6c7a525188ab458ab32ebd796fe29f36b6d8f1e07c62908a3dc8beaf63817951"
         },
         {
           "path": "docs/ui/audiences/low-level-design.md",
-          "sha256": "fe42e94bc49ba96fe3d13241be0ccdff0a45a0b200cb29c989aae492876e2181"
+          "sha256": "bd7267e8898ee2e0435dc10287f41d79c93f24db4414303aeae340de479c079a"
         },
         {
           "path": "docs/ui/audiences/mockup.html",

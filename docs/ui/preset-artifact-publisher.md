@@ -138,13 +138,14 @@ The Audiences materializer (`src/adapters/jobs/preset_artifact_publisher/audienc
 the same way and stays closed, answering `audiences_materialization_unavailable`, unless the v2 `audiences`
 page entry declares exactly the entry the [Audiences](audiences/low-level-design.md) LLD specifies; that LLD
 owns the entry, the artifact contract, the absence texts, the paid states and the insight. It bakes the
-latest complete month any buyer-profile path has published, from retained publications only, in four steps
-across every governed marketplace. Each step runs at most `athena_query_batch_max_concurrency` reads at once
-and joins them by identity: the served months (one read per marketplace), the DSP campaign lists (one
-planned batch), every published profile path's and every campaign's segment roster, then one measurement
-batch holding every figure. Each figure is planned through the measurement layer chat reads, graded against
-its own delivery's roster and never planned across paths or campaigns; every share, index, CPM and ROAS is
-computed in domain code (`src/domain/presentation/audiences.py`).
+latest complete month any buyer-profile path has published, from retained publications only: 24 statements
+per marketplace at any campaign count, each phase at most `athena_query_batch_max_concurrency` at once.
+Phase 1 reads each profile path's roster and every DSP campaign's three figures and prior-month segments,
+each once for all campaigns; phase 2 the profile measurement and the history walk for campaigns with no
+segments last month. Each figure is planned through the measurement layer chat reads and graded against its
+own path's or campaign's roster; every share, index, CPM and ROAS is computed in domain code
+(`src/domain/presentation/audiences.py`). The campaign pages are written as parts, one campaign at a time
+([entity-streamed reads](#bake-width-and-the-memory-model)).
 
 A real materializer resolves current-plus-prior coverage, takes per-pack evidence snapshots, executes the
 page's bounded measurement batch, renders immutable artifacts, derives the revision from exact
@@ -373,7 +374,7 @@ while the stage draws it settles the page's absence the same way. Telemetry for 
 [observability](../concepts/observability.md#32-application-spans-and-metrics).
 
 ## Bake width and the memory model
-Every bake read is page-sized or bounded by governed axes ([ADR-152](../decisions/adr-152-read-page-sized-answers-in-sql-with-no-arbitrary-row-ceiling.md)). A page that shows a ranked slice reads it ranked in SQL, with the population's count and sums in the same statement (the [query path](../capabilities/query-path/architecture.md#row-ceilings-result-transports-and-folds) owns the shapes). A read grouped only by days, marketplaces and governed media-taxonomy axes is bounded by them. Only an entity-wide read (Audiences, Campaigns) still holds a population, up to `BAKE_MAX_ROWS` rows; a reduction streams up to `BAKE_MAX_STREAMED_ROWS` through a fold that keeps a bounded summary. The Baker streams each result from its result object, so one buffer is resident at any row count.
+Every bake read is page-sized or bounded by governed axes ([ADR-152](../decisions/adr-152-read-page-sized-answers-in-sql-with-no-arbitrary-row-ceiling.md)). A page that shows a ranked slice reads it ranked in SQL, with the population's count and sums in the same statement (the [query path](../capabilities/query-path/architecture.md#row-ceilings-result-transports-and-folds) owns the shapes). A read grouped only by days, marketplaces and governed media-taxonomy axes is bounded by them. A read that renders one entity at a time is **entity-streamed**: it reads `ORDER BY` its grain through a `GroupSink` (`group_stream.py`), a fold that hands one entity's rows at a time across a one-slot queue, so only the groups in flight are resident. Audiences reads every DSP campaign this way: a count pass in the render builds the campaign index, and a page pass, the same requests answered by result reuse, renders each campaign's pages as the stage writes them. Only Campaigns still holds a population, up to `BAKE_MAX_ROWS` rows; a reduction streams up to `BAKE_MAX_STREAMED_ROWS` through a fold that keeps a bounded summary. The Baker streams each result from its result object, so one buffer is resident at any row count.
 
 A bounded read that comes back cut is a defect. An entity-wide read cut at `BAKE_MAX_ROWS` is its page's `rows_over_ceiling` (or `population_over_ceiling`), and the `isolated_refusal` line names the operator action: raise the Baker memory.
 
@@ -395,8 +396,9 @@ The one home of each page's own-absence thresholds at publish time. The README's
 
 | Threshold | Value | Above it | Owner |
 |---|---|---|---|
-| `BAKE_MAX_ROWS`, rows one held entity-wide answer may keep | derived from the Baker's memory and printed by `make check-bakeability`: 10,835 at 1,024 MiB, binding row Audiences | that page's `rows_over_ceiling`; raise the Baker memory | ADR-152 |
+| `BAKE_MAX_ROWS`, rows one held entity-wide answer may keep | derived from the Baker's memory and printed by `make check-bakeability` | that page's `rows_over_ceiling`; raise the Baker memory | ADR-152 |
 | `BAKE_MAX_STREAMED_ROWS`, rows one bake reduction may stream | 31 days x `BAKE_MAX_ROWS` | the reduction's section shows its absence | ADR-143 |
+| Audiences DSP campaigns | every campaign with delivery in the month, each with every segment, in 50-row pages. Its campaign index and segment set are held up to `BAKE_MAX_ROWS` | the page's `rows_over_ceiling`; raise the Baker memory | ADR-141 |
 | Retail health product rows | the top 50 by current shipped revenue, with the count and sums of every product, at any catalog size | none | [Retail LLD](retail-health/low-level-design.md) |
 | Campaigns population | 1,000 campaigns (`CAMPAIGN_PRESET_POPULATION_BOUND`) | the page's own absence | ADR-145 |
 | Exact-read partitions per source pack | 1,000, provisional until dev validation derives it from measured read latency (`MAX_PRESET_SNAPSHOT_PARTITIONS`, equal to Publication State's exact-read bound). The gate's model, days doubled for the prior and one lens, fits a 500-day preset; the Reach quarter's pin reads 184, 92 days × 2 lenses. Each 100 partitions add 3 sequential DynamoDB transactions per attempt | `make check-bakeability` refuses the declaration; at a bake, that page's `partitions_over_bound` | ADR-070 |

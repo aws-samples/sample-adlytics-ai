@@ -998,48 +998,7 @@ in ignored task evidence. `measured_tree.remeasure_2026_10_18` records the befor
 The `--d2-roster`, `check-bakeability` and pin-section digests changed with them; no other row
 changed. `test_bake_pin_certificate.py` re-derives every row on each run.
 
-**M2: the over-bound Audiences month through GRAPH and the actual route.** Owner decision 1b: an
-over-bound month shows the typed unavailable state, never a stale month labelled current. The
-new deploy-gated `tests/integration/test_d2_audiences_over_bound_acceptance.py` runs the prep
-sequence "A body, then B `audiences_body_over_bound`, served as `window_unavailable`" end to end.
-It writes no pointer, body or graph item itself:
-
-1. It strongly reads month A's Audiences CURRENT pointer and body.
-2. It lands one reserved over-bound delivery through the real `land_fixtures` child (dry plan,
-   reserve, `--twin-only`), as the GRAPH control lands its single root, and waits for the run's
-   terminal state.
-3. It strongly reads back the run, its nodes, the finalized pointer, its body and the grant's
-   serving binding.
-4. It POSTs the deployed `/api/presentation/audiences` for `last_complete_month` with an API
-   session refreshed from `ADL_BASE_URL`, `ADL_REFRESH` and `ADL_CSRF`. No credential value is
-   printed or recorded.
-
-The pure `audiences_over_bound_verdict` (`tests/integration/d2_graph_acceptance.py`) accepts only
-when all of these hold:
-
-- the run `SUCCEEDED` with a grant and `bake_finalize` `SUCCEEDED`;
-- the Audiences task `SUCCEEDED` and wrote under the run's grant;
-- month A held a full Audiences body;
-- the finalized pointer is the run's grant-bearing revision for a later month, with the grant's
-  serving generation;
-- its body is the typed `audiences_body_over_bound` marker for that month;
-- it is served under the grant's binding `built_at` its write instant;
-- the route answers 200 `window_unavailable` (`preset_unavailable`) resolved to month B, with no
-  page body.
-
-`tests/unit/test_d2_audiences_over_bound_verdict.py` holds 14 credential-free controls: the
-route's reason, one accepted transition and twelve single-deviation refusals. One of the
-refusals is the stale month A still served as current. The twenty-row root verdict is unchanged
-for the other rows. Opt-in is `ADL_D2_AUDIENCES_OVER_BOUND_ARGS`: a JSON object holding the GRAPH
-control's `control_argv` and the `over_bound_source` delivery name, plus the F2 Baker guard. It
-runs only in D2's live-acceptance step, after the twenty-row root acceptance. It was not run
-here, because GRAPH acceptance is live in dev.
-
-The prerequisite is still open: the deterministic over-bound month B delivery is not yet in the
-fixture corpus. The generated Audiences fixtures hold a few dozen rows a month. The bound is
-`audiences_row_budget(1)` = (256,000 − 16,000) / 800 = 300 rows. The live step needs a month-B
-delivery above that bound before it can pass. Until then the verdict refuses: the body is not
-the marker.
+**M2: the over-bound Audiences month.** The over-bound Audiences month, its acceptance, verdict and fixture are deleted with the page-level over-bound body they tested ([ADR-141](../docs/decisions/adr-141-reach-every-audiences-campaign-through-grouped-reads-and-per-campaign-pages.md), 2026-10-25).
 
 Merge gate after round 3. It ran credential-free with the round-3 runner, plus the two new
 modules. The ignored logs are under
@@ -1059,33 +1018,7 @@ were not re-run, and their earlier results stand.
 
 Merge-gate review round 4 (M1, M2), on parent `df37614d`:
 
-**Month A must decode whole, for its pointer's window.** The verdict accepted month A when its
-`type` was `AudienceProfileArtifact`, so a truncated body carrying that tag passed the
-"A body, then B marker" transition. Month A is now decoded with
-`require_audiences_artifact_payload`, the decoder the Audiences route applies before serving,
-and its `month` must equal `before.resolved_window`. Two credential-free controls join
-`tests/unit/test_d2_audiences_over_bound_verdict.py` (16 now): a correctly tagged but malformed
-body (the tag alone, and a whole body without `markets`) is refused, and a whole body for another
-month than its pointer is refused. The accepted control's month A is now a real September body
-rendered by `test_segment_profile._bake_with`, not a bare tag.
-
-**M1: `over_bound_source` binds to one tracked declaration.** The new tracked
-`validation/fixtures/d2-audiences-over-bound-v1.json` declares the one month-B delivery the
-acceptance accepts, its roster row, and a row floor of 301 (`audiences_row_budget(1)` + 1).
-`declared_over_bound_source` in `tests/integration/d2_graph_acceptance.py` refuses, before any
-AWS call, any other text (blank included) and a declaration whose floor the body bound admits.
-Credential-free controls: the declared entry binds, four undeclared values refuse, and an
-at-bound floor refuses.
-
-Superseded in round 6: no such generator can reach the real loader unchanged, and the live leg is
-deferred to tech debt TD-D2-OVERBOUND-LIVE below. As written in round 4: the producible over-bound
-input is built at the D2 live-acceptance step by a validation-only
-generator. It lands a probe-owned month-B delivery that matches the declaration. Nothing changes
-under `src/` or in `land_fixtures/bundle.py`, and normal dev landing does not change: the
-generated corpus cannot hold the month, because adding it there would make dev's Audiences
-"last complete month" serve `window_unavailable` and force S0 re-certification (owner decision B).
-So M1 is closed at merge scope (binding and declaration) and open only at deploy scope, like the
-other deploy-gated executions. The merge does not discharge the live run. Tech debt carried, not
+**Round 4 (M1, M2).** The over-bound Audiences month, its acceptance, verdict and fixture are deleted with the page-level over-bound body they tested ([ADR-141](../docs/decisions/adr-141-reach-every-audiences-campaign-through-grouped-reads-and-per-campaign-pages.md), 2026-10-25). Tech debt carried, not
 fixed: `pin_size.over_cap_plans` repeats one `reach#last_complete_quarter` tuple without plan
 identity (F16), and the exact dev synth takes `ADLYTICS_ATHENA_QUERY_BATCH_MAX_CONCURRENCY` from
 an ignored `.env` until GRAPH FEAT-004 lands it in tracked config.
@@ -1128,53 +1061,9 @@ phases outlasting the task and a malformed summary; a row without a `SUCCEEDED` 
 execution stays deploy-gated. The nineteen `[projection]` write-seconds are replaced only from
 the receipts these acceptances write once they run.
 
-**F1: recorded as deploy-gated tech debt (orchestrator decision D, round 6).** No `src/`, corpus
-or reviewed-tree change this round. `validation/fixtures/d2-audiences-over-bound-v1.json`,
-`declared_over_bound_source` and their controls stay as committed. The declaration's `purpose`
-text describes the follow-up producer below, which does not exist yet.
+**F1: closed.** The over-bound Audiences month, its acceptance, verdict and fixture are deleted with the page-level over-bound body they tested ([ADR-141](../docs/decisions/adr-141-reach-every-audiences-campaign-through-grouped-reads-and-per-campaign-pages.md), 2026-10-25).
 
-**TD-D2-OVERBOUND-LIVE: the over-bound Audiences live leg is deferred.**
-
-- Blocker. `land_fixtures --probe-retrieval` plans only from `plan_with_backfill(ROOT)`, which is
-  the same `tests/fixtures` corpus normal dev landing uses, and a probe copies the planned
-  delivery's bytes unchanged. A month-B delivery above 300 rows can reach the dry plan only
-  through a `src/` hook or a corpus change. A corpus change alters normal dev landing (round 4).
-- Proven offline (credential-free, in the tree):
-  - the Audiences over-bound refusal and its typed marker;
-  - the certified bound+1 refusal (`test_graph_bake_bound.py`);
-  - the strict source binding (`test_d2_audiences_over_bound_verdict.py`);
-  - the over-bound verdict's 16 controls.
-- Not proven live: one GRAPH root over a real over-bound month B, finalized, then served by the
-  deployed Audiences route as `window_unavailable`. The live leg would add only end-to-end
-  confirmation of the route integration. It is not claimed live, and D2's live-acceptance plan
-  skips it.
-- Resolve first: the month-completeness timing. The corpus ends at September 2026, so month B is
-  probably October 2026, which is not a complete month until 2026-11-01. This is an inference
-  from the corpus; dev CURRENT was not read.
-- Preferred follow-up, A: an opt-in flag on `land_fixtures`, accepted only with
-  `--probe-retrieval`, that adds a validation-only producer's month-B delivery to the probe plan.
-  The default is unchanged, and the change gets its own review. Credential-free proof: generate
-  the delivery, verify its manifest and a measured row count above 300, show the dry plan
-  accepts it, and show it refuses without the flag.
-- Alternative, B: a validation-only producer lands month B straight in the dev raw bucket and
-  sends the twin itself. This bypasses the real `land_fixtures` child, which is why A is
-  preferred.
-
-**TD-D2-AUDIENCES-CAMPAIGN-LIMIT: Audiences shows at most 7 DSP campaigns (dev-only stopgap).**
-- Decision. Owner-approved 2026-10-17 (option A): the runtime composes with the certifier's bound,
-  `audiences_runtime_campaign_bound` (7 at one marketplace, 61 certified plans). This is the only
-  authority for page behaviour, the gate, acceptance and tests.
-- Why. Live cohort a6e5f457 refused query 62: the runtime ran 11 campaigns against a count certified
-  for 7.
-- `audiences_timeout_headroom_campaigns` (11) is the 900 s timeout estimator only. It is not a page
-  limit.
-- Deferred to the redesign:
-  - repeated full label-publication reads in one attempt (review 2026-10-17 GPT #2);
-  - the S3 read amplification from dropping the row cache (Opus).
-  Correctness is unaffected.
-- Resolve with: the outcome-first, constant-query Audiences redesign (designed, not yet built). The
-  customer-facing statement is in the root README's [Known limits](../README.md#known-limits).
-- Live result: [D2 live acceptance](RESULTS.md#d2-pages-and-graph-control-plane-live-acceptance-on-dev--2026-10-18).
+**Audiences campaign stopgap: closed.** Audiences lists every DSP campaign with delivery in the month; the 7-campaign stopgap and its bound are deleted ([ADR-141](../docs/decisions/adr-141-reach-every-audiences-campaign-through-grouped-reads-and-per-campaign-pages.md), 2026-10-25).
 
 **D2 live-acceptance plan.** After the F3 forward merge and integrated dev deploy, the plan runs:
 
@@ -1182,9 +1071,6 @@ text describes the follow-up producer below, which does not exist yet.
 - the real-Bedrock insight path;
 - the stage-1 rollback check;
 - the exact deployment synth and readbacks.
-
-The over-bound Audiences leg (`test_d2_audiences_over_bound_acceptance.py`) is deferred to
-TD-D2-OVERBOUND-LIVE and is not claimed live. Its opt-in stays unset.
 
 Outcome (2026-10-18): the dated per-leg verdicts are in
 [D2 live acceptance](RESULTS.md#d2-pages-and-graph-control-plane-live-acceptance-on-dev--2026-10-18).
