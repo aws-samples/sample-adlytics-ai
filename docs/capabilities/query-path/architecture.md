@@ -34,7 +34,7 @@ Every read names the caller kind whose row ceiling bounds it (`RowCeiling`, `src
 | `BAKE` | publish-time held answers, every bake source and the rosters it reads | `BAKE_MAX_ROWS`, derived from the Baker's memory (`domain/operations/bake_memory.py`; value in [the publisher's scale envelope](../../ui/preset-artifact-publisher.md#scale-envelope)) | an entity-wide page holds its population; every other bake read is page-sized ([ADR-152](../../decisions/adr-152-read-page-sized-answers-in-sql-with-no-arbitrary-row-ceiling.md)) |
 | `BAKE_STREAMED` | publish-time reductions | `BAKE_LONGEST_WINDOW_DAYS` (31) × `BAKE_MAX_ROWS`, derived | a daily series of a population the held ceiling bounds |
 
-Every statement asks for `LIMIT max_rows + 1`; one row more than asked is a truncated read, which a bake refuses, never shows as a page of an unknown whole.
+Every statement asks for `LIMIT max_rows + 1`; one row more than asked is a truncated read, never shown as a page of an unknown whole. In a bake, a page-sized or axis-bounded read cut short is a defect; only an entity-wide read refuses ([ADR-152](../../decisions/adr-152-read-page-sized-answers-in-sql-with-no-arbitrary-row-ceiling.md)).
 
 Every `AthenaQueryTarget` also names its result transport (`ResultTransport`, no default):
 - `PAGED` pages `GetQueryResults`, at most 1,000 rows a call: chat, presentation and insight precompute.
@@ -44,9 +44,10 @@ A bake slot is read **held** (its answer keeps every row, up to `BAKE_MAX_ROWS`)
 
 A publish-time read may also carry a **ranked restriction** (`src/domain/measurement/ranking.py`; ADR-143, ADR-152): one `ranked` CTE ranks a declared population inside the statement, fenced to the publications of the batch's own reads of it, and the read either returns the ranked keys (`RANKED_KEYS`) or semi-joins its own rows to them (`SEMI_JOIN`, also for a comparison). The restriction declares:
 - **what ranks:** the rank metric's sum over its window (`VALUE`), or `|current − prior|` (`ABS_CHANGE`, Retail's movers). One order list, rank value descending then key, renders both the SQL and the Python sort;
-- **who is a member:** every key with a population row (`ANY_ROW`), or only a rank value above 0 (`POSITIVE`);
+- **who is a member:** every key with a population row (`ANY_ROW`), or only a rank value above 0 (`POSITIVE`), which still keeps a key Amazon withheld rows from so the population's withholding is never filtered away;
 - **per partition:** `partition_by` grains keep their own top `n` (`ROW_NUMBER() OVER (PARTITION BY …)`), as the New customers gateway does per ad product;
 - **population figures:** a `RANKED_KEYS` read returns the population count, whether any population row was withheld, and declared population sums, taken before the top `n` is kept. The adapter lifts them off the rows into `QueryResult.population`, refuses figures that differ within a partition (`RANKING/2`), and marks the read suppressed when the population was. The tool envelope is unchanged.
+
 Retail health ranks its top 50 (with its product count and sums), its three movers, and the 50's rows, series and ad reads this way; the New customers gateway its top 10 per ad product with each one's count; Reach its count of campaigns with spend. Chat's `measurement_top_n` still ranks in Python under the narration ceiling.
 
 ## Athena workgroups and the batch start budget

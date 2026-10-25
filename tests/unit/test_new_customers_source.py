@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import pathlib
+import sqlite3
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
@@ -57,6 +58,7 @@ from adapters.jobs.preset_artifact_publisher.transport import (
     DeclaredBakeIntents,
     load_declared_bake_intents,
 )
+from adapters.outbound.athena.composition import compose
 from adapters.outbound.bake_sources import BakeSourceReads
 from adapters.outbound.metric_dictionary import load_catalog
 from adapters.outbound.telemetry import tracing
@@ -644,6 +646,79 @@ def test_a_gateway_population_amazon_withheld_bakes_nothing() -> None:
     assert _rendered() is not None
     queries = NewCustomersQueries(PERIOD, gateway_suppressed=True)
     assert _renderer(queries).render_new_customers(ROLLING).artifact is None
+
+
+def _executed_gateway(withheld: frozenset[str]) -> dict[tuple[str, str], tuple[Any, ...]]:
+    """Run the real composed gateway statement over hand-built rows, keyed by partition.
+
+    Each partition maps to (its keys, population count, population withholding). SQLite stands
+    in for Athena only to execute the statement's filter and window order; the one Athena-only
+    token, `CAST(? AS DATE)`, binds as an ISO date string instead.
+    """
+    queries = NewCustomersQueries(PERIOD)
+    _renderer(queries).render_new_customers(ROLLING)
+    (request,) = (item for item in queries.seen if item.ranked is not None)
+    assert request.ranked is not None
+    composed = compose(request.plan, request.max_rows, request.ranked)
+    publication = request.ranked.rank.primary_ids[0]
+    # (channel, ad product, ASIN, purchases): a positive key, a fully withheld key and a zero
+    # key in one ad product; another ad product whose only key may be fully withheld.
+    rows = (
+        ("ch_a", "ap_a", "amazon_asin:B0A", 5),
+        ("ch_a", "ap_a", "amazon_asin:B0B", 3),
+        ("ch_a", "ap_a", "amazon_asin:B0C", 0),
+        ("ch_b", "ap_b", "amazon_asin:B0D", 4),
+    )
+    database = sqlite3.connect(":memory:")
+    database.execute(
+        'CREATE TABLE "fct_attributed_conversion" ("date_key", "publication_id", "channel_key", '
+        '"ad_product_key", "amazon_asin", "marketplace_key", "rows_suppressed", '
+        '"purchases_new_to_brand_incl_halo_12mo")'
+    )
+    database.executemany(
+        'INSERT INTO "fct_attributed_conversion" VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+            (PERIOD.start.isoformat(), publication, *media, asin, US, asin in withheld, value)
+            for (*media, asin, value) in rows
+        ],
+    )
+    names = (
+        *request.plan.logical.selected_columns,
+        *request.plan.logical.result_aliases,
+        "population_count",
+        "population_suppressed",
+    )
+    result: dict[tuple[str, str], tuple[Any, ...]] = {}
+    for values in database.execute(
+        composed.sql.replace("CAST(? AS DATE)", "?"), composed.parameters
+    ):
+        row = dict(zip(names, values, strict=True))
+        partition = (row["channel_key"], row["ad_product_key"])
+        keys, _, _ = result.get(partition, ((), 0, 0))
+        result[partition] = (
+            (*keys, row["amazon_asin"]),
+            row["population_count"],
+            row["population_suppressed"],
+        )
+    database.close()
+    return result
+
+
+@pytest.mark.covers("ADR-152")
+def test_the_composed_gateway_keeps_a_fully_withheld_key_so_its_withholding_is_reported() -> None:
+    """Paired with the unwithheld control, which drops the zero key.
+
+    A withheld key's value excludes its rows, so it is 0; were `POSITIVE` to drop it, the
+    population would read complete and the page would bake an undercounted top 10 and "N more".
+    """
+    assert _executed_gateway(frozenset()) == {
+        ("ch_a", "ap_a"): (("amazon_asin:B0A", "amazon_asin:B0B"), 2, 0),
+        ("ch_b", "ap_b"): (("amazon_asin:B0D",), 1, 0),
+    }
+    assert _executed_gateway(frozenset({"amazon_asin:B0B", "amazon_asin:B0D"})) == {
+        ("ch_a", "ap_a"): (("amazon_asin:B0A", "amazon_asin:B0B"), 2, 1),
+        ("ch_b", "ap_b"): (("amazon_asin:B0D",), 1, 1),
+    }
 
 
 def test_each_marketplace_is_its_own_batch_and_section_in_its_own_currency() -> None:

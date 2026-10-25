@@ -82,7 +82,8 @@ class RankedMembership(StrEnum):
     ANY_ROW = "any_row"
     """Every key with a row in any population read, including a zero rank value."""
     POSITIVE = "positive"
-    """Only keys whose rank value is above 0 (a gateway product, a campaign that spent)."""
+    """Keys whose rank value is above 0 (a gateway product, a campaign that spent), and any key
+    Amazon withheld rows from, so the population's withholding is never filtered away."""
 
 
 class RankField(StrEnum):

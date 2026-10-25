@@ -706,8 +706,15 @@ def _fact_cte(case: RankedCase) -> str:
                         else ()
                     ),
                 ]
+                # Keys 1..N, crossed as in `p2b_sql`: one `sequence` holds a bounded entry count.
+                outer = -(-case.keys // 1_000)
+                keys = (
+                    "SELECT a.x * 1000 + b.y AS k "  # noqa: S608 -- ints only
+                    f"FROM UNNEST(sequence(0, {outer - 1})) AS a(x) "
+                    "CROSS JOIN UNNEST(sequence(1, 1000)) AS b(y)"
+                )
                 rows.append(
-                    f"SELECT {', '.join(columns)} FROM UNNEST(sequence(1, {case.keys})) AS t(k)"  # noqa: S608 -- generated literals only
+                    f"SELECT {', '.join(columns)} FROM ({keys}) t WHERE k <= {case.keys}"  # noqa: S608 -- generated literals only
                 )
         ctes.append(f'"{fact}" AS ({" UNION ALL ".join(rows)})')
     return ", ".join(ctes)
@@ -803,7 +810,12 @@ def ranked_expected(case: RankedCase) -> dict[str, Any]:
             if restriction.rank_by is RankBy.ABS_CHANGE:
                 prior = _value(key, index[cast("DateRange", restriction.change_window)], measure)
                 current = abs(current - prior)
-            if restriction.membership is RankedMembership.POSITIVE and current <= 0:
+            # A withheld key stays a member, so its partition reports the withholding (ADR-152).
+            if (
+                restriction.membership is RankedMembership.POSITIVE
+                and current <= 0
+                and not suppressed
+            ):
                 continue
             values.append(RankedValue(f"amazon_asin:P{key:06d}", current))
         ordered = restriction.order(values)

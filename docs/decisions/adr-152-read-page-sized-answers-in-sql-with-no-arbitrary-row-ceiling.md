@@ -25,7 +25,7 @@ whole catalog only to show a summary:
 ## Decision
 1. **A ranked restriction states the population, not just the top n.** `RankedRestriction` adds:
    rank by value or by `|current − prior|` (`ABS_CHANGE`); members with any row or a positive rank
-   value (`POSITIVE`); per-partition top n (`partition_by`, `ROW_NUMBER() OVER (PARTITION BY …)`);
+   value (`POSITIVE`, which keeps every withheld key so the withholding survives); per-partition top n (`partition_by`, `ROW_NUMBER() OVER (PARTITION BY …)`);
    and population sums. The `ranked` CTE takes each partition's count, withholding and declared
    sums before it keeps the top n. They return as `QueryResult.population` beside the rows; the
    tool envelope is unchanged. A withheld population marks the read suppressed, so a caller
@@ -57,6 +57,7 @@ whole catalog only to show a summary:
 - A product with no `dim_product` identity outside the shown 50 and the movers no longer stops
   the Retail bake.
 - A row outside the governed taxonomy now fails as a defect where it used to refuse the page.
-- The composed SQL is tested as text and against fakes only. Its run on Athena, the P2 `ranked`
-  case of `validation/probe_bake_row_ceiling.py` against the Python rule, is pending the dev
-  validation step.
+- The composed statements match the Python rule on Athena at 100,000 generated keys: Retail's
+  top 50 with count and sums, the movers, and the gateway with and without withholding (P2
+  `ranked` of `validation/probe_bake_row_ceiling.py`, dev, 2026-10-25) [verified]. A unit test
+  runs the gateway statement on SQLite to hold the filter order that keeps withholding.
