@@ -17,6 +17,7 @@ from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from functools import cache
 
+from athena_engine_support import require_engine_accepts
 from publication_support import StubPublications
 
 from adapters.campaign_artifact_renderer import (
@@ -208,6 +209,9 @@ class EstateQueries:
 
     def fold(self, request: QueryRequest, sink: RowSink) -> FoldRead:
         plan = request.plan.logical
+        # Composed as the adapter composes it, so a fold the composer can't write is refused
+        # here, as it was in the dev bake (D1, 2026-10-25), rather than passing on fake rows.
+        require_engine_accepts(request)
         self.statements.append(f"fold:{plan.metric.name}")
         accumulator = _SuppressionAccumulator(plan)
         count = 0

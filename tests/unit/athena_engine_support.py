@@ -15,7 +15,7 @@ import pathlib
 import re
 
 from adapters.outbound.athena.composition import ComposedQuery, compose
-from ports.outbound.query import QueryRequest
+from ports.outbound.query import QueryRequest, statement_limit
 
 __all__ = ["EngineRefusedError", "engine_refusal", "require_engine_accepts", "stored_columns"]
 
@@ -69,8 +69,13 @@ def engine_refusal(sql: str) -> str | None:
 
 
 def require_engine_accepts(request: QueryRequest) -> ComposedQuery:
-    """Compose a request's statement and raise as the engine would when it can't run it."""
-    composed = compose(request.plan, request.max_rows)
+    """Compose a request's statement and raise as the engine would when it can't run it.
+
+    The limit is the adapter's own (`statement_limit`), so a grouped fold composes its
+    unlimited form here exactly as `AthenaQueryAdapter` would, and a plan the composer can't
+    write unlimited fails in the unit tier rather than in a bake.
+    """
+    composed = compose(request.plan, statement_limit(request.max_rows, request.ceiling))
     refusal = engine_refusal(composed.sql)
     if refusal is not None:
         raise EngineRefusedError(refusal)
