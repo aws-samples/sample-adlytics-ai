@@ -332,6 +332,36 @@ def test_a_serve_time_query_without_cohort_correlation_runs_and_records_no_cohor
     )
 
 
+class _Rows:
+    """A fold's sink that keeps nothing."""
+
+    def add(self, _row: object) -> None:
+        return None
+
+
+def test_a_grouped_read_records_its_ceiling_kind_and_no_row_limit_unlike_a_held_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The span drops a None attribute, so a grouped read's required set can't rest on max_rows."""
+    spans = _traced(monkeypatch)
+    stats = StatementOutcome(4096, False, 31, 7, 5, 47, service_processing_millis=4)
+    adapter = _adapter(monkeypatch, stats)
+    held = _request()
+    adapter.run(held)
+    adapter.fold(SimpleNamespace(**{**vars(held), "ceiling": RowCeiling.BAKE_GROUPED}), _Rows())
+
+    recorded = [
+        {key: value for key, value in carried.items() if value is not None}
+        for carried in spans.named("athena.query")
+    ]
+    assert [(item["row_ceiling"], item.get("max_rows")) for item in recorded] == [
+        ("bake", 10),
+        ("bake_grouped", None),
+    ]
+    for item in recorded:
+        assert set(CONTRACT["athena.query"].required_attributes) <= set(item)
+
+
 def test_a_failed_execution_keeps_its_span_with_the_terminal_state_and_no_statistics(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

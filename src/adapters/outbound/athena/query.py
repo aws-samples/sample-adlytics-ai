@@ -186,6 +186,8 @@ class _Statement:
     columns: tuple[str, ...]
     max_rows: int | None
     """None for a grouped fold (`RowCeiling.BAKE_GROUPED`): every row is read, none truncated."""
+    ceiling: RowCeiling
+    """The caller kind, recorded on the span so a grouped read is told from a held one."""
     ranked: RankedRead | None = None
     """A ranked-keys statement's restriction: its rows carry the population columns too."""
 
@@ -277,7 +279,12 @@ class AthenaQueryAdapter:
         )
         limit = statement_limit(request.max_rows, request.ceiling)
         return _Statement(
-            compose(request.plan, limit, ranked), logical, logical.selected_columns, limit, keys
+            compose(request.plan, limit, ranked),
+            logical,
+            logical.selected_columns,
+            limit,
+            request.ceiling,
+            keys,
         )
 
     @staticmethod
@@ -293,6 +300,7 @@ class AthenaQueryAdapter:
             logical,
             (PERIOD_START_COLUMN, PERIOD_END_COLUMN, *logical.selected_columns),
             limit,
+            request.ceiling,
         )
 
     def _values(
@@ -333,6 +341,7 @@ class AthenaQueryAdapter:
             ATHENA_QUERY,
             metric=logical.metric.name,
             facts=",".join(logical.facts_read),
+            row_ceiling=statement.ceiling.value,
             max_rows=max_rows,
             run_id=None if corr is None else corr.run_id,
             task_id=None if corr is None else corr.task_id,
