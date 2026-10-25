@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT-0
-"""Audiences: `AudienceProfileArtifact` v1 (docs/ui/audiences/low-level-design.md).
+"""Audiences: `AudienceProfileArtifact` v2 and its parts (docs/ui/audiences/low-level-design.md).
 
 One complete calendar month per artifact, per governed marketplace, built from the planned
 answers of packs 10-12 (C2, `fct_segment_profile`) and pack 8 (C1, `fct_segment_delivery`),
@@ -25,11 +25,16 @@ design §5.5 and §6.5. Rendering-free: every text is a server field.
   with "name not available yet" and still carry their index.
 - **Insight.** `segment-over-index` v1, one card per profile path (delivery), each finding
   tested inside that delivery with a Bonferroni critical value over its segment rows.
+- **Parts (ADR-141).** The parent carries each profile path's first 50 rows and the first
+  campaign index shard. Every other 50-row profile page, every DSP campaign's 50-row pages and
+  every further index shard is its own small body under the parent's revision, fetched only when
+  the reader asks for it. Each part names that revision (`parent_revision`).
 """
 
 from __future__ import annotations
 
 import copy
+import math
 import re
 from dataclasses import dataclass
 from datetime import date
@@ -74,14 +79,19 @@ if TYPE_CHECKING:  # pragma: no cover
 __all__ = [
     "AUDIENCES_ARTIFACT_TYPE",
     "AUDIENCES_ARTIFACT_VERSION",
-    "AUDIENCES_BODY_OVER_BOUND",
+    "AUDIENCES_CAMPAIGN_INDEX_TYPE",
+    "AUDIENCES_CAMPAIGN_PAGE_TYPE",
+    "AUDIENCES_INDEX_ENTRY_MAX_BYTES",
+    "AUDIENCES_INDEX_SHARD_ENTRIES",
     "AUDIENCES_PAGE_ID",
-    "AUDIENCES_UNAVAILABLE_ARTIFACT_TYPE",
-    "AUDIENCES_UNAVAILABLE_ARTIFACT_VERSION",
+    "AUDIENCES_PAGE_ROWS",
+    "AUDIENCES_PART_VERSION",
+    "AUDIENCES_PROFILE_PAGE_TYPE",
     "BOUNDARY_TEXT",
     "C2_BUYER_LABEL",
+    "CAMPAIGN_HISTORY_GAP_TEXT",
+    "CAMPAIGN_INCOMPLETE_TEXT",
     "CAMPAIGN_LIMIT_TEXT",
-    "CAMPAIGN_SHOWN_TEXT",
     "DELIVERY_PATHS",
     "DSP_VIEW",
     "NO_DELIVERY_TEXT",
@@ -89,6 +99,7 @@ __all__ = [
     "NO_SALES_TEXT",
     "NO_SPEND_TEXT",
     "PAID_VIEW",
+    "PROFILE_PATH_REFUSED_TEXTS",
     "ROAS_CURRENCY_TEXT",
     "ROSTER_GAP_TEXT",
     "SEGMENT_PARTIAL_TEXT",
@@ -96,8 +107,11 @@ __all__ = [
     "TOTAL_NOT_AVAILABLE_TEXT",
     "AudienceMarket",
     "AudienceProfileArtifact",
-    "AudienceUnavailableArtifact",
+    "AudiencesPart",
     "CampaignAudiences",
+    "CampaignEntryState",
+    "CampaignIndexEntry",
+    "CampaignPage",
     "CampaignSegment",
     "OverIndexFinding",
     "PaidState",
@@ -106,14 +120,19 @@ __all__ = [
     "ProfileView",
     "SegmentFigures",
     "audiences_artifact_payload",
-    "audiences_unavailable_artifact_payload",
+    "audiences_campaign_index_payload",
+    "audiences_campaign_page_payload",
+    "audiences_profile_page_payload",
     "bonferroni_z",
     "build_view",
+    "campaign_index_shard",
     "campaign_segment",
+    "order_campaign_rows",
     "over_index_findings",
     "page_segment_display",
+    "profile_page_count",
     "require_audiences_artifact_payload",
-    "require_audiences_unavailable_artifact_payload",
+    "require_audiences_part_payload",
     "resolve_audiences_payload",
     "segment_figures",
     "segment_over_index_slot",
@@ -121,11 +140,19 @@ __all__ = [
 
 AUDIENCES_PAGE_ID: Final = "audiences"
 AUDIENCES_ARTIFACT_TYPE: Final = "AudienceProfileArtifact"
-AUDIENCES_ARTIFACT_VERSION: Final = 1
-AUDIENCES_UNAVAILABLE_ARTIFACT_TYPE: Final = "AudienceProfileUnavailable"
-AUDIENCES_UNAVAILABLE_ARTIFACT_VERSION: Final = 1
-AUDIENCES_BODY_OVER_BOUND: Final = "audiences_body_over_bound"
-"""The typed reason a target month supersedes the prior pointer without a renderable body."""
+AUDIENCES_ARTIFACT_VERSION: Final = 2
+"""v2: the parent carries page 0 of each path and index shard 0; everything else is a part."""
+AUDIENCES_CAMPAIGN_PAGE_TYPE: Final = "AudienceCampaignPage"
+AUDIENCES_PROFILE_PAGE_TYPE: Final = "AudienceProfilePage"
+AUDIENCES_CAMPAIGN_INDEX_TYPE: Final = "AudienceCampaignIndex"
+AUDIENCES_PART_VERSION: Final = 1
+AUDIENCES_PAGE_ROWS: Final = 50
+"""Rows per profile or campaign page (owner decision 2)."""
+AUDIENCES_INDEX_ENTRY_MAX_BYTES: Final = 800
+"""A ceiling on one encoded index entry (a wide name and its refusal sentence); a test holds it."""
+AUDIENCES_INDEX_SHARD_ENTRIES: Final = 100
+"""Campaign index entries per shard. The parent carries shard 0 beside three paths' first pages:
+16,000 + 3 x 50 x 800 + 100 x 800 = 216,000 B, under the 256,000 B cap with 40,000 B margin."""
 PAID_VIEW: Final = "asi_all_exposed"
 """The page's paid profile option: packs 10 and 11 (design §6.5's `asi_all_exposed`)."""
 DSP_VIEW: Final = "dsp_exposed_only"
@@ -168,9 +195,25 @@ CAMPAIGN_LIMIT_TEXT: Final = (
 _CAMPAIGN_REF_PREFIX: Final = "campaign-"
 """A served campaign's opaque reference: its ordinal in the artifact, never its canonical key."""
 CAMPAIGN_PENDING_TEXT: Final = "DSP campaigns by segment for {month} haven't arrived yet."
-CAMPAIGN_SHOWN_TEXT: Final = "Showing {shown} of {total} campaigns"
-"""Served only when the page shows fewer campaigns than pack 8 listed (presentation bound)."""
-_CAMPAIGN_SHOWN = re.compile(r"Showing ([1-9][0-9]*) of ([1-9][0-9]*) campaigns")
+CAMPAIGN_HISTORY_GAP_TEXT: Final = (
+    "{campaign} can't be broken down by segment for {month}: part of its earlier segment history "
+    "isn't available, so its segments can't be checked against last month's."
+)
+"""AUD-CMP-REFUSED-HISTORY (owner approval A2): one campaign's own history gap."""
+CAMPAIGN_INCOMPLETE_TEXT: Final = (
+    "DSP campaign figures for {month} aren't complete yet, so they aren't shown. The segment "
+    "profile above is complete."
+)
+"""AUD-CMP-SECTION-INCOMPLETE (owner approval A2): the campaign section's incomplete evidence."""
+PROFILE_PATH_REFUSED_TEXTS: Final = {
+    "history_gap": "This profile for {month} can't be shown: part of its earlier segment history "
+    "isn't available.",
+    "evidence_incomplete": "This profile for {month} can't be shown: its figures aren't complete "
+    "yet.",
+}
+"""AUD-PROFILE-PATH-REFUSED (owner approval A2), by the path's refusal reason."""
+_PAGING_TEXT: Final = "Segments {first}\u2013{last} of {total}"
+_CAMPAIGN_REF: Final = re.compile(r"campaign-[1-9][0-9]{0,5}")
 ROAS_CURRENCY_TEXT: Final = "Not available: sales and spend didn't come back in one currency."
 """ROAS withheld: the two currencies disagree, or either came back without one."""
 NO_SPEND_TEXT: Final = "Not available: no DSP spend came back for this segment this month."
@@ -202,6 +245,8 @@ _ISO_DATE: Final = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 # blank is Python whitespace or U+FEFF, the union both decoders refuse (audiences-parity §1).
 _BLANK: Final = re.compile(r"[\s\ufeff]*")
 _SERVED_REVISION: Final = re.compile(r"[A-Za-z0-9_-]{43}")
+_PUBLICATION_REVISION: Final = re.compile(r"[0-9a-f]{64}")
+"""A publication's revision as `PresetArtifactRevision` writes it: a lowercase SHA-256."""
 _PAGE_PROVIDER_LABELS: Final = frozenset(provider_label(item) for item in SegmentProvider)
 _MONTH_NAMES: Final = (
     "January", "February", "March", "April", "May", "June",
@@ -505,8 +550,12 @@ class DeliveryState:
     first_month: bool = False
     roster_note: str | None = None
     partial: tuple[str, ...] = ()
+    refused_text: str | None = None
+    """The path's own refusal sentence (AUD-PROFILE-PATH-REFUSED): it reads no delivery."""
 
     def __post_init__(self) -> None:
+        if self.refused_text is not None and self.delivery is not None:
+            raise ValueError("a refused profile path reads no delivery.")
         if self.delivery is not None and self.delivery.path != self.path:
             raise ValueError("a delivery state holds its own path's delivery.")
         if self.delivery is None and self.partial:
@@ -696,22 +745,123 @@ def campaign_segment(request: CampaignRowRequest) -> CampaignSegment:
     )
 
 
-@dataclass(frozen=True, slots=True)
-class CampaignAudiences:
-    """Pack 8's month: per DSP campaign, its segments; or its pending state."""
+def order_campaign_rows(rows: tuple[CampaignSegment, ...]) -> tuple[CampaignSegment, ...]:
+    """Order one campaign's rows: impressions descending, withheld impressions last (01 §4).
 
-    published: bool
-    rows: tuple[CampaignSegment, ...]
-    shown: int = 0
-    """The campaigns the page measured: the top of pack 8's list by impressions."""
-    listed: int = 0
-    """Every campaign pack 8 listed for the month; more than `shown` serves the shown note."""
+    Ties read by the segment's page name, then its ID, so the order never depends on the read.
+    """
+    return tuple(
+        sorted(
+            rows,
+            key=lambda row: (
+                row.impressions is None,
+                -(row.impressions or Decimal(0)),
+                page_segment_display(row.segment_id, row.label),
+                row.segment_id,
+            ),
+        )
+    )
+
+
+def _page_count(items: int) -> int:
+    return max(1, math.ceil(items / AUDIENCES_PAGE_ROWS))
+
+
+def _paging_text(page: int, items: int) -> str | None:
+    if items <= AUDIENCES_PAGE_ROWS:
+        return None
+    first = page * AUDIENCES_PAGE_ROWS + 1
+    last = min(items, (page + 1) * AUDIENCES_PAGE_ROWS)
+    return _PAGING_TEXT.format(first=f"{first:,}", last=f"{last:,}", total=f"{items:,}")
+
+
+class CampaignEntryState(StrEnum):
+    """One campaign's state in the index."""
+
+    AVAILABLE = "available"
+    WITHDRAWN = "withdrawn"
+    """Its roster withdraws the grain set: its pages carry the note and no rows."""
+    REFUSED = "refused"
+    """Its own history gap (AUD-CMP-REFUSED-HISTORY): it has no pages."""
+
+
+@dataclass(frozen=True, slots=True)
+class CampaignIndexEntry:
+    """One DSP campaign as the index lists it, by rank: its reference, name, rows and state."""
+
+    ref: str
+    label: str
+    segment_count: int
+    """The segments its pages list: every one any of the three figures returned."""
+    state: CampaignEntryState
+    text: str | None = None
+    """The withdrawal note or the refusal sentence; None when available."""
 
     def __post_init__(self) -> None:
-        if not 0 <= self.shown <= self.listed:
-            raise ValueError("Audiences shows at most the campaigns pack 8 listed.")
-        if not self.published and self.listed:
-            raise ValueError("pending Audiences campaigns list none.")
+        if not _CAMPAIGN_REF.fullmatch(self.ref) or not self.label.strip():
+            raise ValueError("an Audiences index entry names its reference and label.")
+        if self.segment_count < 0:
+            raise ValueError("an Audiences index entry's segment count is not negative.")
+        if (self.text is None) != (self.state is CampaignEntryState.AVAILABLE):
+            raise ValueError("an Audiences index entry carries text exactly when not available.")
+
+    @property
+    def page_count(self) -> int:
+        """Its 50-row pages: none for a refused campaign, at least one otherwise."""
+        if self.state is CampaignEntryState.REFUSED:
+            return 0
+        return _page_count(self.segment_count)
+
+
+@dataclass(frozen=True, slots=True)
+class CampaignAudiences:
+    """Pack 8's month: every DSP campaign's index entry, by rank; or the section's own state."""
+
+    published: bool
+    index: tuple[CampaignIndexEntry, ...] = ()
+    refused_text: str | None = None
+    """AUD-CMP-SECTION-INCOMPLETE when the month's campaign figures aren't complete."""
+
+    def __post_init__(self) -> None:
+        if (not self.published or self.refused_text is not None) and self.index:
+            raise ValueError("a pending or refused Audiences campaign section lists no campaign.")
+        if not self.published and self.refused_text is not None:
+            raise ValueError("a pending Audiences campaign section is not refused.")
+        if any(
+            entry.ref != f"{_CAMPAIGN_REF_PREFIX}{rank}"
+            for rank, entry in enumerate(self.index, start=1)
+        ):
+            raise ValueError("Audiences campaign references number campaigns by rank.")
+
+    @property
+    def index_shards(self) -> int:
+        """The index's shards; shard 0 rides in the parent."""
+        return max(1, math.ceil(len(self.index) / AUDIENCES_INDEX_SHARD_ENTRIES))
+
+
+def campaign_index_shard(
+    campaigns: CampaignAudiences, shard: int
+) -> tuple[CampaignIndexEntry, ...]:
+    """Return one index shard's entries, in rank order."""
+    start = shard * AUDIENCES_INDEX_SHARD_ENTRIES
+    return campaigns.index[start : start + AUDIENCES_INDEX_SHARD_ENTRIES]
+
+
+@dataclass(frozen=True, slots=True)
+class CampaignPage:
+    """One 50-row page of one campaign: its entry, its page number and its ordered rows."""
+
+    entry: CampaignIndexEntry
+    page: int
+    rows: tuple[CampaignSegment, ...]
+
+    def __post_init__(self) -> None:
+        if not 0 <= self.page < self.entry.page_count:
+            raise ValueError("an Audiences campaign page is one of its campaign's pages.")
+        if len(self.rows) > AUDIENCES_PAGE_ROWS:
+            raise ValueError("an Audiences campaign page holds at most 50 rows.")
+        if self.entry.state is CampaignEntryState.WITHDRAWN and self.rows:
+            raise ValueError("a withdrawn campaign's pages carry no rows.")
 
 
 # --- the artifact ---------------------------------------------------------------------------------
@@ -758,13 +908,17 @@ class AudienceMarket:
 
 @dataclass(frozen=True, slots=True)
 class AudienceProfileArtifact:
-    """`AudienceProfileArtifact` v1 for one complete month. Every text is a server field."""
+    """`AudienceProfileArtifact` v2 for one complete month. Every text is a server field."""
 
     month: CalendarPeriod
     markets: tuple[AudienceMarket, ...]
     display_minimum: int
+    revision: str
+    """The publication's revision, which every part names as its `parent_revision`."""
 
     def __post_init__(self) -> None:
+        if not _PUBLICATION_REVISION.fullmatch(self.revision):
+            raise ValueError("an Audiences artifact names its publication revision.")
         if self.month.grain is not TimeGrain.MONTH:
             raise ValueError("an Audiences artifact reads one complete calendar month.")
         keys = tuple(market.marketplace_key for market in self.markets)
@@ -893,7 +1047,41 @@ def _paid_payload(state: PaidFeatureState | None) -> dict[str, object] | None:
     }
 
 
+def _path_items(view: ProfileView, path: str) -> tuple[RankedSegment | RosterGap, ...]:
+    """One path's rows, then its "Not available" segments: the order its pages list them."""
+    return (
+        *(row for row in view.rows if row.path == path),
+        *(gap for gap in view.gaps if gap.path == path),
+    )
+
+
+def profile_page_count(view: ProfileView, path: str) -> int:
+    """Count a returned path's 50-row pages (page 0 rides in the parent); 0 if it didn't return."""
+    state = next(item for item in view.deliveries if item.path == path)
+    return 0 if state.delivery is None else _page_count(len(_path_items(view, path)))
+
+
+def _gap_payload(gap: RosterGap) -> dict[str, object]:
+    return {
+        **_segment_names(gap.segment_id, gap.label),
+        "profile_path": gap.path,
+        "state": "not_available",
+        "text": gap.text,
+    }
+
+
+def _profile_page(  # noqa: PLR0913, PLR0917 -- one view's path, its page and the minimum
+    view: ProfileView, path: str, page: int, minimum: int
+) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    items = _path_items(view, path)[page * AUDIENCES_PAGE_ROWS : (page + 1) * AUDIENCES_PAGE_ROWS]
+    return (
+        [_row_payload(item, minimum) for item in items if isinstance(item, RankedSegment)],
+        [_gap_payload(item) for item in items if isinstance(item, RosterGap)],
+    )
+
+
 def _view_payload(view: ProfileView, month: str, minimum: int) -> dict[str, object]:
+    first = {item.path: _profile_page(view, item.path, 0, minimum) for item in view.deliveries}
     return {
         "view": view.view,
         "label": VIEW_LABELS[view.view],
@@ -929,61 +1117,120 @@ def _view_payload(view: ProfileView, month: str, minimum: int) -> dict[str, obje
                 "paid_state": _paid_payload(item.paid_state),
                 "period_text": None,
                 "insights": insight_slots_payload((insight,)),
+                "page_count": profile_page_count(view, item.path),
+                "paging_text": _paging_text(0, len(_path_items(view, item.path))),
             }
             for item, insight in zip(view.deliveries, view.insights, strict=True)
         ],
-        "rows": [_row_payload(row, minimum) for row in view.rows],
-        "not_available": [
-            {
-                **_segment_names(gap.segment_id, gap.label),
-                "profile_path": gap.path,
-                "state": "not_available",
-                "text": gap.text,
-            }
-            for gap in view.gaps
+        "rows": [row for item in view.deliveries for row in first[item.path][0]],
+        "not_available": [gap for item in view.deliveries for gap in first[item.path][1]],
+    }
+
+
+def audiences_profile_page_payload(  # noqa: PLR0913, PLR0917 -- a view, path, page and its parent
+    view: ProfileView, path: str, page: int, minimum: int, revision: str
+) -> dict[str, object]:
+    """One profile path's page `page` (>= 1), under its parent's revision."""
+    if not 1 <= page < profile_page_count(view, path):
+        raise ValueError("an Audiences profile page is one of its path's later pages.")
+    state = next(item for item in view.deliveries if item.path == path)
+    rows, gaps = _profile_page(view, path, page, minimum)
+    return {
+        "type": AUDIENCES_PROFILE_PAGE_TYPE,
+        "version": AUDIENCES_PART_VERSION,
+        "parent_revision": revision,
+        "profile_path": path,
+        "page": page,
+        "page_count": profile_page_count(view, path),
+        "paging_text": _paging_text(page, len(_path_items(view, path))),
+        "total_returned": state.delivery is not None and state.delivery.total_returned,
+        "rows": rows,
+        "not_available": gaps,
+    }
+
+
+_CAMPAIGN_BASIS_LABEL: Final = (
+    "DSP-attributed sales \u00f7 DSP spend \u00b7 14-day attribution, conversion date"
+)
+
+
+def _index_entry_payload(entry: CampaignIndexEntry) -> dict[str, object]:
+    return {
+        "campaign_ref": entry.ref,
+        "campaign_label": entry.label,
+        "segment_count": entry.segment_count,
+        "page_count": entry.page_count,
+        "state": entry.state.value,
+        "text": entry.text,
+    }
+
+
+def _campaign_payload(campaigns: CampaignAudiences, month: str) -> dict[str, object]:
+    return {
+        "limit_text": CAMPAIGN_LIMIT_TEXT,
+        "pending_text": None if campaigns.published else CAMPAIGN_PENDING_TEXT.format(month=month),
+        "refused_text": campaigns.refused_text,
+        "segment_ids_sentence": SEGMENT_IDS_SENTENCE,
+        "basis_label": _CAMPAIGN_BASIS_LABEL,
+        "campaign_count": len(campaigns.index),
+        "index_shards": campaigns.index_shards,
+        "index": [_index_entry_payload(entry) for entry in campaign_index_shard(campaigns, 0)],
+    }
+
+
+def audiences_campaign_index_payload(
+    campaigns: CampaignAudiences, shard: int, revision: str
+) -> dict[str, object]:
+    """One campaign index shard (>= 1), under its parent's revision."""
+    if not 1 <= shard < campaigns.index_shards:
+        raise ValueError("an Audiences index part is one of its later shards.")
+    return {
+        "type": AUDIENCES_CAMPAIGN_INDEX_TYPE,
+        "version": AUDIENCES_PART_VERSION,
+        "parent_revision": revision,
+        "shard": shard,
+        "entries": [
+            _index_entry_payload(entry) for entry in campaign_index_shard(campaigns, shard)
         ],
     }
 
 
-def _campaign_refs(rows: tuple[CampaignSegment, ...]) -> dict[str, str]:
-    """Return each campaign's opaque per-artifact reference by first row, never its key."""
-    refs: dict[str, str] = {}
-    for row in rows:
-        refs.setdefault(row.campaign_key, f"{_CAMPAIGN_REF_PREFIX}{len(refs) + 1}")
-    return refs
-
-
-def _campaign_payload(campaigns: CampaignAudiences, month: str) -> dict[str, object]:
-    refs = _campaign_refs(campaigns.rows)
+def _campaign_row_payload(row: CampaignSegment) -> dict[str, object]:
     return {
-        "limit_text": CAMPAIGN_LIMIT_TEXT,
-        "pending_text": None if campaigns.published else CAMPAIGN_PENDING_TEXT.format(month=month),
-        "shown_text": CAMPAIGN_SHOWN_TEXT.format(shown=campaigns.shown, total=campaigns.listed)
-        if campaigns.listed > campaigns.shown
-        else None,
-        "segment_ids_sentence": SEGMENT_IDS_SENTENCE,
-        "basis_label": "DSP-attributed sales ÷ DSP spend · 14-day attribution, conversion date",
-        "rows": [
-            {
-                "campaign_ref": refs[row.campaign_key],
-                "campaign_label": row.campaign_label,
-                **_segment_names(row.segment_id, row.label),
-                "segment_impressions": None if row.impressions is None else int(row.impressions),
-                "segment_impressions_text": _count(row.impressions),
-                "segment_cpm": None
-                if row.cpm is None
-                else {
-                    "value": _decimal(row.cpm, _MONEY_QUANTUM),
-                    "currency": row.dsp_currency,
-                    "text": _money(row.cpm, row.dsp_currency),
-                },
-                "cpm_text": row.cpm_reason,
-                "segment_roas_attributed": _decimal(row.roas),
-                "segment_roas_attributed_text": _multiplier(row.roas),
-                "roas_text": row.roas_reason,
-            }
-            for row in campaigns.rows
-        ],
+        **_segment_names(row.segment_id, row.label),
+        "segment_impressions": None if row.impressions is None else int(row.impressions),
+        "segment_impressions_text": _count(row.impressions),
+        "segment_cpm": None
+        if row.cpm is None
+        else {
+            "value": _decimal(row.cpm, _MONEY_QUANTUM),
+            "currency": row.dsp_currency,
+            "text": _money(row.cpm, row.dsp_currency),
+        },
+        "cpm_text": row.cpm_reason,
+        "segment_roas_attributed": _decimal(row.roas),
+        "segment_roas_attributed_text": _multiplier(row.roas),
+        "roas_text": row.roas_reason,
+    }
+
+
+def audiences_campaign_page_payload(page: CampaignPage, revision: str) -> dict[str, object]:
+    """One campaign's page, under its parent's revision."""
+    entry = page.entry
+    return {
+        "type": AUDIENCES_CAMPAIGN_PAGE_TYPE,
+        "version": AUDIENCES_PART_VERSION,
+        "parent_revision": revision,
+        "campaign_ref": entry.ref,
+        "campaign_label": entry.label,
+        "page": page.page,
+        "page_count": entry.page_count,
+        "paging_text": None
+        if entry.state is CampaignEntryState.WITHDRAWN
+        else _paging_text(page.page, entry.segment_count),
+        "state": entry.state.value,
+        "text": entry.text,
+        "rows": [_campaign_row_payload(row) for row in page.rows],
     }
 
 
@@ -995,7 +1242,7 @@ def _evidence_status(artifact: AudienceProfileArtifact) -> dict[str, object]:
             "slot_label": f"{VIEW_LABELS[view.view]} · {DELIVERY_LABELS[item.path]}",
             "role_label": "This month",
             "missing_dates": [{"start": month.start.isoformat(), "end": month.end.isoformat()}],
-            "reason_text": "No buyer profile was measured for this month.",
+            "reason_text": item.refused_text or NO_DELIVERY_TEXT,
             "recovery_text": None,
         }
         for market in artifact.markets
@@ -1007,36 +1254,14 @@ def _evidence_status(artifact: AudienceProfileArtifact) -> dict[str, object]:
     return {"version": 2, "slots": slots}
 
 
-@dataclass(frozen=True, slots=True)
-class AudienceUnavailableArtifact:
-    """A target month that supersedes an older body but cannot be rendered within its bounds."""
-
-    month: DateRange
-    month_label: str
-    reason_code: str
-
-
-def audiences_unavailable_artifact_payload(period: CalendarPeriod) -> dict[str, object]:
-    """Serialize the small typed body that makes an over-bound target month authoritative."""
-    return {
-        "type": AUDIENCES_UNAVAILABLE_ARTIFACT_TYPE,
-        "version": AUDIENCES_UNAVAILABLE_ARTIFACT_VERSION,
-        "reason_code": AUDIENCES_BODY_OVER_BOUND,
-        "month": {
-            "start": period.start.isoformat(),
-            "end": period.end.isoformat(),
-            "label": period.label,
-        },
-    }
-
-
 def audiences_artifact_payload(artifact: AudienceProfileArtifact) -> dict[str, object]:
-    """Serialize the artifact for the baked body; the UI's strict v1 decoder reads exactly this."""
+    """Serialize the parent body; the UI's strict v2 decoder reads exactly this."""
     month = artifact.month_label
     minimum = artifact.display_minimum
     return {
         "type": AUDIENCES_ARTIFACT_TYPE,
         "version": AUDIENCES_ARTIFACT_VERSION,
+        "revision": artifact.revision,
         "outcome": artifact.outcome.value,
         "month": {
             "start": artifact.month.start.isoformat(),
@@ -1113,22 +1338,6 @@ def _iso_date(value: object) -> date:
     if not _ISO_DATE.fullmatch(raw):
         raise ValueError("an Audiences date is not an ISO calendar date.")
     return date.fromisoformat(raw)
-
-
-def require_audiences_unavailable_artifact_payload(
-    value: object,
-) -> AudienceUnavailableArtifact:
-    """Decode only the typed target-month marker written for an over-bound Audiences body."""
-    payload = _record(value, {"month", "reason_code", "type", "version"})
-    if (
-        payload["type"] != AUDIENCES_UNAVAILABLE_ARTIFACT_TYPE
-        or payload["version"] != AUDIENCES_UNAVAILABLE_ARTIFACT_VERSION
-        or payload["reason_code"] != AUDIENCES_BODY_OVER_BOUND
-    ):
-        raise ValueError("the Audiences unavailable artifact has an invalid identity.")
-    month = _record(payload["month"], {"end", "label", "start"})
-    window = DateRange(_iso_date(month["start"]), _iso_date(month["end"]))
-    return AudienceUnavailableArtifact(window, _text(month["label"]), AUDIENCES_BODY_OVER_BOUND)
 
 
 def _validate_count_pair(count: object, display: object, *, required: bool = False) -> int | None:
@@ -1255,6 +1464,8 @@ def _validate_delivery(  # noqa: PLR0912, PLR0913, PLR0917 -- a delivery, its pa
             "first_month_note",
             "insights",
             "label",
+            "page_count",
+            "paging_text",
             "paid_state",
             "period_text",
             "profile_path",
@@ -1313,6 +1524,10 @@ def _validate_delivery(  # noqa: PLR0912, PLR0913, PLR0917 -- a delivery, its pa
         raise ValueError("an Audiences delivery without its total carries a silent insight.")
     if returned and not total_returned and insight["absence_reason"] != TOTAL_NOT_AVAILABLE_TEXT:
         raise ValueError("an Audiences delivery without its total says so in its insight.")
+    page_count = _safe_count(delivery["page_count"])
+    paging = _nullable_text(delivery["paging_text"])
+    if (page_count >= 1) != returned or (paging is not None) != (page_count > 1):
+        raise ValueError("an Audiences delivery pages exactly its returned rows.")
     return _DeliveryShape(returned, total_returned)
 
 
@@ -1426,14 +1641,26 @@ def _validate_view(value: object, expected_view: str, month: str | None) -> bool
         path: _validate_delivery(raw, path, paid_view, month)
         for raw, path in zip(deliveries, expected_paths, strict=True)
     }
+    paths = _validate_rows(view, expected_paths, shapes)
+    if any(paths.count(path) > AUDIENCES_PAGE_ROWS for path in expected_paths):
+        raise ValueError("an Audiences parent carries at most one page of each path.")
+    return any(shape.returned for shape in shapes.values())
+
+
+def _validate_rows(
+    page: dict[str, object], expected_paths: tuple[str, ...], shapes: dict[str, _DeliveryShape]
+) -> list[str]:
+    """Validate a page's rows, then its "Not available" segments; return every item's path."""
+    paths: list[str] = []
     last_path = -1
-    for raw in _items(view["rows"]):
+    for raw in _items(page["rows"]):
         path = _validate_profile_row(raw, expected_paths, shapes)
         if expected_paths.index(path) < last_path:
             raise ValueError("Audiences rows do not follow delivery order.")
         last_path = expected_paths.index(path)
+        paths.append(path)
     last_path = -1
-    for raw in _items(view["not_available"]):
+    for raw in _items(page["not_available"]):
         row = _record(
             raw,
             {
@@ -1460,89 +1687,207 @@ def _validate_view(value: object, expected_view: str, month: str | None) -> bool
         ):
             raise ValueError("an unavailable Audiences row has its state and a server reason.")
         _validate_names(row)
-    return any(shape.returned for shape in shapes.values())
+        paths.append(path)
+    return paths
+
+
+def _validate_campaign_row(raw: object) -> None:
+    row = _record(
+        raw,
+        {
+            "category_level_1",
+            "category_path",
+            "cpm_text",
+            "display_name",
+            "name",
+            "provider_label",
+            "roas_text",
+            "segment_cpm",
+            "segment_id",
+            "segment_impressions",
+            "segment_impressions_text",
+            "segment_roas_attributed",
+            "segment_roas_attributed_text",
+        },
+    )
+    _validate_names(row)
+    _validate_count_pair(row["segment_impressions"], row["segment_impressions_text"])
+    cpm = row["segment_cpm"]
+    if cpm is None:
+        _text(row["cpm_text"])
+    else:
+        amount = _record(cpm, {"currency", "text", "value"})
+        currency = _text(amount["currency"])
+        parsed_amount = _decimal_text(amount["value"], 2, signed=True)
+        if amount["text"] != _money(parsed_amount, currency) or row["cpm_text"] is not None:
+            raise ValueError("an Audiences CPM display does not match its value.")
+    raw_roas = row["segment_roas_attributed"]
+    roas_display = _nullable_text(row["segment_roas_attributed_text"])
+    roas = None if raw_roas is None else _decimal_text(raw_roas, 2, signed=True)
+    if (roas is None) != (roas_display is None) or (
+        roas is not None and roas_display != _multiplier(roas)
+    ):
+        raise ValueError("an Audiences ROAS display does not match its value.")
+    if roas is None:
+        _text(row["roas_text"])
+    elif row["roas_text"] is not None:
+        raise ValueError("an available Audiences ROAS carries no absence text.")
+
+
+def _validate_index_entries(raw_entries: object, first_rank: int) -> int:
+    """Validate index entries numbered from `first_rank`; return how many there are."""
+    entries = _items(raw_entries)
+    for rank, raw in enumerate(entries, start=first_rank):
+        entry = _record(
+            raw,
+            {"campaign_label", "campaign_ref", "page_count", "segment_count", "state", "text"},
+        )
+        if entry["campaign_ref"] != f"{_CAMPAIGN_REF_PREFIX}{rank}":
+            raise ValueError("Audiences campaign references number campaigns by rank.")
+        state = CampaignEntryState(_text(entry["state"]))
+        parsed = CampaignIndexEntry(
+            cast("str", entry["campaign_ref"]),
+            _text(entry["campaign_label"]),
+            _safe_count(entry["segment_count"]),
+            state,
+            _nullable_text(entry["text"]),
+        )
+        if _safe_count(entry["page_count"]) != parsed.page_count:
+            raise ValueError("an Audiences index entry's page count does not match its rows.")
+    return len(entries)
 
 
 def _validate_campaigns(value: object) -> None:
     campaigns = _record(
         value,
-        {"basis_label", "limit_text", "pending_text", "rows", "segment_ids_sentence", "shown_text"},
+        {
+            "basis_label",
+            "campaign_count",
+            "index",
+            "index_shards",
+            "limit_text",
+            "pending_text",
+            "refused_text",
+            "segment_ids_sentence",
+        },
     )
     _text(campaigns["limit_text"])
     _text(campaigns["basis_label"])
     if campaigns["segment_ids_sentence"] != SEGMENT_IDS_SENTENCE:
         raise ValueError("Audiences campaigns carry the pinned segment-ID sentence.")
-    rows = _items(campaigns["rows"])
-    if _nullable_text(campaigns["pending_text"]) is not None and rows:
-        raise ValueError("pending Audiences campaigns carry no rows.")
-    labels: dict[str, str] = {}
+    count = _safe_count(campaigns["campaign_count"])
+    shards = _safe_count(campaigns["index_shards"])
+    pending = _nullable_text(campaigns["pending_text"])
+    refused = _nullable_text(campaigns["refused_text"])
+    listed = _validate_index_entries(campaigns["index"], 1)
+    if (pending is not None or refused is not None) and count:
+        raise ValueError("a pending or refused Audiences campaign section lists no campaign.")
+    if pending is not None and refused is not None:
+        raise ValueError("a pending Audiences campaign section is not refused.")
+    if shards != max(1, math.ceil(count / AUDIENCES_INDEX_SHARD_ENTRIES)) or listed != min(
+        count, AUDIENCES_INDEX_SHARD_ENTRIES
+    ):
+        raise ValueError("an Audiences parent carries the index's first shard and its count.")
+
+
+class AudiencesPart(StrEnum):
+    """The parts one Audiences publication serves beside its parent."""
+
+    CAMPAIGN = "campaign"
+    PROFILE = "profile"
+    CAMPAIGN_INDEX = "campaign_index"
+
+
+_PART_TYPES: Final = {
+    AudiencesPart.CAMPAIGN: AUDIENCES_CAMPAIGN_PAGE_TYPE,
+    AudiencesPart.PROFILE: AUDIENCES_PROFILE_PAGE_TYPE,
+    AudiencesPart.CAMPAIGN_INDEX: AUDIENCES_CAMPAIGN_INDEX_TYPE,
+}
+_PART_KEYS: Final = {
+    AudiencesPart.CAMPAIGN: {
+        "campaign_label",
+        "campaign_ref",
+        "page",
+        "page_count",
+        "paging_text",
+        "rows",
+        "state",
+        "text",
+    },
+    AudiencesPart.PROFILE: {
+        "not_available",
+        "page",
+        "page_count",
+        "paging_text",
+        "profile_path",
+        "rows",
+        "total_returned",
+    },
+    AudiencesPart.CAMPAIGN_INDEX: {"entries", "shard"},
+}
+
+
+def require_audiences_part_payload(  # noqa: PLR0912 -- strict matrix, per part
+    value: object, part: AudiencesPart, parent_revision: str
+) -> dict[str, object]:
+    """Refuse a part that isn't exactly what this module writes, under `parent_revision`.
+
+    The browser decoder (frontend/lib/audiences.ts) applies the same rules to the served part.
+    """
+    payload = _record(value, {"parent_revision", "type", "version", *_PART_KEYS[part]})
+    if (
+        payload["type"] != _PART_TYPES[part]
+        or isinstance(payload["version"], bool)
+        or payload["version"] != AUDIENCES_PART_VERSION
+        or payload["parent_revision"] != parent_revision
+    ):
+        raise ValueError("an Audiences part has an invalid identity.")
+    if part is AudiencesPart.CAMPAIGN_INDEX:
+        shard = _safe_count(payload["shard"])
+        if shard < 1:
+            raise ValueError("an Audiences index part is a later shard.")
+        if (
+            not 1
+            <= _validate_index_entries(
+                payload["entries"], shard * AUDIENCES_INDEX_SHARD_ENTRIES + 1
+            )
+            <= AUDIENCES_INDEX_SHARD_ENTRIES
+        ):
+            raise ValueError("an Audiences index part holds one shard's entries.")
+        return payload
+    page = _safe_count(payload["page"])
+    page_count = _safe_count(payload["page_count"])
+    paging = _nullable_text(payload["paging_text"])
+    if not page < page_count:
+        raise ValueError("an Audiences part is one of its pages.")
+    if part is AudiencesPart.PROFILE:
+        path = _text(payload["profile_path"])
+        total_returned = payload["total_returned"]
+        if page < 1 or path not in DELIVERY_PATHS[PAID_VIEW] + DELIVERY_PATHS[DSP_VIEW]:
+            raise ValueError("an Audiences profile part is a later page of a profile path.")
+        if not isinstance(total_returned, bool) or paging is None:
+            raise ValueError("an Audiences profile part states its total and its paging.")
+        shapes = {path: _DeliveryShape(returned=True, total_returned=total_returned)}
+        if len(_validate_rows(payload, (path,), shapes)) > AUDIENCES_PAGE_ROWS:
+            raise ValueError("an Audiences page holds at most 50 rows.")
+        return payload
+    if not _CAMPAIGN_REF.fullmatch(_text(payload["campaign_ref"])):
+        raise ValueError("an Audiences campaign part names its reference.")
+    _text(payload["campaign_label"])
+    state = CampaignEntryState(_text(payload["state"]))
+    text = _nullable_text(payload["text"])
+    rows = _items(payload["rows"])
+    if state is CampaignEntryState.REFUSED or (text is None) != (
+        state is CampaignEntryState.AVAILABLE
+    ):
+        raise ValueError("an Audiences campaign part has its campaign's state.")
+    if len(rows) > AUDIENCES_PAGE_ROWS or (state is CampaignEntryState.WITHDRAWN and rows):
+        raise ValueError("an Audiences campaign part holds its page's rows only.")
+    if state is CampaignEntryState.WITHDRAWN and paging is not None:
+        raise ValueError("a withdrawn Audiences campaign part has no paging.")
     for raw in rows:
-        row = _record(
-            raw,
-            {
-                "campaign_label",
-                "campaign_ref",
-                "category_level_1",
-                "category_path",
-                "cpm_text",
-                "display_name",
-                "name",
-                "provider_label",
-                "roas_text",
-                "segment_cpm",
-                "segment_id",
-                "segment_impressions",
-                "segment_impressions_text",
-                "segment_roas_attributed",
-                "segment_roas_attributed_text",
-            },
-        )
-        ref = row["campaign_ref"]
-        label = _text(row["campaign_label"])
-        # References number campaigns 1, 2, ... in row order, one label each, rows grouped.
-        if ref not in labels and ref != f"{_CAMPAIGN_REF_PREFIX}{len(labels) + 1}":
-            raise ValueError("Audiences campaign references number campaigns in row order.")
-        if labels.setdefault(cast("str", ref), label) != label or (
-            labels and list(labels)[-1] != ref
-        ):
-            raise ValueError("an Audiences campaign keeps one label and its rows together.")
-        _validate_names(row)
-        _validate_count_pair(row["segment_impressions"], row["segment_impressions_text"])
-        cpm = row["segment_cpm"]
-        if cpm is None:
-            _text(row["cpm_text"])
-        else:
-            amount = _record(cpm, {"currency", "text", "value"})
-            currency = _text(amount["currency"])
-            parsed_amount = _decimal_text(amount["value"], 2, signed=True)
-            if amount["text"] != _money(parsed_amount, currency) or row["cpm_text"] is not None:
-                raise ValueError("an Audiences CPM display does not match its value.")
-        raw_roas = row["segment_roas_attributed"]
-        roas_display = _nullable_text(row["segment_roas_attributed_text"])
-        roas = None if raw_roas is None else _decimal_text(raw_roas, 2, signed=True)
-        if (roas is None) != (roas_display is None) or (
-            roas is not None and roas_display != _multiplier(roas)
-        ):
-            raise ValueError("an Audiences ROAS display does not match its value.")
-        if roas is None:
-            _text(row["roas_text"])
-        elif row["roas_text"] is not None:
-            raise ValueError("an available Audiences ROAS carries no absence text.")
-    _validate_shown(
-        campaigns["shown_text"], len(labels), pending=campaigns["pending_text"] is not None
-    )
-
-
-def _validate_shown(value: object, campaigns: int, *, pending: bool) -> None:
-    """Require the server's exact shown note, fewer shown than listed, and never when pending."""
-    if value is None:
-        return
-    match = _CAMPAIGN_SHOWN.fullmatch(_text(value))
-    if match is None or pending:
-        raise ValueError("the Audiences shown note is the server's exact copy.")
-    shown, total = (int(group) for group in match.groups())
-    if not campaigns <= shown < total:
-        raise ValueError("the Audiences shown note names fewer campaigns than pack 8 listed.")
+        _validate_campaign_row(raw)
+    return payload
 
 
 def _validate_evidence(value: object) -> None:
@@ -1588,11 +1933,14 @@ def require_audiences_artifact_payload(  # noqa: PLR0912 -- strict matrix
             "outcome",
             "page_context_expires_at",
             "page_context_label",
+            "revision",
             "starter_questions",
             "type",
             "version",
         },
     )
+    if not _PUBLICATION_REVISION.fullmatch(_text(payload["revision"])):
+        raise ValueError("the Audiences artifact names its publication revision.")
     if (
         payload["type"] != AUDIENCES_ARTIFACT_TYPE
         # `True == 1` in Python; the browser's `!== 1` refuses a boolean, so the server does too.
@@ -1610,7 +1958,7 @@ def require_audiences_artifact_payload(  # noqa: PLR0912 -- strict matrix
         raise ValueError("the Audiences display minimum is invalid.")
     markets = _items(payload["markets"])
     if len(markets) != 1:
-        raise ValueError("Audiences v1 serves exactly one marketplace.")
+        raise ValueError("Audiences serves exactly one marketplace.")
     market = _record(markets[0], {"campaign_audiences", "default_view", "outcome", "views"})
     if market["outcome"] != payload["outcome"]:
         raise ValueError("an Audiences market's outcome is the artifact's.")

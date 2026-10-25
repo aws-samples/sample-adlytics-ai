@@ -1,20 +1,23 @@
 # SPDX-License-Identifier: MIT-0
-"""Bake `AudienceProfileArtifact` v1 for the latest complete month (docs/ui/audiences, ADR-075).
+"""Bake `AudienceProfileArtifact` v2 and its parts for the latest complete month (ADR-075, ADR-141).
 
 Per governed marketplace, every figure is planned through the measurement layer, the path chat
 reads too: for each profile path with a CURRENT delivery for the month (packs 10, 11 and 12),
 its segment rows' buyers, reached shoppers and new-to-brand buyers by segment, graded against the
 path's segment roster (the segments it returned the month before, read through the roster port),
-and its `profiled_total` row's two bases; for pack 8, each DSP campaign's segment impressions,
-spend and attributed sales, each campaign graded against its own segment roster. Nothing is
-planned across segments, paths or campaigns. The domain computes every share, index, CPM and
-ROAS (`domain.presentation.audiences`), so a missing total reads "Not available" rather than a
-share of a partial base.
+and its `profiled_total` row's two bases; for pack 8, every DSP campaign's segment impressions,
+spend and attributed sales, read once for all campaigns grouped by campaign and streamed one
+campaign at a time (`audiences_campaigns`), each campaign graded against its own segments of the
+month before. Nothing is planned across segments, paths or campaigns. The domain computes every
+share, index, CPM and ROAS (`domain.presentation.audiences`), so a missing total reads "Not
+available" rather than a share of a partial base.
 
-A bake reads in four steps, each one batch across every marketplace, run at most the configured
-query bound at once and joined by identity: the served months (one read per marketplace), the
-DSP campaign lists (one planned batch), every profile path's and campaign's roster, then the
-measurement batch. No read waits on a sibling in its own step, and no step is per campaign.
+A bake reads in two phases, each run at most the configured query bound at once: each profile
+path's roster with the campaigns' count pass, then the profile measurement with the history walk
+for campaigns that returned no segment the month before. The statement count doesn't grow with
+campaigns (24 per marketplace). The parent carries each path's first 50 rows and the first
+campaign index shard; every other page is a part, and the campaign pages are rendered as the
+stage writes them (the page pass), so a bake holds one campaign's rows at a time.
 
 Paid states (ADR-107) come from publication evidence over each paid pack's latest three months:
 packs 10-11 unobserved leave the paid view's callout and default the page to the DSP view; pack
@@ -22,22 +25,21 @@ packs 10-11 unobserved leave the paid view's callout and default the page to the
 
 Registered with the publisher, and fails closed: the source composes only once the v2 page entry
 `audiences` declares the LLD's whole server-relevant entry (`audiences_policy_declared`: mode,
-boundary, temporal policy, `AudienceProfileArtifact` v1 and the seven sections with their periods
-and anchor, as `docs/ui/audiences/low-level-design.md` declares them; the UI workstream adds
-the entry).
+boundary, temporal policy, `AudienceProfileArtifact` v2 and the seven sections with their periods
+and anchor, as `docs/ui/audiences/low-level-design.md` declares them).
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, is_dataclass, replace
 from datetime import datetime, timedelta
 from decimal import Decimal
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol, cast
+from typing import TYPE_CHECKING, Any, Final, Protocol, cast
 
 from adapters.campaign_insight_requests import FindingSource, predicate_findings
 from adapters.inbound.tool_handlers.dimension_labels import DimensionLabelResolver
@@ -54,8 +56,26 @@ from adapters.inbound.tool_handlers.measurement import (
 from adapters.jobs.contract_validation.insight_loader import load_insight_contracts
 from adapters.jobs.contract_validation.loader import load_contracts
 from adapters.jobs.presentation_validation.loader import load_v2_page_schemas
+from adapters.jobs.preset_artifact_publisher.audiences_campaigns import (
+    CAMPAIGN_KEY_COLUMNS,
+    CampaignCount,
+    CampaignCountScope,
+    CampaignPages,
+    CampaignTally,
+    count_campaigns,
+)
 from adapters.jobs.preset_artifact_publisher.campaign_source import (
     SUPERSEDED_HISTORY_RETENTION,
+)
+from adapters.jobs.preset_artifact_publisher.group_stream import (
+    GroupRead,
+    GroupStreams,
+    SinkSlot,
+    Unphased,
+)
+from adapters.jobs.preset_artifact_publisher.isolated_refusals import (
+    capped_preset_artifact_json,
+    note_isolated_refusal,
 )
 from adapters.jobs.preset_artifact_publisher.scorecard_source import (
     MARKETPLACE_SELECTOR,
@@ -72,6 +92,7 @@ from domain.capabilities.paid_features import (
 )
 from domain.measurement.periodic import PROFILE_PATH_COLUMN, ROW_KIND_COLUMN
 from domain.measurement.rosters import (
+    ROSTER_REFUSED,
     Roster,
     RosterKind,
     apply_roster,
@@ -81,18 +102,20 @@ from domain.operations.bake_refusals import IsolatedRefusal, IsolatedRefusalReas
 from domain.presentation.audiences import (
     AUDIENCES_ARTIFACT_TYPE,
     AUDIENCES_ARTIFACT_VERSION,
-    AUDIENCES_BODY_OVER_BOUND,
     AUDIENCES_PAGE_ID,
+    CAMPAIGN_HISTORY_GAP_TEXT,
+    CAMPAIGN_INCOMPLETE_TEXT,
     DELIVERY_PATHS,
     DSP_VIEW,
     NO_DELIVERY_TEXT,
     PAID_VIEW,
+    PROFILE_PATH_REFUSED_TEXTS,
     VIEW_NAMESPACES,
     AudienceMarket,
     AudienceProfileArtifact,
     CampaignAudiences,
-    CampaignRowRequest,
-    CampaignSegment,
+    CampaignEntryState,
+    CampaignIndexEntry,
     DeliveryState,
     OverIndexFinding,
     OverIndexSlotRequest,
@@ -102,10 +125,12 @@ from domain.presentation.audiences import (
     ProfileView,
     ViewRequest,
     audiences_artifact_payload,
-    audiences_unavailable_artifact_payload,
+    audiences_campaign_index_payload,
+    audiences_campaign_page_payload,
+    audiences_profile_page_payload,
     build_view,
-    campaign_segment,
     over_index_findings,
+    profile_page_count,
     segment_over_index_slot,
 )
 from domain.presentation.insights import (
@@ -129,15 +154,19 @@ from domain.presentation.page_schemas import (
     TemporalPresetId,
 )
 from domain.presentation.preset_artifacts import (
-    MAX_PRESET_ARTIFACT_BYTES,
     PresetArtifactBody,
+    PresetArtifactCustodyHeader,
     PresetArtifactPage,
     PresetArtifactPointerTemplate,
     PresetArtifactPublicationRequest,
     PresetArtifactRevision,
+    PresetArtifactSiblingBody,
+    PresetArtifactSiblingCustody,
+    PresetArtifactSiblingIdentity,
+    PresetArtifactSiblingPair,
+    PresetArtifactSiblingStream,
     PresetArtifactVariant,
     SourceUnchanged,
-    canonical_preset_artifact_json,
 )
 from domain.producer.models import DEFAULT_CADENCE_LAG_DAYS
 from domain.semantics.analytical_resolution import AuthorizedAnalyticalScope
@@ -155,13 +184,27 @@ from ports.outbound.publication_selection import (
     PresentationEvidenceInspectionPlan,
     PresentationEvidenceInspectionRequest,
 )
-from ports.outbound.query import BAKE_MAX_ROWS, QueryResult, RowCeiling
-from ports.outbound.rosters import RosterRequest
+from ports.outbound.query import (
+    BAKE_MAX_ROWS,
+    BAKE_MAX_STREAMED_ROWS,
+    FoldRead,
+    QueryResult,
+    RowCeiling,
+)
+from ports.outbound.rosters import (
+    CampaignHistories,
+    CampaignHistoriesRequest,
+    CampaignHistory,
+    CampaignHistoryPort,
+    RosterRequest,
+)
 from ports.outbound.segment_labels import SegmentLabelRequest
 from ports.outbound.semantic_state import scope_horizon_policy
 from ports.outbound.served_periods import ServedPeriodsRequest
 
 if TYPE_CHECKING:  # pragma: no cover
+    from collections.abc import Iterator
+
     from adapters.config import PresetArtifactBakeSettings
     from adapters.inbound.tool_handlers.measurement import PresentationMeasurementAnswerSlot
     from adapters.outbound.bake_sources import BakeSourceReads
@@ -171,13 +214,12 @@ if TYPE_CHECKING:  # pragma: no cover
     from domain.semantics.audience_segments import SegmentLabel
     from ports.outbound.preset_artifacts import PresetArtifactPointerStorePort
     from ports.outbound.publication_selection import PresentationEvidenceInspectionPort
-    from ports.outbound.query import PeriodSeriesQueryPort
+    from ports.outbound.query import FoldingQueryPort, PeriodSeriesQueryPort
     from ports.outbound.rosters import RosterPort
     from ports.outbound.segment_labels import SegmentLabelPort
     from ports.outbound.semantic_state import CurrentPublicationInspectionPort
 
 __all__ = [
-    "AUDIENCES_BODY_OVER_BOUND",
     "AUDIENCES_ENVELOPE_MAX_BYTES",
     "AUDIENCES_MATERIALIZATION_UNAVAILABLE",
     "AUDIENCES_RENDER_FORMAT",
@@ -187,18 +229,18 @@ __all__ = [
     "AudiencesArtifactRenderer",
     "AudiencesRenderInput",
     "AudiencesRenderResult",
+    "CampaignPagePass",
     "RetainedAudiencesPresetArtifactSource",
-    "audiences_bake_phase_plan_counts",
-    "audiences_bake_plan_count",
     "audiences_marketplace_count",
     "audiences_policy_declared",
     "governed_campaign_names",
     "retained_audiences_preset_artifact_source",
 ]
 
-AUDIENCES_RENDER_FORMAT = 3
-"""Generation 3: the campaigns' `shown_text`. Generation 2 added wire fields, the pointer's
-`resolved_window` and the render-inputs identity; an older pointer is rebuilt, never kept."""
+AUDIENCES_RENDER_FORMAT = 4
+"""Generation 4: v2, every DSP campaign in paged parts (ADR-141). Generation 3 added the
+campaigns' `shown_text`, generation 2 wire fields, the pointer's `resolved_window` and the
+render-inputs identity; an older pointer is rebuilt, never kept."""
 PROFILE_CONTRACTS = {
     "asi_in_market": "amc-segment-buyer-profile-inmarket",
     "asi_lifestyle": "amc-segment-buyer-profile-lifestyle",
@@ -213,6 +255,10 @@ CAMPAIGN_METRICS = ("segment_impressions", "segment_spend", "segment_attributed_
 SEGMENT_GRAINS = ("marketplace", "audience_segment")
 TOTAL_GRAINS = ("marketplace",)
 CAMPAIGN_GRAINS = ("marketplace", "campaign", "audience_segment")
+CAMPAIGN_ROSTER_METRIC = "segment_reach"
+"""R1: every returned segment row carries its reach, so its keys are the month's segments."""
+CAMPAIGN_STREAMED_READS = len(CAMPAIGN_METRICS) + 1
+"""The count pass merges the three figures and R1 at once (`AudiencesArtifactRenderer`)."""
 LATEST_MONTH_VARIANT = "last_complete_month"
 """The one variant this page bakes: its temporal policy's default preset."""
 OBSERVATION_MONTHS = 3
@@ -223,9 +269,15 @@ _PERIOD_GRAIN_SELECTOR = "time_grain"
 _GRAIN_SET_SELECTOR = "grain_set"
 _CAMPAIGN_COLUMN = "campaign_key"
 _SILENT = "No segment holds enough buyers with a share clearly above its share of reached shoppers."
+_PROFILE_SECTION = "segment-ranking"
+_CAMPAIGN_SECTION = "campaign-audiences"
+_INDEX_FILTER = "campaign-index"
+_INDEX_ORDERING = "rank"
+_PROFILE_ORDERING = "index-desc"
+_CAMPAIGN_ORDERING = "impressions-desc"
 
 type _Label = tuple[str, str, str]
-"""(marketplace, scope, metric): scope is a profile path, or `campaign` for pack 8."""
+"""(marketplace, profile path, metric)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -237,14 +289,19 @@ class AudiencesRenderInput:
 
 @dataclass(frozen=True, slots=True)
 class AudiencesRenderResult:
-    """The baked artifact, or None, and the publication identities it read."""
+    """The baked parent, or None; the publication identities it read; its campaign pages."""
 
     artifact: AudienceProfileArtifact | None
     publication_identities: tuple[str, ...]
+    campaigns: CampaignPagePass | None = None
+    """The page pass over every listed campaign, started only when the publication is staged."""
 
 
 _EMPTY_RESULT = QueryResult(
     rows=(), bytes_scanned=0, truncated=False, suppression=Suppression(rows_suppressed=False)
+)
+_EMPTY_FOLD = FoldRead(
+    rows_read=0, truncated=False, bytes_scanned=0, suppression=Suppression(rows_suppressed=False)
 )
 _PREFETCH_CAMPAIGN = "campaign:prefetch-0001"
 """The prefetch walker's synthetic campaign key: fictional, never rendered or stored."""
@@ -261,6 +318,14 @@ class _EmptyAnswers:
     def run_series(self, request: object) -> QueryResult:
         del request
         return _EMPTY_RESULT
+
+    def fold(self, request: object, sink: object) -> FoldRead:
+        del request, sink
+        return _EMPTY_FOLD
+
+    def fold_series(self, request: object, sink: object) -> FoldRead:
+        del request, sink
+        return _EMPTY_FOLD
 
 
 class AudiencesCompiler(Protocol):
@@ -286,22 +351,37 @@ class _Served:
 
 
 @dataclass(frozen=True, slots=True)
-class _Listed:
-    """One marketplace's ranked shown campaigns and how many pack 8 listed."""
-
-    shown: tuple[str, ...]
-    total: int
-
-
-@dataclass(frozen=True, slots=True)
 class _Scope:
-    """One graded delivery: a marketplace's profile path, or one of its DSP campaigns."""
+    """One graded profile path of a marketplace."""
 
     market: str
     name: str
-    """The profile path, or `campaign:{campaign_key}`."""
+    """The profile path."""
     fact: str
     filters: dict[str, str]
+
+
+@dataclass(frozen=True, slots=True)
+class _PathRefusal:
+    """A profile path refused for its own reason (an item of `segment-ranking`, 01 §3.3)."""
+
+    reason: IsolatedRefusalReason
+
+
+_PATH_REFUSALS: Final = {
+    "history_gap": IsolatedRefusalReason.HISTORY_GAP,
+    "unreadable": IsolatedRefusalReason.EVIDENCE_INCOMPLETE,
+}
+"""A profile roster's `roster_refusal` that refuses only its path; any other refuses the page."""
+
+
+@dataclass(frozen=True, slots=True)
+class _Counted:
+    """One marketplace's campaign count pass: its reads, their tallies, their publications."""
+
+    reads: tuple[GroupRead, ...]
+    count: CampaignCount
+    identities: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -311,11 +391,34 @@ class _Named:
     states: dict[str, tuple[DeliveryState, ...]]
     """Each view's delivery states, by view."""
     labels: dict[str, dict[str, SegmentLabel]]
-    """Each view's segment labels, by view."""
+    """Each view's segment labels, by view; the DSP view's name the campaign rows' too."""
     campaign_names: dict[str, str]
-    campaign_labels: dict[str, SegmentLabel]
-    """The DSP segment labels the campaign rows read."""
     campaigns: CampaignAudiences
+    keys: dict[str, str]
+    """Each index entry's campaign key, by its reference."""
+
+
+@dataclass(frozen=True, slots=True)
+class CampaignPagePass:
+    """What the page pass reads and renders: the count pass's figure reads and index."""
+
+    reads: tuple[GroupRead, ...]
+    """Impressions, spend and attributed sales, as the count pass prepared them."""
+    tooling: MeasurementExecutionTooling
+    entries: dict[str, CampaignIndexEntry]
+    count: CampaignCount
+    labels: dict[str, SegmentLabel]
+
+    def start(self) -> CampaignPages:
+        """Start the page pass and return once each read's statement has executed.
+
+        Called inside the render, so every statement runs under the render's deadline and
+        certified bound; the stage then drains the rows.
+        """
+        streams = GroupStreams(self.reads, self.tooling, CAMPAIGN_KEY_COLUMNS)
+        streams.start()
+        streams.wait_started()
+        return CampaignPages(streams, self.entries, self.count, self.labels.get)
 
 
 def governed_campaign_names(
@@ -350,6 +453,10 @@ def _months_ending(period: CalendarPeriod, count: int) -> tuple[DateRange, ...]:
     return tuple(reversed(months))
 
 
+def _prior_month(period: CalendarPeriod) -> CalendarPeriod:
+    return period_containing(TimeGrain.MONTH, period.start - timedelta(days=1))
+
+
 @dataclass(frozen=True, slots=True)
 class AudiencesArtifactRenderer:
     """Plan packs 10-12 and 8 per marketplace and reduce them in the domain."""
@@ -359,6 +466,7 @@ class AudiencesArtifactRenderer:
     evidence: PresentationEvidenceInspectionPort
     tooling: MeasurementTooling
     rosters: RosterPort
+    histories: CampaignHistoryPort
     segment_labels: SegmentLabelPort
     marketplaces: tuple[str, ...]
     insight_contract: InsightContract
@@ -368,12 +476,6 @@ class AudiencesArtifactRenderer:
     """Each DSP campaign's governed public label, or chat's placeholder (`governed_campaign_names`).
 
     No default: a campaign key is a protected identifier, so it never names itself."""
-    campaign_bound: int
-    """The most DSP campaigns per marketplace the page measures.
-
-    `audiences_runtime_campaign_bound`, a known limit (TD-D2-AUDIENCES-CAMPAIGN-LIMIT).
-
-    A presentation bound only: chat reads every campaign through its own governed access."""
     cadence_lag_days: dict[str, int] = field(default_factory=dict[str, int])
     """Each paid pack's declared lag (ADR-110), for its ADR-107 `expected_after`."""
     prefetch_campaign: str | None = None
@@ -384,8 +486,10 @@ class AudiencesArtifactRenderer:
             raise ValueError("Audiences renders segment-over-index.")
         if len(self.marketplaces) != 1:
             raise ValueError("Audiences bakes exactly one governed marketplace.")
-        if self.campaign_bound < 1:
-            raise ValueError("Audiences shows at least one campaign.")
+        if self.tooling.query_batch_max_concurrency < CAMPAIGN_STREAMED_READS:
+            # Each campaign read holds its admission slot while it streams, and the merge needs
+            # all of them at once (group_stream).
+            raise ValueError("Audiences streams its campaign reads at once: raise the query bound.")
 
     @property
     def _policy(self) -> OverIndexPolicy:
@@ -463,39 +567,136 @@ class AudiencesArtifactRenderer:
             rosters=() if roster is None else (roster,),
         )
 
-    def _roster(self, period: CalendarPeriod, scope: _Scope) -> Roster:
-        """Read one roster once per bake: a profile path's, or one campaign's, segments."""
+    def campaign_requests(
+        self, market: str, period: CalendarPeriod, prior: CalendarPeriod | None
+    ) -> tuple[MeasurementToolRequest, ...]:
+        """Plan the campaign reads, each for every campaign at `CAMPAIGN_GRAINS` (01 §3.1).
+
+        Pack 8's three figures for the month, then R1 (the segments each campaign returned the
+        month before) when `prior` is published. Each is ungraded (an empty key-read roster) and
+        streamed: its reduction is a fresh `SinkSlot`, which each pass fills with its own sink.
+        """
+        platform = self._contract(DELIVERY_CONTRACT).platform_key
+        reads = [(metric, period) for metric in CAMPAIGN_METRICS]
+        if prior is not None:
+            reads.append((CAMPAIGN_ROSTER_METRIC, prior))
+        return tuple(
+            replace(
+                self._request(
+                    market,
+                    metric,
+                    CAMPAIGN_GRAINS,
+                    (month, _campaign_base()),
+                    Roster(RosterKind.SEGMENT, month.window, market, platform, ()),
+                ),
+                max_rows=BAKE_MAX_STREAMED_ROWS,
+                row_ceiling=RowCeiling.BAKE_STREAMED,
+                reduction=SinkSlot(BAKE_MAX_ROWS),
+            )
+            for metric, month in reads
+        )
+
+    def _roster(self, period: CalendarPeriod, scope: _Scope) -> Roster | _PathRefusal:
+        """Read one profile path's roster once per bake; its own refusal refuses only the path."""
         contract = next(item for item in self.contracts if item.target_table == scope.fact)
-        return self.rosters.roster(
-            RosterRequest(
-                kind=RosterKind.SEGMENT,
-                period=period.window,
-                marketplace_key=scope.market,
-                platform_key=contract.platform_key,
-                filters=roster_filters(RosterKind.SEGMENT, scope.filters),
-                fact=scope.fact,
-                ceiling=RowCeiling.BAKE,
+        try:
+            return self.rosters.roster(
+                RosterRequest(
+                    kind=RosterKind.SEGMENT,
+                    period=period.window,
+                    marketplace_key=scope.market,
+                    platform_key=contract.platform_key,
+                    filters=roster_filters(RosterKind.SEGMENT, scope.filters),
+                    fact=scope.fact,
+                    ceiling=RowCeiling.BAKE,
+                )
+            )
+        except DomainError as error:
+            reason = _PATH_REFUSALS.get(str(error.context.get("roster_refusal")))
+            if error.code != ROSTER_REFUSED or reason is None:
+                raise
+            return _PathRefusal(reason)
+
+    def _read(self, request: MeasurementToolRequest) -> tuple[GroupRead, tuple[str, ...]]:
+        """Prepare and inspect one streamed read; return it and the publications it binds."""
+        prepared = prepare_batch((request,))
+        inspection = self.evidence.inspect(
+            PresentationEvidenceInspectionRequest(
+                plans=tuple(
+                    PresentationEvidenceInspectionPlan(plan.role, plan.logical)
+                    for plan in prepared.plans
+                ),
+                contracts=prepared.contracts,
+                now=prepared.now,
             )
         )
+        identities = tuple(
+            publication.publication_id.value
+            for slot in inspection.slots
+            if slot.bound is not None
+            for publication in slot.bound.all_publications
+        )
+        return GroupRead(prepared, inspection, cast("SinkSlot", request.reduction)), identities
+
+    def _count(self, market: str, period: CalendarPeriod, prior: CalendarPeriod | None) -> _Counted:
+        """Run the count pass: every campaign's tally from the three figures and R1."""
+        reads, identities = zip(
+            *(self._read(request) for request in self.campaign_requests(market, period, prior)),
+            strict=True,
+        )
+        streams = GroupStreams(
+            reads,
+            MeasurementExecutionTooling(
+                queries=self.tooling.queries,
+                query_batch_max_concurrency=self.tooling.query_batch_max_concurrency,
+            ),
+            CAMPAIGN_KEY_COLUMNS,
+        )
+        platform = self._contract(DELIVERY_CONTRACT).platform_key
+        count = count_campaigns(
+            streams,
+            CampaignCountScope(
+                market, platform, (period.window, None if prior is None else prior.window)
+            ),
+        )
+        if self.prefetch_campaign is not None:
+            # The prefetch walker (A5.1): every answer is empty, so one synthetic campaign is
+            # listed to reach each per-campaign read family (history, names, labels).
+            count = replace(
+                count,
+                tallies={self.prefetch_campaign: CampaignTally(1, Decimal(0), False, None)},
+                complete=True,
+            )
+        return _Counted(reads, count, tuple(sorted({item for ids in identities for item in ids})))
 
     def prefetch_audiences(self, request: AudiencesRenderInput) -> None:
         """Make every CURRENT read a real render of the month can reach, executing no query.
 
         Plan A5.1 prefetch, under the bake's RECORD reader: the walker lists one synthetic
         campaign per marketplace and answers every query empty in process, so each roster's
-        served periods and month selections, each campaign scope's plans, the segment-label and
-        campaign-name scopes are read as a populated render reads them. No query reaches the
-        bake's port, which forbids them during prefetch. A selection refusal is the render's
-        own, reached again from the replayed reads.
+        served periods and month selections, each campaign read's plans, the history walk, the
+        segment-label and campaign-name scopes are read as a populated render reads them. No
+        query reaches the bake's port, which forbids them during prefetch. A selection refusal is
+        the render's own, reached again from the replayed reads.
         """
         empty = _EmptyAnswers()
-        rosters = self.rosters
-        if is_dataclass(rosters) and hasattr(rosters, "queries"):
-            rosters = cast("RosterPort", replace(cast("Any", rosters), queries=empty))
+
+        def emptied[T](reader: T) -> T:
+            if is_dataclass(reader) and hasattr(reader, "queries"):
+                return cast("T", replace(cast("Any", reader), queries=empty))
+            return reader
+
+        rosters = emptied(self.rosters)
+        histories = (
+            cast("CampaignHistoryPort", rosters)
+            if cast("object", self.histories) is cast("object", self.rosters)
+            else emptied(self.histories)
+        )
         walker = replace(
             self,
             tooling=replace(self.tooling, queries=empty),
             rosters=rosters,
+            histories=histories,
             prefetch_campaign=_PREFETCH_CAMPAIGN,
         )
         try:
@@ -504,77 +705,136 @@ class AudiencesArtifactRenderer:
             return
 
     def render_audiences(self, request: AudiencesRenderInput) -> AudiencesRenderResult:
-        """Measure every marketplace's profile paths and DSP campaigns for the month."""
+        """Measure the marketplace's profile paths and every DSP campaign for the month.
+
+        Phase 1: each profile path's roster and the campaigns' count pass. Phase 2: the profile
+        measurement and the history walk for campaigns with no segments the month before. The
+        page pass over the campaigns starts only when the publication is staged.
+        """
         period = request.period
         bound = self.tooling.query_batch_max_concurrency
-        served = dict(
-            zip(
-                self.marketplaces,
-                run_bounded(
-                    tuple(partial(self._served, market, period) for market in self.marketplaces),
-                    bound,
-                ),
-                strict=True,
-            )
-        )
-        listed = self._campaigns(
-            tuple(
-                market
-                for market in self.marketplaces
-                if period.window in served[market].published[DELIVERY_CONTRACT]
+        (market,) = self.marketplaces
+        served = self._served(market, period)
+        delivered = period.window in served.published[DELIVERY_CONTRACT]
+        prior = _prior_month(period)
+        rostered = prior if prior.window in served.published[DELIVERY_CONTRACT] else None
+        scopes = self._scopes(market, period, served)
+        first = run_bounded(
+            (
+                *(partial(self._roster, period, scope) for scope in scopes),
+                *((partial(self._count, market, period, rostered),) if delivered else ()),
             ),
-            period,
+            bound,
         )
-        scopes = tuple(
-            scope
-            for market in self.marketplaces
-            for scope in self._scopes(
-                market, period, (served[market], listed.get(market, _Listed((), 0)).shown)
-            )
-        )
-        read = run_bounded(tuple(partial(self._roster, period, scope) for scope in scopes), bound)
-        rosters = {
-            (scope.market, scope.name): roster for scope, roster in zip(scopes, read, strict=True)
-        }
+        counted = cast("_Counted", first[-1]) if delivered else None
+        rosters: dict[tuple[str, str], Roster] = {}
+        refused: dict[str, IsolatedRefusalReason] = {}
+        for scope, item in zip(scopes, first, strict=False):
+            if isinstance(item, _PathRefusal):
+                refused[scope.name] = item.reason
+            else:
+                rosters[(market, scope.name)] = cast("Roster", item)
         batch = _Batch()
-        for scope, roster in zip(scopes, read, strict=True):
-            self._plan(scope, (period, roster), batch)
-        if not batch.plans:
-            return AudiencesRenderResult(None, ())
-        measured = self._measured(batch, period)
-        if measured is None:
-            return AudiencesRenderResult(None, ())
-        answers, measured_identities = measured
-        named = {
-            market: self._named(
-                market, period, (served[market], answers, rosters), listed.get(market)
+        for scope in scopes:
+            if scope.name not in refused:
+                self._plan(scope, (period, rosters[(market, scope.name)]), batch)
+        second = run_bounded(
+            (
+                *((partial(self._measured, batch, period),) if batch.plans else ()),
+                *((partial(self._histories, market, period, counted),) if counted else ()),
+            ),
+            bound,
+        )
+        answers: dict[_Label, GroupedAnswer] = {}
+        measured_identities: tuple[str, ...] = ()
+        if batch.plans:
+            answers, measured_identities, incomplete = cast(
+                "tuple[dict[_Label, GroupedAnswer], tuple[str, ...], frozenset[str]]", second[0]
             )
-            for market in self.marketplaces
-        }
-        # Labels, campaign names, rosters, paid states and campaign publication change the body
+            refused.update(dict.fromkeys(incomplete, IsolatedRefusalReason.EVIDENCE_INCOMPLETE))
+        histories = cast("CampaignHistories", second[-1]) if counted else None
+        self._refuse_paths(scopes, refused)
+        named = self._named(
+            market, period, (served, answers, rosters, refused), (counted, histories)
+        )
+        campaign_identities = () if counted is None else counted.identities
+        # Labels, campaign names, rosters, paid states, histories and refusals change the body
         # without changing a measured publication, so the revision names what they read too.
         identities = tuple(
-            sorted({*measured_identities, _render_inputs_identity(rosters, named, served)})
+            sorted(
+                {
+                    *measured_identities,
+                    *campaign_identities,
+                    _render_inputs_identity(rosters, (market, named), served, refused),
+                }
+            )
         )
         revision = PresetArtifactRevision.from_publication_identities(
             identities, render_format=AUDIENCES_RENDER_FORMAT
         ).value
-        markets = tuple(
-            self._market(market, period, (served[market], rosters, named[market], revision))
-            for market in self.marketplaces
-        )
-        artifact = AudienceProfileArtifact(period, markets, self._policy.buyers_min)
-        return AudiencesRenderResult(artifact, identities)
+        markets = (self._market(market, period, (served, rosters, named, revision)),)
+        artifact = AudienceProfileArtifact(period, markets, self._policy.buyers_min, revision)
+        pages = None
+        if counted is not None and named.campaigns.index:
+            pages = CampaignPagePass(
+                counted.reads[: len(CAMPAIGN_METRICS)],
+                MeasurementExecutionTooling(
+                    queries=Unphased(cast("FoldingQueryPort", self.tooling.queries)),
+                    query_batch_max_concurrency=self.tooling.query_batch_max_concurrency,
+                ),
+                {named.keys[entry.ref]: entry for entry in named.campaigns.index},
+                counted.count,
+                named.labels[DSP_VIEW],
+            )
+        return AudiencesRenderResult(artifact, identities, pages)
 
-    def _scopes(
-        self,
-        market: str,
-        period: CalendarPeriod,
-        found: tuple[_Served, tuple[str, ...]],
-    ) -> tuple[_Scope, ...]:
-        """Return a marketplace's graded deliveries: each published path, then each campaign."""
-        served, campaigns = found
-        profiles = tuple(
+    @staticmethod
+    def _refuse_paths(
+        scopes: tuple[_Scope, ...], refused: dict[str, IsolatedRefusalReason]
+    ) -> None:
+        """Note each refused path; every served path refused refuses the page (01 §3.3)."""
+        gaps = sum(1 for item in refused.values() if item is IsolatedRefusalReason.HISTORY_GAP)
+        incomplete = len(refused) - gaps
+        if scopes and all(scope.name in refused for scope in scopes):
+            if refused[scopes[0].name] is IsolatedRefusalReason.HISTORY_GAP:
+                raise IsolatedRefusal(IsolatedRefusalReason.HISTORY_GAP, RefusalScope.PAGE)
+            raise IsolatedRefusal(IsolatedRefusalReason.EVIDENCE_INCOMPLETE, RefusalScope.PAGE)
+        if gaps:
+            note_isolated_refusal(
+                IsolatedRefusalReason.HISTORY_GAP, RefusalScope.ITEM, gaps, section=_PROFILE_SECTION
+            )
+        if incomplete:
+            note_isolated_refusal(
+                IsolatedRefusalReason.EVIDENCE_INCOMPLETE,
+                RefusalScope.ITEM,
+                incomplete,
+                section=_PROFILE_SECTION,
+            )
+
+    def _histories(
+        self, market: str, period: CalendarPeriod, counted: _Counted
+    ) -> CampaignHistories:
+        """Grade every listed campaign R1 didn't grade, in one grouped walk (01 §3.2)."""
+        return self.histories.campaign_histories(
+            CampaignHistoriesRequest(
+                period.window,
+                market,
+                self._contract(DELIVERY_CONTRACT).platform_key,
+                tuple(
+                    sorted(
+                        campaign
+                        for campaign, tally in counted.count.tallies.items()
+                        if not tally.rostered
+                    )
+                )
+                if counted.count.complete
+                else (),
+            )
+        )
+
+    def _scopes(self, market: str, period: CalendarPeriod, served: _Served) -> tuple[_Scope, ...]:
+        """Return a marketplace's graded profile paths: each one published for the month."""
+        return tuple(
             _Scope(
                 market,
                 path,
@@ -588,32 +848,15 @@ class AudiencesArtifactRenderer:
             for path, contract_id in PROFILE_CONTRACTS.items()
             if period.window in served.published[contract_id]
         )
-        delivered = tuple(
-            _Scope(
-                market,
-                f"campaign:{campaign}",
-                "fct_segment_delivery",
-                {**_campaign_base(), "campaign_key": campaign},
-            )
-            for campaign in campaigns
-        )
-        return (*profiles, *delivered)
 
     def _plan(self, scope: _Scope, graded: tuple[CalendarPeriod, Roster], batch: _Batch) -> None:
-        """Plan one delivery's figures, its segment figures graded against its own roster.
+        """Plan one profile path's figures, its segment figures graded against its own roster.
 
-        A campaign plans pack 8's three figures by segment; a profile path its segment rows'
-        three figures and its `profiled_total` row's two bases, which no roster grades.
+        A profile path plans its segment rows' three figures and its `profiled_total` row's two
+        bases, which no roster grades.
         """
         period, roster = graded
         market = scope.market
-        if scope.fact == "fct_segment_delivery":
-            for metric in CAMPAIGN_METRICS:
-                batch.plans.append(
-                    self._request(market, metric, SEGMENT_GRAINS, (period, scope.filters), roster)
-                )
-                batch.labels.append((market, scope.name, metric))
-            return
         for metric in SEGMENT_METRICS:
             filters = {**scope.filters, ROW_KIND_COLUMN: "segment"}
             batch.plans.append(
@@ -625,90 +868,10 @@ class AudiencesArtifactRenderer:
             batch.plans.append(self._request(market, metric, TOTAL_GRAINS, (period, filters)))
             batch.labels.append((market, scope.name, metric))
 
-    def _campaigns(self, markets: tuple[str, ...], period: CalendarPeriod) -> dict[str, _Listed]:
-        """List each marketplace's DSP campaigns pack 8 returned and the top ones the page shows.
-
-        One planned batch, ungraded. Campaigns rank by their largest matched-segment impressions,
-        descending, then by campaign key, the order that numbers their opaque references. Segment
-        figures never add up (impressions repeat per matched segment), so the rank never sums
-        them.
-        """
-        if not markets:
-            return {}
-        if self.prefetch_campaign is not None:
-            # The prefetch walker (A5.1): pack 8's list is the one result-dependent input, and a
-            # campaign key never selects a partition or a scope, so one synthetic campaign per
-            # marketplace reaches every per-campaign read family.
-            return {market: _Listed((self.prefetch_campaign,), 1) for market in markets}
-        platform = self._contract(DELIVERY_CONTRACT).platform_key
-        requests = tuple(
-            self._request(
-                market,
-                "segment_impressions",
-                CAMPAIGN_GRAINS,
-                (period, _campaign_base()),
-                Roster(RosterKind.SEGMENT, period.window, market, platform, ()),
-            )
-            for market in markets
-        )
-        answers = self._run(requests, period, CAMPAIGN_GRAINS)
-        if answers is None:
-            raise RuntimeError("pack 8's campaign list for a published month can't be read.")
-        if any(
-            key[0] != market
-            for market, answer in zip(markets, answers, strict=True)
-            for key in answer.rows
-        ):
-            # As `_parsed` does: a list answered for another marketplace is never attributed.
-            raise RuntimeError("pack 8's campaign list carries another marketplace's campaigns.")
-        return {
-            market: self._ranked(answer) for market, answer in zip(markets, answers, strict=True)
-        }
-
-    def _ranked(self, answer: GroupedAnswer) -> _Listed:
-        largest: dict[str, Decimal] = {}
-        for key, value in answer.rows.items():
-            campaign = str(key[1])
-            figure = Decimal(0) if value is None else Decimal(value)
-            largest[campaign] = max(largest.get(campaign, figure), figure)
-        ranked = sorted(largest, key=lambda campaign: (-largest[campaign], campaign))
-        return _Listed(tuple(ranked[: self.campaign_bound]), len(ranked))
-
-    def _run(
-        self,
-        requests: tuple[MeasurementToolRequest, ...],
-        period: CalendarPeriod,
-        grains: tuple[str, ...],
-    ) -> tuple[GroupedAnswer, ...] | None:
-        prepared = prepare_batch(requests)
-        inspection = self.evidence.inspect(
-            PresentationEvidenceInspectionRequest(
-                plans=tuple(
-                    PresentationEvidenceInspectionPlan(plan.role, plan.logical)
-                    for plan in prepared.plans
-                ),
-                contracts=prepared.contracts,
-                now=prepared.now,
-            )
-        )
-        executed = execute_presentation_batch(
-            prepared,
-            inspection,
-            MeasurementExecutionTooling(
-                queries=self.tooling.queries,
-                query_batch_max_concurrency=self.tooling.query_batch_max_concurrency,
-            ),
-        )
-        for slot in executed.slots:
-            _refuse_cut(slot)
-        parsed = tuple(parse_grouped_answer(slot, period.window, grains) for slot in executed.slots)
-        if any(item is None or not grouped_answer_complete(item, period.window) for item in parsed):
-            return None
-        return cast("tuple[GroupedAnswer, ...]", parsed)
-
     def _measured(
         self, batch: _Batch, period: CalendarPeriod
-    ) -> tuple[dict[_Label, GroupedAnswer], tuple[str, ...]] | None:
+    ) -> tuple[dict[_Label, GroupedAnswer], tuple[str, ...], frozenset[str]]:
+        """Run the profile measurement; return its answers, publications and incomplete paths."""
         prepared = prepare_batch(tuple(batch.plans))
         if len(prepared.plans) != len(batch.labels):
             raise RuntimeError("the Audiences batch and its labels must align.")
@@ -730,9 +893,7 @@ class AudiencesArtifactRenderer:
                 query_batch_max_concurrency=self.tooling.query_batch_max_concurrency,
             ),
         )
-        answers = _parsed(executed.slots, batch, period)
-        if answers is None:
-            return None
+        answers, incomplete = _parsed(executed.slots, batch, period)
         identities = tuple(
             sorted(
                 {
@@ -743,7 +904,7 @@ class AudiencesArtifactRenderer:
                 }
             )
         )
-        return answers, identities
+        return answers, identities, incomplete
 
     @staticmethod
     def _namespace(path: str) -> SegmentNamespace:
@@ -764,13 +925,24 @@ class AudiencesArtifactRenderer:
         self,
         market: str,
         period: CalendarPeriod,
-        measured: tuple[_Served, dict[_Label, GroupedAnswer], dict[tuple[str, str], Roster]],
-        listed: _Listed | None,
+        measured: tuple[
+            _Served,
+            dict[_Label, GroupedAnswer],
+            dict[tuple[str, str], Roster],
+            dict[str, IsolatedRefusalReason],
+        ],
+        campaigns: tuple[_Counted | None, CampaignHistories | None],
     ) -> _Named:
-        """Read a marketplace's segment labels and campaign names before its revision exists."""
-        _served, answers, rosters = measured
+        """Read a marketplace's segment labels and campaign names before its revision exists.
+
+        One label read per namespace: the DSP view's names every campaign segment too, since
+        both read the DSP behaviour namespace (01 §3.4).
+        """
+        _served, _answers, rosters, _refused = measured
+        counted, histories = campaigns
         states: dict[str, tuple[DeliveryState, ...]] = {}
         labels: dict[str, dict[str, SegmentLabel]] = {}
+        listed = () if counted is None or not counted.count.complete else counted.count.tallies
         for view in (PAID_VIEW, DSP_VIEW):
             states[view] = tuple(
                 self._delivery_state(market, path, measured, period)
@@ -789,26 +961,29 @@ class AudiencesArtifactRenderer:
                     for key in getattr(rosters.get((market, path)), "keys", ())
                 ),
             }
+            if view == DSP_VIEW and counted is not None and listed:
+                keys |= counted.count.segments
             labels[view] = self._labels(market, VIEW_NAMESPACES[view], keys, period)
-        if listed is None:
-            return _Named(states, labels, {}, {}, CampaignAudiences(published=False, rows=()))
-        # In rank order, so the opaque references number the shown campaigns by rank.
-        campaigns = listed.shown
-        segments = {
-            str(key[1])
-            for campaign in campaigns
-            for metric in CAMPAIGN_METRICS
-            for key in answers[(market, f"campaign:{campaign}", metric)].rows
-        }
+        if counted is None:
+            return _Named(states, labels, {}, CampaignAudiences(published=False), {})
+        if not counted.count.complete:
+            note_isolated_refusal(
+                IsolatedRefusalReason.EVIDENCE_INCOMPLETE,
+                RefusalScope.SECTION,
+                section=_CAMPAIGN_SECTION,
+            )
+            section = CampaignAudiences(
+                published=True, refused_text=CAMPAIGN_INCOMPLETE_TEXT.format(month=period.label)
+            )
+            return _Named(states, labels, {}, section, {})
         # Sorted keys, so chat's placeholders number the same campaigns the same way.
-        names = self.campaign_labels(tuple(sorted(campaigns)), period.window) if campaigns else {}
-        segment_labels = self._labels(market, SegmentNamespace.AMC_DSP_BEHAVIOR, segments, period)
-        rows = replace(
-            _campaign_rows(market, campaigns, answers, (names, segment_labels)),
-            shown=len(campaigns),
-            listed=listed.total,
-        )
-        return _Named(states, labels, names, segment_labels, rows)
+        keys = tuple(sorted(listed))
+        names = self.campaign_labels(keys, period.window) if keys else {}
+        if any(campaign not in names for campaign in keys):
+            # The resolver names every protected value, so a gap is a broken port, never a key.
+            raise RuntimeError("every Audiences campaign needs its governed name or placeholder.")
+        section, refs = _campaign_index(counted.count, (names, histories), period.label)
+        return _Named(states, labels, names, section, refs)
 
     def _market(
         self,
@@ -850,10 +1025,14 @@ class AudiencesArtifactRenderer:
                         self._policy,
                         revision,
                         _SILENT,
-                        # An unobserved paid profile is the paid callout, never a monthly gap.
-                        no_delivery_text=ASI_NEEDS_PAID_FEATURE_TEXT
-                        if paid is PaidState.NOT_OBSERVED
-                        else NO_DELIVERY_TEXT,
+                        # An unobserved paid profile is the paid callout, never a monthly gap;
+                        # a refused path reads its own sentence.
+                        no_delivery_text=item.refused_text
+                        or (
+                            ASI_NEEDS_PAID_FEATURE_TEXT
+                            if paid is PaidState.NOT_OBSERVED
+                            else NO_DELIVERY_TEXT
+                        ),
                     )
                 )
                 for item in states
@@ -882,14 +1061,22 @@ class AudiencesArtifactRenderer:
         self,
         market: str,
         path: str,
-        measured: tuple[_Served, dict[_Label, GroupedAnswer], dict[tuple[str, str], Roster]],
+        measured: tuple[
+            _Served,
+            dict[_Label, GroupedAnswer],
+            dict[tuple[str, str], Roster],
+            dict[str, IsolatedRefusalReason],
+        ],
         period: CalendarPeriod,
     ) -> DeliveryState:
-        served, answers, rosters = measured
+        served, answers, rosters, refused = measured
         contract_id = PROFILE_CONTRACTS[path]
         paid_state = served.paid.get(contract_id)
         if period.window not in served.published[contract_id]:
             return DeliveryState(path, None, paid_state)
+        if path in refused:
+            text = PROFILE_PATH_REFUSED_TEXTS[refused[path].value].format(month=period.label)
+            return DeliveryState(path, None, paid_state, refused_text=text)
         figures = tuple(answers[(market, path, metric)].rows for metric in SEGMENT_METRICS)
         keys = sorted({key for rows in figures for key in rows}, key=lambda key: str(key[1]))
         # A segment one figure carries and another lacks had no measured zero (figures.py drops
@@ -950,50 +1137,53 @@ def _campaign_base() -> dict[str, str]:
     }
 
 
-def _currency(answer: GroupedAnswer) -> str | None:
-    return None if answer.units is None else answer.units.currency_code
+def _campaign_index(
+    count: CampaignCount,
+    named: tuple[dict[str, str], CampaignHistories | None],
+    month: str,
+) -> tuple[CampaignAudiences, dict[str, str]]:
+    """Rank every listed campaign and grade it: available, withdrawn, or its own history gap.
 
-
-def _campaign_rows(  # noqa: PLR0913, PLR0917 -- a marketplace, its campaigns, answers, names
-    market: str,
-    campaigns: tuple[str, ...],
-    answers: dict[_Label, GroupedAnswer],
-    names: tuple[dict[str, str], dict[str, SegmentLabel]],
-) -> CampaignAudiences:
-    """Reduce a published month's campaigns to their segment rows, under the names read."""
-    campaign_names, labels = names
-    if any(campaign not in campaign_names for campaign in campaigns):
-        # The resolver names every protected value, so a gap is a broken port, never a key.
-        raise RuntimeError("every Audiences campaign needs its governed name or placeholder.")
-    rows: list[CampaignSegment] = []
-    for campaign in campaigns:
-        impressions, spend, revenue = (
-            answers[(market, f"campaign:{campaign}", metric)] for metric in CAMPAIGN_METRICS
-        )
-        # A segment any of the three answers returns is a row: a figure another answer
-        # lacks is withheld with its own reason (`campaign_segment`), never dropped.
-        returned = {*impressions.rows, *spend.rows, *revenue.rows}
-        for key in sorted(returned, key=lambda item: str(item[1])):
-            segment = str(key[1])
-            rows.append(
-                campaign_segment(
-                    CampaignRowRequest(
-                        (campaign, campaign_names[campaign]),
-                        segment,
-                        labels.get(segment),
-                        impressions.rows.get(key),
-                        (spend.rows.get(key), _currency(spend)),
-                        (revenue.rows.get(key), _currency(revenue)),
-                    )
+    Campaigns rank by their largest matched-segment impressions, descending, then by campaign
+    key, the order that numbers their opaque references. Segment figures never add up
+    (impressions repeat per matched segment), so the rank never sums them.
+    """
+    names, histories = named
+    graded: Mapping[str, CampaignHistory] = {} if histories is None else histories.histories
+    ranked = sorted(count.tallies, key=lambda key: (-count.tallies[key].largest, key))
+    entries: list[CampaignIndexEntry] = []
+    refs: dict[str, str] = {}
+    gaps = 0
+    for rank, campaign in enumerate(ranked, start=1):
+        tally = count.tallies[campaign]
+        ref = f"campaign-{rank}"
+        refs[ref] = campaign
+        label = names[campaign]
+        if not tally.rostered and graded.get(campaign) is CampaignHistory.HISTORY_GAP:
+            gaps += 1
+            text = CAMPAIGN_HISTORY_GAP_TEXT.format(campaign=label, month=month)
+            entries.append(
+                CampaignIndexEntry(ref, label, tally.rows, CampaignEntryState.REFUSED, text)
+            )
+        elif tally.withdrawn_note is not None:
+            entries.append(
+                CampaignIndexEntry(
+                    ref, label, tally.rows, CampaignEntryState.WITHDRAWN, tally.withdrawn_note
                 )
             )
-    return CampaignAudiences(published=True, rows=tuple(rows))
+        else:
+            entries.append(CampaignIndexEntry(ref, label, tally.rows, CampaignEntryState.AVAILABLE))
+    if gaps:
+        note_isolated_refusal(
+            IsolatedRefusalReason.HISTORY_GAP, RefusalScope.ITEM, gaps, section=_CAMPAIGN_SECTION
+        )
+    return CampaignAudiences(published=True, index=tuple(entries)), refs
 
 
-_RENDER_INPUTS_IDENTITY_PREFIX = "audiences-render-inputs.v2:"
+_RENDER_INPUTS_IDENTITY_PREFIX = "audiences-render-inputs.v3:"
 """Names the digest of every non-measurement read an Audiences body renders.
 
-v2 adds each paid contract's derived state and the campaign publication flag."""
+v3 adds the campaign index (its names, history grades and states) and the refused paths."""
 
 
 def _label_payload(labels: dict[str, SegmentLabel]) -> dict[str, list[str | None]]:
@@ -1025,33 +1215,38 @@ def _paid_payload(paid: dict[str, PaidFeatureState]) -> dict[str, list[object]]:
     }
 
 
-def _render_inputs_identity(
+def _render_inputs_identity(  # noqa: PLR0913, PLR0917 -- every non-measurement read
     rosters: dict[tuple[str, str], Roster],
-    named: dict[str, _Named],
-    served: dict[str, _Served],
+    named: tuple[str, _Named],
+    served: _Served,
+    refused: dict[str, IsolatedRefusalReason],
 ) -> str:
-    """Digest the rosters, labels, names, paid states and campaign publication a bake rendered.
+    """Digest the rosters, labels, names, paid states, index and refusals a bake rendered.
 
     None of them is a measured publication, yet each changes the body, so a change to any of
     them must advance the revision rather than leave a stale body current. Paid states come from
-    publication history outside the month's plans, and a month pack 8 published with no
-    campaign plans nothing, so neither reaches the measured identities.
+    publication history outside the month's plans; the campaign index reads the history walk
+    and the governed names; a refusal changes what a path or campaign shows.
     """
+    market, item = named
     evidence = {
         "rosters": [
-            [market, name, list(roster.keys), roster.first_period]
-            for (market, name), roster in sorted(rosters.items())
+            [roster_market, name, list(roster.keys), roster.first_period]
+            for (roster_market, name), roster in sorted(rosters.items())
         ],
         "markets": {
             market: {
                 "labels": {view: _label_payload(labels) for view, labels in item.labels.items()},
                 "campaign_names": dict(sorted(item.campaign_names.items())),
-                "campaign_labels": _label_payload(item.campaign_labels),
                 "campaigns_published": item.campaigns.published,
-                "campaigns_listed": item.campaigns.listed,
-                "paid": _paid_payload(served[market].paid),
+                "campaigns_refused": item.campaigns.refused_text,
+                "campaign_index": [
+                    [entry.ref, entry.label, entry.segment_count, entry.state.value, entry.text]
+                    for entry in item.campaigns.index
+                ],
+                "paid": _paid_payload(served.paid),
+                "refused_paths": {path: reason.value for path, reason in sorted(refused.items())},
             }
-            for market, item in sorted(named.items())
         },
     }
     digest = hashlib.sha256(
@@ -1060,55 +1255,110 @@ def _render_inputs_identity(
     return f"{_RENDER_INPUTS_IDENTITY_PREFIX}{digest}"
 
 
-def _refuse_cut(answer: PresentationMeasurementAnswerSlot) -> None:
-    """Refuse the page a read cut at its declared width feeds (`rows_over_ceiling`, ADR-142).
-
-    Audiences' campaign-grain reads still hold the population until they stream (r2): the
-    refusal carries the width (`max_rows`, the rows the read kept).
-    """
-    shaped = answer.answer
-    if shaped is not None and shaped.metadata.truncated:
-        raise IsolatedRefusal(
-            IsolatedRefusalReason.ROWS_OVER_CEILING,
-            RefusalScope.PAGE,
-            max_rows=shaped.metadata.row_count,
-        )
-
-
 def _parsed(
     slots: tuple[PresentationMeasurementAnswerSlot, ...], batch: _Batch, period: CalendarPeriod
-) -> dict[_Label, GroupedAnswer] | None:
-    """Parse every answer; a partial, truncated or mis-pinned one bakes nothing."""
+) -> tuple[dict[_Label, GroupedAnswer], frozenset[str]]:
+    """Parse every profile answer; return them and the paths whose answer isn't complete.
+
+    Every month planned has a CURRENT publication, so anything short of a complete answer is
+    missing evidence: that path's own `evidence_incomplete`, never an undercount. A profile read
+    is bounded by its segments, so one cut short is a defect (`parse_grouped_answer`).
+    """
     parsed: dict[_Label, GroupedAnswer] = {}
+    incomplete: set[str] = set()
     for answer, label in zip(slots, batch.labels, strict=True):
         grains = TOTAL_GRAINS if label[2] in TOTAL_METRICS else SEGMENT_GRAINS
-        _refuse_cut(answer)
         item = parse_grouped_answer(answer, period.window, grains)
-        if item is None or not grouped_answer_complete(item, period.window):
-            # Every month planned has a CURRENT publication, so anything short of a complete
-            # answer is missing evidence: no bake, never an undercount.
-            return None
-        if any(key[0] != label[0] for key in item.rows):
-            return None
+        if item is None or any(key[0] != label[0] for key in item.rows):
+            raise RuntimeError("an Audiences profile answer is incoherent for its marketplace.")
+        if not grouped_answer_complete(item, period.window):
+            incomplete.add(label[1])
         parsed[label] = item
-    return parsed
+    return parsed, frozenset(incomplete)
 
 
 AUDIENCES_ROW_MAX_BYTES = 800
-"""A ceiling on one profile or campaign row's encoded bytes; a test holds wide rows within it.
-
-A row past it (a segment name of several hundred characters) is still refused by name: the
-source also checks the encoded body against the artifact cap."""
+"""A ceiling on one profile or campaign row's encoded bytes; a test holds wide rows within it."""
 AUDIENCES_ENVELOPE_MAX_BYTES = 16_000
-"""A ceiling on one marketplace's encoded bytes outside its rows; a test holds it."""
+"""A ceiling on one body's encoded bytes outside its rows; a test holds it."""
+_CUSTODY_TYPE: Final = "AudiencesCustody"
+_CUSTODY_VERSION: Final = 1
 
 
-def _body_rows(payload: dict[str, object]) -> int:
-    """Count every profile row and campaign row a body carries."""
-    markets = cast("list[dict[str, Any]]", payload["markets"])
-    return sum(len(view["rows"]) for market in markets for view in market["views"]) + sum(
-        len(market["campaign_audiences"]["rows"]) for market in markets
+def _custody(body_digest: str) -> str:
+    """Audiences custody binds each body by digest; it carries no private selector."""
+    return capped_preset_artifact_json(
+        {"type": _CUSTODY_TYPE, "version": _CUSTODY_VERSION, "body_digest": body_digest}
     )
+
+
+@dataclass(frozen=True, slots=True)
+class _AudiencesSiblingPairs:
+    """The Audiences sibling stream (ADR-145): index shards, profile pages, campaign pages.
+
+    The index shards and profile pages render from the parent the render already holds; the
+    campaign pages render from the page pass as the stage draws them, one campaign at a time.
+    """
+
+    page: PresetArtifactPage
+    variant: PresetArtifactVariant
+    revision: PresetArtifactRevision
+    artifact: AudienceProfileArtifact
+    campaigns: CampaignPages | None
+
+    def stream(self) -> PresetArtifactSiblingStream:
+        """Return the stream with its declared count, known before it is drawn."""
+        (market,) = self.artifact.markets
+        count = (
+            market.campaigns.index_shards
+            - 1
+            + sum(
+                max(profile_page_count(view, item.path) - 1, 0)
+                for view in (market.paid, market.standard)
+                for item in view.deliveries
+            )
+            + (0 if self.campaigns is None else self.campaigns.page_count)
+        )
+        return PresetArtifactSiblingStream(self, count)
+
+    def __call__(self) -> Iterator[PresetArtifactSiblingPair]:
+        (market,) = self.artifact.markets
+        revision = self.revision.value
+        for shard in range(1, market.campaigns.index_shards):
+            yield self._pair(
+                PresetArtifactSiblingIdentity(_INDEX_ORDERING, shard, _INDEX_FILTER),
+                audiences_campaign_index_payload(market.campaigns, shard, revision),
+            )
+        for view in (market.paid, market.standard):
+            for item in view.deliveries:
+                for number in range(1, profile_page_count(view, item.path)):
+                    yield self._pair(
+                        PresetArtifactSiblingIdentity(
+                            _PROFILE_ORDERING, number, f"profile-{item.path}"
+                        ),
+                        audiences_profile_page_payload(
+                            view, item.path, number, self.artifact.display_minimum, revision
+                        ),
+                    )
+        if self.campaigns is not None:
+            for campaign_page in self.campaigns.pages():
+                yield self._pair(
+                    PresetArtifactSiblingIdentity(
+                        _CAMPAIGN_ORDERING, campaign_page.page, campaign_page.entry.ref
+                    ),
+                    audiences_campaign_page_payload(campaign_page, revision),
+                )
+
+    def _pair(
+        self, identity: PresetArtifactSiblingIdentity, payload: dict[str, object]
+    ) -> PresetArtifactSiblingPair:
+        body = PresetArtifactSiblingBody(
+            self.page, self.variant, self.revision, identity, capped_preset_artifact_json(payload)
+        )
+        custody = PresetArtifactSiblingCustody(
+            self.page, self.variant, self.revision, identity, _custody(body.digest)
+        )
+        return body, custody
 
 
 @dataclass(frozen=True, slots=True)
@@ -1120,44 +1370,40 @@ class RetainedAudiencesPresetArtifactSource:
     """Every (contract, month) packs 10-12 have a CURRENT publication for, any marketplace."""
     pointers: PresetArtifactPointerStorePort
     clock: Callable[[], datetime]
-    row_budget: int
-    """The most profile and campaign rows one body carries (`audiences_row_budget`)."""
     page: PresetArtifactPage = field(default_factory=lambda: PresetArtifactPage(AUDIENCES_PAGE_ID))
 
     def publication_for(
         self, variant: PresetArtifactVariant
     ) -> PresetArtifactPublicationRequest | SourceUnchanged | None:
-        """Return a complete body or a typed unavailable body for the newest target month."""
+        """Return the parent and its parts' stream for the newest target month, or None.
+
+        The campaign page pass starts here, inside the render, only once the revision differs
+        from the pointer's, and the stage drains it.
+        """
         if variant.value != LATEST_MONTH_VARIANT:
             return None
         resolved = self.resolve()
         if resolved is None:
             return None
         rendered = self.compiler.render_audiences(resolved)
-        if rendered.artifact is None:
+        artifact = rendered.artifact
+        if artifact is None:
             return None
-        payload = audiences_artifact_payload(rendered.artifact)
-        encoded = canonical_preset_artifact_json(payload)
-        over_bound = (
-            _body_rows(payload) > self.row_budget
-            or len(encoded.encode()) > MAX_PRESET_ARTIFACT_BYTES
-        )
-        identities = rendered.publication_identities
-        if over_bound:
-            window = rendered.artifact.month.window
-            identities = (
-                *identities,
-                f"{AUDIENCES_BODY_OVER_BOUND}:{window.start.isoformat()}:{window.end.isoformat()}",
-            )
-            payload = audiences_unavailable_artifact_payload(rendered.artifact.month)
-            encoded = canonical_preset_artifact_json(payload)
         revision = PresetArtifactRevision.from_publication_identities(
-            identities, render_format=AUDIENCES_RENDER_FORMAT
+            rendered.publication_identities, render_format=AUDIENCES_RENDER_FORMAT
         )
+        if revision.value != artifact.revision:
+            raise RuntimeError("the Audiences parent names another revision than its own.")
         current = self.pointers.current(self.page, variant)
         if current is not None and current.revision == revision:
             return SourceUnchanged(revision)
-        body = PresetArtifactBody(self.page, variant, revision, encoded)
+        body = PresetArtifactBody(
+            self.page,
+            variant,
+            revision,
+            capped_preset_artifact_json(audiences_artifact_payload(artifact)),
+        )
+        pages = None if rendered.campaigns is None else rendered.campaigns.start()
         return PresetArtifactPublicationRequest(
             body,
             PresetArtifactPointerTemplate(
@@ -1168,8 +1414,10 @@ class RetainedAudiencesPresetArtifactSource:
                 1 if current is None else current.forward_token + 1,
                 None if current is None else current.revision,
                 None if current is None else self.clock() + SUPERSEDED_HISTORY_RETENTION,
-                resolved_window=rendered.artifact.month.window,
+                resolved_window=artifact.month.window,
             ),
+            PresetArtifactCustodyHeader(_custody(body.digest)),
+            _AudiencesSiblingPairs(self.page, variant, revision, artifact, pages).stream(),
         )
 
     def prefetch(self, variant: PresetArtifactVariant) -> None:
@@ -1224,29 +1472,13 @@ def audiences_marketplace_count(root: Path) -> int:
     )
 
 
-def audiences_bake_phase_plan_counts(marketplaces: int, campaigns: int) -> tuple[int, int, int]:
-    """Return list, roster and measurement query counts in their execution-barrier order."""
-    profile_rosters = len(PROFILE_CONTRACTS)
-    profile_measurements = len(PROFILE_CONTRACTS) * (len(SEGMENT_METRICS) + len(TOTAL_METRICS))
-    return (
-        marketplaces,
-        marketplaces * (profile_rosters + campaigns),
-        marketplaces * (profile_measurements + campaigns * len(CAMPAIGN_METRICS)),
-    )
-
-
-def audiences_bake_plan_count(marketplaces: int, campaigns: int) -> int:
-    """Count one bake's queries with `campaigns` shown per marketplace."""
-    return sum(audiences_bake_phase_plan_counts(marketplaces, campaigns))
-
-
 def audiences_policy_declared(schemas: PresentationPageSchemaSet) -> bool:
     """Whether the `audiences` v2 page entry declares exactly this bake.
 
     The page id alone doesn't open the source: the entry must declare every server-relevant
     part of the LLD's v2 entry (docs/ui/audiences §6): `mode: selectable` with the boundary
     required, exactly `AUDIENCES_TEMPORAL_POLICY`, exactly the artifact this renderer writes
-    (`audiences`, `AudienceProfileArtifact` v1, its three outcomes) and exactly
+    (`audiences`, `AudienceProfileArtifact` v2, its three outcomes) and exactly
     `AUDIENCES_SECTIONS` with their cardinalities, declared periods and the one anchor. The
     page copy (purpose, primary job) and the navigation block are the UI's. Any other
     declaration keeps the page unavailable.
@@ -1324,10 +1556,6 @@ def _composed(  # noqa: PLR0913, PLR0917 -- the closed factory inputs
     current: BakeSourceReads,
 ) -> RetainedAudiencesPresetArtifactSource:
     """Wire the renderer to the deployed stores; reached only once the page entry exists."""
-    from adapters.jobs.preset_artifact_publisher.bakeability import (  # noqa: PLC0415
-        audiences_row_budget,
-        audiences_runtime_campaign_bound,
-    )
     from adapters.outbound.entity_catalog import (  # noqa: PLC0415
         CanonicalEntityCatalog,
         EntityCatalogTooling,
@@ -1392,6 +1620,15 @@ def _composed(  # noqa: PLR0913, PLR0917 -- the closed factory inputs
             ).publications
         )
 
+    roster_reader = SegmentRosterReader(
+        catalog=catalog,
+        contracts=contracts,
+        publications=selector,
+        periods=selector,
+        queries=queries,
+        labels=labels,
+        clock=current.clock,
+    )
     compiler = AudiencesArtifactRenderer(
         catalog=catalog,
         contracts=contracts,
@@ -1402,28 +1639,15 @@ def _composed(  # noqa: PLR0913, PLR0917 -- the closed factory inputs
             query_batch_max_concurrency=settings.athena_query_batch_max_concurrency,
             periods=selector,
         ),
-        rosters=SegmentRosterReader(
-            catalog=catalog,
-            contracts=contracts,
-            publications=selector,
-            periods=selector,
-            queries=queries,
-            labels=labels,
-            clock=current.clock,
-        ),
+        rosters=roster_reader,
+        histories=roster_reader,
         segment_labels=labels,
         marketplaces=marketplaces,
         insight_contract=_contract(InsightSlotId.SEGMENT_OVER_INDEX),
         clock=current.clock,
         campaign_labels=campaign_names,
-        # One source with the certifier, so the runtime never outruns the certified count.
-        campaign_bound=audiences_runtime_campaign_bound(len(marketplaces)),
         cadence_lag_days=lags,
     )
     return RetainedAudiencesPresetArtifactSource(
-        compiler=compiler,
-        served=served,
-        pointers=pointers,
-        clock=current.clock,
-        row_budget=audiences_row_budget(len(marketplaces)),
+        compiler=compiler, served=served, pointers=pointers, clock=current.clock
     )

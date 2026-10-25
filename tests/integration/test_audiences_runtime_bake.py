@@ -6,9 +6,8 @@ with the deployed Baker's own configuration, so every Athena and DynamoDB read s
 account, and records one phase trace per render:
 
 - Retention: the full governed roster for the latest vintage.
-- Audiences month A: the full governed one-market profile and campaign roster, as a body.
-- Audiences month B, the newest month: forced exactly one row over the body bound by the fixture,
-  rendered as the typed `audiences_body_over_bound` body.
+- Audiences, the newest month: the full governed one-market profile and every DSP campaign, as a
+  parent, then its campaign page pass drained as the stage drains it (ADR-141, ADR-152).
 
 It writes nothing: no pointer, body or custody object, because a direct publish would bypass
 GRAPH finalization and serve a grant-less pointer. The pointer store it hands the sources only
@@ -17,9 +16,11 @@ its finalized grant and the served generation) is `test_d2_graph_root_acceptance
 only in D2's live-acceptance step.
 
 Every bound is the generated S0 row certificate's, checked against the committed
-`d2-certificate.json`: Audiences' five phases (list; roster rounds P + C, C and C; measurement) at
-the shown C, its Q10 certification seconds and its certified count, and Retention's certified
-count of six.
+`d2-certificate.json`: Audiences' three phases (rosters and the campaign count pass; the profile
+measurement and the history walk, then its withheld part), at any campaign count, its Q10
+certification seconds and its certified count, and Retention's certified count of six. The page
+pass re-runs the count pass's three figure requests, which result reuse answers, so it adds no
+distinct request.
 
 It is opt-in and fails closed on its target. It runs only when `ADL_RUNTIME_BAKE_FUNCTION` names
 the deployed Baker. Once opted in, it refuses to run unless `ADL_TEST_ENV` is set explicitly to
@@ -61,25 +62,22 @@ from runtime_bake_target import (
 from adapters.config import PresetArtifactBakeSettings, preset_artifact_bake_settings
 from adapters.inbound.tool_handlers.gateway import contracts_root
 from adapters.jobs.preset_artifact_publisher.audiences_source import (
-    AUDIENCES_RENDER_FORMAT,
+    CAMPAIGN_METRICS,
     LATEST_MONTH_VARIANT,
     PROFILE_CONTRACTS,
     AudiencesArtifactRenderer,
     AudiencesCompiler,
     AudiencesRenderInput,
     AudiencesRenderResult,
+    CampaignPagePass,
     RetainedAudiencesPresetArtifactSource,
-    _body_rows,  # pyright: ignore[reportPrivateUsage]
     retained_audiences_preset_artifact_source,
 )
 from adapters.jobs.preset_artifact_publisher.bakeability import (
-    AUDIENCES_NON_QUERY_MARGIN_MS,
-    AUDIENCES_RENDER_TAIL_MS,
     BAKER_TIMEOUT_SECONDS,
     CERTIFIED_QUERY_CAP,
     D2RowFigure,
     audiences_phases,
-    audiences_row_budget,
     certify_d2_roster,
     phased_task_seconds,
 )
@@ -95,22 +93,15 @@ from adapters.outbound.dynamodb.preset_artifacts import DynamoPresetArtifactPoin
 from adapters.outbound.dynamodb.semantic_state import DynamoCurrentPublications
 from adapters.outbound.publication_selection import PublicationSelector
 from adapters.outbound.source_pack import load_source_packs
-from domain.presentation.audiences import (
-    AUDIENCES_ARTIFACT_TYPE,
-    AUDIENCES_BODY_OVER_BOUND,
-    AUDIENCES_UNAVAILABLE_ARTIFACT_TYPE,
-    audiences_artifact_payload,
-)
+from domain.presentation.audiences import AUDIENCES_ARTIFACT_TYPE
 from domain.presentation.preset_artifacts import (
     MAX_PRESET_ARTIFACT_BYTES,
     PresetArtifactPublicationRequest,
-    PresetArtifactRevision,
     PresetArtifactVariant,
-    canonical_preset_artifact_json,
 )
 from domain.semantics.calendar_periods import CalendarPeriod
 from domain.semantics.time import TimeGrain
-from ports.outbound.query import PeriodSeriesRequest, QueryRequest, QueryResult
+from ports.outbound.query import FoldRead, PeriodSeriesRequest, QueryRequest, QueryResult, RowSink
 
 pytestmark = [pytest.mark.integration, pytest.mark.covers("ADR-070")]
 
@@ -210,10 +201,18 @@ class _RecordingQueries:
             "run_series", lambda: cast("QueryResult", self._inner.run_series(request))
         )
 
+    def fold(self, request: QueryRequest, sink: RowSink) -> FoldRead:
+        return self._trace.call("fold", lambda: cast("FoldRead", self._inner.fold(request, sink)))
+
+    def fold_series(self, request: PeriodSeriesRequest, sink: RowSink) -> FoldRead:
+        return self._trace.call(
+            "fold_series", lambda: cast("FoldRead", self._inner.fold_series(request, sink))
+        )
+
 
 @dataclass
 class _CachingCompiler:
-    """Render each month once, so the forced bound reuses the traced render, never a second one."""
+    """Keep the render the source ran, so the trace reads its parent without a second render."""
 
     inner: AudiencesCompiler
     rendered: dict[AudiencesRenderInput, AudiencesRenderResult] = field(
@@ -290,19 +289,17 @@ def bake_settings(
 
 @pytest.fixture
 def trace(monkeypatch: pytest.MonkeyPatch) -> Iterator[_Trace]:
-    """Record every Athena call the two sources make and mark Audiences' three barriers."""
+    """Record every Athena call the two sources make and mark Audiences' barriers."""
     recorded = _Trace()
     _recording_adapters(monkeypatch, recorded)
-    for name, phase in (
-        ("_campaigns", "list"),
-        ("_roster", "roster"),
-        ("_measured", "measurement"),
+    for owner, name, phase in (
+        (AudiencesArtifactRenderer, "_roster", "rosters"),
+        (AudiencesArtifactRenderer, "_count", "rosters"),
+        (AudiencesArtifactRenderer, "_measured", "measurement"),
+        (AudiencesArtifactRenderer, "_histories", "measurement"),
+        (CampaignPagePass, "start", "page_pass"),
     ):
-        monkeypatch.setattr(
-            AudiencesArtifactRenderer,
-            name,
-            _phase(getattr(AudiencesArtifactRenderer, name), phase, recorded),
-        )
+        monkeypatch.setattr(owner, name, _phase(getattr(owner, name), phase, recorded))
     yield recorded
 
 
@@ -369,14 +366,6 @@ def _months(source: RetainedAudiencesPresetArtifactSource) -> tuple[CalendarPeri
     )
 
 
-def _served_through(
-    source: RetainedAudiencesPresetArtifactSource, month: CalendarPeriod
-) -> Callable[[], frozenset[tuple[str, CalendarPeriod]]]:
-    """Hide every month after `month`, so the source resolves `month` as its newest."""
-    held = frozenset(item for item in source.served() if item[1].end <= month.end)
-    return lambda: held
-
-
 def _payload(request: PresetArtifactPublicationRequest) -> dict[str, Any]:
     return cast("dict[str, Any]", json.loads(request.body.payload_json))
 
@@ -401,50 +390,48 @@ def _figure(key: str) -> D2RowFigure:
     return figure
 
 
-def _audiences_certified(campaigns: int) -> tuple[int, int, int, int, int]:
-    """Return the five-phase S0 ceilings at `campaigns` shown, bound to the Audiences row.
-
-    The row fixes M and the campaign bound C; a render that shows more than C campaigns, or a
-    certificate whose own ceilings are not `audiences_phases(M, C)`, fails here.
-    """
+def _audiences_certified() -> tuple[int, ...]:
+    """Return the S0 phase ceilings, bound to the Audiences row; no term is per campaign."""
     certificate = _figure(AUDIENCES_ROW).certificate
-    fixture = dict(certificate.fixture)
-    markets, bound = int(fixture["marketplaces"]), int(fixture["campaign_bound"])
-    assert certificate.phases == audiences_phases(markets, bound)
-    assert campaigns <= bound, f"the render showed {campaigns} campaigns over the bound {bound}"
-    return audiences_phases(markets, campaigns)
+    markets = int(dict(certificate.fixture)["marketplaces"])
+    assert certificate.phases == audiences_phases(markets)
+    return certificate.phases
 
 
-def _audiences_phases(recorded: _Trace, bake: str, campaigns: int) -> dict[str, object]:
-    """One Audiences bake's barriers against the certified five-phase ceilings.
+def _audiences_phases(recorded: _Trace, bake: str) -> dict[str, object]:
+    """One Audiences bake's barriers against the certified phase ceilings.
 
-    The `roster` barrier wraps every scope's roster read, so it holds all three roster rounds
-    (P + C, then C and C, a campaign scope's older-history series around withheld data).
+    `rosters` holds phase 1 (each path's roster and the campaign count pass); `measurement` holds
+    phases 2 and 3 (the profile measurement and the history walk, R2a then R2b). `page_pass` is the
+    count pass's three figure requests again, answered by result reuse.
     """
-    listed, first, second, third, measured = _audiences_certified(campaigns)
-    planned = {"list": listed, "roster": first + second + third, "measurement": measured}
+    first, second, third = _audiences_certified()
+    planned = {
+        "rosters": first,
+        "measurement": second + third,
+        "page_pass": len(CAMPAIGN_METRICS),
+    }
     phases = {
         phase: {
             "duration_ms": recorded.span_ms(bake, phase),
             "queries": len(recorded.of(bake, phase)),
             "planned_upper_bound": planned[phase],
         }
-        for phase in ("list", "roster", "measurement")
+        for phase in planned
     }
     for phase, row in phases.items():
         assert row["queries"] <= row["planned_upper_bound"], (
             f"{bake} {phase} ran more queries than its certified plan count: {row}"
         )
     unphased = recorded.of(bake, "unphased")
-    assert unphased == [], f"{bake} ran Athena outside its three barriers: {unphased}"
-    queries = len(recorded.of(bake))
+    assert unphased == [], f"{bake} ran Athena outside its barriers: {unphased}"
+    distinct = len(recorded.of(bake)) - len(recorded.of(bake, "page_pass"))
     certified = _figure(AUDIENCES_ROW).certificate.count
-    assert queries <= certified, f"{bake} ran {queries} queries over the certified {certified}"
+    assert distinct <= certified, f"{bake} ran {distinct} queries over the certified {certified}"
     return {
         "phases": phases,
         "makespan_ms": sum(row["duration_ms"] for row in phases.values()),
-        "campaigns_shown": campaigns,
-        "queries": queries,
+        "queries": distinct,
         "certified_plan_count": certified,
     }
 
@@ -455,68 +442,34 @@ def _concurrency(recorded: _Trace, bake: str, bound: int) -> dict[str, int]:
     return {"configured": bound, "peak_in_flight": peak, "burst_per_second": recorded.burst(bake)}
 
 
-def _terms(total_ms: int, makespan_ms: int, terms: dict[str, int]) -> dict[str, object]:
-    """Each non-query term beside its bakeability allowance; the total bound absorbs any excess."""
-    allowances = {
-        "render_finalization_ms": AUDIENCES_RENDER_TAIL_MS,
-        "non_query_ms": AUDIENCES_NON_QUERY_MARGIN_MS,
-    }
-    for name, value in terms.items():
-        assert value >= 0, f"{name} is negative: {terms}"
-    return {
-        "total_ms": total_ms,
-        "makespan_ms": makespan_ms,
-        **{
-            name: {
-                "measured": value,
-                "allowance": allowances[name],
-                "over_allowance": value > allowances[name],
-            }
-            for name, value in terms.items()
-        },
-    }
-
-
 def _audiences_render(  # noqa: PLR0913, PLR0917 -- the trace and one render's inputs
-    trace: _Trace,
-    bake: str,
-    started: float,
-    sourced: float,
-    shown: int,
-    bound: int,
+    trace: _Trace, bake: str, started: float, sourced: float, bound: int
 ) -> dict[str, object]:
-    """One Audiences render's phases, concurrency and timing; no write term, nothing is written."""
-    phases = _audiences_phases(trace, bake, shown)
-    measured_end = max(span[1] for span in trace.intervals.get((bake, "measurement"), []))
+    """One Audiences render's phases, concurrency and timing, its page pass drained."""
+    phases = _audiences_phases(trace, bake)
     total = _ms(started, sourced)
-    makespan = cast("int", phases["makespan_ms"])
-    render = _ms(measured_end, sourced)
-    # The Q10 certification formula over the five phases at the shown C, which includes the
-    # row's adopted write seconds; the row's own budget caps it.
+    # The Q10 certification formula over the phases, which includes the row's adopted write
+    # seconds; the row's own budget caps it.
     figure = _figure(AUDIENCES_ROW)
     budget = int(
-        phased_task_seconds(_audiences_certified(shown), CERTIFIED_QUERY_CAP, figure.write.seconds)
+        phased_task_seconds(_audiences_certified(), CERTIFIED_QUERY_CAP, figure.write.seconds)
         * 1_000
     )
     assert total <= budget <= figure.budget_seconds * 1_000 <= BAKER_TIMEOUT_SECONDS * 1_000
     return {
         **phases,
         "concurrency": _concurrency(trace, bake, bound),
-        "timing": _terms(
-            total,
-            makespan,
-            {"render_finalization_ms": render, "non_query_ms": total - makespan - render},
-        ),
+        "timing": {"total_ms": total, "makespan_ms": phases["makespan_ms"]},
         "budget_ms": budget,
     }
 
 
-def test_full_roster_phase_trace_and_over_bound_render(  # noqa: PLR0915 -- one ordered trace
+def test_full_roster_phase_trace_render(
     bake_settings: PresetArtifactBakeSettings,
     evidence_dir: Path,
     trace: _Trace,
 ) -> None:
-    """Render both full rosters and the over-bound month B; publish and write nothing."""
+    """Render both full rosters and drain Audiences' campaign pages; publish and write nothing."""
     bound = bake_settings.athena_query_batch_max_concurrency
     pointers = cast(
         "Any", _ReadOnlyPointers(DynamoPresetArtifactPointerStore(bake_settings.pointer_table))
@@ -541,73 +494,36 @@ def test_full_roster_phase_trace_and_over_bound_render(  # noqa: PLR0915 -- one 
         compiler = _CachingCompiler(composed.compiler)
         audiences = replace(composed, compiler=compiler)
         variant = PresetArtifactVariant(LATEST_MONTH_VARIANT)
-        registered = audiences_row_budget(1)
-        assert audiences.row_budget == registered, "the source must carry the registered row budget"
         months = _months(audiences)
-        if len(months) < 2:
-            pytest.fail(f"the trace needs two published profile months; dev has {len(months)}")
-        month_a, month_b = months[-2], months[-1]
-        evidence["month_a"] = [month_a.start.isoformat(), month_a.end.isoformat()]
-        evidence["month_b"] = [month_b.start.isoformat(), month_b.end.isoformat()]
+        if not months:
+            pytest.fail("the trace needs a published profile month; dev has none")
+        month = months[-1]
+        evidence["month"] = [month.start.isoformat(), month.end.isoformat()]
 
-        # Month A: the full governed roster, rendered as a body under the registered bound.
-        trace.begin("audiences_a")
+        trace.begin("audiences")
         started = monotonic()
-        request_a = replace(audiences, served=_served_through(audiences, month_a)).publication_for(
-            variant
+        request = audiences.publication_for(variant)
+        assert isinstance(request, PresetArtifactPublicationRequest), (
+            "the newest month must produce a parent: the trace reads a fresh render"
         )
+        # Drain the parts as the stage does: the campaign pages stream one campaign at a time.
+        parts = sum(1 for _ in request.siblings.pairs())
         sourced = monotonic()
-        assert isinstance(request_a, PresetArtifactPublicationRequest), (
-            "month A must produce a body: the dev pointer already holds it"
-        )
-        rendered_a = compiler.rendered[AudiencesRenderInput(month_a)]
-        assert rendered_a.artifact is not None
-        payload_a = _payload(request_a)
-        assert payload_a["type"] == AUDIENCES_ARTIFACT_TYPE
-        assert request_a.pointer_template.complete(None).pointer.resolved_window == month_a.window
-        rows_a, bytes_a = _body_rows(payload_a), len(request_a.body.payload_json.encode())
-        assert rows_a <= registered and bytes_a <= MAX_PRESET_ARTIFACT_BYTES
-        shown_a = rendered_a.artifact.markets[0].campaigns.shown
-        evidence["audiences_a"] = {
-            **_audiences_render(trace, "audiences_a", started, sourced, shown_a, bound),
-            "rows": {"encoded": rows_a, "registered_bound": registered},
-            "bytes": {"encoded": bytes_a, "artifact_cap": MAX_PRESET_ARTIFACT_BYTES},
-            "revision": request_a.body.revision.value,
-        }
-
-        # Month B: rendered once and traced, then forced exactly one row over the body bound.
-        trace.begin("audiences_b")
-        started = monotonic()
-        rendered_b = compiler.render_audiences(AudiencesRenderInput(month_b))
-        assert rendered_b.artifact is not None, "month B must render whole before it is forced"
-        rows_b = _body_rows(audiences_artifact_payload(rendered_b.artifact))
-        forced = rows_b - 1
-        request_b = replace(audiences, row_budget=forced).publication_for(variant)
-        sourced = monotonic()
-        assert isinstance(request_b, PresetArtifactPublicationRequest)
-        payload_b = _payload(request_b)
-        assert (payload_b["type"], payload_b["reason_code"]) == (
-            AUDIENCES_UNAVAILABLE_ARTIFACT_TYPE,
-            AUDIENCES_BODY_OVER_BOUND,
-        )
-        window = month_b.window
-        identity = (
-            f"{AUDIENCES_BODY_OVER_BOUND}:{window.start.isoformat()}:{window.end.isoformat()}"
-        )
-        assert request_b.body.revision == PresetArtifactRevision.from_publication_identities(
-            (*rendered_b.publication_identities, identity), render_format=AUDIENCES_RENDER_FORMAT
-        )
-        assert request_b.pointer_template.complete(None).pointer.resolved_window == window
-        bytes_b = len(
-            canonical_preset_artifact_json(audiences_artifact_payload(rendered_b.artifact)).encode()
-        )
-        shown_b = rendered_b.artifact.markets[0].campaigns.shown
-        evidence["audiences_b"] = {
-            **_audiences_render(trace, "audiences_b", started, sourced, shown_b, bound),
-            "rows": {"encoded": rows_b, "forced_bound": forced, "registered_bound": registered},
-            "bytes": {"encoded": bytes_b, "artifact_cap": MAX_PRESET_ARTIFACT_BYTES},
-            "reason": payload_b["reason_code"],
-            "revision": request_b.body.revision.value,
+        rendered = compiler.rendered[AudiencesRenderInput(month)]
+        assert rendered.artifact is not None
+        payload = _payload(request)
+        assert payload["type"] == AUDIENCES_ARTIFACT_TYPE
+        assert request.pointer_template.complete(None).pointer.resolved_window == month.window
+        declared = request.siblings.count
+        assert parts == declared, f"the stream declared {declared} parts and yielded {parts}"
+        parent_bytes = len(request.body.payload_json.encode())
+        assert parent_bytes <= MAX_PRESET_ARTIFACT_BYTES
+        evidence["audiences"] = {
+            **_audiences_render(trace, "audiences", started, sourced, bound),
+            "campaigns": len(rendered.artifact.markets[0].campaigns.index),
+            "parts": parts,
+            "parent_bytes": {"encoded": parent_bytes, "artifact_cap": MAX_PRESET_ARTIFACT_BYTES},
+            "revision": request.body.revision.value,
         }
 
         # Retention: the full governed roster for the latest vintage.

@@ -15,7 +15,7 @@ from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from functools import partial
 from time import monotonic
-from typing import Any, cast
+from typing import Any, Final, cast
 from urllib.parse import urlencode
 
 from aws_lambda_powertools import Logger
@@ -187,10 +187,9 @@ from domain.presentation.audiences import (
     AUDIENCES_ARTIFACT_TYPE,
     AUDIENCES_ARTIFACT_VERSION,
     AUDIENCES_PAGE_ID,
-    AUDIENCES_UNAVAILABLE_ARTIFACT_TYPE,
-    AudienceUnavailableArtifact,
+    AudiencesPart,
     require_audiences_artifact_payload,
-    require_audiences_unavailable_artifact_payload,
+    require_audiences_part_payload,
     resolve_audiences_payload,
 )
 from domain.presentation.calendar_presets import ResolveCalendarPresetResult
@@ -3571,11 +3570,29 @@ def _indexed_sibling(  # noqa: PLR0913, PLR0917 -- one pointer-bound, index-boun
     tampered shard, or a sibling whose bytes don't match is the malformed-artifact refusal,
     never a fallback.
     """
-    bodies = runtime.preset_artifact_bodies
+    descriptor = _indexed_descriptor(runtime, pointer, index, identity)
+    if descriptor is None:
+        raise _malformed_artifact()
+    return _read_indexed(runtime, pointer, identity, descriptor)
+
+
+def _indexed_descriptor(  # noqa: PLR0913, PLR0917 -- one pointer-bound, index-bound lookup
+    runtime: PresentationRuntime,
+    pointer: PresetArtifactPointer,
+    index: tuple[PresetArtifactSiblingIndexEntry, ...],
+    identity: PresetArtifactChildIdentity,
+) -> PresetArtifactSiblingDescriptor | None:
+    """Find an identity's descriptor in the covering index shard, or None when it isn't listed.
+
+    An unreadable or tampered shard is the malformed-artifact refusal; an identity no shard
+    covers or lists is the caller's to refuse.
+    """
     custody_store = runtime.preset_artifact_custody
     position = covering_index_shard(index, identity)
-    if bodies is None or custody_store is None or position is None:
+    if custody_store is None:
         raise _malformed_artifact()
+    if position is None:
+        return None
     entry = index[position]
     try:
         shard = custody_store.read_sibling(
@@ -3591,8 +3608,19 @@ def _indexed_sibling(  # noqa: PLR0913, PLR0917 -- one pointer-bound, index-boun
         descriptors = index_shard_descriptors(shard, entry)
     except InvariantError, TypeError, ValueError, json.JSONDecodeError:
         raise _malformed_artifact() from None
-    descriptor = next((item for item in descriptors if item.identity == identity), None)
-    if descriptor is None:
+    return next((item for item in descriptors if item.identity == identity), None)
+
+
+def _read_indexed(  # noqa: PLR0913, PLR0917 -- one pointer-bound read of a listed sibling
+    runtime: PresentationRuntime,
+    pointer: PresetArtifactPointer,
+    identity: PresetArtifactChildIdentity,
+    descriptor: PresetArtifactSiblingDescriptor,
+) -> _IndexedSibling:
+    """Read a listed sibling's body and custody, each checked against its descriptor."""
+    bodies = runtime.preset_artifact_bodies
+    custody_store = runtime.preset_artifact_custody
+    if bodies is None or custody_store is None:
         raise _malformed_artifact()
     request = PresetArtifactSiblingReadRequest(
         pointer.page, pointer.variant, pointer.revision, descriptor
@@ -4240,27 +4268,138 @@ def _scorecard_window_unavailable(  # noqa: PLR0913, PLR0917 -- the request and 
     )
 
 
+_AUDIENCES_PART_FIELDS: Final = frozenset({"campaign", "profile", "campaign_index"})
+"""The Audiences parts a request may name, at most one (design 01 §5)."""
+_AUDIENCES_PART_INVALID: Final = "The Audiences part requested is invalid."
+_AUDIENCES_REF: Final = re.compile(r"campaign-[1-9][0-9]{0,5}")
+_AUDIENCES_PROFILE_PATHS: Final = frozenset({"asi_in_market", "asi_lifestyle", "dsp_exposed_only"})
+_AUDIENCES_MAX_PAGE: Final = 9_999
+
+
+@dataclass(frozen=True, slots=True)
+class _AudiencesPartRequest:
+    """One requested Audiences part: what it is, its sibling identity and its fields."""
+
+    part: AudiencesPart
+    identity: PresetArtifactSiblingIdentity
+    fields: dict[str, object]
+    """The part body's fields that must equal the request (its reference and page)."""
+
+
+def _audiences_page(value: object, lowest: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValidationError(PRESENTATION_REFUSED, _AUDIENCES_PART_INVALID)
+    if not lowest <= value <= _AUDIENCES_MAX_PAGE:
+        raise ValidationError(PRESENTATION_REFUSED, _AUDIENCES_PART_INVALID)
+    return value
+
+
+def _audiences_part_request(event: dict[str, Any]) -> _AudiencesPartRequest | None:
+    """Decode at most one Audiences part selector, closed; None when the parent is asked for."""
+    payload = _body(event)
+    named = sorted(_AUDIENCES_PART_FIELDS & set(payload))
+    if not named:
+        return None
+    raw = payload[named[0]]
+    if len(named) > 1 or not isinstance(raw, dict):
+        raise ValidationError(PRESENTATION_REFUSED, _AUDIENCES_PART_INVALID)
+    value = cast("dict[str, object]", raw)
+    if named[0] == "campaign":
+        ref = value.get("ref")
+        if set(value) != {"ref", "page"} or not isinstance(ref, str):
+            raise ValidationError(PRESENTATION_REFUSED, _AUDIENCES_PART_INVALID)
+        if not _AUDIENCES_REF.fullmatch(ref):
+            raise ValidationError(PRESENTATION_REFUSED, _AUDIENCES_PART_INVALID)
+        page = _audiences_page(value["page"], 0)
+        return _AudiencesPartRequest(
+            AudiencesPart.CAMPAIGN,
+            PresetArtifactSiblingIdentity("impressions-desc", page, ref),
+            {"campaign_ref": ref, "page": page},
+        )
+    if named[0] == "profile":
+        path = value.get("path")
+        if set(value) != {"path", "page"} or path not in _AUDIENCES_PROFILE_PATHS:
+            raise ValidationError(PRESENTATION_REFUSED, _AUDIENCES_PART_INVALID)
+        page = _audiences_page(value["page"], 1)
+        return _AudiencesPartRequest(
+            AudiencesPart.PROFILE,
+            PresetArtifactSiblingIdentity("index-desc", page, f"profile-{path}"),
+            {"profile_path": path, "page": page},
+        )
+    if set(value) != {"shard"}:
+        raise ValidationError(PRESENTATION_REFUSED, _AUDIENCES_PART_INVALID)
+    shard = _audiences_page(value["shard"], 1)
+    return _AudiencesPartRequest(
+        AudiencesPart.CAMPAIGN_INDEX,
+        PresetArtifactSiblingIdentity("rank", shard, "campaign-index"),
+        {"shard": shard},
+    )
+
+
+def _audiences_part_response(  # noqa: PLR0913, PLR0917 -- the request, runtime, parent, part
+    request: _V2ParentPresentationInput,
+    runtime: PresentationRuntime,
+    parent: tuple[PresetArtifactPointer, PresetArtifactBody],
+    part: _AudiencesPartRequest,
+) -> dict[str, Any]:
+    """Serve one baked Audiences part through the parent custody's index, never measuring.
+
+    Existence is the index's: an identity it doesn't list (an unknown reference, a page past a
+    campaign's last, an unserved path) is a 400. A listed part whose bytes or fields disagree
+    with its descriptor or request is the malformed-artifact refusal (ADR-125 rule 3).
+    """
+    pointer, body = parent
+    custody_store = runtime.preset_artifact_custody
+    if custody_store is None or pointer.custody_digest is None:
+        raise _malformed_artifact()
+    manifest = custody_store.read(pointer)
+    _attest_campaign_preset_custody(pointer, manifest)
+    header, index = _parent_index(manifest)
+    if header.get("body_digest") != body.digest:
+        raise _malformed_artifact()
+    descriptor = _indexed_descriptor(runtime, pointer, index, part.identity)
+    if descriptor is None:
+        raise ValidationError(PRESENTATION_REFUSED, _AUDIENCES_PART_INVALID)
+    sibling = _read_indexed(runtime, pointer, part.identity, descriptor)
+    try:
+        payload = require_audiences_part_payload(
+            json.loads(sibling.body.payload_json), part.part, pointer.revision.value
+        )
+        custody = cast("dict[str, object]", json.loads(sibling.custody.payload_json))
+    except TypeError, ValueError, json.JSONDecodeError:
+        raise _malformed_artifact() from None
+    if custody.get("body_digest") != sibling.body.digest or any(
+        payload.get(key) != value for key, value in part.fields.items()
+    ):
+        raise _malformed_artifact()
+    return _json(
+        200,
+        {
+            "kind": "audiences_part",
+            "session_id": request.session_id,
+            "parent_revision": pointer.revision.value,
+            "part": payload,
+        },
+    )
+
+
 def _audiences_window_unavailable(  # noqa: PLR0913, PLR0917
     request: _V2ParentPresentationInput,
     runtime: PresentationRuntime,
     preset: TemporalPresetId,
     pointers: tuple[ServedPresetWindow, ...],
-    unavailable: AudienceUnavailableArtifact | None = None,
     *,
     operation: str = AUDIENCES_PATH,
 ) -> dict[str, Any]:
-    """Serve a calendar page's one-preset pending state for a missing or unavailable body.
+    """Serve a calendar page's one-preset pending state for a missing body.
 
     Audiences' own, and Reach's for a preset with no pointer: the pending window is the latest
     complete period of the preset's grain on the request date. The message is the trigger's
     catalog row (ADR-139); only Reach appends ABS-ALT.
     """
     policy = _v2_page_schema(operation).temporal_policy
-    if unavailable is None:
-        pending = latest_complete_period(calendar_preset_grain(preset), runtime.clock().date())
-        window, label = DateRange(pending.start, pending.end), pending.label
-    else:
-        window, label = unavailable.month, unavailable.month_label
+    pending = latest_complete_period(calendar_preset_grain(preset), runtime.clock().date())
+    window, label = DateRange(pending.start, pending.end), pending.label
     served = ServedPeriod(
         preset,
         window,
@@ -4274,10 +4413,8 @@ def _audiences_window_unavailable(  # noqa: PLR0913, PLR0917
     )
     if operation == REACH_PATH:
         trigger = AbsenceTrigger.REACH_PERIOD_NOT_PUBLISHED
-    elif unavailable is None:
-        trigger = AbsenceTrigger.AUDIENCES_MONTH_NOT_PUBLISHED
     else:
-        trigger = AbsenceTrigger.AUDIENCES_MONTH_OVER_BOUND
+        trigger = AbsenceTrigger.AUDIENCES_MONTH_NOT_PUBLISHED
     message = absence_message(
         trigger,
         period_label=label,
@@ -4563,6 +4700,7 @@ def _v2_audiences_parent_response(  # noqa: PLR0912, PLR0915 -- one strict serve
     request = _v2_parent_request(input_request.event, AUDIENCES_PATH)
     if request.temporal_selection.kind is TemporalSelectionKind.CUSTOM:
         raise ValidationError(PRESENTATION_REFUSED, "temporal_selection is invalid.")
+    part = _audiences_part_request(input_request.event)
     schema = _v2_page_schema(AUDIENCES_PATH)
     policy = schema.temporal_policy
     preset = (
@@ -4583,6 +4721,8 @@ def _v2_audiences_parent_response(  # noqa: PLR0912, PLR0915 -- one strict serve
     windows = _served_pointer_windows(policy, own)
     pointer = own.pointer_for(PresetArtifactVariant(preset.value))
     if pointer is None:
+        if part is not None:
+            raise ValidationError(PRESENTATION_REFUSED, _AUDIENCES_PART_INVALID)
         return _audiences_window_unavailable(request, runtime, preset, windows)
     if pointer.resolved_window is None:
         raise _malformed_artifact()
@@ -4591,16 +4731,12 @@ def _v2_audiences_parent_response(  # noqa: PLR0912, PLR0915 -- one strict serve
     generation = _served_generation(runtime, pointer)
     body = bodies.read(pointer)
     _attest_campaign_preset_body(pointer, body)
+    if part is not None:
+        return _audiences_part_response(request, runtime, (pointer, body), part)
     try:
-        loaded_payload = cast("object", json.loads(body.payload_json))
-        if isinstance(loaded_payload, dict):
-            object_payload = cast("dict[str, object]", loaded_payload)
-            if object_payload.get("type") == AUDIENCES_UNAVAILABLE_ARTIFACT_TYPE:
-                unavailable = require_audiences_unavailable_artifact_payload(object_payload)
-                if pointer.resolved_window != unavailable.month:
-                    raise ValueError("audiences unavailable body window does not match its pointer")
-                return _audiences_window_unavailable(request, runtime, preset, windows, unavailable)
-        payload = require_audiences_artifact_payload(cast("object", loaded_payload))
+        payload = require_audiences_artifact_payload(cast("object", json.loads(body.payload_json)))
+        if payload["revision"] != pointer.revision.value:
+            raise ValueError("audiences body names another revision than its pointer")
         month = cast("dict[str, str]", payload["month"])
         window = DateRange(date.fromisoformat(month["start"]), date.fromisoformat(month["end"]))
         if pointer.resolved_window != window:
@@ -6009,6 +6145,8 @@ def _v2_parent_request(
         allowed.add("sort")
     if operation == CAMPAIGN_LIST_PATH:
         allowed.update({"segment", "filter_id"})
+    if operation == AUDIENCES_PATH:
+        allowed.update(_AUDIENCES_PART_FIELDS)
     if fields - allowed or "session_id" not in fields:
         raise ValidationError(
             PRESENTATION_REFUSED,

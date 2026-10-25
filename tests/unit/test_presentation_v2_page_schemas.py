@@ -398,7 +398,7 @@ def test_v2_declaration_preserves_exact_temporal_artifact_visual_and_action_cont
             (
                 "audiences",
                 "AudienceProfileArtifact",
-                1,
+                2,
                 ("complete", "empty", "insufficient"),
             ),
         ),

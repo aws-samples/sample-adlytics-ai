@@ -547,7 +547,7 @@ pages:
     artifacts:
       - id: audiences
         type: AudienceProfileArtifact
-        version: 1
+        version: 2
         outcomes: [complete, empty, insufficient]
     visuals: []
     sections:

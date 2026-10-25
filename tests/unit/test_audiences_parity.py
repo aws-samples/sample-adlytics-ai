@@ -4,8 +4,9 @@
 The table (frontend/test/fixtures/audiences-parity-cases.json) is built from this module's
 server-encoded fixtures and the server's own encoders, so the two decoders can't drift: every
 case must get the same verdict from `require_audiences_artifact_payload(served=True)` and from
-`parseAudienceProfileArtifact` (frontend/test/audiences-parity.test.ts). The rule inventory is
-.agents/tasks/ui-audiences-retention/audiences-parity.md.
+`parseAudienceProfileArtifact` (frontend/test/audiences-parity.test.ts); a campaign page case
+gets the same verdict from `require_audiences_part_payload` and `parseAudiencesPart`. The rule
+inventory is .agents/tasks/ui-audiences-retention/audiences-parity.md.
 """
 
 from __future__ import annotations
@@ -26,7 +27,6 @@ from domain.capabilities.paid_features import PaidFeatureDisplay, PaidFeatureSta
 from domain.presentation.audiences import (
     BOUNDARY_TEXT,
     CAMPAIGN_PENDING_TEXT,
-    CAMPAIGN_SHOWN_TEXT,
     DELIVERY_LABELS,
     NO_DELIVERY_TEXT,
     PAID_VIEW,
@@ -34,6 +34,7 @@ from domain.presentation.audiences import (
     SEGMENT_PARTIAL_TEXT,
     TOTAL_NOT_AVAILABLE_TEXT,
     VIEW_LABELS,
+    AudiencesPart,
     _decimal,  # pyright: ignore[reportPrivateUsage]
     _money,  # pyright: ignore[reportPrivateUsage]
     _multiplier,  # pyright: ignore[reportPrivateUsage]
@@ -41,6 +42,7 @@ from domain.presentation.audiences import (
     _share,  # pyright: ignore[reportPrivateUsage]
     audiences_artifact_payload,
     require_audiences_artifact_payload,
+    require_audiences_part_payload,
     resolve_audiences_payload,
 )
 from domain.shared_kernel.values import DateRange
@@ -52,6 +54,7 @@ FIXTURES = ROOT / "frontend/test/fixtures"
 BASE_FILES = {
     "complete": "audiences-complete-v2.json",
     "in_roster_unavailable": "audiences-in-roster-unavailable-v2.json",
+    "campaign_page": "audiences-campaign-page-v1.json",
 }
 CASES_FILE = FIXTURES / "audiences-parity-cases.json"
 MONTH = "September 2026"
@@ -146,7 +149,9 @@ DSP_BELOW: Path = [*DSP, "rows", 1]
 DSP_GAP: Path = [*DSP, "not_available", 0]
 PAID_DELIVERY: Path = [*PAID, "deliveries", 0]
 CAMPAIGNS: Path = [*MARKET, "campaign_audiences"]
-CAMPAIGN_ROW: Path = [*CAMPAIGNS, "rows", 0]
+CAMPAIGN_ENTRY: Path = [*CAMPAIGNS, "index", 0]
+CAMPAIGN_ROW: Path = ["rows", 0]
+"""A campaign page's first row: the cases on it use the `campaign_page` base."""
 NA_ROW: Path = [*PAID, "rows", 0]
 NA_DELIVERY: Path = [*PAID, "deliveries", 0]
 REPLACED_IDS = (
@@ -201,6 +206,8 @@ def _cases() -> list[dict[str, Any]]:  # noqa: PLR0915 -- one table, every rule
     complete, na = "complete as served", "in-roster unavailable as served"
     case(complete, True)
     case(na, True, base="in_roster_unavailable")
+    page = "campaign page as served"
+    case(page, True, base="campaign_page")
 
     # Canonical fixed-two-decimal index, CPM and ROAS: the server's own encoders accept.
     two_fifty = Decimal("2.5")
@@ -222,19 +229,21 @@ def _cases() -> list[dict[str, Any]]:  # noqa: PLR0915 -- one table, every rule
         "CPM 12.50 USD as the server writes it",
         True,
         cpm(_decimal(money, Decimal("0.01")) or "", _money(money, "USD") or ""),
+        base="campaign_page",
     )
     refuse("CPM 12.5/12.5 USD", "CPM 12.50 USD as the server writes it", cpm("12.5", "12.5 USD"))
-    refuse("CPM 7/7 USD", complete, cpm("7", "7 USD"))
-    refuse("CPM 7.000/7.000 USD", complete, cpm("7.000", "7.000 USD"))
-    refuse("CPM display names another currency", complete, cpm("7.00", "7.00 EUR"))
+    refuse("CPM 7/7 USD", page, cpm("7", "7 USD"))
+    refuse("CPM 7.000/7.000 USD", page, cpm("7.000", "7.000 USD"))
+    refuse("CPM display names another currency", page, cpm("7.00", "7.00 EUR"))
     three = Decimal(3)
     case(
         "ROAS 3.00 as the server writes it",
         True,
         *roas(_decimal(three) or "", _multiplier(three) or ""),
+        base="campaign_page",
     )
     refuse("ROAS 3/3x", "ROAS 3.00 as the server writes it", *roas("3", "3x"))
-    refuse("ROAS 0.590/0.590x", complete, *roas("0.590", "0.590x"))
+    refuse("ROAS 0.590/0.590x", page, *roas("0.590", "0.590x"))
 
     # Canonical share: four places, at most one, the server's half-even percent text.
     for value, label in (("1", "one"), ("0", "zero"), ("0.0005", "0.0005"), ("0.0015", "0.0015")):
@@ -477,24 +486,28 @@ def _cases() -> list[dict[str, Any]]:  # noqa: PLR0915 -- one table, every rule
     )
     refuse(
         "campaign CPM with its absence text",
-        complete,
+        page,
         ([*CAMPAIGN_ROW, "cpm_text"], "Not available: no spend."),
     )
     refuse(
         "campaign ROAS with its absence text",
-        complete,
+        page,
         ([*CAMPAIGN_ROW, "roas_text"], "Not available: no sales."),
     )
+    refuse("campaign page of another revision", page, (["parent_revision"], "b" * 64))
+    refuse("campaign page past its last", page, (["page"], 1))
+    refuse("campaign page withdrawn with rows", page, (["state"], "withdrawn"), (["text"], "Gone."))
     pending = CAMPAIGN_PENDING_TEXT.format(month=MONTH)
     case(
-        "pending campaigns with no rows",
+        "pending campaigns with no index",
         True,
         ([*CAMPAIGNS, "pending_text"], pending),
-        ([*CAMPAIGNS, "rows"], []),
+        ([*CAMPAIGNS, "campaign_count"], 0),
+        ([*CAMPAIGNS, "index"], []),
     )
     refuse(
-        "pending campaigns with rows",
-        "pending campaigns with no rows",
+        "pending campaigns with an index",
+        "pending campaigns with no index",
         ([*CAMPAIGNS, "pending_text"], pending),
     )
 
@@ -525,59 +538,56 @@ def _cases() -> list[dict[str, Any]]:  # noqa: PLR0915 -- one table, every rule
     refuse(
         "unknown provider label", complete, ([*DSP_ROW, "provider_label"], "Provider not recorded")
     )
-    refuse("blank campaign label", complete, ([*CAMPAIGN_ROW, "campaign_label"], " "))
-    # Campaign identity: an opaque ordinal reference, never the protected canonical key.
-    first_row = _get(bases["complete"], CAMPAIGN_ROW)
-    second_row = {**first_row, "campaign_label": "Unnamed campaign 1", "campaign_ref": "campaign-2"}
+    refuse("blank campaign label", complete, ([*CAMPAIGN_ENTRY, "campaign_label"], " "))
+    # Campaign identity: an opaque reference by rank, never the protected canonical key.
+    first = _get(bases["complete"], CAMPAIGN_ENTRY)
+    second = {**first, "campaign_label": "Unnamed campaign 1", "campaign_ref": "campaign-2"}
     two = "two campaigns as the server writes them"
-    case(two, True, ([*CAMPAIGNS, "rows"], [first_row, second_row]))
+    case(two, True, ([*CAMPAIGNS, "index"], [first, second]), ([*CAMPAIGNS, "campaign_count"], 2))
     refuse(
-        "campaign references skip an ordinal",
+        "campaign references skip a rank",
         two,
-        ([*CAMPAIGNS, "rows"], [first_row, {**second_row, "campaign_ref": "campaign-3"}]),
+        ([*CAMPAIGNS, "index"], [first, {**second, "campaign_ref": "campaign-3"}]),
+        ([*CAMPAIGNS, "campaign_count"], 2),
     )
     refuse(
-        "one campaign reference under two labels",
+        "an index whose count isn't its entries",
         two,
-        ([*CAMPAIGNS, "rows"], [first_row, {**second_row, "campaign_ref": "campaign-1"}]),
+        ([*CAMPAIGNS, "index"], [first, second]),
+        ([*CAMPAIGNS, "campaign_count"], 3),
     )
     refuse(
-        "one campaign's rows split by another's",
-        two,
-        ([*CAMPAIGNS, "rows"], [first_row, second_row, first_row]),
+        "an index entry whose pages don't match its segments",
+        complete,
+        ([*CAMPAIGN_ENTRY, "page_count"], 2),
     )
-    # The shown note: the server's exact copy, fewer shown than listed, never on pending.
-    shown = "two campaigns shown of fourteen"
-    two_rows = ([*CAMPAIGNS, "rows"], [first_row, second_row])
+    refuse(
+        "an available entry with a note",
+        complete,
+        ([*CAMPAIGN_ENTRY, "text"], "Not shown."),
+    )
     case(
-        shown,
+        "a refused entry as the server writes it",
         True,
-        two_rows,
-        ([*CAMPAIGNS, "shown_text"], CAMPAIGN_SHOWN_TEXT.format(shown=2, total=14)),
+        ([*CAMPAIGN_ENTRY, "state"], "refused"),
+        ([*CAMPAIGN_ENTRY, "text"], "Its history isn't available."),
+        ([*CAMPAIGN_ENTRY, "page_count"], 0),
     )
-    for name, text in (
-        ("shown note with every campaign listed shown", "Showing 2 of 2 campaigns"),
-        ("shown note naming fewer campaigns than its rows", "Showing 1 of 14 campaigns"),
-        ("shown note reworded", "Showing top 2 of 14 campaigns"),
-        ("shown note with a zero-padded count", "Showing 02 of 14 campaigns"),
-    ):
-        refuse(name, shown, two_rows, ([*CAMPAIGNS, "shown_text"], text))
     refuse(
-        "pending campaigns with a shown note",
-        "pending campaigns with no rows",
-        ([*CAMPAIGNS, "pending_text"], pending),
-        ([*CAMPAIGNS, "rows"], []),
-        ([*CAMPAIGNS, "shown_text"], CAMPAIGN_SHOWN_TEXT.format(shown=2, total=14)),
+        "a refused entry with pages",
+        "a refused entry as the server writes it",
+        ([*CAMPAIGN_ENTRY, "state"], "refused"),
+        ([*CAMPAIGN_ENTRY, "text"], "Its history isn't available."),
     )
     refuse(
         "campaign reference is its canonical key",
         complete,
-        ([*CAMPAIGN_ROW, "campaign_ref"], "camp-1"),
+        ([*CAMPAIGN_ENTRY, "campaign_ref"], "camp-1"),
     )
     refuse(
-        "campaign row carries its canonical key",
+        "campaign entry carries its canonical key",
         complete,
-        ([*CAMPAIGN_ROW], {**first_row, "campaign_key": "camp-1"}),
+        ([*CAMPAIGN_ENTRY], {**first, "campaign_key": "camp-1"}),
     )
     refuse(
         "market carries its canonical marketplace key",
@@ -626,7 +636,8 @@ def _cases() -> list[dict[str, Any]]:  # noqa: PLR0915 -- one table, every rule
     refuse("artifact carries an unknown field", complete, (["note"], "extra"))
     refuse("profile row carries an unknown field", complete, ([*DSP_ROW, "note"], "extra"))
     refuse("artifact type replaced", complete, (["type"], "AudienceProfile"))
-    refuse("artifact version 2", complete, (["version"], 2))
+    refuse("artifact version 1", complete, (["version"], 1))
+    refuse("artifact naming no publication revision", complete, (["revision"], "r" * 43))
     refuse("artifact version as a boolean", complete, (["version"], True))
     # Scalar type and closed vocabularies, one representative each (audiences-parity §5).
     refuse(
@@ -694,14 +705,24 @@ def test_every_accepting_case_has_a_refusing_control_and_every_refusal_names_one
     assert all(item["control"] is None for item in cases if item["accept"])
 
 
+def _judge(base: str, candidate: dict[str, object]) -> None:
+    if base == "campaign_page":
+        parent = _bases()["complete"]["revision"]
+        require_audiences_part_payload(candidate, AudiencesPart.CAMPAIGN, cast("str", parent))
+        if (candidate["campaign_ref"], candidate["page"]) != ("campaign-1", 0):
+            raise ValueError("the part is not the one asked for")
+        return
+    require_audiences_artifact_payload(candidate, served=True)
+
+
 @pytest.mark.parametrize("item", _cases(), ids=lambda item: item["name"])
 def test_server_served_validator_gives_each_parity_case_its_verdict(item: dict[str, Any]) -> None:
     candidate = _apply(_bases()[item["base"]], item["set"])
     if item["accept"]:
-        require_audiences_artifact_payload(candidate, served=True)
+        _judge(item["base"], candidate)
     else:
         with pytest.raises(ValueError):
-            require_audiences_artifact_payload(candidate, served=True)
+            _judge(item["base"], candidate)
 
 
 def test_baked_complete_payload_is_the_served_fixtures_source() -> None:

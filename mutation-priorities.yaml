@@ -782,7 +782,6 @@ tiers:
       - tests/unit/test_table_writer.py
     - unit: src/domain/operations/execution_graph_dispatch.py
       tests:
-      - tests/unit/test_d2_audiences_over_bound_verdict.py
       - tests/unit/test_d2_graph_acceptance.py
       - tests/unit/test_delivery_cohort.py
       - tests/unit/test_execution_graph_dispatch.py
@@ -811,7 +810,6 @@ tiers:
       - tests/unit/test_bake_roster_names_composition.py
       - tests/unit/test_bake_source_horizons.py
       - tests/unit/test_bake_sources.py
-      - tests/unit/test_d2_audiences_over_bound_verdict.py
       - tests/unit/test_d2_graph_acceptance.py
       - tests/unit/test_delivery_cohort.py
       - tests/unit/test_dev_operations.py
@@ -890,7 +888,6 @@ tiers:
       - tests/unit/test_ingestion_queue_clocks.py
     - unit: src/domain/operations/run_request.py
       tests:
-      - tests/unit/test_d2_audiences_over_bound_verdict.py
       - tests/unit/test_d2_graph_acceptance.py
       - tests/unit/test_execution_graph_dispatch.py
       - tests/unit/test_execution_graph_instantiate.py
@@ -1036,7 +1033,6 @@ tiers:
       tests:
       - tests/unit/test_audiences_parity.py
       - tests/unit/test_audiences_presentation.py
-      - tests/unit/test_d2_audiences_over_bound_verdict.py
       - tests/unit/test_segment_profile.py
     - unit: src/domain/presentation/calendar_presets.py
       tests:
@@ -1240,7 +1236,6 @@ tiers:
       - tests/unit/test_campaign_channel_filter.py
       - tests/unit/test_campaign_estate_acceptance.py
       - tests/unit/test_campaign_preset_source.py
-      - tests/unit/test_d2_audiences_over_bound_verdict.py
       - tests/unit/test_d2_graph_acceptance.py
       - tests/unit/test_deep_insight_inputs.py
       - tests/unit/test_graph_bake.py
@@ -1320,7 +1315,6 @@ tiers:
     - unit: src/domain/presentation/temporal.py
       tests:
       - tests/unit/test_campaign_insights.py
-      - tests/unit/test_d2_audiences_over_bound_verdict.py
       - tests/unit/test_dynamodb_page_context.py
       - tests/unit/test_insight_assembly.py
       - tests/unit/test_insight_bedrock.py
@@ -1443,10 +1437,8 @@ tiers:
       tests:
       - tests/unit/test_acquisition_cohorts.py
       - tests/unit/test_audience_segments.py
-      - tests/unit/test_audiences_presentation.py
       - tests/unit/test_bake_roster_names_composition.py
       - tests/unit/test_bake_source_horizons.py
-      - tests/unit/test_d2_audiences_over_bound_verdict.py
       - tests/unit/test_d2_chat_seams.py
       - tests/unit/test_exposure_frequency.py
       - tests/unit/test_land_fixtures.py
@@ -1680,11 +1672,9 @@ tiers:
       tests:
       - tests/unit/test_athena_semantic_storage.py
       - tests/unit/test_audience_segments.py
-      - tests/unit/test_audiences_presentation.py
       - tests/unit/test_bake_pin_certificate.py
       - tests/unit/test_bake_roster_names_composition.py
       - tests/unit/test_bake_source_horizons.py
-      - tests/unit/test_d2_audiences_over_bound_verdict.py
       - tests/unit/test_d2_chat_seams.py
       - tests/unit/test_entity_catalog.py
       - tests/unit/test_exposure_frequency.py
@@ -1928,7 +1918,6 @@ tiers:
       - tests/unit/test_comparison.py
       - tests/unit/test_contribution_scope.py
       - tests/unit/test_curation_assertions.py
-      - tests/unit/test_d2_audiences_over_bound_verdict.py
       - tests/unit/test_d2_chat_seams.py
       - tests/unit/test_data_health.py
       - tests/unit/test_deep_insight_inputs.py
@@ -3005,7 +2994,6 @@ tiers:
       tests:
       - tests/unit/test_bake_pin_certificate.py
       - tests/unit/test_bake_roster_names_composition.py
-      - tests/unit/test_preset_bakeability.py
       - tests/unit/test_segment_profile.py
     - unit: src/adapters/jobs/preset_artifact_publisher/backfill.py
       tests:
@@ -3013,8 +3001,6 @@ tiers:
     - unit: src/adapters/jobs/preset_artifact_publisher/bakeability.py
       tests:
       - tests/unit/test_bake_pin_certificate.py
-      - tests/unit/test_bake_roster_names_composition.py
-      - tests/unit/test_d2_audiences_over_bound_verdict.py
       - tests/unit/test_preset_bakeability.py
     - unit: src/adapters/jobs/preset_artifact_publisher/baker.py
       tests:

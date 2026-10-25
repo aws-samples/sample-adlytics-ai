@@ -140,6 +140,25 @@
           "format": "json.dumps(certificate_pin_section(), indent=1, sort_keys=True) + newline"
         }
       }
+    },
+    "remeasure_2026_10_25_r2a": {
+      "note": "re-measured 2026-10-25 after r2a read every Audiences campaign grouped (ADR-141, ADR-152)",
+      "measured_on": "43701d123901919003599be80b7c230c9e459fe2",
+      "measured_on_note": "the parent commit plus the uncommitted r2a tree this receipt commits",
+      "cause": "audiences#last_complete_month: 24 plans in 3 phases at any campaign count, write term WRITE_ALLOWANCE_SECONDS, budget 600 s; its scope reads change with the grouped campaign reads",
+      "changed_rows": [
+        "audiences#last_complete_month"
+      ],
+      "digests": {
+        "d2-roster.out": {
+          "before": "sha256:94f7ca933d1edeb770f0470c823389e528891ef7891452a6f4dcab9c684e6cd1",
+          "after": "sha256:31c85feff441f73989640c0f6114f13af6c36f75dd9d5231ab81ce2dfc686b85"
+        },
+        "pin-section.json": {
+          "before": "sha256:8999f3d84f690efec21e28ccc89c3258b5a4456dce966a1b8a40c151c4168d3e",
+          "after": "sha256:bd66ebb271d0c191fcbf50ff1f52891c73d0ed8ab6d63d19689ed94acc72b016"
+        }
+      }
     }
   },
   "owning_design_digest": {
@@ -151,7 +170,7 @@
     {
       "command": "uv run python -m adapters.jobs.preset_artifact_publisher.bakeability --d2-roster",
       "raw_output": "d2-roster.out",
-      "sha256": "sha256:94f7ca933d1edeb770f0470c823389e528891ef7891452a6f4dcab9c684e6cd1"
+      "sha256": "sha256:31c85feff441f73989640c0f6114f13af6c36f75dd9d5231ab81ce2dfc686b85"
     },
     {
       "command": "make check-bakeability",
@@ -183,7 +202,7 @@
     "campaigns_measured_seconds": 11.2,
     "campaigns_adopted_seconds": 16.6,
     "other_pages": "no deployed write trace: campaigns' 16.6 adopted as a [projection] upper bound",
-    "audiences_branch": "w_aud = 16.6 <= 30, so C = 7 (19 + 6C = 61)"
+    "audiences_branch": "w_aud = WRITE_ALLOWANCE_SECONDS (450): parts grow with campaigns, so the stage's runtime write deadline is the one write limit; 24 plans at any campaign count"
   },
   "rows": [
     {
@@ -1081,22 +1100,20 @@
     },
     {
       "key": "audiences#last_complete_month",
-      "certified_count": 61,
-      "derivation": "19 + 6C at C = 7 (M = 1, P = 3): list, roster rounds of P + C, C and C, then P x 5 + 3C measurement",
+      "certified_count": 24,
+      "derivation": "24 per marketplace at any campaign count (M = 1, P = 3): P rosters + 4 grouped campaign reads, P x 5 measurement + the history walk, then its withheld part",
       "phases": [
-        1,
-        10,
         7,
-        7,
-        36
+        16,
+        1
       ],
       "write_seconds": {
-        "value": 16.6,
-        "marker": "projection",
-        "source": "campaigns' 16.6 adopted as a conservative upper bound: no deployed write trace"
+        "value": 450.0,
+        "marker": "derived",
+        "source": "WRITE_ALLOWANCE_SECONDS: parts grow with campaigns; the stage's deadline limits them"
       },
-      "certification_seconds": 286.6,
-      "budget_seconds": 300,
+      "certification_seconds": 600.0,
+      "budget_seconds": 600,
       "budget_basis": "contract budget, re-certified",
       "source_horizon_days": 218,
       "source_horizon_terms": {
@@ -1113,7 +1130,7 @@
       },
       "counter": {
         "builder": [
-          "adapters.jobs.preset_artifact_publisher.audiences_source.AudiencesArtifactRenderer._request",
+          "adapters.jobs.preset_artifact_publisher.audiences_source.AudiencesArtifactRenderer.campaign_requests",
           "adapters.jobs.preset_artifact_publisher.audiences_source.AudiencesArtifactRenderer._scopes",
           "adapters.jobs.preset_artifact_publisher.audiences_source.AudiencesArtifactRenderer._roster",
           "adapters.jobs.preset_artifact_publisher.audiences_source.AudiencesArtifactRenderer._plan",
@@ -1122,33 +1139,31 @@
         "fixture": {
           "reference_instant": "2025-01-01T00:00:00+00:00",
           "window": "2024-12-01..2024-12-31",
+          "prior": "2024-11-01..2024-11-30",
           "marketplaces": "1",
           "profile_scopes": "3",
-          "campaign_bound": "7",
-          "write_seconds": "16.6",
-          "served": "every profile and delivery contract for the period",
-          "roster_reads_per_scope": "profile 1, campaign 3",
+          "served": "every profile contract for the period; pack 8 and its prior month",
+          "roster_reads": "profile 1, campaign history 2",
           "roster_port": "counting port answering an empty roster"
         },
-        "output": "  audiences#last_complete_month: count 61, phases [1, 10, 7, 7, 36], write 16.6 s [projection], 286.6 s <= 300 s (contract budget, re-certified), source horizon 218 d"
+        "output": "  audiences#last_complete_month: count 24, phases [7, 16, 1], write 450.0 s [derived], 600.0 s <= 600 s (contract budget, re-certified), source horizon 218 d"
       }
     }
   ],
   "totals": {
     "n": 20,
-    "sum_budget_seconds": 3540,
-    "root_bound_seconds": 3600,
-    "winner_policy_seconds": 7200,
-    "audiences_roster_fan_out_width": 10
+    "sum_budget_seconds": 3840,
+    "root_bound_seconds": 3900,
+    "winner_policy_seconds": 7200
   },
   "lane_result": {
     "n": 20,
     "gray_code_steps": 524288,
     "loads_seconds": [
-      1276.0,
-      1276.0
+      1432.4,
+      1433.0
     ],
-    "makespan_seconds": 1276.0
+    "makespan_seconds": 1433.0
   },
   "o3_scope_families": [
     {
@@ -3275,9 +3290,9 @@
         "key": "audiences#last_complete_month",
         "source_horizon_days": 218,
         "reads": 14,
-        "blob_bytes": 3787,
+        "blob_bytes": 3868,
         "item_sk": "BAKE_SOURCE#audiences#last_complete_month",
-        "item_bytes": 9996,
+        "item_bytes": 7403,
         "scope_reads": [
           {
             "scope": "dim_audience_segment|amazon_retail_us|amazon_us|lens-3957043c3d757ec09641cf2c|periodic|iso_gregorian|0|UTC|source_business_date",
@@ -3357,30 +3372,30 @@
       "sk": "BAKE_SOURCE#scorecard#30d",
       "bytes": 71062
     },
-    "aggregate_bytes": 833504,
-    "oracle_aggregate_bytes": 808928,
+    "aggregate_bytes": 830911,
+    "oracle_aggregate_bytes": 806335,
     "headroom": {
       "item_bytes": 328938,
-      "aggregate_bytes": 3166496,
-      "vs_previous_aggregate_bytes": 381455,
+      "aggregate_bytes": 3169089,
+      "vs_previous_aggregate_bytes": 384048,
       "vs_previous_largest_item_bytes": 22471
     },
     "by_history_days": {
       "85": {
         "largest_item_bytes": 56317,
-        "aggregate_bytes": 618140
+        "aggregate_bytes": 615547
       },
       "463": {
         "largest_item_bytes": 71062,
-        "aggregate_bytes": 828744
+        "aggregate_bytes": 826151
       },
       "731": {
         "largest_item_bytes": 71062,
-        "aggregate_bytes": 832380
+        "aggregate_bytes": 829787
       },
       "1257": {
         "largest_item_bytes": 71062,
-        "aggregate_bytes": 833504
+        "aggregate_bytes": 830911
       }
     },
     "invariance": {
@@ -3395,7 +3410,7 @@
     "negative_control_unbounded": {
       "item_over_400000_at_history_days": 670,
       "aggregate_over_4000000_at_history_days": 381,
-      "aggregate_bytes_at_measured_history": 1083300
+      "aggregate_bytes_at_measured_history": 1080711
     },
     "over_cap_plans": []
   }

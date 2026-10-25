@@ -4,7 +4,7 @@
 from typing import Any, Final
 
 CONTRACT_REVISION: Final = 2
-CONTRACT_DIGEST: Final = 'e1296feb9b9d3bdb79bceb5f99610ee518874d8abdc61360c5d227bd8349a01f'
+CONTRACT_DIGEST: Final = '169b1e59559aebd45a47ac1651e8569c6ad111b2000afe7eccfa538dc09bd034'
 PROTOCOL_VERSION: Final = 'v1'
 AUTHORITY_EPOCHS: Final[Any] = (
 {'shadow': 0, 'graph': 1}
@@ -110,14 +110,14 @@ BAKE_TASKS: Final[Any] = (
                     'reach#last_complete_month': 180,
                     'reach#last_complete_quarter': 150,
                     'retention#latest_with_current_publication': 90,
-                    'audiences#last_complete_month': 300},
+                    'audiences#last_complete_month': 600},
  'write_seconds': {'campaigns': 16.6,
                    'retail-health': 16.6,
                    'scorecard': 16.6,
                    'new-customers': 16.6,
                    'reach': 16.6,
                    'retention': 16.6,
-                   'audiences': 16.6},
+                   'audiences': 450.0},
  'certified_plan_counts': {'campaigns#1d': 26,
                            'campaigns#7d': 26,
                            'campaigns#14d': 30,
@@ -137,7 +137,7 @@ BAKE_TASKS: Final[Any] = (
                            'reach#last_complete_month': 16,
                            'reach#last_complete_quarter': 8,
                            'retention#latest_with_current_publication': 6,
-                           'audiences#last_complete_month': 61},
+                           'audiences#last_complete_month': 24},
  'final_authority_members': 10,
  'final_task_condition_members': 1,
  'final_written_pointer_members': 3,

@@ -67,7 +67,7 @@ def _settings() -> PresetArtifactBakeSettings:
         athena_workgroup="fictional-workgroup",
         semantic_v2_current_database="fictional-database",
         athena_result_reuse_max_age_minutes=1,
-        athena_query_batch_max_concurrency=1,
+        athena_query_batch_max_concurrency=4,
     )
 
 
@@ -439,36 +439,3 @@ def test_a_dependency_failure_on_the_pin_probe_still_re_raises() -> None:
         )
     with pytest.raises(DependencyError):
         BakePinnedNames(cast("Any", _Refusing(error))).public_names("campaign_key", (), _SEPTEMBER)
-
-
-def test_the_audiences_runtime_campaign_bound_is_the_certified_bound() -> None:
-    """Owner stopgap 2026-10-17: the runtime and the certifier read one campaign bound.
-
-    So the renderer's real query count is the certified count. A known limit, tracked by
-    the outcome-first redesign.
-    """
-    from adapters.jobs.preset_artifact_publisher import bakeability  # noqa: PLC0415
-    from domain.operations.execution_graph_release import BakeRoster  # noqa: PLC0415
-
-    def one_marketplace(_root: pathlib.Path) -> int:
-        return 1
-
-    with pytest.MonkeyPatch.context() as patch:
-        patch.setenv("AWS_DEFAULT_REGION", "us-east-1")
-        patch.setattr(audiences_source, "audiences_marketplace_count", one_marketplace)
-        source = audiences_source.retained_audiences_preset_artifact_source(
-            _settings(),
-            cast("Any", None),
-            cast("Any", None),
-            BakeSourceReads(cast("Any", None), cast("Any", None)),
-        )
-    assert source is not None
-    runtime = cast("audiences_source.AudiencesArtifactRenderer", source.compiler).campaign_bound
-    certified_bound = bakeability.audiences_certified_campaign_bound(
-        1, bakeability.page_write_seconds("audiences").seconds
-    )
-    assert runtime == certified_bound
-    certified = {row.key: row.certified_plan_count for row in BakeRoster.from_contract().rows}
-    assert (
-        sum(bakeability.audiences_phases(1, runtime)) == certified["audiences#last_complete_month"]
-    )

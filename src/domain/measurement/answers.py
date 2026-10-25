@@ -70,8 +70,8 @@ from domain.measurement.rosters import (
     PinnedKey,
     RosterOutcome,
     apply_pinned_roster,
-    apply_roster,
     coarser_grain_set,
+    grade_scope_rows,
     roster_column,
     roster_lines,
 )
@@ -808,7 +808,7 @@ def plan_roster_outcome(plan: QueryPlan, measurement: Measurement) -> RosterOutc
         for figure in measurement.figures
         if (value := dict(figure.dimensions).get(column)) is not None
     )
-    return apply_roster(roster, returned, coarser)
+    return grade_scope_rows(roster, returned, coarser).outcome
 
 
 def _breakdown_total(request: AnswerRequest, measurement: Measurement) -> Decimal | int | None:

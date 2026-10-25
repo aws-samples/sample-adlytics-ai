@@ -8,8 +8,10 @@ paired control that the same census reports:
 - Start sites: `start_query_execution` is called only inside `execution.start` and
   `Stage1AthenaStartClient._start_once`.
 - In flight: no query-execution FAN-OUT exists on a sequential batch path, every Baker module
-  or a BAKE probe, outside a closed allowlist of three non-query threads. Synchronization
-  primitives are not fan-out. A recording fake drives the two statement loops behaviourally.
+  or a BAKE probe, outside a closed allowlist: three non-query threads, and the group stream's
+  producers (ADR-152), whose every statement passes the invocation's one `AthenaBatchAdmission`,
+  so its capacity stays the in-flight bound. Synchronization primitives are not fan-out. A
+  recording fake drives the two statement loops behaviourally.
 - Who reaches the wrappers: `AthenaQueryAdapter` is constructed only in a closed set of
   compositions, the Baker's only inside `AthenaBatchAdmission`; no source factory builds one.
 """
@@ -111,11 +113,14 @@ class FanOutSite:
 _INGEST = "adapters.jobs.ingest_delivery.__main__._Heartbeat.start"
 _REPROCESS = "adapters.jobs.reprocess_semantic_v2.__main__.ReprocessHeartbeat.start"
 _GATE = "validation.probe_ingestion_traceability_gate._lifecycle_under_explanation_load"
+_GROUP_STREAM = "adapters.jobs.preset_artifact_publisher.group_stream.GroupStreams.start"
+"""One producer per streamed read; each read's statement is admitted by the Baker's admission."""
 _THREAD_KEYWORDS = {
     _INGEST: (("name", "'ingest-delivery-heartbeat'"), ("target", "self._run")),
     _REPROCESS: (("name", "'reprocess-semantic-v2-heartbeat'"), ("target", "self._run")),
+    _GROUP_STREAM: (("name", "'group-stream'"), ("target", "context.run")),
 }
-ALLOWLIST = frozenset({_INGEST, _REPROCESS, _GATE})
+ALLOWLIST = frozenset({_INGEST, _REPROCESS, _GATE, _GROUP_STREAM})
 
 _CONSTRUCTORS = {
     "concurrent.futures.ThreadPoolExecutor": "executor",

@@ -118,6 +118,9 @@ DEEP_INPUT_REVISIONS: Final[tuple[tuple[str, str], ...]] = (
     # (ADR-145). That branch's own 2026-10-21.1, 2026-10-22.1 and 2026-10-22.2 never deployed and
     # collided with the names above, so they fold into this one entry.
     ("2026-10-23.1", "5cfa98be72392bd3bc65c0cc5dc4e8885639ee568adf5385c7943d1517620b77"),
+    # Scale limits r2a (ADR-141, ADR-152): Audiences v2 serves every DSP campaign as paged parts
+    # and its over-bound page-level body is deleted.
+    ("2026-10-25.1", "d015211205cdef0298a73db06e5bd0d67a91c4cf76cc2c785e1b15bbeb4d6dd0"),
 )
 DEEP_INPUT_REVISION: Final[str] = DEEP_INPUT_REVISIONS[-1][0]
 """The revision every deep cache key carries (``#DEEPINPUT#<revision>``)."""
