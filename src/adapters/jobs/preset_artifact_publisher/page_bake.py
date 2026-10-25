@@ -50,7 +50,10 @@ from adapters.outbound.telemetry.graph_metrics import (
 )
 from adapters.outbound.telemetry.reporting import LogSeverity, OperationLog, report_operation
 from adapters.outbound.telemetry.tracing import BAKE_ISOLATED_REFUSAL, span, trace_boundary
+from domain.operations.bake_memory import BAKER_MEMORY_BYTES, MIB
 from domain.operations.bake_refusals import (
+    MEMORY_SIZED,
+    OPERATOR_ACTIONS,
     IsolatedRefusal,
     IsolatedRefusalReason,
     RefusalGroup,
@@ -441,11 +444,22 @@ def _emit_group(  # noqa: PLR0913, PLR0917 -- one group, its lineage and its thr
                     "count": group.count,
                     "replayed": replayed,
                     **figures,
+                    **_operator_action(group),
                 },
             ),
             logger,
         )
     metric(group.refusal_class.value, group.count)
+
+
+def _operator_action(group: RefusalGroup) -> dict[str, object]:
+    """Name what an operator does about a limit, and the memory a memory-sized one assumed."""
+    action = OPERATOR_ACTIONS.get(group.reason)
+    if action is None:
+        return {}
+    if group.reason not in MEMORY_SIZED:
+        return {"operator_action": action}
+    return {"operator_action": action, "memory_mib": BAKER_MEMORY_BYTES // MIB}
 
 
 def emit_isolated_refusals(  # noqa: PLR0913 -- the sinks, the groups, their lineage, replay

@@ -4,13 +4,16 @@
 Retail health shows its top 50 products at any catalog size (ADR-143, owner decision
 2026-10-18). Ranking in Python needed every product's series rows first; ranking in the query
 returns only the `n` shown, so the rows returned and the statements run are constant in the
-catalog.
+catalog. The same statement states what the page says about the whole population (ADR-152):
+its count, declared sums and whether any of it was withheld, per partition, so no read of
+every key reaches the bake.
 
 **One home for the rank rule.** Which metric ranks, over which window, among which population,
 in which order and with which tie key: all of it is this value. The SQL compiler renders
 `RANK_ORDER` as the `ranked` CTE's `ORDER BY`; `RankedRestriction.order` renders the same list
 as a Python sort key for the at most `n` rows the ranked-keys read returns. A golden test holds
-the two renderings equal.
+the two renderings equal. Ranking by change (`RankBy.ABS_CHANGE`, Retail's movers) needs no
+second order: its rank value is |current - prior|, so the one order list covers both rules.
 
 Publish-time only. It is not a tool input, so chat can never reach it.
 """
@@ -33,8 +36,12 @@ __all__ = [
     "RANKED_INVARIANT",
     "RANKING_INELIGIBLE",
     "RANK_ORDER",
+    "RankBy",
     "RankDirection",
     "RankField",
+    "RankablePlans",
+    "RankedMembership",
+    "RankedPopulation",
     "RankedProjection",
     "RankedRead",
     "RankedRestriction",
@@ -58,6 +65,24 @@ class RankedProjection(StrEnum):
     """One row per ranked key, including a key with no rank-metric row (its value is 0)."""
     SEMI_JOIN = "semi_join"
     """The request's own fact read, keeping only rows whose key is ranked."""
+
+
+class RankBy(StrEnum):
+    """What a key's rank value is."""
+
+    VALUE = "value"
+    """The rank metric's sum over the rank window (0 without a row)."""
+    ABS_CHANGE = "abs_change"
+    """|rank window sum - change window sum| of the rank metric (Retail's movers)."""
+
+
+class RankedMembership(StrEnum):
+    """Which population keys may rank, and so which the population count counts."""
+
+    ANY_ROW = "any_row"
+    """Every key with a row in any population read, including a zero rank value."""
+    POSITIVE = "positive"
+    """Only keys whose rank value is above 0 (a gateway product, a campaign that spent)."""
 
 
 class RankField(StrEnum):
@@ -87,12 +112,38 @@ class RankedValue:
 
 
 @dataclass(frozen=True, slots=True)
+class RankedPopulation:
+    """What the ranked statement says about one partition's whole population (ADR-152).
+
+    `partition` holds the partition's canonical column values in `partition_by` order (empty when
+    unpartitioned); `count` its members; `sums` each declared population sum, by metric, over the
+    rank window; `suppressed` whether any population row was withheld.
+    """
+
+    partition: tuple[str, ...]
+    count: int
+    sums: tuple[tuple[str, Decimal], ...]
+    suppressed: bool
+
+    def __post_init__(self) -> None:
+        if isinstance(self.count, bool) or self.count < 0:
+            raise ValueError("a ranked population counts zero or more keys.")
+
+    def sum_of(self, metric: str) -> Decimal:
+        """Return one declared population sum."""
+        return dict(self.sums)[metric]
+
+
+@dataclass(frozen=True, slots=True)
 class RankedRestriction:
     """The top `n` keys of a population, ranked by one metric over one window.
 
     `key` is the ranked grain's dimension name ("product"). The population is every key with a
     row in any `population_metrics` fact over any `population_windows` window; a key's rank value
-    is the rank metric's sum over `rank_window`, or 0 for a key without one.
+    is the rank metric's sum over `rank_window` (0 without a row), or with `ABS_CHANGE` the
+    absolute difference from its sum over `change_window`. `partition_by` names grains each
+    keeping its own top `n` and count; `membership` says whether a zero rank value is a member;
+    `population_sums` are population metrics summed over `rank_window` (unpartitioned only).
     """
 
     key: str
@@ -102,6 +153,11 @@ class RankedRestriction:
     population_windows: tuple[DateRange, ...]
     n: int
     projection: RankedProjection
+    rank_by: RankBy = RankBy.VALUE
+    change_window: DateRange | None = None
+    partition_by: tuple[str, ...] = ()
+    membership: RankedMembership = RankedMembership.ANY_ROW
+    population_sums: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if isinstance(self.n, bool) or self.n < 1:
@@ -116,6 +172,26 @@ class RankedRestriction:
             raise ValueError("a ranked restriction's population repeats a window.")
         if self.rank_window not in self.population_windows:
             raise ValueError("a ranked restriction ranks within its population's windows.")
+        self._check_change()
+        if len(set(self.partition_by)) != len(self.partition_by) or self.key in self.partition_by:
+            raise ValueError(
+                "a ranked restriction partitions by distinct grains other than its key."
+            )
+        if len(set(self.population_sums)) != len(self.population_sums):
+            raise ValueError("a ranked restriction's population sums repeat a metric.")
+        if not set(self.population_sums) <= set(self.population_metrics):
+            raise ValueError("a ranked restriction sums only its population metrics.")
+        if self.population_sums and self.partition_by:
+            raise ValueError("a partitioned ranked restriction declares no population sums.")
+
+    def _check_change(self) -> None:
+        if (self.rank_by is RankBy.ABS_CHANGE) != (self.change_window is not None):
+            raise ValueError("a ranked restriction names a change window exactly when by change.")
+        if self.change_window is not None and (
+            self.change_window not in self.population_windows
+            or self.change_window == self.rank_window
+        ):
+            raise ValueError("a change window is another of the population's windows.")
 
     @property
     def population(self) -> tuple[tuple[str, DateRange], ...]:
@@ -147,9 +223,10 @@ class RankedRestriction:
 class RankedRead:
     """A ranked restriction bound to the exact publications of every read it ranks over.
 
-    `population` and `rank` are the very bound plans the batch's own compares read, so the
+    `population`, `rank` and `change` are the very bound plans the batch's own reads read, so the
     statement's population is fenced to the publications the stated total was measured from.
-    `key_column` and `marketplace_column` are the canonical columns of the ranked grain.
+    `key_column` and `marketplace_column` are the canonical columns of the ranked grain;
+    `partition_columns` those of `partition_by`, in order.
     """
 
     restriction: RankedRestriction
@@ -157,10 +234,25 @@ class RankedRead:
     marketplace_column: str
     population: tuple[BoundQueryPlan, ...]
     rank: BoundQueryPlan
+    change: BoundQueryPlan | None = None
+    partition_columns: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if len(self.population) != len(self.restriction.population):
             raise ValueError("a ranked read binds exactly its declared population.")
+        if (self.change is None) != (self.restriction.change_window is None):
+            raise ValueError("a ranked read binds its change read exactly when it ranks by change.")
+        if len(self.partition_columns) != len(self.restriction.partition_by):
+            raise ValueError("a ranked read names one column per partition grain.")
+
+    @property
+    def sums(self) -> tuple[BoundQueryPlan, ...]:
+        """The bound population reads each declared population sum is summed over, in order."""
+        declared = self.restriction.population
+        return tuple(
+            self.population[declared.index((metric, self.restriction.rank_window))]
+            for metric in self.restriction.population_sums
+        )
 
 
 def _refuse(problem: str, metric: str) -> InvariantError:
@@ -179,37 +271,54 @@ def _require_simple_additive(plan: QueryPlan) -> None:
         raise _refuse("a joined read", metric)
     if plan.roster is not None:
         raise _refuse("a rostered read", metric)
-    if plan.suppression_columns:
-        raise _refuse("a fact that can withhold rows", metric)
     if plan.periodic:
         raise _refuse("a periodic read", metric)
 
 
-def require_rankable(  # noqa: PLR0913 -- the restriction and the four plans it ranks over
-    restriction: RankedRestriction,
-    *,
-    restricted: QueryPlan,
-    rank: QueryPlan,
-    population: tuple[QueryPlan, ...],
-    key_columns: tuple[str, str],
-) -> None:
+@dataclass(frozen=True, slots=True)
+class RankablePlans:
+    """The planned reads one ranked restriction ranks over, checked by `require_rankable`.
+
+    `columns` is the ranked grain's canonical columns: each partition grain's, then the key's,
+    then the marketplace's.
+    """
+
+    restricted: QueryPlan
+    rank: QueryPlan
+    population: tuple[QueryPlan, ...]
+    columns: tuple[str, ...]
+    change: QueryPlan | None = None
+
+
+def require_rankable(restriction: RankedRestriction, plans: RankablePlans) -> None:
     """Refuse a restriction its plans can't rank exactly (closed, checked at plan time).
 
-    The rank metric and every population metric are simple, one-measure, unjoined, unrostered
-    reads of facts that can't withhold; every read groups by the ranked key and the marketplace,
-    so the population and the restricted rows share one key shape.
+    The rank metric and every population metric are simple, one-measure, unjoined, unrostered,
+    daily reads; every read groups by the partition grains, the ranked key and the marketplace,
+    so the population and the restricted rows share one key shape. A fact that can withhold is
+    rankable: the statement reports the population's withholding (ADR-152), and a caller
+    refuses a suppressed answer as it always has.
     """
-    key_column, marketplace_column = key_columns
+    rank, change = plans.rank, plans.change
     if rank.metric.name != restriction.rank_metric or rank.window != restriction.rank_window:
         raise _refuse("the rank plan is not the declared rank read", rank.metric.name)
+    if (change is None) != (restriction.change_window is None) or (
+        change is not None
+        and (
+            change.metric.name != restriction.rank_metric
+            or change.window != restriction.change_window
+        )
+    ):
+        raise _refuse("the change plan is not the declared change read", rank.metric.name)
     declared = restriction.population
-    if tuple((item.metric.name, item.window) for item in population) != declared:
+    if tuple((item.metric.name, item.window) for item in plans.population) != declared:
         raise _refuse("the population plans are not the declared population", rank.metric.name)
-    for item in (rank, *population):
+    for item in (rank, *(() if change is None else (change,)), *plans.population):
         _require_simple_additive(item)
-        if item.group_by != (key_column, marketplace_column):
+        if item.group_by != plans.columns:
             raise _refuse("a population read not at the ranked grain", item.metric.name)
+    restricted = plans.restricted
     if restricted.join is not None or restricted.roster is not None:
         raise _refuse("a joined or rostered restricted read", restricted.metric.name)
-    if key_column not in restricted.group_by or marketplace_column not in restricted.group_by:
+    if not set(plans.columns) <= set(restricted.group_by):
         raise _refuse("a restricted read without the ranked key", restricted.metric.name)

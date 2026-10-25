@@ -5,6 +5,7 @@ proposed at 50,000 rows, with the final value set by a dev probe. Chat is unchan
 same day the owner also approved ranking Retail health's top 50 inside the query (decision 7). The
 probe ran on dev on 2026-10-18 and set `BAKE_MAX_ROWS` to 10,000 (decision 8).
 
+> **Proposed amendment, 2026-10-25.** [ADR-152](adr-152-read-page-sized-answers-in-sql-with-no-arbitrary-row-ceiling.md) (Proposed) would amend decisions 6 and 8: `BAKE_MAX_ROWS` is derived from the Baker's memory (`bake_max_rows`, 10,835 at 1,024 MiB) instead of a probed constant, governed-taxonomy axes count at their own size, and only entity-wide reads still hold a population. Decision 7's ranked restriction also states the population's count, sums and withholding, ranks by change and per partition. This decision stays as written until ADR-152 is accepted.
 ## Context
 Every page bake asks for at most 500 rows per question. That number is chat's narration rule: a
 breakdown of 500 rows is "already more than a model can say anything true about". A compare wider

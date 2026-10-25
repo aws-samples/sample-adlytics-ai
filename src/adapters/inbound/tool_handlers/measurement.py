@@ -117,7 +117,14 @@ from domain.measurement.planning import (
     served_grain_set,
 )
 from domain.measurement.publications import BoundQueryPlan
-from domain.measurement.ranking import RankedRead, RankedRestriction, require_rankable
+from domain.measurement.ranking import (
+    RankablePlans,
+    RankedPopulation,
+    RankedProjection,
+    RankedRead,
+    RankedRestriction,
+    require_rankable,
+)
 from domain.measurement.rosters import (
     ROSTER_REFUSED,
     ROSTER_WITHDRAWN,
@@ -308,6 +315,10 @@ class MeasurementTool(StrEnum):
         return self is MeasurementTool.COMPARE_WINDOWS
 
 
+_RANKED_TOOLS = frozenset({MeasurementTool.METRIC_BY_GRAIN, MeasurementTool.COMPARE_WINDOWS})
+"""The publish-time tools a ranked read may be: a breakdown, or a semi-joined comparison."""
+
+
 @dataclass(frozen=True, slots=True)
 class MeasurementToolRequest:
     """One measurement tool invocation.
@@ -467,11 +478,15 @@ class MeasurementToolRequest:
             )
         if (self.ranked is not None or self.reduction is not None) and (
             self.row_ceiling is RowCeiling.NARRATION
-            or self.tool is not MeasurementTool.METRIC_BY_GRAIN
+            or self.tool not in _RANKED_TOOLS
+            or (self.tool is not MeasurementTool.METRIC_BY_GRAIN and not self._semi_joined)
         ):
             raise ValidationError(
                 code=BAD_REQUEST,
-                description="A ranked or folded read is a publish-time breakdown of one window.",
+                description=(
+                    "A ranked or folded read is a publish-time breakdown of one window, or a "
+                    "comparison restricted to ranked keys."
+                ),
             )
         if self.prior_window is not None and self.prior_window.end >= self.window.start:
             raise ValidationError(
@@ -482,6 +497,15 @@ class MeasurementToolRequest:
                     "would double-count the days they share."
                 ),
             )
+
+    @property
+    def _semi_joined(self) -> bool:
+        """Whether this is a ranked read restricted to its ranked keys (never a fold)."""
+        return (
+            self.reduction is None
+            and self.ranked is not None
+            and self.ranked.projection is RankedProjection.SEMI_JOIN
+        )
 
     @property
     def context(self) -> MeasurementContext:
@@ -613,12 +637,17 @@ class PreparedMeasurementPlan:
 
 @dataclass(frozen=True, slots=True)
 class PreparedRanking:
-    """A ranked request's planned rank and population reads, found in its batch at execution."""
+    """A ranked request's planned rank, change and population reads, found in its batch.
+
+    `columns` is the ranked grain's canonical columns: each partition's, the key's, the
+    marketplace's.
+    """
 
     restriction: RankedRestriction
     rank: QueryPlan
     population: tuple[QueryPlan, ...]
-    key_columns: tuple[str, str]
+    columns: tuple[str, ...]
+    change: QueryPlan | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -731,6 +760,8 @@ class PresentationMeasurementAnswerSlot:
     logical: QueryPlan
     answer: ShapedResponse | None
     folded: FoldResult[Any] | None = None
+    population: tuple[RankedPopulation, ...] = ()
+    """A ranked-keys slot's whole population per partition (ADR-152); empty otherwise."""
 
     def __post_init__(self) -> None:
         if self.answer is not None and self.folded is not None:
@@ -794,14 +825,16 @@ def _prepared_ranking(request: MeasurementToolRequest, restricted: QueryPlan) ->
     that window, so it equals the batch's own read of it (`_ranked_read` finds it there).
     """
     restriction = restricted_ranking(request)
-    key_columns = (GRAIN_COLUMNS[restriction.key], GRAIN_COLUMNS["marketplace"])
+    grains = (*restriction.partition_by, restriction.key, "marketplace")
 
     def _planned(metric: str, window: DateRange) -> QueryPlan:
         read = replace(
             request,
+            tool=MeasurementTool.METRIC_BY_GRAIN,
             metric_name=metric,
             window=window,
-            grains=(restriction.key, "marketplace"),
+            prior_window=None,
+            grains=grains,
             ranked=None,
             reduction=None,
         )
@@ -809,16 +842,17 @@ def _prepared_ranking(request: MeasurementToolRequest, restricted: QueryPlan) ->
         later, _ = _plan_requests(read, _lens_defaults(read, shape))
         return plan(read.catalog, later, shape)
 
-    rank = _planned(restriction.rank_metric, restriction.rank_window)
-    population = tuple(_planned(metric, window) for metric, window in restriction.population)
-    require_rankable(
-        restriction,
+    plans = RankablePlans(
         restricted=restricted,
-        rank=rank,
-        population=population,
-        key_columns=key_columns,
+        rank=_planned(restriction.rank_metric, restriction.rank_window),
+        population=tuple(_planned(metric, window) for metric, window in restriction.population),
+        columns=tuple(GRAIN_COLUMNS[name] for name in grains),
+        change=None
+        if restriction.change_window is None
+        else _planned(restriction.rank_metric, restriction.change_window),
     )
-    return PreparedRanking(restriction, rank, population, key_columns)
+    require_rankable(restriction, plans)
+    return PreparedRanking(restriction, plans.rank, plans.population, plans.columns, plans.change)
 
 
 def restricted_ranking(request: MeasurementToolRequest) -> RankedRestriction:
@@ -1064,7 +1098,8 @@ def _ranked_read(
                 return bound
         return False
 
-    found = tuple(_bound(item) for item in (ranking.rank, *ranking.population))
+    change = () if ranking.change is None else (ranking.change,)
+    found = tuple(_bound(item) for item in (ranking.rank, *change, *ranking.population))
     if any(item is False for item in found):
         raise InvariantError(
             RANKED_POPULATION_UNBOUND,
@@ -1073,13 +1108,16 @@ def _ranked_read(
         )
     if any(item is None for item in found):
         return None
-    rank, *population = cast("tuple[BoundQueryPlan, ...]", found)
+    bound = cast("tuple[BoundQueryPlan, ...]", found)
+    *partitions, key, marketplace = ranking.columns
     return RankedRead(
         restriction=ranking.restriction,
-        key_column=ranking.key_columns[0],
-        marketplace_column=ranking.key_columns[1],
-        population=tuple(population),
-        rank=rank,
+        key_column=key,
+        marketplace_column=marketplace,
+        population=bound[1 + len(change) :],
+        rank=bound[0],
+        change=bound[1] if change else None,
+        partition_columns=tuple(partitions),
     )
 
 
@@ -1206,6 +1244,7 @@ def _shaped_slot(  # noqa: PLR0913, PLR0917 -- one slot, its evidence, tooling a
         expected.role,
         expected.logical,
         answer_measurement(_slot_answer_request(ready, inspected, result.rows, result)),
+        population=result.population,
     )
 
 

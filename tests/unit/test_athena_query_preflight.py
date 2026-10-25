@@ -370,3 +370,91 @@ def test_an_object_target_makes_its_s3_client_once_at_construction(
     )
     AthenaQueryAdapter(paged, cast("AthenaClient", object()))
     assert len(made) == 1
+
+
+# --- ADR-152: a ranked-keys statement's population columns are lifted, never answered --------
+
+_RANKED_COLUMNS = (
+    "channel_key",
+    "amazon_asin",
+    "value_0",
+    "population_count",
+    "population_suppressed",
+    "population_sum_0",
+)
+_RANKED_CELLS: list[list[str | None]] = [
+    ["ch_a", "k1", "5", "2", "0", "9"],
+    ["ch_a", "k2", "4", "2", "0", "9"],
+    ["ch_b", "k3", "1", "1", "1", "1"],
+]
+
+
+def _ranked_adapter(
+    monkeypatch: pytest.MonkeyPatch, transport: ResultTransport, cells: list[list[str | None]]
+) -> AthenaQueryAdapter:
+    _stub_statement(monkeypatch)
+    target = AthenaQueryTarget("unit-workgroup", "unit-current", 0, INTERACTIVE_WAIT, transport)
+    if transport is ResultTransport.OBJECT:
+        lines = [",".join(f'"{name}"' for name in _RANKED_COLUMNS)]
+        lines.extend(",".join(f'"{value}"' for value in row) for row in cells)
+        s3, _ = _s3_with(("\n".join(lines) + "\n").encode())
+        return AthenaQueryAdapter(target, cast("AthenaClient", object()), s3=s3)
+    return AthenaQueryAdapter(target, _paged_athena(cells))
+
+
+def _ranked_request() -> Any:
+    from domain.measurement.ranking import RankedProjection  # noqa: PLC0415
+
+    logical = SimpleNamespace(
+        metric=SimpleNamespace(name="spend"),
+        facts_read=("ads",),
+        selected_columns=("channel_key", "amazon_asin"),
+        result_aliases=("value_0",),
+        grain=SimpleNamespace(dimensions=("product",)),
+    )
+    ranked = SimpleNamespace(
+        restriction=SimpleNamespace(
+            projection=RankedProjection.RANKED_KEYS,
+            population_sums=("spend",),
+            rank_metric="spend",
+        ),
+        partition_columns=("channel_key",),
+    )
+    return SimpleNamespace(plan=SimpleNamespace(logical=logical), max_rows=10, ranked=ranked)
+
+
+@pytest.mark.covers("ADR-152")
+@pytest.mark.parametrize("transport", [ResultTransport.PAGED, ResultTransport.OBJECT])
+def test_a_ranked_keys_read_lifts_its_population_per_partition_on_either_transport(
+    monkeypatch: pytest.MonkeyPatch, transport: ResultTransport
+) -> None:
+    """The rows keep only the plan's columns; one partition's withholding marks the read."""
+    from domain.measurement.ranking import RankedPopulation  # noqa: PLC0415
+
+    held = _ranked_adapter(monkeypatch, transport, _RANKED_CELLS).run(_ranked_request())
+    assert held.rows == (
+        {"channel_key": "ch_a", "amazon_asin": "k1", "value_0": Decimal(5)},
+        {"channel_key": "ch_a", "amazon_asin": "k2", "value_0": Decimal(4)},
+        {"channel_key": "ch_b", "amazon_asin": "k3", "value_0": Decimal(1)},
+    )
+    assert held.population == (
+        RankedPopulation(("ch_a",), 2, (("spend", Decimal(9)),), suppressed=False),
+        RankedPopulation(("ch_b",), 1, (("spend", Decimal(1)),), suppressed=True),
+    )
+    assert held.suppression.rows_suppressed is True
+    assert held.suppression.reason is not None and "population" in held.suppression.reason
+
+
+@pytest.mark.covers("ADR-152")
+@pytest.mark.parametrize("transport", [ResultTransport.PAGED, ResultTransport.OBJECT])
+def test_population_figures_that_differ_within_a_partition_are_a_ranking_invariant(
+    monkeypatch: pytest.MonkeyPatch, transport: ResultTransport
+) -> None:
+    """Never a figure picked from one row: the SQL and the declaration disagree."""
+    from domain.measurement.ranking import RANKED_INVARIANT  # noqa: PLC0415
+
+    drifted = [list(row) for row in _RANKED_CELLS]
+    drifted[1][3] = "3"
+    with pytest.raises(InvariantError) as raised:
+        _ranked_adapter(monkeypatch, transport, drifted).run(_ranked_request())
+    assert raised.value.code == RANKED_INVARIANT

@@ -262,3 +262,16 @@ def test_quarter_manifest_absent_is_a_limit_and_goes_to_the_limit_metric() -> No
     assert isolated_refusal_metric("dependency") == BAKE_ISOLATED_REFUSAL_LIMIT_METRIC
     with pytest.raises(ValueError, match="limit, dependency or data"):
         isolated_refusal_metric("defect")
+
+
+@pytest.mark.covers("ADR-152")
+def test_every_limit_reason_names_its_operator_action_and_no_other_reason_does() -> None:
+    from domain.operations.bake_refusals import MEMORY_SIZED, OPERATOR_ACTIONS  # noqa: PLC0415
+
+    limits = {reason for reason, kind in REFUSAL_CLASSES.items() if kind is RefusalClass.LIMIT}
+    assert set(OPERATOR_ACTIONS) == limits
+    assert all(text.strip() for text in OPERATOR_ACTIONS.values())
+    assert MEMORY_SIZED == {R.ROWS_OVER_CEILING, R.POPULATION_OVER_CEILING} <= limits
+    assert all(
+        OPERATOR_ACTIONS[reason].startswith("raise the Baker memory") for reason in MEMORY_SIZED
+    )

@@ -36,6 +36,7 @@ from domain.operations.bake_refusals import (
 )
 from domain.presentation.preset_artifacts import MAX_PRESET_ARTIFACT_BYTES
 from domain.semantics.time import DateRange
+from domain.shared_kernel.errors import InvariantError
 
 pytestmark = pytest.mark.unit
 
@@ -126,14 +127,14 @@ def test_every_refusal_construction_in_the_tree_uses_its_reasons_own_keys() -> N
     # The scan reaches the sources, the stage and the rosters, not only the page execution.
     scanned = {relative.rsplit("/", 1)[-1] for _, relative in sites}
     assert {
+        "audiences_source.py",
         "isolated_refusals.py",
         "page_bake.py",
         "preset_artifacts.py",
-        "retail_source.py",
-        "scorecard_source.py",
         "segment_roster.py",
-        "spend_roster.py",
     } <= scanned
+    # ADR-152: Retail, the grouped-answer parser and the spend roster refuse nothing any more.
+    assert not {"retail_source.py", "scorecard_source.py", "spend_roster.py"} & scanned
     assert [finding for path, relative in sites for finding in scan(path, relative)] == []
 
 
@@ -211,16 +212,18 @@ def _slot(*, truncated: bool, rows: int) -> Any:
         requested_coverage_intervals=(_PERIOD,),
     )
     data = SimpleNamespace(grain=SimpleNamespace(dimensions=("fictional",)), values=())
-    return SimpleNamespace(answer=SimpleNamespace(metadata=metadata, data=data))
+    logical = SimpleNamespace(metric=SimpleNamespace(name="fictional_metric"))
+    return SimpleNamespace(answer=SimpleNamespace(metadata=metadata, data=data), logical=logical)
 
 
-def test_a_truncated_grouped_answer_refuses_its_page_with_the_width_it_kept() -> None:
-    """New customers, Reach, Retention and Scorecard parse every grouped answer here."""
-    with pytest.raises(IsolatedRefusal) as refused:
-        parse_grouped_answer(_slot(truncated=True, rows=10_000), _PERIOD, ())
-    assert (refused.value.reason, dict(refused.value.refusal_context)) == (
-        IsolatedRefusalReason.ROWS_OVER_CEILING,
-        {"max_rows": 10_000},
+def test_a_truncated_grouped_answer_is_a_defect_never_a_refusal() -> None:
+    """ADR-152: New customers, Reach, Retention and Scorecard read axis-bounded answers here."""
+    with pytest.raises(InvariantError) as raised:
+        parse_grouped_answer(_slot(truncated=True, rows=50), _PERIOD, ())
+    assert not isinstance(raised.value, IsolatedRefusal)
+    assert (str(raised.value.code), raised.value.context["max_rows"]) == (
+        "ADLY-PRESET_ARTIFACT_BAKE-0006",
+        50,
     )
     # Paired: an untruncated but incoherent answer is still None (the page bakes nothing).
     assert parse_grouped_answer(_slot(truncated=False, rows=1), _PERIOD, ()) is None

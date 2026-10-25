@@ -4,7 +4,7 @@
 from typing import Any, Final
 
 CONTRACT_REVISION: Final = 2
-CONTRACT_DIGEST: Final = '4676699f113bf614e2d9fc273c74fc6901b61f55985768baa41e4308622a9f5c'
+CONTRACT_DIGEST: Final = 'e1296feb9b9d3bdb79bceb5f99610ee518874d8abdc61360c5d227bd8349a01f'
 PROTOCOL_VERSION: Final = 'v1'
 AUTHORITY_EPOCHS: Final[Any] = (
 {'shadow': 0, 'graph': 1}
@@ -122,9 +122,9 @@ BAKE_TASKS: Final[Any] = (
                            'campaigns#7d': 26,
                            'campaigns#14d': 30,
                            'campaigns#30d': 34,
-                           'retail-health#1d': 47,
-                           'retail-health#7d': 47,
-                           'retail-health#14d': 47,
+                           'retail-health#1d': 49,
+                           'retail-health#7d': 49,
+                           'retail-health#14d': 49,
                            'scorecard#7d': 19,
                            'scorecard#30d': 19,
                            'scorecard#last_complete_week': 11,

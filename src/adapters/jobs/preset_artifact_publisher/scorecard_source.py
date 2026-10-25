@@ -32,7 +32,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Final, Protocol, cast
 
 from aws_lambda_powertools import Logger
 
@@ -69,7 +69,6 @@ from adapters.outbound.telemetry.reporting import Report, report_error
 from domain.catalog.freshness import FreshnessStatus
 from domain.measurement.planning import GRAIN_COLUMNS, MEASURE_ALIAS
 from domain.narrative.shaped_response import UnitKind, Units
-from domain.operations.bake_refusals import IsolatedRefusal, IsolatedRefusalReason, RefusalScope
 from domain.presentation.alert_rules import AlertRule, validate_alert_rules
 from domain.presentation.change import (
     Change,
@@ -152,6 +151,7 @@ from domain.presentation.temporal import (
     temporal_preset_label_v2,
 )
 from domain.semantics.identity import ChannelKey, EcosystemKey, PlatformKey
+from domain.shared_kernel.errors import ErrorCode, InvariantError
 from domain.shared_kernel.values import DateRange
 from ports.outbound.publication_selection import (
     PresentationEvidenceInspectionPlan,
@@ -188,6 +188,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from ports.outbound.source_coverage import SourceCoveragePort
 
 __all__ = [
+    "BOUNDED_READ_TRUNCATED",
     "SCORECARD_PAGE_ID",
     "SCORECARD_PRESET_RENDER_FORMAT",
     "GroupedAnswer",
@@ -208,6 +209,8 @@ __all__ = [
 ]
 
 SCORECARD_PAGE_ID = "scorecard"
+BOUNDED_READ_TRUNCATED: Final = ErrorCode("PRESET_ARTIFACT_BAKE", 6)
+"""A bake read bounded by its axes came back truncated: a defect, never a refusal (ADR-152)."""
 SCORECARD_PRESET_RENDER_FORMAT = 7
 """The Scorecard renderer's output generation (ADR-070 render format). Bump on byte changes.
 
@@ -455,9 +458,8 @@ def parse_grouped_answer(
 ) -> GroupedAnswer | None:
     """Parse one grouped answer, or none when it's incoherent (wrong grain, misaligned).
 
-    A bake read cut at its declared width refuses the page it feeds (`rows_over_ceiling`,
-    ADR-142): every caller bakes nothing from a partial answer, so the page is its designed
-    absence, and the refusal carries the width (`max_rows`, the rows the read kept).
+    Every read parsed here is bounded by its axes (the governed taxonomy, the declared cells, a
+    ranked set), never by the catalog, so one cut short is a defect, not a limit (ADR-152).
     """
     shaped = answer.answer
     group = tuple(GRAIN_COLUMNS[name] for name in grains)
@@ -467,8 +469,10 @@ def parse_grouped_answer(
         )
     metadata, data = shaped.metadata, shaped.data
     if metadata.truncated:
-        raise IsolatedRefusal(
-            IsolatedRefusalReason.ROWS_OVER_CEILING, RefusalScope.PAGE, max_rows=metadata.row_count
+        raise InvariantError(
+            BOUNDED_READ_TRUNCATED,
+            "A bake read bounded by its axes returned more rows than its bound.",
+            context={"metric": answer.logical.metric.name, "max_rows": metadata.row_count},
         )
     if (
         data.grain.dimensions != group

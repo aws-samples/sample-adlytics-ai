@@ -47,12 +47,13 @@ from domain.measurement.lenses import LENS_DEFAULTS
 from domain.measurement.planning import MEASURE_ALIAS
 from domain.measurement.ranking import (
     RANKED_INVARIANT,
+    RankBy,
+    RankedMembership,
     RankedProjection,
     RankedRestriction,
     RankedValue,
 )
 from domain.narrative.shaped_response import UnitKind, Units
-from domain.operations.bake_refusals import IsolatedRefusal, IsolatedRefusalReason, RefusalScope
 from domain.presentation.change import ChangeSemantics
 from domain.presentation.compared_metrics import presentation_change_semantics, presentation_labels
 from domain.presentation.currency_display import CurrencyTextStyle, currency_display_text
@@ -155,7 +156,6 @@ from domain.shared_kernel.values import DateRange, Grain
 from ports.outbound.publication_selection import (
     PresentationEvidenceInspectionPlan,
     PresentationEvidenceInspectionRequest,
-    PresentationEvidenceInspectionResult,
 )
 from ports.outbound.query import BAKE_LONGEST_WINDOW_DAYS, BAKE_MAX_ROWS, RowCeiling
 from ports.outbound.semantic_state import ScopeHorizon, scope_horizon_policy
@@ -166,7 +166,7 @@ from ports.outbound.source_coverage import (
 )
 
 if TYPE_CHECKING:  # pragma: no cover
-    from collections.abc import Callable, Mapping
+    from collections.abc import Callable, Iterable, Mapping
     from pathlib import Path
 
     from adapters.config import PresetArtifactBakeSettings
@@ -185,7 +185,10 @@ if TYPE_CHECKING:  # pragma: no cover
     from domain.semantics.source_pack import SourcePack
     from ports.outbound.canonical import CanonicalDatasetReadPort
     from ports.outbound.preset_artifacts import PresetArtifactPointerStorePort
-    from ports.outbound.publication_selection import PresentationEvidenceInspectionPort
+    from ports.outbound.publication_selection import (
+        PresentationEvidenceInspectionPort,
+        PresentationEvidenceInspectionSlot,
+    )
     from ports.outbound.query import PeriodSeriesQueryPort
     from ports.outbound.semantic_state import (
         CurrentPublicationInspectionPort,
@@ -237,7 +240,9 @@ __all__ = [
 # 10 — the children's digests move from the parent custody's inline child set to the
 #     stage-built sibling index, and the manifest kind is versioned (ADR-145); the body bytes
 #     are format 9's.
-RETAIL_HEALTH_PRESET_RENDER_FORMAT = 10
+# 11 — the movers, the stated total and the product sums are read in SQL (ADR-152): an exact
+#     |change| tie at the third mover now keeps the lower ASIN, not the lower title.
+RETAIL_HEALTH_PRESET_RENDER_FORMAT = 11
 
 RETAIL_HEALTH_BOUNDARY = (
     "Retail actuals only. No campaign identifier, ROAS, or advertising "
@@ -248,18 +253,24 @@ _SPARK_GRAIN = Grain(("date", "product", "marketplace"))
 _PROMPTED_INSIGHT_IDS = tuple(
     slot_id for slot_id in RETAIL_HEALTH_INSIGHT_IDS if slot_id is not InsightSlotId.RETAIL_MOVERS
 )
+_AD_GROUP = ("amazon_asin", "channel_key", "marketplace_key")
 _GROUPS = {
     "total": ("marketplace_key",),
     "row": ("amazon_asin", "marketplace_key"),
     "ranked": ("amazon_asin", "marketplace_key"),
     "spark": ("date_key", "amazon_asin", "marketplace_key"),
     "trend": ("date_key", "marketplace_key"),
+    "movers": ("amazon_asin", "marketplace_key"),
+    "ad": _AD_GROUP,
 }
-_RANKED_SECTIONS = frozenset({"ranked", "spark"})
-"""The reads whose bound is semantic (the top 50, ADR-143): over it is a defect, not a refusal."""
+_RESTRICTED_SECTIONS = frozenset({"row", "spark", "movers"})
+"""Retail-actual reads restricted to ranked keys: a covered window with none of them is empty."""
 _SERIES_MAX_ROWS = RETAIL_HEALTH_MAX_ROWS * BAKE_LONGEST_WINDOW_DAYS
 """A ranked series read's bound: the 50 shown times the longest window's days (derived)."""
+_MOVERS_NAMED = 3
+"""The deterministic movers text names the top three nonzero movers."""
 _SHIPPED_REVENUE = "retail_revenue_shipped"
+_UNITS_SHIPPED = "units_shipped"
 _ASIN_NAMESPACE_PREFIX = "amazon_asin:"
 
 # What the baker MEASURES is narrower than what the artifact CARRIES: the four derived
@@ -414,6 +425,15 @@ class _ReducedRows:
 
 
 @dataclass(frozen=True, slots=True)
+class _Population:
+    """What the ranked-keys read says about every product: count and the two product sums."""
+
+    count: int
+    revenue: Decimal
+    units: Decimal
+
+
+@dataclass(frozen=True, slots=True)
 class RetailHealthArtifactRenderer:
     """Execute and reduce governed retail evidence without page/session custody."""
 
@@ -453,7 +473,6 @@ class RetailHealthArtifactRenderer:
         # The decisions below still read these results where they always did.
         hierarchy = self.hierarchy.hierarchy(period)
         reported = self.reported.reported_totals(period)
-        ad_inspected = self._ad_inspection(period, prior)
         executed = execute_presentation_batch(
             prepared,
             inspection,
@@ -462,41 +481,53 @@ class RetailHealthArtifactRenderer:
                 query_batch_max_concurrency=self.tooling.query_batch_max_concurrency,
             ),
         )
-        measured = tuple(
-            sorted(
-                {
-                    publication.publication_id.value
-                    for slot in inspection.slots
-                    if slot.bound is not None
-                    for publication in slot.bound.all_publications
-                }
+        # Every read is bounded by its meaning (the top 50, a mover, a window's days): one cut
+        # short is a defect, never a refusal (ADR-152).
+        for answer in executed.slots:
+            _require_within_bound(answer)
+        retail = tuple(
+            (answer, label, inspected)
+            for answer, label, inspected in zip(
+                executed.slots, slots, inspection.slots, strict=True
             )
+            if label[0] != "ad"
         )
+        measured = _publications(inspected for _, _, inspected in retail)
         if not measured:
             return RetailHealthRenderResult(None, ())
-        if all(
-            _covered_empty(answer, label[3])
-            for answer, label in zip(executed.slots, slots, strict=True)
-        ):
+        if all(_covered_empty(answer, label[3]) for answer, label, _ in retail):
             revision = PresetArtifactRevision.from_publication_identities(
                 measured, render_format=RETAIL_HEALTH_PRESET_RENDER_FORMAT
             )
             return RetailHealthRenderResult(_empty_artifact(period, prior, revision), measured)
         answers: dict[tuple[str, str, str], _ParsedAnswer] = {}
-        for answer, (section, metric, role, expected) in zip(executed.slots, slots, strict=True):
-            if section in _RANKED_SECTIONS:
-                _require_within_bound(answer)
+        population: _Population | None = None
+        for answer, (section, metric, role, expected), _ in retail:
             parsed = _answer_rows(answer, expected, _GROUPS[section], _MEASURED_UNIT_KINDS[metric])
+            if parsed is None and section in _RESTRICTED_SECTIONS:
+                parsed = _restricted_empty(answer, expected, answers.get(("total", metric, role)))
             if parsed is None:
                 return RetailHealthRenderResult(None, ())
             answers[(section, metric, role)] = parsed
+            if section == "ranked":
+                population = _ranked_population(answer)
         marketplaces = {key[-1] for rows, _, _ in answers.values() for key in rows}
-        if len(marketplaces) != 1:
+        if len(marketplaces) != 1 or population is None:
             return RetailHealthRenderResult(None, ())
         marketplace = next(iter(marketplaces))
         if hierarchy is None or reported is None:
             return RetailHealthRenderResult(None, ())
-        ads = self._ad_evidence(ad_inspected, period, marketplace)
+        ads = _ad_evidence(
+            tuple(
+                (answer, label, inspected)
+                for answer, label, inspected in zip(
+                    executed.slots, slots, inspection.slots, strict=True
+                )
+                if label[0] == "ad"
+            ),
+            period,
+            marketplace,
+        )
         identities = tuple(
             sorted(
                 {
@@ -514,7 +545,7 @@ class RetailHealthArtifactRenderer:
             answers, marketplace, period, prior, presentation_change_semantics(self.catalog)
         )
         totals = _totals(context)
-        reduced = _rows(context, hierarchy)
+        reduced = _rows(context, hierarchy, population)
         trend = _trend(context)
         if totals is None or reduced is None or trend is None:
             return RetailHealthRenderResult(None, ())
@@ -598,93 +629,6 @@ class RetailHealthArtifactRenderer:
         movers_ref = _movers_product_ref(artifact, reduced, children)
         return RetailHealthRenderResult(artifact, identities, children, movers_ref)
 
-    def _ad_inspection(
-        self, period: DateRange, prior: DateRange
-    ) -> tuple[RetailHealthMeasurementBatch, PresentationEvidenceInspectionResult] | None:
-        """Prepare and inspect the product ad batch, or None when it cannot be (no query)."""
-        try:
-            batch = retail_product_ad_batch(
-                RetailHealthMeasurementBatchRequest(
-                    catalog=self.catalog,
-                    contracts=self.contracts,
-                    period=period,
-                    prior_period=prior,
-                    computed_at=self.clock(),
-                )
-            )
-            inspection = self.evidence.inspect(
-                PresentationEvidenceInspectionRequest(
-                    plans=tuple(
-                        PresentationEvidenceInspectionPlan(plan.role, plan.logical)
-                        for plan in batch.prepared.plans
-                    ),
-                    contracts=batch.prepared.contracts,
-                    now=batch.prepared.now,
-                )
-            )
-        except RuntimeError, ValueError:
-            return None
-        return batch, inspection
-
-    def _ad_evidence(
-        self,
-        inspected: tuple[RetailHealthMeasurementBatch, PresentationEvidenceInspectionResult] | None,
-        period: DateRange,
-        marketplace: str,
-    ) -> _AdEvidence:
-        """Measure ad-attributed purchases and revenue per product and channel, or say why not.
-
-        One Amazon Marketing Cloud query per preset (ADR-125 consequences). It never blocks the
-        retail bake: an incomplete answer becomes each child's typed absence.
-        """
-        window = window_label(period)
-        if inspected is None:
-            return _ad_missing(window)
-        batch, inspection = inspected
-        try:
-            executed = execute_presentation_batch(
-                batch.prepared,
-                inspection,
-                MeasurementExecutionTooling(
-                    queries=self.tooling.queries,
-                    query_batch_max_concurrency=self.tooling.query_batch_max_concurrency,
-                ),
-            )
-        except RuntimeError, ValueError:
-            return _ad_missing(window)
-        publications = tuple(
-            sorted(
-                {
-                    publication.publication_id.value
-                    for slot in inspection.slots
-                    if slot.bound is not None
-                    for publication in slot.bound.all_publications
-                }
-            )
-        )
-        answers: dict[tuple[str, str], _ParsedAnswer] = {}
-        for answer, (_, metric, role, expected) in zip(executed.slots, batch.slots, strict=True):
-            shaped = answer.answer
-            if shaped is not None and shaped.metadata.truncated:
-                # The product x channel read is population-wide, not ranked: one cut at its
-                # width blanks only product detail's ad section, as any incomplete ad answer
-                # does, and Retail health still bakes. Only the Retail-actual reads refuse
-                # the page (`_answer_rows`).
-                return _ad_missing(window)
-            parsed = _answer_rows(
-                answer,
-                expected,
-                _AD_GROUP,
-                UnitKind.COUNT if metric == "purchases" else UnitKind.CURRENCY,
-                basis=MeasurementBasis.AD_ATTRIBUTED,
-            )
-            if parsed is None:
-                return _ad_missing(window)
-            answers[(metric, role)] = parsed
-        if any(key[-1] != marketplace for rows, _, _ in answers.values() for key in rows):
-            return _ad_missing(window)
-        return _AdEvidence(answers, publications, window)
-
     def _batch(
         self, period: DateRange, prior: DateRange
     ) -> tuple[PreparedMeasurementBatch, tuple[_SlotLabel, ...]]:
@@ -696,6 +640,7 @@ class RetailHealthArtifactRenderer:
                 period=period,
                 prior_period=prior,
                 computed_at=self.clock(),
+                channel_count=len(self.channel_labels),
             )
         )
         return batch.prepared, batch.slots
@@ -710,6 +655,8 @@ class RetailHealthMeasurementBatchRequest:
     period: DateRange
     prior_period: DateRange
     computed_at: datetime
+    channel_count: int
+    """The governed channels: product detail's ad read keeps at most one row per channel."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -727,19 +674,30 @@ def retail_health_measurement_batch(
 
     The renderer executes exactly this batch and the build-time bakeability check
     counts exactly its plans, so the budget model can never drift from the baker.
+
+    Every read is page-sized (ADR-143, ADR-152): the top 50 are ranked inside the query over the
+    compares' own population, which states the product count and the two product sums; the
+    product rows, the series and product detail's ad read are read for those 50 only, and the
+    movers' top three by |change| for themselves. So the rows returned and the statements run
+    are constant in the catalog.
     """
     period, prior = request.period, request.prior_period
+    shown = retail_ranked_restriction(period, prior, RankedProjection.SEMI_JOIN)
     measurements: list[MeasurementToolRequest] = []
     slots: list[_SlotLabel] = []
     for metric in _MEASURED_TOTAL_METRICS:
         measurements.append(_compare_request(request, metric, ("marketplace",)))
         slots.extend((("total", metric, "current", period), ("total", metric, "prior", prior)))
     for metric in _MEASURED_ROW_METRICS:
-        measurements.append(_compare_request(request, metric, ("product", "marketplace")))
+        measurements.append(
+            _compare_request(
+                request,
+                metric,
+                ("product", "marketplace"),
+                ranked=(shown, RETAIL_HEALTH_MAX_ROWS),
+            )
+        )
         slots.extend((("row", metric, "current", period), ("row", metric, "prior", prior)))
-    # ADR-143: the top 50 are ranked inside the query, over the compares' own population, and
-    # the product-detail series are read for those 50 only: one read per (metric, window role),
-    # so the rows returned and the statements run are constant in the catalog.
     measurements.append(
         _daily_request(
             request,
@@ -751,6 +709,30 @@ def retail_health_measurement_batch(
         )
     )
     slots.append(("ranked", _SHIPPED_REVENUE, "current", period))
+    measurements.append(
+        _compare_request(
+            request,
+            _SHIPPED_REVENUE,
+            ("product", "marketplace"),
+            ranked=(retail_movers_restriction(period, prior), _MOVERS_NAMED),
+        )
+    )
+    slots.extend(
+        (
+            ("movers", _SHIPPED_REVENUE, "current", period),
+            ("movers", _SHIPPED_REVENUE, "prior", prior),
+        )
+    )
+    for metric in RETAIL_PRODUCT_AD_METRICS:
+        measurements.append(
+            _compare_request(
+                request,
+                metric,
+                ("product", "channel", "marketplace"),
+                ranked=(shown, RETAIL_HEALTH_MAX_ROWS * request.channel_count),
+            )
+        )
+        slots.extend((("ad", metric, "current", period), ("ad", metric, "prior", prior)))
     for metric in (_SHIPPED_REVENUE, _GLANCE_VIEWS):
         for role, window in (("current", period), ("prior", prior)):
             measurements.append(
@@ -776,11 +758,14 @@ def retail_health_measurement_batch(
     return RetailHealthMeasurementBatch(prepared, tuple(slots))
 
 
-def _compare_request(
+def _compare_request(  # noqa: PLR0913 -- the batch, one metric and grain, and its restriction
     request: RetailHealthMeasurementBatchRequest,
     metric: str,
     grains: tuple[str, ...],
+    *,
+    ranked: tuple[RankedRestriction, int] | None = None,
 ) -> MeasurementToolRequest:
+    """One compare; `ranked` restricts it to a ranked set, bounded by the rows that set keeps."""
     return MeasurementToolRequest(
         tool=MeasurementTool.COMPARE_WINDOWS,
         catalog=request.catalog,
@@ -792,8 +777,9 @@ def _compare_request(
         computed_at=request.computed_at,
         correlation_id="retail-health-artifact",
         filters={},
-        max_rows=BAKE_MAX_ROWS,
+        max_rows=BAKE_MAX_ROWS if ranked is None else ranked[1],
         row_ceiling=RowCeiling.BAKE,
+        ranked=None if ranked is None else ranked[0],
     )
 
 
@@ -802,8 +788,9 @@ def retail_ranked_restriction(
 ) -> RankedRestriction:
     """Retail's one rank rule: current shipped revenue over the trend metrics' population.
 
-    The population declaration (`RETAIL_HEALTH_TREND_METRICS` over current and prior) is the one
-    `_rows` reads its stated total from, so the ranked set and the total can't drift apart.
+    The population (`RETAIL_HEALTH_TREND_METRICS` over current and prior) is the one the stated
+    total counts and the product sums add, all in the same statement, so the ranked set, the
+    total and the sums can't drift apart.
     """
     return RankedRestriction(
         key="product",
@@ -813,6 +800,29 @@ def retail_ranked_restriction(
         population_windows=(period, prior),
         n=RETAIL_HEALTH_MAX_ROWS,
         projection=projection,
+        population_sums=(
+            (_SHIPPED_REVENUE, _UNITS_SHIPPED) if projection is RankedProjection.RANKED_KEYS else ()
+        ),
+    )
+
+
+def retail_movers_restriction(period: DateRange, prior: DateRange) -> RankedRestriction:
+    """Retail's movers: the three products whose shipped revenue changed most, ranked in SQL.
+
+    Rank by |current - prior| over the same population, nonzero only, the key the tie; the
+    domain's `calculate_deterministic_findings` then orders the three it is handed.
+    """
+    return RankedRestriction(
+        key="product",
+        rank_metric=_SHIPPED_REVENUE,
+        rank_window=period,
+        population_metrics=RETAIL_HEALTH_TREND_METRICS,
+        population_windows=(period, prior),
+        n=_MOVERS_NAMED,
+        projection=RankedProjection.SEMI_JOIN,
+        rank_by=RankBy.ABS_CHANGE,
+        change_window=prior,
+        membership=RankedMembership.POSITIVE,
     )
 
 
@@ -850,7 +860,7 @@ def _counter_clock() -> datetime:
 
 
 def retail_health_bake_plan_count(root: Path, days: int) -> int:
-    """Count the real Retail Health bake plans: compares, trends, the ranked keys, four series."""
+    """Count the real Retail Health bake plans: compares, trends, ranked reads, movers, ads."""
     period, prior = representative_windows(days)
     request = RetailHealthMeasurementBatchRequest(
         catalog=load_catalog(root),
@@ -858,10 +868,9 @@ def retail_health_bake_plan_count(root: Path, days: int) -> int:
         period=period,
         prior_period=prior,
         computed_at=_counter_clock(),
+        channel_count=len(retail_channel_labels(load_media_taxonomy(root))),
     )
-    return len(retail_health_measurement_batch(request).prepared.plans) + len(
-        retail_product_ad_batch(request).prepared.plans
-    )
+    return len(retail_health_measurement_batch(request).prepared.plans)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1011,20 +1020,18 @@ def _totals(context: _ReductionContext) -> tuple[RetailComparison, ...] | None:
 def _rows(
     context: _ReductionContext,
     hierarchy: RetailProductHierarchyResult,
+    population: _Population,
 ) -> _ReducedRows | None:
-    """Reduce the full grouped product population into bounded display rows."""
+    """Reduce the ranked 50's answers into display rows, and the movers' into findings.
+
+    Every read here is page-sized (ADR-152): the stated total and the product sums are the
+    ranked statement's own figures over the whole population, so no product outside the shown
+    50 and the movers is touched.
+    """
     answers = context.answers
-    population = sorted(
-        {
-            key[0]
-            for metric in RETAIL_HEALTH_TREND_METRICS
-            for role in ("current", "prior")
-            for key in answers[("row", metric, role)][0]
-        }
-    )
-    if not population:
+    if not population.count:
         return None
-    shown = _ranked_keys(context, frozenset(population))
+    shown = _ranked_keys(context, population.count)
     spark_rows, spark_units, spark_qualifiers = answers[("spark", _SHIPPED_REVENUE, "current")]
     qualifiers = tuple(
         sorted(
@@ -1042,81 +1049,14 @@ def _rows(
     days = tuple(
         context.period.start + timedelta(days=offset) for offset in range(context.period.days)
     )
-    rows_by_asin: dict[str, RetailProductRow] = {}
-    operands: list[InsightFindingOperand] = []
-    asin_by_name: dict[str, str] = {}
-    product_revenue = Decimal(0)
-    product_units = Decimal(0)
-    for asin in population:
+    displayed: list[RetailProductRow] = []
+    for asin in shown:
         identity = hierarchy.by_asin.get(asin)
         if identity is None:
             return None
-        row_key = (asin, context.marketplace)
-        comparisons: list[RetailComparison] = []
-        measured_row: dict[tuple[str, str], Decimal | int] = {}
-        for metric in _MEASURED_ROW_METRICS:
-            current_rows, current_units, _ = answers[("row", metric, "current")]
-            prior_rows, prior_units, _ = answers[("row", metric, "prior")]
-            if current_units != prior_units:
-                return None
-            current_value = current_rows.get(row_key, 0)
-            prior_value = prior_rows.get(row_key, 0)
-            measured_row[(metric, "current")] = current_value
-            measured_row[(metric, "prior")] = prior_value
-            if metric not in RETAIL_HEALTH_ROW_METRICS:
-                # Measured as a product-detail operand (COGS, ordered figures); no column.
-                continue
-            comparisons.append(
-                retail_comparison(
-                    metric,
-                    RetailMetricValue(
-                        current_value, current_units, context.period, RETAIL_HEALTH_ROW_GRAIN
-                    ),
-                    RetailMetricValue(
-                        prior_value, current_units, context.prior_period, RETAIL_HEALTH_ROW_GRAIN
-                    ),
-                    context.semantics,
-                )
-            )
-        currency_units = comparisons[0].current.units
-        for metric in ("return_rate", "amazon_margin_proxy"):
-            signed = metric == "amazon_margin_proxy"
-            units = Units(UnitKind.RATIO) if metric == "return_rate" else currency_units
-            values: dict[str, Decimal] = {}
-            for role in ("current", "prior"):
-                if metric == "return_rate":
-                    values[role] = _quotient(
-                        measured_row[("customer_returns", role)],
-                        measured_row[("units_shipped", role)],
-                    )
-                else:
-                    values[role] = Decimal(
-                        measured_row[("retail_revenue_shipped", role)]
-                    ) - Decimal(measured_row[("cogs_shipped", role)])
-            comparisons.append(
-                retail_comparison(
-                    metric,
-                    RetailMetricValue(
-                        values["current"],
-                        units,
-                        context.period,
-                        RETAIL_HEALTH_ROW_GRAIN,
-                        signed=signed,
-                    ),
-                    RetailMetricValue(
-                        values["prior"],
-                        units,
-                        context.prior_period,
-                        RETAIL_HEALTH_ROW_GRAIN,
-                        signed=signed,
-                    ),
-                    context.semantics,
-                )
-            )
-        shipped_current = Decimal(comparisons[0].current.value)
-        shipped_prior = Decimal(comparisons[0].prior.value)
-        product_revenue += shipped_current
-        product_units += Decimal(comparisons[1].current.value)
+        row = _product_row(context, asin)
+        if row is None:
+            return None
         spark = tuple(
             RetailMetricValue(
                 spark_rows.get((day.isoformat(), asin, context.marketplace), 0),
@@ -1126,45 +1066,129 @@ def _rows(
             )
             for day in days
         )
-        rows_by_asin[asin] = RetailProductRow(
-            identity.child_asin,
-            identity.parent_asin,
-            identity.title,
-            tuple(comparisons),
-            spark,
-            qualifiers,
+        displayed.append(
+            RetailProductRow(
+                identity.child_asin,
+                identity.parent_asin,
+                identity.title,
+                row,
+                spark,
+                qualifiers,
+            )
         )
-        asin_by_name[f"{identity.title} ({identity.child_asin})"] = asin
+    movers = _movers(context, hierarchy)
+    if movers is None:
+        return None
+    findings, movers_asins = movers
+    return _ReducedRows(
+        displayed=tuple(displayed),
+        asins=shown,
+        movers_asins=movers_asins,
+        total_count=population.count,
+        truncation=None if population.count <= RETAIL_HEALTH_MAX_ROWS else RETAIL_HEALTH_MAX_ROWS,
+        product_revenue=population.revenue,
+        product_units=population.units,
+        movers=findings,
+    )
+
+
+def _product_row(context: _ReductionContext, asin: str) -> tuple[RetailComparison, ...] | None:
+    """Reduce one shown product's row comparisons, measured or from their operands."""
+    answers = context.answers
+    row_key = (asin, context.marketplace)
+    comparisons: list[RetailComparison] = []
+    measured_row: dict[tuple[str, str], Decimal | int] = {}
+    for metric in _MEASURED_ROW_METRICS:
+        current_rows, current_units, _ = answers[("row", metric, "current")]
+        prior_rows, prior_units, _ = answers[("row", metric, "prior")]
+        if current_units != prior_units:
+            return None
+        current_value = current_rows.get(row_key, 0)
+        prior_value = prior_rows.get(row_key, 0)
+        measured_row[(metric, "current")] = current_value
+        measured_row[(metric, "prior")] = prior_value
+        if metric not in RETAIL_HEALTH_ROW_METRICS:
+            # Measured as a product-detail operand (COGS, ordered figures); no column.
+            continue
+        comparisons.append(
+            retail_comparison(
+                metric,
+                RetailMetricValue(
+                    current_value, current_units, context.period, RETAIL_HEALTH_ROW_GRAIN
+                ),
+                RetailMetricValue(
+                    prior_value, current_units, context.prior_period, RETAIL_HEALTH_ROW_GRAIN
+                ),
+                context.semantics,
+            )
+        )
+    currency_units = comparisons[0].current.units
+    for metric in ("return_rate", "amazon_margin_proxy"):
+        signed = metric == "amazon_margin_proxy"
+        units = Units(UnitKind.RATIO) if metric == "return_rate" else currency_units
+        values: dict[str, Decimal] = {}
+        for role in ("current", "prior"):
+            if metric == "return_rate":
+                values[role] = _quotient(
+                    measured_row[("customer_returns", role)],
+                    measured_row[("units_shipped", role)],
+                )
+            else:
+                values[role] = Decimal(measured_row[("retail_revenue_shipped", role)]) - Decimal(
+                    measured_row[("cogs_shipped", role)]
+                )
+        comparisons.append(
+            retail_comparison(
+                metric,
+                RetailMetricValue(
+                    values["current"], units, context.period, RETAIL_HEALTH_ROW_GRAIN, signed=signed
+                ),
+                RetailMetricValue(
+                    values["prior"],
+                    units,
+                    context.prior_period,
+                    RETAIL_HEALTH_ROW_GRAIN,
+                    signed=signed,
+                ),
+                context.semantics,
+            )
+        )
+    return tuple(comparisons)
+
+
+def _movers(
+    context: _ReductionContext, hierarchy: RetailProductHierarchyResult
+) -> tuple[tuple[DeterministicFinding, ...], tuple[str, ...]] | None:
+    """Find the movers from the SQL-ranked top three, ordered by the domain's own rule."""
+    current_rows = context.answers[("movers", _SHIPPED_REVENUE, "current")][0]
+    prior_rows = context.answers[("movers", _SHIPPED_REVENUE, "prior")][0]
+    keys = sorted({key[0] for key in (*current_rows, *prior_rows)})
+    if len(keys) > _MOVERS_NAMED:
+        raise _ranked_invariant("the movers read returned more than its three keys")
+    operands: list[InsightFindingOperand] = []
+    asin_by_name: dict[str, str] = {}
+    for asin in keys:
+        identity = hierarchy.by_asin.get(asin)
+        if identity is None:
+            return None
+        name = f"{identity.title} ({identity.child_asin})"
+        asin_by_name[name] = asin
+        key = (asin, context.marketplace)
         operands.append(
             InsightFindingOperand(
-                name=f"{identity.title} ({identity.child_asin})",
-                current=shipped_current,
-                prior=shipped_prior,
+                name=name,
+                current=Decimal(current_rows.get(key, 0)),
+                prior=Decimal(prior_rows.get(key, 0)),
             )
         )
-    # The display order is the rank rule's own (ADR-143); the whole population still feeds the
-    # stated total, the product sums and the movers above.
-    total_count = len(population)
-    displayed = tuple(rows_by_asin[asin] for asin in shown)
-    displayed_asins = shown
-    movers = nonzero_movers(
+    findings = nonzero_movers(
         calculate_deterministic_findings(
             DeterministicFindingRequest(
-                kind=InsightFindingKind.RANKED_ABSOLUTE_CHANGE,
-                operands=tuple(operands),
+                kind=InsightFindingKind.RANKED_ABSOLUTE_CHANGE, operands=tuple(operands)
             )
         )
     )
-    return _ReducedRows(
-        displayed=displayed,
-        asins=displayed_asins,
-        movers_asins=tuple(asin_by_name.get(item.name, "") for item in movers),
-        total_count=total_count,
-        truncation=None if total_count <= RETAIL_HEALTH_MAX_ROWS else RETAIL_HEALTH_MAX_ROWS,
-        product_revenue=product_revenue,
-        product_units=product_units,
-        movers=movers,
-    )
+    return findings, tuple(asin_by_name[item.name] for item in findings)
 
 
 def _ranked_invariant(problem: str) -> InvariantError:
@@ -1176,17 +1200,17 @@ def _ranked_invariant(problem: str) -> InvariantError:
 
 
 def _require_within_bound(answer: PresentationMeasurementAnswerSlot) -> None:
-    """Refuse a ranked read past its semantic bound: a defect, never a `rows_over_ceiling`."""
+    """Refuse a read past its semantic bound: a defect, never a refusal (ADR-152)."""
     shaped = answer.answer
     if shaped is not None and shaped.metadata.truncated:
-        raise _ranked_invariant("a ranked read returned more than its bound")
+        raise _ranked_invariant("a read returned more than its bound")
 
 
-def _ranked_keys(context: _ReductionContext, population: frozenset[str]) -> tuple[str, ...]:
+def _ranked_keys(context: _ReductionContext, population: int) -> tuple[str, ...]:
     """Return the ranked keys in display order, after checking them against the population.
 
-    Cheap checks, not a second ranking: the ranked keys number min(50, |P|) and lie in P; each
-    one with a current shipped-revenue row ranks at exactly that row's value; every series key is
+    Cheap checks, not a second ranking: the ranked keys number min(50, |P|); each one with a
+    current shipped-revenue row ranks at exactly that row's value; every row and series key is
     a ranked key. A violation means the SQL and the declared population disagree.
     """
     answers, marketplace = context.answers, context.marketplace
@@ -1195,20 +1219,22 @@ def _ranked_keys(context: _ReductionContext, population: frozenset[str]) -> tupl
         RankedValue(key[0], value) for key, value in ranked_rows.items()
     )
     keys = tuple(item.key for item in ranked)
-    if len(keys) != min(RETAIL_HEALTH_MAX_ROWS, len(population)):
+    if len(keys) != min(RETAIL_HEALTH_MAX_ROWS, population):
         raise _ranked_invariant("the ranked keys are not min(50, population)")
-    if not set(keys) <= population:
-        raise _ranked_invariant("a ranked key is outside the population")
     compared = answers[("row", _SHIPPED_REVENUE, "current")][0]
     for item in ranked:
         value = compared.get((item.key, marketplace))
         if value is not None and Decimal(value) != Decimal(item.rank_value):
             raise _ranked_invariant("a rank value differs from the compare's current value")
     shown = set(keys)
-    for metric in (_SHIPPED_REVENUE, _GLANCE_VIEWS):
+    restricted = (
+        *(("spark", metric, 1) for metric in (_SHIPPED_REVENUE, _GLANCE_VIEWS)),
+        *(("row", metric, 0) for metric in _MEASURED_ROW_METRICS),
+    )
+    for section, metric, position in restricted:
         for role in ("current", "prior"):
-            if any(key[1] not in shown for key in answers[("spark", metric, role)][0]):
-                raise _ranked_invariant("a series key is outside the ranked keys")
+            if any(key[position] not in shown for key in answers[(section, metric, role)][0]):
+                raise _ranked_invariant("a restricted read's key is outside the ranked keys")
     return keys
 
 
@@ -1243,32 +1269,6 @@ def _trend(context: _ReductionContext) -> tuple[RetailTrendPoint, ...] | None:
     return tuple(points)
 
 
-_AD_GROUP = ("amazon_asin", "channel_key", "marketplace_key")
-
-
-def retail_product_ad_batch(
-    request: RetailHealthMeasurementBatchRequest,
-) -> RetailHealthMeasurementBatch:
-    """Build the one Amazon Marketing Cloud product query a preset bakes (ADR-125)."""
-    measurements: list[MeasurementToolRequest] = []
-    slots: list[_SlotLabel] = []
-    for metric in RETAIL_PRODUCT_AD_METRICS:
-        measurements.append(
-            _compare_request(request, metric, ("product", "channel", "marketplace"))
-        )
-        slots.extend(
-            (
-                ("ad", metric, "current", request.period),
-                ("ad", metric, "prior", request.prior_period),
-            )
-        )
-    try:
-        prepared = prepare_batch(tuple(measurements))
-    except (KeyError, ValueError) as error:
-        raise RuntimeError("product detail requires its declared ad-attributed cohort.") from error
-    return RetailHealthMeasurementBatch(prepared, tuple(slots))
-
-
 @dataclass(frozen=True, slots=True)
 class _AdEvidence:
     """Ad-attributed answers keyed by (metric, role), or none with the window they miss."""
@@ -1280,6 +1280,76 @@ class _AdEvidence:
 
 def _ad_missing(window: str) -> _AdEvidence:
     return _AdEvidence(None, (), window)
+
+
+def _ad_evidence(
+    slots: tuple[
+        tuple[PresentationMeasurementAnswerSlot, _SlotLabel, PresentationEvidenceInspectionSlot],
+        ...,
+    ],
+    period: DateRange,
+    marketplace: str,
+) -> _AdEvidence:
+    """Read the ranked 50's ad-attributed purchases and revenue per channel, or say why not.
+
+    Part of the Retail batch, restricted to the shown products (ADR-125, ADR-152). It never
+    blocks the retail bake: an incomplete answer becomes each child's typed absence.
+    """
+    window = window_label(period)
+    answers: dict[tuple[str, str], _ParsedAnswer] = {}
+    for answer, (_, metric, role, expected), _ in slots:
+        parsed = _answer_rows(
+            answer,
+            expected,
+            _AD_GROUP,
+            UnitKind.COUNT if metric == "purchases" else UnitKind.CURRENCY,
+            basis=MeasurementBasis.AD_ATTRIBUTED,
+        )
+        if parsed is None:
+            return _ad_missing(window)
+        answers[(metric, role)] = parsed
+    if any(key[-1] != marketplace for rows, _, _ in answers.values() for key in rows):
+        return _ad_missing(window)
+    return _AdEvidence(answers, _publications(inspected for _, _, inspected in slots), window)
+
+
+def _publications(slots: Iterable[PresentationEvidenceInspectionSlot]) -> tuple[str, ...]:
+    """Every exact publication the given slots were bound to, sorted."""
+    return tuple(
+        sorted(
+            {
+                publication.publication_id.value
+                for slot in slots
+                if slot.bound is not None
+                for publication in slot.bound.all_publications
+            }
+        )
+    )
+
+
+def _ranked_population(answer: PresentationMeasurementAnswerSlot) -> _Population | None:
+    """Read the ranked-keys slot's one unpartitioned population; an empty read has none."""
+    if not answer.population:
+        if answer.answer is None or answer.answer.data.values:
+            return None
+        return _Population(0, Decimal(0), Decimal(0))
+    if len(answer.population) != 1:
+        raise _ranked_invariant("an unpartitioned ranking stated more than one population")
+    (population,) = answer.population
+    return _Population(
+        population.count,
+        population.sum_of(_SHIPPED_REVENUE),
+        population.sum_of(_UNITS_SHIPPED),
+    )
+
+
+def _restricted_empty(
+    answer: PresentationMeasurementAnswerSlot, period: DateRange, total: _ParsedAnswer | None
+) -> _ParsedAnswer | None:
+    """Parse a covered restricted read holding none of the ranked keys as empty, in its units."""
+    if total is None or not _covered_empty(answer, period):
+        return None
+    return {}, total[1], ()
 
 
 def _ad_section(ads: _AdEvidence, asin: str, item: _ChildInput) -> RetailAdAttributed:
@@ -1423,10 +1493,6 @@ def _product_insights(
     )
 
 
-_MOVERS_NAMED = 3
-"""The deterministic movers text names the top three nonzero movers."""
-
-
 def _product_child(item: _ChildInput) -> RetailProductChild:
     """Reduce one displayed row's product-detail child from the parent's own answers."""
     totals = _product_comparisons(item)
@@ -1568,20 +1634,12 @@ def _answer_rows(  # noqa: PLR0913, PLR0917
 ) -> _ParsedAnswer | None:
     """Parse one complete grouped answer of one basis, or none when incoherent.
 
-    A Retail-actual read cut at its declared width refuses the page (`rows_over_ceiling`,
-    ADR-142): Retail declares no section a refusal may own, so the page is the read's smallest
-    grain. The ad-attributed read never reaches here truncated: `_ad_evidence` makes it product
-    detail's ad absence first, so it never blocks the Retail bake (ADR-125).
+    No answer reaches here truncated: every Retail read is bounded by its meaning, and the
+    render refuses one past it as a defect first (`_require_within_bound`, ADR-152).
     """
     shaped = answer.answer
     if shaped is None:
         return None
-    if shaped.metadata.truncated:
-        raise IsolatedRefusal(
-            IsolatedRefusalReason.ROWS_OVER_CEILING,
-            RefusalScope.PAGE,
-            max_rows=shaped.metadata.row_count,
-        )
     if basis is not MeasurementBasis.RETAIL_ACTUAL and _covered_empty(answer, period):
         # A covered window in which Amazon credits nothing to ads is a legitimate empty set.
         return {}, Units(kind), ()

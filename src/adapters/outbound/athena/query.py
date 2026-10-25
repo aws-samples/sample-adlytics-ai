@@ -21,7 +21,15 @@ from typing import TYPE_CHECKING, Final, Literal
 
 import boto3
 
-from adapters.outbound.athena.composition import ComposedQuery, compose, compose_series
+from adapters.outbound.athena.composition import (
+    POPULATION_COUNT,
+    POPULATION_SUPPRESSED,
+    ComposedQuery,
+    compose,
+    compose_series,
+    population_columns,
+    population_sum_alias,
+)
 from adapters.outbound.athena.deadline import bake_statement_deadline
 from adapters.outbound.athena.execution import (
     MAX_WAIT_SECONDS,
@@ -43,7 +51,13 @@ from adapters.outbound.telemetry.tracing import ATHENA_QUERY, span, trace_bounda
 from domain.measurement.figures import Withholding, WithholdingAccumulator
 from domain.measurement.periodic import PERIOD_END_COLUMN, PERIOD_START_COLUMN
 from domain.measurement.planning import QueryPlan, measure_alias, withheld_rows_alias
-from domain.shared_kernel.errors import DependencyError, ErrorCode, ValidationError
+from domain.measurement.ranking import (
+    RANKED_INVARIANT,
+    RankedPopulation,
+    RankedProjection,
+    RankedRead,
+)
+from domain.shared_kernel.errors import DependencyError, ErrorCode, InvariantError, ValidationError
 from domain.shared_kernel.provenance import Suppression
 from ports.outbound.query import (
     FoldRead,
@@ -169,6 +183,8 @@ class _Statement:
     logical: QueryPlan
     columns: tuple[str, ...]
     max_rows: int
+    ranked: RankedRead | None = None
+    """A ranked-keys statement's restriction: its rows carry the population columns too."""
 
 
 class AthenaQueryAdapter:
@@ -204,15 +220,19 @@ class AthenaQueryAdapter:
         """Execute a plan and return its rows, or raise a `DependencyError`."""
         statement = self._statement(request)
         held = _Held()
-        read = self._execute(statement, held)
+        lifted = None if statement.ranked is None else _PopulationLift(statement.ranked)
+        read = self._execute(statement, held, lifted)
+        population = () if lifted is None else lifted.result()
         return QueryResult(
             # The statement asked for one row more than requested, which is the only way to
             # tell "there were exactly this many" from "there were more and you got a page".
             rows=tuple(held.rows),
             bytes_scanned=read.bytes_scanned,
             truncated=read.truncated,
-            # Measured from the rows the statement returned, never asserted. ADR-035.
-            suppression=read.suppression,
+            # Measured from the rows the statement returned, never asserted. ADR-035. A ranked
+            # population withheld anywhere is withheld here too, though no shown key was.
+            suppression=_with_population(statement.logical, read.suppression, population),
+            population=population,
         )
 
     def run_series(self, request: PeriodSeriesRequest) -> QueryResult:
@@ -244,11 +264,18 @@ class AthenaQueryAdapter:
         _refuse_withheld_only(request)
         _refuse_unreadable_suppression(request)
         logical = request.plan.logical
+        ranked = request.ranked
+        keys = (
+            ranked
+            if ranked is not None and ranked.restriction.projection is RankedProjection.RANKED_KEYS
+            else None
+        )
         return _Statement(
-            compose(request.plan, request.max_rows, request.ranked),
+            compose(request.plan, request.max_rows, ranked),
             logical,
             logical.selected_columns,
             request.max_rows,
+            keys,
         )
 
     @staticmethod
@@ -277,7 +304,9 @@ class AthenaQueryAdapter:
         return iter_pages(self._client, execution_id)
 
     @trace_boundary(ATHENA_QUERY)
-    def _execute(self, statement: _Statement, sink: RowSink) -> FoldRead:
+    def _execute(
+        self, statement: _Statement, sink: RowSink, lifted: _PopulationLift | None = None
+    ) -> FoldRead:
         """Run one composed statement and shape its rows, or raise a `DependencyError`.
 
         Wrapped in the `athena.query` span observability §3 requires, which did not exist at all
@@ -363,13 +392,16 @@ class AthenaQueryAdapter:
             # Each row is mapped, measured for withholding and handed on as it is read; a held
             # read's sink keeps it, a fold's keeps only its summary. The one row past `max_rows`
             # is counted, never kept: it is how truncation is told from an exact fit.
-            for values in self._values(
-                execution_id, outcome, len(statement.columns) + len(aliases)
-            ):
+            trailing = () if statement.ranked is None else population_columns(statement.ranked)
+            width = len(statement.columns) + len(aliases)
+            for values in self._values(execution_id, outcome, width + len(trailing)):
                 rows_read += 1
                 if rows_read > max_rows:
                     continue
-                row = _as_row(statement.columns, values, aggregates=aliases)
+                row = _as_row(statement.columns, values[:width], aggregates=aliases)
+                if lifted is not None:
+                    # The population columns never reach an answer: lifted off, checked, kept.
+                    lifted.add(row, values[width:])
                 suppression.add(row)
                 sink.add(row)
             kept = min(rows_read, max_rows)
@@ -501,6 +533,71 @@ class _Held:
 
     def add(self, row: QueryRow) -> None:
         self.rows.append(row)
+
+
+class _PopulationLift:
+    """Collect a ranked-keys statement's population columns, one entry per partition.
+
+    Every row of a partition carries the same population figures, because the statement takes
+    them over the partition before keeping its top `n`. A row that disagrees means the SQL and
+    the declaration differ: an invariant (`RANKING/2`), never a figure picked from one row.
+    """
+
+    def __init__(self, ranked: RankedRead) -> None:
+        self._ranked = ranked
+        self._by_partition: dict[tuple[str, ...], RankedPopulation] = {}
+
+    def add(self, row: QueryRow, values: list[str | None]) -> None:
+        names = population_columns(self._ranked)
+        cells = dict(zip(names, values, strict=True))
+        partition = tuple(str(row.get(column)) for column in self._ranked.partition_columns)
+        sums = self._ranked.restriction.population_sums
+        population = RankedPopulation(
+            partition=partition,
+            count=_population_int(cells[POPULATION_COUNT]),
+            sums=tuple(
+                (metric, _decimal_or_none(cells[population_sum_alias(index)]) or Decimal(0))
+                for index, metric in enumerate(sums)
+            ),
+            suppressed=_population_int(cells[POPULATION_SUPPRESSED]) > 0,
+        )
+        held = self._by_partition.setdefault(partition, population)
+        if held != population:
+            raise InvariantError(
+                RANKED_INVARIANT,
+                "A ranked statement's population figures differ within one partition.",
+                context={"metric": self._ranked.restriction.rank_metric},
+            )
+
+    def result(self) -> tuple[RankedPopulation, ...]:
+        return tuple(self._by_partition[key] for key in sorted(self._by_partition))
+
+
+def _population_int(raw: str | None) -> int:
+    value = _decimal_or_none(raw)
+    if value is None or value != value.to_integral_value() or value < 0:
+        raise InvariantError(
+            RANKED_INVARIANT,
+            "A ranked statement's population count is not a whole number.",
+            context={"problem": "population column did not parse as a count"},
+        )
+    return int(value)
+
+
+def _with_population(
+    plan: QueryPlan, measured: Suppression, population: tuple[RankedPopulation, ...]
+) -> Suppression:
+    """Return a ranked read's suppression: its rows' own, or its population's withholding."""
+    if measured.rows_suppressed or not any(item.suppressed for item in population):
+        return measured
+    grain = plan.grain.dimensions[0] if plan.grain.dimensions else "group"
+    return Suppression(
+        rows_suppressed=True,
+        reason=(
+            f"Amazon withheld rows for some {grain} values in the population this ranking is "
+            "taken from, because too few shoppers sat behind them."
+        ),
+    )
 
 
 class _SuppressionAccumulator:

@@ -1,0 +1,61 @@
+{
+  "captured_at_base": "5739e389",
+  "cases": {
+    "products-1": {
+      "movers_state": "filled",
+      "movers_text": "Fictional Product 00001 (FICT00001) changed by 9.00 USD.",
+      "product_revenue": "10",
+      "product_units": "2",
+      "total_count": 1
+    },
+    "products-2": {
+      "movers_state": "filled",
+      "movers_text": "Fictional Product 00002 (FICT00002) changed by 18.00 USD; Fictional Product 00001 (FICT00001) changed by 9.00 USD.",
+      "product_revenue": "30",
+      "product_units": "6",
+      "total_count": 2
+    },
+    "products-45": {
+      "movers_state": "filled",
+      "movers_text": "Fictional Product 00045 (FICT00045) changed by 405.00 USD; Fictional Product 00044 (FICT00044) changed by 396.00 USD; Fictional Product 00043 (FICT00043) changed by 387.00 USD.",
+      "product_revenue": "10350",
+      "product_units": "2070",
+      "total_count": 45
+    },
+    "products-600": {
+      "movers_state": "filled",
+      "movers_text": "Fictional Product 00600 (FICT00600) changed by 5,400.00 USD; Fictional Product 00599 (FICT00599) changed by 5,391.00 USD; Fictional Product 00598 (FICT00598) changed by 5,382.00 USD.",
+      "product_revenue": "1803000",
+      "product_units": "360600",
+      "total_count": 600
+    },
+    "products-61": {
+      "movers_state": "filled",
+      "movers_text": "Fictional Product 00061 (FICT00061) changed by 549.00 USD; Fictional Product 00060 (FICT00060) changed by 540.00 USD; Fictional Product 00059 (FICT00059) changed by 531.00 USD.",
+      "product_revenue": "18910",
+      "product_units": "3782",
+      "total_count": 61
+    },
+    "ties-60": {
+      "movers_state": "filled",
+      "movers_text": "Fictional Product 00012 (FICT00012) changed by 118.00 USD; Fictional Product 00010 (FICT00010) changed by 110.00 USD; Fictional Product 00025 (FICT00025) changed by 105.00 USD.",
+      "product_revenue": "4120",
+      "product_units": "3660",
+      "total_count": 60
+    },
+    "zero-30-12": {
+      "movers_state": "filled",
+      "movers_text": "Fictional Product 00008 (FICT00008) changed by 72.00 USD; Fictional Product 00018 (FICT00018) changed by 72.00 USD; Fictional Product 00007 (FICT00007) changed by 63.00 USD.",
+      "product_revenue": "870",
+      "product_units": "930",
+      "total_count": 30
+    },
+    "zero-60-20": {
+      "movers_state": "filled",
+      "movers_text": "Fictional Product 00009 (FICT00009) changed by 81.00 USD; Fictional Product 00008 (FICT00008) changed by 72.00 USD; Fictional Product 00018 (FICT00018) changed by 72.00 USD.",
+      "product_revenue": "2140",
+      "product_units": "3660",
+      "total_count": 60
+    }
+  }
+}
