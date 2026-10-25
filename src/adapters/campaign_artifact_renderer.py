@@ -905,7 +905,7 @@ class Viewability:
 class ParsedPortfolio:
     """Every portfolio answer parsed once, keyed by (section, metric, role)."""
 
-    answers: dict[tuple[str, str, str], _PortfolioAnswer]
+    answers: Mapping[tuple[str, str, str], _PortfolioAnswer]
     ratios: frozenset[str]
     viewability: dict[tuple[str, str], Viewability | None]
     daily: Mapping[str, Mapping[str, Mapping[date, Decimal]]] | None = None

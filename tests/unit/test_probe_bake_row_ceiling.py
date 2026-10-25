@@ -164,7 +164,11 @@ def test_p1_measures_every_term_through_the_real_path(monkeypatch: pytest.Monkey
         return 10 * products
 
     monkeypatch.setattr(probe, "measure_retail_render", retail)
-    monkeypatch.setattr(probe, "measure_campaign_record", lambda campaigns: 20 * campaigns)
+
+    def record(campaigns: int) -> int:
+        return 20 * campaigns
+
+    monkeypatch.setattr(probe, "measure_campaign_record", record)
     measured = probe.run_p1(sizes=(200, 400), runs=1)
     # ADR-152: Retail renders at every size, never only those under a row ceiling.
     assert [

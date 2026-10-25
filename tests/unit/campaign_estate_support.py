@@ -13,6 +13,7 @@ import pathlib
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 from functools import cache
 
 from publication_support import StubPublications
@@ -167,7 +168,7 @@ class EstateQueries:
                 ]
                 if values[0] is None:
                     continue
-                row: dict[str, str | int | None] = {
+                row: dict[str, str | int | Decimal | None] = {
                     "campaign_key": campaign,
                     "marketplace_key": marketplace,
                 }

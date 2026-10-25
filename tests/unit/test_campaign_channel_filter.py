@@ -565,7 +565,9 @@ def _roster(
         body = _body(response)
         assert body["parent_revision"] == artifact.roster_shards.revision
         entries.extend(
-            campaign_roster_shard_from_payload(body["shard"], shard, body["parent_revision"])
+            campaign_roster_shard_from_payload(
+                body["shard"], shard, cast("str", body["parent_revision"])
+            )
         )
     return tuple(entries)
 
@@ -577,13 +579,14 @@ def test_a_roster_shard_request_is_closed_and_bound_to_the_index(
     """A shard the bake never wrote, a bool, or a shard beside a sort or segment is refused."""
     stores = _Stores(_bake())
     assert _serve(presentation_module, stores, {"roster_shard": 0})["statusCode"] == 200
-    for body in (
+    bodies: tuple[dict[str, object], ...] = (
         {"roster_shard": 1},
         {"roster_shard": True},
         {"roster_shard": -1},
         {"roster_shard": 0, "segment": 1},
         {"roster_shard": 0, "sort": {"field": "spend", "direction": "asc"}},
-    ):
+    )
+    for body in bodies:
         with pytest.raises(ValidationError) as refused:
             _serve(presentation_module, stores, body)
         assert refused.value.description == "The campaign roster shard is invalid.", body
