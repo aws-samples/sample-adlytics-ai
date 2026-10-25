@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT-0
 """A fictional campaign estate measured end to end: real batches over a folding query port.
 
 `EstateQueries` answers every plan the Campaigns portfolio batch prepares, held (`run`) or
