@@ -121,6 +121,9 @@ DEEP_INPUT_REVISIONS: Final[tuple[tuple[str, str], ...]] = (
     # Scale limits r2a (ADR-141, ADR-152): Audiences v2 serves every DSP campaign as paged parts
     # and its over-bound page-level body is deleted.
     ("2026-10-25.1", "d015211205cdef0298a73db06e5bd0d67a91c4cf76cc2c785e1b15bbeb4d6dd0"),
+    # Scale limits r2b (ADR-152): the Campaigns bake folds its compares into one compact record
+    # per campaign and writes its name roster as shards.
+    ("2026-10-25.2", "71a029022ddf25f96537cbd7c5d983ffa9a6264dfc4ea9c9d05991ab51731dcc"),
 )
 DEEP_INPUT_REVISION: Final[str] = DEEP_INPUT_REVISIONS[-1][0]
 """The revision every deep cache key carries (``#DEEPINPUT#<revision>``)."""
