@@ -1310,3 +1310,116 @@ test('the campaign table carries one page freshness line instead of a badge per 
   assert.equal(line[0]?.textContent, 'Late data Fictional source arrived late See why');
   assert.equal(late.container.querySelectorAll('tbody .pill').length, 0);
 });
+
+function shardedArtifact(revision: string): CampaignPortfolioArtifact {
+  return { ...pagedArtifact(50, 0), roster: [], roster_shards: { revision, shards: 2 } };
+}
+
+function shardEntries(shard: number): CampaignPortfolioArtifact['roster'] {
+  const names = shard === 0 ? ['Fictional early name'] : ['Fictional late name'];
+  return names.map((name, index) => ({ channel: 'Fictional channel', marketplace: 'United States', name, position: shard * 500 + index }));
+}
+
+test('Roster shards load on the name field\'s first focus, never on page load, two at a time', async () => {
+  const user = (await import('@testing-library/user-event')).default.setup();
+  const requested: number[] = [];
+  let active = 0;
+  let most = 0;
+  const roster = {
+    load: async (_filter: string, shard: number) => {
+      requested.push(shard);
+      active += 1;
+      most = Math.max(most, active);
+      await Promise.resolve();
+      active -= 1;
+      return { entries: shardEntries(shard), parent_revision: 'rev-fictional-1' };
+    },
+    onStale: () => { throw new Error('the shards share the body\'s revision'); },
+  };
+  render(
+    <CampaignPortfolioV2View
+      child={null}
+      parent={shardedArtifact('rev-fictional-1')}
+      onClear={() => undefined}
+      onSelect={() => undefined}
+      roster={roster}
+      selection={{ choice: null, kind: 'idle' }}
+    />,
+  );
+  assert.deepEqual(requested, []);
+  const box = screen.getByRole('combobox', { name: 'Find a campaign' });
+  await user.click(box);
+  await waitFor(() => assert.deepEqual([...requested].sort(), [0, 1]));
+  assert.ok(most <= 2);
+  await user.type(box, 'late');
+  assert.equal(screen.getAllByRole('option').length, 1);
+  assert.ok(screen.getByRole('option', { name: /Fictional late name/ }));
+});
+
+test('A shard of another revision reloads the parent once; a second shows the failed state', async () => {
+  const user = (await import('@testing-library/user-event')).default.setup();
+  let reloads = 0;
+  const roster = {
+    load: async (_filter: string, shard: number) => ({ entries: shardEntries(shard), parent_revision: 'rev-fictional-newer' }),
+    onStale: () => { reloads += 1; },
+  };
+  const view = render(
+    <CampaignPortfolioV2View
+      child={null}
+      parent={shardedArtifact('rev-fictional-stale-1')}
+      onClear={() => undefined}
+      onSelect={() => undefined}
+      roster={roster}
+      selection={{ choice: null, kind: 'idle' }}
+    />,
+  );
+  await user.click(screen.getByRole('combobox', { name: 'Find a campaign' }));
+  await waitFor(() => assert.equal(reloads, 1));
+  assert.equal(screen.queryByText("Campaign names didn't load. Try again."), null);
+  // The reloaded parent arrives and its roster loads at once; its shards disagree again.
+  view.rerender(
+    <CampaignPortfolioV2View
+      child={null}
+      parent={shardedArtifact('rev-fictional-stale-2')}
+      onClear={() => undefined}
+      onSelect={() => undefined}
+      roster={roster}
+      selection={{ choice: null, kind: 'idle' }}
+    />,
+  );
+  await waitFor(() => assert.ok(screen.getByText("Campaign names didn't load. Try again.")));
+  assert.equal(reloads, 1);
+  assert.ok(screen.getByRole('button', { name: 'Try again' }));
+});
+
+test('A shard that fails shows the failure with a retry, and the retry loads the names', async () => {
+  const user = (await import('@testing-library/user-event')).default.setup();
+  let fail = true;
+  const roster = {
+    load: async (_filter: string, shard: number) => {
+      if (fail) throw new Error('fictional network failure');
+      return { entries: shardEntries(shard), parent_revision: 'rev-fictional-3' };
+    },
+    onStale: () => undefined,
+  };
+  render(
+    <CampaignPortfolioV2View
+      child={null}
+      parent={shardedArtifact('rev-fictional-3')}
+      onClear={() => undefined}
+      onSelect={() => undefined}
+      roster={roster}
+      selection={{ choice: null, kind: 'idle' }}
+    />,
+  );
+  const box = screen.getByRole('combobox', { name: 'Find a campaign' });
+  await user.click(box);
+  await waitFor(() => assert.ok(screen.getByText("Campaign names didn't load. Try again.")));
+  // The table is unaffected by the roster's failure.
+  assert.ok(screen.getByText(/Rows 1–10 of 62/));
+  fail = false;
+  await user.click(screen.getByRole('button', { name: 'Try again' }));
+  await waitFor(() => assert.equal(screen.queryByText("Campaign names didn't load. Try again."), null));
+  await user.type(box, 'early');
+  assert.ok(screen.getByRole('option', { name: /Fictional early name/ }));
+});

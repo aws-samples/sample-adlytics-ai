@@ -16,8 +16,9 @@ object through the real path: `stream_result_rows`, the adapter's row mapping, a
 (`answer_measurement`) and a fold of each kind (`fold_answer`). B_raw is the held rows' peak per
 row, B_shaped the shaped answer's retained bytes per row, B_kept a fold entry's bytes. B_render
 is the real Retail render's peak per product at every size (its reads are page-sized, ADR-152,
-so it bakes at any catalog size) and the Campaigns seven-sibling render's peak per campaign at
-the existing estate fixture.
+so it bakes at any catalog size). B_record is the real Campaigns bake render's peak per campaign
+at every size up to `BAKE_MAX_ROWS`, the most a bake keeps: its 26 folded reads, its one compact
+record per campaign and every filter's rows.
 Each is the maximum over the runs. The derivation then asks, for V in 50,000 down to 10,000,
 whether every roster row's `bakeability.resident` fits at 1,024 MiB, and prints the same at
 2,048 MiB.
@@ -385,16 +386,27 @@ def measure_retail_render(products: int) -> int:
     return peak - baseline[0]
 
 
-def measure_campaign_render() -> tuple[int, int, int]:
-    """Measure the Campaigns seven-sibling estate bake: (peak, encoded body bytes, campaigns).
+def measure_campaign_record(campaigns: int) -> int:
+    """Measure the Campaigns bake render at `campaigns`: its traced peak (ADR-152).
 
-    Today's Campaigns bake holds every body until it writes (bodies stream only with 04 §4), so
-    its peak less its encoded bodies still carries every rendered body object.
+    The real `render_portfolio` over the unit tier's fictional estate port, which streams each
+    read's rows one at a time as the result object does: the cohort, the 26 folded reads, the
+    compact record per campaign and every filter's rows. Bodies stream from the stage (`W`).
     """
     _support_path()
-    estate = importlib.import_module("accept_campaign_estate_local")
-    result = estate.run_filter_estate(_ROOT)
-    return int(result.peak_traced_bytes), int(result.total_bytes), int(result.campaign_count)
+    support = importlib.import_module("campaign_estate_support")
+    tracemalloc.start()
+    try:
+        selections = support.estate(campaigns)
+        rendered = support.renderer(support.EstateQueries(selections)).render_portfolio(
+            support.render_input(selections)
+        )
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    if rendered.portfolio is None or rendered.portfolio.total_count != campaigns:
+        raise ProbeError(f"the Campaigns bake at {campaigns} campaigns did not render.")
+    return int(peak)
 
 
 def run_p1(sizes: tuple[int, ...] = P1_SIZES, runs: int = P1_RUNS) -> dict[str, Any]:
@@ -420,22 +432,17 @@ def run_p1(sizes: tuple[int, ...] = P1_SIZES, runs: int = P1_RUNS) -> dict[str, 
                     }
                 )
     renders: list[dict[str, Any]] = []
-    campaign_render = 0.0
+    record = 0.0
     for _run in range(runs):
         for products in sizes:
             peak = measure_retail_render(products)
             render = max(render, peak / products)
             renders.append({"render": "retail_health", "rows": products, "peak_bytes": peak})
-        peak, bodies, campaigns = measure_campaign_render()
-        campaign_render = max(campaign_render, (peak - bodies) / campaigns)
-        renders.append(
-            {
-                "render": "campaigns_estate",
-                "rows": campaigns,
-                "peak_bytes": peak,
-                "encoded_body_bytes": bodies,
-            }
-        )
+        # A bake keeps at most `BAKE_MAX_ROWS` campaigns, so a larger size is measured there.
+        for campaigns in sorted({min(size, bakeability.BAKE_MAX_ROWS) for size in sizes}):
+            peak = measure_campaign_record(campaigns)
+            record = max(record, peak / campaigns)
+            renders.append({"render": "campaigns_bake", "rows": campaigns, "peak_bytes": peak})
     return {
         "sizes": list(sizes),
         "runs": runs,
@@ -446,20 +453,19 @@ def run_p1(sizes: tuple[int, ...] = P1_SIZES, runs: int = P1_RUNS) -> dict[str, 
             "B_shaped": round(shaped, 1),
             "B_kept": round(kept, 1),
             "B_render": round(render, 1),
-            "B_render_campaigns_estate": round(campaign_render, 1),
+            "B_record": round(record, 1),
         },
     }
 
 
-def _terms(
-    p1: Mapping[str, Any], measured: str, *, render: str = "B_render"
-) -> bakeability.BakeMemoryTerms:
+def _terms(p1: Mapping[str, Any], measured: str) -> bakeability.BakeMemoryTerms:
     terms = cast("Mapping[str, float]", p1["terms_bytes_per_row"])
     return bakeability.BakeMemoryTerms(
         raw=int(-(-terms["B_raw"] // 1)),
         shaped=int(-(-terms["B_shaped"] // 1)),
         kept=int(-(-terms["B_kept"] // 1)),
-        render=int(-(-max(terms["B_render"], terms.get(render, 0.0)) // 1)),
+        render=int(-(-terms["B_render"] // 1)),
+        record=int(-(-terms["B_record"] // 1)),
         measured=measured,
     )
 
@@ -969,10 +975,6 @@ def main(argv: list[str] | None = None, session_factory: Callable[..., Any] = bo
     label = f"P1 {measured_at.date().isoformat()}, tracemalloc, max of {P1_RUNS} runs"
     terms = _terms(p1, label)
     derivations = {str(memory): derive(terms, memory) for memory in (1_024, 2_048)}
-    # 03 §5 names the Campaigns render too: today it holds every body object (04 §4 streams
-    # them later), so its per-row term is derived beside the population-wide Retail render's.
-    literal = _terms(p1, label, render="B_render_campaigns_estate")
-    literal_derivations = {str(memory): derive(literal, memory) for memory in (1_024, 2_048)}
     p2: dict[str, Any] = {"ran": False}
     if session is not None:
         run = _Run(session.client("athena"), session.client("s3"), args.database)
@@ -985,7 +987,7 @@ def main(argv: list[str] | None = None, session_factory: Callable[..., Any] = bo
             "ranked": p2_ranked(run, args.bake_workgroup, ranked_cases()),
         }
     verdict = stop_rule(
-        literal_derivations["1024"]["derived"],
+        derivations["1024"]["derived"],
         p2.get("p2a") if p2["ran"] else None,
         p2.get("p2c") if p2["ran"] else None,
     )
@@ -999,22 +1001,19 @@ def main(argv: list[str] | None = None, session_factory: Callable[..., Any] = bo
             "B_shaped": terms.shaped,
             "B_kept": terms.kept,
             "B_render": terms.render,
+            "B_record": terms.record,
             "W": bakeability.WRITES_IN_FLIGHT_BYTES,
             "Q": bakeability.CERTIFIED_QUERY_CAP,
             "resident_share": bakeability.BAKE_RESIDENT_SHARE,
         },
         "derivation": derivations,
-        "derivation_with_campaigns_estate_render": literal_derivations,
         "p2": p2,
         "stop_rule": verdict,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(document, indent=1, sort_keys=True) + "\n", encoding="utf-8")
     print(f"terms per row: {document['terms']}")
-    for name, table in (
-        ("population-wide render", derivations),
-        ("with the Campaigns estate render", literal_derivations),
-    ):
+    for name, table in (("measured terms", derivations),):
         for memory, derivation in table.items():
             for ceiling, row in derivation["candidates"].items():
                 print(

@@ -159,6 +159,28 @@
           "after": "sha256:bd66ebb271d0c191fcbf50ff1f52891c73d0ed8ab6d63d19689ed94acc72b016"
         }
       }
+    },
+    "remeasure_2026_10_25_r2b": {
+      "note": "re-measured 2026-10-25 after r2b folded every Campaigns compare into one compact record per campaign (ADR-152)",
+      "measured_on": "9ed67c2ad39ef2f15b65c1508f956dec0f8637be",
+      "measured_on_note": "the parent commit plus the uncommitted r2b tree this receipt commits",
+      "cause": "campaigns#1d/7d/14d/30d: 26 plans at every preset (11 compares as one breakdown per window, one daily read per trend operand), write term WRITE_ALLOWANCE_SECONDS because segments grow with campaigns, budget 570 s",
+      "changed_rows": [
+        "campaigns#1d",
+        "campaigns#7d",
+        "campaigns#14d",
+        "campaigns#30d"
+      ],
+      "digests": {
+        "d2-roster.out": {
+          "before": "sha256:31c85feff441f73989640c0f6114f13af6c36f75dd9d5231ab81ce2dfc686b85",
+          "after": "sha256:a2f182c20eaaa9faa147f5497deb7dfd09beb806fbee118faa68ee7930d6c499"
+        },
+        "pin-section.json": {
+          "before": "sha256:fb72fc6f01267d281f408a4482d0b8706a14e8e39ca17aa3b0324270de586dd8",
+          "after": "sha256:6e0a6a3ffeee087f860835368ef42928bcbb820cf407115c1ce8fb4be821b124"
+        }
+      }
     }
   },
   "owning_design_digest": {
@@ -170,7 +192,7 @@
     {
       "command": "uv run python -m adapters.jobs.preset_artifact_publisher.bakeability --d2-roster",
       "raw_output": "d2-roster.out",
-      "sha256": "sha256:31c85feff441f73989640c0f6114f13af6c36f75dd9d5231ab81ce2dfc686b85"
+      "sha256": "sha256:a2f182c20eaaa9faa147f5497deb7dfd09beb806fbee118faa68ee7930d6c499"
     },
     {
       "command": "make check-bakeability",
@@ -180,7 +202,7 @@
     {
       "command": "uv run python <custody>/pin_section.py",
       "raw_output": "pin-section.json",
-      "sha256": "sha256:fb72fc6f01267d281f408a4482d0b8706a14e8e39ca17aa3b0324270de586dd8"
+      "sha256": "sha256:6e0a6a3ffeee087f860835368ef42928bcbb820cf407115c1ce8fb4be821b124"
     },
     {
       "command": "python3 <custody>/write_seconds_extract.py graph-bake-delivery/benchmark/extract-bake/spans.json",
@@ -202,23 +224,24 @@
     "campaigns_measured_seconds": 11.2,
     "campaigns_adopted_seconds": 16.6,
     "other_pages": "no deployed write trace: campaigns' 16.6 adopted as a [projection] upper bound",
-    "audiences_branch": "w_aud = WRITE_ALLOWANCE_SECONDS (450): parts grow with campaigns, so the stage's runtime write deadline is the one write limit; 24 plans at any campaign count"
+    "audiences_branch": "w_aud = WRITE_ALLOWANCE_SECONDS (450): parts grow with campaigns, so the stage's runtime write deadline is the one write limit; 24 plans at any campaign count",
+    "campaigns_branch": "w_campaigns = WRITE_ALLOWANCE_SECONDS (450): segments grow with campaigns, so the stage's runtime write deadline is the one write limit; 26 plans at any campaign count"
   },
   "rows": [
     {
       "key": "campaigns#1d",
       "certified_count": 26,
-      "derivation": "portfolio batch at the 1000-campaign estate bound over 1d and its equal prior; 0 spend-roster reads",
+      "derivation": "portfolio bake batch over 1d and its equal prior, at any campaign count: 22 compares into one compact record per campaign, 4 daily sums over 7 filters; 0 spend-roster reads",
       "phases": [
         26
       ],
       "write_seconds": {
-        "value": 16.6,
-        "marker": "projection",
-        "source": "adopted (conservative) 16.6 s; measured 11.2 s"
+        "value": 450.0,
+        "marker": "derived",
+        "source": "WRITE_ALLOWANCE_SECONDS: bodies grow with campaigns; the stage's deadline limits them"
       },
-      "certification_seconds": 136.6,
-      "budget_seconds": 240,
+      "certification_seconds": 570.0,
+      "budget_seconds": 570,
       "budget_basis": "contract budget, re-certified",
       "source_horizon_days": 123,
       "source_horizon_terms": {
@@ -243,28 +266,29 @@
           "reference_instant": "2025-01-01T00:00:00+00:00",
           "window": "2026-03-01..2026-03-01",
           "prior_window": "2026-02-28..2026-02-28",
-          "campaign_selections": "1000",
+          "campaign_selections": "50",
           "selection_marketplaces": "1",
+          "filters": "7",
           "sort": "spend desc",
           "roster_port": "counting port answering an empty roster"
         },
-        "output": "  campaigns#1d: count 26, phases [26], write 16.6 s [projection], 136.6 s <= 240 s (contract budget, re-certified), source horizon 123 d"
+        "output": "  campaigns#1d: count 26, phases [26], write 450.0 s [derived], 570.0 s <= 570 s (contract budget, re-certified), source horizon 123 d"
       }
     },
     {
       "key": "campaigns#7d",
       "certified_count": 26,
-      "derivation": "portfolio batch at the 1000-campaign estate bound over 7d and its equal prior; 0 spend-roster reads",
+      "derivation": "portfolio bake batch over 7d and its equal prior, at any campaign count: 22 compares into one compact record per campaign, 4 daily sums over 7 filters; 0 spend-roster reads",
       "phases": [
         26
       ],
       "write_seconds": {
-        "value": 16.6,
-        "marker": "projection",
-        "source": "adopted (conservative) 16.6 s; measured 11.2 s"
+        "value": 450.0,
+        "marker": "derived",
+        "source": "WRITE_ALLOWANCE_SECONDS: bodies grow with campaigns; the stage's deadline limits them"
       },
-      "certification_seconds": 136.6,
-      "budget_seconds": 240,
+      "certification_seconds": 570.0,
+      "budget_seconds": 570,
       "budget_basis": "contract budget, re-certified",
       "source_horizon_days": 123,
       "source_horizon_terms": {
@@ -289,28 +313,29 @@
           "reference_instant": "2025-01-01T00:00:00+00:00",
           "window": "2026-02-23..2026-03-01",
           "prior_window": "2026-02-16..2026-02-22",
-          "campaign_selections": "1000",
+          "campaign_selections": "50",
           "selection_marketplaces": "1",
+          "filters": "7",
           "sort": "spend desc",
           "roster_port": "counting port answering an empty roster"
         },
-        "output": "  campaigns#7d: count 26, phases [26], write 16.6 s [projection], 136.6 s <= 240 s (contract budget, re-certified), source horizon 123 d"
+        "output": "  campaigns#7d: count 26, phases [26], write 450.0 s [derived], 570.0 s <= 570 s (contract budget, re-certified), source horizon 123 d"
       }
     },
     {
       "key": "campaigns#14d",
-      "certified_count": 30,
-      "derivation": "portfolio batch at the 1000-campaign estate bound over 14d and its equal prior; 0 spend-roster reads",
+      "certified_count": 26,
+      "derivation": "portfolio bake batch over 14d and its equal prior, at any campaign count: 22 compares into one compact record per campaign, 4 daily sums over 7 filters; 0 spend-roster reads",
       "phases": [
-        30
+        26
       ],
       "write_seconds": {
-        "value": 16.6,
-        "marker": "projection",
-        "source": "adopted (conservative) 16.6 s; measured 11.2 s"
+        "value": 450.0,
+        "marker": "derived",
+        "source": "WRITE_ALLOWANCE_SECONDS: bodies grow with campaigns; the stage's deadline limits them"
       },
-      "certification_seconds": 136.6,
-      "budget_seconds": 270,
+      "certification_seconds": 570.0,
+      "budget_seconds": 570,
       "budget_basis": "contract budget, re-certified",
       "source_horizon_days": 123,
       "source_horizon_terms": {
@@ -335,28 +360,29 @@
           "reference_instant": "2025-01-01T00:00:00+00:00",
           "window": "2026-02-16..2026-03-01",
           "prior_window": "2026-02-02..2026-02-15",
-          "campaign_selections": "1000",
+          "campaign_selections": "50",
           "selection_marketplaces": "1",
+          "filters": "7",
           "sort": "spend desc",
           "roster_port": "counting port answering an empty roster"
         },
-        "output": "  campaigns#14d: count 30, phases [30], write 16.6 s [projection], 136.6 s <= 270 s (contract budget, re-certified), source horizon 123 d"
+        "output": "  campaigns#14d: count 26, phases [26], write 450.0 s [derived], 570.0 s <= 570 s (contract budget, re-certified), source horizon 123 d"
       }
     },
     {
       "key": "campaigns#30d",
-      "certified_count": 34,
-      "derivation": "portfolio batch at the 1000-campaign estate bound over 30d and its equal prior; 0 spend-roster reads",
+      "certified_count": 26,
+      "derivation": "portfolio bake batch over 30d and its equal prior, at any campaign count: 22 compares into one compact record per campaign, 4 daily sums over 7 filters; 0 spend-roster reads",
       "phases": [
-        34
+        26
       ],
       "write_seconds": {
-        "value": 16.6,
-        "marker": "projection",
-        "source": "adopted (conservative) 16.6 s; measured 11.2 s"
+        "value": 450.0,
+        "marker": "derived",
+        "source": "WRITE_ALLOWANCE_SECONDS: bodies grow with campaigns; the stage's deadline limits them"
       },
-      "certification_seconds": 166.6,
-      "budget_seconds": 300,
+      "certification_seconds": 570.0,
+      "budget_seconds": 570,
       "budget_basis": "contract budget, re-certified",
       "source_horizon_days": 123,
       "source_horizon_terms": {
@@ -381,12 +407,13 @@
           "reference_instant": "2025-01-01T00:00:00+00:00",
           "window": "2026-01-31..2026-03-01",
           "prior_window": "2026-01-01..2026-01-30",
-          "campaign_selections": "1000",
+          "campaign_selections": "50",
           "selection_marketplaces": "1",
+          "filters": "7",
           "sort": "spend desc",
           "roster_port": "counting port answering an empty roster"
         },
-        "output": "  campaigns#30d: count 34, phases [34], write 16.6 s [projection], 166.6 s <= 300 s (contract budget, re-certified), source horizon 123 d"
+        "output": "  campaigns#30d: count 26, phases [26], write 450.0 s [derived], 570.0 s <= 570 s (contract budget, re-certified), source horizon 123 d"
       }
     },
     {
@@ -1152,18 +1179,18 @@
   ],
   "totals": {
     "n": 20,
-    "sum_budget_seconds": 3840,
-    "root_bound_seconds": 3900,
+    "sum_budget_seconds": 5070,
+    "root_bound_seconds": 5130,
     "winner_policy_seconds": 7200
   },
   "lane_result": {
     "n": 20,
     "gray_code_steps": 524288,
     "loads_seconds": [
-      1432.4,
-      1433.0
+      2286.4,
+      2282.6
     ],
-    "makespan_seconds": 1433.0
+    "makespan_seconds": 2286.4
   },
   "o3_scope_families": [
     {
@@ -2100,7 +2127,7 @@
         "reads": 14,
         "blob_bytes": 36734,
         "item_sk": "BAKE_SOURCE#campaigns#14d",
-        "item_bytes": 51629,
+        "item_bytes": 51337,
         "scope_reads": [
           {
             "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-44afe5f0db1ad0490dd9c9a7|snapshot|iso_gregorian|0|UTC|source_business_date",
@@ -2152,7 +2179,7 @@
         "reads": 14,
         "blob_bytes": 48442,
         "item_sk": "BAKE_SOURCE#campaigns#30d",
-        "item_bytes": 67533,
+        "item_bytes": 66949,
         "scope_reads": [
           {
             "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-44afe5f0db1ad0490dd9c9a7|snapshot|iso_gregorian|0|UTC|source_business_date",
@@ -3372,30 +3399,30 @@
       "sk": "BAKE_SOURCE#scorecard#30d",
       "bytes": 71062
     },
-    "aggregate_bytes": 830911,
-    "oracle_aggregate_bytes": 806335,
+    "aggregate_bytes": 830035,
+    "oracle_aggregate_bytes": 805459,
     "headroom": {
       "item_bytes": 328938,
-      "aggregate_bytes": 3169089,
-      "vs_previous_aggregate_bytes": 384048,
+      "aggregate_bytes": 3169965,
+      "vs_previous_aggregate_bytes": 384924,
       "vs_previous_largest_item_bytes": 22471
     },
     "by_history_days": {
       "85": {
-        "largest_item_bytes": 56317,
-        "aggregate_bytes": 615547
+        "largest_item_bytes": 55733,
+        "aggregate_bytes": 614671
       },
       "463": {
         "largest_item_bytes": 71062,
-        "aggregate_bytes": 826151
+        "aggregate_bytes": 825275
       },
       "731": {
         "largest_item_bytes": 71062,
-        "aggregate_bytes": 829787
+        "aggregate_bytes": 828911
       },
       "1257": {
         "largest_item_bytes": 71062,
-        "aggregate_bytes": 830911
+        "aggregate_bytes": 830035
       }
     },
     "invariance": {
@@ -3410,7 +3437,7 @@
     "negative_control_unbounded": {
       "item_over_400000_at_history_days": 670,
       "aggregate_over_4000000_at_history_days": 381,
-      "aggregate_bytes_at_measured_history": 1080711
+      "aggregate_bytes_at_measured_history": 1079835
     },
     "over_cap_plans": []
   }

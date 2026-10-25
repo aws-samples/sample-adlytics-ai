@@ -37,14 +37,15 @@ def test_bulk_runner_attests_full_segment_fanout_without_a_wall_clock_assertion(
 
     assert result.campaign_count == 1_000
     assert result.segment_count == 20
-    assert result.sibling_pair_count == 199
-    # 200 pairs (the parent's and 199 siblings) and the one index shard (ADR-145), as staged.
-    assert result.body_count == 401
+    # 199 segment siblings and the two 500-entry roster shards (ADR-145).
+    assert result.sibling_pair_count == 201
+    # 202 pairs (the parent's and 201 siblings) and the one index shard, as staged.
+    assert result.body_count == 405
     assert 0 < result.maximum_body_bytes <= MAX_PRESET_ARTIFACT_BYTES
     assert result.maximum_body_bytes < result.maximum_served_bytes <= MAX_PRESET_ARTIFACT_BYTES
-    # 30d chunks the trend into three windows; Delivery per channel adds clicks and the DSP
-    # viewability operands; the row spark is no longer measured (ADR-127).
-    assert result.measurement_plan_count == 34
+    # 11 compares as one breakdown per window and one daily read per trend operand, at any
+    # population (ADR-152); Delivery per channel adds clicks and the DSP viewability operands.
+    assert result.measurement_plan_count == 26
 
 
 def test_chunk_merge_requires_identical_units_qualifiers_and_disjoint_dates() -> None:

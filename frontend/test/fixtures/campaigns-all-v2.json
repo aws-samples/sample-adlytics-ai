@@ -1151,7 +1151,7 @@
         {
           "absence_class": "generation-pending",
           "absence_reason": "This insight could not be generated just now; it retries automatically and appears on a later view.",
-          "artifact_revision": "sha256:9a650c4f1bdd12537a2255d33ef96e58a2b6eba3efda123ba64ece876179dfbc",
+          "artifact_revision": "sha256:c2faeb1cc4582bdc0651714b9d94d2f909b3f40b00a25e7048df0714e22d6fd6",
           "evidence_line": null,
           "id": "contribution",
           "output_class": "perspective",
@@ -1162,7 +1162,7 @@
         {
           "absence_class": "ineligible",
           "absence_reason": "This insight requires a portfolio-level direction, which is not available for this view and window.",
-          "artifact_revision": "sha256:9a650c4f1bdd12537a2255d33ef96e58a2b6eba3efda123ba64ece876179dfbc",
+          "artifact_revision": "sha256:c2faeb1cc4582bdc0651714b9d94d2f909b3f40b00a25e7048df0714e22d6fd6",
           "evidence_line": null,
           "id": "divergence",
           "output_class": "perspective",
@@ -1173,7 +1173,7 @@
         {
           "absence_class": "generation-pending",
           "absence_reason": "This insight could not be generated just now; it retries automatically and appears on a later view.",
-          "artifact_revision": "sha256:9a650c4f1bdd12537a2255d33ef96e58a2b6eba3efda123ba64ece876179dfbc",
+          "artifact_revision": "sha256:c2faeb1cc4582bdc0651714b9d94d2f909b3f40b00a25e7048df0714e22d6fd6",
           "evidence_line": null,
           "id": "exposure",
           "output_class": "perspective",
@@ -1182,7 +1182,7 @@
           "text": null
         },
         {
-          "artifact_revision": "sha256:9a650c4f1bdd12537a2255d33ef96e58a2b6eba3efda123ba64ece876179dfbc",
+          "artifact_revision": "sha256:c2faeb1cc4582bdc0651714b9d94d2f909b3f40b00a25e7048df0714e22d6fd6",
           "evidence_line": "Server-ranked absolute changes.",
           "id": "movers",
           "output_class": "observed",
@@ -1209,40 +1209,8 @@
       },
       "reason_codes": [],
       "roster": {
-        "channels": [
-          "Amazon DSP",
-          "Sponsored Brands",
-          "Sponsored Products"
-        ],
-        "entries": [
-          [
-            "Fictional DSP Retargeting",
-            0,
-            0,
-            0
-          ],
-          [
-            "Fictional DSP Prospecting",
-            0,
-            0,
-            1
-          ],
-          [
-            "Fictional SB Launch",
-            1,
-            0,
-            2
-          ],
-          [
-            "Fictional SP Exact",
-            2,
-            0,
-            3
-          ]
-        ],
-        "marketplaces": [
-          "United States"
-        ]
+        "revision": "0c911a92916912f715923a5015c1df69e18d4e7e9e47f2a0e442675e95e8c4ab",
+        "shards": 1
       },
       "rows": [
         {

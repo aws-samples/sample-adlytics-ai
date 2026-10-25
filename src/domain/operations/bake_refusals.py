@@ -112,7 +112,9 @@ REFUSAL_CLASSES: Final[Mapping[IsolatedRefusalReason, RefusalClass]] = {
 """The one class table: limit and dependency alarm; data is counted, not alarmed."""
 
 _RAISE_MEMORY: Final = (
-    "raise the Baker memory; the ceiling grows with it (make check-bakeability prints it per size)"
+    "raise the Baker memory: set bake_tasks.baker_memory_mib, run make "
+    "generate-execution-graph-protocol and make deploy-all; the ceiling grows with it "
+    "(make check-bakeability prints it per size)"
 )
 OPERATOR_ACTIONS: Final[Mapping[IsolatedRefusalReason, str]] = {
     _R.ROWS_OVER_CEILING: _RAISE_MEMORY,

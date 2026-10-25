@@ -61,8 +61,10 @@ from domain.presentation.campaign_custody import campaign_custody_manifest_from_
 from domain.presentation.campaign_portfolio import (
     CampaignPortfolioArtifact,
     CampaignPortfolioMetric,
+    CampaignPortfolioRosterEntry,
     campaign_portfolio_artifact_from_payload,
     campaign_portfolio_artifact_payload,
+    campaign_roster_shard_from_payload,
 )
 from domain.presentation.evidence_status import withheld_slots
 from domain.presentation.next_steps import NextStepPageTargets, NextStepTargets
@@ -550,6 +552,43 @@ def _serve(  # noqa: PLR0913, PLR0917 -- one module, its stores, a body and a pa
     return module.handle(event, _filter_runtime(module, stores))
 
 
+def _roster(
+    module: _PresentationModule, stores: _Stores, artifact: CampaignPortfolioArtifact
+) -> tuple[CampaignPortfolioRosterEntry, ...]:
+    """Read one filter's whole roster through `roster_shard`, each shard of the body's revision."""
+    assert artifact.roster == () and artifact.roster_shards is not None
+    filter_id = artifact.filter_id
+    entries: list[CampaignPortfolioRosterEntry] = []
+    for shard in range(artifact.roster_shards.shards):
+        response = _serve(module, stores, {"filter_id": filter_id, "roster_shard": shard})
+        assert response["statusCode"] == 200, response["body"]
+        body = _body(response)
+        assert body["parent_revision"] == artifact.roster_shards.revision
+        entries.extend(
+            campaign_roster_shard_from_payload(body["shard"], shard, body["parent_revision"])
+        )
+    return tuple(entries)
+
+
+@pytest.mark.covers("ADR-145")
+def test_a_roster_shard_request_is_closed_and_bound_to_the_index(
+    presentation_module: _PresentationModule,  # noqa: F811
+) -> None:
+    """A shard the bake never wrote, a bool, or a shard beside a sort or segment is refused."""
+    stores = _Stores(_bake())
+    assert _serve(presentation_module, stores, {"roster_shard": 0})["statusCode"] == 200
+    for body in (
+        {"roster_shard": 1},
+        {"roster_shard": True},
+        {"roster_shard": -1},
+        {"roster_shard": 0, "segment": 1},
+        {"roster_shard": 0, "sort": {"field": "spend", "direction": "asc"}},
+    ):
+        with pytest.raises(ValidationError) as refused:
+            _serve(presentation_module, stores, body)
+        assert refused.value.description == "The campaign roster shard is invalid.", body
+
+
 def _served_artifact(response: dict[str, Any]) -> CampaignPortfolioArtifact:
     assert response["statusCode"] == 200, response["body"]
     page = cast("dict[str, Any]", _body(response)["page"])
@@ -577,9 +616,14 @@ def test_each_filter_serves_its_own_rows_and_roster_from_the_one_pointer(
     assert everything.filter_id == "all" and dsp.filter_id == "amazon_dsp"
     assert everything.period == dsp.period
     assert {row.signature.channel for row in dsp.rows} == {"Amazon DSP"}
-    assert {entry.channel for entry in dsp.roster} == {"Amazon DSP"}
-    assert len(everything.roster) == len(ESTATE)
-    assert len(dsp.roster) == 2
+    # Each filter's roster is its own shards, served through the one pointer's index (ADR-145).
+    rosters = {
+        artifact.filter_id: _roster(presentation_module, stores, artifact)
+        for artifact in (everything, dsp)
+    }
+    assert {entry.channel for entry in rosters["amazon_dsp"]} == {"Amazon DSP"}
+    assert len(rosters["all"]) == len(ESTATE)
+    assert len(rosters["amazon_dsp"]) == 2
     # One-channel totals are that channel's own: 700 + 1,400 of spend.
     spend = next(item for item in dsp.totals if item.metric is CampaignPortfolioMetric.SPEND)
     assert spend.current.value == Decimal(2100)

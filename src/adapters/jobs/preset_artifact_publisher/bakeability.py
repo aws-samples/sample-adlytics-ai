@@ -24,7 +24,6 @@ from typing import TYPE_CHECKING, Any, TypedDict, cast
 from adapters.campaign_measurement import (
     CampaignArtifactMeasurementService,
     CampaignMeasurementDependencies,
-    CampaignPortfolioMeasurementInput,
 )
 from adapters.inbound.tool_handlers.measurement import (
     MeasurementTooling,
@@ -58,9 +57,9 @@ from adapters.jobs.preset_artifact_publisher.audiences_source import (
     _Served as _AudiencesServed,  # pyright: ignore[reportPrivateUsage]
 )
 from adapters.jobs.preset_artifact_publisher.campaign_source import (
-    CAMPAIGN_PRESET_POPULATION_BOUND,
-    _representative_selections,  # pyright: ignore[reportPrivateUsage]
+    REPRESENTATIVE_CAMPAIGNS,
     campaign_portfolio_bake_plan_count,
+    representative_bake_batch,
     representative_windows,
 )
 from adapters.jobs.preset_artifact_publisher.group_stream import RESIDENT_GROUPS, SinkSlot
@@ -120,6 +119,7 @@ from adapters.outbound.metric_dictionary import load_catalog
 from adapters.outbound.publication_selection import MAX_PRESET_SNAPSHOT_PARTITIONS
 from adapters.outbound.spend_roster import SPEND_FACT
 from adapters.producer.packs import load_query_packs
+from domain.measurement.folds import KeyedColumn
 from domain.measurement.pack_coverage import PackCoverageVerdict, PackDayVersions
 from domain.measurement.rosters import Roster
 from domain.operations.bake_memory import (
@@ -141,8 +141,8 @@ from domain.operations.bake_scheduling import (
 from domain.operations.generated_execution_graphs import BAKE_TASKS
 from domain.presentation.campaign_portfolio import (
     CAMPAIGN_PORTFOLIO_MAX_ROWS,
-    CampaignPortfolioSort,
     CampaignPortfolioSortField,
+    campaign_roster_shard_count,
 )
 from domain.presentation.insights import InsightSlotId
 from domain.presentation.page_schemas import (
@@ -204,7 +204,6 @@ __all__ = [
     "BakeabilityFinding",
     "RosterTaskCertificate",
     "artifact_served_pages",
-    "audiences_object_count",
     "audiences_phases",
     "campaign_bake_object_count",
     "certify_roster_tasks",
@@ -213,6 +212,7 @@ __all__ = [
     "roster_plan_counts",
     "sibling_index_shard_count",
     "write_allowance_findings",
+    "write_term_object_count",
 ]
 
 # Conservative per-execution latency budget. The observed envelope in
@@ -239,16 +239,13 @@ BAKER_TIMEOUT_SECONDS = 300
 # The Baker's in-process Athena cap Q every bake budget is certified at (plan S1); the deployed
 # `athenaStartBudget.bakerStartCap` may not go below it, so this gate's waves are an upper bound.
 CERTIFIED_QUERY_CAP = int(BAKE_TASKS["certified_query_cap"])
-CAMPAIGN_MAX_SEGMENTS = math.ceil(CAMPAIGN_PRESET_POPULATION_BOUND / CAMPAIGN_PORTFOLIO_MAX_ROWS)
 CAMPAIGN_ORDERING_COUNT = len(tuple(CampaignPortfolioSortField)) * 2
 CAMPAIGN_GOVERNED_CHANNEL_COUNT = 5
 """The governed channels in contracts/shared/media-taxonomy.yaml; a test holds them equal."""
 CAMPAIGN_MAX_FILTER_SIBLINGS = 2 + CAMPAIGN_GOVERNED_CHANNEL_COUNT
 """All channels, Sponsored ads and one per channel: up to seven siblings per preset (ADR-127)."""
-# Siblings of one preset: All channels and Sponsored ads may each hold the whole population, and
-# the one-channel siblings partition it, so together they hold at most one population plus one
-# partly filled segment per channel.
-CAMPAIGN_MAX_FILTER_SEGMENTS = 3 * CAMPAIGN_MAX_SEGMENTS + CAMPAIGN_GOVERNED_CHANNEL_COUNT
+CAMPAIGN_SIZING_ESTATES = (1_000, 10_000, 100_000)
+"""The campaign counts `main` prints each variant's object count at: the sizing table's source."""
 
 
 def sibling_index_shard_count(siblings: int) -> int:
@@ -264,24 +261,25 @@ def _with_index(pair_objects: int) -> int:
 def campaign_bake_object_count(filter_populations: tuple[int, ...]) -> int:
     """Count the immutable objects one Campaigns variant writes for its filters' populations.
 
-    Each filter writes every ordering's segments as a public body and a private custody; its
-    canonical first segment is the filter's own parent (the pointer's body for All channels), so
-    a filter of S segments writes 2 x orderings x S objects. Every pair but the parent's is a
-    sibling, and the stage indexes them in shards of `SIBLING_INDEX_SHARD_ENTRIES` (ADR-145).
-    The local estate acceptance holds this count equal to a real seven-sibling bake's.
+    Each filter writes every ordering's segments and its name roster's shards, each a public
+    body and a private custody; its canonical first segment is the filter's own parent (the
+    pointer's body for All channels), so a filter of S segments and R roster shards writes
+    2 x (orderings x S + R) objects. Every pair but the parent's is a sibling, and the stage
+    indexes them in shards of `SIBLING_INDEX_SHARD_ENTRIES` (ADR-145). The local estate
+    acceptance holds this count equal to a real seven-sibling bake's.
     """
     return _with_index(
         sum(
-            2 * CAMPAIGN_ORDERING_COUNT * max(1, math.ceil(count / CAMPAIGN_PORTFOLIO_MAX_ROWS))
+            2
+            * (
+                CAMPAIGN_ORDERING_COUNT * max(1, math.ceil(count / CAMPAIGN_PORTFOLIO_MAX_ROWS))
+                + campaign_roster_shard_count(count)
+            )
             for count in filter_populations
         )
     )
 
 
-MAX_BAKE_BODY_COUNT = _with_index(2 * CAMPAIGN_ORDERING_COUNT * CAMPAIGN_MAX_FILTER_SEGMENTS)
-"""The most objects a Campaigns variant writes at the estate bound: the estimate, not the bound."""
-CAMPAIGN_MAX_ENCODED_BODY_ESTIMATE = 245_000
-MAX_BAKE_TOTAL_BYTES = MAX_BAKE_BODY_COUNT * MAX_PRESET_ARTIFACT_BYTES
 RETAIL_HEALTH_BAKE_BODY_COUNT = _with_index(2 + 2 * RETAIL_HEALTH_MAX_ROWS)
 """The parent pair, one child pair per served row, and the index shard binding the children."""
 
@@ -342,11 +340,12 @@ class ResidentModel:
     kept: int
     render: int
     memory_bytes: int
+    records: int = 0
 
     @property
     def total(self) -> int:
         """`resident(row)`: the sum of every term."""
-        return self.writes + self.raw + self.shaped + self.kept + self.render
+        return self.writes + self.raw + self.shaped + self.kept + self.render + self.records
 
     @property
     def limit(self) -> int:
@@ -362,7 +361,7 @@ class ResidentModel:
         """Print every term, so the gate's number is derived in the open, never typed."""
         return (
             f"W {self.writes} + raw {self.raw} + shaped {self.shaped} + kept {self.kept} + "
-            f"render {self.render} = {self.total} B <= {self.limit} B "
+            f"render {self.render} + records {self.records} = {self.total} B <= {self.limit} B "
             f"({BAKE_RESIDENT_SHARE:g} x {self.memory_bytes}) at ceiling {self.ceiling}"
         )
 
@@ -380,6 +379,7 @@ def resident(  # noqa: PLR0913 -- one row's certified widths, the ceiling, terms
 
         resident(row) = W + Q x max_held x B_raw + sum(held widths) x B_shaped
                         + sum(fold max_kept) x B_kept + max_held x B_render
+                        + sum(record stores' max_kept) x B_record
 
     A slot certified at `BAKE_MAX_ROWS` is counted at `ceiling`, so the probe can ask what each
     candidate value means; a slot with its own smaller bound (a fixed axis, the ranked 50)
@@ -394,6 +394,7 @@ def resident(  # noqa: PLR0913 -- one row's certified widths, the ceiling, terms
         ceiling if item == BAKE_MAX_ROWS else item
         for item in (*certificate.kept, *certificate.retained)
     )
+    records = tuple(ceiling if item == BAKE_MAX_ROWS else item for item in certificate.records)
     held = max(widths, default=0)
     return ResidentModel(
         key=key,
@@ -404,6 +405,7 @@ def resident(  # noqa: PLR0913 -- one row's certified widths, the ceiling, terms
         kept=sum(kept) * terms.kept,
         render=held * terms.render,
         memory_bytes=memory_bytes,
+        records=sum(records) * terms.record,
     )
 
 
@@ -562,15 +564,16 @@ class BakeStorageEstimate:
             raise ValueError("bake storage total cannot be smaller than one body.")
 
 
-def audiences_object_count() -> int:
-    """Count the objects Audiences' certified write term writes one after another.
+def write_term_object_count(page: str) -> int:
+    """Count the objects a page's certified write term writes one after another.
 
-    Audiences' bodies grow with its campaigns, so its write term is the whole write allowance
-    (`page_write_seconds`) and the stage's runtime deadline is its one write limit (ADR-145):
-    this is what that term writes at `PER_OBJECT_WRITE_MS` each, sequentially. The stage writes
-    several chains at once, so it under-counts what the term holds.
+    Audiences' parts and Campaigns' segments grow with their campaigns, so their write term is
+    the whole write allowance (`page_write_seconds`) and the stage's runtime deadline is their
+    one write limit (ADR-145): this is what that term writes at `PER_OBJECT_WRITE_MS` each,
+    sequentially. The stage writes several chains at once, so it under-counts what the term
+    holds.
     """
-    return int(page_write_seconds("audiences").seconds * 1_000) // PER_OBJECT_WRITE_MS
+    return int(page_write_seconds(page).seconds * 1_000) // PER_OBJECT_WRITE_MS
 
 
 @dataclass(frozen=True, slots=True)
@@ -855,10 +858,11 @@ def main() -> int:
     }
     retention_body = retention_bake_body_bytes(root)
     storage = {
+        # Segments grow with campaigns: the objects its write term certifies, each at the cap.
         "campaigns": BakeStorageEstimate(
-            MAX_BAKE_BODY_COUNT,
-            CAMPAIGN_MAX_ENCODED_BODY_ESTIMATE,
-            MAX_BAKE_BODY_COUNT * CAMPAIGN_MAX_ENCODED_BODY_ESTIMATE,
+            write_term_object_count("campaigns"),
+            MAX_PRESET_ARTIFACT_BYTES,
+            write_term_object_count("campaigns") * MAX_PRESET_ARTIFACT_BYTES,
         ),
         # The parent body and custody, one child body and custody per displayed row, the index.
         "retail-health": BakeStorageEstimate(
@@ -878,9 +882,9 @@ def main() -> int:
         "retention": BakeStorageEstimate(1, retention_body, retention_body),
         # Parts grow with campaigns: the objects its write term certifies, each at the cap.
         "audiences": BakeStorageEstimate(
-            audiences_object_count(),
+            write_term_object_count("audiences"),
             MAX_PRESET_ARTIFACT_BYTES,
-            audiences_object_count() * MAX_PRESET_ARTIFACT_BYTES,
+            write_term_object_count("audiences") * MAX_PRESET_ARTIFACT_BYTES,
         ),
     }
     findings = (
@@ -939,11 +943,14 @@ def main() -> int:
             f"  write {page}#{row['variant']}: write_seconds "
             f"{float(BAKE_TASKS['write_seconds'][page]):g} s <= {WRITE_ALLOWANCE_SECONDS:g} s"
         )
-    print(
-        f"  campaigns: up to {CAMPAIGN_MAX_FILTER_SIBLINGS} filter siblings per preset, "
-        f"{MAX_BAKE_BODY_COUNT} immutable objects per variant at the estate bound, "
-        f"{MAX_BAKE_BODY_COUNT * PER_OBJECT_WRITE_MS // 1_000} s of writes budgeted"
-    )
+    for campaigns in CAMPAIGN_SIZING_ESTATES:
+        # At most: All channels, Sponsored ads and one channel each holding every campaign.
+        objects = campaign_bake_object_count((campaigns, campaigns, campaigns))
+        print(
+            f"  campaigns at {campaigns} campaigns: at most {objects} objects per variant over "
+            f"up to {CAMPAIGN_MAX_FILTER_SIBLINGS} filter siblings; the write term budgets "
+            f"{write_term_object_count('campaigns')} sequential objects"
+        )
     print("Every declared preset fits its per-pack snapshot and the bake budget.")
     return 0
 
@@ -992,6 +999,9 @@ class RowCertificate:
     retained: tuple[int, ...] = field(default=(), compare=False, repr=False)
     """What a source keeps beyond its slots' own bound, each bounded: Audiences' groups queued
     and drawn beside the one each streamed read builds, and its campaign tallies and segments."""
+    records: tuple[int, ...] = field(default=(), compare=False, repr=False)
+    """Each compact per-entity store's bound (`KeyedColumns.max_kept`), counted once however
+    many slots fold into it: Campaigns' one record per campaign (ADR-152)."""
 
     def __post_init__(self) -> None:
         if self.count < 1 or not self.phases or sum(self.phases) != self.count:
@@ -1125,6 +1135,7 @@ def _distinct_plans(prepared: PreparedMeasurementBatch) -> tuple[QueryPlan, ...]
 class _WidthTerms(TypedDict):
     widths: tuple[int, ...]
     kept: tuple[int, ...]
+    records: tuple[int, ...]
 
 
 def _width_terms(*batches: PreparedMeasurementBatch) -> _WidthTerms:
@@ -1135,6 +1146,7 @@ def _width_terms(*batches: PreparedMeasurementBatch) -> _WidthTerms:
     """
     widths: list[int] = []
     kept: list[int] = []
+    stores: dict[int, int] = {}
     for prepared in batches:
         for operation in prepared.operations:
             reduction = operation.request.reduction
@@ -1144,9 +1156,12 @@ def _width_terms(*batches: PreparedMeasurementBatch) -> _WidthTerms:
                 elif isinstance(reduction, SinkSlot):
                     # The group a streamed read builds; its queued and drawn groups are retained.
                     kept.append(reduction.group_max_kept)
+                elif isinstance(reduction, KeyedColumn):
+                    # Every column of one store is one record per entity: counted once.
+                    stores[id(reduction.store)] = reduction.store.max_kept
                 else:
                     kept.append(reduction().max_kept)
-    return _WidthTerms(widths=tuple(widths), kept=tuple(kept))
+    return _WidthTerms(widths=tuple(widths), kept=tuple(kept), records=tuple(stores.values()))
 
 
 def _symbols(*builders: Callable[..., object]) -> tuple[str, ...]:
@@ -1163,8 +1178,13 @@ _COUNTING_ROSTERS = ("roster_port", "counting port answering an empty roster")
 
 
 def _campaigns_row(root: pathlib.Path, variant: str) -> RowCertificate:
-    """Return the real portfolio batch at the estate bound, through a counting roster port."""
-    period, prior = representative_windows(preset_days(TemporalPresetId(variant)))
+    """Return the real portfolio bake batch, through a counting roster port (ADR-152).
+
+    Its 26 reads fold into one compact record per campaign and seven filters' daily sums, so
+    the certificate is the same at any population; the store's bound is `BAKE_MAX_ROWS`.
+    """
+    days = preset_days(TemporalPresetId(variant))
+    period, prior = representative_windows(days)
     bridge = load_commerce_identity_bridge(root)
     rosters = _CountingRosters()
     service = CampaignArtifactMeasurementService(
@@ -1176,22 +1196,15 @@ def _campaigns_row(root: pathlib.Path, variant: str) -> RowCertificate:
             rosters=rosters,
         )
     )
-    selections = _representative_selections(bridge)  # pyright: ignore[reportPrivateUsage]
-    batch = service.portfolio_batch(
-        CampaignPortfolioMeasurementInput(
-            selections=selections,
-            period=period,
-            prior_period=prior,
-            sort=CampaignPortfolioSort(CampaignPortfolioSortField.SPEND, "desc"),
-        )
-    )
+    batch = representative_bake_batch(service, bridge, days, CAMPAIGN_MAX_FILTER_SIBLINGS)
     plans = _distinct_plans(batch.prepared)
     phases = (len(rosters.read), len(plans)) if rosters.read else (len(plans),)
     return RowCertificate(
         sum(phases),
         phases,
-        f"portfolio batch at the {CAMPAIGN_PRESET_POPULATION_BOUND}-campaign estate bound over "
-        f"{variant} and its equal prior; {len(rosters.read)} spend-roster reads",
+        f"portfolio bake batch over {variant} and its equal prior, at any campaign count: "
+        f"22 compares into one compact record per campaign, 4 daily sums over "
+        f"{CAMPAIGN_MAX_FILTER_SIBLINGS} filters; {len(rosters.read)} spend-roster reads",
         plans,
         tuple(rosters.read),
         builder=_symbols(CampaignArtifactMeasurementService.portfolio_batch),
@@ -1200,8 +1213,9 @@ def _campaigns_row(root: pathlib.Path, variant: str) -> RowCertificate:
             _REFERENCE_FIXTURE,
             ("window", _range(period)),
             ("prior_window", _range(prior)),
-            ("campaign_selections", str(len(selections))),
-            ("selection_marketplaces", str(len({item.marketplace for item in selections}))),
+            ("campaign_selections", str(REPRESENTATIVE_CAMPAIGNS)),
+            ("selection_marketplaces", "1"),
+            ("filters", str(CAMPAIGN_MAX_FILTER_SIBLINGS)),
             ("sort", "spend desc"),
             _COUNTING_ROSTERS,
         ),
@@ -1608,30 +1622,25 @@ durations over the 3 written campaigns tasks (180 spans), rounded up to one deci
 def page_write_seconds(page: str) -> WriteSeconds:
     """Adopt each page's write seconds for certification (plan A5.3 O2).
 
-    Campaigns keeps its deployed 16.6, an upper bound over its measured 11.2. An adopted bound
-    is a projection under rev5 O2, so campaigns is marked one too, with both figures in its
-    source. Audiences' parts grow with its campaigns, so it is certified at the whole write
-    allowance and the stage's runtime write deadline is its one write limit (ADR-141). Every
-    other page has no measured `artifact.write` span (retail-health's tasks were all unchanged),
-    so it adopts campaigns' 16.6 as a declared conservative upper bound.
+    Audiences' parts and Campaigns' segments grow with their campaigns, so each is certified at
+    the whole write allowance and the stage's runtime write deadline is its one write limit
+    (ADR-141, ADR-152). Every other page writes a fixed set of bodies; none has a measured
+    `artifact.write` span (retail-health's tasks were all unchanged), so each adopts 16.6 s, the
+    deployed upper bound over Campaigns' measured 11.2 s at 1,000 campaigns, as a declared
+    conservative projection.
     """
-    if page == "audiences":
+    if page in {"audiences", "campaigns"}:
         return WriteSeconds(
             WRITE_ALLOWANCE_SECONDS,
             "derived",
-            "WRITE_ALLOWANCE_SECONDS: parts grow with campaigns; the stage's deadline limits them",
+            "WRITE_ALLOWANCE_SECONDS: bodies grow with campaigns; the stage's deadline limits them",
         )
-    if page == "campaigns":
-        seconds = float(BAKE_TASKS["write_seconds"]["campaigns"])
-        return WriteSeconds(
-            seconds,
-            "projection",
-            f"adopted (conservative) {seconds} s; measured {CAMPAIGNS_MEASURED_WRITE_SECONDS} s",
-        )
+    seconds = float(BAKE_TASKS["write_seconds"][page])
     return WriteSeconds(
-        float(BAKE_TASKS["write_seconds"]["campaigns"]),
+        seconds,
         "projection",
-        "campaigns' 16.6 adopted as a conservative upper bound: no deployed write trace",
+        f"{seconds} s adopted as a conservative upper bound over the measured "
+        f"{CAMPAIGNS_MEASURED_WRITE_SECONDS} s: no deployed write trace",
     )
 
 

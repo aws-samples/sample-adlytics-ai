@@ -14,7 +14,7 @@ import { Construct } from 'constructs';
 
 import { AppConfig, paramPath, semanticV2AthenaWorkgroupName, semanticV2DatabaseName } from '../config';
 import { BAKER_RESERVED_CONCURRENCY, validateAthenaStartBudget } from '../config/athena-start-budget';
-import { ROUTES } from '../generated/execution-graph-protocol';
+import { BAKE_TASKS, ROUTES } from '../generated/execution-graph-protocol';
 import {
   executionGraphAuthority,
   grantGraphWorker,
@@ -169,7 +169,8 @@ export class PublisherStack extends cdk.Stack {
       handler: BAKER_HANDLER,
       sourceAssetPath: props.sourceAssetPath,
       dependencies,
-      memorySize: 1024,
+      // The contract's `bake_tasks.baker_memory_mib`, the memory model's one home (ADR-152).
+      memorySize: BAKE_TASKS.baker_memory_mib,
       timeoutSeconds: BAKE_TIMEOUT_SECONDS,
       reservedConcurrency: BAKER_RESERVED_CONCURRENCY,
       environment: {

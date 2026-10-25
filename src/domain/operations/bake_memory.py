@@ -34,9 +34,9 @@ __all__ = [
 
 MIB: Final = 1024 * 1024
 
-BAKER_MEMORY_BYTES: Final = 1024 * MIB
-"""The deployed Baker's memory. Must match its memorySize in infra/lib/stacks/publisher-stack.ts;
-a test reads it."""
+BAKER_MEMORY_BYTES: Final = int(BAKE_TASKS["baker_memory_mib"]) * MIB
+"""The deployed Baker's memory: the contract's `bake_tasks.baker_memory_mib`, its one home, which
+infra/lib/stacks/publisher-stack.ts also reads for the function's memorySize."""
 
 BAKE_RESIDENT_SHARE: Final = 0.5
 """The share of the Baker a bake's resident bytes may use; the rest is the interpreter, its
@@ -47,8 +47,8 @@ libraries and the allocator's own overhead."""
 class BakeMemoryTerms:
     """Bytes per row the baker holds, measured by `validation/probe_bake_row_ceiling.py` (P1).
 
-    Each is the largest `tracemalloc` peak over three runs at N in {10,000; 30,000; 50,000},
-    through the real stream, shape and fold path, divided by N, on the widest held shapes.
+    Each is the largest `tracemalloc` peak over three runs at each probed N, through the real
+    stream, shape and fold path, divided by N, on the widest held shapes.
     """
 
     raw: int
@@ -59,6 +59,9 @@ class BakeMemoryTerms:
     """B_kept: one entry a fold keeps (the largest over the fold kinds)."""
     render: int
     """B_render: the render's own per-row structures."""
+    record: int
+    """B_record: one entity a page renders whole holds: its compact record (`KeyedColumns`) and
+    the render's rows for it in every filter (Campaigns, ADR-152)."""
     measured: str
     """When and how the terms were measured: the evidence ADR-143 cites."""
 
@@ -67,10 +70,12 @@ BAKE_MEMORY_TERMS: Final = BakeMemoryTerms(
     raw=987,
     shaped=930,
     kept=241,
-    render=10_467,
+    render=158,
+    record=7_865,
     measured=(
-        "row-ceiling probe P1, 2026-10-18: tracemalloc, the maximum over 3 runs at 10k, 30k and "
-        "50k rows; B_render is the Retail render's own structures per product"
+        "row-ceiling probe P1, 2026-10-25: tracemalloc, the maximum over 3 runs at 10k and 100k "
+        "rows; B_render is the Retail render's own structures per product, B_record the real "
+        "Campaigns bake render per campaign at 10k and at the 31,514-campaign ceiling"
     ),
 )
 """The measured per-row terms; ADR-143's Decision cites them by date."""
@@ -84,7 +89,7 @@ BAKE_FIXED_BYTES: Final = 4_099_720
 """The binding row's resident bytes at V = 0 (`audiences#last_complete_month`): W plus its
 fixed-width slots. Recomputed and held equal by `make check-bakeability`."""
 
-BAKE_BYTES_PER_ROW: Final = 33_941
+BAKE_BYTES_PER_ROW: Final = 23_632
 """The binding row's resident bytes per unit of V: its ceiling-wide slots times their terms.
 Recomputed and held equal by `make check-bakeability`."""
 

@@ -1672,8 +1672,20 @@ export interface CampaignPortfolioArtifact {
     readonly segment_size: 50;
     readonly total_count: number;
   } | null;
+  /** The name roster in the body: a request-time list's, or a body baked before render format 13. */
   readonly roster: readonly CampaignPortfolioRosterEntry[];
+  /** A baked body's roster (ADR-145): its shards, fetched on the name field's first focus. */
+  readonly roster_shards: CampaignPortfolioRosterShards | null;
 }
+
+/** What a baked body says about its name roster: its shard count and the bake's revision. */
+export interface CampaignPortfolioRosterShards {
+  readonly revision: string;
+  readonly shards: number;
+}
+
+/** Roster entries per shard, as the bake writes them (ADR-145). */
+export const CAMPAIGN_ROSTER_SHARD_ENTRIES = 500;
 
 /** One display-only estate roster entry (ADR-071): labels and canonical position, never a key. */
 export interface CampaignPortfolioRosterEntry {
@@ -1681,6 +1693,52 @@ export interface CampaignPortfolioRosterEntry {
   readonly marketplace: string;
   readonly name: string | null;
   readonly position: number;
+}
+
+/** Decode a dictionary-encoded roster whose positions start at `offset` (the server's encoding). */
+function rosterEntries(value: unknown, offset: number): CampaignPortfolioRosterEntry[] {
+  const rosterRaw = exact(value, ['channels', 'entries', 'marketplaces']);
+  if (
+    !Array.isArray(rosterRaw.channels) ||
+    !Array.isArray(rosterRaw.marketplaces) ||
+    !Array.isArray(rosterRaw.entries)
+  ) return fail();
+  const channels = rosterRaw.channels.map(nonblank);
+  const marketplaces = rosterRaw.marketplaces.map(nonblank);
+  return rosterRaw.entries.map((entry, index) => {
+    if (!Array.isArray(entry) || entry.length !== 4) return fail();
+    const [name, channelIndexRaw, marketplaceIndexRaw, positionRaw] = entry;
+    const channelIndex = portfolioCount(channelIndexRaw);
+    const marketplaceIndex = portfolioCount(marketplaceIndexRaw);
+    const position = portfolioCount(positionRaw);
+    const channel = channels[channelIndex];
+    const marketplace = marketplaces[marketplaceIndex];
+    if (position !== offset + index || channel === undefined || marketplace === undefined) return fail();
+    return {
+      channel,
+      marketplace,
+      name: name === null ? null : nonblank(name),
+      position,
+    };
+  });
+}
+
+/**
+ * Decode one baked roster shard (ADR-145): exactly the shard asked for, naming the revision its
+ * entries were baked under, each entry at its own canonical position.
+ */
+export function parseCampaignRosterShard(value: unknown, shard: number): {
+  readonly entries: readonly CampaignPortfolioRosterEntry[];
+  readonly parent_revision: string;
+} {
+  const item = exact(value, ['channels', 'entries', 'kind', 'marketplaces', 'parent_revision', 'shard']);
+  if (item.kind !== 'campaign_roster_shard' || item.shard !== shard) return fail();
+  const entries = rosterEntries(
+    { channels: item.channels, entries: item.entries, marketplaces: item.marketplaces },
+    shard * CAMPAIGN_ROSTER_SHARD_ENTRIES,
+  );
+  if (entries.length === 0 || entries.length > CAMPAIGN_ROSTER_SHARD_ENTRIES) return fail();
+  return { entries, parent_revision: nonblank(item.parent_revision) };
 }
 
 function portfolioDayCount(value: DateWindow): number {
@@ -1994,30 +2052,15 @@ export function parseCampaignPortfolioArtifact(value: unknown): CampaignPortfoli
     ) return fail();
     pagination = { segment_count, segment_index, segment_size: 50, total_count: paginationTotal };
   }
-  const rosterRaw = exact(item.roster, ['channels', 'entries', 'marketplaces']);
-  if (
-    !Array.isArray(rosterRaw.channels) ||
-    !Array.isArray(rosterRaw.marketplaces) ||
-    !Array.isArray(rosterRaw.entries)
-  ) return fail();
-  const channels = rosterRaw.channels.map(nonblank);
-  const marketplaces = rosterRaw.marketplaces.map(nonblank);
-  const roster: CampaignPortfolioRosterEntry[] = rosterRaw.entries.map((entry, index) => {
-    if (!Array.isArray(entry) || entry.length !== 4) return fail();
-    const [name, channelIndexRaw, marketplaceIndexRaw, positionRaw] = entry;
-    const channelIndex = portfolioCount(channelIndexRaw);
-    const marketplaceIndex = portfolioCount(marketplaceIndexRaw);
-    const position = portfolioCount(positionRaw);
-    const channel = channels[channelIndex];
-    const marketplace = marketplaces[marketplaceIndex];
-    if (position !== index || channel === undefined || marketplace === undefined) return fail();
-    return {
-      channel,
-      marketplace,
-      name: name === null ? null : nonblank(name),
-      position,
-    };
-  });
+  const shardsRaw = item.roster !== null && typeof item.roster === 'object' && !Array.isArray(item.roster) && 'shards' in item.roster
+    ? exact(item.roster, ['revision', 'shards'])
+    : null;
+  const roster_shards: CampaignPortfolioRosterShards | null = shardsRaw === null
+    ? null
+    : { revision: nonblank(shardsRaw.revision), shards: portfolioCount(shardsRaw.shards) };
+  const roster = roster_shards === null ? rosterEntries(item.roster, 0) : [];
+  const rosterCount = roster_shards === null ? roster.length : total_count;
+  if (roster_shards !== null && (item.outcome !== 'complete' || roster_shards.shards !== Math.ceil(total_count / CAMPAIGN_ROSTER_SHARD_ENTRIES))) return fail();
   const expectedRows = pagination === null
     ? 0
     : Math.min(50, pagination.total_count - pagination.segment_index * 50);
@@ -2026,9 +2069,9 @@ export function parseCampaignPortfolioArtifact(value: unknown): CampaignPortfoli
     (pagination === null && rows.length > 0) ||
     (pagination !== null && (
       rows.length !== expectedRows || total_count !== pagination.total_count ||
-      roster.length !== total_count
+      rosterCount !== total_count
     )) ||
-    (rows.length > 0 && roster.length === 0) ||
+    (rows.length > 0 && rosterCount === 0) ||
     (item.outcome === 'complete' && (rows.length === 0 || totals.length !== totalMetrics.length || trend === null || reason_codes.length > 0)) ||
     (item.outcome === 'empty' && (
       rows.length > 0 || total_count !== 0 || pagination !== null || roster.length > 0 || totals.length > 0 || trend !== null || reason_codes.length > 0
@@ -2072,6 +2115,7 @@ export function parseCampaignPortfolioArtifact(value: unknown): CampaignPortfoli
     prior_period,
     reason_codes,
     roster,
+    roster_shards,
     rows,
     sort: { direction, field },
     total_count,

@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING, Protocol, cast
 
@@ -17,6 +17,7 @@ from adapters.campaign_measurement import (
     CampaignArtifactMeasurementService,
     CampaignMeasurementDependencies,
     CampaignMeasurementSelection,
+    CampaignPortfolioMeasurementBatch,
     CampaignPortfolioMeasurementInput,
 )
 from adapters.inbound.tool_handlers.dimension_labels import DimensionLabelResolver
@@ -42,6 +43,11 @@ from adapters.outbound.spend_roster import (
     SpendRosterReader,
     ad_product_labels,
 )
+from domain.operations.bake_refusals import (
+    IsolatedRefusal,
+    IsolatedRefusalReason,
+    RefusalScope,
+)
 from domain.presentation.analytical_pages import (
     PresentationDimensionLabel,
     campaign_platform_labels,
@@ -59,11 +65,15 @@ from domain.presentation.campaign_custody import (
 from domain.presentation.campaign_portfolio import (
     ALL_CHANNELS_FILTER_ID,
     CampaignPortfolioArtifact,
+    CampaignPortfolioRosterShards,
     CampaignPortfolioSort,
     CampaignPortfolioSortField,
     campaign_portfolio_artifact_payload,
     campaign_portfolio_segment,
     campaign_portfolio_segment_payload,
+    campaign_roster_shard_count,
+    campaign_roster_shard_identity,
+    campaign_roster_shard_payload,
 )
 from domain.presentation.campaigns import EffectiveNameStatus
 from domain.presentation.preset_artifacts import (
@@ -97,11 +107,12 @@ from domain.semantics.analytical_resolution import (
 from domain.semantics.identity import CampaignKey, ChannelKey, MarketplaceKey, PlatformKey
 from domain.shared_kernel.values import DateRange
 from ports.outbound.entity_catalog import (
-    MAX_CAMPAIGN_PORTFOLIO_CANDIDATES,
     AnalyticalEntityCatalogPort,
+    BrowsePurpose,
     EntityCatalogBrowseRequest,
 )
 from ports.outbound.preset_artifacts import PresetArtifactPointerStorePort
+from ports.outbound.query import BAKE_MAX_ROWS
 from ports.outbound.semantic_state import scope_horizon_policy
 from ports.outbound.source_coverage import (
     SourceCoveragePort,
@@ -122,20 +133,14 @@ if TYPE_CHECKING:  # pragma: no cover
     from ports.outbound.semantic_state import CurrentPublicationInspectionPort
 
 __all__ = [
-    "CAMPAIGN_PRESET_POPULATION_BOUND",
+    "REPRESENTATIVE_CAMPAIGNS",
     "CampaignPortfolioCompiler",
     "RetainedCampaignPresetArtifactSource",
     "campaign_portfolio_bake_plan_count",
+    "representative_bake_batch",
     "representative_windows",
     "retained_campaign_preset_artifact_source",
 ]
-
-# The declared measurable population for one bake — the catalog port's own campaign browse
-# bound. Grouped measurement scans do not grow with it; it caps only the in-memory row
-# reduction before top-N display selection. Beyond it the bake refuses rather than silently
-# measure a partial population (rank, don't refuse, applies up to this bound; past it is the
-# deferred per-campaign decomposition slice).
-CAMPAIGN_PRESET_POPULATION_BOUND = MAX_CAMPAIGN_PORTFOLIO_CANDIDATES
 
 # Superseded revisions stay readable for in-flight serves, then expire from history.
 SUPERSEDED_HISTORY_RETENTION = timedelta(days=30)
@@ -156,7 +161,9 @@ SUPERSEDED_HISTORY_RETENTION = timedelta(days=30)
 # channel content (ADR-127). Format 12 writes every segment and filter sibling through the
 # streamed stage and finds each through the parent custody's sharded sibling index (ADR-145):
 # the parent and filter custody carry only their own rows; the body bytes are format 11's.
-CAMPAIGN_PRESET_RENDER_FORMAT = 12
+# Format 13 writes each filter's name roster as ordered roster shards and the body names them
+# with the bake's revision (ADR-145); compares fold into one compact record per campaign.
+CAMPAIGN_PRESET_RENDER_FORMAT = 13
 
 
 _COUNTER_INSTANT = datetime(2026, 3, 2, tzinfo=UTC)
@@ -193,6 +200,11 @@ class _CampaignFilterPublication:
         pagination = self.population.pagination
         return 0 if pagination is None else _ORDERING_COUNT * pagination.segment_count - 1
 
+    @property
+    def roster_shard_count(self) -> int:
+        """The shards the filter's name roster is written in (ADR-145)."""
+        return campaign_roster_shard_count(len(self.population.roster))
+
 
 _ORDERING_COUNT = 2 * len(CampaignPortfolioSortField)
 """Each sort field ascending and descending: the orderings a filter's segments are baked in."""
@@ -200,11 +212,12 @@ _ORDERING_COUNT = 2 * len(CampaignPortfolioSortField)
 
 @dataclass(frozen=True, slots=True)
 class _CampaignSiblingPairs:
-    """The Campaigns sibling stream (ADR-145): every filter's segments, then each filter sibling.
+    """The Campaigns sibling stream (ADR-145): segments and roster shards, then filter siblings.
 
-    Each segment renders, with its custody of only its rows, as the stage draws it, so a bake
-    holds the pairs in flight rather than every body. A filter sibling's custody carries only its
-    own rows: every sibling is found through the parent custody's index.
+    Each segment and roster shard renders, with its custody, as the stage draws it, so a bake
+    holds the pairs in flight rather than every body. A segment's or filter sibling's custody
+    carries only its own rows, and a roster shard's none (its entries are display labels): every
+    sibling is found through the parent custody's index.
     """
 
     page: PresetArtifactPage
@@ -216,13 +229,27 @@ class _CampaignSiblingPairs:
     def __call__(self) -> Iterator[PresetArtifactSiblingPair]:
         for publication in self.filters:
             yield from self._segments(publication.population)
+            for shard in range(publication.roster_shard_count):
+                yield self._pair(
+                    campaign_roster_shard_identity(publication.filter_id, shard),
+                    capped_preset_artifact_json(
+                        campaign_roster_shard_payload(
+                            publication.population.roster, shard, self.revision.value
+                        )
+                    ),
+                    (),
+                )
         for publication in self.filters[1:]:
             identity = PresetArtifactFilterIdentity(publication.filter_id)
             yield self._pair(identity, publication.payload_json, publication.custody_rows)
 
     def stream(self) -> PresetArtifactSiblingStream:
         """Return the stream with its declared count."""
-        count = sum(item.segment_count for item in self.filters) + len(self.filters) - 1
+        count = (
+            sum(item.segment_count + item.roster_shard_count for item in self.filters)
+            + len(self.filters)
+            - 1
+        )
         return PresetArtifactSiblingStream(self, count)
 
     def _segments(
@@ -344,7 +371,7 @@ class RetainedCampaignPresetArtifactSource:
         # All channels is the pointer's body; each other filter is a sibling the index binds.
         filters: list[_CampaignFilterPublication] = []
         for artifact in (rendered.portfolio, *rendered.siblings):
-            publication = self._filter_publication(artifact, by_signature)
+            publication = self._filter_publication(artifact, by_signature, revision)
             if publication is None:
                 return None
             filters.append(publication)
@@ -384,12 +411,25 @@ class RetainedCampaignPresetArtifactSource:
     def _filter_publication(
         population: CampaignPortfolioArtifact,
         by_signature: dict[SafeCampaignDisplaySignature, CampaignMeasurementSelection],
+        revision: PresetArtifactRevision,
     ) -> _CampaignFilterPublication | None:
-        """Bake one filter's canonical first segment and its custody rows; keep its estate."""
+        """Bake one filter's canonical first segment and its custody rows; keep its estate.
+
+        The body names its roster's shards and this revision; the roster itself is written as
+        the filter's roster shards (ADR-145), so the body is bounded at any campaign count.
+        """
         canonical_sort = CampaignPortfolioSort(CampaignPortfolioSortField.SPEND, "desc")
         parent_artifact = campaign_portfolio_segment(population, canonical_sort, 0)
         if parent_artifact is None:
             return None
+        if parent_artifact.roster:
+            parent_artifact = replace(
+                parent_artifact,
+                roster=(),
+                roster_shards=CampaignPortfolioRosterShards(
+                    revision.value, campaign_roster_shard_count(len(parent_artifact.roster))
+                ),
+            )
         custody_rows = _custody_rows(parent_artifact, by_signature)
         if custody_rows is None:
             return None
@@ -441,7 +481,12 @@ class RetainedCampaignPresetArtifactSource:
         return window, prior
 
     def _authorized_selections(self, window: DateRange) -> tuple[CampaignMeasurementSelection, ...]:
-        """Browse the full authorized population; refuse only beyond the declared bound."""
+        """Browse every authorized campaign; past the memory-derived ceiling, refuse the page.
+
+        The bake keeps one compact record per campaign, so its population is the one Campaigns
+        limit, `BAKE_MAX_ROWS`, which the Baker's memory derives (ADR-152). Past it the page is
+        `population_over_ceiling`, alarmed with the memory to set, never a silently empty page.
+        """
         resolved = self.catalog.browse(
             EntityCatalogBrowseRequest(
                 scope=self.scope,
@@ -449,11 +494,17 @@ class RetainedCampaignPresetArtifactSource:
                 window=window,
                 current_on=None,
                 context=EntityContext(),
-                max_candidates=CAMPAIGN_PRESET_POPULATION_BOUND,
+                max_candidates=BAKE_MAX_ROWS,
+                purpose=BrowsePurpose.BAKE,
             )
         )
         if resolved.truncated:
-            return ()
+            raise IsolatedRefusal(
+                IsolatedRefusalReason.POPULATION_OVER_CEILING,
+                RefusalScope.PAGE,
+                population=resolved.authorized_count,
+                guard=BAKE_MAX_ROWS,
+            )
         try:
             return retained_campaign_selections(tuple(resolved.aliases), window, self.labels)
         except TypeError, ValueError:
@@ -493,10 +544,12 @@ def _baked_placeholder_capabilities(count: int) -> tuple[CampaignSelectionCapabi
     )
 
 
-# The portfolio cohort is grouped, but its daily trend is chunked by days under the query row
-# ceiling, so the plan count grows with the window: each roster variant is counted at its own
-# window and equal prior, ending on this fixed day (plan 4.2: 26/26/30/34 for 1/7/14/30 days).
+# Each roster variant is counted at its own window and equal prior, ending on this fixed day
+# (plan 4.2). The bake reads 22 compares and one daily read per trend operand: 26 at every
+# preset and population (ADR-152).
 _REPRESENTATIVE_END = date(2026, 3, 1)
+REPRESENTATIVE_CAMPAIGNS = 50
+"""The fictional cohort a counter builds the batch for: its plans don't depend on its size."""
 
 
 def representative_windows(days: int) -> tuple[DateRange, DateRange]:
@@ -511,13 +564,37 @@ def representative_windows(days: int) -> tuple[DateRange, DateRange]:
     )
 
 
-def campaign_portfolio_bake_plan_count(root: Path, days: int) -> int:
-    """Count the real portfolio bake batch of one `days` window at the campaign estate bound.
+def representative_bake_batch(  # noqa: PLR0913, PLR0917 -- the service, its cohort, window, filters
+    service: CampaignArtifactMeasurementService,
+    bridge: CommerceIdentityBridge,
+    days: int,
+    filters: int = 1,
+) -> CampaignPortfolioMeasurementBatch:
+    """Build the real bake batch ``render_portfolio`` executes, for a fictional cohort.
 
-    The build-time bakeability check budgets the exact grouped and window-chunked batch
-    ``CampaignArtifactRenderer.render_portfolio`` executes at the largest accepted population.
+    `filters` channel-filter subsets, each the whole cohort: the daily folds keep one sum per
+    subset and day, so a counter certifies the widest filter set at `filters` = 7.
     """
     period, prior = representative_windows(days)
+    selections = _representative_selections(bridge)
+    identities = frozenset((item.campaign.value, item.marketplace.value) for item in selections)
+    return service.portfolio_batch(
+        CampaignPortfolioMeasurementInput(
+            selections=selections,
+            period=period,
+            prior_period=prior,
+            sort=CampaignPortfolioSort(CampaignPortfolioSortField.SPEND, "desc"),
+            bake_subsets={f"filter-{index}": identities for index in range(filters)},
+        )
+    )
+
+
+def campaign_portfolio_bake_plan_count(root: Path, days: int) -> int:
+    """Count the real portfolio bake batch of one `days` window.
+
+    The build-time bakeability check budgets the exact batch
+    ``CampaignArtifactRenderer.render_portfolio`` executes, at any population.
+    """
     bridge = load_commerce_identity_bridge(root)
     service = CampaignArtifactMeasurementService(
         CampaignMeasurementDependencies(
@@ -527,21 +604,13 @@ def campaign_portfolio_bake_plan_count(root: Path, days: int) -> int:
             clock=_counter_clock,
         )
     )
-    batch = service.portfolio_batch(
-        CampaignPortfolioMeasurementInput(
-            selections=_representative_selections(bridge),
-            period=period,
-            prior_period=prior,
-            sort=CampaignPortfolioSort(CampaignPortfolioSortField.SPEND, "desc"),
-        )
-    )
-    return len(batch.prepared.plans)
+    return len(representative_bake_batch(service, bridge, days).prepared.plans)
 
 
 def _representative_selections(
     bridge: CommerceIdentityBridge,
 ) -> tuple[CampaignMeasurementSelection, ...]:
-    """Build a fictional cohort at the displayed-row bound; never a live identifier."""
+    """Build a fictional Amazon DSP cohort; never a live identifier."""
     marketplace = MarketplaceKey(
         min(mapping.target.value for mapping in bridge.marketplace_mappings)
     )
@@ -564,7 +633,7 @@ def _representative_selections(
                 effective_name_status=EffectiveNameStatus.MISSING,
             ),
         )
-        for index in range(CAMPAIGN_PRESET_POPULATION_BOUND)
+        for index in range(REPRESENTATIVE_CAMPAIGNS)
     )
 
 

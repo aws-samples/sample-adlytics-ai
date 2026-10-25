@@ -4,7 +4,7 @@ import { test } from 'vitest';
 
 import { changeBlock } from './fixtures/change-fixture';
 import { asServedPortfolio } from './fixtures/portfolio-fixture';
-import { CampaignAttributionContractError, parseCampaignPortfolioArtifact } from '../lib/campaign-attribution';
+import { CampaignAttributionContractError, parseCampaignPortfolioArtifact, parseCampaignRosterShard } from '../lib/campaign-attribution';
 const current = { end: '2026-08-21', start: '2026-08-15' };
 const prior = { end: '2026-08-14', start: '2026-08-08' };
 const rowGrain = ['period', 'campaign', 'marketplace'];
@@ -441,4 +441,34 @@ test('Campaign Portfolio decoder refuses a block beside a percentage, a missing 
     mutate(value);
     assert.throws(() => parseCampaignPortfolioArtifact(value));
   }
+});
+
+
+test('A baked body names its roster shards and the bake revision instead of the roster (ADR-145)', () => {
+  const value = artifact();
+  value.roster = { revision: 'rev-fictional', shards: 1 };
+  const result = parseCampaignPortfolioArtifact(value);
+  assert.deepEqual(result.roster_shards, { revision: 'rev-fictional', shards: 1 });
+  assert.deepEqual(result.roster, []);
+  // Paired: a shard count that doesn't cover the population is refused.
+  value.roster = { revision: 'rev-fictional', shards: 2 };
+  assert.throws(() => parseCampaignPortfolioArtifact(value), CampaignAttributionContractError);
+});
+
+test('A roster shard is exactly the shard asked for, each entry at its own position', () => {
+  const shard = {
+    channels: ['Fictional channel'],
+    entries: [['Fictional Campaign 0501', 0, 0, 500], ['Fictional Campaign 0502', 0, 0, 501]],
+    kind: 'campaign_roster_shard',
+    marketplaces: ['United States'],
+    parent_revision: 'rev-fictional',
+    shard: 1,
+  };
+  const parsed = parseCampaignRosterShard(shard, 1);
+  assert.equal(parsed.parent_revision, 'rev-fictional');
+  assert.deepEqual(parsed.entries.map((entry) => entry.position), [500, 501]);
+  // Paired: another shard's index, or a position outside the shard, is refused.
+  assert.throws(() => parseCampaignRosterShard(shard, 0), CampaignAttributionContractError);
+  const misplaced = { ...shard, entries: [['Fictional Campaign 0001', 0, 0, 0]] };
+  assert.throws(() => parseCampaignRosterShard(misplaced, 1), CampaignAttributionContractError);
 });

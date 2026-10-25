@@ -28,6 +28,11 @@ from adapters.jobs.preset_artifact_publisher.campaign_source import (
     retained_campaign_preset_artifact_source,
 )
 from adapters.outbound.preset_artifacts import PresetArtifactPersistence
+from domain.operations.bake_refusals import (
+    IsolatedRefusal,
+    IsolatedRefusalReason,
+    RefusalScope,
+)
 from domain.presentation.analytical_pages import PresentationDimensionLabel
 from domain.presentation.campaign_custody import (
     campaign_custody_manifest_from_payload,
@@ -35,9 +40,12 @@ from domain.presentation.campaign_custody import (
 )
 from domain.presentation.campaign_portfolio import (
     CAMPAIGN_PORTFOLIO_MAX_ROWS,
+    CampaignPortfolioRosterShards,
     CampaignPortfolioSort,
     CampaignPortfolioSortField,
     campaign_portfolio_artifact_from_payload,
+    campaign_roster_shard_from_payload,
+    campaign_roster_shard_identity,
 )
 from domain.presentation.preset_artifacts import (
     MAX_PRESET_ARTIFACT_BYTES,
@@ -88,11 +96,12 @@ from domain.shared_kernel.errors import InvariantError
 from domain.shared_kernel.values import DateRange
 from ports.outbound.entity_catalog import (
     AnalyticalEntityCatalogPort,
+    BrowsePurpose,
     EntityCatalogBrowseRequest,
     EntityCatalogBrowseResult,
 )
 from ports.outbound.preset_artifacts import PresetArtifactPointerStorePort
-from ports.outbound.query import QueryRequest, QueryResult
+from ports.outbound.query import BAKE_MAX_ROWS, QueryRequest, QueryResult
 from ports.outbound.source_coverage import (
     SourceCoverageBounds,
     SourceCoverageRequest,
@@ -281,8 +290,24 @@ def test_baker_measures_full_population_and_emits_boundless_pagination() -> None
     assert artifact.pagination.total_count == population
     assert artifact.total_count == population
     assert len(artifact.rows) == CAMPAIGN_PORTFOLIO_MAX_ROWS
-    assert len(artifact.roster) == population
-    assert request.siblings.count == len(tuple(request.siblings)) == 19
+    # ADR-145: the body names its one roster shard and this bake's revision, not the roster.
+    assert artifact.roster == ()
+    assert artifact.roster_shards == CampaignPortfolioRosterShards(
+        request.pointer_template.complete(None).pointer.revision.value, 1
+    )
+    # 19 segments and the one roster shard.
+    assert request.siblings.count == len(tuple(request.siblings)) == 20
+    shard, shard_custody = next(
+        pair
+        for pair in request.siblings
+        if pair[0].identity == campaign_roster_shard_identity("all", 0)
+    )
+    entries = campaign_roster_shard_from_payload(
+        json.loads(shard.payload_json), 0, artifact.roster_shards.revision
+    )
+    assert [entry.position for entry in entries] == list(range(population))
+    # A roster shard's custody binds its body and names no canonical row.
+    assert json.loads(shard_custody.payload_json)["rows"] == []
     # The pointer binds All channels, whose totals add up across channels (ADR-127).
     assert tuple(comparison.metric.value for comparison in artifact.totals) == (
         "spend",
@@ -294,12 +319,36 @@ def test_baker_measures_full_population_and_emits_boundless_pagination() -> None
     )
 
 
-def test_baker_refuses_a_population_beyond_the_declared_measurable_bound() -> None:
+@pytest.mark.covers("ADR-152")
+def test_a_population_past_the_memory_ceiling_refuses_the_page_and_names_it() -> None:
+    """The one Campaigns limit (ADR-152): past it the page refuses, never shows empty.
+
+    A truncated bake browse is `population_over_ceiling` with the population and the guard,
+    alarmed with the memory to set.
+    """
     source, catalog, compiler, _ = _source(population=3, truncated=True)
 
-    assert source.publication_for(VARIANT) is None
+    with pytest.raises(IsolatedRefusal) as raised:
+        source.publication_for(VARIANT)
+
+    refusal = raised.value
+    assert (refusal.reason, refusal.scope) == (
+        IsolatedRefusalReason.POPULATION_OVER_CEILING,
+        RefusalScope.PAGE,
+    )
+    assert dict(refusal.refusal_context) == {"guard": BAKE_MAX_ROWS, "population": 4}
     assert compiler.received == []
-    assert len(catalog.calls) == 1
+    (call,) = catalog.calls
+    assert (call.purpose, call.max_candidates) == (BrowsePurpose.BAKE, BAKE_MAX_ROWS)
+
+
+def test_a_population_within_the_memory_ceiling_bakes_every_campaign() -> None:
+    """Paired with the refusal above: an untruncated browse at the ceiling's purpose bakes."""
+    source, catalog, compiler, _ = _source(population=3)
+
+    assert isinstance(source.publication_for(VARIANT), PresetArtifactPublicationRequest)
+    assert len(compiler.received[0].selections) == 3
+    assert catalog.calls[0].purpose is BrowsePurpose.BAKE
 
 
 @pytest.mark.covers("ADR-070")
@@ -635,7 +684,9 @@ def test_parent_contains_only_canonical_first_segment_and_indexes_every_required
     assert parent.pagination is not None and parent.pagination.segment_index == 0
     assert len(parent.rows) == CAMPAIGN_PORTFOLIO_MAX_ROWS
     assert PresetArtifactSiblingIdentity("spend-desc", 0, "all") not in identities
-    assert len(identities) == 19
+    # 19 segments and the one roster shard (ADR-145).
+    assert len(identities) == 20
+    assert campaign_roster_shard_identity("all", 0) in identities
     # ADR-145: every sibling is indexed, sorted by identity path, with its pair's digests.
     indexed = [item for shard, entry in shards for item in index_shard_descriptors(shard, entry)]
     assert [item.identity for item in indexed] == sorted(identities, key=lambda item: item.path)
@@ -673,7 +724,8 @@ def test_persistence_writes_every_sibling_pair_before_parent_and_pointer() -> No
     # Every pair, then the one index shard, then the parent body, its custody and the pointer.
     assert events[-4:] == ["index:index/segment-0000", "body", "custody", "pointer"]
     assert all(event.startswith("sibling-") for event in events[:-4])
-    assert len(events[:-4]) == 38
+    # 19 segment pairs and the one roster shard pair.
+    assert len(events[:-4]) == 40
 
 
 @dataclass
@@ -743,8 +795,9 @@ def test_declared_fourteen_day_variant_stays_body_bounded_at_scale(population: i
         *(item for pair in request.siblings for item in pair),
     )
     assert all(len(body.payload_json.encode()) <= MAX_PRESET_ARTIFACT_BYTES for body in bodies)
-    # 200 pairs (the parent's and 199 siblings) and the one shard indexing the 199.
-    assert len(bodies) == (401 if population == 1_000 else 801)
+    # 200 segment pairs (the parent's and 199 siblings), the roster's 500-entry shard pairs,
+    # and the one shard indexing every sibling.
+    assert len(bodies) == (405 if population == 1_000 else 809)
 
 
 @pytest.mark.covers("ADR-070", "ADR-084")
@@ -769,9 +822,10 @@ def test_change_blocks_start_campaign_render_format_seven() -> None:
 
     Format 8 adds the coverage block (ADR-119), format 9 NextStep.v2 (ADR-122) and format 10
     moves with the compared-metric roster (ADR-125); format 11 bakes the channel filter
-    siblings (ADR-127); format 12 indexes every sibling (ADR-145); each keeps them.
+    siblings (ADR-127); format 12 indexes every sibling (ADR-145); format 13 shards the name
+    roster (ADR-145); each keeps them.
     """
-    assert CAMPAIGN_PRESET_RENDER_FORMAT == 12
+    assert CAMPAIGN_PRESET_RENDER_FORMAT == 13
     assert PresetArtifactRevision.from_publication_identities(
         ("publication-a",), render_format=CAMPAIGN_PRESET_RENDER_FORMAT
     ) != PresetArtifactRevision.from_publication_identities(("publication-a",), render_format=6)

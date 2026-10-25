@@ -175,7 +175,7 @@ describe('disposable preset artifact publisher', () => {
 
   it('wires the baker for retained measurement exactly as the precompute worker resolves it', () => {
     const baker = lambda('adapters.jobs.preset_artifact_publisher.baker.handler');
-    expect(baker.MemorySize).toBe(1024);
+    expect(baker.MemorySize).toBe(2048);
     const variables = (baker.Environment as Props).Variables as Props;
     expect(variables.ADL_SEMANTIC_V2_ATHENA_BAKE_WORKGROUP).toBe(
       semanticV2AthenaWorkgroupName(TEST_CONFIG.envName, 'bake'),
