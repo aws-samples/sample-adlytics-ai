@@ -47,7 +47,7 @@ persistent status region announces it ([temporal contract §6](temporal-control-
 ### ABS-AUD-1
 
 - Surface: Audiences
-- Trigger: the latest complete month has no `CURRENT` pointer.
+- Trigger: the latest complete month has no `CURRENT` pointer, or its body predates the current `AudienceProfileArtifact` version. After a deploy that bumps the version, the page shows this until the first re-bake replaces the body.
 - Today: "This window isn't published yet. Choose another window."
 - Text: "Audiences for {period_label} isn't ready to show yet. It's built from your Amazon Marketing Cloud audience segment data. When it's ready, you'll see which audience segments your buyers belong to, where there are enough shoppers to show them."
 

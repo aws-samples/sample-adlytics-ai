@@ -562,6 +562,31 @@ def test_audiences_missing_pointer_uses_its_one_preset_pending_contract(
         )
 
 
+def test_a_body_from_an_earlier_artifact_version_is_the_month_not_published_absence(
+    presentation_module: _PresentationModule,  # noqa: F811
+) -> None:
+    """D2 (dev 2026-10-25): the retained v1 body served HTTP 500 until a re-bake replaced it."""
+    earlier = deepcopy(_payload())
+    earlier["version"] = 1
+    earlier["markets"] = [{"campaigns": "a v1 shape this version doesn't read"}]
+    response, store, pages = _serve(presentation_module, earlier)
+    assert response["kind"] == "window_unavailable"
+    label = response["temporal"]["presets"][0]["period_label"]
+    assert response["message"] == absence_message(
+        AbsenceTrigger.AUDIENCES_MONTH_NOT_PUBLISHED, period_label=label, other_window_ready=False
+    )
+    assert response["reason_code"] == "preset_unavailable"
+    assert response["temporal"]["presets"][0]["availability"] == "unavailable"
+    assert store.reads == ["audiences", "body"]
+    assert pages.artifact_records == []
+    # Control: a later or non-integer version isn't superseded; it stays the malformed refusal.
+    for version in (3, True, "1"):
+        unknown = deepcopy(earlier)
+        unknown["version"] = version
+        with pytest.raises(InvariantError, match="malformed"):
+            _serve(presentation_module, unknown)
+
+
 def test_audiences_rejects_unknown_request_fields_before_any_store_read(
     presentation_module: _PresentationModule,  # noqa: F811
 ) -> None:

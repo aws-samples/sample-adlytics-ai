@@ -139,7 +139,7 @@ month.
 | Profile insufficient or empty, campaign rows published | The profile callout, then `campaign-audiences` with its rows: campaign evidence is never hidden by the profile outcome |
 | Open decision 5 = no | Demographic segments are removed at load by a governed exclusion list; nothing changes on the page |
 | A segment the provider classification doesn't cover | The segment renders with no provider label [proposal] |
-| No published body for the month (page-level) | Page-level absence: [ABS-AUD-1](../page-absence-copy.md#abs-aud-1); no scope band |
+| No published body for the month, or only one from an earlier artifact version (page-level) | Page-level absence: [ABS-AUD-1](../page-absence-copy.md#abs-aud-1); no scope band. An earlier version's body is never decoded; the first re-bake after the deploy replaces it |
 | One campaign's own history gap (AUD-CMP-REFUSED-HISTORY) or its withdrawn roster | Its index entry and page carry the server sentence in place of its table; a refused campaign is never fetched |
 | Campaign figures incomplete for the month (AUD-CMP-SECTION-INCOMPLETE) | The section's server sentence; the profile still renders |
 | One profile path refused (AUD-PROFILE-PATH-REFUSED: history gap or incomplete figures) | That path's server sentence in place of its table; every served path refused is the page-level absence |

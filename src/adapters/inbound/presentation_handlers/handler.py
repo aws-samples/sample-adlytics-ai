@@ -188,6 +188,7 @@ from domain.presentation.audiences import (
     AUDIENCES_ARTIFACT_VERSION,
     AUDIENCES_PAGE_ID,
     AudiencesPart,
+    audiences_artifact_superseded,
     audiences_part_identity,
     require_audiences_artifact_payload,
     require_audiences_part_payload,
@@ -4795,7 +4796,16 @@ def _v2_audiences_parent_response(  # noqa: PLR0912, PLR0915 -- one strict serve
     if part is not None:
         return _audiences_part_response(request, runtime, (pointer, body), part)
     try:
-        payload = require_audiences_artifact_payload(cast("object", json.loads(body.payload_json)))
+        decoded = cast("object", json.loads(body.payload_json))
+    except json.JSONDecodeError:
+        raise _malformed_artifact() from None
+    if audiences_artifact_superseded(decoded):
+        # A body baked before this artifact version is the page's not-yet-published absence,
+        # as a missing pointer is, until the first re-bake after the deploy replaces it.
+        unserved = tuple(window for window in windows if window.preset is not preset)
+        return _audiences_window_unavailable(request, runtime, preset, unserved)
+    try:
+        payload = require_audiences_artifact_payload(decoded)
         if payload["revision"] != pointer.revision.value:
             raise ValueError("audiences body names another revision than its pointer")
         month = cast("dict[str, str]", payload["month"])
