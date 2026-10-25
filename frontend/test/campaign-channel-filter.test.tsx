@@ -3,7 +3,7 @@
 // and rendered — the control, the multi-channel tiles and tables, and the URL state.
 import assert from 'node:assert/strict';
 
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { test } from 'vitest';
 
 import { CAMPAIGNS_PICK_CHANNEL, CampaignPortfolioV2View, PortfolioBandTitle } from '../components/CampaignPortfolioV2View';
@@ -20,6 +20,17 @@ function parent(raw: unknown): Extract<CampaignParentPresentation, { readonly ki
   return decoded;
 }
 
+/** The baked body's own roster shard, as the server would serve it: its rows' names in order. */
+function rosterSource(page: Extract<CampaignParentPresentation, { readonly kind: 'parent' }>) {
+  const revision = page.artifact.roster_shards?.revision ?? '';
+  const entries = page.artifact.rows.map((row, position) => ({
+    channel: row.signature.channel,
+    marketplace: row.signature.marketplace,
+    name: row.signature.effective_name,
+    position,
+  }));
+  return { load: async () => ({ entries, parent_revision: revision }), onStale: () => undefined };
+}
 function view(raw: unknown, onFilter: (filterId: string) => void = () => undefined) {
   const page = parent(raw);
   return render(<CampaignPortfolioV2View
@@ -28,6 +39,7 @@ function view(raw: unknown, onFilter: (filterId: string) => void = () => undefin
     onFilter={onFilter}
     onSelect={() => undefined}
     parent={page.artifact}
+    roster={rosterSource(page)}
     scorecardStep={page.scorecard_step}
     selection={{ choice: null, kind: 'idle' }}
   />);
@@ -131,7 +143,7 @@ test('A format-10 body is refused: no channel keys or a sparked row; the format-
   assert.throws(() => parseCampaignPortfolioArtifact(sparked.page.artifact), CampaignAttributionContractError);
   assert.throws(() => parent(sparked), PresentationResponseError);
 });
-test('Find a campaign names its roster scope and how Enter works, and announces no match', () => {
+test('Find a campaign names its roster scope and how Enter works, and announces no match', async () => {
   view(dsp);
   const input = screen.getByRole('combobox', { name: 'Find a campaign' });
   const hint = document.getElementById(input.getAttribute('aria-describedby') ?? '');
@@ -139,14 +151,19 @@ test('Find a campaign names its roster scope and how Enter works, and announces 
   // The status line is mounted empty, then fills, so a screen reader announces it.
   const status = screen.getByRole('status');
   assert.equal(status.textContent, '');
+  // The baked roster loads on the field's first focus (ADR-145).
+  fireEvent.focus(input);
+  await waitFor(() => assert.equal(status.textContent, ''));
   fireEvent.change(input, { target: { value: 'zzz' } });
   assert.equal(screen.getByRole('status'), status);
-  assert.match(status.textContent ?? '', /No Amazon DSP campaign matches “zzz”\./);
+  await waitFor(() => assert.match(status.textContent ?? '', /No Amazon DSP campaign matches “zzz”\./));
 });
-test('Under All channels a query with no match names no channel', () => {
+test('Under All channels a query with no match names no channel', async () => {
   view(everything);
-  fireEvent.change(screen.getByRole('combobox', { name: 'Find a campaign' }), { target: { value: 'zzz' } });
-  assert.match(screen.getByRole('status').textContent ?? '', /^No campaign matches “zzz”\.$/);
+  const input = screen.getByRole('combobox', { name: 'Find a campaign' });
+  fireEvent.focus(input);
+  fireEvent.change(input, { target: { value: 'zzz' } });
+  await waitFor(() => assert.match(screen.getByRole('status').textContent ?? '', /^No campaign matches “zzz”\.$/));
 });
 test('The Channel control is a labelled select at four or more options and applies the chosen id', () => {
   const chosen: string[] = [];
