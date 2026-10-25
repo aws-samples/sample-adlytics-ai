@@ -73,13 +73,15 @@ reads each campaign figure (impressions, spend, attributed sales) and the prior-
 for all campaigns, grouped by campaign, 24 statements per marketplace at any campaign count.
 **Campaign figures stream one campaign at a time:** each read arrives ordered by campaign, so a
 count pass builds the index and a page pass renders each campaign's pages as they're written; a
-bake never holds the campaign population's rows. Campaigns rank on the server by their largest
+bake never holds the campaign population's rows, so these reads and the history walk carry no row
+limit. Campaigns rank on the server by their largest
 matched-segment impressions, descending, then by campaign key, the order that numbers
 `campaign_ref`. The rank never sums segment impressions, because segment figures never add up. Each
 campaign is graded against its own segments of the month before; a gap in its own older history
-refuses only that campaign. The only limits are the derived row ceiling on the index (past it, the
-page keeps its last good version and alarms with the raise-memory action) and the stage's write
-deadline ([scale envelope](../preset-artifact-publisher.md#scale-envelope)). Source composition
+refuses only that campaign. The only limits are the derived `BAKE_MAX_ROWS` on what stays held:
+the index, its segment set, one campaign's segments and the campaigns the history walk observed
+(past it, the page keeps its last good version and alarms with the raise-memory action), and the
+stage's write deadline ([scale envelope](../preset-artifact-publisher.md#scale-envelope)). Source composition
 and the renderer refuse any marketplace cardinality other than exactly one before a query port is
 called. Chat's governed access reads every campaign, as before.
 
