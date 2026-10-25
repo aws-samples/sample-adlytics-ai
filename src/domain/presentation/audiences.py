@@ -121,6 +121,7 @@ __all__ = [
     "ProfileView",
     "SegmentFigures",
     "audiences_artifact_payload",
+    "audiences_artifact_superseded",
     "audiences_campaign_index_payload",
     "audiences_campaign_page_payload",
     "audiences_part_identity",
@@ -1943,6 +1944,25 @@ def _validate_evidence(value: object) -> None:
             period = _record(raw_period, {"end", "start"})
             if _iso_date(period["end"]) < _iso_date(period["start"]):
                 raise ValueError("an Audiences evidence period runs backwards.")
+
+
+def audiences_artifact_superseded(value: object) -> bool:
+    """Whether a decoded body is an Audiences artifact of an earlier version.
+
+    Such a body is never decoded: a deploy that bumps the version leaves the retained body in
+    place until the first re-bake after it, and until then the page is its month-not-published
+    absence. A later or unidentifiable version is not superseded; it stays malformed.
+    """
+    if not isinstance(value, dict):
+        return False
+    item = cast("dict[str, object]", value)
+    version = item.get("version")
+    return (
+        item.get("type") == AUDIENCES_ARTIFACT_TYPE
+        and isinstance(version, int)
+        and not isinstance(version, bool)
+        and version < AUDIENCES_ARTIFACT_VERSION
+    )
 
 
 def require_audiences_artifact_payload(  # noqa: PLR0912 -- strict matrix

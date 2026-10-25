@@ -125,7 +125,9 @@ little, or nothing, at every real size, and the old shape failed the whole cohor
   budget rises from 300 s to 570 s. It's an alarm: the projected large seller writes about 668
   bodies, under 4% of the bound.
 - The bake writes more, smaller objects through the streamed sibling writes of ADR-145.
-- The render format and artifact version bump, so every Audiences pointer rebuilds once.
+- The render format and artifact version bump, so every Audiences pointer rebuilds once. Until
+  that re-bake, the retained v1 body is the page's month-not-published absence (ABS-AUD-1),
+  never decoded and never a 500 (dev 2026-10-25, D2).
 - Chat's "outside the page's top-N" acceptance turn becomes a page-and-chat parity check on the
   lowest-ranked campaign.
 - One label read per namespace replaces the per-campaign label reads that the stopgap deferred.
