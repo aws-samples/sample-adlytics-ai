@@ -178,10 +178,10 @@ artifact carries every channel, so the selector switches with no re-request.
 | `rows[].asin`, `rows[].title` | Product, with the ASIN under it | — | — | the title comes from the effective-title resolver, as on Repeat purchase by product |
 | `rows[].ntb_purchases` | New-to-brand purchases, brand halo included | `purchases_new_to_brand_incl_halo_12mo` (wave 2) at ad product × `tracked_asin`, summed across that channel's campaigns only | count | no; a product with no purchases isn't listed |
 | `rows[].share_of_channel` | Share of channel new-to-brand purchases | the row's `purchases_new_to_brand_incl_halo_12mo` ÷ the same metric at that ad product's grain, built in the domain from the two planned answers | rate, shown as a percentage | no |
-| `more_count` | the foot line "And {N} more products." | — | count | absent when every product is listed |
+| `more_count` | the foot line "And {N} more products." | the channel's count of products with a purchase, less those listed, from the ranked read's population count | count | absent when every product is listed |
 | `first_covered_date` | — | — | date | present when `state` is `not_covered` and the window's last day is covered (see "Gateway coverage") |
 
-- Rows are ordered by new-to-brand purchases, highest first, then by ASIN; at most 10 per channel [proposal].
+- Rows are ordered by new-to-brand purchases, highest first, then by ASIN; at most 10 per channel [proposal]. The query ranks each ad product's products and counts them, so the read returns at most 10 rows per ad product at any catalog size ([ADR-152](../../decisions/adr-152-read-page-sized-answers-in-sql-with-no-arbitrary-row-ceiling.md)). A population Amazon withheld rows from bakes nothing, as any withheld answer does.
   The shares use the channel's whole total, so the listed shares can add up to less than 100%.
 - The share's denominator is `purchases_new_to_brand_incl_halo_12mo` at the ad product, never step 1's
   `ntb_purchases`, which excludes brand halo. The mockup's shares are fictional and aren't a check of this.
@@ -301,7 +301,7 @@ no "Also changed" section. A later rule brings it in after the insights row with
 New, under the ADR-075 pattern. Per preset and per marketplace it plans every figure through the measurement
 layer: the step-1 batch at ad-product grain with the prior window, the step-2 periodic figures for *P* at
 grain set `platform` and, for the per-channel table, at grain set `channel` with the ad-product roster
-applied, and the gateway batch at ad product × `tracked_asin` with its channel totals. It also bakes the deterministic findings.
+applied, and the gateway batch: each ad product's top 10 `tracked_asin` with its product count, ranked in the query, and the channel totals. It also bakes the deterministic findings.
 It's registered with the publisher and fails closed until the `new-customers` v2 page entry exists. Today only
 Campaigns and Retail health have real materializers; other pages reach the typed unavailable fallback
 ([preset artifact publisher](../preset-artifact-publisher.md)).

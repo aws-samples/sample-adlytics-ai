@@ -160,7 +160,10 @@ span, one WARNING `report_operation` line (`operation=preset_bake`, `component=p
 settled outcome. The line carries only `entry` (`graph` or `legacy`), its lineage (`run_id` and
 `task_id`, or the legacy invocation's `execution_id`), `page`, `variant`, `scope`, `refusal_class`,
 `count` (items, so 200 refused campaigns are one line with `count=200`), `replayed` and the
-reason's allowlisted figures (`bake_refusals.REFUSAL_CONTEXT`); no other identifier. The graph
+reason's allowlisted figures (`bake_refusals.REFUSAL_CONTEXT`); no other identifier. A `limit`
+reason's line also carries `operator_action` (`bake_refusals.OPERATOR_ACTIONS`), and a
+memory-sized one (`rows_over_ceiling`, `population_over_ceiling`) the `memory_mib` the model
+assumed (ADR-152). The graph
 entry stores the groups with the task's settlement and replays them once, `replayed=true`, when a
 redelivery finds the settled node, so the guarantee is at least once. A bake that runs past its
 row's `budget_seconds` cuts nothing and emits one WARNING `phase=task outcome=over_budget` line

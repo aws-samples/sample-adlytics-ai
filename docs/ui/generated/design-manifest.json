@@ -79,7 +79,7 @@
         },
         {
           "path": "docs/ui/retail-health/low-level-design.md",
-          "sha256": "1c889e497707ff745eec0c1f2cd92f88f678209034f57ea039866a44483b1bf3"
+          "sha256": "304eda4f224ecf607085211b712ddb62c06037b39505db8efbef630941247cd4"
         },
         {
           "path": "docs/ui/retail-health/mockup.html",
@@ -197,7 +197,7 @@
         },
         {
           "path": "docs/ui/new-customers/low-level-design.md",
-          "sha256": "5ec3ec7b2bd471767e5bac571448667e2c7c4258eabb4950e7d09387a9408277"
+          "sha256": "5cbc1a7d074ae7b4d8c5b3ad9c3a8d3da291a813b697f6715ce282052e805b4b"
         },
         {
           "path": "docs/ui/new-customers/mockup.html",
@@ -250,7 +250,7 @@
         },
         {
           "path": "docs/ui/reach-and-funnel/low-level-design.md",
-          "sha256": "bd6e86b9c7a4d24b25edf6ac39ee7aac21a0284b0845b6482aa6294c8db25b97"
+          "sha256": "507a74b2eb652299ecec8a0910c6502a3e25b8d93d1a99382b5f2c1061a752e7"
         },
         {
           "path": "docs/ui/reach-and-funnel/mockup.html",
