@@ -4,7 +4,7 @@
 from typing import Any, Final
 
 CONTRACT_REVISION: Final = 2
-CONTRACT_DIGEST: Final = 'd68fcff9672d9987625fe8148b2ac0fa4d994075d7ef2fe5b30e946695e4e3d0'
+CONTRACT_DIGEST: Final = '37cf78295f448c2d2d0b1cd2465ff5232a4fe703447f41b3a457f810133fd3a9'
 PROTOCOL_VERSION: Final = 'v1'
 AUTHORITY_EPOCHS: Final[Any] = (
 {'shadow': 0, 'graph': 1}
@@ -91,10 +91,10 @@ BAKE_TASKS: Final[Any] = (
             {'page': 'reach', 'variant': 'last_complete_quarter'},
             {'page': 'retention', 'variant': 'latest_with_current_publication'},
             {'page': 'audiences', 'variant': 'last_complete_month'}),
- 'budget_seconds': {'campaigns#1d': 240,
-                    'campaigns#7d': 240,
-                    'campaigns#14d': 270,
-                    'campaigns#30d': 300,
+ 'budget_seconds': {'campaigns#1d': 570,
+                    'campaigns#7d': 570,
+                    'campaigns#14d': 570,
+                    'campaigns#30d': 570,
                     'retail-health#1d': 240,
                     'retail-health#7d': 240,
                     'retail-health#14d': 240,
@@ -111,7 +111,7 @@ BAKE_TASKS: Final[Any] = (
                     'reach#last_complete_quarter': 150,
                     'retention#latest_with_current_publication': 90,
                     'audiences#last_complete_month': 600},
- 'write_seconds': {'campaigns': 16.6,
+ 'write_seconds': {'campaigns': 450.0,
                    'retail-health': 16.6,
                    'scorecard': 16.6,
                    'new-customers': 16.6,
@@ -120,8 +120,8 @@ BAKE_TASKS: Final[Any] = (
                    'audiences': 450.0},
  'certified_plan_counts': {'campaigns#1d': 26,
                            'campaigns#7d': 26,
-                           'campaigns#14d': 30,
-                           'campaigns#30d': 34,
+                           'campaigns#14d': 26,
+                           'campaigns#30d': 26,
                            'retail-health#1d': 49,
                            'retail-health#7d': 49,
                            'retail-health#14d': 49,
@@ -171,6 +171,7 @@ BAKE_TASKS: Final[Any] = (
  'lane_groups': ('preset-bake-lane-0', 'preset-bake-lane-1'),
  's3_chains_per_baker': 8,
  's3_chains_aggregate': 16,
+ 'baker_memory_mib': 2048,
  'max_tasks': 21,
  'worker_schedule_seconds': 60,
  'worker_pass_seconds': 60,

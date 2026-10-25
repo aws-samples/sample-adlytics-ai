@@ -1,5 +1,10 @@
 # SPDX-License-Identifier: MIT-0
-"""Run the deterministic 1,000-campaign ADR-071 local acceptance and retain raw evidence."""
+"""Run the deterministic Campaigns estate acceptance and retain raw evidence (ADR-071, ADR-152).
+
+Two estates: the governed 1,000-campaign bulk estate, every segment and roster shard attested
+through the real stage; and a 10,000-campaign seven-sibling bake through the real renderer's
+26 folded reads, its traced peak held under the memory model's `resident(campaigns#30d)`.
+"""
 
 from __future__ import annotations
 
@@ -10,17 +15,15 @@ import sys
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
-from decimal import Decimal
 from pathlib import Path
 from time import monotonic
 from types import ModuleType
 from typing import Any, Protocol, cast
 
-from adapters.campaign_artifact_renderer import CampaignArtifactRenderInput
+from adapters.campaign_artifact_renderer import CampaignArtifactRenderInput, filter_subsets
 from adapters.campaign_measurement import (
     CampaignArtifactMeasurementService,
     CampaignMeasurementDependencies,
-    CampaignMeasurementSelection,
     CampaignPortfolioMeasurementInput,
 )
 from adapters.jobs.contract_validation.loader import load_contracts
@@ -42,6 +45,7 @@ from domain.presentation.campaign_custody import (
 )
 from domain.presentation.campaign_portfolio import (
     CAMPAIGN_PORTFOLIO_MAX_ROWS,
+    CAMPAIGN_ROSTER_ORDERING,
     DSP_CHANNEL_KEY,
     CampaignPortfolioRow,
     CampaignPortfolioSort,
@@ -50,6 +54,8 @@ from domain.presentation.campaign_portfolio import (
     campaign_portfolio_artifact_payload,
     campaign_portfolio_evidence_status,
     campaign_portfolio_segment_from_payload,
+    campaign_roster_shard_count,
+    campaign_roster_shard_from_payload,
     order_campaign_portfolio_rows,
 )
 from domain.presentation.compared_metrics import presentation_labels
@@ -103,7 +109,7 @@ from ports.outbound.entity_catalog import (
     EntityCatalogBrowseRequest,
     EntityCatalogBrowseResult,
 )
-from ports.outbound.query import MAX_ROWS_CEILING
+from ports.outbound.query import BAKE_MAX_ROWS, RowCeiling
 
 
 @dataclass(frozen=True, slots=True)
@@ -286,7 +292,7 @@ def _measurement_plan_count(
     root: Path,
     render: CampaignArtifactRenderInput,
 ) -> int:
-    """Prove the real grouped plan count does not grow with the campaign population."""
+    """Prove the bake's 26 folded reads carry no row limit and don't grow with the population."""
     service = CampaignArtifactMeasurementService(
         CampaignMeasurementDependencies(
             scope=AuthorizedAnalyticalScope(frozenset({_SCOPE})),
@@ -296,41 +302,38 @@ def _measurement_plan_count(
         )
     )
 
-    def count(selections: tuple[object, ...]) -> int:
-        typed = cast("tuple[CampaignMeasurementSelection, ...]", selections)
+    def count(size: int) -> int:
+        cohort = replace(
+            render,
+            selections=render.selections[:size],
+            capabilities=render.capabilities[:size],
+        )
         batch = service.portfolio_batch(
             CampaignPortfolioMeasurementInput(
-                typed,
+                cohort.selections,
                 render.period,
                 render.prior_period,
                 render.sort,
+                bake_subsets=filter_subsets(cohort),
             )
         )
-        population = len(typed)
-        for plan in batch.prepared.plans:
-            daily = "date_key" in plan.logical.grain.dimensions
-            expected_rows = population * plan.logical.window.days if daily else population
-            if plan.max_rows != expected_rows or plan.max_rows > MAX_ROWS_CEILING:
-                raise RuntimeError("portfolio plan row bound is not population-complete.")
+        for operation in batch.prepared.operations:
+            request = operation.request
+            limited = request.row_ceiling is not RowCeiling.BAKE_GROUPED
+            if limited or request.max_rows != BAKE_MAX_ROWS:
+                raise RuntimeError("a portfolio bake read carries a row limit.")
         return len(batch.prepared.plans)
 
-    full = count(cast("tuple[object, ...]", render.selections))
-    bounded = count(cast("tuple[object, ...]", render.selections[:50]))
-
-    def expected(population: int) -> int:
-        days_per_request = MAX_ROWS_CEILING // population
-        chunks = -(-render.period.days // days_per_request)
-        # Delivery per channel (ADR-127) adds clicks, and the two DSP viewability operands
-        # when the cohort has Amazon DSP campaigns, each as a current and prior plan.
-        dsp = any(item.channel.value == DSP_CHANNEL_KEY for item in render.selections)
-        return 16 + 4 * chunks + 2 + (4 if dsp else 0)
-
-    if full != expected(len(render.selections)) or bounded != expected(50):
-        raise RuntimeError("portfolio grouped measurement chunk count is not derivable.")
+    full, bounded = count(len(render.selections)), count(50)
+    # 11 compares as one breakdown per window and one daily read per trend operand; the two
+    # DSP viewability operands only when the cohort has Amazon DSP campaigns (ADR-127).
+    dsp = any(item.channel.value == DSP_CHANNEL_KEY for item in render.selections)
+    if full != bounded or full != (26 if dsp else 22):
+        raise RuntimeError("the portfolio bake's read count is not its constant.")
     return full
 
 
-def _attest_request(  # noqa: PLR0912
+def _attest_request(
     request: PresetArtifactPublicationRequest,
     campaigns: tuple[SyntheticCampaign, ...],
 ) -> tuple[int, int]:
@@ -340,10 +343,13 @@ def _attest_request(  # noqa: PLR0912
     header, _ = split_parent_custody(staged.custody)
     manifest = campaign_custody_manifest_from_payload(header)
     segment_count = -(-len(campaigns) // CAMPAIGN_PORTFOLIO_MAX_ROWS)
+    shards = parent.roster_shards
     if (
         len(parent.rows) != CAMPAIGN_PORTFOLIO_MAX_ROWS
-        or len(parent.roster) != len(campaigns)
-        or parent.roster[-1].position != len(campaigns) - 1
+        or parent.roster
+        or shards is None
+        or shards.shards != campaign_roster_shard_count(len(campaigns))
+        or shards.revision != request.body.revision.value
         or manifest.body_digest != request.body.digest
         or not custody_rows_align(manifest, tuple(row.signature for row in parent.rows))
     ):
@@ -362,6 +368,7 @@ def _attest_request(  # noqa: PLR0912
     )
     if any(value in request.body.payload_json for value in forbidden):
         raise RuntimeError("bulk campaign parent exposes canonical or source identity.")
+    roster: list[object] = []
     for public, private in request.siblings:
         descriptor = descriptors.get(public.identity)
         if (
@@ -372,6 +379,16 @@ def _attest_request(  # noqa: PLR0912
         ):
             raise RuntimeError("bulk campaign sibling descriptor digest binding failed.")
         identity = cast("PresetArtifactSiblingIdentity", public.identity)
+        if identity.ordering == CAMPAIGN_ROSTER_ORDERING:
+            # A roster shard: the body's revision, its own positions, no canonical row.
+            roster.extend(
+                campaign_roster_shard_from_payload(
+                    json.loads(public.payload_json), identity.segment_index, shards.revision
+                )
+            )
+            if campaign_custody_manifest_from_payload(json.loads(private.payload_json)).rows:
+                raise RuntimeError("a roster shard's custody names a canonical row.")
+            continue
         segment = campaign_portfolio_segment_from_payload(
             json.loads(public.payload_json), parent
         )
@@ -389,9 +406,13 @@ def _attest_request(  # noqa: PLR0912
         ordered[identity.ordering][identity.segment_index] = cast(
             "tuple[object, ...]", segment.rows
         )
-    expected_identities = len(tuple(CampaignPortfolioSortField)) * 2 * segment_count - 1
+    expected_identities = (
+        len(tuple(CampaignPortfolioSortField)) * 2 * segment_count - 1 + shards.shards
+    )
     if len(descriptors) != expected_identities:
         raise RuntimeError("bulk campaign descriptor index is incomplete.")
+    if [cast("Any", entry).position for entry in roster] != list(range(len(campaigns))):
+        raise RuntimeError("bulk campaign roster shards don't cover the estate in order.")
     baseline: set[object] | None = None
     for field in CampaignPortfolioSortField:
         for direction in ("asc", "desc"):
@@ -500,7 +521,11 @@ def run(root: Path) -> CampaignEstateAcceptanceResult:
         requests.append(request)
     request = requests[-1]
     segment_count = -(-len(campaigns) // CAMPAIGN_PORTFOLIO_MAX_ROWS)
-    expected_pairs = len(tuple(CampaignPortfolioSortField)) * 2 * segment_count - 1
+    expected_pairs = (
+        len(tuple(CampaignPortfolioSortField)) * 2 * segment_count
+        - 1
+        + campaign_roster_shard_count(len(campaigns))
+    )
     sizes = tuple(_attest_request(item, campaigns) for item in requests)
     maximum = max(persisted for persisted, _served in sizes)
     maximum_served = max(served for _persisted, served in sizes)
@@ -523,20 +548,13 @@ def run(root: Path) -> CampaignEstateAcceptanceResult:
     )
 
 
-_FILTER_ESTATE_SPLIT = (
-    ("amazon_dsp", 1),
-    ("amazon_sponsored_products", 251),
-    ("amazon_sponsored_brands", 251),
-    ("amazon_sponsored_display", 251),
-    ("amazon_sponsored_television", 246),
-)
-"""1,000 campaigns over the five governed channels, split so every filter but Amazon DSP ends on a
-partly filled segment: 64 of the 65 segments the seven-sibling envelope allows (ADR-127)."""
+FILTER_ESTATE_CAMPAIGNS = 10_000
+"""The seven-sibling estate's size: the sizing table's 10,000-campaign row (ADR-152)."""
 
 
 @dataclass(frozen=True, slots=True)
 class CampaignFilterEstateResult:
-    """Measured local output of one seven-sibling bake at the estate bound."""
+    """Measured local output of one seven-sibling bake through the real renderer."""
 
     campaign_count: int
     filter_count: int
@@ -547,6 +565,7 @@ class CampaignFilterEstateResult:
     maximum_body_bytes: int
     render_ms: int
     peak_traced_bytes: int
+    modelled_bytes: int
 
     def payload(self) -> dict[str, object]:
         """Project the stable raw evidence document."""
@@ -555,6 +574,7 @@ class CampaignFilterEstateResult:
             "expected_object_count": self.expected_object_count,
             "filter_count": self.filter_count,
             "maximum_body_bytes": self.maximum_body_bytes,
+            "modelled_bytes": self.modelled_bytes,
             "object_count": self.object_count,
             "peak_traced_bytes": self.peak_traced_bytes,
             "render_ms": self.render_ms,
@@ -563,46 +583,37 @@ class CampaignFilterEstateResult:
         }
 
 
-def run_filter_estate(root: Path) -> CampaignFilterEstateResult:  # noqa: PLR0914
-    """Bake the 30d preset of a 1,000-campaign estate over five channels, seven siblings.
+def run_filter_estate(
+    root: Path, campaigns: int = FILTER_ESTATE_CAMPAIGNS
+) -> CampaignFilterEstateResult:
+    """Bake the 30d preset of a `campaigns`-campaign estate over five channels, seven siblings.
 
-    The real renderer reduces every filter sibling from one parsed batch and the real source
-    writes the publication; nothing is persisted. Render time is measured untraced, then peak
-    Python allocation is traced over a second identical bake.
+    The real source and the real renderer, whose 26 reads fold into one compact record per
+    campaign over the unit tier's fictional estate port; nothing is persisted. Render time is
+    measured untraced, then peak Python allocation is traced over a second identical bake and
+    held under the memory model's `resident(campaigns#30d)` at this population.
     """
-    import tracemalloc  # noqa: PLC0415 -- evidence-only instrumentation
+    import tracemalloc
 
-    from adapters.jobs.preset_artifact_publisher import bakeability  # noqa: PLC0415
+    from adapters.jobs.preset_artifact_publisher import bakeability
 
     fixture = _publisher_fixture(root)
-    support = importlib.import_module("campaign_channel_filter_support")
-    figures = support.Figures
-    estate = tuple(
-        support.FictionalCampaign(
-            f"Fictional Estate {channel[7:].replace('_', ' ').title()} {index:04d}",
-            channel,
-            figures(Decimal(100 + (index * 37) % 991), Decimal(300 + (index * 53) % 1999), 1 + index % 41, 10_000 + (index * 97) % 9_973, 20 + index % 211),
-            figures(Decimal(90 + (index * 41) % 983), Decimal(280 + (index * 59) % 1987), 1 + index % 37, 9_500 + (index * 89) % 9_967, 18 + index % 199),
-            viewable=(6_000 + index % 500, 9_000 + index % 700) if channel == DSP_CHANNEL_KEY else None,
-            prior_viewable=(5_800 + index % 480, 8_900 + index % 690) if channel == DSP_CHANNEL_KEY else None,
-        )
-        for channel, count in _FILTER_ESTATE_SPLIT
-        for index in range(1, count + 1)
-    )
+    support = importlib.import_module("campaign_estate_support")
+    selections = support.estate(campaigns)
     aliases = tuple(
         EntityAlias(
             kind=EntityKind.CAMPAIGN,
-            key=item.selection.campaign,
-            commerce_scope=item.selection.campaign.commerce_scope,
-            labels=(EffectiveLabel(item.name, date(2026, 1, 1)),),
-            source_identifiers=(SourceIdentifier("fictional.filter.estate", item.selection.campaign.value),),
+            key=item.campaign,
+            commerce_scope=item.campaign.commerce_scope,
+            labels=(EffectiveLabel(cast("str", item.signature.effective_name), date(2026, 1, 1)),),
+            source_identifiers=(SourceIdentifier("fictional.filter.estate", item.campaign.value),),
             evidence=MappingEvidence("governed-filter-estate", 1),
             valid_from=date(2026, 1, 1),
-            platform=item.selection.campaign.platform,
-            channel=item.selection.channel,
-            marketplace=item.selection.marketplace,
+            platform=item.campaign.platform,
+            channel=item.channel,
+            marketplace=item.marketplace,
         )
-        for item in estate
+        for item in selections
     )
     labels = (
         PresentationDimensionLabel("platform_key", "amazon_ads", "platform", "Amazon Ads"),
@@ -613,24 +624,27 @@ def run_filter_estate(root: Path) -> CampaignFilterEstateResult:  # noqa: PLR091
         ),
     )
     source_factory = cast("_AcceptanceSourceFactory", fixture.__dict__["_source"])
-    template, _, _, _ = source_factory(population=len(estate))
-    source = replace(
-        cast("RetainedCampaignPresetArtifactSource", template),
-        coverage=fixture.Coverage((DateRange(date(2026, 6, 1), date(2026, 8, 21)),)),
-        catalog=cast(
-            "AnalyticalEntityCatalogPort",
-            _BulkCatalog(EntityCatalogBrowseResult(aliases)),
-        ),
-        compiler=support.FilterCompiler(estate),
-        labels=labels,
-        channel_order=support.CHANNEL_ORDER,
-    )
-    variant = PresetArtifactVariant("30d")
+    template, _, _, _ = source_factory(population=1)
+
+    def bake() -> PresetArtifactPublicationRequest | None:
+        source = replace(
+            cast("RetainedCampaignPresetArtifactSource", template),
+            coverage=fixture.Coverage((DateRange(date(2026, 6, 1), date(2026, 8, 21)),)),
+            catalog=cast(
+                "AnalyticalEntityCatalogPort",
+                _BulkCatalog(EntityCatalogBrowseResult(aliases)),
+            ),
+            compiler=support.renderer(support.EstateQueries(selections)),
+            labels=labels,
+            channel_order=support.CHANNEL_ORDER,
+        )
+        return source.publication_for(PresetArtifactVariant("30d"))
+
     started = monotonic()
-    request = source.publication_for(variant)
+    request = bake()
     render_ms = int((monotonic() - started) * 1_000)
     tracemalloc.start()
-    traced = source.publication_for(variant)
+    traced = bake()
     _, peak = tracemalloc.get_traced_memory()
     tracemalloc.stop()
     if request is None or request.custody_header is None or traced is None:
@@ -641,18 +655,21 @@ def run_filter_estate(root: Path) -> CampaignFilterEstateResult:  # noqa: PLR091
     if parent.channel_filter is None:
         raise RuntimeError("the seven-sibling estate offers no channel filter.")
     offered = tuple(option.filter_id for option in parent.channel_filter.options)
-    population = {key: count for key, count in _FILTER_ESTATE_SPLIT}
+    population = {
+        key: sum(item.channel.value == key for item in selections) for key in support.CHANNEL_ORDER
+    }
     expected_population = {
-        "all": len(estate),
-        "sponsored": len(estate) - population[DSP_CHANNEL_KEY],
+        "all": campaigns,
+        "sponsored": campaigns - population[DSP_CHANNEL_KEY],
         **population,
     }
-    if offered != ("all", "sponsored", *(key for key, _ in _FILTER_ESTATE_SPLIT)):
+    if offered != ("all", "sponsored", *support.CHANNEL_ORDER):
         raise RuntimeError("the seven-sibling estate offers the wrong filters.")
     orderings = len(tuple(CampaignPortfolioSortField)) * 2
     # Each filter writes every ordering's segments except its canonical first, which is the
     # filter's own parent body, so a filter of S segments has S x orderings - 1 segment siblings.
     pairs: dict[str, int] = dict.fromkeys(offered, 0)
+    roster_shards: dict[str, int] = dict.fromkeys(offered, 0)
     for body, _ in request.siblings:
         identity = cast("Any", body.identity)
         filter_id = identity.filter_id
@@ -660,35 +677,47 @@ def run_filter_estate(root: Path) -> CampaignFilterEstateResult:  # noqa: PLR091
             sibling = campaign_portfolio_artifact_from_payload(json.loads(body.payload_json))
             if sibling.channel_filter is None or sibling.channel_filter.selected != filter_id:
                 raise RuntimeError("a filter sibling names another filter.")
-            if len(sibling.roster) != expected_population[filter_id]:
-                raise RuntimeError("a filter sibling's roster isn't its own population.")
-            if filter_id in population and {row.signature.channel for row in sibling.rows} != {
-                support.CHANNEL_LABELS[filter_id]
-            }:
-                raise RuntimeError("a one-channel sibling serves another channel's rows.")
+            if sibling.total_count != expected_population[filter_id]:
+                raise RuntimeError("a filter sibling's population isn't its own.")
+            continue
+        if identity.ordering == CAMPAIGN_ROSTER_ORDERING:
+            roster_shards[filter_id] += 1
             continue
         pairs[filter_id] += 1
+    if roster_shards != {
+        key: campaign_roster_shard_count(count) for key, count in expected_population.items()
+    }:
+        raise RuntimeError("a filter's roster isn't written in its own shards.")
     if any((count + 1) % orderings for count in pairs.values()):
         raise RuntimeError("a filter is missing an ordering's segment.")
     segments = {key: (count + 1) // orderings for key, count in pairs.items()}
-    if len(parent.roster) != len(estate):
-        raise RuntimeError("the All channels roster isn't the whole estate.")
-    expected_segments = {key: -(-count // CAMPAIGN_PORTFOLIO_MAX_ROWS) for key, count in expected_population.items()}
+    expected_segments = {
+        key: -(-count // CAMPAIGN_PORTFOLIO_MAX_ROWS) for key, count in expected_population.items()
+    }
     if segments != expected_segments:
         raise RuntimeError(f"segments by filter {segments} differ from {expected_segments}.")
+    certificate = dict(bakeability.roster_certificates(root))["campaigns#30d"]
+    modelled = bakeability.resident(
+        certificate, "campaigns#30d", ceiling=campaigns, axes=bakeability.fixed_axes(root)
+    ).total
+    if peak > modelled:
+        raise RuntimeError(f"the bake's traced peak {peak} B exceeds the model's {modelled} B.")
     # Every object the real stage writes: the pairs, the index shards, the parent (ADR-145).
     objects = tuple(_stage(request).objects.values())
     sizes = tuple(len(item.encode()) for item in objects)
     return CampaignFilterEstateResult(
-        campaign_count=len(estate),
+        campaign_count=campaigns,
         filter_count=len(offered),
         segments_by_filter=segments,
         object_count=len(objects),
-        expected_object_count=bakeability.campaign_bake_object_count(tuple(expected_population.values())),
+        expected_object_count=bakeability.campaign_bake_object_count(
+            tuple(expected_population.values())
+        ),
         total_bytes=sum(sizes),
         maximum_body_bytes=max(sizes),
         render_ms=render_ms,
         peak_traced_bytes=peak,
+        modelled_bytes=modelled,
     )
 
 

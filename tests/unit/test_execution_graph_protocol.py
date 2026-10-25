@@ -379,10 +379,10 @@ def test_the_bake_roster_and_start_budget_are_generated_with_exact_values() -> N
         "audiences#last_complete_month",
     ]
     assert list(BAKE_TASKS["budget_seconds"].values()) == [
-        240,
-        240,
-        270,
-        300,
+        570,
+        570,
+        570,
+        570,
         240,
         240,
         240,
@@ -400,11 +400,16 @@ def test_the_bake_roster_and_start_budget_are_generated_with_exact_values() -> N
         90,
         600,
     ]
-    # Audiences' parts grow with campaigns, so its write term is the whole write allowance.
+    # Audiences' parts and Campaigns' segments grow with campaigns, so each write term is the
+    # whole write allowance (ADR-152).
     assert BAKE_TASKS["write_seconds"]["audiences"] == 450.0
+    assert BAKE_TASKS["write_seconds"]["campaigns"] == 450.0
     assert {
-        value for page, value in BAKE_TASKS["write_seconds"].items() if page != "audiences"
+        value
+        for page, value in BAKE_TASKS["write_seconds"].items()
+        if page not in {"audiences", "campaigns"}
     } == {16.6}
+    assert BAKE_TASKS["baker_memory_mib"] == 2048
     assert len(BAKE_TASKS["write_seconds"]) == 7
     assert (BAKE_TASKS["max_tasks"], BAKE_TASKS["certified_query_cap"], BAKE_TASKS["lanes"]) == (
         21,
@@ -439,7 +444,7 @@ _BUDGET_ROW = '    "retail-health#14d": 240\n'
             "    audiences: 450.0\n",
             "",
         ),
-        ("BAKE_VALUE_PRECISION", "    campaigns: 16.6\n", "    campaigns: 16.65\n"),
+        ("BAKE_VALUE_PRECISION", "    retail-health: 16.6\n", "    retail-health: 16.65\n"),
         ("BAKE_ROSTER_OVER_MAX_TASKS", "  max_tasks: 21\n", "  max_tasks: 6\n"),
         ("BAKE_MAX_TASKS_OVER_TRANSACTION_BOUND", "  max_tasks: 21\n", "  max_tasks: 23\n"),
         (

@@ -134,10 +134,10 @@ bake_tasks:
     - {page: retention, variant: latest_with_current_publication}
     - {page: audiences, variant: last_complete_month}
   budget_seconds:
-    "campaigns#1d": 240
-    "campaigns#7d": 240
-    "campaigns#14d": 270
-    "campaigns#30d": 300
+    "campaigns#1d": 570
+    "campaigns#7d": 570
+    "campaigns#14d": 570
+    "campaigns#30d": 570
     "retail-health#1d": 240
     "retail-health#7d": 240
     "retail-health#14d": 240
@@ -155,7 +155,7 @@ bake_tasks:
     "retention#latest_with_current_publication": 90
     "audiences#last_complete_month": 600
   write_seconds:
-    campaigns: 16.6
+    campaigns: 450.0
     retail-health: 16.6
     scorecard: 16.6
     new-customers: 16.6
@@ -167,8 +167,8 @@ bake_tasks:
   certified_plan_counts:
     "campaigns#1d": 26
     "campaigns#7d": 26
-    "campaigns#14d": 30
-    "campaigns#30d": 34
+    "campaigns#14d": 26
+    "campaigns#30d": 26
     "retail-health#1d": 49
     "retail-health#7d": 49
     "retail-health#14d": 49
@@ -222,6 +222,10 @@ bake_tasks:
   lane_groups: [preset-bake-lane-0, preset-bake-lane-1]
   s3_chains_per_baker: 8
   s3_chains_aggregate: 16
+  # The Baker Lambda's memory, its one home (ADR-152): the stack sizes the function from it and
+  # the memory model derives BAKE_MAX_ROWS from it. Raising it is the operator action for a
+  # memory-sized refusal; `make check-bakeability` prints the ceiling per size.
+  baker_memory_mib: 2048
   max_tasks: 21
   # The precompute readiness timeline (DB26, TD-279), the one home of the armed finalizer's
   # redelivery and of the detector's precompute- and finalizer-blocked thresholds: the graph

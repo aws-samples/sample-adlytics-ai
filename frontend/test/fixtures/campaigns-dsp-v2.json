@@ -139,7 +139,7 @@
         {
           "absence_class": "generation-pending",
           "absence_reason": "This insight could not be generated just now; it retries automatically and appears on a later view.",
-          "artifact_revision": "sha256:f833f12e680aadf5f76f8c175226c37f8d491ae378fd7af14e4d23209d82d801",
+          "artifact_revision": "sha256:19a786150cb313401c6424432d52cb9f5771d13d9e90d33bac64ed9f84a30d1c",
           "evidence_line": null,
           "id": "contribution",
           "output_class": "perspective",
@@ -150,7 +150,7 @@
         {
           "absence_class": "evaluated-quiet",
           "absence_reason": "No campaign moved against the portfolio's direction enough to call out in this view.",
-          "artifact_revision": "sha256:f833f12e680aadf5f76f8c175226c37f8d491ae378fd7af14e4d23209d82d801",
+          "artifact_revision": "sha256:19a786150cb313401c6424432d52cb9f5771d13d9e90d33bac64ed9f84a30d1c",
           "evidence_line": null,
           "id": "divergence",
           "output_class": "perspective",
@@ -161,7 +161,7 @@
         {
           "absence_class": "generation-pending",
           "absence_reason": "This insight could not be generated just now; it retries automatically and appears on a later view.",
-          "artifact_revision": "sha256:f833f12e680aadf5f76f8c175226c37f8d491ae378fd7af14e4d23209d82d801",
+          "artifact_revision": "sha256:19a786150cb313401c6424432d52cb9f5771d13d9e90d33bac64ed9f84a30d1c",
           "evidence_line": null,
           "id": "exposure",
           "output_class": "perspective",
@@ -170,7 +170,7 @@
           "text": null
         },
         {
-          "artifact_revision": "sha256:f833f12e680aadf5f76f8c175226c37f8d491ae378fd7af14e4d23209d82d801",
+          "artifact_revision": "sha256:19a786150cb313401c6424432d52cb9f5771d13d9e90d33bac64ed9f84a30d1c",
           "evidence_line": "Server-ranked absolute changes.",
           "id": "movers",
           "output_class": "observed",
@@ -197,26 +197,8 @@
       },
       "reason_codes": [],
       "roster": {
-        "channels": [
-          "Amazon DSP"
-        ],
-        "entries": [
-          [
-            "Fictional DSP Retargeting",
-            0,
-            0,
-            0
-          ],
-          [
-            "Fictional DSP Prospecting",
-            0,
-            0,
-            1
-          ]
-        ],
-        "marketplaces": [
-          "United States"
-        ]
+        "revision": "0c911a92916912f715923a5015c1df69e18d4e7e9e47f2a0e442675e95e8c4ab",
+        "shards": 1
       },
       "rows": [
         {

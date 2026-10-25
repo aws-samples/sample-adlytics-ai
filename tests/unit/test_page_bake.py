@@ -455,7 +455,7 @@ def test_each_group_emits_one_failed_span_one_line_and_one_datapoint(
         "operator_action",
         "memory_mib",
     }
-    assert second.details["memory_mib"] == 1024
+    assert second.details["memory_mib"] == 2048
     assert str(second.details["operator_action"]).startswith("raise the Baker memory")
     # Paired: no groups, nothing emitted.
     emit_isolated_refusals(LOGGER, (), lineage, replayed=False, metric=telemetry.metric)

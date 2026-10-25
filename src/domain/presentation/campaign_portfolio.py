@@ -63,6 +63,7 @@ from domain.presentation.insights import (
     insight_slots_payload,
     require_insight_roster,
 )
+from domain.presentation.preset_artifacts import PresetArtifactSiblingIdentity
 from domain.shared_kernel.provenance import MeasurementBasis
 from domain.shared_kernel.values import DateRange, Grain
 
@@ -468,16 +469,21 @@ class CampaignPortfolioReductionRequest:
     current: Mapping[str, Mapping[tuple[str, ...], CampaignNumber]]
     prior: Mapping[str, Mapping[tuple[str, ...], CampaignNumber]]
     daily: Mapping[str, Mapping[tuple[str, ...], CampaignNumber]]
+    """Per-campaign daily operands keyed `(day, campaign, marketplace)`; empty with sums."""
     period: DateRange
+    daily_sums: Mapping[str, Mapping[date, Decimal]] | None = None
+    """The bake's daily operands already summed over `candidates` (`AuthorizedDailySums`)."""
 
     def __post_init__(self) -> None:
         if not self.candidates:
             raise ValueError("campaign portfolio reduction requires catalog candidates.")
         required = frozenset({"ad_spend", "attributed_revenue_14d", "impressions", "purchases"})
+        daily = self.daily if self.daily_sums is None else self.daily_sums
         if (
             frozenset(self.current) != required
             or frozenset(self.prior) != required
-            or frozenset(self.daily) != required
+            or frozenset(daily) != required
+            or (self.daily_sums is not None and self.daily)
         ):
             raise ValueError("campaign portfolio reduction operands are incomplete.")
 
@@ -557,17 +563,18 @@ def reduce_campaign_portfolio(
         ),
         CampaignPortfolioMetric.PORTFOLIO_ROAS: _portfolio_roas(prior_revenue, prior_spend),
     }
+
+    def daily(metric: str, day: date) -> Decimal:
+        if request.daily_sums is not None:
+            return request.daily_sums[metric][day]
+        return _authorized_sum(request.daily[metric], request.candidates, day=day)
+
     points = tuple(
         CampaignPortfolioTrendPoint(
             day,
-            _authorized_sum(request.daily["ad_spend"], request.candidates, day=day),
-            _portfolio_roas(
-                _authorized_sum(
-                    request.daily["attributed_revenue_14d"], request.candidates, day=day
-                ),
-                _authorized_sum(request.daily["ad_spend"], request.candidates, day=day),
-            ),
-            _authorized_sum(request.daily["purchases"], request.candidates, day=day),
+            daily("ad_spend", day),
+            _portfolio_roas(daily("attributed_revenue_14d", day), daily("ad_spend", day)),
+            daily("purchases", day),
         )
         for day in (
             request.period.start + timedelta(days=index) for index in range(request.period.days)
@@ -627,6 +634,84 @@ class CampaignPortfolioRosterEntry:
                 raise ValueError(f"campaign portfolio roster {label} cannot be blank.")
         if self.position < 0:
             raise ValueError("campaign portfolio roster position cannot be negative.")
+
+
+CAMPAIGN_ROSTER_SHARD_ENTRIES: Final = 500
+"""Roster entries per shard (ADR-145, class A). A shard is size-checked like every body, so one
+past the cap is the page's `body_over_cap`, never a truncated roster."""
+CAMPAIGN_ROSTER_ORDERING: Final = "roster"
+"""The sibling ordering a filter's roster shards are written under: `{filter}/roster/segment-N`."""
+CAMPAIGN_ROSTER_SHARD_KIND: Final = "campaign_roster_shard"
+
+
+def campaign_roster_shard_count(entries: int) -> int:
+    """Count the shards a filter's name roster of `entries` campaigns is written in."""
+    return -(-entries // CAMPAIGN_ROSTER_SHARD_ENTRIES)
+
+
+def campaign_roster_shard_identity(filter_id: str, shard: int) -> PresetArtifactSiblingIdentity:
+    """Return one roster shard's sibling identity: the bake writes it and the serve reads it."""
+    return PresetArtifactSiblingIdentity(CAMPAIGN_ROSTER_ORDERING, shard, filter_id)
+
+
+@dataclass(frozen=True, slots=True)
+class CampaignPortfolioRosterShards:
+    """What a baked body says about its name roster: its shards and the bake's revision.
+
+    The roster itself is written in `shards` ordered siblings (ADR-145), fetched on the name
+    field's first focus. Each shard names `revision` as its `parent_revision`, so the browser
+    binds the shards it holds to the body it holds.
+    """
+
+    revision: str
+    shards: int
+
+    def __post_init__(self) -> None:
+        if not self.revision.strip() or self.shards < 1:
+            raise ValueError("a campaign roster names its revision and at least one shard.")
+
+
+def campaign_roster_shard_payload(
+    roster: tuple[CampaignPortfolioRosterEntry, ...], shard: int, revision: str
+) -> dict[str, object]:
+    """Encode one ordered shard of a filter's roster, naming the bake's revision."""
+    start = shard * CAMPAIGN_ROSTER_SHARD_ENTRIES
+    entries = roster[start : start + CAMPAIGN_ROSTER_SHARD_ENTRIES]
+    if not entries:
+        raise ValueError("a campaign roster shard holds at least one entry.")
+    return {
+        **_roster_payload(entries),
+        "kind": CAMPAIGN_ROSTER_SHARD_KIND,
+        "parent_revision": revision,
+        "shard": shard,
+    }
+
+
+def campaign_roster_shard_from_payload(
+    value: object, shard: int, revision: str
+) -> tuple[CampaignPortfolioRosterEntry, ...]:
+    """Refuse a roster shard that isn't exactly what the bake writes for `shard` of `revision`."""
+    item = _object(
+        value,
+        frozenset({"channels", "entries", "kind", "marketplaces", "parent_revision", "shard"}),
+        "campaign roster shard",
+    )
+    if (
+        item["kind"] != CAMPAIGN_ROSTER_SHARD_KIND
+        or item["parent_revision"] != revision
+        or item["shard"] != shard
+        or isinstance(item["shard"], bool)
+    ):
+        raise ValueError("campaign roster shard is not the one requested.")
+    entries = _campaign_roster_from_payload(
+        {key: item[key] for key in ("channels", "entries", "marketplaces")}
+    )
+    start = shard * CAMPAIGN_ROSTER_SHARD_ENTRIES
+    if not entries or tuple(entry.position for entry in entries) != tuple(
+        range(start, start + len(entries))
+    ):
+        raise ValueError("campaign roster shard positions are not its own.")
+    return entries
 
 
 def order_campaign_portfolio_rows(
@@ -1229,6 +1314,7 @@ class CampaignPortfolioArtifact:
     kind: str = "campaign_portfolio"
     insights: tuple[InsightSlot, ...] = field(default_factory=default_portfolio_insights)
     roster: tuple[CampaignPortfolioRosterEntry, ...] = ()
+    """The whole name roster, held in process; a baked body carries `roster_shards` instead."""
     evidence_status: EvidenceStatus | None = None
     """The window's coverage block (ADR-119), on a complete portfolio. `None` on an empty or
     insufficient portfolio, which shows no tile."""
@@ -1238,6 +1324,8 @@ class CampaignPortfolioArtifact:
     precompute reduces, which is never served."""
     channel_view: CampaignMultiChannelView | None = None
     """A complete multi-channel sibling's By channel, Delivery per channel and not-added tiles."""
+    roster_shards: CampaignPortfolioRosterShards | None = None
+    """A baked body's roster: its shards and the bake's revision (ADR-145), never with `roster`."""
 
     @property
     def filter_id(self) -> str:
@@ -1341,11 +1429,18 @@ class CampaignPortfolioArtifact:
             self.pagination.expected_row_count,
         }:
             raise ValueError("campaign portfolio pagination contradicts rows or total count.")
+        if self.roster and self.roster_shards is not None:
+            raise ValueError("a campaign portfolio holds its roster or names its shards.")
         if self.roster:
             if len(self.roster) != self.total_count or tuple(
                 entry.position for entry in self.roster
             ) != tuple(range(self.total_count)):
                 raise ValueError("campaign portfolio roster must cover the population exactly.")
+        elif self.roster_shards is not None:
+            if not complete or self.roster_shards.shards != campaign_roster_shard_count(
+                self.total_count
+            ):
+                raise ValueError("campaign portfolio roster shards must cover the population.")
         elif self.rows:
             raise ValueError("campaign portfolio rows require their estate roster.")
         if self.rows:
@@ -1789,7 +1884,14 @@ def campaign_portfolio_artifact_payload(artifact: CampaignPortfolioArtifact) -> 
                 "total_count": artifact.pagination.total_count,
             }
         ),
-        "roster": _roster_payload(artifact.roster),
+        "roster": (
+            _roster_payload(artifact.roster)
+            if artifact.roster_shards is None
+            else {
+                "revision": artifact.roster_shards.revision,
+                "shards": artifact.roster_shards.shards,
+            }
+        ),
     }
 
 
@@ -2093,6 +2195,14 @@ def _campaign_roster_from_payload(value: object) -> tuple[CampaignPortfolioRoste
     return tuple(roster)
 
 
+def _roster_shards_from_payload(value: object) -> CampaignPortfolioRosterShards:
+    item = _object(value, frozenset({"revision", "shards"}), "campaign portfolio roster shards")
+    return CampaignPortfolioRosterShards(
+        _text(item["revision"], "campaign portfolio roster revision"),
+        _integer(item["shards"], "campaign portfolio roster shards"),
+    )
+
+
 def _has_keys(value: object, keys: frozenset[str], *, exact: bool = False) -> bool:
     """Whether a decoded object carries these keys (exactly these, with `exact`)."""
     if not isinstance(value, dict):
@@ -2360,7 +2470,12 @@ def campaign_portfolio_artifact_from_payload(
             _integer(pagination_item["segment_count"], "campaign portfolio segment count"),
             _integer(pagination_item["total_count"], "campaign portfolio pagination total"),
         )
-    roster = _campaign_roster_from_payload(item["roster"])
+    shards = (
+        _roster_shards_from_payload(item["roster"])
+        if _has_keys(item["roster"], frozenset({"revision", "shards"}), exact=True)
+        else None
+    )
+    roster = () if shards is not None else _campaign_roster_from_payload(item["roster"])
     result = CampaignPortfolioArtifact(
         outcome,
         _period(item["period"], "campaign portfolio period"),
@@ -2395,6 +2510,7 @@ def campaign_portfolio_artifact_from_payload(
         evidence_status_from_payload(item[EVIDENCE_STATUS_KEY]),
         _channel_filter_from_payload(item[CHANNEL_FILTER_KEY]),
         _channel_view_from_payload(item[CHANNEL_VIEW_KEY]),
+        shards,
     )
     # ADR-119 decision 4: the block is null only on an empty or insufficient portfolio.
     if result.outcome is CampaignPortfolioOutcome.COMPLETE and result.evidence_status is None:

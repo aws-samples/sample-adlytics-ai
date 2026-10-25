@@ -164,7 +164,7 @@ def test_p1_measures_every_term_through_the_real_path(monkeypatch: pytest.Monkey
         return 10 * products
 
     monkeypatch.setattr(probe, "measure_retail_render", retail)
-    monkeypatch.setattr(probe, "measure_campaign_render", lambda: (5_000, 1_000, 10))
+    monkeypatch.setattr(probe, "measure_campaign_record", lambda campaigns: 20 * campaigns)
     measured = probe.run_p1(sizes=(200, 400), runs=1)
     # ADR-152: Retail renders at every size, never only those under a row ceiling.
     assert [
@@ -176,7 +176,11 @@ def test_p1_measures_every_term_through_the_real_path(monkeypatch: pytest.Monkey
     assert "retail_render_sizes" not in measured
     terms = measured["terms_bytes_per_row"]
     assert terms["B_raw"] > 0 and terms["B_shaped"] > 0 and terms["B_kept"] > 0
-    assert (terms["B_render"], terms["B_render_campaigns_estate"]) == (10.0, 400.0)
+    assert (terms["B_render"], terms["B_record"]) == (10.0, 20.0)
+    # ADR-152: the Campaigns bake renders at every size too.
+    assert [
+        item["rows"] for item in measured["render_samples"] if item["render"] == "campaigns_bake"
+    ] == [200, 400]
     assert {sample["shape"] for sample in measured["samples"]} == {
         "campaigns_compare",
         "audiences_grouped",
@@ -184,8 +188,8 @@ def test_p1_measures_every_term_through_the_real_path(monkeypatch: pytest.Monkey
 
 
 def test_the_derivation_takes_the_largest_candidate_that_fits_every_row() -> None:
-    small = bakeability.BakeMemoryTerms(1, 1, 1, 1, "fictional")
-    large = bakeability.BakeMemoryTerms(10_000, 10_000, 1, 10_000, "fictional")
+    small = bakeability.BakeMemoryTerms(1, 1, 1, 1, 1, "fictional")
+    large = bakeability.BakeMemoryTerms(10_000, 10_000, 1, 10_000, 1, "fictional")
     assert probe.derive(small, 1_024)["derived"] == 50_000
     derived = probe.derive(large, 1_024)
     assert derived["derived"] is None

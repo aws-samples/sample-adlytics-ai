@@ -3,8 +3,10 @@ import {
   campaignPortfolioSortFields,
   parseCampaignAttributionDetailV2,
   parseCampaignPortfolioArtifact,
+  parseCampaignRosterShard,
   type CampaignAttributionDetailV2,
   type CampaignPortfolioArtifact,
+  type CampaignPortfolioRosterEntry,
   type CampaignSelectionCapability,
 } from './campaign-attribution';
 import {
@@ -885,6 +887,32 @@ export async function fetchCampaignPresentationV2(
   const presentation = campaignPresentationV2(result);
   if (presentation.kind === 'child') return fail();
   return presentation;
+}
+
+/**
+ * Fetch one baked shard of a filter's name roster (ADR-145). The server serves it from the
+ * parent's index, never measuring; a shard of another revision comes back as it is, for the
+ * caller's revision guard to compare with the body it holds.
+ */
+export async function fetchCampaignRosterShardV2(
+  session: string,
+  selection: TemporalSelectionV1 | undefined,
+  filterId: string,
+  shard: number,
+  signal?: AbortSignal,
+): Promise<{ readonly entries: readonly CampaignPortfolioRosterEntry[]; readonly parent_revision: string }> {
+  if (!Number.isInteger(shard) || shard < 0) return fail();
+  const body = { ...(requestBody(session, selection, undefined, undefined, filterId) as Record<string, JsonValue>), roster_shard: shard };
+  const response = await callApi(CAMPAIGN_LIST_PATH, 'POST', body, signal, { accept: PRESENTATION_V2_MEDIA_TYPE });
+  const value = await responseJson(response);
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return fail();
+  const item = value as Record<string, unknown>;
+  const keys = Object.keys(item).sort();
+  if (keys.join(',') !== 'kind,parent_revision,session_id,shard' || item.kind !== 'campaign_roster_shard' || item.session_id !== session) return fail();
+  let parsed: { readonly entries: readonly CampaignPortfolioRosterEntry[]; readonly parent_revision: string };
+  try { parsed = parseCampaignRosterShard(item.shard, shard); } catch { return fail(); }
+  if (parsed.parent_revision !== item.parent_revision) return fail();
+  return parsed;
 }
 
 export async function fetchCampaignPresentationChildV2(

@@ -277,6 +277,8 @@ from domain.presentation.campaign_portfolio import (
     campaign_portfolio_comparison,
     campaign_portfolio_evidence_status,
     campaign_portfolio_segment_from_payload,
+    campaign_roster_shard_from_payload,
+    campaign_roster_shard_identity,
     reduce_campaign_portfolio,
 )
 from domain.presentation.campaigns import (
@@ -564,6 +566,7 @@ from ports.outbound.entity_catalog import (
     MAX_CAMPAIGN_PORTFOLIO_CANDIDATES,
     MAX_ENTITY_CANDIDATES,
     AnalyticalEntityCatalogPort,
+    BrowsePurpose,
     EntityCatalogBrowseRequest,
     EntityCatalogLookupRequest,
 )
@@ -740,6 +743,8 @@ class _V2ParentPresentationInput:
     campaign_segment: int = 0
     filter_id: str = ALL_CHANNELS_FILTER_ID
     """Campaigns' channel filter (ADR-127 decision 6); omitted means All channels."""
+    campaign_roster_shard: int | None = None
+    """One shard of the filter's baked name roster (ADR-145), instead of a page."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -3412,6 +3417,10 @@ def _v2_campaign_preset_parent_response(
     generation = _served_generation(input_request.runtime, pointer)
     body = bodies.read(pointer)
     _attest_campaign_preset_body(pointer, body)
+    if request.campaign_roster_shard is not None:
+        return _campaign_roster_shard_response(
+            request, input_request.runtime, (pointer, body), request.campaign_roster_shard
+        )
     try:
         payload = json.loads(body.payload_json)
         artifact = campaign_portfolio_artifact_from_payload(payload)
@@ -3452,6 +3461,51 @@ def _v2_campaign_preset_parent_response(
                 page=_with_generation(page, generation),
             )
         ),
+    )
+
+
+def _campaign_roster_shard_response(  # noqa: PLR0913, PLR0917 -- the request, runtime, parent, shard
+    request: _V2ParentPresentationInput,
+    runtime: PresentationRuntime,
+    parent: tuple[PresetArtifactPointer, PresetArtifactBody],
+    shard: int,
+) -> dict[str, Any]:
+    """Serve one baked shard of a filter's name roster through the parent custody's index.
+
+    Existence is the index's: a shard or filter the bake never wrote is a 400. A listed shard
+    whose bytes or fields disagree with its descriptor, the request or this revision is the
+    malformed-artifact refusal (ADR-145), never a fallback.
+    """
+    pointer, body = parent
+    custody_store = runtime.preset_artifact_custody
+    if custody_store is None or pointer.custody_digest is None:
+        raise _malformed_artifact()
+    manifest = custody_store.read(pointer)
+    _attest_campaign_preset_custody(pointer, manifest)
+    header, index = _parent_index(manifest)
+    if header.get("body_digest") != body.digest:
+        raise _malformed_artifact()
+    identity = campaign_roster_shard_identity(request.filter_id, shard)
+    descriptor = _indexed_descriptor(runtime, pointer, index, identity)
+    if descriptor is None:
+        raise ValidationError(PRESENTATION_REFUSED, "The campaign roster shard is invalid.")
+    sibling = _read_indexed(runtime, pointer, identity, descriptor)
+    try:
+        payload = cast("dict[str, object]", json.loads(sibling.body.payload_json))
+        campaign_roster_shard_from_payload(payload, shard, pointer.revision.value)
+        custody = campaign_custody_manifest_from_payload(json.loads(sibling.custody.payload_json))
+    except TypeError, ValueError, json.JSONDecodeError:
+        raise _malformed_artifact() from None
+    if custody.body_digest != sibling.body.digest or custody.rows:
+        raise _malformed_artifact()
+    return _json(
+        200,
+        {
+            "kind": "campaign_roster_shard",
+            "session_id": request.session_id,
+            "parent_revision": pointer.revision.value,
+            "shard": payload,
+        },
     )
 
 
@@ -6151,7 +6205,7 @@ def _v2_parent_request(
     if operation in {CAMPAIGN_LIST_PATH, RETAIL_HEALTH_PATH}:
         allowed.add("sort")
     if operation == CAMPAIGN_LIST_PATH:
-        allowed.update({"segment", "filter_id"})
+        allowed.update({"segment", "filter_id", "roster_shard"})
     if operation == AUDIENCES_PATH:
         allowed.update(_AUDIENCES_PART_FIELDS)
     if fields - allowed or "session_id" not in fields:
@@ -6160,6 +6214,9 @@ def _v2_parent_request(
             "The presentation request fields are invalid.",
             context={"outcome": "invalid_fields", "n": len(fields - allowed)},
         )
+    # A roster shard is a part of the served body, never a page: it names no sort or segment.
+    if "roster_shard" in fields and fields & {"sort", "segment"}:
+        raise ValidationError(PRESENTATION_REFUSED, "The campaign roster shard is invalid.")
     session_id = _text(payload["session_id"], "session_id")
     if len(session_id) > MAX_SESSION_ID_LENGTH:
         raise ValidationError(PRESENTATION_REFUSED, "session_id is too long.")
@@ -6184,7 +6241,21 @@ def _v2_parent_request(
             _retail_health_sort(payload.get("sort")) if operation == RETAIL_HEALTH_PATH else None
         ),
         filter_id=_campaign_filter_id(payload.get("filter_id")),
+        campaign_roster_shard=(
+            _campaign_roster_shard(payload["roster_shard"]) if "roster_shard" in fields else None
+        ),
     )
+
+
+def _campaign_roster_shard(value: object) -> int:
+    """Accept one bounded roster shard index (ADR-145); a bool or negative value is refused."""
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or not 0 <= value <= MAX_CAMPAIGN_SEGMENT_INDEX
+    ):
+        raise ValidationError(PRESENTATION_REFUSED, "The campaign roster shard is invalid.")
+    return value
 
 
 _GOVERNED_FILTER_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
@@ -7196,6 +7267,7 @@ def _list_page(
             max_candidates=(
                 MAX_CAMPAIGN_PORTFOLIO_CANDIDATES if portfolio else MAX_ENTITY_CANDIDATES
             ),
+            purpose=BrowsePurpose.INTERACTIVE,
         )
     )
     grouped = _campaign_histories(result.aliases)
