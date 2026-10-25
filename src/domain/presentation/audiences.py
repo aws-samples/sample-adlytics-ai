@@ -59,6 +59,7 @@ from domain.presentation.insights import (
     OverIndexPolicy,
     insight_slots_payload,
 )
+from domain.presentation.preset_artifacts import PresetArtifactSiblingIdentity
 from domain.semantics.audience_segments import (
     ASI_NAMES_NOT_AVAILABLE_TEXT,
     ASI_NEEDS_PAID_FEATURE_TEXT,
@@ -122,6 +123,7 @@ __all__ = [
     "audiences_artifact_payload",
     "audiences_campaign_index_payload",
     "audiences_campaign_page_payload",
+    "audiences_part_identity",
     "audiences_profile_page_payload",
     "bonferroni_z",
     "build_view",
@@ -1803,6 +1805,35 @@ _PART_TYPES: Final = {
     AudiencesPart.PROFILE: AUDIENCES_PROFILE_PAGE_TYPE,
     AudiencesPart.CAMPAIGN_INDEX: AUDIENCES_CAMPAIGN_INDEX_TYPE,
 }
+_PART_ORDERINGS: Final = {
+    AudiencesPart.CAMPAIGN: "impressions-desc",
+    AudiencesPart.PROFILE: "index-desc",
+    AudiencesPart.CAMPAIGN_INDEX: "rank",
+}
+
+
+def audiences_part_identity(
+    part: AudiencesPart, page: int, subject: str = ""
+) -> PresetArtifactSiblingIdentity:
+    """Return one part's sibling identity: the bake writes it and the serve reads it (01 §4).
+
+    `subject` is the campaign reference (`campaign-<n>`) or the profile path; an index shard
+    has none.
+    """
+    match part:
+        case AudiencesPart.CAMPAIGN:
+            if not _CAMPAIGN_REF.fullmatch(subject):
+                raise ValueError("a campaign part is named by its campaign reference.")
+            filter_id = subject
+        case AudiencesPart.PROFILE:
+            if subject not in DELIVERY_LABELS:
+                raise ValueError("a profile part is named by its profile path.")
+            filter_id = f"profile-{subject}"
+        case AudiencesPart.CAMPAIGN_INDEX:
+            filter_id = "campaign-index"
+    return PresetArtifactSiblingIdentity(_PART_ORDERINGS[part], page, filter_id)
+
+
 _PART_KEYS: Final = {
     AudiencesPart.CAMPAIGN: {
         "campaign_label",

@@ -113,6 +113,7 @@ from domain.presentation.audiences import (
     VIEW_NAMESPACES,
     AudienceMarket,
     AudienceProfileArtifact,
+    AudiencesPart,
     CampaignAudiences,
     CampaignEntryState,
     CampaignIndexEntry,
@@ -127,6 +128,7 @@ from domain.presentation.audiences import (
     audiences_artifact_payload,
     audiences_campaign_index_payload,
     audiences_campaign_page_payload,
+    audiences_part_identity,
     audiences_profile_page_payload,
     build_view,
     over_index_findings,
@@ -186,7 +188,6 @@ from ports.outbound.publication_selection import (
 )
 from ports.outbound.query import (
     BAKE_MAX_ROWS,
-    BAKE_MAX_STREAMED_ROWS,
     FoldRead,
     QueryResult,
     RowCeiling,
@@ -271,10 +272,6 @@ _CAMPAIGN_COLUMN = "campaign_key"
 _SILENT = "No segment holds enough buyers with a share clearly above its share of reached shoppers."
 _PROFILE_SECTION = "segment-ranking"
 _CAMPAIGN_SECTION = "campaign-audiences"
-_INDEX_FILTER = "campaign-index"
-_INDEX_ORDERING = "rank"
-_PROFILE_ORDERING = "index-desc"
-_CAMPAIGN_ORDERING = "impressions-desc"
 
 type _Label = tuple[str, str, str]
 """(marketplace, profile path, metric)."""
@@ -574,7 +571,8 @@ class AudiencesArtifactRenderer:
 
         Pack 8's three figures for the month, then R1 (the segments each campaign returned the
         month before) when `prior` is published. Each is ungraded (an empty key-read roster) and
-        streamed: its reduction is a fresh `SinkSlot`, which each pass fills with its own sink.
+        grouped: no row limit (`BAKE_GROUPED`), and its reduction is a fresh `SinkSlot`, which each
+        pass fills with its own sink. Only one campaign's segments past `BAKE_MAX_ROWS` refuse.
         """
         platform = self._contract(DELIVERY_CONTRACT).platform_key
         reads = [(metric, period) for metric in CAMPAIGN_METRICS]
@@ -589,8 +587,7 @@ class AudiencesArtifactRenderer:
                     (month, _campaign_base()),
                     Roster(RosterKind.SEGMENT, month.window, market, platform, ()),
                 ),
-                max_rows=BAKE_MAX_STREAMED_ROWS,
-                row_ceiling=RowCeiling.BAKE_STREAMED,
+                row_ceiling=RowCeiling.BAKE_GROUPED,
                 reduction=SinkSlot(BAKE_MAX_ROWS),
             )
             for metric, month in reads
@@ -1326,16 +1323,14 @@ class _AudiencesSiblingPairs:
         revision = self.revision.value
         for shard in range(1, market.campaigns.index_shards):
             yield self._pair(
-                PresetArtifactSiblingIdentity(_INDEX_ORDERING, shard, _INDEX_FILTER),
+                audiences_part_identity(AudiencesPart.CAMPAIGN_INDEX, shard),
                 audiences_campaign_index_payload(market.campaigns, shard, revision),
             )
         for view in (market.paid, market.standard):
             for item in view.deliveries:
                 for number in range(1, profile_page_count(view, item.path)):
                     yield self._pair(
-                        PresetArtifactSiblingIdentity(
-                            _PROFILE_ORDERING, number, f"profile-{item.path}"
-                        ),
+                        audiences_part_identity(AudiencesPart.PROFILE, number, item.path),
                         audiences_profile_page_payload(
                             view, item.path, number, self.artifact.display_minimum, revision
                         ),
@@ -1343,8 +1338,8 @@ class _AudiencesSiblingPairs:
         if self.campaigns is not None:
             for campaign_page in self.campaigns.pages():
                 yield self._pair(
-                    PresetArtifactSiblingIdentity(
-                        _CAMPAIGN_ORDERING, campaign_page.page, campaign_page.entry.ref
+                    audiences_part_identity(
+                        AudiencesPart.CAMPAIGN, campaign_page.page, campaign_page.entry.ref
                     ),
                     audiences_campaign_page_payload(campaign_page, revision),
                 )

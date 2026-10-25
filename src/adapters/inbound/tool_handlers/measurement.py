@@ -488,6 +488,13 @@ class MeasurementToolRequest:
                     "comparison restricted to ranked keys."
                 ),
             )
+        if self.row_ceiling is RowCeiling.BAKE_GROUPED and (
+            self.reduction is None or self.ranked is not None
+        ):
+            raise ValidationError(
+                code=BAD_REQUEST,
+                description="A grouped read has no row limit, so it is folded, never held.",
+            )
         if self.prior_window is not None and self.prior_window.end >= self.window.start:
             raise ValidationError(
                 code=BAD_REQUEST,

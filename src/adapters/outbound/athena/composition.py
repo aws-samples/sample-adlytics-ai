@@ -135,7 +135,7 @@ def _quoted(identifier: str) -> str:
 
 
 def compose(
-    bound: BoundQueryPlan, max_rows: int, ranked: RankedRead | None = None
+    bound: BoundQueryPlan, max_rows: int | None, ranked: RankedRead | None = None
 ) -> ComposedQuery:
     """Build a publication-fenced aggregate query from one bound logical plan.
 
@@ -165,8 +165,15 @@ def compose(
 
     With `ranked` (ADR-143), the statement opens with the `ranked` CTE (`_ranked_cte`) and either
     selects the ranked keys themselves or semi-joins its own read to them.
+
+    `max_rows=None` is a grouped fold's single-fact read (`RowCeiling.BAKE_GROUPED`): no `LIMIT`,
+    and its `ORDER BY` is what keeps each group contiguous.
     """
     request_plan = bound.logical
+    if max_rows is None:
+        if ranked is not None or request_plan.join is not None:
+            raise ValueError("only a single-fact read is folded without a row limit.")
+        return _compose_single(bound, None)
     if ranked is not None:
         return _compose_ranked(bound, max_rows, ranked)
     if request_plan.join is not None:
@@ -175,7 +182,7 @@ def compose(
 
 
 def _compose_single(
-    request: BoundQueryPlan, max_rows: int, leading: tuple[str, ...] = ()
+    request: BoundQueryPlan, max_rows: int | None, leading: tuple[str, ...] = ()
 ) -> ComposedQuery:
     """Build one single-fact read; `leading` predicates (no parameters) open its `WHERE`."""
     request_plan = request.logical
@@ -202,13 +209,13 @@ def _compose_single(
         f"FROM {_quoted(request_plan.fact)} "
         f"WHERE {' AND '.join(predicates)} "
         f"GROUP BY {grouped} "
-        f"ORDER BY {', '.join(_quoted(name) for name in request_plan.group_by)} "
-        f"LIMIT {max_rows + 1}"
+        f"ORDER BY {', '.join(_quoted(name) for name in request_plan.group_by)}"
+        f"{_limit(max_rows)}"
     )
     return ComposedQuery(sql=sql, parameters=tuple(parameters))
 
 
-def compose_series(plans: tuple[BoundQueryPlan, ...], max_rows: int) -> ComposedQuery:
+def compose_series(plans: tuple[BoundQueryPlan, ...], max_rows: int | None) -> ComposedQuery:
     """Build one publication-fenced statement reading the same plan over several exact periods.
 
         SELECT   period_start, period_end, <group_by>, <carried>, <aggregates>
@@ -255,10 +262,15 @@ def compose_series(plans: tuple[BoundQueryPlan, ...], max_rows: int) -> Composed
         f"FROM {_quoted(first.fact)} "
         f"WHERE {' AND '.join(predicates)} "
         f"GROUP BY {grouped} "
-        f"ORDER BY {ordering} "
-        f"LIMIT {max_rows + 1}"
+        f"ORDER BY {ordering}"
+        f"{_limit(max_rows)}"
     )
     return ComposedQuery(sql=sql, parameters=tuple(parameters))
+
+
+def _limit(max_rows: int | None) -> str:
+    """`LIMIT max_rows + 1`, or nothing for a grouped fold, which reads every row (ADR-152)."""
+    return "" if max_rows is None else f" LIMIT {max_rows + 1}"
 
 
 @dataclass(frozen=True, slots=True)

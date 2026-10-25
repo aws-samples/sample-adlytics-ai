@@ -176,6 +176,7 @@ from ports.outbound.query import (
     QueryResult,
     QueryRow,
     RowSink,
+    statement_limit,
 )
 from ports.outbound.rosters import (
     CampaignHistories,
@@ -1733,6 +1734,8 @@ def test_every_campaign_is_read_once_grouped_and_paged_one_campaign_at_a_time() 
         ["segment_impressions", "segment_spend", "segment_attributed_revenue"]
     )
     assert all("campaign_key" not in item.plan.logical.filters for item in store.folded)
+    # Grouped: no row limit, so a large estate's rows never refuse (ADR-152 decision 7).
+    assert all(statement_limit(item.max_rows, item.ceiling) is None for item in store.folded)
     # Five profile figures beside them, and nothing per campaign.
     assert len(store.seen) == 5 + 3
     pages = _campaign_pages(result)

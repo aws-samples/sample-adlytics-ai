@@ -189,6 +189,16 @@ class TestTruncationAndDeterminism:
         assert compose(revenue_plan, max_rows=1).sql.endswith("LIMIT 2")
         assert compose(revenue_plan, max_rows=500).sql.endswith("LIMIT 501")
 
+    def test_a_grouped_fold_reads_every_row_in_grain_order(
+        self, revenue_plan: BoundQueryPlan
+    ) -> None:
+        """Paired: `max_rows=None` (`BAKE_GROUPED`) drops only the `LIMIT`; the order stays."""
+        limited = compose(revenue_plan, max_rows=10).sql
+        grouped = compose(revenue_plan, max_rows=None).sql
+        assert "LIMIT" not in grouped
+        assert grouped.endswith('ORDER BY "amazon_asin"')
+        assert limited == f"{grouped} LIMIT 11"
+
     def test_it_orders_by_the_reported_grain(self, revenue_plan: BoundQueryPlan) -> None:
         """Without ORDER BY, "the first 100 rows" is a different 100 each run."""
         assert 'ORDER BY "amazon_asin"' in compose(revenue_plan, max_rows=10).sql

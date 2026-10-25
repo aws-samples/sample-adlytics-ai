@@ -43,7 +43,7 @@ from adapters.outbound.athena.query import (
 )
 from domain.shared_kernel.errors import DependencyError, InvariantError, ValidationError
 from domain.shared_kernel.provenance import Suppression
-from ports.outbound.query import QueryRequest
+from ports.outbound.query import QueryRequest, RowCeiling
 
 
 class _NoWithholding:
@@ -182,7 +182,9 @@ def _plan_request() -> Any:
         selected_columns=(),
         result_aliases=(),
     )
-    return SimpleNamespace(plan=SimpleNamespace(logical=logical), max_rows=10, ranked=None)
+    return SimpleNamespace(
+        plan=SimpleNamespace(logical=logical), max_rows=10, ranked=None, ceiling=RowCeiling.BAKE
+    )
 
 
 def test_the_interactive_wait_limits_thirty_seconds_and_the_bake_its_deadline(
@@ -303,14 +305,16 @@ def _stub_statement(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(athena_query, "_SuppressionAccumulator", _NoWithholding)
 
 
-def _streamed_request(max_rows: int) -> Any:
+def _streamed_request(max_rows: int, ceiling: RowCeiling = RowCeiling.BAKE_STREAMED) -> Any:
     logical = SimpleNamespace(
         metric=SimpleNamespace(name="spend"),
         facts_read=("ads",),
         selected_columns=("marketplace_key", "note"),
         result_aliases=("value_0",),
     )
-    return SimpleNamespace(plan=SimpleNamespace(logical=logical), max_rows=max_rows, ranked=None)
+    return SimpleNamespace(
+        plan=SimpleNamespace(logical=logical), max_rows=max_rows, ranked=None, ceiling=ceiling
+    )
 
 
 @pytest.mark.parametrize("transport", [ResultTransport.PAGED, ResultTransport.OBJECT])
@@ -336,6 +340,30 @@ def test_a_fold_past_its_rows_counts_the_extra_row_and_hands_on_none_of_it(
     read = _streaming_adapter(monkeypatch, transport).fold(_streamed_request(3), sink)
     assert tuple(sink.rows) == _STREAMED_ROWS[:3]
     assert (read.rows_read, read.truncated) == (4, True)
+
+
+@pytest.mark.parametrize("transport", [ResultTransport.PAGED, ResultTransport.OBJECT])
+def test_a_grouped_fold_reads_every_row_and_is_never_held(
+    monkeypatch: pytest.MonkeyPatch, transport: ResultTransport
+) -> None:
+    """Paired: at `max_rows` 3 a grouped fold still hands on all 4 rows untruncated; `run` refuses.
+
+    `BAKE_GROUPED`'s `max_rows` is what the sink keeps, so its statement has no `LIMIT`.
+    """
+    limits: list[object] = []
+    adapter = _streaming_adapter(monkeypatch, transport)
+
+    def composed(_plan: object, max_rows: object, _ranked: object = None) -> object:
+        limits.append(max_rows)
+        return SimpleNamespace(sql="SELECT 1", parameters=())
+
+    monkeypatch.setattr(athena_query, "compose", composed)
+    sink = _Collected()
+    read = adapter.fold(_streamed_request(3, RowCeiling.BAKE_GROUPED), sink)
+    assert tuple(sink.rows) == _STREAMED_ROWS
+    assert (read.rows_read, read.truncated, limits) == (4, False, [None])
+    with pytest.raises(ValueError, match="folded, never held"):
+        adapter.run(_streamed_request(3, RowCeiling.BAKE_GROUPED))
 
 
 def test_an_object_target_makes_its_s3_client_once_at_construction(
@@ -420,7 +448,9 @@ def _ranked_request() -> Any:
         ),
         partition_columns=("channel_key",),
     )
-    return SimpleNamespace(plan=SimpleNamespace(logical=logical), max_rows=10, ranked=ranked)
+    return SimpleNamespace(
+        plan=SimpleNamespace(logical=logical), max_rows=10, ranked=ranked, ceiling=RowCeiling.BAKE
+    )
 
 
 @pytest.mark.covers("ADR-152")

@@ -329,6 +329,22 @@ def test_a_ranked_or_folded_request_is_refused_on_the_narration_ceiling() -> Non
         replace(keys, row_ceiling=RowCeiling.NARRATION)
 
 
+def test_a_held_or_ranked_request_is_refused_on_the_grouped_ceiling() -> None:
+    """With no row limit, a held read would hold every row; only a plain fold may be grouped."""
+    batch = retail_health_measurement_batch(
+        RetailHealthMeasurementBatchRequest(CATALOG, CONTRACTS, PERIOD, PRIOR, NOW, 2)
+    )
+    keys = next(
+        operation.request
+        for operation in batch.prepared.operations
+        if operation.request.ranked is not None
+    )
+    from ports.outbound.query import RowCeiling  # noqa: PLC0415
+
+    with pytest.raises(ValidationError, match="folded, never held"):
+        replace(keys, row_ceiling=RowCeiling.BAKE_GROUPED)
+
+
 # --- The restriction's own rules, on fictional stub plans (each refusal paired with a pass) ----
 
 _KEY, _MARKET = "amazon_asin", "marketplace_key"

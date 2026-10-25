@@ -188,6 +188,7 @@ from domain.presentation.audiences import (
     AUDIENCES_ARTIFACT_VERSION,
     AUDIENCES_PAGE_ID,
     AudiencesPart,
+    audiences_part_identity,
     require_audiences_artifact_payload,
     require_audiences_part_payload,
     resolve_audiences_payload,
@@ -4271,8 +4272,6 @@ def _scorecard_window_unavailable(  # noqa: PLR0913, PLR0917 -- the request and 
 _AUDIENCES_PART_FIELDS: Final = frozenset({"campaign", "profile", "campaign_index"})
 """The Audiences parts a request may name, at most one (design 01 §5)."""
 _AUDIENCES_PART_INVALID: Final = "The Audiences part requested is invalid."
-_AUDIENCES_REF: Final = re.compile(r"campaign-[1-9][0-9]{0,5}")
-_AUDIENCES_PROFILE_PATHS: Final = frozenset({"asi_in_market", "asi_lifestyle", "dsp_exposed_only"})
 _AUDIENCES_MAX_PAGE: Final = 9_999
 
 
@@ -4294,6 +4293,16 @@ def _audiences_page(value: object, lowest: int) -> int:
     return value
 
 
+def _audiences_identity(
+    part: AudiencesPart, page: int, subject: str
+) -> PresetArtifactSiblingIdentity:
+    """Return the part's sibling identity; a subject the bake never names is the closed 400."""
+    try:
+        return audiences_part_identity(part, page, subject)
+    except ValueError as error:
+        raise ValidationError(PRESENTATION_REFUSED, _AUDIENCES_PART_INVALID) from error
+
+
 def _audiences_part_request(event: dict[str, Any]) -> _AudiencesPartRequest | None:
     """Decode at most one Audiences part selector, closed; None when the parent is asked for."""
     payload = _body(event)
@@ -4308,22 +4317,20 @@ def _audiences_part_request(event: dict[str, Any]) -> _AudiencesPartRequest | No
         ref = value.get("ref")
         if set(value) != {"ref", "page"} or not isinstance(ref, str):
             raise ValidationError(PRESENTATION_REFUSED, _AUDIENCES_PART_INVALID)
-        if not _AUDIENCES_REF.fullmatch(ref):
-            raise ValidationError(PRESENTATION_REFUSED, _AUDIENCES_PART_INVALID)
         page = _audiences_page(value["page"], 0)
         return _AudiencesPartRequest(
             AudiencesPart.CAMPAIGN,
-            PresetArtifactSiblingIdentity("impressions-desc", page, ref),
+            _audiences_identity(AudiencesPart.CAMPAIGN, page, ref),
             {"campaign_ref": ref, "page": page},
         )
     if named[0] == "profile":
         path = value.get("path")
-        if set(value) != {"path", "page"} or path not in _AUDIENCES_PROFILE_PATHS:
+        if set(value) != {"path", "page"} or not isinstance(path, str):
             raise ValidationError(PRESENTATION_REFUSED, _AUDIENCES_PART_INVALID)
         page = _audiences_page(value["page"], 1)
         return _AudiencesPartRequest(
             AudiencesPart.PROFILE,
-            PresetArtifactSiblingIdentity("index-desc", page, f"profile-{path}"),
+            _audiences_identity(AudiencesPart.PROFILE, page, path),
             {"profile_path": path, "page": page},
         )
     if set(value) != {"shard"}:
@@ -4331,7 +4338,7 @@ def _audiences_part_request(event: dict[str, Any]) -> _AudiencesPartRequest | No
     shard = _audiences_page(value["shard"], 1)
     return _AudiencesPartRequest(
         AudiencesPart.CAMPAIGN_INDEX,
-        PresetArtifactSiblingIdentity("rank", shard, "campaign-index"),
+        audiences_part_identity(AudiencesPart.CAMPAIGN_INDEX, shard),
         {"shard": shard},
     )
 

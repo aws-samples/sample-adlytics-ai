@@ -32,6 +32,7 @@ from ports.outbound.query import (
     QueryResult,
     RowCeiling,
     row_ceiling,
+    statement_limit,
 )
 from ports.outbound.source_aligned import SourceAlignedReadPort, SourceAlignedWritePort
 from ports.outbound.source_coverage import (
@@ -135,6 +136,7 @@ class TestRowCeilingPerCallerKind:
             (RowCeiling.NARRATION, MAX_ROWS_CEILING),
             (RowCeiling.BAKE, BAKE_MAX_ROWS),
             (RowCeiling.BAKE_STREAMED, BAKE_MAX_STREAMED_ROWS),
+            (RowCeiling.BAKE_GROUPED, BAKE_MAX_ROWS),
         ],
     )
     def test_each_kind_admits_its_bound_and_refuses_one_more(
@@ -158,6 +160,12 @@ class TestRowCeilingPerCallerKind:
         assert streamed.max_rows == BAKE_MAX_STREAMED_ROWS
         with pytest.raises(ValueError, match="cannot be narrated honestly"):
             QueryRequest(plan=revenue_plan, max_rows=BAKE_MAX_STREAMED_ROWS)
+
+    def test_only_a_grouped_read_has_no_statement_limit(self) -> None:
+        """Paired: a grouped fold's statement reads every row; every other kind asks its own."""
+        assert statement_limit(BAKE_MAX_ROWS, RowCeiling.BAKE_GROUPED) is None
+        for kind in (RowCeiling.NARRATION, RowCeiling.BAKE, RowCeiling.BAKE_STREAMED):
+            assert statement_limit(7, kind) == 7
 
     def test_the_streamed_ceiling_is_derived_from_the_held_one(self) -> None:
         assert BAKE_MAX_STREAMED_ROWS == BAKE_LONGEST_WINDOW_DAYS * BAKE_MAX_ROWS
