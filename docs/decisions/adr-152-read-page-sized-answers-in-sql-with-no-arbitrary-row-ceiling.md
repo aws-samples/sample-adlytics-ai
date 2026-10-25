@@ -56,8 +56,10 @@ whole catalog only to show a summary:
    time across a one-slot queue; the render merges the reads by key. Memory is the groups in
    flight, never the population. Audiences reads every DSP campaign this way (ADR-141): a count
    pass in the render builds the index, and a page pass, answered by result reuse, renders each
-   campaign's pages as the stage writes them. Only the index and its segment set stay held, under
-   the one derived `BAKE_MAX_ROWS`.
+   campaign's pages as the stage writes them. These reads have no row `LIMIT`
+   (`RowCeiling.BAKE_GROUPED`, folded only): rows cost time, not memory. What stays held (the
+   index, its segment set, one campaign's segments, and the campaigns Audiences' history walk
+   observed) is bounded by the one derived `BAKE_MAX_ROWS`.
 ## Consequences
 - Retail health, New customers and Reach bake at any catalog size; Retail runs 49 plans per
   preset. The probe measured Retail's render peak at about 1.57 MB at both 10,000 and 100,000
