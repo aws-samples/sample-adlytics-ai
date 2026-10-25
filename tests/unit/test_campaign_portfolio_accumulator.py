@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT-0
 """Campaigns' compact record renders exactly what the held compares render (ADR-152).
 
 The bake folds its 22 compares into one record per campaign and its trend into per-filter daily
