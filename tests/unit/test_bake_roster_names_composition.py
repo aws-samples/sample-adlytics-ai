@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: MIT-0
-"""Every Baker spend roster can name a campaign roster, as chat's does (recover 87067199).
+"""Every Baker spend roster asked for campaigns can name them, as chat's does (recover 87067199).
 
-The Reach frequency read asks a CAMPAIGN roster; a `SpendRosterReader` composed without
+The Reach frequency read once asked a CAMPAIGN roster; a `SpendRosterReader` composed without
 `names=` refuses it (PLAN-0008), which withheld every Reach row live. The source tests stub the
 roster port, so only a composition-level check sees the wiring: each retained page source is
-composed for real here, with `SpendRosterReader` recorded, and each must pass a names port.
+composed for real here, with `SpendRosterReader` recorded, and each that names campaigns must
+pass a names port. Reach now counts campaigns with one ranked read (ADR-152) and asks only the
+ad-product roster, so its composition carries none, and its source test refuses a campaign ask.
 """
 
 from __future__ import annotations
@@ -53,6 +55,9 @@ COMPOSITION_ROOTS = (
 )
 
 
+pytestmark = pytest.mark.unit
+
+
 def _settings() -> PresetArtifactBakeSettings:
     return PresetArtifactBakeSettings(
         artifact_bucket="fictional-artifacts",
@@ -97,8 +102,8 @@ def test_each_composed_baker_spend_roster_carries_a_names_port(
     for kwargs in composed:
         names = kwargs.get("names")
         if module is reach_source:
-            # Reach only counts campaigns: names are the keys, no label read (review #3).
-            assert type(names).__name__ == "_CampaignCountOnly"
+            # ADR-152: Reach asks only the ad-product roster, named from the taxonomy.
+            assert names is None
             continue
         assert isinstance(names, BakePinnedNames)
         resolver = names.names
@@ -129,7 +134,9 @@ def test_no_runtime_composes_a_spend_roster_without_names() -> None:
         and getattr(node.func, "id", getattr(node.func, "attr", None)) == "SpendRosterReader"
     ]
     assert len(calls) >= 5, "the scan reached the known compositions"
-    assert [f"{path.name}:{node.lineno}" for path, node in calls if not _supplies_names(node)] == []
+    unnamed = [path.name for path, node in calls if not _supplies_names(node)]
+    # ADR-152: Reach's is the one roster never asked for campaigns (see the module docstring).
+    assert unnamed == ["reach_source.py"]
 
 
 _ROW = BakeRowHorizon(date(2026, 10, 14), 400)
@@ -139,6 +146,8 @@ _SOURCES = [
     (new_customers_source, "retained_new_customers_preset_artifact_source"),
     (campaign_source, "retained_campaign_preset_artifact_source"),
 ]
+_NAMING_SOURCES = [item for item in _SOURCES if item[0] is not reach_source]
+"""The sources whose spend roster names campaigns: Reach only counts them (ADR-152)."""
 
 
 class _Current:
@@ -157,7 +166,7 @@ class _Exact:
         return ()
 
 
-@pytest.mark.parametrize(("module", "factory"), _SOURCES)
+@pytest.mark.parametrize(("module", "factory"), _NAMING_SOURCES)
 def test_a_campaign_roster_named_at_task_render_reads_only_pinned_scopes(
     monkeypatch: pytest.MonkeyPatch, module: Any, factory: str
 ) -> None:
@@ -182,10 +191,7 @@ def test_a_campaign_roster_named_at_task_render_reads_only_pinned_scopes(
     names = composed[0]["names"]
     with reads.snapshot(), reads.recording(_ROW) as recorded:
         assert names.public_names("campaign_key", (), _SEPTEMBER) == {}
-    if module is reach_source:
-        assert current.scope_reads == 0  # Reach reads no label scope at all
-    else:
-        assert current.scope_reads > 0, "the empty pass reads the campaign label scopes"
+    assert current.scope_reads > 0, "the empty pass reads the campaign label scopes"
     pinned = current.scope_reads
     try:
         with reads.replaying(recorded.reads, _ROW):
