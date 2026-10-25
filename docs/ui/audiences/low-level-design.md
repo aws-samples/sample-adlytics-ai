@@ -79,8 +79,8 @@ matched-segment impressions, descending, then by campaign key, the order that nu
 `campaign_ref`. The rank never sums segment impressions, because segment figures never add up. Each
 campaign is graded against its own segments of the month before; a gap in its own older history
 refuses only that campaign. The only limits are the derived `BAKE_MAX_ROWS` on what stays held:
-the index, its segment set, one campaign's segments and the campaigns the history walk observed
-(past it, the page keeps its last good version and alarms with the raise-memory action), and the
+the index, its segment set and one campaign's segments; the history walk keeps only the campaigns
+it grades (past the bound, the page keeps its last good version and alarms with the raise-memory action), and the
 stage's write deadline ([scale envelope](../preset-artifact-publisher.md#scale-envelope)). Source composition
 and the renderer refuse any marketplace cardinality other than exactly one before a query port is
 called. Chat's governed access reads every campaign, as before.

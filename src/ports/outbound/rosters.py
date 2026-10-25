@@ -105,8 +105,7 @@ class CampaignHistoryPort(Protocol):
     def campaign_histories(self, request: CampaignHistoriesRequest) -> CampaignHistories:
         """Return each requested campaign's grade.
 
-        Raises `IsolatedRefusal` (`rows_over_ceiling`, page) when the grouped walk was cut, and
-        `DomainError` (`ROSTER_REFUSED`) when an older month can't be read in full.
+        Raises `DomainError` (`ROSTER_REFUSED`) when an older month can't be read in full.
         """
         ...
 

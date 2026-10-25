@@ -9,12 +9,13 @@ integration gates IG-002 and IG-003) and the dev-only 7-campaign stopgap of
 
 > **Amendment, 2026-10-25 (UTC), scale-limits r2a ([ADR-152](adr-152-read-page-sized-answers-in-sql-with-no-arbitrary-row-ceiling.md) decision 7).**
 > As built, the three campaign figures and the prior-month segments are group-streamed, one
-> campaign at a time, rather than held or reduced to keys. That changes three points below:
->   These reads, and the grouped history walk, have no row `LIMIT` (`RowCeiling.BAKE_GROUPED`).
+> campaign at a time, rather than held or reduced to keys. These reads, and the grouped history
+> walk, have no row `LIMIT` (`RowCeiling.BAKE_GROUPED`); the walk keeps only the campaigns it
+> grades. That changes three points below:
 > - Decision 2: a cut grouped read no longer refuses the campaign section; that section's
 >   `rows_over_ceiling` and its copy are deleted. The page refuses `rows_over_ceiling`, with the
 >   raise-memory action, only when one held term passes the derived `BAKE_MAX_ROWS`: the campaign
->   index, its segment set, one campaign's segments, or the campaigns the history walk observed.
+>   index, its segment set, or one campaign's segments.
 > - Decision 4: there is no static body bound. The stage's write deadline is the one write limit
 >   (`bodies_over_invocation`), and writes are certified at the whole write allowance (450 s).
 > - Consequences: 24 statements in three phases (7, 16, 1); the derived budget is 600 s.

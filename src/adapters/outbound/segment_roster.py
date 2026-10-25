@@ -19,7 +19,7 @@ each retained month, up to the selector's exact-partition bound, past which the 
 A bake asks the same walk for every listed campaign at once, grouped by campaign
 (`campaign_histories`, design 01 §3.2): it reads the month before itself, as a group-streamed
 figure read, and asks here only about the campaigns that returned no segment then. The walk
-streams through `ObservedKeys`, so it keeps campaign keys, never rows.
+streams through `ObservedKeys`, so it keeps only those campaigns' keys, never rows.
 
 `RosterReaders` routes each roster kind to its reader: ad products and campaigns to spend, and
 segments here.
@@ -394,12 +394,13 @@ class SegmentRosterReader:
             len(bound),
         )
         newer, older = bound[:withheld], bound[withheld:]
-        observed = self._observed_in(request, newer) if newer else frozenset[str]()
-        pending = frozenset(campaigns) - observed
+        listed = frozenset(campaigns)
+        observed = self._observed_in(request, newer, listed) if newer else frozenset[str]()
+        pending = listed - observed
         if not pending or not older:
             return _Walk(observed, frozenset())
         try:
-            observed |= self._observed_in(request, older)
+            observed |= self._observed_in(request, older, pending)
         except ValidationError as error:
             # Chat narrates the refusal; a bake isolates it to the campaigns that reach it.
             if request.filters or error.code != ALL_ROWS_WITHHELD:
@@ -408,14 +409,14 @@ class SegmentRosterReader:
         return _Walk(observed, frozenset())
 
     def _observed_in(
-        self, request: RosterRequest, bound: tuple[BoundQueryPlan, ...]
+        self, request: RosterRequest, bound: tuple[BoundQueryPlan, ...], asked: frozenset[str]
     ) -> frozenset[str]:
-        """Read these bound months in one statement: the campaigns that returned a segment.
+        """Read these bound months in one statement: which `asked` campaigns returned a segment.
 
         Chat's one campaign is held as today: a returned row is proof, an empty truncated page
         is unreadable. A bake's grouped read has no row limit (`BAKE_GROUPED`): it streams every
-        row through `ObservedKeys`, keeping campaign keys only, so its one limit is more than
-        `BAKE_MAX_ROWS` campaigns observed, which is `rows_over_ceiling` (ADR-142).
+        row through `ObservedKeys` keeping only the asked campaigns' keys, so it holds at most
+        the campaigns it grades, however many others retained history holds (ADR-152).
         """
         pinned = dict(request.filters).get(_CAMPAIGN_KEY)
         if pinned is not None:
@@ -429,13 +430,12 @@ class SegmentRosterReader:
                 )
             return frozenset({pinned}) if observed else frozenset()
         # Grouped (a bake): stream the keys, never the rows.
-        fold = ObservedKeys((_CAMPAIGN_KEY,), BAKE_MAX_ROWS)
+        # Read even when nothing is asked, so a bake's requests depend only on its served periods.
+        fold = ObservedKeys(
+            (_CAMPAIGN_KEY,), max(len(asked), 1), among=frozenset((key,) for key in asked)
+        )
         grouped = PeriodSeriesRequest(bound, BAKE_MAX_ROWS, RowCeiling.BAKE_GROUPED)
         self._folding().fold_series(grouped, FoldingAnswer(bound[0].logical, fold))
-        if fold.overflowed:
-            raise IsolatedRefusal(
-                IsolatedRefusalReason.ROWS_OVER_CEILING, RefusalScope.PAGE, max_rows=BAKE_MAX_ROWS
-            )
         return frozenset(key[0] for key in fold.value())
 
     def _folding(self) -> FoldingQueryPort:

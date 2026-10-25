@@ -1671,11 +1671,11 @@ def _histories(
     return graded, queries.series
 
 
-def test_a_bake_history_walk_reads_every_row_and_refuses_only_past_its_held_campaigns() -> None:
+def test_a_bake_history_walk_reads_every_row_and_holds_only_the_campaigns_it_grades() -> None:
     """ADR-152 decision 7: rows (months x campaigns x segments) cost time, never a refusal.
 
     One campaign returning more segments than `BAKE_MAX_ROWS` in July is still read whole and
-    graded; only more observed campaigns than the fold may hold refuses the page.
+    graded; more campaigns in retained history than the bake may hold are ignored, not refused.
     """
     wide: tuple[dict[str, object], ...] = tuple(
         {"segment_id": f"4{index:06d}", measure_alias(0): 1000}
@@ -1689,18 +1689,17 @@ def test_a_bake_history_walk_reads_every_row_and_refuses_only_past_its_held_camp
         CAMPAIGN_KEY: CampaignHistory.OBSERVED,
         OTHER_CAMPAIGN: CampaignHistory.FIRST_MONTH,
     }
-    # Paired: past the held campaigns, the page refuses with the one derived width.
+    # Paired: more unlisted campaigns in history than the bake may hold are ignored.
     crowded = {
         (JULY.start, f"campaign:synthetic-{index}"): _segment_rows("41001")
         for index in range(BAKE_MAX_ROWS + 1)
     }
-    with pytest.raises(IsolatedRefusal) as refused:
-        _histories(crowded)
-    assert (refused.value.reason, refused.value.scope) == (
-        IsolatedRefusalReason.ROWS_OVER_CEILING,
-        RefusalScope.PAGE,
-    )
-    assert dict(refused.value.refusal_context) == {"max_rows": BAKE_MAX_ROWS}
+    crowded[(JULY.start, OTHER_CAMPAIGN)] = _segment_rows("41002")
+    graded, _ = _histories(crowded)
+    assert graded.histories == {
+        CAMPAIGN_KEY: CampaignHistory.FIRST_MONTH,
+        OTHER_CAMPAIGN: CampaignHistory.OBSERVED,
+    }
 
 
 def test_history_past_the_selection_bound_is_refused_as_the_rosters_own_answer() -> None:
