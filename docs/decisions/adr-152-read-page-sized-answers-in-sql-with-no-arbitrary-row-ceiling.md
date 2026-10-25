@@ -12,6 +12,8 @@ there).
 > **Amendment, 2026-10-25 (UTC), r2a.** Decision 7 adds entity-streamed reads; Audiences is the
 > first. Decision 3's "Audiences keeps it until its reads stream" no longer applies: its campaign
 > section has no `rows_over_ceiling`. Campaigns' part follows in r2b.
+> **Amendment, 2026-10-25 (UTC), r2b.** Decision 8 adds Campaigns' compact record and its one
+> memory-derived limit; decision 4's Baker memory gets one home in the contract.
 ## Context
 A bake holds every row of each read until its page renders, and one memory-sized ceiling,
 `BAKE_MAX_ROWS` (10,000 at 1,024 MiB), bounded every read on every page. Several pages read the
@@ -60,6 +62,23 @@ whole catalog only to show a summary:
    (`RowCeiling.BAKE_GROUPED`, folded only): rows cost time, not memory. What stays held (the
    index, its segment set and one campaign's segments) is bounded by the one derived
    `BAKE_MAX_ROWS`; Audiences' history walk keeps only the campaigns it grades.
+8. **A page that renders every entity whole keeps one compact record per entity.** Campaigns
+   sorts every campaign ten ways, so it can't stream one at a time. Its 11 compares fold, as one
+   breakdown per window, into one `KeyedColumns` store: one record per authorized campaign, one
+   column per read. Its trend reads fold into each filter's daily sums. None of its 26 reads has
+   a row `LIMIT`.
+   - **The one limit.** The bake browses at most `BAKE_MAX_ROWS` campaigns. Past it the page is
+     `population_over_ceiling`, alarmed with the operator action. No other Campaigns limit
+     exists: the 1,000-campaign bound and the never-built 10,000 shown bound and its "Showing N
+     of M" copy are deleted.
+   - **Writes.** Campaigns' segments grow with its campaigns, so, as Audiences, its write term is
+     the whole write allowance, and the stage's runtime deadline (`bodies_over_invocation`) is
+     its one write limit.
+   - **Memory has one home.** The Baker's memory is `bake_tasks.baker_memory_mib` (2,048) in
+     `contracts/operations/execution-graphs.yaml`. The stack sizes the function from it, and
+     `bake_memory` derives `BAKE_MAX_ROWS` from it. The operator action for a memory-sized
+     refusal is to set it, then run `make generate-execution-graph-protocol` and `make
+     deploy-all`.
 ## Consequences
 - Retail health, New customers and Reach bake at any catalog size; Retail runs 49 plans per
   preset. The probe measured Retail's render peak at about 1.57 MB at both 10,000 and 100,000
