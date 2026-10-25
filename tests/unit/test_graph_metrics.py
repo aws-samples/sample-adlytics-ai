@@ -50,6 +50,7 @@ from domain.operations.execution_graph_dispatch import NodeState
 from domain.operations.execution_graph_release import BakeEffectKind
 from domain.shared_kernel.errors import DependencyError, ErrorCode
 from domain.shared_kernel.provenance import Suppression
+from ports.outbound.query import RowCeiling
 
 
 class _NoWithholding:
@@ -273,7 +274,9 @@ def _request() -> Any:
         selected_columns=(),
         result_aliases=(),
     )
-    return SimpleNamespace(plan=SimpleNamespace(logical=logical), max_rows=10, ranked=None)
+    return SimpleNamespace(
+        plan=SimpleNamespace(logical=logical), max_rows=10, ranked=None, ceiling=RowCeiling.BAKE
+    )
 
 
 def test_an_execution_under_a_task_records_statistics_admission_wait_and_correlation(

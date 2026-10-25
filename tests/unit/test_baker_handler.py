@@ -39,6 +39,7 @@ from domain.operations.execution_graph_release import BakeRoster
 from domain.operations.generated_execution_graphs import BAKE_TASKS
 from domain.shared_kernel.errors import InvariantError
 from domain.shared_kernel.provenance import Suppression
+from ports.outbound.query import RowCeiling
 
 
 class _NoWithholding:
@@ -273,7 +274,12 @@ class _QueryingBaker:
         request = type(
             "Request",
             (),
-            {"plan": type("Plan", (), {"logical": logical})(), "max_rows": 10, "ranked": None},
+            {
+                "plan": type("Plan", (), {"logical": logical})(),
+                "max_rows": 10,
+                "ranked": None,
+                "ceiling": RowCeiling.BAKE,
+            },
         )()
         self.queries.run(cast("Any", request))
         return BakeUnavailable(intent, "scorecard_materialization_unavailable")
