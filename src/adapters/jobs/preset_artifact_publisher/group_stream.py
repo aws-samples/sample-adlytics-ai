@@ -251,8 +251,7 @@ def _produce(  # noqa: PLR0913, PLR0917 -- one thread's read, tooling, outcome a
         outcome.slot = execute_presentation_batch(read.prepared, read.inspection, tooling).slots[0]
     except GroupStreamCancelledError:
         return
-    # error-propagation: held and re-raised in the consumer, which the render or stage owns
-    except BaseException as error:
+    except BaseException as error:  # held and re-raised in the consumer (`_raise_error`)
         outcome.error = error
     finally:
         sink.started.set()
