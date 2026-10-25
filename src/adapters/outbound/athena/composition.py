@@ -683,10 +683,12 @@ def _ranked_cte(ranked: RankedRead) -> tuple[str, list[str]]:
                              grouped per key>) p
                       LEFT JOIN (<the rank read, summed per key>) r ON <grain>
                       [LEFT JOIN (<the change read, summed per key>) c ON <grain>]
-                      [WHERE <rank value> > 0]))
+                      [WHERE <rank value> > 0 OR p.suppressed = 1]))
           WHERE rank_position <= n)
 
     The rank value is `COALESCE(r, 0)`, or `ABS(COALESCE(r, 0) - COALESCE(c, 0))` by change.
+    `POSITIVE` keeps a withheld key whatever its value, so a partition's withholding survives the
+    filter even when every key in it is withheld; a withheld answer refuses at its caller.
     Every read in it is fenced to its own exact publications, as every composed read is, so the
     population is the one the batch's compares measured; the count, the withholding and each sum
     are taken before the top `n` is kept (ADR-152). No key list is built, so the statement's size
@@ -725,7 +727,13 @@ def _ranked_cte(ranked: RankedRead) -> tuple[str, list[str]]:
         change_sql, change_parameters = _rank_sql(ranked, ranked.change)
         change_join = f'LEFT JOIN ({change_sql}) "c" ON {_joined_on(ranked, "c")} '
         value = f'ABS({value} - COALESCE("c".{_quoted("rank_value")}, 0))'
-    positive = f"WHERE {value} > 0 " if restriction.membership is RankedMembership.POSITIVE else ""
+    # A key Amazon withheld rows from stays a member under POSITIVE (its value excludes them,
+    # so it may be 0): dropping it would drop the partition's only sign of withholding.
+    positive = (
+        f'WHERE {value} > 0 OR "p".{_quoted(_SUPPRESSED)} = 1 '
+        if restriction.membership is RankedMembership.POSITIVE
+        else ""
+    )
     grouped_population = (
         # A-SQL-001: identifiers only; every value binds in the population reads as ?
         f"SELECT {', '.join(keyed)}, MAX({_quoted(_SUPPRESSED)}) AS {_quoted(_SUPPRESSED)} "  # noqa: S608  # nosec B608

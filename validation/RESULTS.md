@@ -18,6 +18,15 @@ Times are UTC. Synthetic data only, after an identity check before every write.
 chunks (ADR-149 decision 8, deferred).
 
 
+## Ranked bake statements on Athena (ADR-152) — 2026-10-25
+Times are UTC. `validation/probe_bake_row_ceiling.py` ran at 04:09 on `feat/scale-limits-v2`, from the
+tree committed with this entry, against dev's bake workgroup after an identity check. Read-only SQL over generated rows, no table and no customer data. Nothing was deployed.
+
+| Check | Verdict | What it showed |
+|---|---|---|
+| P2 `ranked`, 100,000 keys | **PASS** | Retail's top 50 with the count and sums, the movers by \|change\|, and the New customers gateway per ad product, with and without withholding: every key, count, sum and withholding flag equals the Python rule [verified]. The withheld case failed by reading before the `POSITIVE` fix; a unit test reproduces that on SQLite. |
+| P2a, P2c | **PASS** | Both readers agree on every cell; bake results reuse as documented [verified]. |
+
 ## Amazon DSP campaign detail cost per click on dev — 2026-10-19
 Times are UTC. **Deployed source: `1c50b8ed`**, one locked `deploy-all` run that ended at 04:15
 after an identity check. `check-source-key` read one source key across every stack [verified].

@@ -374,8 +374,11 @@ while the stage draws it settles the page's absence the same way. Telemetry for 
 
 ## Bake width and the memory model
 Every bake read is page-sized or bounded by governed axes ([ADR-152](../decisions/adr-152-read-page-sized-answers-in-sql-with-no-arbitrary-row-ceiling.md)). A page that shows a ranked slice reads it ranked in SQL, with the population's count and sums in the same statement (the [query path](../capabilities/query-path/architecture.md#row-ceilings-result-transports-and-folds) owns the shapes). A read grouped only by days, marketplaces and governed media-taxonomy axes is bounded by them. Only an entity-wide read (Audiences, Campaigns) still holds a population, up to `BAKE_MAX_ROWS` rows; a reduction streams up to `BAKE_MAX_STREAMED_ROWS` through a fold that keeps a bounded summary. The Baker streams each result from its result object, so one buffer is resident at any row count.
+
 A bounded read that comes back cut is a defect. An entity-wide read cut at `BAKE_MAX_ROWS` is its page's `rows_over_ceiling` (or `population_over_ceiling`), and the `isolated_refusal` line names the operator action: raise the Baker memory.
+
 `make check-bakeability` certifies every roster row's resident bytes term by term and prints them:
+
 ```text
 resident(row) = W                               # writes in flight: 2 x S3 chains per baker x 256,000 B
               + Q x max_held x B_raw            # raw rows of at most Q slots being shaped at once
@@ -384,15 +387,19 @@ resident(row) = W                               # writes in flight: 2 x S3 chain
               + max_held x B_render             # the render's own per-row structures
 certified iff resident(row) <= 0.5 x the Baker's memory
 ```
+
 A held slot's width is read from the batch the source builds: its fixed axes' own bound (days, marketplaces and media-taxonomy terms), its ranked bound (50 rows, 3 movers, 10 per ad product), or `BAKE_MAX_ROWS` for a population read. `resident` is affine in that ceiling, so the ceiling is derived, not chosen: `BAKE_MAX_ROWS = floor((0.5 x memory − BAKE_FIXED_BYTES) / BAKE_BYTES_PER_ROW)`, the binding row's intercept and slope (`domain/operations/bake_memory.py`). The gate recomputes both from the real batches and fails on any difference, and prints the ceiling at 1,024, 2,048, 4,096 and 10,240 MiB. The per-row byte terms are the row-ceiling probe's (`validation/probe_bake_row_ceiling.py`), recorded with their date in `BAKE_MEMORY_TERMS`. Bodies stream, so `W` is the only body term.
+
 ## Scale envelope
 The one home of each page's own-absence thresholds at publish time. The README's known-limits line links here.
+
 | Threshold | Value | Above it | Owner |
 |---|---|---|---|
 | `BAKE_MAX_ROWS`, rows one held entity-wide answer may keep | derived from the Baker's memory and printed by `make check-bakeability`: 10,835 at 1,024 MiB, binding row Audiences | that page's `rows_over_ceiling`; raise the Baker memory | ADR-152 |
 | `BAKE_MAX_STREAMED_ROWS`, rows one bake reduction may stream | 31 days x `BAKE_MAX_ROWS` | the reduction's section shows its absence | ADR-143 |
 | Retail health product rows | the top 50 by current shipped revenue, with the count and sums of every product, at any catalog size | none | [Retail LLD](retail-health/low-level-design.md) |
 | Campaigns population | 1,000 campaigns (`CAMPAIGN_PRESET_POPULATION_BOUND`) | the page's own absence | ADR-145 |
+
 ## Scaling and operational gaps
 
 The legacy bake unit is one variant. A page's scale failure is that page's own absence on either
