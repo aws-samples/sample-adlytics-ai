@@ -9,10 +9,12 @@ spans:
     # or precompute cohort correlation carries all three, and a serve-time chat query records
     # them absent (owner decision 2026-10-15 ~04:25Z, the insight.model.call pattern). Bake
     # trace completeness enforces the cohort case.
-    required_attributes: [metric, facts, max_rows]
+    # max_rows is the statement's row LIMIT, absent for a grouped read (row_ceiling bake_grouped).
+    required_attributes: [metric, facts, row_ceiling]
     allowed_attributes:
       - metric
       - facts
+      - row_ceiling
       - max_rows
       - bytes_scanned
       - cache_hit
