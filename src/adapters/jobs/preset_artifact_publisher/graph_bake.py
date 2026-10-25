@@ -211,6 +211,7 @@ from domain.presentation.preset_artifacts import (
     PresetArtifactVariant,
     pointer_written_at,
 )
+from domain.shared_kernel.canonical import projection_memo
 from domain.shared_kernel.errors import (
     AdlyticsError,
     DependencyError,
@@ -701,7 +702,9 @@ class GraphBakeCoordinator:
         # result-dependent row prefetches every CURRENT key its real render can reach first.
         with runtime.reads.clock.pinned(compute_instant(context.run)), runtime.reads.snapshot():
             for row in runtime.roster.rows:
-                source, blob, row_attempts = self._pinned_row(context, row)
+                # One projection memo per row: its requests share their publications (D4).
+                with projection_memo():
+                    source, blob, row_attempts = self._pinned_row(context, row)
                 sources.append(source)
                 blobs.append(blob)
                 attempts = max(attempts, row_attempts)
@@ -1009,6 +1012,8 @@ class GraphBakeTaskWork:
             with (
                 runtime.reads.clock.pinned(compute_instant(inputs.run)),
                 runtime.reads.replaying(reads, row_horizon(inputs.run, row)),
+                # Every pass's request digests share one projection of each publication (D4).
+                projection_memo(),
             ):
                 try:
                     with (

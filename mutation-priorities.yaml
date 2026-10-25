@@ -1719,7 +1719,8 @@ tiers:
       - tests/unit/test_semantic_table_dq.py
       - tests/unit/test_table_writer.py
     - unit: src/domain/shared_kernel/canonical.py
-      tests: []
+      tests:
+      - tests/unit/test_canonical_projection_memo.py
     - unit: src/domain/shared_kernel/errors.py
       tests:
       - tests/unit/test_acquisition_cohorts.py
