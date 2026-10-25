@@ -7,14 +7,17 @@
         --bake-workgroup <bake workgroup> --interactive-workgroup <interactive workgroup> \
         --database <current database>
 
-**P1, local, no AWS.** For N in {10,000; 30,000; 50,000}, three runs each, under `tracemalloc`:
+**P1, local, no AWS.** For each N in `--sizes` (10,000 and 100,000 by default), three runs each,
+under `tracemalloc`:
 N synthetic CSV rows of the two widest held shapes (the Campaigns compare: a 40-character
 campaign key, the marketplace, a decimal, a currency; the Audiences grouped answer: three string
 dimensions of 10, 40 and 24 characters and a decimal) are streamed from an in-memory result
 object through the real path: `stream_result_rows`, the adapter's row mapping, a held answer
 (`answer_measurement`) and a fold of each kind (`fold_answer`). B_raw is the held rows' peak per
 row, B_shaped the shaped answer's retained bytes per row, B_kept a fold entry's bytes. B_render
-is the real Campaigns seven-sibling render's peak per campaign at the existing estate fixture.
+is the real Retail render's peak per product at every size (its reads are page-sized, ADR-152,
+so it bakes at any catalog size) and the Campaigns seven-sibling render's peak per campaign at
+the existing estate fixture.
 Each is the maximum over the runs. The derivation then asks, for V in 50,000 down to 10,000,
 whether every roster row's `bakeability.resident` fits at 1,024 MiB, and prints the same at
 2,048 MiB.
@@ -24,7 +27,11 @@ P2a reads one `VALUES` row of edge cases both ways (`GetQueryResults` and the re
 and compares every cell; P2b streams `UNNEST` rows at 50,000, 500,000 and 1,550,000, three runs
 each, for engine, queue and stream time; P2c runs one nonce-literal statement in the interactive
 workgroup, then twice-plus-one in the bake workgroup with reuse on, recording
-`ReusedPreviousResult` and each `OutputLocation`'s prefix. AWS calls: STS, Athena
+`ReusedPreviousResult` and each `OutputLocation`'s prefix. P2 `ranked` runs each composed ranked
+statement shape (Retail's top 50 with the population count and sums, the movers by |change|, the
+New customers gateway partitioned with withholding) over `UNNEST`-generated fact rows at 100,000
+keys, with ties, zeros and a prior-only key, and compares every row and population figure with
+the Python rule (ADR-152). AWS calls: STS, Athena
 `StartQueryExecution`, `GetQueryExecution`, `GetQueryResults`, and S3 `GetObject` on the result
 objects those executions name. Nothing is written by the probe except Athena's own results.
 
@@ -36,6 +43,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import dataclasses
 import gc
 import importlib
 import io
@@ -60,6 +68,7 @@ from adapters.inbound.tool_handlers.measurement import (
 )
 from adapters.jobs.contract_validation.loader import load_contracts
 from adapters.jobs.preset_artifact_publisher import bakeability
+from adapters.outbound.athena.composition import ComposedQuery, compose, population_columns
 from adapters.outbound.athena.execution import (
     StatementOutcome,
     StatementRequest,
@@ -82,15 +91,20 @@ from domain.measurement.answers import (
 )
 from domain.measurement.folds import KeysByGroup, ObservedKeys
 from domain.measurement.planning import CURRENCY_COLUMN, QueryPlan
+from domain.measurement.ranking import RankBy, RankedMembership, RankedRead, RankedValue
 from domain.shared_kernel.provenance import FreshnessStatus
 from domain.shared_kernel.values import DateRange
-from ports.outbound.query import BAKE_MAX_ROWS, RowCeiling
+from ports.outbound.publication_selection import (
+    PresentationEvidenceInspectionPlan,
+    PresentationEvidenceInspectionRequest,
+)
+from ports.outbound.query import BAKE_MAX_ROWS, QueryRequest, RowCeiling
 
 SCHEMA: Final = "bake-row-ceiling/v1"
 _ENVIRONMENT: Final = "dev"
 _REGION: Final = "us-east-1"
 _ROOT: Final = Path(__file__).resolve().parents[1]
-P1_SIZES: Final = (10_000, 30_000, 50_000)
+P1_SIZES: Final = (10_000, 100_000)
 P1_RUNS: Final = 3
 P2B_SIZES: Final = (50_000, 500_000, 1_550_000)
 P2B_RUNS: Final = 3
@@ -407,13 +421,8 @@ def run_p1(sizes: tuple[int, ...] = P1_SIZES, runs: int = P1_RUNS) -> dict[str, 
                 )
     renders: list[dict[str, Any]] = []
     campaign_render = 0.0
-    # Retail renders only at a size its reads can bake: above the deployed BAKE_MAX_ROWS a
-    # Retail-actual read is cut at its width and the page is its designed absence (ADR-142), so
-    # there is nothing to measure. Its bytes per product fall with size (2026-10-18: 10,466,
-    # 9,006 and 6,662 B at 10,000, 30,000 and 50,000), so the smallest size binds B_render.
-    retail_sizes = tuple(size for size in sizes if size <= BAKE_MAX_ROWS)
     for _run in range(runs):
-        for products in retail_sizes:
+        for products in sizes:
             peak = measure_retail_render(products)
             render = max(render, peak / products)
             renders.append({"render": "retail_health", "rows": products, "peak_bytes": peak})
@@ -429,7 +438,6 @@ def run_p1(sizes: tuple[int, ...] = P1_SIZES, runs: int = P1_RUNS) -> dict[str, 
         )
     return {
         "sizes": list(sizes),
-        "retail_render_sizes": list(retail_sizes),
         "runs": runs,
         "samples": samples,
         "render_samples": renders,
@@ -513,9 +521,11 @@ class _Run:
     s3: Any
     database: str
 
-    def execute(self, sql: str, workgroup: str, reuse_minutes: int) -> tuple[str, StatementOutcome]:
+    def execute(  # noqa: PLR0917 -- one statement, its workgroup, reuse and bound values
+        self, sql: str, workgroup: str, reuse_minutes: int, parameters: tuple[str, ...] = ()
+    ) -> tuple[str, StatementOutcome]:
         execution = start(
-            self.athena, StatementRequest(sql, (), workgroup, self.database, reuse_minutes)
+            self.athena, StatementRequest(sql, parameters, workgroup, self.database, reuse_minutes)
         )
         return execution, await_completion(self.athena, execution, limit=600)
 
@@ -602,6 +612,250 @@ def p2c_reuse(run: _Run, bake_workgroup: str, interactive_workgroup: str) -> dic
     return {"executions": executions, "outcome": classify_p2c(executions)}
 
 
+# --- P2 ranked: the composed ranked statements over generated fact rows (ADR-152) -------------
+
+P2_RANKED_KEYS: Final = 100_000
+_P2_MARKETPLACE: Final = "amazon_us"
+_P2_PARTITIONS: Final = (("ch_a", "ap_a"), ("ch_b", "ap_b"))
+
+
+@dataclass(frozen=True, slots=True)
+class RankedCase:
+    """One composed ranked statement and the read it restricts, over generated fact rows."""
+
+    name: str
+    request: QueryRequest
+    keys: int
+    suppressed_every: int = 0
+    """Withhold every nth key's rows (0: none), so the population reports withholding."""
+
+
+def _value(key: int, window_index: int, measure: str) -> int:
+    """Generate one measure: ties every 997 keys, zeros, and keys with no current value."""
+    if window_index == 0 and key % 101 == 0:
+        return 0  # no current value: a prior-only key ranks by its change, or at 0
+    modulus = 997 if window_index == 0 else 991
+    return (key * (len(measure) + 1)) % modulus
+
+
+def _windows(read: RankedRead, case: RankedCase) -> tuple[DateRange, ...]:
+    windows = [item.logical.window for item in (*read.population, read.rank)]
+    windows.append(case.request.plan.logical.window)
+    return tuple(dict.fromkeys(windows))
+
+
+def _fact_cte(case: RankedCase) -> str:
+    """Generate every fact the statement reads, one row per key, partition and window."""
+    read = cast("RankedRead", case.request.ranked)
+    bound = (*read.population, read.rank, *(() if read.change is None else (read.change,)))
+    by_fact: dict[str, list[Any]] = {}
+    for item in (*bound, case.request.plan):
+        by_fact.setdefault(item.logical.fact, []).append(item)
+    windows = _windows(read, case)
+    partitions = _P2_PARTITIONS if read.partition_columns else ((),)
+    ctes: list[str] = []
+    for fact, plans in by_fact.items():
+        measures = sorted({m for item in plans for m in item.logical.measures})
+        carried = sorted({c for item in plans for c in item.logical.carried_columns})
+        flag = next(
+            (
+                item.logical.suppression_columns
+                for item in plans
+                if item.logical.suppression_columns
+            ),
+            (),
+        )
+        named = {read.key_column, read.marketplace_column, *read.partition_columns, *flag}
+        filters = {
+            column: value
+            for plan in plans
+            for column, value in plan.primary_filters
+            if column not in named
+        }
+        rows: list[str] = []
+        for window_index, window in enumerate(windows):
+            ids = (
+                next(item.primary_ids for item in plans if item.logical.window == window)
+                if any(item.logical.window == window for item in plans)
+                else ("p2-none",)
+            )
+            for partition in partitions:
+                columns = [
+                    f"DATE '{window.start.isoformat()}' AS \"date_key\"",
+                    f"'{ids[0]}' AS \"publication_id\"",
+                    f"'amazon_asin:P' || lpad(CAST(k AS VARCHAR), 6, '0') AS \"{read.key_column}\"",
+                    f"'{_P2_MARKETPLACE}' AS \"{read.marketplace_column}\"",
+                    *(
+                        f"'{value}' AS \"{column}\""
+                        for column, value in zip(read.partition_columns, partition, strict=True)
+                    ),
+                    *(f"'{value}' AS \"{column}\"" for column, value in sorted(filters.items())),
+                    *(
+                        f"CAST(mod(k * {len(m) + 1}, {997 if window_index == 0 else 991}) "
+                        f"* CASE WHEN {window_index} = 0 AND mod(k, 101) = 0 THEN 0 ELSE 1 END "
+                        f'AS DECIMAL(38,4)) AS "{m}"'
+                        for m in measures
+                    ),
+                    *(f"'USD' AS \"{c}\"" for c in carried),
+                    *(
+                        (
+                            f"({case.suppressed_every} > 0 AND "
+                            f'mod(k, {max(case.suppressed_every, 1)}) = 0) AS "{flag[0]}"',
+                        )
+                        if flag
+                        else ()
+                    ),
+                ]
+                rows.append(
+                    f"SELECT {', '.join(columns)} FROM UNNEST(sequence(1, {case.keys})) AS t(k)"  # noqa: S608 -- generated literals only
+                )
+        ctes.append(f'"{fact}" AS ({" UNION ALL ".join(rows)})')
+    return ", ".join(ctes)
+
+
+def ranked_cases(keys: int = P2_RANKED_KEYS) -> tuple[RankedCase, ...]:
+    """Bind the real Retail and New customers ranked requests to fictional publications."""
+    _support_path()
+    support: Any = importlib.import_module("publication_support")
+    retail: Any = importlib.import_module("adapters.jobs.preset_artifact_publisher.retail_source")
+    customers: Any = importlib.import_module(
+        "adapters.jobs.preset_artifact_publisher.new_customers_source"
+    )
+    measurement: Any = importlib.import_module("adapters.inbound.tool_handlers.measurement")
+    catalog = load_catalog(_ROOT)
+    contracts = tuple(contract for _, contract in load_contracts(_ROOT))
+    period, prior = (
+        DateRange(date(2026, 8, 13), date(2026, 8, 19)),
+        DateRange(date(2026, 8, 6), date(2026, 8, 12)),
+    )
+
+    def bound(prepared: Any) -> tuple[Any, ...]:
+        inspection = support.StubPublications().inspect(
+            PresentationEvidenceInspectionRequest(
+                plans=tuple(
+                    PresentationEvidenceInspectionPlan(plan.role, plan.logical)
+                    for plan in prepared.plans
+                ),
+                contracts=prepared.contracts,
+                now=prepared.now,
+            )
+        )
+        requests = measurement._presentation_requests(prepared, inspection)
+        return tuple(item for item in requests if item is not None and item.ranked is not None)
+
+    batch = retail.retail_health_measurement_batch(
+        retail.RetailHealthMeasurementBatchRequest(catalog, contracts, period, prior, _NOW, 5)
+    )
+    ranked = bound(batch.prepared)
+    top = next(item for item in ranked if item.ranked.restriction.population_sums)
+    movers = next(item for item in ranked if item.ranked.restriction.rank_by is RankBy.ABS_CHANGE)
+    as_keys = dataclasses.replace(
+        movers,
+        ranked=dataclasses.replace(
+            movers.ranked,
+            restriction=dataclasses.replace(
+                movers.ranked.restriction, projection=top.ranked.restriction.projection
+            ),
+        ),
+    )
+    builder = customers._BatchBuilder(catalog, contracts, lambda: _NOW, 5)
+    gateway = builder.request(
+        "purchases_new_to_brand_incl_halo_12mo",
+        ("channel", "ad_product", "product", "marketplace"),
+        period,
+        filters={"marketplace_key": _P2_MARKETPLACE},
+        ranked=customers.gateway_restriction(period),
+    )
+    # Every day at the gateway's pack version, as the unit tier's New customers fake declares.
+    coverage = importlib.import_module("test_new_customers_source")._Coverage()
+    (partitioned,) = bound(prepare_batch((measurement.attach_pack_coverage(gateway, coverage),)))
+    return (
+        RankedCase("retail_top_50_count_and_sums", top, keys),
+        RankedCase("retail_movers_by_abs_change", as_keys, keys),
+        RankedCase("gateway_partitioned_positive", partitioned, keys),
+        RankedCase("gateway_withheld_population", partitioned, keys, suppressed_every=5_000),
+    )
+
+
+def ranked_case_sql(case: RankedCase) -> ComposedQuery:
+    """Compose the case's real ranked statement and put its generated facts before `ranked`."""
+    request = case.request
+    composed = compose(request.plan, request.max_rows, request.ranked)
+    if not composed.sql.startswith("WITH "):
+        raise ProbeError(f"{case.name}: a ranked statement opens with its CTE.")
+    return ComposedQuery(f"WITH {_fact_cte(case)}, {composed.sql[5:]}", composed.parameters)
+
+
+def ranked_expected(case: RankedCase) -> dict[str, Any]:
+    """Apply the Python rule to the same generated rows: keys, counts and sums per partition."""
+    read = cast("RankedRead", case.request.ranked)
+    restriction = read.restriction
+    measure = read.rank.logical.measures[0]
+    partitions = _P2_PARTITIONS if read.partition_columns else ((),)
+    windows = _windows(read, case)
+    index = {window: position for position, window in enumerate(windows)}
+    expected: dict[str, Any] = {}
+    for partition in partitions:
+        values: list[RankedValue] = []
+        for key in range(1, case.keys + 1):
+            suppressed = case.suppressed_every and key % case.suppressed_every == 0
+            current = 0 if suppressed else _value(key, index[restriction.rank_window], measure)
+            if restriction.rank_by is RankBy.ABS_CHANGE:
+                prior = _value(key, index[cast("DateRange", restriction.change_window)], measure)
+                current = abs(current - prior)
+            if restriction.membership is RankedMembership.POSITIVE and current <= 0:
+                continue
+            values.append(RankedValue(f"amazon_asin:P{key:06d}", current))
+        ordered = restriction.order(values)
+        sums = {
+            metric: sum(
+                _value(key, index[restriction.rank_window], plan.logical.measures[0])
+                for key in range(1, case.keys + 1)
+            )
+            for metric, plan in zip(restriction.population_sums, read.sums, strict=True)
+        }
+        expected["|".join(partition)] = {
+            "keys": [item.key for item in ordered[: restriction.n]],
+            "count": len(values),
+            "sums": sums,
+            "suppressed": bool(case.suppressed_every),
+        }
+    return expected
+
+
+def p2_ranked(run: _Run, bake_workgroup: str, cases: tuple[RankedCase, ...]) -> dict[str, Any]:
+    """Run each case's composed statement and compare it with the Python rule (read-only)."""
+    results: dict[str, Any] = {}
+    for case in cases:
+        composed = ranked_case_sql(case)
+        execution, outcome = run.execute(composed.sql, bake_workgroup, 0, composed.parameters)
+        logical = case.request.plan.logical
+        read = cast("RankedRead", case.request.ranked)
+        trailing = population_columns(read)
+        width = len(logical.selected_columns) + len(logical.result_aliases) + len(trailing)
+        observed: dict[str, Any] = {}
+        for values in stream_result_rows(run.s3, outcome, execution_id=execution, cells=width):
+            row = dict(
+                zip(
+                    (*logical.selected_columns, *logical.result_aliases, *trailing),
+                    values,
+                    strict=True,
+                )
+            )
+            partition = "|".join(str(row[column]) for column in read.partition_columns)
+            entry = observed.setdefault(
+                partition, {"keys": [], "count": None, "sums": {}, "suppressed": None}
+            )
+            entry["keys"].append(row[read.key_column])
+            entry["count"] = int(str(row["population_count"]))
+            entry["suppressed"] = int(str(row["population_suppressed"])) > 0
+            for position, metric in enumerate(read.restriction.population_sums):
+                entry["sums"][metric] = int(Decimal(str(row[f"population_sum_{position}"])))
+        expected = ranked_expected(case)
+        results[case.name] = {"passed": observed == expected, "partitions": len(expected)}
+    return results
+
+
 def classify_p2c(executions: list[dict[str, Any]]) -> str:
     """Classify P2c by 03 §5's rule: (a) as documented, (b) not, or inconclusive."""
     by_step = {item["step"]: item for item in executions}
@@ -633,6 +887,12 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--local-only", action="store_true")
+    parser.add_argument(
+        "--sizes",
+        type=_sizes,
+        default=P1_SIZES,
+        help="P1 row counts, comma-separated (default 10000,100000)",
+    )
     parser.add_argument("--profile")
     parser.add_argument("--environment")
     parser.add_argument("--region")
@@ -641,6 +901,17 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--interactive-workgroup")
     parser.add_argument("--database")
     return parser
+
+
+def _sizes(text: str) -> tuple[int, ...]:
+    """Parse `--sizes`: positive whole row counts, comma-separated."""
+    try:
+        sizes = tuple(int(item) for item in text.split(","))
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("--sizes takes comma-separated whole numbers") from error
+    if not sizes or any(size < 1 for size in sizes):
+        raise argparse.ArgumentTypeError("--sizes takes positive row counts")
+    return sizes
 
 
 _P2_INPUTS: Final = (
@@ -682,7 +953,7 @@ def main(argv: list[str] | None = None, session_factory: Callable[..., Any] = bo
             "region": args.region,
         }
     measured_at = datetime.now(UTC)
-    p1 = run_p1()
+    p1 = run_p1(args.sizes)
     label = f"P1 {measured_at.date().isoformat()}, tracemalloc, max of {P1_RUNS} runs"
     terms = _terms(p1, label)
     derivations = {str(memory): derive(terms, memory) for memory in (1_024, 2_048)}
@@ -699,6 +970,7 @@ def main(argv: list[str] | None = None, session_factory: Callable[..., Any] = bo
             "p2a": p2a,
             "p2b": p2b_stream(run, args.bake_workgroup),
             "p2c": p2c_reuse(run, args.bake_workgroup, args.interactive_workgroup),
+            "ranked": p2_ranked(run, args.bake_workgroup, ranked_cases()),
         }
     verdict = stop_rule(
         literal_derivations["1024"]["derived"],

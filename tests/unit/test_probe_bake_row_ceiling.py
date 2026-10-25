@@ -165,7 +165,15 @@ def test_p1_measures_every_term_through_the_real_path(monkeypatch: pytest.Monkey
 
     monkeypatch.setattr(probe, "measure_retail_render", retail)
     monkeypatch.setattr(probe, "measure_campaign_render", lambda: (5_000, 1_000, 10))
-    measured = probe.run_p1(sizes=(200,), runs=1)
+    measured = probe.run_p1(sizes=(200, 400), runs=1)
+    # ADR-152: Retail renders at every size, never only those under a row ceiling.
+    assert [
+        item["rows"] for item in measured["render_samples"] if item["render"] == "retail_health"
+    ] == [
+        200,
+        400,
+    ]
+    assert "retail_render_sizes" not in measured
     terms = measured["terms_bytes_per_row"]
     assert terms["B_raw"] > 0 and terms["B_shaped"] > 0 and terms["B_kept"] > 0
     assert (terms["B_render"], terms["B_render_campaigns_estate"]) == (10.0, 400.0)
@@ -183,3 +191,36 @@ def test_the_derivation_takes_the_largest_candidate_that_fits_every_row() -> Non
     assert derived["derived"] is None
     assert set(derived["candidates"]) == {str(item) for item in probe.CANDIDATES}
     assert all(not row["fits"] for row in derived["candidates"].values())
+
+
+@pytest.mark.covers("ADR-152")
+def test_sizes_are_comma_separated_positive_counts_defaulting_to_10k_and_100k() -> None:
+    assert probe._sizes("10000,100000") == (10_000, 100_000)  # pyright: ignore[reportPrivateUsage]
+    assert probe.P1_SIZES == (10_000, 100_000)
+    for text in ("", "10k", "0,5"):
+        with pytest.raises(Exception, match="--sizes"):
+            probe._sizes(text)  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.covers("ADR-152")
+def test_each_p2_ranked_case_is_the_composed_statement_over_generated_facts() -> None:
+    """Every value binds; the generated facts open the statement; no key list is built."""
+    cases = probe.ranked_cases(keys=2_000)
+    assert [case.name for case in cases] == [
+        "retail_top_50_count_and_sums",
+        "retail_movers_by_abs_change",
+        "gateway_partitioned_positive",
+        "gateway_withheld_population",
+    ]
+    for case in cases:
+        composed = probe.ranked_case_sql(case)
+        assert composed.sql.count("?") == len(composed.parameters)
+        assert '"ranked" AS (SELECT' in composed.sql
+        assert "amazon_asin:P000001" not in composed.sql
+    top, movers, gateway, withheld = (probe.ranked_expected(case) for case in cases)
+    assert (top[""]["count"], len(top[""]["keys"])) == (2_000, 50)
+    assert set(top[""]["sums"]) == {"retail_revenue_shipped", "units_shipped"}
+    assert len(movers[""]["keys"]) == 3 and movers[""]["count"] < 2_000
+    assert set(gateway) == {"ch_a|ap_a", "ch_b|ap_b"}
+    assert all(len(item["keys"]) == 10 and not item["suppressed"] for item in gateway.values())
+    assert all(item["suppressed"] for item in withheld.values())
