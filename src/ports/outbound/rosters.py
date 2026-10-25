@@ -83,15 +83,12 @@ class CampaignHistoriesRequest:
     marketplace_key: str
     platform_key: str
     campaigns: tuple[str, ...]
-    ceiling: RowCeiling = RowCeiling.BAKE_STREAMED
 
     def __post_init__(self) -> None:
         if not self.marketplace_key.strip() or not self.platform_key.strip():
             raise ValueError("a campaign history is read for one marketplace and one platform.")
         if self.campaigns != tuple(sorted(set(self.campaigns))):
             raise ValueError("campaign histories are requested once each, sorted.")
-        if self.ceiling is RowCeiling.NARRATION:
-            raise ValueError("grouped campaign histories are a bake read, never a narration one.")
 
 
 @dataclass(frozen=True, slots=True)

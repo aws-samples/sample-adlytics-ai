@@ -89,17 +89,28 @@ class RowCeiling(StrEnum):
     """Publish-time held answers: `BAKE_MAX_ROWS`."""
     BAKE_STREAMED = "bake_streamed"
     """Publish-time reductions: `BAKE_MAX_STREAMED_ROWS`."""
+    BAKE_GROUPED = "bake_grouped"
+    """Publish-time folds whose sink is the memory bound (ADR-152 decision 7): no row `LIMIT`.
+
+    The statement returns every row and never truncates; `max_rows` is what the sink keeps
+    (`BAKE_MAX_ROWS`), and the sink's overflow is the read's only limit. Folded only, never held.
+    """
 
 
 def row_ceiling(kind: RowCeiling) -> int:
-    """Return the most rows one read of this caller kind may ask for."""
+    """Return the most rows one read of this caller kind may ask for (a grouped sink may keep)."""
     match kind:
         case RowCeiling.NARRATION:
             return MAX_ROWS_CEILING
-        case RowCeiling.BAKE:
+        case RowCeiling.BAKE | RowCeiling.BAKE_GROUPED:
             return BAKE_MAX_ROWS
         case RowCeiling.BAKE_STREAMED:
             return BAKE_MAX_STREAMED_ROWS
+
+
+def statement_limit(max_rows: int, ceiling: RowCeiling) -> int | None:
+    """Return the rows a statement may return before it is truncated; None for a grouped fold."""
+    return None if ceiling is RowCeiling.BAKE_GROUPED else max_rows
 
 
 def _require_rows_within(max_rows: int, ceiling: RowCeiling) -> None:
@@ -253,7 +264,7 @@ class QueryPort(Protocol):
         """Execute a registered template.
 
         Raises DependencyError once retries are exhausted. Never leaks an SDK
-        exception type.
+        exception type. A `BAKE_GROUPED` request is folded only: `run` refuses it.
         """
         ...
 

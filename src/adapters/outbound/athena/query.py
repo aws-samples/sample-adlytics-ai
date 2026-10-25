@@ -65,7 +65,9 @@ from ports.outbound.query import (
     QueryRequest,
     QueryResult,
     QueryRow,
+    RowCeiling,
     RowSink,
+    statement_limit,
 )
 
 if TYPE_CHECKING:  # pragma: no cover — kept out of the Lambda import path
@@ -182,7 +184,8 @@ class _Statement:
     composed: ComposedQuery
     logical: QueryPlan
     columns: tuple[str, ...]
-    max_rows: int
+    max_rows: int | None
+    """None for a grouped fold (`RowCeiling.BAKE_GROUPED`): every row is read, none truncated."""
     ranked: RankedRead | None = None
     """A ranked-keys statement's restriction: its rows carry the population columns too."""
 
@@ -219,6 +222,7 @@ class AthenaQueryAdapter:
     def run(self, request: QueryRequest) -> QueryResult:
         """Execute a plan and return its rows, or raise a `DependencyError`."""
         statement = self._statement(request)
+        _refuse_grouped_held(request.ceiling)
         held = _Held()
         lifted = None if statement.ranked is None else _PopulationLift(statement.ranked)
         read = self._execute(statement, held, lifted)
@@ -242,6 +246,7 @@ class AthenaQueryAdapter:
         period Amazon withheld whole refuses the series exactly as it would refuse its own read.
         """
         statement = self._series_statement(request)
+        _refuse_grouped_held(request.ceiling)
         held = _Held()
         read = self._execute(statement, held)
         return QueryResult(
@@ -270,12 +275,9 @@ class AthenaQueryAdapter:
             if ranked is not None and ranked.restriction.projection is RankedProjection.RANKED_KEYS
             else None
         )
+        limit = statement_limit(request.max_rows, request.ceiling)
         return _Statement(
-            compose(request.plan, request.max_rows, ranked),
-            logical,
-            logical.selected_columns,
-            request.max_rows,
-            keys,
+            compose(request.plan, limit, ranked), logical, logical.selected_columns, limit, keys
         )
 
     @staticmethod
@@ -285,11 +287,12 @@ class AthenaQueryAdapter:
             _refuse_withheld_only(single)
             _refuse_unreadable_suppression(single)
         logical = request.plans[0].logical
+        limit = statement_limit(request.max_rows, request.ceiling)
         return _Statement(
-            compose_series(request.plans, request.max_rows),
+            compose_series(request.plans, limit),
             logical,
             (PERIOD_START_COLUMN, PERIOD_END_COLUMN, *logical.selected_columns),
-            request.max_rows,
+            limit,
         )
 
     def _values(
@@ -396,7 +399,7 @@ class AthenaQueryAdapter:
             width = len(statement.columns) + len(aliases)
             for values in self._values(execution_id, outcome, width + len(trailing)):
                 rows_read += 1
-                if rows_read > max_rows:
+                if max_rows is not None and rows_read > max_rows:
                     continue
                 row = _as_row(statement.columns, values[:width], aggregates=aliases)
                 if lifted is not None:
@@ -404,8 +407,8 @@ class AthenaQueryAdapter:
                     lifted.add(row, values[width:])
                 suppression.add(row)
                 sink.add(row)
-            kept = min(rows_read, max_rows)
-            truncated = rows_read > max_rows
+            truncated = max_rows is not None and rows_read > max_rows
+            kept = max_rows if truncated and max_rows is not None else rows_read
             recording.record(
                 bytes_scanned=outcome.bytes_scanned,
                 cache_hit=outcome.reused_previous_result,
@@ -461,6 +464,12 @@ def _statistics(  # noqa: PLR0913 -- one execution's state, outcome, wait and th
         statistics_available=outcome.statistics_present,
         throttled_starts=throttled,
     )
+
+
+def _refuse_grouped_held(ceiling: RowCeiling) -> None:
+    """Refuse to hold a grouped fold's rows: with no row limit, only a sink may take them."""
+    if ceiling is RowCeiling.BAKE_GROUPED:
+        raise ValueError("a grouped read is folded, never held: it has no row limit.")
 
 
 def _refuse_withheld_only(request: QueryRequest) -> None:

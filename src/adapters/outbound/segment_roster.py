@@ -338,7 +338,7 @@ class SegmentRosterReader:
             marketplace_key=request.marketplace_key,
             platform_key=request.platform_key,
             fact=SEGMENT_FACT,
-            ceiling=request.ceiling,
+            ceiling=RowCeiling.BAKE,
         )
         walk = self._observed_campaigns(scope, _older(published, prior), request.campaigns)
         prior_published = (prior.start, prior.end) in published
@@ -412,14 +412,14 @@ class SegmentRosterReader:
     ) -> frozenset[str]:
         """Read these bound months in one statement: the campaigns that returned a segment.
 
-        A truncated read proves only the keys it holds. Chat's one campaign is held as today: a
-        returned row is proof, an empty truncated page is unreadable. A bake's grouped read
-        streams through `ObservedKeys`, keeping campaign keys only; it can drop any campaign
-        when cut, so a cut there is `rows_over_ceiling` (ADR-142), with the width it asked.
+        Chat's one campaign is held as today: a returned row is proof, an empty truncated page
+        is unreadable. A bake's grouped read has no row limit (`BAKE_GROUPED`): it streams every
+        row through `ObservedKeys`, keeping campaign keys only, so its one limit is more than
+        `BAKE_MAX_ROWS` campaigns observed, which is `rows_over_ceiling` (ADR-142).
         """
-        series = PeriodSeriesRequest(bound, row_ceiling(request.ceiling), request.ceiling)
         pinned = dict(request.filters).get(_CAMPAIGN_KEY)
         if pinned is not None:
+            series = PeriodSeriesRequest(bound, row_ceiling(request.ceiling), request.ceiling)
             result = self.queries.run_series(series)
             observed = bool(measure(bound[0].logical, result.rows).figures)
             if result.truncated and not observed:
@@ -430,12 +430,11 @@ class SegmentRosterReader:
             return frozenset({pinned}) if observed else frozenset()
         # Grouped (a bake): stream the keys, never the rows.
         fold = ObservedKeys((_CAMPAIGN_KEY,), BAKE_MAX_ROWS)
-        read = self._folding().fold_series(series, FoldingAnswer(bound[0].logical, fold))
-        if read.truncated or fold.overflowed:
+        grouped = PeriodSeriesRequest(bound, BAKE_MAX_ROWS, RowCeiling.BAKE_GROUPED)
+        self._folding().fold_series(grouped, FoldingAnswer(bound[0].logical, fold))
+        if fold.overflowed:
             raise IsolatedRefusal(
-                IsolatedRefusalReason.ROWS_OVER_CEILING,
-                RefusalScope.PAGE,
-                max_rows=BAKE_MAX_ROWS if fold.overflowed else row_ceiling(request.ceiling),
+                IsolatedRefusalReason.ROWS_OVER_CEILING, RefusalScope.PAGE, max_rows=BAKE_MAX_ROWS
             )
         return frozenset(key[0] for key in fold.value())
 

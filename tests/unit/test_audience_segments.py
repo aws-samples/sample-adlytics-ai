@@ -133,14 +133,24 @@ from domain.shopper_aggregates.loss import DEGRADED_NOTE, LossGrade
 from ports.outbound.canonical import CanonicalDestination
 from ports.outbound.publication_selection import PublicationSelection, PublicationSelectionRequest
 from ports.outbound.query import (
+    BAKE_MAX_ROWS,
     MAX_ROWS_CEILING,
+    FoldRead,
     PeriodSeriesRequest,
     QueryRequest,
     QueryResult,
+    QueryRow,
     RowCeiling,
+    RowSink,
     row_ceiling,
+    statement_limit,
 )
-from ports.outbound.rosters import RosterRequest
+from ports.outbound.rosters import (
+    CampaignHistories,
+    CampaignHistoriesRequest,
+    CampaignHistory,
+    RosterRequest,
+)
 from ports.outbound.segment_labels import SegmentLabelRequest
 from ports.outbound.served_periods import ServedPeriods, ServedPeriodsRequest
 
@@ -1617,6 +1627,80 @@ def test_a_truncated_bake_roster_read_refuses_its_page_and_chat_keeps_its_answer
     with pytest.raises(DomainError) as chat:
         cut.roster(_roster_request())
     assert chat.value.code == ROSTER_REFUSED and not isinstance(chat.value, IsolatedRefusal)
+
+
+@dataclass
+class _GroupedHistory(_History):
+    """A folding port applying the port's rule: a `BAKE_GROUPED` series has no row limit."""
+
+    series: list[PeriodSeriesRequest] = field(default_factory=list[PeriodSeriesRequest])
+
+    def fold(self, request: QueryRequest, sink: RowSink) -> FoldRead:
+        del request, sink
+        raise AssertionError("a bake's history walk reads one series.")
+
+    def fold_series(self, request: PeriodSeriesRequest, sink: RowSink) -> FoldRead:
+        self.series.append(request)
+        rows = [
+            {
+                **row,
+                "campaign_key": campaign,
+                "period_start": window.start.isoformat(),
+                "period_end": window.end.isoformat(),
+            }
+            for window in (item.logical.window for item in request.plans)
+            for (start, campaign), month in self.rows.items()
+            if start == window.start
+            for row in month
+        ]
+        limit = statement_limit(request.max_rows, request.ceiling)
+        for row in rows if limit is None else rows[:limit]:
+            sink.add(cast("QueryRow", row))
+        truncated = limit is not None and len(rows) > limit
+        return FoldRead(len(rows), truncated, 1, Suppression(rows_suppressed=False))
+
+
+def _histories(
+    rows: dict[tuple[date, str], tuple[dict[str, object], ...]],
+) -> tuple[CampaignHistories, list[PeriodSeriesRequest]]:
+    queries = _GroupedHistory(rows)
+    reader = replace(_history_reader((_JULY, *_MONTHS), rows), queries=queries)
+    graded = reader.campaign_histories(
+        CampaignHistoriesRequest(SEPTEMBER, US, "amazon_ads", (CAMPAIGN_KEY, OTHER_CAMPAIGN))
+    )
+    return graded, queries.series
+
+
+def test_a_bake_history_walk_reads_every_row_and_refuses_only_past_its_held_campaigns() -> None:
+    """ADR-152 decision 7: rows (months x campaigns x segments) cost time, never a refusal.
+
+    One campaign returning more segments than `BAKE_MAX_ROWS` in July is still read whole and
+    graded; only more observed campaigns than the fold may hold refuses the page.
+    """
+    wide: tuple[dict[str, object], ...] = tuple(
+        {"segment_id": f"4{index:06d}", measure_alias(0): 1000}
+        for index in range(BAKE_MAX_ROWS + 1)
+    )
+    graded, (series,) = _histories({(JULY.start, CAMPAIGN_KEY): wide})
+    # One statement over the older months, with no row limit.
+    assert [item.logical.window for item in series.plans] == [JULY]
+    assert statement_limit(series.max_rows, series.ceiling) is None
+    assert graded.histories == {
+        CAMPAIGN_KEY: CampaignHistory.OBSERVED,
+        OTHER_CAMPAIGN: CampaignHistory.FIRST_MONTH,
+    }
+    # Paired: past the held campaigns, the page refuses with the one derived width.
+    crowded = {
+        (JULY.start, f"campaign:synthetic-{index}"): _segment_rows("41001")
+        for index in range(BAKE_MAX_ROWS + 1)
+    }
+    with pytest.raises(IsolatedRefusal) as refused:
+        _histories(crowded)
+    assert (refused.value.reason, refused.value.scope) == (
+        IsolatedRefusalReason.ROWS_OVER_CEILING,
+        RefusalScope.PAGE,
+    )
+    assert dict(refused.value.refusal_context) == {"max_rows": BAKE_MAX_ROWS}
 
 
 def test_history_past_the_selection_bound_is_refused_as_the_rosters_own_answer() -> None:

@@ -14,9 +14,10 @@ campaign population's rows.
   (result reuse returns the count pass's results), merged again into each campaign's 50-row
   pages. Only the groups in flight are resident.
 
-The tallies and the distinct segment set are bounded by the derived ceiling `BAKE_MAX_ROWS`, the
-one memory-sized limit; past it, or with a read cut, the page is `rows_over_ceiling` (ADR-142,
-the Baker-memory action). The page pass reading other than the count pass read is a defect.
+The reads carry no row limit (`RowCeiling.BAKE_GROUPED`). The tallies, the distinct segment set
+and one campaign's segments are each bounded by the derived ceiling `BAKE_MAX_ROWS`, the one
+memory-sized limit; past it the page is `rows_over_ceiling` (ADR-142, the Baker-memory action).
+The page pass reading other than the count pass read is a defect.
 """
 
 from __future__ import annotations
@@ -48,7 +49,7 @@ from domain.presentation.audiences import (
 )
 from domain.semantics.audience_segments import SEGMENT_ID_COLUMN, unnamed_segment_label
 from domain.shared_kernel.errors import ErrorCode, InvariantError
-from ports.outbound.query import BAKE_MAX_ROWS, BAKE_MAX_STREAMED_ROWS
+from ports.outbound.query import BAKE_MAX_ROWS
 
 if TYPE_CHECKING:  # pragma: no cover
     from adapters.inbound.tool_handlers.measurement import PresentationMeasurementAnswerSlot
@@ -126,16 +127,13 @@ def _currency(slot: PresentationMeasurementAnswerSlot | None) -> str | None:
 
 
 def _refuse_cut(slots: tuple[PresentationMeasurementAnswerSlot, ...], *, over: bool) -> None:
-    """Refuse the page when the index outgrew the ceiling, or a read or one group was cut."""
-    if over:
+    """Refuse the page when the index, or one campaign's segments, outgrew `BAKE_MAX_ROWS`.
+
+    The reads have no row limit (`BAKE_GROUPED`), so a truncated slot is a group past its sink.
+    """
+    if over or any(slot.folded is not None and slot.folded.truncated for slot in slots):
         raise IsolatedRefusal(
             IsolatedRefusalReason.ROWS_OVER_CEILING, RefusalScope.PAGE, max_rows=BAKE_MAX_ROWS
-        )
-    if any(slot.folded is not None and slot.folded.truncated for slot in slots):
-        raise IsolatedRefusal(
-            IsolatedRefusalReason.ROWS_OVER_CEILING,
-            RefusalScope.PAGE,
-            max_rows=BAKE_MAX_STREAMED_ROWS,
         )
 
 
@@ -173,7 +171,10 @@ def count_campaigns(streams: GroupStreams, scope: CampaignCountScope) -> Campaig
         )
         if not returned:
             continue
-        if len(tallies) >= BAKE_MAX_ROWS or len(segments | set(returned)) > BAKE_MAX_ROWS:
+        if (
+            len(tallies) >= BAKE_MAX_ROWS
+            or len(segments) + len(set(returned) - segments) > BAKE_MAX_ROWS
+        ):
             over = True
             continue
         segments.update(returned)
