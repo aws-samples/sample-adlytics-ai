@@ -103,7 +103,7 @@ def test_todays_declared_presets_and_real_bake_batches_pass_the_gate() -> None:
     campaigns = next(page for page in pages if page.page_id == "campaigns")
     assert TemporalPresetId.THIRTY_DAYS in campaigns.candidate_presets
     # ADR-070 2026-10-25: the bake policy is the chunked two-pass snapshot's bound.
-    assert MAX_PRESET_SNAPSHOT_PARTITIONS == MAX_EXACT_CURRENT_PARTITIONS == 1_000
+    assert MAX_PRESET_SNAPSHOT_PARTITIONS == MAX_EXACT_CURRENT_PARTITIONS == 4_800
     findings = evaluate_bakeability(
         pages,
         {

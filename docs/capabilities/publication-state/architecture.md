@@ -6,8 +6,8 @@ Publication State stores four independent records: append-only attempt events, e
 leases, immutable successful publications, and conditional `CURRENT` selectors. A resolver strongly
 reads selectors and their referenced immutable successes before returning exact coverage.
 
-One verified exact read supports at most **1,000 logical partitions** (`MAX_EXACT_CURRENT_PARTITIONS`,
-a cost bound, provisional until derived from measured latency: ADR-070 2026-10-25); a scope read covers every GSI-discovered key, discovered once per call. Each phase
+One verified exact read supports at most **4,800 logical partitions** (`MAX_EXACT_CURRENT_PARTITIONS`,
+a cost bound derived from latency measured on dev so the worst read fits chat's quick turn: ADR-070 2026-10-25); a scope read covers every GSI-discovered key, discovered once per call. Each phase
 reads in ordered transactions of at most 100 items, so DynamoDB calls grow by one per 100 partitions
 per phase. A serving read uses five ordered phases (an authority read skips P and P'):
 

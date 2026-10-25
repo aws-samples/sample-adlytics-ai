@@ -44,7 +44,7 @@ DAY_ONE = date(2024, 1, 1)
 CHUNK = 100
 """DynamoDB's `TransactGetItems` item cap, which the fake enforces as the service does."""
 SIZES = (1, 100, 101, 184, 1_000)
-"""One chunk, a full chunk, a second chunk, the Reach quarter, and the exact-read bound."""
+"""One chunk, a full chunk, a second chunk, the Reach quarter, and 1,000 (measured on dev)."""
 MULTI_CHUNK_SIZES = (1, 100, 101, 184)
 """Sizes for the costlier cases: at 1,000 they'd repeat the multi-chunk shape 101 and 184 cover."""
 
