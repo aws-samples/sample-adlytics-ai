@@ -110,16 +110,18 @@ class CommitPublicationRequest:
 
 
 MAX_COMMIT_GROUP_MEMBERS = 20
-MAX_EXACT_CURRENT_PARTITIONS = 1_000
+MAX_EXACT_CURRENT_PARTITIONS = 4_800
 """The most partitions one verified exact read attests: a cost bound, not a consistency one.
 
 The read is ADR-070's chunked two-pass snapshot: heads, immutables and heads again, each in
 transactions of at most 100 items, accepted only when both head passes agree. Forward-only heads
 make that agreement one instant at any size; DynamoDB calls grow by one per 100 partitions per pass.
 
-Provisional (ADR-070, 2026-10-25): 1,000 is chosen, not derived. The derivation is the largest N
-whose worst serving read, 3 attempts x 3 x ceil(N / 100) transactions, fits the tightest caller
-budget (chat's turn) at the per-transaction latency dev validation measures.
+Derived (ADR-070, 2026-10-25): the largest N whose worst serving read, 3 attempts x 3 x
+ceil(N / 100) transactions, fits the tightest caller budget, chat's quick turn (120 s,
+`agent.quickChat.timeoutSeconds`), at the slowest per-transaction latency measured on dev,
+276.0 ms: floor(120,000 / (9 x 276.0)) = 48 transactions per pass, so N = 4,800. A slower
+measurement or a tighter turn budget re-derives it.
 """
 
 

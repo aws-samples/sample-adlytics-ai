@@ -2,21 +2,24 @@
 
 Date: 2026-09-15
 Status: Accepted — parent artifact serving implemented in development; displayed-detail bake remains pending
-> **Amendment, 2026-10-25 — the exact read is a chunked two-pass snapshot of up to 1,000
+> **Amendment, 2026-10-25 — the exact read is a chunked two-pass snapshot of up to 4,800
 > partitions.** The verified A/B/C read of 2026-09-22 already reads each phase in transactions of
 > at most 100 items, and accepts only when both head passes agree. Heads only move forward, so that
 > agreement proves one instant however many transactions a pass takes: it's the two-pass verified
 > snapshot named on 2026-09-16. `tests/unit/test_exact_snapshot_chunks.py` drives the real adapter
 > at 1, 100, 101, 184 and 1,000 partitions: one head advance at every gap between transactions for
 > each chunk-edge partition, and every pair of window-edge gaps. The 100 was a leftover of the
-> one-transaction attestation, so `MAX_EXACT_CURRENT_PARTITIONS` becomes 1,000, a cost bound:
-> DynamoDB calls grow by one per 100 partitions per pass. That's not the constant-only increase the
-> alternatives reject, which rested on the old two-item attestation. **The 1,000 is provisional:**
-> chosen, not derived. Pending: dev validation measures per-transaction latency at 184 and 1,000
-> partitions, and the bound becomes the largest N whose worst serving read (3 attempts × 3 ×
-> ⌈N/100⌉ transactions) fits chat's turn budget. The bake policy `MAX_PRESET_SNAPSHOT_PARTITIONS`
-> stays equal to it. In the bakeability gate's model (days, doubled for a compared prior, one lens)
-> that's a 500-day preset; a pack with two lenses reaches it at half that. The Reach quarter reads
+> one-transaction attestation, so `MAX_EXACT_CURRENT_PARTITIONS` is a cost bound: DynamoDB calls
+> grow by one per 100 partitions per pass. That's not the constant-only increase the alternatives
+> reject, which rested on the old two-item attestation. **Derived, 4,800:** the largest N whose
+> worst serving read (3 attempts × 3 × ⌈N/100⌉ transactions) fits the tightest caller budget, chat's
+> quick turn (120 s, `agent.quickChat.timeoutSeconds`), at the slowest per-transaction latency
+> measured on dev on 2026-10-25: 276.0 ms (Reach quarter, 184 partitions, read-only). The
+> integration test measured 213.2 ms at 184 and 209.9 ms at 1,000 (max of 10 reads each).
+> ⌊120,000 / (9 × 276.0)⌋ = 48 transactions per pass, so N = 4,800; a slower measurement or a
+> tighter turn budget re-derives it. The bake policy `MAX_PRESET_SNAPSHOT_PARTITIONS` stays equal
+> to it. In the bakeability gate's model (days, doubled for a compared prior, one lens) that's a
+> 2,400-day preset; a pack with two lenses reaches it at half that. The Reach quarter reads
 > 184 (92 days × 2 lenses in one pack on dev, 2026-10-18,
 > [ADR-146](adr-146-publish-the-reach-quarter-or-retire-it-on-measured-partitions.md)) and bakes.
 > Chat's selection-wide bound is the same constant. A pack is still attested by one verified read, never
@@ -263,7 +266,7 @@ are the paved road, and the escape hatch returns only with a derived bound.
 | Alternative | Why rejected |
 |---|---|
 | Chunk the request-time snapshot into per-pack transactions and keep live measurement | Buys headroom for 7D/14D but 30D with prior needs 60 day-partitions per pack — 120 items, over the 100-item cap even alone. Request cost also stays linear in window size and packs; the page contract remains unservable. Per-pack snapshots are adopted, but at bake time. |
-| Raise `MAX_EXACT_CURRENT_PARTITIONS` without changing the read protocol | Pinned by transport: the old attestation used 2 items per partition against DynamoDB's 100-item transactional-read cap. A constant-only increase remains rejected. *(Superseded in scope 2026-09-22: the verified A/B/C servable-head protocol uses at most one item per partition in each transaction and safely raises the serving capability; [Generation Coordination](../ui/generation-coordination.md) retains a separate bake policy. 2026-10-25: that protocol's chunked passes carry the bound to 1,000; see the amendment at the top.)* |
+| Raise `MAX_EXACT_CURRENT_PARTITIONS` without changing the read protocol | Pinned by transport: the old attestation used 2 items per partition against DynamoDB's 100-item transactional-read cap. A constant-only increase remains rejected. *(Superseded in scope 2026-09-22: the verified A/B/C servable-head protocol uses at most one item per partition in each transaction and safely raises the serving capability; [Generation Coordination](../ui/generation-coordination.md) retains a separate bake policy. 2026-10-25: that protocol's chunked passes carry the bound to a derived 4,800; see the amendment at the top.)* |
 | Shrink presets until live measurement fits | 6 days with prior is the largest fitting window. Surrenders the page contract to an implementation bound and still pays a wide snapshot plus a measurement batch per page view. |
 | Keep both paths: serve baked artifacts, fall back to live measurement | The refused-selection failure returns as a nondeterministic tail, and two serving paths for one contract is standing tech debt. Explicitly rejected in favor of one path. |
 | Bake all eight sort variants | Eightfold storage and bake work for a deterministic reordering of identical rows. *(Superseded 2026-09-17: valid only while the population fits one artifact; ADR-071 bakes orderings because a 50-row reorder cannot express a population ranking.)* |

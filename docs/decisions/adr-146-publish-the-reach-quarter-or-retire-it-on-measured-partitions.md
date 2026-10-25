@@ -50,7 +50,7 @@ by channel last quarter" was refused with `ADLY-PLAN-0008`. On 2026-10-18 the ow
 precomputed quarter-level item over retiring the option. It was never built: none of the three
 publication paths moves the servable head in one transaction the item could share. On 2026-10-23 the owner approved ADR-070's
 own mechanism instead: the exact read already reads in chunks of 100 and verifies the heads twice,
-so its bound rises to 1,000 ([ADR-070](adr-070-serve-declared-preset-windows-from-publish-time-artifacts.md)
+so its bound rises to a derived 4,800 ([ADR-070](adr-070-serve-declared-preset-windows-from-publish-time-artifacts.md)
 amendment, 2026-10-25) and the quarter's 184 partitions bind in one verified read per pack. Chat's
 `ADLY-PLAN-0008` on "reach by channel last quarter" has an untraced cause: the probe recorded no
 selection over 100 for that question, so whether this change lifts it is unknown until the dev probe
@@ -77,7 +77,7 @@ never fills is a broken promise on the page.
 - Branch (a) or (c): the quarter view publishes like week and month, with one more bake row's work.
   Chat stays as the probe found it.
 - Branch (a′): the quarter publishes like week and month, and chat's long-window day selections
-  bind too, up to 1,000 partitions. An exact read costs one more DynamoDB transaction per 100
+  bind too, up to 4,800 partitions. An exact read costs one more DynamoDB transaction per 100
   partitions per pass.
 - Branch (b): the roster drops to 19 rows, users see week and month only, and the README's known
   limits say so.

@@ -96,7 +96,7 @@ def test_a_call_summary_counts_per_pack_and_names_no_partition_or_population() -
 
 
 def test_the_recorder_names_the_raising_call_and_its_count(monkeypatch: pytest.MonkeyPatch) -> None:
-    resolved = SimpleNamespace(requirements=(), partitions=tuple(_days("pack-6", 1_001)))
+    resolved = SimpleNamespace(requirements=(), partitions=tuple(_days("pack-6", 4_801)))
     monkeypatch.setattr(
         PublicationSelector,
         "_resolve_requirements",
@@ -118,12 +118,12 @@ def test_the_recorder_names_the_raising_call_and_its_count(monkeypatch: pytest.M
     assert call["caller"] == "resolve_partitions"
     assert call["raised"] == {
         "code": str(SELECTION_TOO_LARGE),
-        "required_partitions": 1_001,
-        "maximum_partitions": 1_000,
+        "required_partitions": 4_801,
+        "maximum_partitions": 4_800,
     }
     verdict = probe.classify([call])
-    assert (verdict["raising_call"], verdict["partitions_total"]) == ("resolve_partitions", 1_001)
-    assert verdict["max_partitions_in_one_dataset"] == 1_001
+    assert (verdict["raising_call"], verdict["partitions_total"]) == ("resolve_partitions", 4_801)
+    assert verdict["max_partitions_in_one_dataset"] == 4_801
     assert verdict["bound"] is False
     # Paired: uninstalling restores the real methods, so nothing outside the probe is wrapped.
     assert PublicationSelector.__dict__["resolve_partitions"].__name__ == "resolve_partitions"

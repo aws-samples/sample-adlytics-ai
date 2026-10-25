@@ -589,7 +589,7 @@ def test_inspection_enforces_partition_limit_before_current_read(
     environment: PublicationEnvironment,
 ) -> None:
     current = RecordingCurrent()
-    oversized = _sales_plan(environment, DateRange(DAY_ONE, DAY_ONE + timedelta(days=1_000)))
+    oversized = _sales_plan(environment, DateRange(DAY_ONE, DAY_ONE + timedelta(days=4_800)))
 
     with pytest.raises(ValidationError) as raised:
         PublicationSelector(current, environment.packs, environment.bridge).inspect(
@@ -611,8 +611,8 @@ def test_inspection_enforces_partition_limit_before_current_read(
     refusal = classify_refusal(raised.value)
     assert refusal.reason is IsolatedRefusalReason.PARTITIONS_OVER_BOUND
     assert dict(refusal.refusal_context) == {
-        "maximum_partitions": 1_000,
-        "required_partitions": 1_001,
+        "maximum_partitions": 4_800,
+        "required_partitions": 4_801,
     }
 
 
@@ -632,18 +632,18 @@ def test_selection_remains_all_or_none_when_one_inspection_partition_is_absent(
 
 
 @pytest.mark.covers("ADR-070")
-def test_more_than_a_thousand_partitions_is_validation_before_current_read(
+def test_more_partitions_than_the_exact_read_bound_is_validation_before_current_read(
     environment: PublicationEnvironment,
 ) -> None:
     current = RecordingCurrent()
     selector = PublicationSelector(current, environment.packs, environment.bridge)
-    oversized = _sales_plan(environment, DateRange(DAY_ONE, DAY_ONE + timedelta(days=1_000)))
+    oversized = _sales_plan(environment, DateRange(DAY_ONE, DAY_ONE + timedelta(days=4_800)))
 
     with pytest.raises(ValidationError) as raised:
         selector.select(PublicationSelectionRequest((oversized,), environment.contracts, NOW))
 
     assert str(raised.value.code) == "ADLY-PUBLICATION_SELECTION-0002"
-    assert raised.value.context == {"required_partitions": 1_001, "maximum_partitions": 1_000}
+    assert raised.value.context == {"required_partitions": 4_801, "maximum_partitions": 4_800}
     assert not raised.value.alarms
     assert current.exact_calls == []
     # Paired: a quarter's 184 day partitions, over the former 100, bind in one exact read.
@@ -1336,7 +1336,7 @@ def test_per_pack_snapshot_beyond_the_transaction_bound_refuses_before_any_read(
 ) -> None:
     """A pack is never split across independent reads: over its bound it refuses whole."""
     current = RecordingCurrent()
-    days = 501
+    days = 2_401
     current_window = DateRange(
         DAY_ONE + timedelta(days=days), DAY_ONE + timedelta(days=2 * days - 1)
     )
@@ -1363,12 +1363,12 @@ def test_per_pack_snapshot_beyond_the_transaction_bound_refuses_before_any_read(
         )
 
     assert str(refused.value.code) == "ADLY-PUBLICATION_SELECTION-0003"
-    assert refused.value.context["required_partitions"] == 1_002
+    assert refused.value.context["required_partitions"] == 4_802
     assert current.exact_calls == []
     # ADR-142: the pack's figures, and not its scope, reach the page's refusal.
     assert dict(classify_refusal(refused.value).refusal_context) == {
-        "maximum_partitions": 1_000,
-        "required_partitions": 1_002,
+        "maximum_partitions": 4_800,
+        "required_partitions": 4_802,
     }
 
 
