@@ -4,6 +4,19 @@ Publication-safe conclusions from live source probes and deployed development ac
 account, entity, instance, user, resource, execution, workflow, and invalidation identifiers remain
 in ignored `RESULTS.local.md` and `findings/`; neither is publication content. A conclusion appears
 here only after its exact local evidence was read and folded into the owning contract or design doc.
+## Staged table writes (ADR-149) on dev — 2026-10-22 and 2026-10-26
+Times are UTC. Synthetic data only, after an identity check before every write.
+
+| Check | Verdict | What it showed |
+|---|---|---|
+| Scratch probe, 2026-10-22 01:02–03:44 | **PASS** | On scratch databases and roles, removed afterwards: the staged `MERGE` wrote rows identical to the old writer's on five tables, edge values and a record at the 200,000-byte bound included; a re-run inserted nothing; the four-count verification refused each of 7 tampers. At 1,000 to 100,000 rows a unit's read, stage, `MERGE` and verification took 5.4–15.0 s, max of 3 runs [measured on dev]. `IS NOT DISTINCT FROM` dropped correct all-NULL rows, so the equal-or-both-NULL form replaced it ([ADR-149](../docs/decisions/adr-149-write-each-table-unit-with-one-set-based-merge-from-a-staged-object.md) decision 2). |
+| Row ceilings, 2026-10-22 | **SET** | A local memory measurement with no AWS gave 50,000 rows per unit and 20,000 per delivery, the largest grid values inside half the writers' memory and the 900 s run ([write discipline](../docs/capabilities/load-path/write-discipline.md) §11). |
+| Dev deployment, 2026-10-26 00:47–01:27 | **PASS** | With the scale-limits integration deployed: 30 GRAPH table sets of 27–28 rows each wrote with 2 statements, 6.7 s median and 8.7 s max per set, table writer peak 191 MB, no refusal, park or budget return [measured on dev]. |
+
+**Not exercised live:** a delivery above the old limit of about 840 active products a day. The large
+synthetic fixture is deferred, so the earlier limit's removal is proven by the probe and unit tests, not
+by a live load.
+
 
 ## Amazon DSP campaign detail cost per click on dev — 2026-10-19
 Times are UTC. **Deployed source: `1c50b8ed`**, one locked `deploy-all` run that ended at 04:15

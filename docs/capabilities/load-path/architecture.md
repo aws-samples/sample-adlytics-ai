@@ -15,14 +15,17 @@ The V2 ingestion path verifies a manifest and exact source bytes, parses once, m
 
 ## 5a. Write discipline
 
-The deployed development path materializes each source-aligned, candidate, and successful projection
-one after another; a projection whose readback does not already match runs a read, one or more batched
-merges, and a verifying re-read, with result reuse disabled. Its lease protects a partition while every
+Each table write unit commits with two Athena statements at any admitted size
+([ADR-149](../../decisions/adr-149-write-each-table-unit-with-one-set-based-merge-from-a-staged-object.md)).
+The writer stages the unit's exact records once, as a content-addressed object in the staging bucket,
+then runs one insert-only `MERGE` from that object's generated staging table and one set-based
+verification that compares four counts per identity inside Athena and returns no rows. Result reuse
+stays disabled. A unit over 50,000 rows or a delivery over 20,000 is refused before authority; those
+ceilings come from the writers' memory and 900 s run. Its lease protects a partition while every
 partition mapping to one physical Iceberg table — canonical tables keyed per dataset, source-aligned
 tables keyed per interpreter — commits to that table.
-[ADR-075](../../decisions/adr-075-generate-page-artifacts-once-per-dependency-cohort.md) mandates the
-replacement: combine compatible immutable-record merges for one table into the fewest statements Athena
-permits, verify once per table write unit, execute independent projections through the configured bounded
+[ADR-075](../../decisions/adr-075-generate-page-artifacts-once-per-dependency-cohort.md), as amended by
+ADR-149, sets the rest: verify once per table write unit, execute independent projections through the configured bounded
 concurrency with position-preserving joins, and give each physical Iceberg table one writer at a time
 through a FIFO message group per table with a per-table lease as the commit fence. Authority — immutable
 bytes, attempts, publications, and `CURRENT` — stays in the delivery invocation under its live partition
