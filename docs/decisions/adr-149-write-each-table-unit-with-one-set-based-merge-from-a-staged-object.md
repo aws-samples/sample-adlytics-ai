@@ -8,8 +8,9 @@ The probe ran on 2026-10-22 with synthetic rows: both writers' rows were identic
 the approved grants sufficed. The two row ceilings in decision 7 come from that probe's timings
 and a local memory measurement. Implemented on the ingestion branch on 2026-10-22 (FEAT-010).
 Deployed to dev on 2026-10-25 with the scale-limits integration: every one of 30 GRAPH table sets
-wrote with two statements and none was refused. No delivery above the old threshold of about 840
-products has been loaded live yet.
+wrote with two statements and none was refused. On 2026-10-26 a synthetic dev delivery of 3,007
+active products for one day loaded live: every unit wrote with two statements and verified, with
+no refusal ([dated result](../../validation/RESULTS.md#staged-table-writes-adr-149-on-dev--2026-10-22-and-2026-10-26)).
 
 ## Context
 ADR-075 §6 consolidates a table's immutable-record merges "into the fewest statements" the

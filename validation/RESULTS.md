@@ -11,11 +11,11 @@ Times are UTC. Synthetic data only, after an identity check before every write.
 |---|---|---|
 | Scratch probe, 2026-10-22 01:02–03:44 | **PASS** | On scratch databases and roles, removed afterwards: the staged `MERGE` wrote rows identical to the old writer's on five tables, edge values and a record at the 200,000-byte bound included; a re-run inserted nothing; the four-count verification refused each of 7 tampers. At 1,000 to 100,000 rows a unit's read, stage, `MERGE` and verification took 5.4–15.0 s, max of 3 runs [measured on dev]. `IS NOT DISTINCT FROM` dropped correct all-NULL rows, so the equal-or-both-NULL form replaced it ([ADR-149](../docs/decisions/adr-149-write-each-table-unit-with-one-set-based-merge-from-a-staged-object.md) decision 2). |
 | Row ceilings, 2026-10-22 | **SET** | A local memory measurement with no AWS gave 50,000 rows per unit and 20,000 per delivery, the largest grid values inside half the writers' memory and the 900 s run ([write discipline](../docs/capabilities/load-path/write-discipline.md) §11). |
+| Large delivery, 2026-10-26 12:28–12:50 | **PASS** | A product hierarchy with 3,000 added fictional products, then one vendor sales day of 3,007 active products, the design's large-seller tier and about 3.6 times the old limit. Every table unit, up to 3,226 rows, wrote with 2 statements and verified; the day's 3,007 rows and their shipped revenue equal the delivery's reported total on Athena; no refusal, dead letter or alarm. Table writer peak 278 MB, delivery function peak 317 MB [measured on dev]. |
 | Dev deployment, 2026-10-26 00:47–01:27 | **PASS** | With the scale-limits integration deployed: 30 GRAPH table sets of 27–28 rows each wrote with 2 statements, 6.7 s median and 8.7 s max per set, table writer peak 191 MB, no refusal, park or budget return [measured on dev]. |
 
-**Not exercised live:** a delivery above the old limit of about 840 active products a day. The large
-synthetic fixture is deferred, so the earlier limit's removal is proven by the probe and unit tests, not
-by a live load.
+**Not exercised live:** a delivery near the 20,000-row ceiling, and wide windows landed in 30-partition
+chunks (ADR-149 decision 8, deferred).
 
 
 ## Amazon DSP campaign detail cost per click on dev — 2026-10-19
