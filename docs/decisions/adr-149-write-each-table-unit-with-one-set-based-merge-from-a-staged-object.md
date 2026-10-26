@@ -10,7 +10,7 @@ and a local memory measurement. Implemented on the ingestion branch on 2026-10-2
 Deployed to dev on 2026-10-25 with the scale-limits integration: every one of 30 GRAPH table sets
 wrote with two statements and none was refused. On 2026-10-26 a synthetic dev delivery of 3,007
 active products for one day loaded live: every unit wrote with two statements and verified, with
-no refusal ([dated result](../../validation/RESULTS.md#staged-table-writes-adr-149-on-dev--2026-10-22-and-2026-10-26)).
+no refusal ([dated result](../../validation/RESULTS.md#staged-table-writes-adr-149-on-dev--2026-10-22-to-2026-10-26)).
 
 ## Context
 ADR-075 §6 consolidates a table's immutable-record merges "into the fewest statements" the

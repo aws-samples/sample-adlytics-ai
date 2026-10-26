@@ -173,7 +173,7 @@ page:
 |---|---|---|
 | Materialization (per message) | `MATERIALIZATION_BUDGET_SECONDS` (initial 240) | `ceil((widest-variant plans + Σ exact-window plans of other variants) / DEFAULT_QUERY_BATCH_CONCURRENCY) × PER_QUERY_SECONDS`, the gate's existing rounding |
 | Render and persist (per variant) | `RENDER_BUDGET_SECONDS` (initial 45) | Bodies + segments + custody + materialization puts at the declared body count (`campaign_bake_object_count` is per variant), plus one transaction; the message total is `variants × RENDER_BUDGET_SECONDS` |
-| Materialization size (per variant) | `MAX_MATERIALIZATION_BYTES` | Slots × bounded population rows × encoded answer estimate |
+| Materialization size (per variant) | `MAX_MATERIALIZATION_BYTES` | Slots × population rows, at most `BAKE_MAX_ROWS` ([ADR-152](../decisions/adr-152-read-page-sized-answers-in-sql-with-no-arbitrary-row-ceiling.md) decision 8) × encoded answer estimate |
 | Total | `MATERIALIZER_TIMEOUT_SECONDS` (initial 420) ≥ materialization + 3 × render + 30 s claim/checkpoint margin, leaving 15 s slack at the initial constants | — |
 
 The initial constants are expected **not** to pass on first run: with three variants per message and
@@ -217,7 +217,8 @@ change that silently loses derivation shows up as a budget change in review.
   until both pages consume the record.
 - The status events and usage samples this document emits are contracts for the ADR-073 control plane;
   until its transport exists they are structured lifecycle logs.
-- `MAX_MATERIALIZATION_BYTES` at 4 MB assumes the bounded population; the 1,000-campaign scale tier
-  must be re-estimated by the gate before that tier is accepted.
+- `MAX_MATERIALIZATION_BYTES` at 4 MB predates the memory-derived ceiling. The population is now
+  bounded by `BAKE_MAX_ROWS` (ADR-152 decision 8), which is derived from Baker memory (decision 4),
+  so the gate must re-estimate the 4 MB bound against it before Stage 3 is accepted.
 - `PER_QUERY_SECONDS = 30` is a planning constant, not a measured figure; the Stage 0 baseline
   supplies the measured per-plan seconds and the constant is revisited against them.
