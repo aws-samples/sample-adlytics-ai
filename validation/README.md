@@ -1628,6 +1628,12 @@ carries at `5f48abb6`.
   Cognito group. Those two files are from the 2026-10-19 capture, whose sidebar has no Overview item.
 - 31 images were written, `docs/images/` totals 5,473,441 bytes within the 6 MiB budget, and the run
   logged no browser failure. The metric and insight focus dialogs are now taken at CSS scale.
+
+**Recapture, 2026-10-26.** Only `audiences-campaigns.png` was replaced, from a run at 03:13 UTC
+against the same dev origin (synthetic data, persona `probe-a`, `ADL_CAPTURE_SKIP=prompt-administration`,
+exit 2 for the same two skipped images), serving `feat/scale-limits-v2`, where Audiences lists every
+DSP campaign and fetches one on selection. That close-up now chooses a campaign from the keyboard
+before the shot. The other images are still the 2026-10-23 capture.
 - Visual review: the operator agent that ran the capture viewed every image before commit. Each
   shows synthetic data, with no error, skeleton or "Not enough data" state, except the designed
   absences the README captions as such: Gateway products, New customers' missing new-buyer week,

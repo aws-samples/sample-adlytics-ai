@@ -13,7 +13,7 @@ This is the entry point for the current design. It contains navigation only: eac
 | Building analytical experiences | [Analytics Discovery](capabilities/analytics-discovery/README.md) → [UI page contracts](ui/README.md) |
 | Building evaluation | [Agent Quality Loop](capabilities/agent-quality-loop/README.md) → [Protected Quality Review API](capabilities/protected-quality-review-api/README.md) |
 | Planned, not built: forecasting and saturation | [Forecasting](capabilities/forecasting/README.md) → [Saturation](capabilities/saturation/README.md) |
-| Operating a deployment | [Repository README](../README.md) → [Operator tools](capabilities/operational-data-flow-status/operator-tools.md) → [Validation results](../validation/RESULTS.md) |
+| Operating a deployment | [Repository README](../README.md) → [Sizing for large catalogs](../README.md#sizing-for-large-catalogs) → [Operator tools](capabilities/operational-data-flow-status/operator-tools.md) → [Validation results](../validation/RESULTS.md) |
 | Working with an AI assistant | [Build with an AI assistant](kiro.md) → [AGENTS.md](../AGENTS.md) |
 
 ## Documentation levels

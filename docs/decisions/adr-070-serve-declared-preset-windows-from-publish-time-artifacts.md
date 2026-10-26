@@ -17,7 +17,8 @@ Status: Accepted — parent artifact serving implemented in development; display
 >
 > - *Budget.* The presentation function: 29 s, at API Gateway's integration ceiling. An Athena
 >   statement follows the read in the same invocation, and the interactive wait keeps it at least
->   20 s (`INTERACTIVE_THROTTLED_START_MAX_WAIT_SECONDS`, ADR-144), so the read gets 9 s. The other
+>   20 s (the 30 s `MAX_WAIT_SECONDS` less the 10 s `INTERACTIVE_THROTTLED_START_MAX_WAIT_SECONDS`
+>   start window, ADR-144), so the read gets 9 s. The other
 >   callers are looser: chat's MeasurementTool function has 60 s less a 30 s Athena wait, and
 >   chat's quick turn has 120 s.
 > - *Latency.* The p95 of in-Region `TransactGetItems` on dev, 95.0 ms. That's 1,512 calls from
@@ -26,7 +27,9 @@ Status: Accepted — parent artifact serving implemented in development; display
 >   (317.0 ms, a bake task) models a sequence that never ran. The serving callers' own maximum was
 >   99.8 ms.
 > - *Arithmetic.* ⌊9,000 / (9 × 95.0)⌋ = 10 transactions per pass, so N = 1,000. At 99.8 ms it's
->   still 10. Even at 317.0 ms for every call, 90 × 317.0 ms = 28.5 s, inside the function's 29 s.
+>   still 10. At 317.0 ms for every call, 90 × 317.0 ms = 28.5 s, inside the function's 29 s. The
+>   slowest call seen since, 402.8 ms (a bake task's pin read, 2026-10-26 00:47–01:27Z), would give
+>   36.3 s if every call took it; no serving call came near it (their maximum was 84.7 ms).
 >   The pointer reads P and P' (one transaction each per attempt while a window is staged) and the
 >   two retry pauses (up to 0.3 s) aren't in the formula. At N = 1,000 they take about 0.9 s of
 >   the statement's 20 s.
