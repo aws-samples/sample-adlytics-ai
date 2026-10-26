@@ -120,7 +120,11 @@ OPERATOR_ACTIONS: Final[Mapping[IsolatedRefusalReason, str]] = {
     _R.ROWS_OVER_CEILING: _RAISE_MEMORY,
     _R.POPULATION_OVER_CEILING: _RAISE_MEMORY,
     _R.BODY_OVER_CAP: "report the page and variant: a body over the cap needs a source change",
-    _R.BODIES_OVER_INVOCATION: "raise the Baker memory: it scales CPU and network for the writes",
+    _R.BODIES_OVER_INVOCATION: (
+        "report the page and variant: its writes outran the invocation. They wait on S3 at the "
+        "stage's fixed concurrency, so raising the Baker memory (more CPU and network share) "
+        "isn't shown to cure it"
+    ),
     _R.PARTITIONS_OVER_BOUND: (
         "shrink the declared preset: the line states its partitions and the exact-read bound"
     ),
