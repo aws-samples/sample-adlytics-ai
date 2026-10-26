@@ -272,6 +272,14 @@ export interface DataConfig {
    * this is purely a cost dial.
    */
   readonly athenaResultsExpireAfterDays: number;
+  /**
+   * Days before an ADR-149 staged table unit is deleted (owner decision ING-RETENTION, R1: 7).
+   *
+   * A derived transport copy, re-rendered from the immutable objects on any later receive and
+   * read only seconds to minutes after its write; not authority, so the indefinite Stage-1
+   * retention does not apply.
+   */
+  readonly stagingExpireAfterDays: number;
 }
 
 /** AgentCore Runtime model configuration and per-turn resource ceilings. */
@@ -593,6 +601,10 @@ export interface IngestionConfig {
   readonly maxGroupMembers: 4;
   readonly maxPointersPerTable: 37;
   readonly maxObjectRefsPerUnit: 37;
+  /** ADR-149 decision 4: one unit's rows, from probe P-4/P-5 (writer memory and time). */
+  readonly maxRowsPerUnit: 50000;
+  /** ADR-149 decision 4: one delivery's rows, from probe P-5 (delivery function memory). */
+  readonly maxRowsPerDelivery: 20000;
   readonly athenaMaxStatementBytes: 200000;
   readonly maxEncodedIdentityBytes: 128;
   readonly maxPartitionIdentityBytes: 256;
@@ -676,6 +688,10 @@ export function validateIngestionConfig(config: IngestionConfig): void {
     maxGroupMembers: 4,
     maxPointersPerTable: 37,
     maxObjectRefsPerUnit: 37,
+    // ADR-149 (2026-10-22): the row ceilings design §4.6 derives from probe P-4/P-5; they
+    // replace the per-unit statement cap's SQL-size refusal. Write-discipline §11 carries them.
+    maxRowsPerUnit: 50000,
+    maxRowsPerDelivery: 20000,
     athenaMaxStatementBytes: 200000,
     maxEncodedIdentityBytes: 128,
     maxPartitionIdentityBytes: 256,
@@ -754,6 +770,8 @@ const DEFAULT_INGESTION_CONFIG: IngestionConfig = Object.freeze({
   maxGroupMembers: 4,
   maxPointersPerTable: 37,
   maxObjectRefsPerUnit: 37,
+  maxRowsPerUnit: 50000,
+  maxRowsPerDelivery: 20000,
   athenaMaxStatementBytes: 200000,
   maxEncodedIdentityBytes: 128,
   maxPartitionIdentityBytes: 256,
@@ -1195,6 +1213,7 @@ export function defaultConfig(envName: string): AppConfig {
       rawExpireNoncurrentVersionsAfterDays: 90,
       abortIncompleteUploadsAfterDays: 7,
       athenaResultsExpireAfterDays: 30,
+      stagingExpireAfterDays: 7,
     },
 
     landing: envFlag('ADLYTICS_PRODUCER_ONBOARDING_ENABLED')
@@ -1639,6 +1658,16 @@ export const PARAMS = {
     name: 'v2/canonical-current-glue-database',
     producedBy: 'DataV2Stack',
   },
+  semanticV2StagingBucketName: {
+    area: 'data',
+    name: 'v2/staging-bucket',
+    producedBy: 'DataV2Stack',
+  },
+  semanticV2StagingDatabase: {
+    area: 'data',
+    name: 'v2/staging-glue-database',
+    producedBy: 'DataV2Stack',
+  },
   publisherArtifactBucketName: {
     area: 'publisher',
     name: 'artifact-bucket-name',
@@ -2055,6 +2084,17 @@ export function semanticV2DatabaseName(
   const normalized = envName.replace(/-/g, '_');
   const suffix = layer === 'source-aligned' ? 'source_aligned' : layer;
   return `adlytics_${normalized}_v2_${suffix}`;
+}
+
+/**
+ * ADR-149: the one Glue database holding the generated staging tables.
+ *
+ * A separate function rather than a fourth `SemanticV2DatabaseLayer`, so no code that enumerates
+ * the layers grants it by accident: only `grantStagingStorage` names it.
+ */
+export function semanticV2StagingDatabaseName(envName: string): string {
+  assertValidEnvName(envName);
+  return `adlytics_${envName.replace(/-/g, '_')}_v2_staging`;
 }
 
 /**

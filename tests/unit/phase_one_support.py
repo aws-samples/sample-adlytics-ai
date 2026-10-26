@@ -125,6 +125,7 @@ TARGET = AthenaSemanticTarget(
     source_database="z_source",
     candidate_database="a_candidate",
     current_database="m_current",
+    staging_database="s_staging",
 )
 SETTINGS = Stage1DeliverySettings(
     max_units=15,
@@ -133,6 +134,8 @@ SETTINGS = Stage1DeliverySettings(
     max_group_members=4,
     max_pointers_per_table=37,
     max_object_refs_per_unit=37,
+    max_rows_per_unit=50_000,
+    max_rows_per_delivery=20_000,
     athena_max_statement_bytes=200_000,
     max_encoded_identity_bytes=128,
     max_partition_identity_bytes=256,
@@ -147,6 +150,8 @@ DELIVERY_ENVIRONMENT = {
     "ADL_STAGE1_MAX_GROUP_MEMBERS": "4",
     "ADL_STAGE1_MAX_POINTERS_PER_TABLE": "37",
     "ADL_STAGE1_MAX_OBJECT_REFS_PER_UNIT": "37",
+    "ADL_STAGE1_MAX_ROWS_PER_UNIT": "50000",
+    "ADL_STAGE1_MAX_ROWS_PER_DELIVERY": "20000",
     "ADL_STAGE1_ATHENA_MAX_STATEMENT_BYTES": "200000",
     "ADL_STAGE1_MAX_ENCODED_IDENTITY_BYTES": "128",
     "ADL_STAGE1_MAX_PARTITION_IDENTITY_BYTES": "256",

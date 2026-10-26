@@ -343,7 +343,7 @@ def prepared_roster(request: PreparedRosterRequest) -> DeliveryRoster:
                     request,
                 )
             )
-    return _shape(objects, request.target.batch_workgroup, request.max_statement_bytes)
+    return _shape(objects, request.target, request.max_statement_bytes)
 
 
 def _published_canonical(
@@ -378,13 +378,13 @@ def published_roster(request: PublishedRosterRequest) -> DeliveryRoster:
         for receipt in result.receipts
         for item in _receipt_objects(receipt, request)
     ]
-    return _shape(objects, request.target.batch_workgroup, request.max_statement_bytes)
+    return _shape(objects, request.target, request.max_statement_bytes)
 
 
 def _shape(
-    objects: list[_RosterObject], workgroup: str, max_statement_bytes: int
+    objects: list[_RosterObject], target: AthenaSemanticTarget, max_statement_bytes: int
 ) -> DeliveryRoster:
-    """Coalesce objects into canonical units and measure each through the §6 packer."""
+    """Coalesce objects into canonical units and compose each through the staged composer."""
     by_unit: dict[str, dict[tuple[bytes, bytes], _RosterObject]] = {}
     for item in objects:
         members = by_unit.setdefault(item.unit_key, {})
@@ -410,7 +410,10 @@ def _shape(
         )
         composition = compose_unit_statements(
             ComposeUnitStatementsRequest(
-                workload=workload, workgroup=workgroup, max_statement_bytes=max_statement_bytes
+                workload=workload,
+                workgroup=target.batch_workgroup,
+                staging_database=target.staging_database,
+                max_statement_bytes=max_statement_bytes,
             )
         )
         units.append(
@@ -456,6 +459,32 @@ def _refuse(reason: str, description: str) -> ValidationError:
     )
 
 
+def _unit_rows(unit: PlannedUnit) -> int:
+    return sum(len(records) for _, records in unit.workload.records_by_identity)
+
+
+def _require_rows_within_ceilings(roster: DeliveryRoster, settings: Stage1DeliverySettings) -> None:
+    """ADR-149 decision 4: refuse a unit or delivery whose rows exceed the reviewed ceilings.
+
+    The ceilings protect the writers' memory and invocation time, which rows still drive once a
+    unit always composes two statements; refusing here mutates nothing.
+    """
+    for unit in roster.units:
+        rows = _unit_rows(unit)
+        if rows > settings.max_rows_per_unit:
+            raise _refuse(
+                "unit_rows_exceed_cap",
+                f"unit {unit.entry.unit_key!r} has {rows} rows, beyond "
+                f"{settings.max_rows_per_unit}.",
+            )
+    total = sum(_unit_rows(unit) for unit in roster.units)
+    if total > settings.max_rows_per_delivery:
+        raise _refuse(
+            "delivery_rows_exceed_cap",
+            f"the delivery has {total} rows, beyond {settings.max_rows_per_delivery}.",
+        )
+
+
 def require_feasible(check: FeasibilityCheck) -> FeasibleProjection:
     """Prove the §2.1 clean-attempt formula and the §11 roster bounds, or refuse typed.
 
@@ -498,6 +527,7 @@ def require_feasible(check: FeasibilityCheck) -> FeasibleProjection:
                 f"unit {unit.entry.unit_key!r} names {len(unit.servable)} pointers, beyond "
                 f"{settings.max_pointers_per_table}.",
             )
+    _require_rows_within_ceilings(roster, settings)
     result = validate_projection_feasibility(
         ProjectionFeasibilityRequest(
             units=roster.entries,

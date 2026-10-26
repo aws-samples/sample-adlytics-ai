@@ -20,10 +20,12 @@ from adapters.outbound.athena.semantic_storage import (
     AthenaCanonicalMaterializer,
     AthenaSemanticTarget,
     AthenaSourceMaterializer,
-    AthenaTableUnitProjector,
-    UnitWorkload,
+    ProjectionClients,
+    _AthenaProjection,  # pyright: ignore[reportPrivateUsage]
+    _ProjectionRequest,  # pyright: ignore[reportPrivateUsage]
     canonical_records,
 )
+from adapters.outbound.s3.unit_staging import S3UnitStager
 from adapters.outbound.v2_storage_catalog import V2StorageCatalog, load_v2_storage_catalog
 from domain.semantics.canonical_compiler import CanonicalRow, canonical_rows_checksum
 from domain.semantics.identity import (
@@ -89,6 +91,7 @@ def _target() -> AthenaSemanticTarget:
         "source_database": "/adlytics/dev/data/v2/source-aligned-glue-database",
         "candidate_database": "/adlytics/dev/data/v2/canonical-candidate-glue-database",
         "current_database": "/adlytics/dev/data/v2/canonical-current-glue-database",
+        "staging_database": "/adlytics/dev/data/v2/staging-glue-database",
     }
     try:
         client = boto3.client("ssm")
@@ -101,6 +104,27 @@ def _target() -> AthenaSemanticTarget:
     if any(not value for value in values.values()):
         pytest.skip("deployed Semantic V2 Athena target parameter resolved to nothing")
     return AthenaSemanticTarget(**values)
+
+
+def _staging_bucket() -> str:
+    """ADR-149: the deployed staging bucket, or skip where staging is not deployed yet."""
+    try:
+        value = str(
+            boto3.client("ssm")
+            .get_parameter(Name="/adlytics/dev/data/v2/staging-bucket")["Parameter"]
+            .get("Value", "")
+        )
+    except Exception as error:  # noqa: BLE001 — pytest.skip raises: no deployed target
+        pytest.skip(f"deployed Semantic V2 staging bucket is unavailable: {type(error).__name__}")
+    if not value:
+        pytest.skip("deployed Semantic V2 staging bucket parameter resolved to nothing")
+    return value
+
+
+def _clients(client: AthenaClient) -> ProjectionClients:
+    return ProjectionClients(
+        stager=S3UnitStager(_staging_bucket(), boto3.client("s3")), athena=client
+    )
 
 
 def _identity(test_name: str, suffix: str) -> str:
@@ -294,7 +318,7 @@ def test_source_empty_nonempty_exact_replay_and_conflict_round_trip() -> None:
     target = _target()
     catalog = load_v2_storage_catalog(ROOT / "contracts/generated/v2-tables.json")
     client = boto3.client("athena")
-    adapter = AthenaSourceMaterializer(target, catalog, client)
+    adapter = AthenaSourceMaterializer(target, catalog, _clients(client))
     table = catalog.source_for_interpreter("source_pack.amc_attributed_conversion")
     references = (
         _identity(
@@ -355,17 +379,16 @@ def test_table_unit_projector_merges_verifies_and_retry_skips_complete_identity(
     target = _target()
     catalog = load_v2_storage_catalog(ROOT / "contracts/generated/v2-tables.json")
     client = boto3.client("athena")
-    projector = AthenaTableUnitProjector(target, client)
+    projection = _AthenaProjection(target, catalog, _clients(client))
     reference = _identity(
         test_table_unit_projector_merges_verifies_and_retry_skips_complete_identity.__name__,
         "publication",
     )
     request = _canonical(reference)
     table = catalog.canonical("fct_retail_sales_reported_total", successful=False)
-    workload = UnitWorkload(
-        table=table,
-        database=target.candidate_database,
-        records_by_identity=((reference, canonical_records(request, table)),),
+    records = canonical_records(request, table)
+    unit = _ProjectionRequest(
+        table=table, database=target.candidate_database, records=records, identity=reference
     )
     delete = _DeleteRequest(
         client,
@@ -377,13 +400,23 @@ def test_table_unit_projector_merges_verifies_and_retry_skips_complete_identity(
     )
     _delete(delete)
     try:
-        initial = projector.project(workload, retry=False)
-        retry = projector.project(workload, retry=True)
-
-        assert initial.accepted and initial.statement_count == 2
-        assert initial.row_count == 1 and initial.athena_seconds >= 0
-        assert retry.accepted and retry.statement_count == 2
-        assert retry.row_count == 1 and retry.athena_seconds >= 0
+        # ADR-149: stage, merge and verify; the retry verifies first and returns before a MERGE.
+        assert projection.materialize(unit) == (True, True, "")
+        assert projection.materialize(unit) == (True, False, "")
+        assert projection.attest(unit) is True
+        # Control: a non-grain value the target does not hold is refused without a MERGE.
+        altered = _ProjectionRequest(
+            table=table,
+            database=target.candidate_database,
+            records=tuple({**record, "units_shipped": 3} for record in records),
+            identity=reference,
+        )
+        assert projection.materialize(altered) == (
+            False,
+            False,
+            "identity has different Iceberg records",
+        )
+        assert projection.attest(altered) is False
     finally:
         _delete(delete)
 
@@ -392,7 +425,7 @@ def test_candidate_and_successful_history_are_isolated_typed_and_insert_only() -
     target = _target()
     catalog: V2StorageCatalog = load_v2_storage_catalog(ROOT / "contracts/generated/v2-tables.json")
     client = boto3.client("athena")
-    adapter = AthenaCanonicalMaterializer(target, catalog, client)
+    adapter = AthenaCanonicalMaterializer(target, catalog, _clients(client))
     reference = _identity(
         test_candidate_and_successful_history_are_isolated_typed_and_insert_only.__name__,
         "publication",

@@ -25,7 +25,8 @@ export type DataBucketPurpose =
   | 'preset-artifacts'
   | 'v2-results'
   | 'semantic-v2'
-  | 'semantic-v2-raw';
+  | 'semantic-v2-raw'
+  | 'v2-staging';
 
 /**
  * S3's own limit. Asserted rather than trusted because the longest name this builds
@@ -207,6 +208,25 @@ export function athenaResultsLifecycle(config: AppConfig): s3.LifecycleRule[] {
   ];
 }
 
+/**
+ * Lifecycle for ADR-149 staged table units (ING-RETENTION, R1).
+ *
+ * A staged object is a derived transport copy, rebuilt byte for byte from the immutable Semantic
+ * V2 objects, and nothing reads it after its unit's verification, which runs seconds to minutes
+ * after the write. Seven days leaves a working week to inspect a failed unit's rows and is shorter
+ * than the copy the results bucket used to keep. The writers never delete, so they need no
+ * `s3:DeleteObject`.
+ */
+export function stagingLifecycle(config: AppConfig): s3.LifecycleRule[] {
+  return [
+    {
+      id: 'expire-staged-units',
+      enabled: true,
+      expiration: Duration.days(config.data.stagingExpireAfterDays),
+    },
+    abortIncompleteUploads(config),
+  ];
+}
 /** Lifecycle for retained immutable preset-artifact bodies. */
 export function publisherArtifactLifecycle(config: AppConfig): s3.LifecycleRule[] {
   return [

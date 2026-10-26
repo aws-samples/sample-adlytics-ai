@@ -30,8 +30,10 @@ import {
   CANONICAL_DATASET_KEYS,
   INGESTION_ERROR_OPERATIONS,
   IngestionStage1,
+  grantStagingStorage,
   queueAgeCeilingSeconds,
   stage1LimitsEnvironment,
+  stagingEnvironment,
 } from './ingestion-stage1';
 import { ROUTES } from '../generated/execution-graph-protocol';
 import { dataBucketName } from '../mixins/storage';
@@ -295,6 +297,15 @@ export class IngestionStack extends cdk.Stack {
       buildPostGrantInvariantAlarm(this, config, this.staffedTopic);
     }
     this.grantLoad(config, ingestion);
+    // ADR-149 (ING-IAM): only the inline composition stages and verifies in this function; under
+    // `queued` the TableWriter does, so no unused write grant is synthesized here.
+    if (handoff.projectionComposition === 'inline') {
+      const staging = new iam.ManagedPolicy(this, 'DeliveryStagingPolicy', {
+        description: 'ADR-149 staged table units for the inline delivery composition.',
+      });
+      grantStagingStorage(config, ingestion, { write: true }, staging);
+      ingestion.node.addDependency(staging);
+    }
     grantSpanExport(ingestion);
     ingestion.addEventSource(
       new sources.SqsEventSource(this.queue, {
@@ -611,6 +622,9 @@ export class IngestionStack extends cdk.Stack {
       ),
       ADL_SEMANTIC_V2_CANDIDATE_DATABASE: semanticV2DatabaseName(config.envName, 'candidate'),
       ADL_SEMANTIC_V2_CURRENT_DATABASE: semanticV2DatabaseName(config.envName, 'current'),
+      // ADR-149: the delivery runtime requires both in every composition (it refuses a blank at
+      // init); only the inline composition gets the staging grants.
+      ...stagingEnvironment(config),
       // Zero, and this is a correctness setting rather than a cost one. A load must never see a
       // cached result: it would report a write that did not happen.
       ADL_ATHENA_RESULT_REUSE_MAX_AGE_MINUTES: '0',

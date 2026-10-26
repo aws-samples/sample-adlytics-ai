@@ -834,6 +834,8 @@ class IngestionConfig:
     max_group_members: int
     max_pointers_per_table: int
     max_object_refs_per_unit: int
+    max_rows_per_unit: int
+    max_rows_per_delivery: int
     athena_max_statement_bytes: int
     max_encoded_identity_bytes: int
     max_partition_identity_bytes: int
@@ -867,6 +869,8 @@ class Stage1DeliverySettings:
     max_group_members: int
     max_pointers_per_table: int
     max_object_refs_per_unit: int
+    max_rows_per_unit: int
+    max_rows_per_delivery: int
     athena_max_statement_bytes: int
     max_encoded_identity_bytes: int
     max_partition_identity_bytes: int
@@ -884,6 +888,7 @@ class TableWriterSettings:
     max_group_members: int
     max_pointers_per_table: int
     max_object_refs_per_unit: int
+    max_rows_per_unit: int
     athena_max_statement_bytes: int
     max_encoded_identity_bytes: int
     max_partition_identity_bytes: int
@@ -967,6 +972,8 @@ _INGESTION_INTEGER_ENV = (
     ("max_group_members", "ADL_STAGE1_MAX_GROUP_MEMBERS"),
     ("max_pointers_per_table", "ADL_STAGE1_MAX_POINTERS_PER_TABLE"),
     ("max_object_refs_per_unit", "ADL_STAGE1_MAX_OBJECT_REFS_PER_UNIT"),
+    ("max_rows_per_unit", "ADL_STAGE1_MAX_ROWS_PER_UNIT"),
+    ("max_rows_per_delivery", "ADL_STAGE1_MAX_ROWS_PER_DELIVERY"),
     ("athena_max_statement_bytes", "ADL_STAGE1_ATHENA_MAX_STATEMENT_BYTES"),
     ("max_encoded_identity_bytes", "ADL_STAGE1_MAX_ENCODED_IDENTITY_BYTES"),
     ("max_partition_identity_bytes", "ADL_STAGE1_MAX_PARTITION_IDENTITY_BYTES"),
@@ -1011,6 +1018,10 @@ _PLAN_INTENT_RECONCILE_BATCH_SIZE = 50
 _TABLE_WRITER_CLEANUP_RESERVE_MS = 60_000
 _MAX_ACCEPTED_ATTEMPTS_PER_UNIT = 10
 _MAX_ACCEPTED_ATTEMPTS_PER_PLAN = 32
+# ADR-149 decision 4: the reviewed row ceilings §4.6 derives from probe P-4/P-5 (Lambda memory and
+# the 900 s invocation, not SQL size). Write-discipline §11 carries the derivation.
+_MAX_ROWS_PER_UNIT = 50_000
+_MAX_ROWS_PER_DELIVERY = 20_000
 _SEMANTIC_WRITE_VISIBILITY_SECONDS = 960
 _SQS_MAX_VISIBILITY_SECONDS = 43_200
 _STAGE1_OUTBOX_FAILURE_THRESHOLD = 3
@@ -1049,6 +1060,10 @@ def _ingestion_constraint_problems(values: Mapping[str, int]) -> list[str]:
         problems.append("ADL_STAGE1_MAX_ACCEPTED_ATTEMPTS_PER_UNIT (must equal 10)")
     if values["max_accepted_attempts_per_plan"] != _MAX_ACCEPTED_ATTEMPTS_PER_PLAN:
         problems.append("ADL_STAGE1_MAX_ACCEPTED_ATTEMPTS_PER_PLAN (must equal 32)")
+    if values["max_rows_per_unit"] != _MAX_ROWS_PER_UNIT:
+        problems.append("ADL_STAGE1_MAX_ROWS_PER_UNIT (must equal 50000)")
+    if values["max_rows_per_delivery"] != _MAX_ROWS_PER_DELIVERY:
+        problems.append("ADL_STAGE1_MAX_ROWS_PER_DELIVERY (must equal 20000)")
     visibility_seconds = (
         values["table_writer_timeout_seconds"] + values["semantic_write_visibility_margin_seconds"]
     )
@@ -1143,6 +1158,8 @@ def stage1_delivery_settings() -> Stage1DeliverySettings:
         max_group_members=config.max_group_members,
         max_pointers_per_table=config.max_pointers_per_table,
         max_object_refs_per_unit=config.max_object_refs_per_unit,
+        max_rows_per_unit=config.max_rows_per_unit,
+        max_rows_per_delivery=config.max_rows_per_delivery,
         athena_max_statement_bytes=config.athena_max_statement_bytes,
         max_encoded_identity_bytes=config.max_encoded_identity_bytes,
         max_partition_identity_bytes=config.max_partition_identity_bytes,
@@ -1162,6 +1179,7 @@ def table_writer_settings() -> TableWriterSettings:
         max_group_members=config.max_group_members,
         max_pointers_per_table=config.max_pointers_per_table,
         max_object_refs_per_unit=config.max_object_refs_per_unit,
+        max_rows_per_unit=config.max_rows_per_unit,
         athena_max_statement_bytes=config.athena_max_statement_bytes,
         max_encoded_identity_bytes=config.max_encoded_identity_bytes,
         max_partition_identity_bytes=config.max_partition_identity_bytes,
@@ -1589,6 +1607,10 @@ class Settings(BaseSettings):
     semantic_v2_source_database: str = ""
     semantic_v2_candidate_database: str = ""
     semantic_v2_current_database: str = ""
+    semantic_v2_staging_database: str = ""
+    """ADR-149: blank by default; only the table writer and delivery runtimes require it."""
+    semantic_v2_staging_bucket: str = ""
+    """ADR-149: blank by default; only the table writer and delivery runtimes require it."""
     registration_status_table: str = ""
     raw_bucket: str = ""
     athena_result_reuse_max_age_minutes: int = Field(ge=0, le=MAX_RESULT_REUSE_MINUTES)

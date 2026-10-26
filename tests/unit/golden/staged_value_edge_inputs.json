@@ -1,0 +1,349 @@
+{
+  "description": "T-4 edge inputs (ADR-149): each value's catalog type, nullability and tagged value. scripts/generate-staged-value-golden.py renders them through the base renderer into staged_value_text.json; tests/unit/test_athena_staging.py renders them through _rendered.",
+  "entries": [
+    {
+      "name": "string_plain",
+      "type": "string",
+      "nullable": true,
+      "value": {
+        "t": "str",
+        "v": "plain text"
+      }
+    },
+    {
+      "name": "string_empty",
+      "type": "string",
+      "nullable": true,
+      "value": {
+        "t": "str",
+        "v": ""
+      }
+    },
+    {
+      "name": "string_quotes",
+      "type": "string",
+      "nullable": true,
+      "value": {
+        "t": "str",
+        "v": "it's a \"quoted\" value"
+      }
+    },
+    {
+      "name": "string_backslash",
+      "type": "string",
+      "nullable": true,
+      "value": {
+        "t": "str",
+        "v": "back\\slash \\n literal"
+      }
+    },
+    {
+      "name": "string_crlf",
+      "type": "string",
+      "nullable": true,
+      "value": {
+        "t": "str",
+        "v": "line one\r\nline two\rline three\n"
+      }
+    },
+    {
+      "name": "string_tab",
+      "type": "string",
+      "nullable": true,
+      "value": {
+        "t": "str",
+        "v": "col\tumn"
+      }
+    },
+    {
+      "name": "string_non_bmp",
+      "type": "string",
+      "nullable": true,
+      "value": {
+        "t": "str",
+        "v": "emoji 😀 and 𝄞 clef"
+      }
+    },
+    {
+      "name": "string_multibyte",
+      "type": "string",
+      "nullable": true,
+      "value": {
+        "t": "str",
+        "v": "café 東京 Ünïcödé"
+      }
+    },
+    {
+      "name": "string_over_1024_ascii",
+      "type": "string",
+      "nullable": true,
+      "value": {
+        "t": "str",
+        "v": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    },
+    {
+      "name": "string_over_1024_quoted",
+      "type": "string",
+      "nullable": true,
+      "value": {
+        "t": "str",
+        "v": "it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it"
+      }
+    },
+    {
+      "name": "string_over_1024_multibyte",
+      "type": "string",
+      "nullable": true,
+      "value": {
+        "t": "str",
+        "v": "é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀"
+      }
+    },
+    {
+      "name": "string_null",
+      "type": "string",
+      "nullable": true,
+      "value": {
+        "t": "null"
+      }
+    },
+    {
+      "name": "string_required_null",
+      "type": "string",
+      "nullable": false,
+      "value": {
+        "t": "null"
+      }
+    },
+    {
+      "name": "bigint_zero",
+      "type": "bigint",
+      "nullable": false,
+      "value": {
+        "t": "int",
+        "v": "0"
+      }
+    },
+    {
+      "name": "bigint_negative_one",
+      "type": "bigint",
+      "nullable": false,
+      "value": {
+        "t": "int",
+        "v": "-1"
+      }
+    },
+    {
+      "name": "bigint_min",
+      "type": "bigint",
+      "nullable": false,
+      "value": {
+        "t": "int",
+        "v": "-9223372036854775808"
+      }
+    },
+    {
+      "name": "bigint_max",
+      "type": "bigint",
+      "nullable": false,
+      "value": {
+        "t": "int",
+        "v": "9223372036854775807"
+      }
+    },
+    {
+      "name": "bigint_null",
+      "type": "bigint",
+      "nullable": true,
+      "value": {
+        "t": "null"
+      }
+    },
+    {
+      "name": "int_positive",
+      "type": "int",
+      "nullable": false,
+      "value": {
+        "t": "int",
+        "v": "2147483647"
+      }
+    },
+    {
+      "name": "int_negative",
+      "type": "int",
+      "nullable": false,
+      "value": {
+        "t": "int",
+        "v": "-2147483648"
+      }
+    },
+    {
+      "name": "decimal_negative",
+      "type": "decimal(38,4)",
+      "nullable": true,
+      "value": {
+        "t": "decimal",
+        "v": "-1.2345"
+      }
+    },
+    {
+      "name": "decimal_max",
+      "type": "decimal(38,4)",
+      "nullable": true,
+      "value": {
+        "t": "decimal",
+        "v": "9999999999999999999999999999999999.9999"
+      }
+    },
+    {
+      "name": "decimal_min",
+      "type": "decimal(38,4)",
+      "nullable": true,
+      "value": {
+        "t": "decimal",
+        "v": "-9999999999999999999999999999999999.9999"
+      }
+    },
+    {
+      "name": "decimal_smallest_scale",
+      "type": "decimal(38,4)",
+      "nullable": true,
+      "value": {
+        "t": "decimal",
+        "v": "0.0001"
+      }
+    },
+    {
+      "name": "decimal_integral",
+      "type": "decimal(38,4)",
+      "nullable": true,
+      "value": {
+        "t": "decimal",
+        "v": "42"
+      }
+    },
+    {
+      "name": "decimal_trailing_zeros",
+      "type": "decimal(38,4)",
+      "nullable": true,
+      "value": {
+        "t": "decimal",
+        "v": "1.5000"
+      }
+    },
+    {
+      "name": "decimal_exponent",
+      "type": "decimal(38,4)",
+      "nullable": true,
+      "value": {
+        "t": "decimal",
+        "v": "1E+2"
+      }
+    },
+    {
+      "name": "decimal_null",
+      "type": "decimal(38,4)",
+      "nullable": true,
+      "value": {
+        "t": "null"
+      }
+    },
+    {
+      "name": "timestamp_utc_micros",
+      "type": "timestamp",
+      "nullable": false,
+      "value": {
+        "t": "datetime",
+        "v": "2024-01-02T03:04:05.123456+00:00"
+      }
+    },
+    {
+      "name": "timestamp_offset_micros",
+      "type": "timestamp",
+      "nullable": false,
+      "value": {
+        "t": "datetime",
+        "v": "2024-07-01T23:59:59.999999-07:00"
+      }
+    },
+    {
+      "name": "timestamp_whole_second",
+      "type": "timestamp",
+      "nullable": false,
+      "value": {
+        "t": "datetime",
+        "v": "2026-10-21T00:00:00+05:30"
+      }
+    },
+    {
+      "name": "timestamp_naive",
+      "type": "timestamp",
+      "nullable": false,
+      "value": {
+        "t": "datetime",
+        "v": "2024-01-02T03:04:05"
+      }
+    },
+    {
+      "name": "timestamp_null",
+      "type": "timestamp",
+      "nullable": true,
+      "value": {
+        "t": "null"
+      }
+    },
+    {
+      "name": "date_1900",
+      "type": "date",
+      "nullable": false,
+      "value": {
+        "t": "date",
+        "v": "1900-01-01"
+      }
+    },
+    {
+      "name": "date_2026",
+      "type": "date",
+      "nullable": false,
+      "value": {
+        "t": "date",
+        "v": "2026-12-31"
+      }
+    },
+    {
+      "name": "date_null",
+      "type": "date",
+      "nullable": true,
+      "value": {
+        "t": "null"
+      }
+    },
+    {
+      "name": "boolean_true",
+      "type": "boolean",
+      "nullable": false,
+      "value": {
+        "t": "bool",
+        "v": true
+      }
+    },
+    {
+      "name": "boolean_false",
+      "type": "boolean",
+      "nullable": false,
+      "value": {
+        "t": "bool",
+        "v": false
+      }
+    },
+    {
+      "name": "boolean_null",
+      "type": "boolean",
+      "nullable": true,
+      "value": {
+        "t": "null"
+      }
+    }
+  ]
+}

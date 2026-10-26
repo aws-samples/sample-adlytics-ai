@@ -34,10 +34,16 @@ from adapters.inbound.ingestion_handlers.table_attempt_protocol import (
     StatementResult,
     StatementRun,
     instant,
-    readback_matches,
     run_statement,
+    verification_holds,
 )
-from adapters.outbound.telemetry.reporting import LogSeverity, OperationLog, report_operation
+from adapters.outbound.telemetry.reporting import (
+    LogSeverity,
+    OperationLog,
+    Report,
+    report_error,
+    report_operation,
+)
 from adapters.outbound.telemetry.tracing import TABLE_INLINE_RUN, span, trace_boundary
 from domain.operations.stage1_lifecycle_head import (
     Stage1LifecycleHeadTuple,
@@ -116,6 +122,7 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
     from ports.outbound.table_attempt import TableAttemptStore
     from ports.outbound.table_attempt_start import TableAttemptStartClient
     from ports.outbound.table_attempt_terminal import TableAttemptTerminalClient
+    from ports.outbound.unit_staging import UnitStager
 
 __all__ = [
     "InlineAuthorityReads",
@@ -195,6 +202,8 @@ class InlineRunRuntime:
     start: TableAttemptStartClient
     terminals: TableAttemptTerminalClient
     reads: InlineAuthorityReads
+    stager: UnitStager
+    """ADR-149: writes each run's staged unit just before its MERGE begins."""
     bounds: StatementStartBounds
     lease_duration_seconds: int
     wall: Callable[[], datetime]
@@ -383,6 +392,8 @@ def _report(  # noqa: PLR0913, PLR0917 - one private reporting seam
                 "internal_operation_id": ctx.request.operation_id,
                 "physical_table_id": ctx.table_id,
                 "run_id": ctx.run_id,
+                # §4.8: the receive (legacy inline) or set (GRAPH) every line belongs to.
+                "execution_id": ctx.request.execution_id,
                 **details,
             },
         ),
@@ -704,6 +715,7 @@ def _statement_run(ctx: _RunContext) -> StatementRun:
             start=runtime.start,
             terminals=runtime.terminals,
             reads=runtime.reads,
+            stager=runtime.stager,
             wall=runtime.wall,
             monotonic_ms=runtime.monotonic_ms,
             sleep_ms=runtime.sleep_ms,
@@ -760,12 +772,12 @@ def _require_succeeded(ctx: _RunContext, result: StatementCompleted, verificatio
             f"the provider terminal is {result.state.value}.",
             deadline_cancelled=result.cancel_requested,
         )
-    if verification and not readback_matches(
-        ctx.request.workload, ctx.runtime.terminals.readback_rows(result.query_execution_id)
+    if verification and not verification_holds(
+        ctx.request.composition, ctx.runtime.terminals.readback_rows(result.query_execution_id)
     ):
         raise _StatementFailedError(
             InlineRunOutcome.VERIFICATION_MISMATCH,
-            "the verification readback differs from the immutable objects.",
+            "the verification counts differ from the staged unit.",
         )
 
 
@@ -890,6 +902,26 @@ def _finalize_run(ctx: _RunContext) -> None:
 # --- The one shared inline-run boundary -----------------------------------------------------------
 
 
+def _accepted_attempts(ctx: _RunContext) -> int | None:
+    """Read the finalized run's accepted reservations once, for telemetry only (§4.8).
+
+    The run is already FINALIZED and its lease released, so a failed read is reported once
+    and the terminal line carries ``None``; it never changes the run's outcome.
+    """
+    try:
+        return _reservations(InlineRunAttemptOwner(ctx.table_id, ctx.run_id, _fresh_run_item(ctx)))
+    except Exception as error:
+        report_error(
+            error,
+            Report(
+                operation="semantic_inline_run_terminal",
+                correlation_id=ctx.request.execution_id,
+                logger=ctx.runtime.logger,
+            ),
+        )
+        return None
+
+
 def _causation_event_id(head: Stage1LifecycleHeadTuple) -> str:
     return head.causation_event_id if head.causation_event_id is not None else head.latest_event_id
 
@@ -950,6 +982,13 @@ def run_inline_table(runtime: InlineRunRuntime, request: InlineRunRequest) -> In
             )
         finally:
             _release_lease(ctx)
-        _report(ctx, "semantic_inline_run_terminal", InlineRunOutcome.FINALIZED, LogSeverity.INFO)
+        _report(
+            ctx,
+            "semantic_inline_run_terminal",
+            InlineRunOutcome.FINALIZED,
+            LogSeverity.INFO,
+            accepted_attempts=_accepted_attempts(ctx),
+            rows=sum(len(records) for _, records in request.workload.records_by_identity),
+        )
         run_span.record(completed=total, outcome=InlineRunOutcome.FINALIZED)
         return _result(ctx, InlineRunOutcome.FINALIZED, retryable=False)

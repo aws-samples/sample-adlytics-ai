@@ -6,9 +6,18 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
+from typing import Final, cast
 
-__all__ = ["V2Column", "V2StorageCatalog", "V2Table", "load_v2_storage_catalog"]
+__all__ = [
+    "STAGING_RESERVED_COLUMNS",
+    "V2Column",
+    "V2StorageCatalog",
+    "V2Table",
+    "load_v2_storage_catalog",
+]
+
+STAGING_RESERVED_COLUMNS: Final = frozenset({"stg_ordinal", "staging_key"})
+"""Names the staging tables add to every catalog column (ADR-149), so no column may use one."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,6 +106,8 @@ def _table(value: object, label: str, *, source: bool) -> V2Table:
         nullable = column.get("nullable")
         if not isinstance(column_name, str) or not column_name:
             raise ValueError(f"{label}.columns[{index}] has no name.")
+        if column_name in STAGING_RESERVED_COLUMNS:
+            raise ValueError(f"{label}.{column_name} is a name reserved for staging.")
         if not isinstance(column_type, str) or not column_type:
             raise ValueError(f"{label}.{column_name} has no type.")
         if not isinstance(nullable, bool):

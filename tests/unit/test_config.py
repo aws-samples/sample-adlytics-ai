@@ -807,3 +807,17 @@ class TestEvaluationGateJobSettings:
         with pytest.raises(InvariantError) as caught:
             evaluation_result_ingress_settings()
         assert caught.value.context == {"missing": ["deliveries_table"]}
+
+
+@pytest.mark.covers("ADR-149")
+def test_shared_settings_resolve_without_the_staging_database() -> None:
+    """Only the table writer and delivery runtimes need staging; every other Lambda starts."""
+    settings = load_settings(_with(), resolve_client_secret=False)
+    assert settings.semantic_v2_staging_database == ""
+    assert settings.semantic_v2_staging_bucket == ""
+    # Control: each field reads its prefixed variable, so a rename or lost prefix fails here.
+    named = load_settings(
+        _with(ADL_SEMANTIC_V2_STAGING_DATABASE="x", ADL_SEMANTIC_V2_STAGING_BUCKET="y"),
+        resolve_client_secret=False,
+    )
+    assert (named.semantic_v2_staging_database, named.semantic_v2_staging_bucket) == ("x", "y")

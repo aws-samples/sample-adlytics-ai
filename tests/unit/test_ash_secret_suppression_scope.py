@@ -145,6 +145,31 @@ def _documented_vectors(_root: Path, text: str) -> set[str]:
     return derived
 
 
+GOLDEN_GENERATOR = Path("scripts/generate-staged-value-golden.py")
+GOLDEN_INPUTS = Path("tests/unit/golden/staged_value_edge_inputs.json")
+GENERATOR_BASE_BLOB = re.compile(r'^BASE_BLOB = "(?P<blob>[0-9a-f]{40})"$', re.MULTILINE)
+
+
+def _staged_value_golden(root: Path, text: str) -> set[str]:
+    """Derive the golden's `renderer_blob` from the generator's `BASE_BLOB`, the rest from inputs.
+
+    The generator refuses to write a golden from any renderer blob but `BASE_BLOB`, so that is
+    the only blob id the golden can derive. Every other hex run must already be in the edge-inputs
+    file, which is not suppressed, so a credential pasted into both is still reported there.
+    """
+    try:
+        golden: object = json.loads(text)
+    except json.JSONDecodeError:
+        return set()
+    derived = set(HEX_RUN.findall((root / GOLDEN_INPUTS).read_text()))
+    base = GENERATOR_BASE_BLOB.search((root / GOLDEN_GENERATOR).read_text())
+    if isinstance(golden, dict) and base is not None:
+        blob = cast("dict[str, object]", golden).get("renderer_blob")
+        if blob == base["blob"]:
+            derived.add(base["blob"])
+    return derived
+
+
 BOUND: dict[str, Verifier] = {
     "docs/ui/generated/design-manifest.json": _design_manifest,
     "src/adapters/deep_input_revision.py": _deep_input_revisions,
@@ -153,6 +178,7 @@ BOUND: dict[str, Verifier] = {
     str(execution_graphs.TYPESCRIPT_PATH): _contract_digest(execution_graphs.CONTRACT_PATH),
     str(execution_graphs.PYTHON_PATH): _contract_digest(execution_graphs.CONTRACT_PATH),
     "docs/capabilities/load-path/write-discipline.md": _documented_vectors,
+    "tests/unit/golden/staged_value_text.json": _staged_value_golden,
 }
 """Every secret-suppressed path outside the fixture trees, and how its hex values are derived."""
 

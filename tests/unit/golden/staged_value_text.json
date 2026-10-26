@@ -1,0 +1,161 @@
+{
+  "renderer_blob": "d5346b39ac87b94a276ec0bbb9d2ffa4a9127c76",
+  "texts": [
+    {
+      "name": "string_plain",
+      "text": "plain text"
+    },
+    {
+      "name": "string_empty",
+      "text": ""
+    },
+    {
+      "name": "string_quotes",
+      "text": "it's a \"quoted\" value"
+    },
+    {
+      "name": "string_backslash",
+      "text": "back\\slash \\n literal"
+    },
+    {
+      "name": "string_crlf",
+      "text": "line one\r\nline two\rline three\n"
+    },
+    {
+      "name": "string_tab",
+      "text": "col\tumn"
+    },
+    {
+      "name": "string_non_bmp",
+      "text": "emoji 😀 and 𝄞 clef"
+    },
+    {
+      "name": "string_multibyte",
+      "text": "café 東京 Ünïcödé"
+    },
+    {
+      "name": "string_over_1024_ascii",
+      "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "name": "string_over_1024_quoted",
+      "text": "it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it's \"q\" \\ it"
+    },
+    {
+      "name": "string_over_1024_multibyte",
+      "text": "é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀é漢😀"
+    },
+    {
+      "name": "string_null",
+      "text": null
+    },
+    {
+      "name": "string_required_null",
+      "error": "ValueError"
+    },
+    {
+      "name": "bigint_zero",
+      "text": "0"
+    },
+    {
+      "name": "bigint_negative_one",
+      "text": "-1"
+    },
+    {
+      "name": "bigint_min",
+      "text": "-9223372036854775808"
+    },
+    {
+      "name": "bigint_max",
+      "text": "9223372036854775807"
+    },
+    {
+      "name": "bigint_null",
+      "text": null
+    },
+    {
+      "name": "int_positive",
+      "text": "2147483647"
+    },
+    {
+      "name": "int_negative",
+      "text": "-2147483648"
+    },
+    {
+      "name": "decimal_negative",
+      "text": "-1.2345"
+    },
+    {
+      "name": "decimal_max",
+      "text": "9999999999999999999999999999999999.9999"
+    },
+    {
+      "name": "decimal_min",
+      "text": "-9999999999999999999999999999999999.9999"
+    },
+    {
+      "name": "decimal_smallest_scale",
+      "text": "0.0001"
+    },
+    {
+      "name": "decimal_integral",
+      "text": "42"
+    },
+    {
+      "name": "decimal_trailing_zeros",
+      "text": "1.5000"
+    },
+    {
+      "name": "decimal_exponent",
+      "text": "1E+2"
+    },
+    {
+      "name": "decimal_null",
+      "text": null
+    },
+    {
+      "name": "timestamp_utc_micros",
+      "text": "2024-01-02 03:04:05.123456"
+    },
+    {
+      "name": "timestamp_offset_micros",
+      "text": "2024-07-02 06:59:59.999999"
+    },
+    {
+      "name": "timestamp_whole_second",
+      "text": "2026-10-20 18:30:00.000000"
+    },
+    {
+      "name": "timestamp_naive",
+      "error": "ValueError"
+    },
+    {
+      "name": "timestamp_null",
+      "text": null
+    },
+    {
+      "name": "date_1900",
+      "text": "1900-01-01"
+    },
+    {
+      "name": "date_2026",
+      "text": "2026-12-31"
+    },
+    {
+      "name": "date_null",
+      "text": null
+    },
+    {
+      "name": "boolean_true",
+      "text": "true"
+    },
+    {
+      "name": "boolean_false",
+      "text": "false"
+    },
+    {
+      "name": "boolean_null",
+      "text": null
+    }
+  ]
+}

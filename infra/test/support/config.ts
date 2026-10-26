@@ -42,6 +42,7 @@ export const TEST_CONFIG: AppConfig = {
     rawExpireNoncurrentVersionsAfterDays: 90,
     abortIncompleteUploadsAfterDays: 7,
     athenaResultsExpireAfterDays: 30,
+    stagingExpireAfterDays: 7,
   },
   landing: {
     enabled: true,
@@ -139,6 +140,8 @@ export const TEST_CONFIG: AppConfig = {
     maxGroupMembers: 4,
     maxPointersPerTable: 37,
     maxObjectRefsPerUnit: 37,
+    maxRowsPerUnit: 50000,
+    maxRowsPerDelivery: 20000,
     athenaMaxStatementBytes: 200000,
     maxEncodedIdentityBytes: 128,
     maxPartitionIdentityBytes: 256,

@@ -93,6 +93,8 @@ export const BY_PATH: Readonly<Record<string, readonly ScanDisposition[]>> = {
   ],
   'DataV2Stack:SemanticV2Bucket/Resource': [checkov('CKV_AWS_21', UNVERSIONED)],
   'DataV2Stack:SemanticV2AthenaResultsBucket/Resource': [checkov('CKV_AWS_21', UNVERSIONED)],
+  // ADR-149 (ING-INFRA, 2026-10-21): staged units are re-rendered from the immutable objects.
+  'DataV2Stack:SemanticV2StagingBucket/Resource': [checkov('CKV_AWS_21', UNVERSIONED)],
   'AgentStack:PageContextTable/Resource': [
     checkov('CKV_AWS_28', `${DESIGN} a TTL cache of page context; nothing in it is a first copy`),
   ],

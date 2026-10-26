@@ -5,12 +5,10 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
-from time import monotonic
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Final, cast
 
 import boto3
 
@@ -22,12 +20,9 @@ from adapters.outbound.athena.execution import (
     start,
 )
 from adapters.outbound.athena.literals import quoted
-from adapters.outbound.athena.parameters import sql_literal
-from adapters.outbound.athena.start_envelope import StatementFits, envelope_fits
 from adapters.outbound.s3.semantic_storage import source_publication_payload
 from adapters.outbound.telemetry.tracing import ATHENA_STATEMENT, span, trace_boundary
 from adapters.outbound.v2_storage_catalog import V2Column, V2StorageCatalog, V2Table
-from domain.operations.statement_protocol import MAX_STATEMENT_BYTES
 from domain.semantics.publication import PublicationCandidate, SuccessfulPublication
 from domain.semantics.source_aligned import SourceAlignedPublication
 from ports.outbound.canonical import (
@@ -40,29 +35,28 @@ from ports.outbound.source_aligned import MaterializeSourceRowsetResult
 if TYPE_CHECKING:  # pragma: no cover
     from types_boto3_athena.client import AthenaClient
 
+    from adapters.outbound.athena.table_attempt_statements import UnitStatementComposition
     from adapters.outbound.s3.semantic_storage import ProjectionUnitSource
+    from ports.outbound.unit_staging import StagedUnit, UnitStager
 
 __all__ = [
     "AthenaCanonicalMaterializer",
     "AthenaSemanticTarget",
     "AthenaSourceMaterializer",
-    "AthenaTableUnitProjector",
     "PhysicalRecord",
-    "UnitProjectionResult",
+    "ProjectionClients",
+    "StagedSource",
     "UnitWorkload",
     "canonical_records",
     "canonical_unit_records",
-    "merge_batches",
-    "merge_statement",
-    "multi_select_statement",
     "ordered_records",
-    "pack_object_batches",
-    "select_statement",
     "source_records",
+    "staged_merge_statement",
+    "verification_matches",
+    "verification_statement",
 ]
 
 _IDENTIFIER = re.compile(r"^[a-z][a-z0-9_]*$")
-_MAX_PARAMETER_LENGTH = 1024
 type PhysicalValue = str | int | float | bool | Decimal | date | datetime | None
 type PhysicalRecord = dict[str, PhysicalValue]
 
@@ -79,6 +73,8 @@ class AthenaSemanticTarget:
     source_database: str
     candidate_database: str
     current_database: str
+    staging_database: str
+    """The staging database whose external tables read staged units (ADR-149)."""
 
     def __post_init__(self) -> None:
         if any(
@@ -88,9 +84,12 @@ class AthenaSemanticTarget:
                 self.source_database,
                 self.candidate_database,
                 self.current_database,
+                self.staging_database,
             )
         ):
             raise ValueError("Athena Semantic V2 target requires every workgroup/database name.")
+        if not _IDENTIFIER.fullmatch(self.staging_database):
+            raise ValueError("Athena Semantic V2 staging database must be a generated identifier.")
 
 
 def _json(value: object) -> str:
@@ -227,70 +226,6 @@ def _athena_type(column_type: str) -> str:
     raise ValueError(f"unsupported generated V2 Athena type {column_type!r}.")
 
 
-def _value(value: PhysicalValue, column: V2Column) -> tuple[str, tuple[str, ...]]:
-    sql_type = _athena_type(column.type)
-    if value is None:
-        if not column.nullable:
-            raise ValueError(f"required V2 column {column.name!r} is null.")
-        return f"CAST(NULL AS {sql_type})", ()
-    if isinstance(value, datetime):
-        if value.tzinfo is None:
-            raise ValueError(f"V2 timestamp {column.name!r} must be timezone-aware.")
-        rendered = value.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S.%f")
-    elif isinstance(value, date):
-        rendered = value.isoformat()
-    elif isinstance(value, bool):
-        rendered = "true" if value else "false"
-    else:
-        rendered = str(value)
-    literal = sql_literal(rendered)
-    if len(literal.encode()) > _MAX_PARAMETER_LENGTH:
-        return f"CAST({literal} AS {sql_type})", ()
-    return f"CAST(? AS {sql_type})", (rendered,)
-
-
-def _ordered_record(table: V2Table, record: PhysicalRecord) -> tuple[PhysicalValue, ...]:
-    names = tuple(column.name for column in table.columns)
-    missing = set(names) - set(record)
-    if missing:
-        raise ValueError(f"{table.name}: physical record is missing {sorted(missing)}.")
-    return tuple(record[name] for name in names)
-
-
-def merge_statement(
-    table: V2Table,
-    records: tuple[PhysicalRecord, ...],
-) -> tuple[str, tuple[str, ...]]:
-    """Compose one insert-only immutable-partition MERGE from generated identifiers."""
-    if not records:
-        raise ValueError(f"{table.name}: immutable materialization requires at least one record.")
-    columns = table.columns
-    names = tuple(column.name for column in columns)
-    for name in names:
-        if not _IDENTIFIER.fullmatch(name):
-            raise ValueError(f"unsafe generated V2 column identifier {name!r}.")
-    parameters: list[str] = []
-    rows: list[str] = []
-    for record in records:
-        expressions: list[str] = []
-        for value, column in zip(_ordered_record(table, record), columns, strict=True):
-            expression, bound = _value(value, column)
-            expressions.append(expression)
-            parameters.extend(bound)
-        rows.append("(" + ", ".join(expressions) + ")")
-    column_list = ", ".join(quoted(name) for name in names)
-    source_columns = ", ".join(quoted(name) for name in names)
-    match = " AND ".join(f"target.{quoted(name)} = incoming.{quoted(name)}" for name in table.grain)
-    inserted = ", ".join(f"incoming.{quoted(name)}" for name in names)
-    sql = (
-        f"MERGE INTO {quoted(table.name)} AS target "  # noqa: S608 - identifiers come from generated catalog
-        f"USING (VALUES {', '.join(rows)}) AS incoming ({source_columns}) "
-        f"ON {match} "
-        f"WHEN NOT MATCHED THEN INSERT ({column_list}) VALUES ({inserted})"
-    )
-    return sql, tuple(parameters)
-
-
 def _grain_sort_value(value: PhysicalValue) -> tuple[int, Decimal | str]:
     """Order one grain value the way Athena's ORDER BY orders the typed column.
 
@@ -328,78 +263,6 @@ def ordered_records(
     return ordered
 
 
-def _expected_records(
-    table: V2Table,
-    records: tuple[PhysicalRecord, ...],
-) -> tuple[tuple[str | None, ...], ...]:
-    return tuple(
-        tuple(_expected(value) for value in _ordered_record(table, record)) for record in records
-    )
-
-
-def _missing_records(
-    table: V2Table,
-    records: tuple[PhysicalRecord, ...],
-    actual: tuple[tuple[str | None, ...], ...],
-) -> tuple[PhysicalRecord, ...] | None:
-    expected = _expected_records(table, records)
-    column_indexes = {column.name: index for index, column in enumerate(table.columns)}
-    grain_indexes = tuple(column_indexes[name] for name in table.grain)
-    expected_by_grain = {
-        tuple(row[index] for index in grain_indexes): (record, row)
-        for record, row in zip(records, expected, strict=True)
-    }
-    found: set[tuple[str | None, ...]] = set()
-    for row in actual:
-        key = tuple(row[index] for index in grain_indexes)
-        match = expected_by_grain.get(key)
-        if key in found or match is None or match[1] != row:
-            return None
-        found.add(key)
-    return tuple(record for key, (record, _) in expected_by_grain.items() if key not in found)
-
-
-def merge_batches(
-    table: V2Table,
-    records: tuple[PhysicalRecord, ...],
-    fits: StatementFits,
-) -> tuple[tuple[PhysicalRecord, ...], ...]:
-    """Split immutable records into contiguous merges, each within the statement byte bound.
-
-    ``fits`` is the one §11 byte measure (``start_envelope.envelope_fits``); there is no
-    parameter-count bound. A record whose own merge does not fit raises ``ValueError``.
-    """
-    batches: list[tuple[PhysicalRecord, ...]] = []
-    pending: list[PhysicalRecord] = []
-    for record in records:
-        proposed = (*pending, record)
-        within = fits(*merge_statement(table, proposed))
-        if not within and pending:
-            batches.append(tuple(pending))
-            pending = [record]
-            within = fits(*merge_statement(table, tuple(pending)))
-        else:
-            pending.append(record)
-        if not within:
-            raise ValueError(
-                f"{table.name}: one immutable record exceeds the statement byte bound."
-            )
-    if pending:
-        batches.append(tuple(pending))
-    return tuple(batches)
-
-
-def select_statement(table: V2Table) -> str:
-    """Compose the exact-partition readback query for an immutable projection."""
-    names = ", ".join(quoted(column.name) for column in table.columns)
-    partition = table.partition_keys[0]
-    ordering = ", ".join(quoted(name) for name in table.grain)
-    return (
-        f"SELECT {names} FROM {quoted(table.name)} "  # noqa: S608 - generated identifiers only  # nosec B608 # A-SQL-001
-        f"WHERE {quoted(partition)} = CAST(? AS varchar) ORDER BY {ordering}"
-    )
-
-
 def _expected(value: PhysicalValue) -> str | None:
     if value is None:
         return None
@@ -411,25 +274,6 @@ def _expected(value: PhysicalValue) -> str | None:
     if isinstance(value, bool):
         return "true" if value else "false"
     return str(value)
-
-
-def _readback_reason(
-    table: V2Table,
-    expected: tuple[tuple[str | None, ...], ...],
-    actual: tuple[tuple[str | None, ...], ...],
-) -> str:
-    if len(actual) != len(expected):
-        return f"Iceberg readback row count differs for {table.name}."
-    for row_index, (wanted, found) in enumerate(zip(expected, actual, strict=True)):
-        if len(found) != len(wanted):
-            return f"Iceberg readback column count differs at row {row_index} for {table.name}."
-        for column_index, (wanted_value, found_value) in enumerate(zip(wanted, found, strict=True)):
-            if found_value != wanted_value:
-                return (
-                    f"Iceberg readback differs at row {row_index}, column "
-                    f"{table.columns[column_index].name}."
-                )
-    return "Iceberg readback differs from immutable records."
 
 
 @dataclass(frozen=True, slots=True)
@@ -445,6 +289,14 @@ class _StatementExecutionRequest:
     table: V2Table
     operation_kind: str
     statement: StatementRequest
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectionClients:
+    """The unit stager and the Athena client one Iceberg projection writes through."""
+
+    stager: UnitStager
+    athena: AthenaClient | None = None
 
 
 @trace_boundary(ATHENA_STATEMENT)
@@ -474,83 +326,109 @@ def _execute_statement(client: AthenaClient, request: _StatementExecutionRequest
 
 
 class _AthenaProjection:
+    """The operator path's staged write (ADR-149, D7): the writers' two statements per identity.
+
+    Every call stages the identity's unit first, because the verification reads the staged rows
+    too; it may verify before it merges.
+    """
+
     def __init__(
         self,
         target: AthenaSemanticTarget,
         catalog: V2StorageCatalog,
-        client: AthenaClient | None,
+        clients: ProjectionClients,
     ) -> None:
         self._target = target
         self._catalog = catalog
-        self._client = client or boto3.client("athena")
+        self._client = clients.athena or boto3.client("athena")
+        self._stager = clients.stager
 
     def attest(self, request: _ProjectionRequest) -> bool:
-        """Compare one exact identity projection through SELECT only."""
-        records = ordered_records(request.table, request.records)
-        expected = _expected_records(request.table, records)
-        return self._read(request.table, request.database, request.identity) == expected
+        """Compare one exact identity projection through the verification only."""
+        composition = self._staged(request)
+        return verification_matches(_staged_unit(composition), self._verify(request, composition))
 
     def _statement(self, request: _StatementExecutionRequest) -> str:
         return _execute_statement(self._client, request)
 
     def materialize(self, request: _ProjectionRequest) -> tuple[bool, bool, str]:
-        table = request.table
-        database = request.database
-        records = ordered_records(table, request.records)
-        identity = request.identity
-        expected = _expected_records(table, records)
-        before = self._read(table, database, identity)
-        if before == expected:
+        """Accept an exact identity, refuse a conflicting one, or merge and verify again."""
+        composition = self._staged(request)
+        staged = _staged_unit(composition)
+        before = self._verify(request, composition)
+        if verification_matches(staged, before):
             return True, False, ""
-        missing = _missing_records(table, records, before)
-        if missing is None:
+        if _verification_conflicts(staged, before):
             return False, False, "identity has different Iceberg records"
-        created = False
-        fits = envelope_fits(self._target.batch_workgroup, database, MAX_STATEMENT_BYTES)
-        for batch in merge_batches(table, missing, fits):
-            sql, parameters = merge_statement(table, batch)
-            self._statement(
-                _StatementExecutionRequest(
-                    table=table,
-                    operation_kind="merge",
-                    statement=StatementRequest(
-                        sql=sql,
-                        parameters=parameters,
-                        workgroup=self._target.batch_workgroup,
-                        database=database,
-                        reuse_minutes=0,
-                    ),
-                )
+        merge = composition.merges[0]
+        self._statement(
+            _StatementExecutionRequest(
+                table=request.table,
+                operation_kind="merge",
+                statement=StatementRequest(
+                    sql=merge.sql,
+                    parameters=merge.parameters,
+                    workgroup=self._target.batch_workgroup,
+                    database=request.database,
+                    reuse_minutes=0,
+                ),
             )
-            created = True
-        after = self._read(table, database, identity)
-        accepted = after == expected
+        )
+        if verification_matches(staged, self._verify(request, composition)):
+            return True, True, ""
         return (
-            accepted,
-            accepted and created,
-            "" if accepted else _readback_reason(table, expected, after),
+            False,
+            False,
+            f"Iceberg verification differs from the staged unit for {request.table.name}.",
         )
 
-    def _read(
-        self,
-        table: V2Table,
-        database: str,
-        identity: str,
+    def _staged(self, request: _ProjectionRequest) -> UnitStatementComposition:
+        # Deferred: the composer imports this module for its statements and workload type.
+        from adapters.outbound.athena.table_attempt_statements import (  # noqa: PLC0415
+            ComposeUnitStatementsRequest,
+            compose_unit_statements,
+        )
+
+        composition = compose_unit_statements(
+            ComposeUnitStatementsRequest(
+                workload=UnitWorkload(
+                    request.table, request.database, ((request.identity, request.records),)
+                ),
+                workgroup=self._target.batch_workgroup,
+                staging_database=self._target.staging_database,
+            )
+        )
+        merge = composition.merges[0]
+        if merge.staged is None or merge.render is None:  # pragma: no cover - shape-checked
+            raise ValueError("a composed MERGE carries its staged unit and renderer.")
+        self._stager.ensure(merge.staged, merge.render)
+        return composition
+
+    def _verify(
+        self, request: _ProjectionRequest, composition: UnitStatementComposition
     ) -> tuple[tuple[str | None, ...], ...]:
+        verification = composition.verification
         execution = self._statement(
             _StatementExecutionRequest(
-                table=table,
+                table=request.table,
                 operation_kind="select",
                 statement=StatementRequest(
-                    sql=select_statement(table),
-                    parameters=(identity,),
+                    sql=verification.sql,
+                    parameters=verification.parameters,
                     workgroup=self._target.batch_workgroup,
-                    database=database,
+                    database=request.database,
                     reuse_minutes=0,
                 ),
             )
         )
         return tuple(tuple(row) for row in fetch_rows(self._client, execution))
+
+
+def _staged_unit(composition: UnitStatementComposition) -> StagedUnit:
+    staged = composition.merges[0].staged
+    if staged is None:  # pragma: no cover - UnitStatementComposition refuses this shape
+        raise ValueError("a composed MERGE carries its staged unit.")
+    return staged
 
 
 def canonical_unit_records(
@@ -590,48 +468,168 @@ def canonical_unit_records(
     return tuple(records)
 
 
-def pack_object_batches(
-    table: V2Table,
-    objects: tuple[tuple[PhysicalRecord, ...], ...],
-    fits: StatementFits,
-) -> tuple[tuple[PhysicalRecord, ...], ...]:
-    """Pack whole immutable objects greedily under the one statement byte bound.
+_STAGING_KEY = re.compile(r"^[0-9a-f]{64}$")
+_VERIFICATION_SIDES: Final = ("target", "staged", "matched_target", "matched_staged")
+_COUNT = re.compile(r"^(0|[1-9][0-9]*)$")
 
-    A failed statement then leaves whole objects either fully merged or untouched; only
-    an object that alone exceeds the bound is split, exactly as `merge_batches` splits.
+
+def _equal(left: str, right: str, column: V2Column) -> str:
+    """Compare one column: ``=``, or "equal, or both NULL" when the column is nullable.
+
+    Never ``IS NOT DISTINCT FROM``: on Athena it dropped correct rows when every compared row
+    held NULL in a nullable varchar column (ADR-149 decision 2).
     """
-    batches: list[tuple[PhysicalRecord, ...]] = []
-    pending: tuple[PhysicalRecord, ...] = ()
-    for records in objects:
-        if not records:
-            continue
-        proposed = (*pending, *records)
-        if fits(*merge_statement(table, proposed)):
-            pending = proposed
-            continue
-        if pending:
-            batches.append(pending)
-            pending = ()
-        if fits(*merge_statement(table, records)):
-            pending = records
-        else:
-            batches.extend(merge_batches(table, records, fits))
-    if pending:
-        batches.append(pending)
-    return tuple(batches)
+    if column.nullable:
+        return f"({left} = {right} OR ({left} IS NULL AND {right} IS NULL))"
+    return f"{left} = {right}"
 
 
-def multi_select_statement(table: V2Table, identity_count: int) -> str:
-    """Compose one readback over every identity a unit projected."""
-    if identity_count < 1:
-        raise ValueError("unit readback requires at least one identity.")
-    names = ", ".join(quoted(column.name) for column in table.columns)
-    partition = quoted(table.partition_keys[0])
-    placeholders = ", ".join("CAST(? AS varchar)" for _ in range(identity_count))
-    ordering = ", ".join((partition, *(quoted(name) for name in table.grain)))
+@dataclass(frozen=True, slots=True)
+class StagedSource:
+    """Where one unit's staged rows are read: the staging database and the unit's key."""
+
+    staging_database: str
+    staging_key: str
+
+    def __post_init__(self) -> None:
+        if not _IDENTIFIER.fullmatch(self.staging_database):
+            raise ValueError(f"unsafe staging database identifier {self.staging_database!r}.")
+        if not _STAGING_KEY.fullmatch(self.staging_key):
+            raise ValueError("a staging key is 64 lowercase hex characters.")
+
+
+def _staged_identifiers(table: V2Table) -> None:
+    for name in (table.name, *(column.name for column in table.columns)):
+        if not _IDENTIFIER.fullmatch(name):
+            raise ValueError(f"unsafe generated V2 identifier {name!r}.")
+
+
+def _staged_casts(table: V2Table) -> str:
+    return ", ".join(
+        f"CAST({quoted(column.name)} AS {_athena_type(column.type)}) AS {quoted(column.name)}"
+        for column in table.columns
+    )
+
+
+def _staged_rows(table: V2Table, source: StagedSource) -> str:
     return (
-        f"SELECT {names} FROM {quoted(table.name)} "  # noqa: S608 - generated identifiers only  # nosec B608 # A-SQL-001
-        f"WHERE {partition} IN ({placeholders}) ORDER BY {ordering}"
+        f"FROM {quoted(source.staging_database)}.{quoted(table.name)} "
+        f"WHERE {quoted('staging_key')} = '{source.staging_key}'"
+    )
+
+
+def _grain_match(table: V2Table, left: str, right: str) -> str:
+    columns = {column.name: column for column in table.columns}
+    return " AND ".join(
+        _equal(f"{left}.{quoted(name)}", f"{right}.{quoted(name)}", columns[name])
+        for name in table.grain
+    )
+
+
+def staged_merge_statement(table: V2Table, source: StagedSource) -> str:
+    """Compose the unit's one insert-only MERGE, reading its staged rows (ADR-149 decision 1).
+
+    The source casts each all-``string`` staging column exactly as the deleted renderer cast
+    the same text; the ``ON`` clause matches a nullable grain column when both sides are NULL,
+    so a re-run inserts nothing. The key is a validated 64-hex literal, so the MERGE has no
+    parameters.
+    """
+    _staged_identifiers(table)
+    names = ", ".join(quoted(column.name) for column in table.columns)
+    inserted = ", ".join(f"incoming.{quoted(column.name)}" for column in table.columns)
+    rows = f"SELECT {_staged_casts(table)} {_staged_rows(table, source)}"
+    return (
+        f"MERGE INTO {quoted(table.name)} AS target "  # noqa: S608 - generated identifiers and a validated hex key  # nosec B608 # A-SQL-001
+        f"USING ({rows}) "
+        f"AS incoming ON {_grain_match(table, 'target', 'incoming')} "
+        f"WHEN NOT MATCHED THEN INSERT ({names}) VALUES ({inserted})"
+    )
+
+
+def verification_statement(table: V2Table, source: StagedSource, identity_count: int) -> str:
+    """Compose the unit's one set-based verification: four counts per identity, never rows.
+
+    ``target`` and ``staged`` count each side; ``matched_target`` counts target rows equal in
+    every column to a staged row, and ``matched_staged`` the distinct staged rows matched. The
+    identities are bound as ``CAST(? AS varchar)`` parameters.
+    """
+    _staged_identifiers(table)
+    if identity_count < 1:
+        raise ValueError("a unit verification requires at least one identity.")
+    partition = quoted(table.partition_keys[0])
+    ordinal = quoted("stg_ordinal")
+    names = ", ".join(quoted(column.name) for column in table.columns)
+    placeholders = ", ".join("CAST(? AS varchar)" for _ in range(identity_count))
+    compared = " AND ".join(
+        _equal(f"t.{quoted(column.name)}", f"s.{quoted(column.name)}", column)
+        for column in table.columns
+        if column.name not in table.grain
+    )
+    where = f" WHERE {compared}" if compared else ""
+    return (
+        f"WITH s AS (SELECT CAST({ordinal} AS bigint) AS {ordinal}, {_staged_casts(table)} "  # noqa: S608 - generated identifiers and a validated hex key  # nosec B608 # A-SQL-001
+        f"{_staged_rows(table, source)}), "
+        f"t AS (SELECT {names} FROM {quoted(table.name)} WHERE {partition} IN ({placeholders})), "
+        f"m AS (SELECT t.{partition} AS identity, s.{ordinal} AS ordinal FROM t JOIN s "
+        f"ON {_grain_match(table, 't', 's')}{where}) "
+        f"SELECT 'target' AS side, {partition} AS identity, count(*) AS n FROM t GROUP BY 2 "
+        f"UNION ALL SELECT 'staged', {partition}, count(*) FROM s GROUP BY 2 "
+        "UNION ALL SELECT 'matched_target', identity, count(*) FROM m GROUP BY 2 "
+        "UNION ALL SELECT 'matched_staged', identity, count(DISTINCT ordinal) FROM m GROUP BY 2"
+    )
+
+
+def _verification_counts(
+    staged: StagedUnit, rows: tuple[tuple[str | None, ...], ...]
+) -> dict[tuple[str, str], int] | None:
+    """Return each (side, identity) count, or ``None`` for any row of another shape."""
+    identities = {identity for identity, _ in staged.row_counts}
+    counts: dict[tuple[str, str], int] = {}
+    for row in rows:
+        if len(row) != 3:  # noqa: PLR2004 - side, identity, count
+            return None
+        side, identity, count = row
+        if (
+            side not in _VERIFICATION_SIDES
+            or identity not in identities
+            or count is None
+            or not _COUNT.fullmatch(count)
+            or (side, identity) in counts
+        ):
+            return None
+        counts[(side, identity)] = int(count)
+    return counts
+
+
+def verification_matches(staged: StagedUnit, rows: tuple[tuple[str | None, ...], ...]) -> bool:
+    """Accept a unit only when all four sides count exactly its staged rows per identity.
+
+    Staged grains are unique and the partition key is in every grain, so equal target and
+    staged counts plus both matched counts mean every target row matches one staged row with
+    identical values: a missing, extra, duplicated, altered or misplaced row, and an empty or
+    missing staged object, each leave some side short or over.
+    """
+    counts = _verification_counts(staged, rows)
+    expected = {
+        (side, identity): count
+        for side in _VERIFICATION_SIDES
+        for identity, count in staged.row_counts
+    }
+    return counts == expected
+
+
+def _verification_conflicts(staged: StagedUnit, rows: tuple[tuple[str | None, ...], ...]) -> bool:
+    """Return whether the target holds a row with no staged twin, so a MERGE must not run.
+
+    Conflict holds when, for the unit's identity, ``target`` exceeds ``matched_target`` (a missing
+    side counts as 0). Rows of any other shape are a conflict too: refusing writes nothing.
+    """
+    counts = _verification_counts(staged, rows)
+    if counts is None:
+        return True
+    return any(
+        counts.get(("target", identity), 0) > counts.get(("matched_target", identity), 0)
+        for identity, _ in staged.row_counts
     )
 
 
@@ -651,124 +649,6 @@ class UnitWorkload:
             raise ValueError("a unit workload cannot repeat an identity.")
 
 
-@dataclass(frozen=True, slots=True)
-class UnitProjectionResult:
-    """The verified and measured outcome of one unit projection."""
-
-    accepted: bool
-    statement_count: int
-    row_count: int
-    athena_seconds: float
-    reason: str = ""
-
-    def __post_init__(self) -> None:
-        if self.statement_count < 0 or self.row_count < 0 or self.athena_seconds < 0:
-            raise ValueError("unit projection counters cannot be negative.")
-        if not self.accepted and not self.reason:
-            raise ValueError("a refused unit projection must state why.")
-
-
-class AthenaTableUnitProjector:
-    """Consolidated merges and one verification per physical-table write unit."""
-
-    def __init__(
-        self,
-        target: AthenaSemanticTarget,
-        client: AthenaClient | None = None,
-        clock: Callable[[], float] = monotonic,
-    ) -> None:
-        self._target = target
-        self._client: AthenaClient = client or boto3.client("athena")
-        self._clock = clock
-
-    def project(self, workload: UnitWorkload, *, retry: bool) -> UnitProjectionResult:
-        """Merge every missing object sequentially, verify once, and measure Athena time."""
-        started = self._clock()
-        table = workload.table
-        statements = 0
-        objects: tuple[tuple[PhysicalRecord, ...], ...] = tuple(
-            ordered_records(table, records) for _, records in workload.records_by_identity
-        )
-        if retry:
-            # A retried unit first excludes fully projected identities so its merges
-            # re-run only interrupted work; the merge itself stays insert-only.
-            actual = self._read_identities(workload)
-            statements += 1
-            remaining: list[tuple[PhysicalRecord, ...]] = []
-            for (identity, _), records in zip(workload.records_by_identity, objects, strict=True):
-                if actual.get(identity) != _expected_records(table, records):
-                    remaining.append(records)
-            objects = tuple(remaining)
-        fits = envelope_fits(self._target.batch_workgroup, workload.database, MAX_STATEMENT_BYTES)
-        for batch in pack_object_batches(table, objects, fits):
-            sql, parameters = merge_statement(table, batch)
-            _execute_statement(
-                self._client,
-                _StatementExecutionRequest(
-                    table=table,
-                    operation_kind="merge",
-                    statement=StatementRequest(
-                        sql=sql,
-                        parameters=parameters,
-                        workgroup=self._target.batch_workgroup,
-                        database=workload.database,
-                        reuse_minutes=0,
-                    ),
-                ),
-            )
-            statements += 1
-        actual = self._read_identities(workload)
-        statements += 1
-        row_count = 0
-        for identity, records in workload.records_by_identity:
-            expected = _expected_records(table, ordered_records(table, records))
-            row_count += len(expected)
-            if actual.get(identity) != expected:
-                return UnitProjectionResult(
-                    accepted=False,
-                    statement_count=statements,
-                    row_count=row_count,
-                    athena_seconds=max(0.0, self._clock() - started),
-                    reason=f"unit readback differs for identity on {table.name}.",
-                )
-        return UnitProjectionResult(
-            accepted=True,
-            statement_count=statements,
-            row_count=row_count,
-            athena_seconds=max(0.0, self._clock() - started),
-        )
-
-    def _read_identities(
-        self, workload: UnitWorkload
-    ) -> dict[str, tuple[tuple[str | None, ...], ...]]:
-        table = workload.table
-        identities = tuple(identity for identity, _ in workload.records_by_identity)
-        partition_index = next(
-            index
-            for index, column in enumerate(table.columns)
-            if column.name == table.partition_keys[0]
-        )
-        execution = _execute_statement(
-            self._client,
-            _StatementExecutionRequest(
-                table=table,
-                operation_kind="select",
-                statement=StatementRequest(
-                    sql=multi_select_statement(table, len(identities)),
-                    parameters=identities,
-                    workgroup=self._target.batch_workgroup,
-                    database=workload.database,
-                    reuse_minutes=0,
-                ),
-            ),
-        )
-        grouped: dict[str, list[tuple[str | None, ...]]] = {}
-        for row in fetch_rows(self._client, execution):
-            rendered = tuple(row)
-            grouped.setdefault(rendered[partition_index] or "", []).append(rendered)
-        return {identity: tuple(rows) for identity, rows in grouped.items()}
-
-
 class AthenaSourceMaterializer:
     """Append and exactly verify one immutable source-aligned Iceberg partition."""
 
@@ -776,9 +656,9 @@ class AthenaSourceMaterializer:
         self,
         target: AthenaSemanticTarget,
         catalog: V2StorageCatalog,
-        client: AthenaClient | None = None,
+        clients: ProjectionClients,
     ) -> None:
-        self._projection = _AthenaProjection(target, catalog, client)
+        self._projection = _AthenaProjection(target, catalog, clients)
         self._target = target
         self._catalog = catalog
 
@@ -820,9 +700,9 @@ class AthenaCanonicalMaterializer:
         self,
         target: AthenaSemanticTarget,
         catalog: V2StorageCatalog,
-        client: AthenaClient | None = None,
+        clients: ProjectionClients,
     ) -> None:
-        self._projection = _AthenaProjection(target, catalog, client)
+        self._projection = _AthenaProjection(target, catalog, clients)
         self._target = target
         self._catalog = catalog
 

@@ -10,9 +10,11 @@ import {
   paramPath,
   semanticV2AthenaWorkgroupName,
   semanticV2DatabaseName,
+  semanticV2StagingDatabaseName,
   semanticV2StateTableName,
   staffedAlarmDestinationConfig,
 } from '../lib/config';
+import { STAGING_TABLE_NAMES } from '../lib/constructs/data-lake/staging-table';
 import { SELECTED_ARMS, STAFFING_POLICY } from '../lib/generated/alarm-destinations';
 import {
   BAKE_TASKS,
@@ -384,10 +386,13 @@ describe('permanent Semantic V2 load authority', () => {
     // TableWriter's own storage policy (Stage1TableWriterStoragePolicy) attaches to its role only.
     const managedById = template.findResources('AWS::IAM::ManagedPolicy');
     const ingestionRole = { Ref: roleLogicalId(template, INGESTION_HANDLER) };
+    // Stage-1 principals' own policies (TableWriter, reconciler, operator) carry the Stage1 prefix.
     const managedIds = Object.keys(managedById)
-      .filter((id) => !id.startsWith('Stage1TableWriterStoragePolicy'))
+      .filter((id) => !id.startsWith('Stage1'))
       .sort();
+    // DeliveryStagingPolicy: TEST_CONFIG composes inline (ADR-149, ING-IAM).
     expect(managedIds.map((id) => id.replace(/[0-9A-F]{8}$/, ''))).toEqual([
+      'DeliveryStagingPolicy',
       'IdentityEvidencePolicy',
       'SemanticPublicationKeysPolicy',
       'SemanticV2StoragePolicy',
@@ -772,7 +777,7 @@ describe('permanent V2 runtime configuration', () => {
     // container at import. The Lambda never sends a queue message, so no queue URL is named.
     const env = functionEnvironment(synth());
     expect(env).toEqual(expect.objectContaining(stage1LimitsEnvironment(TEST_CONFIG)));
-    expect(Object.keys(stage1LimitsEnvironment(TEST_CONFIG))).toHaveLength(23);
+    expect(Object.keys(stage1LimitsEnvironment(TEST_CONFIG))).toHaveLength(25);
     expect(env.ADL_PROJECTION_HANDOFF_STATE).toBe(TEST_CONFIG.ingestion.projectionHandoffState);
     expect(env.ADL_PROJECTION_COMPOSITION).toBeUndefined();
     expect(env.ADL_SEMANTIC_WRITE_QUEUE_URL).toBeUndefined();
@@ -2154,5 +2159,115 @@ describe('SEMANTIC-M1 workgroup isolation for the ingestion principals', () => {
     for (const name of ['load', 'tableWriter', 'reconciler', 'operator']) {
       expect([name, startsOn(template, roles[name] ?? '', 'bake')]).toEqual([name, true]);
     }
+  });
+});
+
+describe('ADR-149 staging grants (ING-IAM, T-15)', () => {
+  const bucket = dataBucketName(TEST_CONFIG, 'v2-staging');
+  const database = semanticV2StagingDatabaseName(TEST_CONFIG.envName);
+  const STAGING_POLICIES = [
+    'Stage1TableWriterStagingPolicy',
+    'Stage1ProviderAttemptReconcilerStagingPolicy',
+    'Stage1SemanticProjectionOperatorStagingPolicy',
+    'DeliveryStagingPolicy',
+  ] as const;
+
+  function stagingPolicy(template: Template, prefix: string): Props | undefined {
+    const found = Object.entries(template.findResources('AWS::IAM::ManagedPolicy')).filter(([id]) =>
+      id.startsWith(prefix),
+    );
+    expect(found.length).toBeLessThanOrEqual(1);
+    return found.length === 0 ? undefined : ((found[0]![1] as Props).Properties as Props);
+  }
+  const documentOf = (policy: Props | undefined): Props[] =>
+    ((policy?.PolicyDocument as Props | undefined)?.Statement ?? []) as Props[];
+
+  it('writes exactly the approved statements for the TableWriter', () => {
+    const writer = documentOf(stagingPolicy(synth(), 'Stage1TableWriterStagingPolicy'));
+    expect(writer.map(actionsOf)).toEqual([
+      ['s3:PutObject', 's3:GetObject'],
+      ['s3:ListBucket'],
+      ['s3:GetBucketLocation'],
+      ['glue:GetDatabase', 'glue:GetTable'],
+    ]);
+    expect(JSON.stringify(writer[0]!.Resource)).toContain(`:s3:::${bucket}/*`);
+    expect(writer[1]!.Condition).toEqual({
+      StringLike: { 's3:prefix': STAGING_TABLE_NAMES.map((table) => `${table}/*`) },
+    });
+    expect(STAGING_TABLE_NAMES).toHaveLength(54);
+    expect(JSON.stringify(writer[2]!.Resource)).toContain(`:s3:::${bucket}"`);
+    const glue = JSON.stringify(writer[3]!.Resource);
+    for (const resource of [':catalog', `:database/${database}`, `:table/${database}/*`]) {
+      expect(glue).toContain(resource);
+    }
+    expect(writer.flatMap(actionsOf)).not.toContain('s3:DeleteObject');
+  });
+
+  it('gives the reconciler the same reads with no write, and the operator and inline delivery the writer set', () => {
+    const template = synth();
+    const writer = documentOf(stagingPolicy(template, 'Stage1TableWriterStagingPolicy'));
+    const reconciler = documentOf(stagingPolicy(template, 'Stage1ProviderAttemptReconcilerStagingPolicy'));
+    expect(reconciler.map(actionsOf)[0]).toEqual(['s3:GetObject']);
+    expect(reconciler.flatMap(actionsOf)).not.toContain('s3:PutObject');
+    expect(reconciler.slice(1)).toEqual(writer.slice(1));
+    expect(documentOf(stagingPolicy(template, 'Stage1SemanticProjectionOperatorStagingPolicy'))).toEqual(writer);
+    // TEST_CONFIG composes inline, so the delivery function stages and holds the writer's set.
+    expect(TEST_CONFIG.ingestion.projectionHandoffState).toBe('INLINE_ACTIVE');
+    expect(documentOf(stagingPolicy(template, 'DeliveryStagingPolicy'))).toEqual(writer);
+    for (const id of STAGING_POLICIES) {
+      expect(stagingPolicy(template, id)?.Roles).toHaveLength(1);
+    }
+    expect(stagingPolicy(template, 'DeliveryStagingPolicy')?.Roles).toEqual([
+      { Ref: roleLogicalId(template, INGESTION_HANDLER) },
+    ]);
+  });
+
+  it('synthesizes no delivery staging grant under the queued composition', () => {
+    const queued = synth(
+      configWith({
+        landing: { enabled: false },
+        ingestion: {
+          ...TEST_CONFIG.ingestion,
+          projectionHandoffState: 'QUEUED_ACTIVE',
+          stage1RecoveryEnabled: true,
+        },
+      }),
+    );
+    expect(stagingPolicy(queued, 'DeliveryStagingPolicy')).toBeUndefined();
+    // Control: the TableWriter keeps its grant under the same composition.
+    expect(stagingPolicy(queued, 'Stage1TableWriterStagingPolicy')).toBeDefined();
+    // The delivery runtime still requires both names at init in every composition.
+    const env = (ingestionFunction(queued).Environment as Props).Variables as Props;
+    expect([env.ADL_SEMANTIC_V2_STAGING_BUCKET, env.ADL_SEMANTIC_V2_STAGING_DATABASE]).toEqual([
+      bucket,
+      database,
+    ]);
+  });
+
+  it('gives the staging names to the TableWriter and delivery function only', () => {
+    const staged = resources(synth(), 'AWS::Lambda::Function')
+      .filter((fn) => ((fn.Environment as Props | undefined)?.Variables as Props | undefined)
+        ?.ADL_SEMANTIC_V2_STAGING_BUCKET !== undefined)
+      .map((fn) => fn.Handler as string)
+      .sort();
+    expect(staged).toEqual([
+      'adapters.inbound.ingestion_handlers.load.handler',
+      'adapters.inbound.ingestion_handlers.table_writer.handler',
+    ]);
+  });
+
+  it('names the staging bucket and database in no other policy of any stack', () => {
+    const offenders: string[] = [];
+    for (const [stack, template] of Object.entries(everyTemplate())) {
+      const entries = Object.entries(((template as Props).Resources ?? {}) as Record<string, Props>);
+      for (const [id, resource] of entries) {
+        if (!['AWS::IAM::Policy', 'AWS::IAM::ManagedPolicy', 'AWS::IAM::Role'].includes(resource.Type)) continue;
+        const text = JSON.stringify(resource.Properties);
+        if (!text.includes(bucket) && !text.includes(database)) continue;
+        if (STAGING_POLICIES.some((prefix) => id.startsWith(prefix))) continue;
+        offenders.push(`${stack}/${id}`);
+      }
+    }
+    expect(offenders).toEqual([]);
   });
 });

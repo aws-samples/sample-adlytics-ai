@@ -1147,6 +1147,8 @@ def _configure(monkeypatch: pytest.MonkeyPatch) -> None:
         "ADL_SEMANTIC_V2_SOURCE_DATABASE": "adlytics_test_source",
         "ADL_SEMANTIC_V2_CANDIDATE_DATABASE": "adlytics_test_candidate",
         "ADL_SEMANTIC_V2_CURRENT_DATABASE": "adlytics_test_current",
+        "ADL_SEMANTIC_V2_STAGING_DATABASE": "adlytics_test_staging",
+        "ADL_SEMANTIC_V2_STAGING_BUCKET": "adlytics-test-staging",
         "ADL_ATHENA_RESULT_REUSE_MAX_AGE_MINUTES": "0",
         "ADL_ATHENA_QUERY_BATCH_MAX_CONCURRENCY": "8",
         "AWS_DEFAULT_REGION": "us-east-1",

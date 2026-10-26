@@ -132,6 +132,22 @@ advances in phase 1; servability and unit attestation advance together in phase 
 >    never a silent acceptance. The dev landing seam's re-land, the campaign-dimension seal, is
 >    owned by [dev seeding](../../concepts/dev-seeding.md) §1.
 
+> **Amendment, 2026-10-22 — one staged MERGE per unit ([ADR-149](../../decisions/adr-149-write-each-table-unit-with-one-set-based-merge-from-a-staged-object.md)).** Every unit now
+> composes exactly two statements whatever its rows (one insert-only `MERGE` from the unit's
+> staged object and one set-based verification, §6), so `M(u) = 1`, a legacy plan needs at most
+> 30 clean attempts and a GRAPH plan 22, and the 10/32/15/11/37 caps keep their values. Two
+> rules are added:
+>
+> 1. **Two row ceilings refuse before authority**, in `require_feasible` for every mode, before
+>    the attempt arithmetic: a unit whose rows exceed `maxRowsPerUnit` refuses
+>    `unit_rows_exceed_cap`, and a delivery whose rows across every unit exceed
+>    `maxRowsPerDelivery` refuses `delivery_rows_exceed_cap` (§11). They protect the writers'
+>    memory and 900 s invocation, which rows still drive. Prepared and published rosters count
+>    the same rows, so the post-authority re-proof can't newly fail on rows.
+> 2. **One record stays bounded.** A record whose staged line exceeds `athenaMaxStatementBytes`
+>    is refused `ATHENA_START/2` before authority, where a record whose own `VALUES` merge
+>    exceeded it was refused before.
+
 Runs in the existing ingestion function on the existing standard queue. `_prepare_delivery`,
 `_bind_controls`, and `_prepared_groups` first produce a side-effect-free `PreparedProjectionPlan`.
 An explicit `validate_projection_feasibility(prepared_plan)` callback runs after sidecar prepare,
@@ -306,6 +322,18 @@ old writers fail owner/plan conditions and acknowledge explicit plan replacement
 when its current-table unit finalizes.
 
 ### 2.2 Phase 2 — project and atomically finalize one table unit
+
+> **Amendment, 2026-10-22 — staging and set-based verification ([ADR-149](../../decisions/adr-149-write-each-table-unit-with-one-set-based-merge-from-a-staged-object.md)).** Just before
+> the `MERGE`'s `Begin`, after the deadlines and the step-2 validator, the shared statement loop
+> writes the unit's content-addressed staged object once (`If-None-Match` plus its SHA-256
+> checksum) and releases the body; a staging failure therefore reserves nothing. The queued
+> writer retries it like an Athena outage while receives remain and then fails the unit
+> `STATEMENT_RETRIES_EXHAUSTED`; the inline and GRAPH paths let the `DependencyError` propagate.
+> Step 5's verification returns four counts per identity (`target`, `staged`, `matched_target`,
+> `matched_staged`) instead of every row, and the writer accepts the unit only when each equals
+> the staged row count; a missing, extra, duplicated, altered or misplaced row, or a missing
+> staged object, leaves some count off. Every receive still re-runs from the `MERGE`, which
+> inserts nothing for rows already present.
 
 Runs in `table_writer` with batch size one. For one unit:
 
@@ -2550,6 +2578,19 @@ its attempt-33 `FailUnitRequest`; that creation consumes the owner and remains i
 
 ## 6. Consolidation, verification, and exact Stage-1 Athena accounting
 
+> **Amendment, 2026-10-22 — the packer is replaced by two statements ([ADR-149](../../decisions/adr-149-write-each-table-unit-with-one-set-based-merge-from-a-staged-object.md)).** The
+> whole-object packer, its `VALUES` renderer and the retry-readback exclusion below are deleted.
+> A unit composes one `MERGE INTO <table> USING (SELECT CAST(<column> AS <type>) … FROM
+> <staging table> WHERE staging_key = '<sha256>')`, insert-only, then one verification; the
+> staged lines keep the canonical object order and, within each object, `ordered_records`' grain
+> order and its repeated-grain refusal. The `ON` clause matches a nullable grain column when
+> both sides are NULL, `(a = b OR (a IS NULL AND b IS NULL))`, and `=` otherwise; the
+> verification joins and compares every nullable column the same way, and no statement uses
+> `IS NOT DISTINCT FROM`. The `MERGE` has no parameters and its envelope omits
+> `ExecutionParameters`; the verification binds the unit's identities as before. The step-2
+> validator still bounds both envelopes at `athenaMaxStatementBytes`; the composer measures no
+> envelope. The accounting rules after the packing text are unchanged.
+
 Within one unit, the existing helper invariant and packer own the statement roster used by feasibility
 and runtime. Before or during the one production `ordered_records` call for an object, reject every
 repeated declared table grain, including repetitions whose remaining values are byte-identical. Distinct
@@ -2675,6 +2716,14 @@ this contract. In `GRAPH`, `reprocess_semantic_v2 --apply` (which now requires
 with `REPROCESS_REQUIRES_GRAPH_RUN` (`ADLY-REPROCESS-0001`), because its `inline_projection=True`
 commits would advance servability outside `publish`; a graph-native reprocess is an `on_demand`
 `data_correction` run request (D22).
+
+> **Amendment, 2026-10-22 ([ADR-149](../../decisions/adr-149-write-each-table-unit-with-one-set-based-merge-from-a-staged-object.md)).** The two operators' Iceberg projection writes
+> through the same two statements per identity: it stages first, verifies, accepts an exact
+> identity without a write, refuses a target row with no staged twin (`identity has different
+> Iceberg records`) without a `MERGE`, and otherwise merges and verifies again. A verification
+> that still differs after the `MERGE` returns `Iceberg verification differs from the staged unit
+> for <table>.` Both operators resolve the staging bucket and database from
+> `/adlytics/<env>/data/v2/staging-bucket` and `/adlytics/<env>/data/v2/staging-glue-database`.
 
 For each physical table an inline writer:
 
@@ -2844,6 +2893,8 @@ All integers are positive and booleans are rejected.
 | `maxGroupMembers` | 4 | `ADL_STAGE1_MAX_GROUP_MEMBERS`; grouping and operator no-plan finalization |
 | `maxPointersPerTable` | 37 | `ADL_STAGE1_MAX_POINTERS_PER_TABLE`; queued/inline finalizers |
 | `maxObjectRefsPerUnit` | 37 | `ADL_STAGE1_MAX_OBJECT_REFS_PER_UNIT`; unit encoder |
+| `maxRowsPerUnit` | 50000 | `ADL_STAGE1_MAX_ROWS_PER_UNIT`; `require_feasible` (`unit_rows_exceed_cap`) and GRAPH set formation and member shaping (2026-10-22 amendment below) |
+| `maxRowsPerDelivery` | 20000 | `ADL_STAGE1_MAX_ROWS_PER_DELIVERY`; `require_feasible` (`delivery_rows_exceed_cap`) (2026-10-22 amendment below) |
 | `athenaMaxStatementBytes` | 200000 | `ADL_STAGE1_ATHENA_MAX_STATEMENT_BYTES`; §6 statement packer and §5 step-2 validator, measured as the UTF-8 bytes of the statement's canonical start envelope (SQL text plus every encoded parameter). The only per-statement bound; there is no parameter-count bound (2026-10-10 amendment below). |
 | `maxEncodedIdentityBytes` | 128 | `ADL_STAGE1_MAX_ENCODED_IDENTITY_BYTES`; every internal identity constructor, measured as UTF-8 bytes |
 | `maxPartitionIdentityBytes` | 256 | `ADL_STAGE1_MAX_PARTITION_IDENTITY_BYTES`; the Publication-State-owned `PartitionIdentity.identity` carried as the roster `partition_key-or-null` member and as pointer partition keys, measured as UTF-8 bytes; the roster constructor and feasibility refuse a longer identity before authority |
@@ -2935,6 +2986,24 @@ concurrency.
 >    `semanticWriteMaxReceiveCount × (timeout + margin)` = 2880 s, instead of waiting unalarmed in
 >    the ready index. During a paced backfill that alarm can fire for queue depth rather than for
 >    a stuck unit; this amendment does not change its threshold.
+
+> **Amendment, 2026-10-22 — row ceilings and staging retention ([ADR-149](../../decisions/adr-149-write-each-table-unit-with-one-set-based-merge-from-a-staged-object.md)).**
+>
+> 1. **`maxRowsPerUnit = 50000` and `maxRowsPerDelivery = 20000` are added.** They were set from
+>    the dev scratch probe and a local memory measurement, by the largest grid value for which
+>    both hold: the table writer's peak RSS stays at or under half its 2048 MiB and twice the
+>    measured read, decode, render, stage, `MERGE` and verification time fits the 720000 ms the
+>    900 s timeout leaves after its reserves (per unit); the delivery function's peak RSS over
+>    15 units of the widest table stays at or under half its 1024 MB (per delivery). Each is a
+>    reviewed literal-typed value, refused by both accessors if it differs. The GRAPH
+>    `write_unit_batching.statement_allowance_ms` was re-derived with them at 44000 ms
+>    (`120000 + 3 × 44000 <= 900000`).
+> 2. **`athenaMaxStatementBytes` also bounds one record's staged line**, and merge row count is
+>    no longer a derived outcome: every unit has one `MERGE`.
+> 3. **`data.stagingExpireAfterDays = 7`.** The staging bucket is a derived transport copy, not
+>    authority, so "Stage-1 authority remains indefinite" does not apply to it: staged objects
+>    expire after 7 days (owner decision ING-RETENTION). Nothing reads one after its unit's
+>    verification.
 
 ## 12. Decision provenance
 

@@ -421,7 +421,7 @@ def test_table_writer_and_inline_run_keep_at_most_one_execution_in_flight(
     for module, recorder in ((table_writer, writer), (inline_run, inline)):
         monkeypatch.setattr(module, "_statement_run", lambda _ctx: object())
         monkeypatch.setattr(module, "run_statement", _recording_run_statement(recorder, succeeded))
-    assert table_writer._execute_statements(object(), object(), composition) is None
+    assert table_writer._execute_statements(object(), composition) is None
     completed: list[int] = []
     ctx = SimpleNamespace(request=SimpleNamespace(composition=composition))
     inline_module = cast("Any", inline_run)

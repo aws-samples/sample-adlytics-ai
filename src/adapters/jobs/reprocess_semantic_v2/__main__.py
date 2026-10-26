@@ -575,11 +575,13 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0915
             storage = replicated_semantic_storage(
                 ReplicatedSemanticStorageRequest(
                     bucket=semantic_resources["bucket"],
+                    staging_bucket=semantic_resources["staging_bucket"],
                     target=AthenaSemanticTarget(
                         batch_workgroup=semantic_resources["bake_workgroup"],
                         source_database=semantic_resources["source_database"],
                         candidate_database=semantic_resources["candidate_database"],
                         current_database=semantic_resources["current_database"],
+                        staging_database=semantic_resources["staging_database"],
                     ),
                     catalog=load_v2_storage_catalog(ROOT / "contracts/generated/v2-tables.json"),
                     s3=s3,

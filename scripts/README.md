@@ -462,6 +462,20 @@ tool's version is pinned, for the gates that refuse any other version. A row mar
 `any current` is required but not pinned, and `pinned()` refuses it.
 `uv run python scripts/tool_versions.py gitleaks` prints the pin.
 
+## generate-staged-value-golden.py
+
+Ran once to record the text the deleted `VALUES` value renderer sent for each edge input in
+`tests/unit/golden/staged_value_edge_inputs.json`, written to
+`tests/unit/golden/staged_value_text.json`. `tests/unit/test_athena_staging.py` holds the
+staging renderer to that golden (ADR-149). The script refuses to run unless the renderer file is
+still the base blob it names, so it can't be re-run after the renderer was deleted; a new edge
+input needs a new golden decision, not a re-run.
+
+```bash
+uv run python scripts/generate-staged-value-golden.py \
+  tests/unit/golden/staged_value_edge_inputs.json > tests/unit/golden/staged_value_text.json
+```
+
 ## infra/scripts/check-iam-policy-size.ts
 
 Applies the IAM policy-size check of `infra/test/iam-policy-size.test.ts` (which `make infra-test`

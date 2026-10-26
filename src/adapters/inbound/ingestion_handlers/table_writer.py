@@ -48,6 +48,7 @@ from adapters.config import (
 )
 from adapters.graph_authority import provisioned_graph_table
 from adapters.inbound.ingestion_handlers import graph_publish, graph_unit
+from adapters.inbound.ingestion_handlers.delivery_plan import FEASIBILITY_REFUSED
 from adapters.inbound.ingestion_handlers.graph_claim import (
     ClaimDisposition,
     GraphClaimInput,
@@ -70,8 +71,8 @@ from adapters.inbound.ingestion_handlers.table_attempt_protocol import (
     StatementRun,
     epoch_micros,
     instant,
-    readback_matches,
     run_statement,
+    verification_holds,
 )
 from adapters.inbound.tool_handlers.gateway import contracts_root
 from adapters.jobs.execution_graph.node_verifier import (
@@ -118,6 +119,7 @@ from adapters.outbound.s3.semantic_storage import (
     projection_unit_source,
     source_object_key,
 )
+from adapters.outbound.s3.unit_staging import S3UnitStager
 from adapters.outbound.telemetry.bootstrap import configure_tracing, flushes_traces
 from adapters.outbound.telemetry.reporting import (
     METRICS,
@@ -235,6 +237,7 @@ from domain.shared_kernel.errors import (
     DomainError,
     ErrorCode,
     InvariantError,
+    ValidationError,
 )
 from ports.outbound.canonical import CanonicalDestination
 from ports.outbound.execution_graph_dispatch import ClaimRecord, GraphDispatchStore, NodeRecord
@@ -278,12 +281,15 @@ from ports.outbound.table_attempt_start import (
 from ports.outbound.table_attempt_terminal import (
     TableAttemptTerminalClient,
 )
+from ports.outbound.unit_staging import StagingUnavailableError
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from collections.abc import Callable, Mapping, Sequence
 
     from types_boto3_sqs import SQSClient
     from types_boto3_sqs.type_defs import ChangeMessageVisibilityRequestTypeDef
+
+    from ports.outbound.unit_staging import UnitStager
 
 __all__ = [
     "GraphDispatchBinding",
@@ -869,6 +875,8 @@ class _Runtime:
     start: TableAttemptStartClient
     terminals: TableAttemptTerminalClient
     objects: _ProjectionObjects
+    stager: UnitStager
+    """ADR-149: writes each unit's staged object just before its MERGE begins."""
     catalog: V2StorageCatalog
     target: AthenaSemanticTarget
     visibility: _MessageVisibility
@@ -891,6 +899,8 @@ def _runtime() -> _Runtime:
         "source database": SETTINGS.semantic_v2_source_database,
         "candidate database": SETTINGS.semantic_v2_candidate_database,
         "current database": SETTINGS.semantic_v2_current_database,
+        "staging database": SETTINGS.semantic_v2_staging_database,
+        "staging bucket": SETTINGS.semantic_v2_staging_bucket,
     }
     missing = tuple(label for label, value in configured.items() if not value.strip())
     if missing:
@@ -914,12 +924,14 @@ def _runtime() -> _Runtime:
         start=Stage1AthenaStartClient(),
         terminals=Stage1AthenaTerminalClient(),
         objects=S3ProjectionObjectSource(SETTINGS.semantic_v2_bucket, S3),
+        stager=S3UnitStager(SETTINGS.semantic_v2_staging_bucket, S3),
         catalog=load_v2_storage_catalog(ROOT / "contracts/generated/v2-tables.json"),
         target=AthenaSemanticTarget(
             batch_workgroup=SETTINGS.semantic_v2_athena_bake_workgroup,
             source_database=SETTINGS.semantic_v2_source_database,
             candidate_database=SETTINGS.semantic_v2_candidate_database,
             current_database=SETTINGS.semantic_v2_current_database,
+            staging_database=SETTINGS.semantic_v2_staging_database,
         ),
         visibility=SqsMessageVisibility(WRITER_SETTINGS.semantic_write_queue_url, SQS),
         wall=_utc_now,
@@ -1575,6 +1587,22 @@ def _snapshot_count(item: Mapping[str, object], name: str) -> int:
     return value
 
 
+def _accepted_attempts(ctx: _UnitContext) -> int | None:
+    """Read the attested unit's accepted reservations once, for telemetry only (§4.8).
+
+    The unit is already finalized and its lease released, so a failed read is reported once
+    and the attested line carries ``None``; it never turns a finalized unit into a retry.
+    """
+    try:
+        return _snapshot_count(_fresh_unit_item(ctx), "unit_reservation_count")
+    except Exception as error:
+        report_error(
+            error,
+            Report(operation="semantic_unit_attested", correlation_id=ctx.plan_key, logger=LOGGER),
+        )
+        return None
+
+
 def _required_lease(ctx: _UnitContext) -> TableLeaseRecord:
     if ctx.lease is None:
         raise _invariant("Statement processing requires the held table lease.")
@@ -1628,6 +1656,7 @@ def _statement_run(ctx: _UnitContext) -> StatementRun:
             start=runtime.start,
             terminals=runtime.terminals,
             reads=runtime.reader,
+            stager=runtime.stager,
             wall=runtime.wall,
             monotonic_ms=runtime.monotonic_ms,
             sleep_ms=runtime.sleep_ms,
@@ -1652,6 +1681,12 @@ def _run_statement(ctx: _UnitContext, statement: ComposedStatement) -> Statement
         raise _StatementFailedError(
             UnitFailureReason.STATEMENT_RETRIES_EXHAUSTED, str(refused)
         ) from refused
+    except StagingUnavailableError as unavailable:
+        # ADR-149 §10: raised before Begin, so nothing is reserved; the unit retries like an
+        # Athena outage while receives remain, then fails STATEMENT_RETRIES_EXHAUSTED.
+        raise _StatementFailedError(
+            UnitFailureReason.STATEMENT_RETRIES_EXHAUSTED, "staging unavailable"
+        ) from unavailable
 
 
 # --- Refusals, settlement, dispositions, finalization ---------------------------------------------
@@ -2284,9 +2319,9 @@ def _release_lease(ctx: _UnitContext) -> None:
 
 
 def _execute_statements(
-    ctx: _UnitContext, shaped: _ShapedUnit, composition: UnitStatementComposition
+    ctx: _UnitContext, composition: UnitStatementComposition
 ) -> _RetryableUnit | None:
-    """Drive every composed statement through §5 and verify the readback once."""
+    """Drive every composed statement through §5 and check the verification counts once."""
     for statement in composition.statements:
         result = _run_statement(ctx, statement)
         if isinstance(result, InsufficientStatementBudget):
@@ -2313,12 +2348,12 @@ def _execute_statements(
                 UnitFailureReason.STATEMENT_RETRIES_EXHAUSTED,
                 f"the provider terminal is {result.state.value}.",
             )
-        if statement is composition.verification and not readback_matches(
-            shaped.workload, ctx.runtime.terminals.readback_rows(result.query_execution_id)
+        if statement is composition.verification and not verification_holds(
+            composition, ctx.runtime.terminals.readback_rows(result.query_execution_id)
         ):
             raise _StatementFailedError(
                 UnitFailureReason.VERIFICATION_MISMATCH,
-                "the verification readback differs from the immutable objects.",
+                "the verification counts differ from the staged unit.",
             )
     return None
 
@@ -2480,6 +2515,7 @@ def _inline_runtime(runtime: _Runtime) -> InlineRunRuntime:
         start=runtime.start,
         terminals=runtime.terminals,
         reads=runtime.reader,
+        stager=runtime.stager,
         bounds=StatementStartBounds(
             max_statement_bytes=WRITER_SETTINGS.athena_max_statement_bytes,
             max_encoded_identity_bytes=WRITER_SETTINGS.max_encoded_identity_bytes,
@@ -2554,6 +2590,26 @@ class _Stop:
     cause: BaseException | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class _MemberSummary:
+    """D10: one shaped member, body-free; formation and settlement read only this."""
+
+    rows: int
+    identities: frozenset[str]
+    content_checksums: tuple[str, ...]
+    servable: tuple[_ServableIdentity, ...]
+
+
+def _summarize(shaped: _ShapedUnit) -> _MemberSummary:
+    records = shaped.workload.records_by_identity
+    return _MemberSummary(
+        rows=sum(len(rows) for _, rows in records),
+        identities=frozenset(identity for identity, _ in records),
+        content_checksums=shaped.content_checksums,
+        servable=shaped.servable,
+    )
+
+
 @dataclass(slots=True)
 class _BatchMember:
     """One listed member and, once it has one, the class it ends the invocation in."""
@@ -2562,7 +2618,8 @@ class _BatchMember:
     node: NodeRecord | None = None
     unit: graph_unit.UnitClaim | None = None
     entry: CanonicalUnitEntry | None = None
-    shaped: _ShapedUnit | None = None
+    summary: _MemberSummary | None = None
+    """D10: kept after step 2 instead of the shaped workload, which is re-read just in time."""
     execution_set_id: str | None = None
     settled: graph_unit.UnitSettled | None = None
     member_class: graph_unit.MemberClass | None = None
@@ -2572,10 +2629,10 @@ class _BatchMember:
             raise _invariant("A batch member executed without its claim.")
         return self.unit
 
-    def shape(self) -> _ShapedUnit:
-        if self.shaped is None:
+    def summarized(self) -> _MemberSummary:
+        if self.summary is None:
             raise _invariant("A batch member reached its execution set unshaped.")
-        return self.shaped
+        return self.summary
 
 
 @dataclass(frozen=True, slots=True)
@@ -2594,6 +2651,15 @@ class _SetStatus(StrEnum):
     STOPPED = "stopped"
 
 
+@dataclass(frozen=True, slots=True)
+class _Executed:
+    """D10: one group's execution result; `members` are the members it ran or stopped."""
+
+    status: _SetStatus
+    outcome: str | None
+    members: tuple[_BatchMember, ...]
+
+
 def _entry_of(node: NodeRecord) -> CanonicalUnitEntry:
     """Return the roster entry the node's stored owner body carries (the unit's one home)."""
     try:
@@ -2609,27 +2675,62 @@ def _entry_of(node: NodeRecord) -> CanonicalUnitEntry:
         ) from None
 
 
-def _compose(workload: UnitWorkload, workgroup: str) -> ComposeUnitStatementsRequest:
+def _compose(workload: UnitWorkload, target: AthenaSemanticTarget) -> ComposeUnitStatementsRequest:
     return ComposeUnitStatementsRequest(
         workload=workload,
-        workgroup=workgroup,
+        workgroup=target.batch_workgroup,
+        staging_database=target.staging_database,
         max_statement_bytes=WRITER_SETTINGS.athena_max_statement_bytes,
     )
 
 
-def _union(members: Sequence[_BatchMember]) -> UnitWorkload:
-    first = members[0].shape().workload
+def _union(workloads: Sequence[UnitWorkload]) -> UnitWorkload:
+    first = workloads[0]
     return UnitWorkload(
         table=first.table,
         database=first.database,
         records_by_identity=tuple(
-            pair for member in members for pair in member.shape().workload.records_by_identity
+            pair for workload in workloads for pair in workload.records_by_identity
         ),
     )
 
 
 def _identities(member: _BatchMember) -> frozenset[str]:
-    return frozenset(identity for identity, _ in member.shape().workload.records_by_identity)
+    return member.summarized().identities
+
+
+def _group_members(ready: Sequence[_BatchMember], max_rows: int) -> list[tuple[_BatchMember, ...]]:
+    """Step 3 (D10): member groups from summaries alone, in member order; composes nothing.
+
+    A group ends before a member whose identities overlap it, or whose rows would take the
+    group past ``max_rows`` (the unit row ceiling, ADR-149 decision 4). State-blind, so the
+    same members always form the same groups.
+    """
+    groups: list[tuple[_BatchMember, ...]] = []
+    current: list[_BatchMember] = []
+    identities: set[str] = set()
+    rows = 0
+    for member in ready:
+        own = _identities(member)
+        own_rows = member.summarized().rows
+        if current and (own & identities or rows + own_rows > max_rows):
+            groups.append(tuple(current))
+            current, rows = [], 0
+            identities = set[str]()
+        current.append(member)
+        identities |= own
+        rows += own_rows
+    if current:
+        groups.append(tuple(current))
+    return groups
+
+
+def _composition_defect(batch_id: str, description: str, **context: object) -> InvariantError:
+    return InvariantError(
+        GRAPH_UNIT_SET_COMPOSITION_CODE,
+        description,
+        context={"signal": GRAPH_UNIT_SET_COMPOSITION, "batch_id": batch_id, **context},
+    )
 
 
 @dataclass(slots=True)
@@ -2776,17 +2877,17 @@ class _Batch:
         self.claimed = sum(member.unit is not None for member in self.members)
 
     def shape_members(self) -> None:
-        """Step 2: shape and compose each claimed member alone; a refusal is that member's."""
+        """Step 2: shape and compose each claimed member alone; a refusal is that member's.
+
+        D10: only the member's body-free summary is kept, so step 2 holds one member's records
+        at a time.
+        """
         for member in self.members:
             if member.unit is None or member.member_class is not None or member.entry is None:
                 continue
             unit, entry = member.unit, member.entry
             try:
-                shaped = _shape_unit(self.runtime, entry)
-                alone = compose_unit_statements(
-                    _compose(shaped.workload, self.runtime.target.batch_workgroup)
-                )
-                unit_statement_kinds(alone.merge_count)  # AR5-3: the built refusal, kept
+                summary = self._shape_alone(entry)
             except _ChecksumMismatchError as mismatch:
                 self.settle(
                     member,
@@ -2801,72 +2902,107 @@ class _Batch:
                     lambda unit=unit, error=error: graph_unit.settle_shaping_error(unit, error),
                 )
                 continue
-            member.shaped = shaped
+            member.summary = summary
+
+    def _shape_alone(self, entry: CanonicalUnitEntry) -> _MemberSummary:
+        """Shape and compose one member alone; its workload is dropped when this returns.
+
+        A member alone over the unit row ceiling (the config changed after feasibility) is that
+        member's own typed refusal, settled final with reason `unit_rows_exceed_cap`.
+        """
+        shaped = _shape_unit(self.runtime, entry)
+        summary = _summarize(shaped)
+        if summary.rows > WRITER_SETTINGS.max_rows_per_unit:
+            raise ValidationError(
+                FEASIBILITY_REFUSED,
+                "a write unit's rows exceed the unit row ceiling.",
+                context={"reason": "unit_rows_exceed_cap"},
+            )
+        alone = compose_unit_statements(_compose(shaped.workload, self.runtime.target))
+        unit_statement_kinds(alone.merge_count)  # AR5-3: the built refusal, kept
+        return summary
 
     # --- step 3 --------------------------------------------------------------------------------
 
-    def compose_set(self, members: Sequence[_BatchMember]) -> _ExecutionSet:
-        """Compose a set's union: any exception is `GRAPH_UNIT_SET_COMPOSITION` (M3, M4)."""
+    def compose_set(self, group: Sequence[_BatchMember]) -> _ExecutionSet | _SetStatus:
+        """Compose one group just in time (D10): re-shape, check, then compose the union.
+
+        Phase 1 re-shapes each working (unclassified) member from S3; a checksum mismatch or
+        another shaping error settles that member and the rest are composed, and a
+        `DependencyError` halts the whole group TABLE (`STOPPED`). Phase 2 requires each
+        re-shape to equal the member's summary. Phase 3 composes the union; any failure there,
+        or a union `_set_fits` refuses, is `GRAPH_UNIT_SET_COMPOSITION` (M3, M4).
+        """
+        working = [member for member in group if member.member_class is None]
+        workloads: list[UnitWorkload] = []
+        composed: list[_BatchMember] = []
+        for member in working:
+            unit, entry = member.claimed(), member.entry
+            if entry is None:
+                raise _invariant("A batch member reached its execution set without its entry.")
+            try:
+                shaped = _shape_unit(self.runtime, entry)
+            except _ChecksumMismatchError as mismatch:
+                self.settle(
+                    member,
+                    lambda unit=unit, mismatch=mismatch: graph_unit.settle_failed(
+                        unit, graph_unit.CHECKSUM_MISMATCH, mismatch
+                    ),
+                )
+                continue
+            except DependencyError as error:
+                return self.halt(working, _Stop(_StopKind.TABLE, "raised", error))
+            except Exception as error:
+                self.settle(
+                    member,
+                    lambda unit=unit, error=error: graph_unit.settle_shaping_error(unit, error),
+                )
+                continue
+            summary = member.summarized()
+            again = _summarize(shaped)
+            if (again.content_checksums, again.identities) != (
+                summary.content_checksums,
+                summary.identities,
+            ):
+                raise _composition_defect(
+                    self.batch_id,
+                    "a re-shaped batch member differs from its step-2 summary.",
+                    node_id=member.ref.node_id,
+                )
+            workloads.append(shaped.workload)
+            composed.append(member)
+        if not composed:
+            return _SetStatus.DONE
         try:
-            workload = _union(members)
-            request = _compose(workload, self.runtime.target.batch_workgroup)
+            workload = _union(workloads)
+            request = _compose(workload, self.runtime.target)
             composition = compose_unit_statements(request)
             shapes = merge_shapes(request)
         except Exception as error:
-            raise InvariantError(
-                GRAPH_UNIT_SET_COMPOSITION_CODE,
+            raise _composition_defect(
+                self.batch_id,
                 "composing a write_unit execution set's union raised; a defect.",
-                context={
-                    "signal": GRAPH_UNIT_SET_COMPOSITION,
-                    "batch_id": self.batch_id,
-                    "cause": type(error).__name__,
-                },
+                cause=type(error).__name__,
             ) from error
-        if len(shapes) != composition.merge_count:
-            raise InvariantError(
-                GRAPH_UNIT_SET_COMPOSITION_CODE,
-                "the merge shapes disagree with the composed merges.",
-                context={"signal": GRAPH_UNIT_SET_COMPOSITION, "batch_id": self.batch_id},
+        candidate = _ExecutionSet(tuple(composed), workload, composition, shapes)
+        if len(shapes) != composition.merge_count or not _set_fits(candidate):
+            raise _composition_defect(
+                self.batch_id, "the composed execution set disagrees with its bounds."
             )
-        return _ExecutionSet(tuple(members), workload, composition, shapes)
+        return candidate
 
-    def form_sets(self) -> list[_ExecutionSet]:
-        """Step 3: the longest prefixes, in member order, that one execution can carry.
+    def form_sets(self) -> list[tuple[_BatchMember, ...]]:
+        """Step 3 (D10): the member groups, in member order; nothing is composed here.
 
-        Identity overlap is checked by set membership before any union is built (N3); a set
-        ends before an 11th statement or a verification over the statement bound. State-blind,
-        so the same members always form the same sets. An empty result is a defect (N1).
+        An empty result for shaped members is a defect (N1).
         """
-        ready = [m for m in self.members if m.shaped is not None and m.member_class is None]
-        sets: list[_ExecutionSet] = []
-        current: list[_BatchMember] = []
-        identities: set[str] = set()
-        composed: _ExecutionSet | None = None
-        for member in ready:
-            own = _identities(member)
-            if current and own & identities:
-                if composed is not None:
-                    sets.append(composed)
-                current, identities, composed = [], set(), None
-            candidate = self.compose_set([*current, member])
-            if current and not _set_fits(candidate):
-                if composed is not None:
-                    sets.append(composed)
-                current, identities = [member], set(own)
-                composed = self.compose_set(current)
-                continue
-            current.append(member)
-            identities |= own
-            composed = candidate
-        if composed is not None:
-            sets.append(composed)
-        if ready and not sets:
-            raise InvariantError(
-                GRAPH_UNIT_SET_COMPOSITION_CODE,
-                "execution-set formation yielded no set for shaped members.",
-                context={"signal": GRAPH_UNIT_SET_COMPOSITION, "batch_id": self.batch_id},
+        ready = [m for m in self.members if m.summary is not None and m.member_class is None]
+        groups = _group_members(ready, WRITER_SETTINGS.max_rows_per_unit)
+        if ready and not groups:
+            raise _composition_defect(
+                self.batch_id, "execution-set formation yielded no set for shaped members."
             )
-        return sets
+        return groups
 
     # --- steps 4 to 8 --------------------------------------------------------------------------
 
@@ -2883,27 +3019,36 @@ class _Batch:
         needed = MIN_EXCLUSIVE_BUDGET_MS + (statements + 1) * int(allowance)
         return self.remaining_budget_ms() >= needed
 
-    def execute(
-        self, chosen: _ExecutionSet, *, isolate_single: bool
-    ) -> tuple[_SetStatus, str | None]:
-        """Run one execution set (step 5) and classify its outcome (steps 6-8).
+    def execute(  # noqa: PLR0911, PLR0912 -- one return per classified end of a group
+        self, group: Sequence[_BatchMember], *, isolate_single: bool
+    ) -> _Executed:
+        """Compose one group, run its set (step 5) and classify the outcome (steps 6-8).
 
+        D10: `current` is the only name that binds a composed set, and a refused set is
+        dropped before `remaining` is re-shaped, so at most one set's records are live.
         `isolate_single` is False for split halves, so a failed half of one member is reported
         back and the first split can judge whether both halves failed (systemic stop).
         """
-        current = chosen
+        if self.stop is not None:
+            self.apply_stop(group)
+            return _Executed(_SetStatus.STOPPED, None, tuple(group))
+        current = self.compose_set(group)
+        if isinstance(current, _SetStatus):
+            return _Executed(current, None, tuple(group))
         while True:
             if self.stop is not None:
                 self.apply_stop(current.members)
-                return _SetStatus.STOPPED, None
+                return _Executed(_SetStatus.STOPPED, None, current.members)
             statements = len(current.composition.statements)
             if not self._time_admits(statements):
                 self.budget_outcomes += 1
-                return self.halt(current.members, _Stop(_StopKind.BUDGET, "time_rule")), None
+                status = self.halt(current.members, _Stop(_StopKind.BUDGET, "time_rule"))
+                return _Executed(status, None, current.members)
             set_id = execution_set_id_for(self.batch_id, [m.ref.node_id for m in current.members])
             for member in current.members:
                 member.execution_set_id = set_id
             started = self.runtime.monotonic_ms()
+            result: InlineRunResult | None = None
             try:
                 result = self.runtime.inline_run(
                     _inline_runtime(self.runtime),
@@ -2923,34 +3068,46 @@ class _Batch:
                     ),
                 )
             except GraphAuthorityRefusedError:
+                # Only record here: the active exception's traceback still reaches the refused
+                # set, so the re-decision runs after the `try` statement has exited.
                 self._record_set(
                     current, set_id, "graph_claim_refused", started=started, result=None
                 )
-                refused = self._refused_begin(current)
-                if refused is None:
-                    return _SetStatus.DONE, None
-                if isinstance(refused, _SetStatus):
-                    return refused, None
-                current = refused
-                continue
             except Exception as error:
                 self._record_set(current, set_id, "raised", started=started, result=None)
-                return self._run_raised(current, error), None
-            self._record_set(current, set_id, result.outcome, started=started, result=result)
-            return self._classify(current, result, isolate_single=isolate_single), result.outcome
+                return _Executed(self._run_raised(current, error), None, current.members)
+            if result is not None:
+                self._record_set(current, set_id, result.outcome, started=started, result=result)
+                status = self._classify(current, result, isolate_single=isolate_single)
+                return _Executed(status, result.outcome, current.members)
+            members = current.members
+            decision = self._refused_begin(members)
+            if decision is None:
+                return _Executed(_SetStatus.DONE, None, members)
+            if isinstance(decision, _SetStatus):
+                return _Executed(decision, None, members)
+            remaining, lost = decision
+            if lost:
+                del current
+                current = self.compose_set(remaining)
+                if isinstance(current, _SetStatus):
+                    return _Executed(current, None, remaining)
 
     def _run_raised(self, current: _ExecutionSet, error: BaseException) -> _SetStatus:
         """Stop at a run `DependencyError` or unclassified exception: table-level (step 8)."""
         return self.halt(current.members, _Stop(_StopKind.TABLE, "raised", error))
 
-    def _refused_begin(self, current: _ExecutionSet) -> _ExecutionSet | _SetStatus | None:
+    def _refused_begin(
+        self, members: tuple[_BatchMember, ...]
+    ) -> tuple[tuple[_BatchMember, ...], bool] | _SetStatus | None:
         """Step 8, AR2/M1: re-read every claim; drop lost members, re-decide in one counter.
 
-        Returns the set to run again, None when every member was lost, or STOPPED once the
-        shared `max_redecide` counter (N2) is spent with every claim still live.
+        Returns the remaining members and whether any was lost, None when every member was
+        lost, or STOPPED once the shared `max_redecide` counter (N2) is spent with every claim
+        still live.
         """
         lost: list[_BatchMember] = []
-        for member in current.members:
+        for member in members:
             unit = member.claimed()
             claim = self.graph.read_claim(unit.node_id)
             if claim is None or claim.lease_version != unit.claim.lease_version:
@@ -2958,7 +3115,7 @@ class _Batch:
         for member in lost:
             unit = member.claimed()
             self.settle(member, lambda unit=unit: graph_unit.claim_lost(unit))
-        remaining = [m for m in current.members if m.member_class is None]
+        remaining = tuple(m for m in members if m.member_class is None)
         if not remaining:
             return None
         if self.redecides >= _MAX_REDECIDE:
@@ -2976,7 +3133,7 @@ class _Batch:
             )
             return self.halt(remaining, _Stop(_StopKind.REFUSED_LIVE, "claim_refused_live"))
         self.redecides += 1
-        return current if not lost else self.compose_set(remaining)
+        return remaining, bool(lost)
 
     def _classify(
         self, current: _ExecutionSet, result: InlineRunResult, *, isolate_single: bool
@@ -3043,7 +3200,7 @@ class _Batch:
                     graph_unit.UnitTarget(
                         item.partition_key, item.publication_id, item.fencing_token
                     )
-                    for item in member.shape().servable
+                    for item in member.summarized().servable
                 ),
             )
             successes.append(graph_unit.UnitSuccess(unit, record, digest))
@@ -3091,50 +3248,50 @@ class _Batch:
             LOGGER,
         )
 
-    def run_formed(self, chosen: _ExecutionSet) -> None:
-        """Run one formed set, splitting a member-attributable failure in halves (step 7)."""
-        status, outcome = self.execute(chosen, isolate_single=True)
-        if status is _SetStatus.MEMBER_FAILED and outcome is not None:
-            self._split(chosen, outcome, first=True)
+    def run_formed(self, group: tuple[_BatchMember, ...]) -> None:
+        """Run one formed group, splitting a member-attributable failure in halves (step 7).
 
-    def _split(self, failed: _ExecutionSet, outcome: str, *, first: bool) -> None:
+        D10: no composed set is bound here, so the parent set is unreachable once `execute`
+        returns.
+        """
+        executed = self.execute(group, isolate_single=True)
+        if executed.status is _SetStatus.MEMBER_FAILED and executed.outcome is not None:
+            self._split(executed.members, executed.outcome, first=True)
+
+    def _split(self, members: tuple[_BatchMember, ...], outcome: str, *, first: bool) -> None:
         """Halve a failed set in member order, run both halves, then recurse into failures.
 
+        Each half is composed inside its own `execute`, so the second half is composed only
+        after the first half's set is dropped, and every half yields exactly one `_Executed`.
         If both halves of the first split fail and no member is on its final attempt, the split
         stops (systemic) and every later set's members are unresolved. On a final attempt the
         split continues to single members.
         """
-        members = failed.members
         if len(members) == 1:
             self._isolate(members[0], outcome)
             return
         middle = (len(members) + 1) // 2
-        halves = (self.compose_set(members[:middle]), self.compose_set(members[middle:]))
-        results: list[tuple[_SetStatus, str | None]] = []
-        for half in halves:
+        results: list[_Executed] = []
+        for half in (members[:middle], members[middle:]):
             self.splits += 1
             results.append(self.execute(half, isolate_single=False))
-        stopped = any(status is _SetStatus.STOPPED for status, _ in results)
-        if stopped:
-            for half, (status, _) in zip(halves, results, strict=True):
-                if status is _SetStatus.MEMBER_FAILED:
-                    self.apply_stop(half.members)
+        if any(entry.status is _SetStatus.STOPPED for entry in results):
+            for entry in results:
+                if entry.status is _SetStatus.MEMBER_FAILED:
+                    self.apply_stop(entry.members)
             return
-        both_failed = all(status is _SetStatus.MEMBER_FAILED for status, _ in results)
+        both_failed = all(entry.status is _SetStatus.MEMBER_FAILED for entry in results)
         final = any(member.claimed().final for member in members)
         if first and both_failed and not final:
-            self.halt(
-                [m for half in halves for m in half.members],
-                _Stop(_StopKind.SYSTEMIC, "systemic_stop"),
-            )
+            self.halt(members, _Stop(_StopKind.SYSTEMIC, "systemic_stop"))
             return
-        for half, (status, half_outcome) in zip(halves, results, strict=True):
-            if status is not _SetStatus.MEMBER_FAILED or half_outcome is None:
+        for entry in results:
+            if entry.status is not _SetStatus.MEMBER_FAILED or entry.outcome is None:
                 continue
             if self.stop is not None:
-                self.apply_stop(half.members)
+                self.apply_stop(entry.members)
                 continue
-            self._split(half, half_outcome, first=False)
+            self._split(entry.members, entry.outcome, first=False)
 
     # --- the end of the invocation -------------------------------------------------------------
 
@@ -3354,11 +3511,8 @@ def _process_unit_batch(
         try:
             batch.claim_members()
             batch.shape_members()
-            for chosen in batch.form_sets():
-                if batch.stop is not None:
-                    batch.apply_stop(chosen.members)
-                    continue
-                batch.run_formed(chosen)
+            for group in batch.form_sets():
+                batch.run_formed(group)
         except BaseException:
             batch.release_unclassified()
             raise
@@ -3541,15 +3695,9 @@ def _process_legacy_unit(  # noqa: PLR0911 - one explicit ordered §2.2 unit lif
             return _UnitResult(acknowledge=False, outcome=refused.reason)
         try:
             shaped = _shape_unit(runtime, authority.unit_entry)
-            composition = compose_unit_statements(
-                ComposeUnitStatementsRequest(
-                    workload=shaped.workload,
-                    workgroup=runtime.target.batch_workgroup,
-                    max_statement_bytes=WRITER_SETTINGS.athena_max_statement_bytes,
-                )
-            )
+            composition = compose_unit_statements(_compose(shaped.workload, runtime.target))
             unit_statement_kinds(composition.merge_count)
-            retryable = _execute_statements(ctx, shaped, composition)
+            retryable = _execute_statements(ctx, composition)
             if retryable is not None:
                 unit_span.record(completed=1, outcome=retryable.reason)
                 return _UnitResult(acknowledge=False, outcome=retryable.reason)
@@ -3575,7 +3723,15 @@ def _process_legacy_unit(  # noqa: PLR0911 - one explicit ordered §2.2 unit lif
             return result
         finally:
             _release_lease(ctx)
-        _report(delivery, "semantic_unit_attested", "attested", LogSeverity.INFO)
+        _report(
+            delivery,
+            "semantic_unit_attested",
+            "attested",
+            LogSeverity.INFO,
+            accepted_attempts=_accepted_attempts(ctx),
+            merge_count=composition.merge_count,
+            rows=sum(len(records) for _, records in shaped.workload.records_by_identity),
+        )
         _plan_terminal(runtime, delivery)
         unit_span.record(completed=1, outcome="attested")
         return _UnitResult(acknowledge=True, outcome="attested")

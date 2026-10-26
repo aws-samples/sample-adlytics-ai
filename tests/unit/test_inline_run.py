@@ -22,6 +22,7 @@ from aws_lambda_powertools import Logger
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from unit_staging_support import RecordingStager, workload_verification_rows
 
 from adapters.inbound.ingestion_handlers import inline_run
 from adapters.inbound.ingestion_handlers.inline_run import (
@@ -31,12 +32,7 @@ from adapters.inbound.ingestion_handlers.inline_run import (
     ServablePointerTarget,
     run_inline_table,
 )
-from adapters.outbound.athena.semantic_storage import (
-    UnitWorkload,
-    _expected_records,
-    canonical_unit_records,
-    ordered_records,
-)
+from adapters.outbound.athena.semantic_storage import UnitWorkload, canonical_unit_records
 from adapters.outbound.athena.table_attempt_statements import (
     ComposeUnitStatementsRequest,
     compose_unit_statements,
@@ -95,6 +91,7 @@ from domain.semantics.validation import (
     PublicationEvidenceSubject,
     RuleOutcome,
 )
+from domain.shared_kernel.errors import DependencyError, ErrorCode
 from domain.shared_kernel.values import DateRange
 from ports.outbound.canonical import CanonicalDestination, CanonicalMaterializeRequest
 from ports.outbound.projection_coordinator import (
@@ -249,9 +246,11 @@ TABLE = CATALOG.canonical(DATASET, successful=True)
 RECORDS = canonical_unit_records(projection_unit_source(canonical_object_bytes(CANONICAL)), TABLE)
 WORKLOAD = UnitWorkload(TABLE, CURRENT_DATABASE, ((PUBLICATION_ID, RECORDS),))
 COMPOSITION = compose_unit_statements(
-    ComposeUnitStatementsRequest(workload=WORKLOAD, workgroup="fictional-batch")
+    ComposeUnitStatementsRequest(
+        workload=WORKLOAD, workgroup="fictional-batch", staging_database="fictional_staging"
+    )
 )
-EXPECTED_READBACK = tuple(_expected_records(TABLE, ordered_records(TABLE, RECORDS)))
+EXPECTED_READBACK = workload_verification_rows(WORKLOAD)  # ADR-149: exact count rows
 SERVABLE = ServablePointerTarget(PARTITION_IDENTITY, PUBLICATION_ID, FENCING_TOKEN)
 
 
@@ -647,6 +646,7 @@ def _harness(
         start=cast("Any", _Start(calls, list(starts))),
         terminals=cast("Any", terminals),
         reads=_Reads(selected),
+        stager=RecordingStager(),
         bounds=BOUNDS,
         lease_duration_seconds=930,
         wall=lambda: NOW,
@@ -983,7 +983,7 @@ def test_a_failed_provider_terminal_is_non_retryable_and_releases_the_lease(
 
 def test_a_verification_readback_mismatch_is_non_retryable_and_never_finalizes() -> None:
     harness = _harness()
-    harness.terminals.readback = (("unexpected",) * len(EXPECTED_READBACK[0]),)
+    harness.terminals.readback = (("target", PUBLICATION_ID, "0"), *EXPECTED_READBACK[1:])
 
     result = harness.run()
 
@@ -1202,3 +1202,328 @@ def test_slice7_1d_a_deadline_cancelled_failure_is_typed_on_the_result() -> None
     assert (failed.outcome, failed.deadline_cancelled) == (InlineRunOutcome.STATEMENT_FAILED, False)
     # Control: a finalized run reads false.
     assert _harness().run().deadline_cancelled is False
+
+
+# --- ADR-149 slice S3: staging, staged verification and terminal telemetry -------------------
+
+
+def _logged(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
+    lines: list[Any] = []
+    real = inline_run.report_operation
+
+    def capture(log: Any, logger: Any) -> None:
+        lines.append(log)
+        real(log, logger)
+
+    monkeypatch.setattr(inline_run, "report_operation", capture)
+    return lines
+
+
+def _staging(harness: _Harness, stager: RecordingStager) -> None:
+    harness.runtime = replace(harness.runtime, stager=stager)
+
+
+@pytest.mark.covers("ADR-149")
+def test_t10_a_run_stages_once_before_its_merge_and_reports_two_accepted_attempts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lines = _logged(monkeypatch)
+    harness = _harness()
+    stager = RecordingStager(calls=harness.calls)
+    _staging(harness, stager)
+
+    result = harness.run()
+
+    assert result.outcome == InlineRunOutcome.FINALIZED
+    assert harness.calls.count("stage") == 1
+    assert harness.calls.index("stage") < harness.calls.index("begin_table_attempt")
+    assert harness.calls.count("begin_table_attempt") == 2
+    (terminal,) = [line for line in lines if line.operation == "semantic_inline_run_terminal"]
+    assert harness.world.run_item is not None
+    reserved = harness.world.run_item["accepted_attempt_reservations"]
+    assert (terminal.details["accepted_attempts"], reserved) == (2, 2)
+    assert terminal.details["rows"] == len(RECORDS)
+    assert terminal.details["execution_id"] == EXECUTION_ID
+    assert terminal.details["physical_table_id"] == TABLE_ID
+
+
+@pytest.mark.covers("ADR-149")
+def test_t10_a_failed_count_read_still_finalizes_with_a_null_count_reported_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lines = _logged(monkeypatch)
+    errors: list[BaseException] = []
+
+    def record(error: BaseException, _report: object) -> None:
+        errors.append(error)
+
+    monkeypatch.setattr(inline_run, "report_error", record)
+    harness = _harness()
+    real = inline_run._reservations  # pyright: ignore[reportPrivateUsage]
+    finalized = [False]
+
+    def reservations(owner: Any) -> int:
+        if finalized[0]:
+            raise DependencyError(ErrorCode("FICTIONAL", 4), "injected run read")
+        return real(owner)
+
+    real_finalize = inline_run._finalize_run  # pyright: ignore[reportPrivateUsage]
+
+    def finalize(ctx: Any) -> None:
+        real_finalize(ctx)
+        finalized[0] = True
+
+    monkeypatch.setattr(inline_run, "_reservations", reservations)
+    monkeypatch.setattr(inline_run, "_finalize_run", finalize)
+
+    result = harness.run()
+
+    assert result.outcome == InlineRunOutcome.FINALIZED
+    (terminal,) = [line for line in lines if line.operation == "semantic_inline_run_terminal"]
+    assert terminal.details["accepted_attempts"] is None
+    assert [type(error).__name__ for error in errors] == ["DependencyError"]
+
+
+@pytest.mark.covers("ADR-149")
+def test_t10_a_stager_failure_raises_as_a_dependency_error_and_reserves_nothing() -> None:
+    from ports.outbound.unit_staging import StagingUnavailableError  # noqa: PLC0415
+
+    harness = _harness()
+    _staging(harness, RecordingStager(failure=StagingUnavailableError("injected throttle")))
+
+    with pytest.raises(StagingUnavailableError) as raised:
+        harness.run()
+
+    assert isinstance(raised.value, DependencyError)
+    assert "begin_table_attempt" not in harness.calls
+    assert harness.world.run_item is not None
+    assert harness.world.run_item["accepted_attempt_reservations"] == 0
+    assert harness.calls[-1] == "release_table_fence"
+    # Control: a passing stager finalizes the same run.
+    assert _harness().run().outcome == InlineRunOutcome.FINALIZED
+
+
+@pytest.mark.covers("ADR-149")
+def test_t10_refusal_and_failure_lines_carry_the_table_and_the_execution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lines = _logged(monkeypatch)
+    _harness(acquire=AcquireTableFenceOutcome.TABLE_BUSY).run()
+    failed = _harness()
+    failed.terminals.terminal = _terminal(ProviderTerminalState.FAILED)
+    failed.run()
+    budget = _harness()
+    budget.clock.now_ms = FULL_BUDGET_MS - 1_000
+    budget.run()
+
+    parked = _harness()
+    parked.terminals.never_terminal = True
+    assert parked.run().outcome == InlineRunOutcome.ATTEMPT_PARKED
+
+    operations = {line.operation: line.details for line in lines}
+    for operation in (
+        "semantic_inline_run_refused",
+        "semantic_statement_failed",
+        "semantic_statement_budget",
+        "semantic_attempt_parked",
+    ):
+        assert operations[operation]["physical_table_id"] == TABLE_ID
+        assert operations[operation]["execution_id"] == EXECUTION_ID
+
+
+# --- §4.8's inline rule for 08 criterion 1, over recorded lines (T-10) ----------------------
+
+RECEIVE_1 = "e1" * 32
+RECEIVE_2 = "e2" * 32
+TABLE_A = "fictional-current.table_a"
+TABLE_B = "fictional-current.table_b"
+FEASIBILITY_REFUSED_CODE = "ADLY-STAGE1_DELIVERY-0001"
+INLINE_RUN_FAILED_CODE = "ADLY-STAGE1_DELIVERY-0004"
+STAGING_UNAVAILABLE_CODE = "ADLY-SEMANTIC_STAGING-0001"
+_ATTRIBUTABLE_OPERATIONS = frozenset(
+    {"semantic_attempt_parked", "semantic_statement_budget", "semantic_inline_run_refused"}
+)
+
+
+@dataclass(frozen=True, slots=True)
+class _InlineVerdict:
+    passed: bool
+    reasons: tuple[str, ...]
+
+
+def _attributable(line: dict[str, object], receive: str) -> bool:
+    if line["operation"] in _ATTRIBUTABLE_OPERATIONS:
+        return line.get("execution_id") == receive
+    return line.get("error_class") == "dependency" and line.get("correlation_id") == receive
+
+
+def _inline_criterion_one(lines: list[dict[str, object]], roster: frozenset[str]) -> _InlineVerdict:
+    """Judge one inline delivery's recorded lines by design 10 §4.8's inline rule.
+
+    No production module owns this rule: 08's scale-run check applies it to the run's logs.
+    Pinning it beside the writer shows that the lines the inline path emits carry every
+    field the rule reads, so criterion 1 can be judged at all.
+    """
+    reasons: list[str] = []
+    inline = [line for line in lines if "internal_operation_id" in line]
+    assert len({line["internal_operation_id"] for line in inline}) == 1  # one delivery
+    terminals = [
+        line
+        for line in inline
+        if line["operation"] == "semantic_inline_run_terminal"
+        and line["outcome"] == InlineRunOutcome.FINALIZED
+    ]
+    reasons.extend(
+        f"{line['physical_table_id']} finalized with accepted_attempts={line['accepted_attempts']}"
+        for line in terminals
+        if line["accepted_attempts"] != 2  # a null count can't be judged, so it fails too
+    )
+    if any(line["operation"] == "semantic_statement_failed" for line in inline):
+        reasons.append("a statement failed")
+    refused = {FEASIBILITY_REFUSED_CODE, INLINE_RUN_FAILED_CODE}
+    reasons.extend(
+        f"report {line['error_code']}" for line in lines if line.get("error_code") in refused
+    )
+    receives = list(dict.fromkeys(str(line["execution_id"]) for line in inline))
+    complete = [
+        receive
+        for receive in receives
+        if roster
+        <= {line["physical_table_id"] for line in terminals if line["execution_id"] == receive}
+    ]
+    if not complete:
+        reasons.append("no receive finalized every roster table: the delivery didn't publish")
+    final = complete[-1] if complete else None
+    reasons.extend(
+        f"receive {receive} redelivered with no attributable cause"
+        for receive in receives
+        if receive != final and not any(_attributable(line, receive) for line in lines)
+    )
+    return _InlineVerdict(passed=not reasons, reasons=tuple(reasons))
+
+
+def _flat(log: Any) -> dict[str, object]:
+    return {"operation": log.operation, "outcome": log.outcome, **log.details}
+
+
+def _recorded(lines: list[Any], operation: str) -> dict[str, object]:
+    (line,) = [_flat(log) for log in lines if log.operation == operation]
+    return line
+
+
+def _as(line: dict[str, object], table: str, receive: str) -> dict[str, object]:
+    """Place a line the inline path really emitted on another table and receive."""
+    return {**line, "physical_table_id": table, "execution_id": receive}
+
+
+def _dependency_report(correlation_id: str) -> dict[str, object]:
+    """Build the `report_error` line `_load_legacy` writes for a receive's transient raise."""
+    return {
+        "operation": "stage1_delivery",
+        "correlation_id": correlation_id,
+        "error_class": "dependency",
+        "error_code": STAGING_UNAVAILABLE_CODE,
+    }
+
+
+@pytest.fixture
+def emitted(monkeypatch: pytest.MonkeyPatch) -> dict[str, dict[str, object]]:
+    """One FINALIZED terminal and one park line, exactly as the inline path emits them."""
+    lines = _logged(monkeypatch)
+    assert _harness().run().outcome == InlineRunOutcome.FINALIZED
+    parked = _harness()
+    parked.terminals.never_terminal = True
+    assert parked.run().outcome == InlineRunOutcome.ATTEMPT_PARKED
+    return {
+        "terminal": _recorded(lines, "semantic_inline_run_terminal"),
+        "parked": _recorded(lines, "semantic_attempt_parked"),
+    }
+
+
+@pytest.mark.covers("ADR-149")
+def test_t10_the_inline_rule_fails_a_finalized_terminal_whose_count_could_not_be_read(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lines = _logged(monkeypatch)
+
+    def unreported(_error: BaseException, _report: object) -> None:
+        return None
+
+    monkeypatch.setattr(inline_run, "report_error", unreported)
+    real = inline_run._reservations
+    real_finalize = inline_run._finalize_run
+    finalized = [False]
+
+    def reservations(owner: Any) -> int:
+        if finalized[0]:
+            raise DependencyError(ErrorCode("FICTIONAL", 4), "injected run read")
+        return real(owner)
+
+    def finalize(ctx: Any) -> None:
+        real_finalize(ctx)
+        finalized[0] = True
+
+    with monkeypatch.context() as patched:
+        patched.setattr(inline_run, "_reservations", reservations)
+        patched.setattr(inline_run, "_finalize_run", finalize)
+        assert _harness().run().outcome == InlineRunOutcome.FINALIZED
+    unread = _recorded(lines, "semantic_inline_run_terminal")
+    lines.clear()
+    assert _harness().run().outcome == InlineRunOutcome.FINALIZED
+    counted = _recorded(lines, "semantic_inline_run_terminal")
+
+    verdict = _inline_criterion_one([unread], frozenset({TABLE_ID}))
+
+    assert unread["accepted_attempts"] is None
+    assert verdict == _InlineVerdict(
+        passed=False, reasons=(f"{TABLE_ID} finalized with accepted_attempts=None",)
+    )
+    # Control: the same run's terminal with its count read (2 accepted attempts) passes.
+    assert counted["accepted_attempts"] == 2
+    assert _inline_criterion_one([counted], frozenset({TABLE_ID})).passed is True
+
+
+@pytest.mark.covers("ADR-149")
+def test_t10_a_dependency_report_with_the_receives_execution_id_attributes_that_receive(
+    emitted: dict[str, dict[str, object]],
+) -> None:
+    """Receive 1: A finalizes, then B's staging raises; receive 2 finalizes both."""
+    terminal = emitted["terminal"]
+    roster = frozenset({TABLE_A, TABLE_B})
+    finalized = [
+        _as(terminal, TABLE_A, RECEIVE_1),
+        _as(terminal, TABLE_A, RECEIVE_2),
+        _as(terminal, TABLE_B, RECEIVE_2),
+    ]
+
+    attributed = _inline_criterion_one([*finalized, _dependency_report(RECEIVE_1)], roster)
+
+    assert attributed == _InlineVerdict(passed=True, reasons=())
+    # Control: the same report correlated to the other receive names no cause for receive 1.
+    misattributed = _inline_criterion_one([*finalized, _dependency_report(RECEIVE_2)], roster)
+    assert misattributed == _InlineVerdict(
+        passed=False, reasons=(f"receive {RECEIVE_1} redelivered with no attributable cause",)
+    )
+
+
+@pytest.mark.covers("ADR-149")
+def test_t10_a_table_parked_after_another_finalized_passes_when_both_finalize_next_receive(
+    emitted: dict[str, dict[str, object]],
+) -> None:
+    """A's earlier FINALIZED run is allowed: the re-run's MERGE inserts nothing (D9)."""
+    terminal, parked = emitted["terminal"], emitted["parked"]
+    roster = frozenset({TABLE_A, TABLE_B})
+    park = _as(parked, TABLE_B, RECEIVE_1)
+    recorded = [
+        _as(terminal, TABLE_A, RECEIVE_1),
+        park,
+        _as(terminal, TABLE_A, RECEIVE_2),
+        _as(terminal, TABLE_B, RECEIVE_2),
+    ]
+
+    assert _inline_criterion_one(recorded, roster) == _InlineVerdict(passed=True, reasons=())
+    # Control: without B's park line, receive 1's redelivery has no attributable cause.
+    unexplained = _inline_criterion_one([line for line in recorded if line is not park], roster)
+    assert unexplained == _InlineVerdict(
+        passed=False, reasons=(f"receive {RECEIVE_1} redelivered with no attributable cause",)
+    )

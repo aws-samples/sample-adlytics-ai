@@ -709,6 +709,8 @@ describe('what this repository ships', () => {
       maxGroupMembers: 4,
       maxPointersPerTable: 37,
       maxObjectRefsPerUnit: 37,
+      maxRowsPerUnit: 50000,
+      maxRowsPerDelivery: 20000,
       athenaMaxStatementBytes: 200000,
       maxEncodedIdentityBytes: 128,
       maxPartitionIdentityBytes: 256,

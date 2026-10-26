@@ -247,6 +247,20 @@ def test_lint_refuses_unformatted_staged_content(gate: ModuleType, repo: Path) -
     ]
 
 
+def test_lint_formats_nothing_the_pyproject_format_exclude_names(
+    gate: ModuleType, repo: Path
+) -> None:
+    """A generated module the generator lays out is linted but not format-checked."""
+    (repo / "pyproject.toml").write_text('[tool.ruff.format]\nexclude = ["src/generated.py"]\n')
+    _stage(repo, {"src/generated.py": '"""Fixture."""\n\nx=1\n'})
+    assert gate.check_lint(repo) == []
+    # Control: the same content at a path the exclude does not name is refused.
+    _stage(repo, {"src/module.py": '"""Fixture."""\n\nx=1\n'})
+    assert [(r.code, r.detail) for r in gate.check_lint(repo)] == [
+        ("LINT_FAILED", "ruff format src/module.py: exited 1")
+    ]
+
+
 def test_lint_reads_only_the_make_lint_scope(gate: ModuleType, repo: Path) -> None:
     _stage(repo, {"scripts/tool.py": "import os\n", "docs/x.md": "import os\n"})
     assert gate.lint_targets(gate.staged_paths(repo)) == []

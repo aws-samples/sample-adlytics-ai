@@ -5,35 +5,40 @@ The canonical start envelope and the one §11 statement byte measure live in
 ``adapters.outbound.athena.start_envelope``; this module re-exports the composer
 and parses a persisted envelope back, refusing any drift from the canonical form.
 
-Per-unit composition delegates to the single §6 existing ordering helper and
-packer — ``ordered_records``, ``pack_object_batches``, ``merge_statement``, and
-``multi_select_statement`` — never a preflight-only implementation. A unit
-composes ``M(u)`` merge statements followed by exactly one verification whose
-parameters are the unit's declared identities. Merges are bounded only by the
-``athenaMaxStatementBytes`` envelope bytes; there is no parameter-count split.
+Per-unit composition (ADR-149) emits exactly two statements whatever the unit's
+row count: one insert-only ``MERGE`` that reads the unit's content-addressed
+staged object, and one set-based verification whose parameters are the unit's
+declared identities. ``stage_unit`` computes the staged object's key and counts
+here without writing it; the ``MERGE`` carries that summary and a ``render``
+callable, and the statement protocol writes the body just before its ``Begin``.
+The composer measures no envelope: the step-2 validator owns that bound. Its one
+byte check is the per-record staged-line bound.
 """
 
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+import re
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from functools import partial
 from typing import Final, cast
 
 from adapters.outbound.athena.semantic_storage import (
+    StagedSource,
     UnitWorkload,
-    merge_statement,
-    multi_select_statement,
-    ordered_records,
-    pack_object_batches,
+    staged_merge_statement,
+    verification_statement,
 )
+from adapters.outbound.athena.staging import render_staged_body, stage_unit
 from adapters.outbound.athena.start_envelope import (
     ENVELOPE_MALFORMED,
     ComposeStartEnvelopeRequest,
     compose_start_envelope,
-    envelope_fits,
 )
 from domain.operations.statement_protocol import MAX_STATEMENT_BYTES, StatementKind
-from domain.shared_kernel.errors import ErrorCode, ValidationError
+from domain.shared_kernel.errors import ErrorCode, InvariantError, ValidationError
+from ports.outbound.unit_staging import STAGING_COMPOSITION_SHAPE, StagedUnit
 
 __all__ = [
     "ENVELOPE_MALFORMED",
@@ -50,6 +55,7 @@ __all__ = [
 
 STATEMENT_UNPACKABLE: Final = ErrorCode("ATHENA_START", 2)
 
+_IDENTIFIER: Final = re.compile(r"^[a-z][a-z0-9_]*$")
 _REQUIRED_KEYS: Final = frozenset({"Database", "QueryString", "WorkGroup"})
 _OPTIONAL_KEYS: Final = frozenset({"ExecutionParameters"})
 
@@ -122,30 +128,44 @@ def parse_start_envelope(text: str) -> ParsedStartEnvelope:
 
 @dataclass(frozen=True, slots=True)
 class ComposedStatement:
-    """One planned statement: kind, rendered SQL, raw parameters, and its envelope."""
+    """One planned statement: kind, rendered SQL, raw parameters, and its envelope.
+
+    Only the ``MERGE`` carries ``staged`` (the unit's staged summary) and ``render`` (which
+    renders its body once). Both stay out of equality: the SQL names the staging key, and the
+    summary's length and counts are functions of the bytes that key names.
+    """
 
     kind: StatementKind
     sql: str
     parameters: tuple[str, ...]
     start_envelope: str
+    staged: StagedUnit | None = field(default=None, compare=False)
+    render: Callable[[], bytes] | None = field(default=None, compare=False, repr=False)
 
 
 @dataclass(frozen=True, slots=True)
 class ComposeUnitStatementsRequest:
-    """One unit's complete workload beside the workgroup its statements run in.
+    """One unit's complete workload beside the workgroup and staging database it runs with.
 
     ``max_statement_bytes`` is the §11 ``athenaMaxStatementBytes`` value; entry points
-    resolving ``AppConfig.ingestion`` pass it, and the default is the reviewed value.
+    resolving ``AppConfig.ingestion`` pass it, and the default is the reviewed value. It also
+    bounds one record's staged line.
     """
 
     workload: UnitWorkload
     workgroup: str
+    staging_database: str
     max_statement_bytes: int = MAX_STATEMENT_BYTES
 
     def __post_init__(self) -> None:
         if not self.workgroup.strip():
             raise ValidationError(
                 ENVELOPE_MALFORMED, "unit statement composition requires a workgroup."
+            )
+        if not _IDENTIFIER.fullmatch(self.staging_database):
+            raise ValidationError(
+                ENVELOPE_MALFORMED,
+                "unit statement composition requires a generated staging database name.",
             )
         if isinstance(self.max_statement_bytes, bool) or self.max_statement_bytes < 1:
             raise ValidationError(
@@ -155,9 +175,19 @@ class ComposeUnitStatementsRequest:
 
 @dataclass(frozen=True, slots=True)
 class UnitStatementComposition:
-    """The unit's closed statement roster: ``M(u)`` merges then one verification."""
+    """The unit's closed statement roster: one staged ``MERGE`` then one verification."""
 
     statements: tuple[ComposedStatement, ...]
+
+    def __post_init__(self) -> None:
+        shape = tuple(statement.kind for statement in self.statements)
+        if shape != (StatementKind.MERGE, StatementKind.VERIFICATION):
+            raise _shape_error()
+        merge, verification = self.statements
+        if merge.staged is None or merge.render is None:
+            raise _shape_error()
+        if verification.staged is not None or verification.render is not None:
+            raise _shape_error()
 
     @property
     def merge_count(self) -> int:
@@ -175,62 +205,62 @@ class UnitStatementComposition:
         return self.statements[-1]
 
 
-def compose_unit_statements(request: ComposeUnitStatementsRequest) -> UnitStatementComposition:
-    """Compose one unit's merges and single verification through the §6 packer.
-
-    Objects must arrive in the roster's canonical object order; this function
-    preserves that order, packs whole objects greedily so each merge's canonical
-    start envelope stays within ``max_statement_bytes``, and never reorders a
-    fragment. One record whose own merge exceeds the bound raises
-    ``STATEMENT_UNPACKABLE`` before authority; nothing is truncated.
-    """
-    table = request.workload.table
-    objects = tuple(
-        ordered_records(table, records) for _, records in request.workload.records_by_identity
+def _shape_error() -> InvariantError:
+    return InvariantError(
+        STAGING_COMPOSITION_SHAPE,
+        "a unit composition is exactly one staged MERGE then one verification.",
     )
-    fits = envelope_fits(request.workgroup, request.workload.database, request.max_statement_bytes)
+
+
+def compose_unit_statements(request: ComposeUnitStatementsRequest) -> UnitStatementComposition:
+    """Compose one unit's staged ``MERGE`` and its single set-based verification.
+
+    Identities keep the roster's canonical object order, and each identity's records are
+    staged in grain order. A record that cannot be staged, including one whose staged line
+    exceeds ``max_statement_bytes``, raises ``STATEMENT_UNPACKABLE`` before authority;
+    nothing is truncated.
+    """
+    workload = request.workload
+    table = workload.table
     try:
-        batches = pack_object_batches(table, objects, fits)
+        staged = stage_unit(workload, max_record_bytes=request.max_statement_bytes)
     except ValueError as error:
         raise ValidationError(
             STATEMENT_UNPACKABLE,
-            f"one immutable record's merge exceeds the {request.max_statement_bytes}-byte "
+            f"one record can't be staged within the {request.max_statement_bytes}-byte "
             "§11 statement bound; the delivery is refused before authority.",
             context={"table": table.name, "max_statement_bytes": request.max_statement_bytes},
         ) from error
-    statements: list[ComposedStatement] = []
-    for batch in batches:
-        sql, parameters = merge_statement(table, batch)
-        statements.append(
-            ComposedStatement(
-                kind=StatementKind.MERGE,
-                sql=sql,
-                parameters=parameters,
-                start_envelope=compose_start_envelope(
-                    ComposeStartEnvelopeRequest(
-                        workgroup=request.workgroup,
-                        database=request.workload.database,
-                        sql=sql,
-                        parameters=parameters,
-                    )
-                ),
+    source = StagedSource(request.staging_database, staged.staging_key)
+    merge_sql = staged_merge_statement(table, source)
+    merge = ComposedStatement(
+        kind=StatementKind.MERGE,
+        sql=merge_sql,
+        parameters=(),
+        start_envelope=compose_start_envelope(
+            ComposeStartEnvelopeRequest(
+                workgroup=request.workgroup,
+                database=workload.database,
+                sql=merge_sql,
+                parameters=(),
             )
-        )
-    identities = tuple(identity for identity, _ in request.workload.records_by_identity)
-    verification_sql = multi_select_statement(table, len(identities))
-    statements.append(
-        ComposedStatement(
-            kind=StatementKind.VERIFICATION,
-            sql=verification_sql,
-            parameters=identities,
-            start_envelope=compose_start_envelope(
-                ComposeStartEnvelopeRequest(
-                    workgroup=request.workgroup,
-                    database=request.workload.database,
-                    sql=verification_sql,
-                    parameters=identities,
-                )
-            ),
-        )
+        ),
+        staged=staged,
+        render=partial(render_staged_body, workload, staged),
     )
-    return UnitStatementComposition(statements=tuple(statements))
+    identities = tuple(identity for identity, _ in workload.records_by_identity)
+    verification_sql = verification_statement(table, source, len(identities))
+    verification = ComposedStatement(
+        kind=StatementKind.VERIFICATION,
+        sql=verification_sql,
+        parameters=identities,
+        start_envelope=compose_start_envelope(
+            ComposeStartEnvelopeRequest(
+                workgroup=request.workgroup,
+                database=workload.database,
+                sql=verification_sql,
+                parameters=identities,
+            )
+        ),
+    )
+    return UnitStatementComposition(statements=(merge, verification))

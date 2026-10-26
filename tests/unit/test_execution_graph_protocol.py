@@ -261,7 +261,7 @@ def test_a_node_naming_an_unknown_route_is_refused_and_a_known_route_generates(
     )
 
 
-_ALLOWANCE = "  statement_allowance_ms: 45000\n"
+_ALLOWANCE = "  statement_allowance_ms: 44000\n"
 
 
 def _no_planner_findings(_root: pathlib.Path, _contract: dict[str, object]) -> list[str]:
@@ -269,8 +269,8 @@ def _no_planner_findings(_root: pathlib.Path, _contract: dict[str, object]) -> l
 
 
 def test_slice7_12c_the_allowance_is_generated_and_pinned_to_the_d42_value() -> None:
-    """D42: 2 x 22,193 ms rounded up to the next 1,000 ms is 45,000 ms (design §2.5 step 4)."""
-    assert WRITE_UNIT_BATCHING == {"statement_allowance_ms": 45_000}
+    """ADR-149 re-derivation of D42 at 50,000 rows: 2 x 21,891 ms, rounded up, is 44,000 ms."""
+    assert WRITE_UNIT_BATCHING == {"statement_allowance_ms": 44_000}
     contract = generator.load_contract(ROOT)
     generator.require_deployable(contract)
     # The block sits outside `bounds`, so the v1 bounds digest is unchanged.
@@ -335,7 +335,7 @@ def test_slice7_12c_a_missing_block_is_refused(tmp_path: pathlib.Path) -> None:
     assert refused.value.code == generator.BATCHING_INVALID
     # Control: the repository contract carries the block and loads.
     assert generator.load_contract(ROOT)["write_unit_batching"] == {
-        "statement_allowance_ms": 45_000
+        "statement_allowance_ms": 44_000
     }
 
 

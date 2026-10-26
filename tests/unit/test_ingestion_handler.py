@@ -309,6 +309,8 @@ def _configure(monkeypatch: pytest.MonkeyPatch) -> None:
         "ADL_SEMANTIC_V2_SOURCE_DATABASE": "adlytics_test_source",
         "ADL_SEMANTIC_V2_CANDIDATE_DATABASE": "adlytics_test_candidate",
         "ADL_SEMANTIC_V2_CURRENT_DATABASE": "adlytics_test_current",
+        "ADL_SEMANTIC_V2_STAGING_DATABASE": "adlytics_test_staging",
+        "ADL_SEMANTIC_V2_STAGING_BUCKET": "adlytics-test-staging",
         "ADL_ATHENA_RESULT_REUSE_MAX_AGE_MINUTES": "0",
         "ADL_ATHENA_QUERY_BATCH_MAX_CONCURRENCY": "8",
         "AWS_DEFAULT_REGION": "us-east-1",
@@ -448,6 +450,44 @@ class TestPermanentSemanticRuntime:
         monkeypatch.setattr(load, "SETTINGS", load.SETTINGS.model_copy(update={"raw_bucket": " "}))
         with pytest.raises(Exception, match="raw bucket"):
             load._runtime()
+
+    @pytest.mark.covers("ADR-149")
+    @pytest.mark.parametrize(
+        "case",
+        [
+            ("semantic_v2_staging_database", "staging database"),
+            ("semantic_v2_staging_bucket", "staging bucket"),
+        ],
+    )
+    def test_composition_refuses_a_blank_staging_setting(
+        self, monkeypatch: pytest.MonkeyPatch, case: tuple[str, str]
+    ) -> None:
+        field, label = case
+        _configure(monkeypatch)
+        from adapters.inbound.ingestion_handlers import load  # noqa: PLC0415
+
+        # Control: the module imported, so the runtime built with every staging setting present.
+        assert load.RUNTIME is not None
+        monkeypatch.setattr(load, "SETTINGS", load.SETTINGS.model_copy(update={field: " "}))
+        with pytest.raises(ValueError, match=label):
+            load._runtime()
+
+    @pytest.mark.covers("ADR-149")
+    def test_the_inline_runtime_stages_and_the_queued_composition_builds_none(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _configure(monkeypatch)
+        from adapters.inbound.ingestion_handlers import load  # noqa: PLC0415
+        from adapters.outbound.s3.unit_staging import S3UnitStager  # noqa: PLC0415
+
+        # The fixture's INLINE_ACTIVE composition builds the inline runtime with its stager.
+        assert load.COMPOSITION is load.ProjectionComposition.INLINE
+        assert load.RUNTIME.inline is not None
+        assert isinstance(load.RUNTIME.inline.stager, S3UnitStager)
+        # Control: the shipped queued composition builds no inline runtime, so nothing stages
+        # in the delivery function.
+        monkeypatch.setattr(load, "COMPOSITION", load.ProjectionComposition.QUEUED)
+        assert load._runtime().inline is None
 
     def test_execution_uses_exact_fetch_and_semantic_ingestion(
         self, monkeypatch: pytest.MonkeyPatch
