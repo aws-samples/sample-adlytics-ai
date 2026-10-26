@@ -209,7 +209,8 @@ def start_counted(  # noqa: PLR0913 -- the request, its throttle window and its 
     deliberately" is necessarily per-statement.
     """
     encoded = [sql_literal(value) for value in request.parameters]
-    jitter = random_source or random.Random()  # noqa: S311 -- backoff jitter, not a secret
+    # Backoff jitter needs no seed or secret; the OS source keeps a PRNG out of runtime code.
+    jitter = random_source or random.SystemRandom()
     throttled = 0
     while True:
         try:

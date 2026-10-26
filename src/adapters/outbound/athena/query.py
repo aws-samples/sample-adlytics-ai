@@ -218,8 +218,9 @@ class AthenaQueryAdapter:
         if s3 is None and target.results is ResultTransport.OBJECT:
             s3 = boto3.client("s3")
         self._s3 = s3
-        # The throttled start's full jitter; injectable so a test fixes the sleeps.
-        self._random = random_source or random.Random()  # noqa: S311 -- jitter, not a secret
+        # The throttled start's full jitter, from the OS source; injectable so a test fixes the
+        # sleeps.
+        self._random = random_source or random.SystemRandom()
 
     def run(self, request: QueryRequest) -> QueryResult:
         """Execute a plan and return its rows, or raise a `DependencyError`."""
