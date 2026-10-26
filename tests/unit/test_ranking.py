@@ -200,7 +200,7 @@ def test_a_semi_join_statement_restricts_its_own_read_to_the_ranked_keys() -> No
     assert series.ranked is not None
     composed = compose(series.plan, series.max_rows, series.ranked)
     fact = series.plan.logical.fact
-    semi_join = f'EXISTS (SELECT 1 FROM "ranked" WHERE "ranked"."key" = "{fact}"."amazon_asin"'  # noqa: S608 -- an expected text, not a statement
+    semi_join = f'EXISTS (SELECT 1 FROM "ranked" WHERE "ranked"."key" = "{fact}"."amazon_asin"'  # noqa: S608  # nosec B608 # A-SQL-001: an expected text, not a statement
     assert f"WHERE {semi_join}" in composed.sql
     assert composed.sql.endswith(f"LIMIT {series.max_rows + 1}")
     assert composed.sql.count("?") == len(composed.parameters)
