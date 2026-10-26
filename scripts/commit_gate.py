@@ -201,7 +201,8 @@ def format_excluded(root: Path) -> tuple[str, ...]:
     pyproject = root / "pyproject.toml"
     if not pyproject.is_file():
         return ()
-    section = tomllib.loads(pyproject.read_text()).get("tool", {}).get("ruff", {}).get("format", {})
+    tool = tomllib.loads(pyproject.read_text(encoding="utf-8")).get("tool", {})
+    section = tool.get("ruff", {}).get("format", {})
     return tuple(str(pattern) for pattern in section.get("exclude", ()))
 
 
