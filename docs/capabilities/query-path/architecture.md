@@ -32,7 +32,7 @@ Every read names the caller kind whose row ceiling bounds it (`RowCeiling`, `src
 |---|---|---|---|
 | `NARRATION` | chat's measurement tool, presentation live reads | 500 by default, `MAX_ROWS_CEILING` (10,000) at most | a model can't narrate more honestly; unchanged |
 | `BAKE` | publish-time held answers, every bake source and the rosters it reads | `BAKE_MAX_ROWS`, derived from the Baker's memory (`domain/operations/bake_memory.py`; value in [the publisher's scale envelope](../../ui/preset-artifact-publisher.md#scale-envelope)) | an entity-wide page holds its population or streams it one entity at a time; every other bake read is page-sized ([ADR-152](../../decisions/adr-152-read-page-sized-answers-in-sql-with-no-arbitrary-row-ceiling.md)) |
-| `BAKE_STREAMED` | publish-time reductions | `BAKE_LONGEST_WINDOW_DAYS` (31) × `BAKE_MAX_ROWS`, derived | a daily series of a population the held ceiling bounds |
+| `BAKE_STREAMED` | none as of 2026-10-26: Campaigns' daily sums and Audiences read `BAKE_GROUPED` | `BAKE_LONGEST_WINDOW_DAYS` (31) × `BAKE_MAX_ROWS`, derived | a daily series of a population the held ceiling bounds |
 | `BAKE_GROUPED` | entity-streamed reads, Audiences' grouped history walk and every Campaigns bake read | no row limit; the sink keeps at most `BAKE_MAX_ROWS` | the sink bounds memory, so rows never do; folded only, `run` refuses it |
 
 Every other statement asks for `LIMIT max_rows + 1`; one row more than asked is a truncated read, never shown as a page of an unknown whole. In a bake, a page-sized or axis-bounded read cut short is a defect; only an entity-wide read refuses ([ADR-152](../../decisions/adr-152-read-page-sized-answers-in-sql-with-no-arbitrary-row-ceiling.md)).

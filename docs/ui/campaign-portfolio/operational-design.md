@@ -47,7 +47,8 @@ measurement targets, not request cutoffs:
   - render 6.7 s;
   - a traced peak of 75.4 MB against the model's 82.9 MB.
 
-  No S3 write was timed, so the deployed bake's duration is its live check.
+  The local run timed no S3 write. The write ceiling projected from dev's write timings
+  (2026-10-25) is in the publisher's [scale envelope](../preset-artifact-publisher.md#scale-envelope).
 - **Observed local bulk acceptance (2026-09-18):** the governed 1,000-campaign workflow
   completed in 31,827 ms, proved a bounded 26-plan grouped measurement batch at 1,000
   selections (the five daily series split into two window chunks under the 10,000-row query
