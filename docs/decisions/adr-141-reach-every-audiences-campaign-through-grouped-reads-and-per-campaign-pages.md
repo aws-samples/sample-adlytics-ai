@@ -18,7 +18,7 @@ integration gates IG-002 and IG-003) and the dev-only 7-campaign stopgap of
 >   index, its segment set, or one campaign's segments.
 > - Decision 4: there is no static body bound. The stage's write deadline is the one write limit
 >   (`bodies_over_invocation`), and writes are certified at the whole write allowance (450 s).
-> - Consequences: 24 statements in three phases (7, 16, 1); the derived budget is 600 s.
+> - Consequences: 24 statements; the derived budget is 600 s. As of 2026-10-25 they run in two phases (`src/adapters/jobs/preset_artifact_publisher/audiences_source.py`); the three phases (7, 16, 1) first written here are superseded.
 
 ## Context
 Audiences answers, for one DSP campaign at a time, which audience segments perform. Today the page
