@@ -605,6 +605,15 @@ async function captureRosterPage(page, { path, title, image, closeups }) {
     const locator = closeup.heading === undefined ? page.locator(closeup.selector) : sectionTitled(page, closeup.heading);
     // A section behind a disclosure is opened the way a user does, by its summary.
     if (closeup.open) await locator.first().locator(':scope > summary').click();
+    // A section that fetches its content on selection (ADR-141) is shown with one choice made, from
+    // the keyboard as a user does, and is shot once its table has replaced the loading skeleton.
+    if (closeup.choose) {
+      const box = locator.first().getByRole('combobox');
+      await box.click();
+      await box.press('ArrowDown');
+      await box.press('Enter');
+      await locator.first().locator('table').first().waitFor({ timeout: DEEP_WAIT });
+    }
     await shotSection(page, closeup.image, locator);
   }
   await setAssistant(page, true);
@@ -645,7 +654,7 @@ const ROSTER_PAGES = [
     title: 'Audiences',
     image: 'audiences.png',
     // UI refresh 3.5 put the per-campaign segments behind a disclosure under the profile.
-    closeups: [{ first: 'Segment profile', selector: 'details.audience-campaigns', open: true, image: 'audiences-campaigns.png' }],
+    closeups: [{ first: 'Segment profile', selector: 'details.audience-campaigns', open: true, choose: true, image: 'audiences-campaigns.png' }],
   },
 ];
 
