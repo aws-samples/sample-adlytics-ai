@@ -509,7 +509,7 @@ def p2b_sql(rows: int) -> str:
     """Build `UNNEST` rows, crossed because one `sequence` holds at most 10,000 entries."""
     outer = -(-rows // 1_000)
     return (
-        "SELECT a.x * 1000 + b.y AS n, CAST(a.x * 1000 + b.y AS VARCHAR) AS s "  # noqa: S608 -- ints only
+        "SELECT a.x * 1000 + b.y AS n, CAST(a.x * 1000 + b.y AS VARCHAR) AS s "  # noqa: S608  # nosec B608 # A-SQL-001: ints only
         f"FROM UNNEST(sequence(0, {outer - 1})) AS a(x) "
         "CROSS JOIN UNNEST(sequence(1, 1000)) AS b(y) "
         f"LIMIT {rows}"
@@ -518,7 +518,7 @@ def p2b_sql(rows: int) -> str:
 
 def p2c_sql(nonce: str) -> str:
     """One `VALUES` row carrying the run's nonce as a literal, so no earlier execution matches."""
-    return f"SELECT n FROM (VALUES ('{nonce}')) AS t(n)"  # noqa: S608 -- a uuid4 hex literal
+    return f"SELECT n FROM (VALUES ('{nonce}')) AS t(n)"  # noqa: S608  # nosec B608 # A-SQL-001: a uuid4 hex literal
 
 
 @dataclass
@@ -715,12 +715,12 @@ def _fact_cte(case: RankedCase) -> str:
                 # Keys 1..N, crossed as in `p2b_sql`: one `sequence` holds a bounded entry count.
                 outer = -(-case.keys // 1_000)
                 keys = (
-                    "SELECT a.x * 1000 + b.y AS k "  # noqa: S608 -- ints only
+                    "SELECT a.x * 1000 + b.y AS k "  # noqa: S608  # nosec B608 # A-SQL-001: ints only
                     f"FROM UNNEST(sequence(0, {outer - 1})) AS a(x) "
                     "CROSS JOIN UNNEST(sequence(1, 1000)) AS b(y)"
                 )
                 rows.append(
-                    f"SELECT {', '.join(columns)} FROM ({keys}) t WHERE k <= {case.keys}"  # noqa: S608 -- generated literals only
+                    f"SELECT {', '.join(columns)} FROM ({keys}) t WHERE k <= {case.keys}"  # noqa: S608  # nosec B608 # A-SQL-001: generated literals only
                 )
         ctes.append(f'"{fact}" AS ({" UNION ALL ".join(rows)})')
     return ", ".join(ctes)
