@@ -70,9 +70,10 @@ deterministic envelope; reader all-or-nothing comes from the servable pointer.
    GRAPH set formation never unions past the unit ceiling. Their values, and the re-derived
    `statement_allowance_ms`, come from the dev probe's time measurements and the local Lambda-side
    memory and time measurements, by rules fixed before the probe ran. One record stays bounded as
-   today: a record whose staged line exceeds the 200,000-byte statement bound is refused before authority with the same code. A staged line is
-   never longer than that record's merge envelope today, so every record that loads today still
-   loads.
+   today: a record whose staged line exceeds the 200,000-byte statement bound is refused before
+   authority as `ATHENA_START/2` (`STATEMENT_UNPACKABLE`), the code an oversized record's merge
+   gets today. A staged line is never longer than that record's merge envelope today, so every
+   record that loads today still loads.
 8. **Wide windows land in chunks of at most 30 canonical partitions per derived table per
    delivery.** This replaces the 2026-09-22 three-bucket landing rule, whose arithmetic assumed
    merges per bucket. The 37-object unit bound still refuses anything wider, typed and before
