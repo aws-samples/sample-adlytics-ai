@@ -30,8 +30,9 @@ whole catalog only to show a summary:
 ## Decision
 1. **A ranked restriction states the population, not just the top n.** `RankedRestriction` adds:
    rank by value or by `|current − prior|` (`ABS_CHANGE`); members with any row or a positive rank
-   value (`POSITIVE`, which keeps every withheld key so the withholding survives); per-partition top n (`partition_by`, `ROW_NUMBER() OVER (PARTITION BY …)`);
-   and population sums. The `ranked` CTE takes each partition's count, withholding and declared
+   value (`POSITIVE`: `rank_value > 0`, or any withheld key, so the withholding survives);
+   per-partition top n (`partition_by`, `ROW_NUMBER() OVER (PARTITION BY …)`); and population
+   sums. The `ranked` CTE takes each partition's count, withholding and declared
    sums before it keeps the top n. They return as `QueryResult.population` beside the rows; the
    tool envelope is unchanged. A withheld population marks the read suppressed, so a caller
    refuses it as it refuses any withheld answer. A comparison may semi-join ranked keys.

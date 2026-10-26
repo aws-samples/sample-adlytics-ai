@@ -550,3 +550,12 @@ response header and sending marker selector and correlation values it then looks
 Static trace-contract enforcement and operator/preset-publication dev acceptance are complete. Managed-path and request-path deployed acceptance remain owned by [validation results](../../validation/RESULTS.md).
 
 The result-custody behaviours that stay [unverified] after the enablement gate's dev runs are listed in the [Agent Quality Loop risks](../capabilities/agent-quality-loop/low-level-design.md#9-risks-and-open-questions).
+
+**Known gap: a graph run's `SUCCEEDED` doesn't say its pages published.** The run state records that
+the run's work settled. A `bake_finalize` that abandons or withholds its cohort
+([ADR-140](../decisions/adr-140-a-bake-that-skips-the-finalizer-settles-its-cohort.md)) still
+leaves the run `SUCCEEDED`, as it did on dev on 2026-10-25: 4 `bake_task` failures and a finalize
+`outcome: abandoned` (`cause: bake_task_failed`) under a `SUCCEEDED` run. Read publication from
+`GraphServingWithheld` and the Baker's `finalize` line ([operator
+tools](../capabilities/operational-data-flow-status/operator-tools.md#serving-alarms-graphservingwithheld-and-presentationservingrefused)),
+never from the run state alone. No fix is designed yet.

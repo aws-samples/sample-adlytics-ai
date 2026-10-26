@@ -52,9 +52,9 @@ publication paths moves the servable head in one transaction the item could shar
 own mechanism instead: the exact read already reads in chunks of 100 and verifies the heads twice,
 so its bound rises to a derived 1,000 ([ADR-070](adr-070-serve-declared-preset-windows-from-publish-time-artifacts.md)
 amendment, 2026-10-25) and the quarter's 184 partitions bind in one verified read per pack. Chat's
-`ADLY-PLAN-0008` on "reach by channel last quarter" has an untraced cause: the probe recorded no
-selection over 100 for that question, so whether this change lifts it is unknown until the dev probe
-re-runs.
+`ADLY-PLAN-0008` on "reach by channel last quarter" has an untraced cause, and this change doesn't
+lift it: the dev re-check on 2026-10-25, with the 1,000 bound deployed, refused it again while its
+selection read one partition.
 Decided by rubric item (1) of
 [delivery practice](../delivery-practice.md#5-the-decision-weighting-rubric): a declared view that
 never fills is a broken promise on the page.
