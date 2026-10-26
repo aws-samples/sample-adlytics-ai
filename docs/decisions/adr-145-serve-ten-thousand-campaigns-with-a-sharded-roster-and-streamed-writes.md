@@ -1,10 +1,5 @@
 # ADR-145: Serve 10,000 campaigns with a sharded roster and streamed writes
 Date: 2026-10-18
-> **Amendment, 2026-10-25 (UTC).** [ADR-152](adr-152-read-page-sized-answers-in-sql-with-no-arbitrary-row-ceiling.md)
-> decision 8 replaces the 10,000-campaign bound and "Showing N of M": neither was built, and both
-> are deleted. The Campaigns population is limited only by the memory-derived `BAKE_MAX_ROWS`,
-> past which the page is `population_over_ceiling`, alarmed. The sharded roster, streamed writes
-> and 2,048 MB Baker stand. The Baker's memory is now the contract's `bake_tasks.baker_memory_mib`.
 Status: Proposed (2026-10-18). On 2026-10-18 (UTC) the owner approved:
 
 - a Campaigns bound of 10,000, with "Showing N of M" beyond it and nothing beyond 10,000 now;
@@ -14,6 +9,12 @@ Status: Proposed (2026-10-18). On 2026-10-18 (UTC) the owner approved:
 When accepted, it amends ADR-071 decision 4 and its review trigger's named fix, ADR-125 decision 2
 (Retail's child digests move into the sibling index), and ADR-127's per-filter roster (markers
 added there).
+
+> **Amendment, 2026-10-25 (UTC).** [ADR-152](adr-152-read-page-sized-answers-in-sql-with-no-arbitrary-row-ceiling.md)
+> decision 8 replaces the 10,000-campaign bound and "Showing N of M": neither was built, and both
+> are deleted. The Campaigns population is limited only by the memory-derived `BAKE_MAX_ROWS`,
+> past which the page is `population_over_ceiling`, alarmed. The sharded roster, streamed writes
+> and 2,048 MB Baker stand. The Baker's memory is now the contract's `bake_tasks.baker_memory_mib`.
 
 ## Context
 ADR-071 made every campaign reachable through baked ordered segments and a name roster in the
