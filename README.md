@@ -296,14 +296,17 @@ What has been accepted, and when, is recorded in [validation results](validation
 
 Pages bake every product and campaign; past a row's catalog size, set `bake_tasks.baker_memory_mib` in [`contracts/operations/execution-graphs.yaml`](contracts/operations/execution-graphs.yaml), run `make generate-execution-graph-protocol` and [deploy](#deploy) again ([ADR-152](docs/decisions/adr-152-read-page-sized-answers-in-sql-with-no-arbitrary-row-ceiling.md)).
 
+The memory rows are memory ceilings only. Campaigns' and Audiences' writes are projected to outrun the Baker's 900 s invocation below some of them (the last two rows), and raising memory isn't shown to lift that limit ([scale envelope](docs/ui/preset-artifact-publisher.md#scale-envelope)). Past it, the page keeps its last good version and alarms.
+
 | Catalog | Baker memory (`bake_tasks.baker_memory_mib`) | What alarms beyond it |
 |---|---|---|
 | Any number of products (Retail health, New customers) | 2,048, the default | Nothing: these reads are page-sized. The Retail render peaked at 1.57 MB at both 10,000 and 100,000 products [measured, local probe, 2026-10-25] |
-| Up to 22,544 campaigns, or DSP campaigns in a month on Audiences | 1,024 | `BakeIsolatedRefusalLimit` with `population_over_ceiling` (Campaigns) or `rows_over_ceiling` (Audiences) [derived from `make check-bakeability`] |
-| Up to 45,262 campaigns | 2,048, the default | The same [derived from `make check-bakeability`] |
-| Up to 90,698 campaigns | 4,096 | The same [derived from `make check-bakeability`] |
-| Up to 227,006 campaigns | 10,240, the [Lambda maximum](https://docs.aws.amazon.com/lambda/latest/dg/gettingstarted-limits.html) | The same [derived from `make check-bakeability`] |
-| Campaigns page writes | Any | `BakeIsolatedRefusalLimit` with `bodies_over_invocation` if one period's writes outrun the 900 s invocation, and `BakeTaskOverBudget` past 570 s. 10,000 campaigns write 11,320 objects per period [measured, local, 2026-10-25]; their write time is [unmeasured] |
+| Up to 22,544 campaigns, or DSP campaigns in a month on Audiences | 1,024 | `BakeIsolatedRefusalLimit` with `population_over_ceiling` (Campaigns) or `rows_over_ceiling` (Audiences) [derived from `make check-bakeability`]. Audiences' writes bind first, from about 15,000 DSP campaigns |
+| Up to 45,262 campaigns | 2,048, the default | The same [derived from `make check-bakeability`]. From about 40,000–56,000 campaigns, a Campaigns bake also runs past its 570 s budget (`BakeTaskOverBudget`; nothing is cut) |
+| Up to 90,698 campaigns | 4,096 | The same [derived from `make check-bakeability`]. Not reachable on Campaigns: its writes bind first, from about 62,000 |
+| Up to 227,006 campaigns | 10,240, the [Lambda maximum](https://docs.aws.amazon.com/lambda/latest/dg/gettingstarted-limits.html) | The same [derived from `make check-bakeability`]. Not reachable on Campaigns: its writes bind first |
+| Campaigns page writes | Any | `BakeIsolatedRefusalLimit` with `bodies_over_invocation` past the 900 s invocation, from about 62,000–85,000 campaigns [projection, from dev write timings, 2026-10-26] |
+| Audiences page writes | Any | The same, from about 15,000 DSP campaigns in a month [projection, from one dev bake's write timing, 2026-10-26] |
 
 ## What's coming next
 

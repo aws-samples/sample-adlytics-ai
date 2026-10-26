@@ -402,7 +402,7 @@ The one home of each page's own-absence thresholds at publish time. The README's
 | Audiences DSP campaigns | every campaign with delivery in the month, each with every segment, in 50-row pages. Its reads have no row limit; the campaign index, its segment set and one campaign's segments are each held up to `BAKE_MAX_ROWS` | the page's `rows_over_ceiling`; raise the Baker memory | ADR-141 |
 | Retail health product rows | the top 50 by current shipped revenue, with the count and sums of every product, at any catalog size | none | [Retail LLD](retail-health/low-level-design.md) |
 | Campaigns population | every campaign, up to the memory-derived ceiling `BAKE_MAX_ROWS` | the page's `population_over_ceiling`, which alarms with the operator action: raise `bake_tasks.baker_memory_mib` | ADR-152 |
-| Campaigns and Audiences writes | the stage's runtime write deadline; their bodies grow with campaigns, so each is certified at the whole write allowance | the page's `bodies_over_invocation`; raise the Baker memory | ADR-145 |
+| Campaigns and Audiences writes | the stage's runtime write deadline; their bodies grow with campaigns, so each is certified at the whole write allowance. Projected to reach the deadline (900 s less the 30 s tail) at about 62,000–85,000 campaigns and about 15,000 DSP campaigns in a month, below the 4,096 and 10,240 MiB `BAKE_MAX_ROWS` and below every Audiences one [projection, linear in objects written: dev's write phase took 9.07–11.62 ms per Campaigns object over four 131-object bakes and 26.84 ms per Audiences object over one 63-object bake (2026-10-25, aws/spans); 1.132–1.2128 Campaigns objects per campaign (the 10,000-campaign estate and `campaign_bake_object_count`); 2.1 Audiences objects per DSP campaign on dev]. Campaigns passes its 570 s budget from about 40,000–56,000 | the page's `bodies_over_invocation`. The write waits on S3 at `s3_chains_per_baker` pairs in flight: on dev those PUTs filled 68–75% of Campaigns' write phase, so more Baker memory (CPU and network share) isn't shown to shorten it | ADR-145 |
 | Exact-read partitions per source pack | 1,000 (`MAX_PRESET_SNAPSHOT_PARTITIONS`, equal to Publication State's exact-read bound). It's derived so the worst serving read fits the presentation function's 29 s with the Athena statement's 20 s kept: ⌊9,000 / (9 × 95.0 ms p95 in-Region)⌋ = 10 transactions per pass (ADR-070). The gate's model, days doubled for the prior and one lens, fits a 500-day preset; the Reach quarter's pin reads 184, 92 days × 2 lenses. Each 100 partitions add 3 sequential DynamoDB transactions per attempt | `make check-bakeability` refuses the declaration; at a bake, that page's `partitions_over_bound` | ADR-070 |
 
 ## Scaling and operational gaps
@@ -415,5 +415,9 @@ Current unresolved controls are:
 
 - the [target pipeline](#target-pipeline) mandated by ADR-075, including complete cohort
   registration and retirement of global fan-out;
-- implemented queue-age, DLQ, bake-duration, and publication-lag alarms; and
-- objective values and error-budget policy under ADR-074.
+- implemented queue-age, DLQ, bake-duration, and publication-lag alarms;
+- objective values and error-budget policy under ADR-074; and
+- the Campaigns and Audiences write ceiling: one invocation writes a page's every object, so
+  past the projected sizes in the [scale envelope](#scale-envelope) the page stays on its last
+  good version. Lifting it (more write concurrency, or a page's writes split across
+  invocations) is an open owner decision.
