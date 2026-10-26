@@ -76,7 +76,8 @@ artifact, rendered from the same batch in the same bake, under one pointer.**
 ## Consequences
 
 - Four measurement batches per publication instead of three, and up to seven render-only siblings per
-  preset, which the low-level design checks against the bakeability gate. At the 1,000-campaign bound
+  preset, which the low-level design checks against the bakeability gate. At the 1,000-campaign bound (removed 2026-10-25 by
+  [ADR-152](adr-152-read-page-sized-answers-in-sql-with-no-arbitrary-row-ceiling.md) decision 8)
   a variant writes at most 1,300 immutable objects (2 × 10 orderings × 65 segments). The gate checks
   that count against the baker's own memory and timeout, not against itself, and the local estate
   acceptance bakes seven siblings at the bound and holds its object count equal to the gate's count
