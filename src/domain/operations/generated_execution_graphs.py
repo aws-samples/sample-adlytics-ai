@@ -4,7 +4,7 @@
 from typing import Any, Final
 
 CONTRACT_REVISION: Final = 2
-CONTRACT_DIGEST: Final = '5f255ef17d45660a71494bd34527a5eb59c23ef8433fb1896107db496a90bd47'
+CONTRACT_DIGEST: Final = '43ef31f18eed9ce41f7a020465656743b91034442627df5a27a175479dde1a31'
 PROTOCOL_VERSION: Final = 'v1'
 AUTHORITY_EPOCHS: Final[Any] = (
 {'shadow': 0, 'graph': 1}
@@ -169,9 +169,8 @@ BAKE_TASKS: Final[Any] = (
  'visibility_seconds': 960,
  'lanes': 2,
  'lane_groups': ('preset-bake-lane-0', 'preset-bake-lane-1'),
- 's3_chains_per_baker': 8,
- 's3_chains_aggregate': 16,
  'baker_memory_mib': 2048,
+ 'baker_write_width': 21,
  'max_tasks': 21,
  'worker_schedule_seconds': 60,
  'worker_pass_seconds': 60,

@@ -105,6 +105,7 @@ from adapters.outbound.publication_selection import PublicationSelector
 from adapters.outbound.s3.preset_artifacts import (
     S3PresetArtifactBodyStore,
     S3PresetArtifactCustodyStore,
+    preset_artifact_write_client,
 )
 from adapters.outbound.source_pack import load_source_packs
 from adapters.outbound.sqs.insight_continuation import SqsInsightContinuation
@@ -132,6 +133,7 @@ from adapters.outbound.telemetry.tracing import (
     span,
     trace_boundary,
 )
+from domain.operations.bake_memory import BAKE_WRITE_WIDTH
 from domain.operations.bake_refusals import IsolatedRefusal, RefusalGroup, group_refusals
 from domain.operations.companions import (
     CompanionFlow,
@@ -1497,10 +1499,13 @@ def application() -> PresetArtifactBakeApplication:
     pointers = DynamoPresetArtifactPointerStore(
         settings.pointer_table, graph_table=graph_table or None
     )
+    # One S3 client for both stores, its pool sized to the contract's write width (ADR-145).
+    writes = preset_artifact_write_client(BAKE_WRITE_WIDTH)
     persistence = PresetArtifactPersistence(
-        S3PresetArtifactBodyStore(settings.artifact_bucket),
+        S3PresetArtifactBodyStore(settings.artifact_bucket, writes),
         pointers,
-        S3PresetArtifactCustodyStore(settings.artifact_bucket),
+        S3PresetArtifactCustodyStore(settings.artifact_bucket, writes),
+        write_width=BAKE_WRITE_WIDTH,
     )
     # One adapter and FIFO admission are shared by every registered source in this invocation.
     admission: AthenaBatchAdmission | None = None

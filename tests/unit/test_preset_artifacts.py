@@ -19,8 +19,9 @@ from adapters.outbound.dynamodb.preset_artifacts import (
     _pointer_item,  # pyright: ignore[reportPrivateUsage]
     pointer_transaction_items,
 )
-from adapters.outbound.preset_artifacts import S3_CHAINS_PER_BAKER, PresetArtifactPersistence
+from adapters.outbound.preset_artifacts import PresetArtifactPersistence
 from adapters.outbound.telemetry.span_context import correlated
+from domain.operations.bake_memory import BAKE_WRITE_WIDTH
 from domain.presentation.preset_artifacts import (
     MAX_PRESET_ARTIFACT_BYTES,
     PRESET_ARTIFACT_POINTER_CONFLICT,
@@ -435,7 +436,7 @@ def _sibling_request(count: int) -> PresetArtifactPublicationRequest:
 
 
 def _persistence(
-    stores: _SiblingStores, *, width: int = S3_CHAINS_PER_BAKER
+    stores: _SiblingStores, *, width: int = BAKE_WRITE_WIDTH
 ) -> tuple[PresetArtifactPersistence, RecordingPointers]:
     pointers = RecordingPointers(stores.events)
     persistence = PresetArtifactPersistence(
@@ -450,18 +451,18 @@ def _require_occupancy_within(observed: int, width: int) -> None:
         raise AssertionError(f"{observed} sibling writes in flight exceed the width {width}")
 
 
-def test_stage_writes_at_most_eight_pairs_at_once_and_custody_never_precedes_its_body() -> None:
-    assert S3_CHAINS_PER_BAKER == 8
+def test_stage_writes_at_most_the_contract_width_and_custody_never_precedes_its_body() -> None:
+    assert BAKE_WRITE_WIDTH == 21  # pairs in flight: the contract's derived baker_write_width
     stores = _SiblingStores()
     persistence, _ = _persistence(stores)
 
     staged = persistence.stage(
-        _sibling_request(20), remaining_ms=lambda: 600_000, tail_seconds=30.0
+        _sibling_request(30), remaining_ms=lambda: 600_000, tail_seconds=30.0
     )
 
-    assert stores.max_active == S3_CHAINS_PER_BAKER
-    _require_occupancy_within(stores.max_active, S3_CHAINS_PER_BAKER)
-    for index in range(20):
+    assert stores.max_active == 21
+    _require_occupancy_within(stores.max_active, BAKE_WRITE_WIDTH)
+    for index in range(30):
         name = f"order{index:02d}"
         assert stores.events.index(f"body:{name}") < stores.events.index(f"custody:{name}")
     siblings = [event for event in stores.events if event.startswith(("body:", "custody:"))]
@@ -469,18 +470,18 @@ def test_stage_writes_at_most_eight_pairs_at_once_and_custody_never_precedes_its
     # ADR-145: the one index shard after every pair, then the parent body and its custody.
     assert stores.events[-3:] == ["custody:index/segment-0000", "parent-body", "parent-custody"]
     assert "pointer" not in stores.events
-    assert staged.pairs == 20 + 1 + 1
+    assert staged.pairs == 30 + 1 + 1
 
 
-def test_control_a_width_nine_writer_is_refused_by_the_occupancy_helper() -> None:
+def test_control_a_writer_one_wider_than_the_contract_is_refused_by_the_occupancy_helper() -> None:
     stores = _SiblingStores()
-    persistence, _ = _persistence(stores, width=9)
+    persistence, _ = _persistence(stores, width=22)
 
-    persistence.stage(_sibling_request(20), remaining_ms=lambda: 600_000, tail_seconds=30.0)
+    persistence.stage(_sibling_request(30), remaining_ms=lambda: 600_000, tail_seconds=30.0)
 
-    assert stores.max_active == 9
-    with pytest.raises(AssertionError, match="exceed the width 8"):
-        _require_occupancy_within(stores.max_active, S3_CHAINS_PER_BAKER)
+    assert stores.max_active == 22
+    with pytest.raises(AssertionError, match="exceed the width 21"):
+        _require_occupancy_within(stores.max_active, BAKE_WRITE_WIDTH)
 
 
 def test_publish_stages_every_object_before_the_pointer_advances() -> None:

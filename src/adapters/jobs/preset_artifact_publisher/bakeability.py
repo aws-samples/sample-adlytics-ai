@@ -19,6 +19,7 @@ import pathlib
 import sys
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
+from fractions import Fraction
 from typing import TYPE_CHECKING, Any, TypedDict, cast
 
 from adapters.campaign_measurement import (
@@ -127,10 +128,12 @@ from domain.operations.bake_memory import (
     BAKE_FIXED_BYTES,
     BAKE_MEMORY_TERMS,
     BAKE_RESIDENT_SHARE,
+    BAKE_WRITE_WIDTH,
     BAKER_MEMORY_BYTES,
     MIB,
     WRITES_IN_FLIGHT_BYTES,
     BakeMemoryTerms,
+    write_buffer_bytes,
 )
 from domain.operations.bake_scheduling import (
     BakeTaskLoad,
@@ -200,19 +203,23 @@ __all__ = [
     "PER_OBJECT_WRITE_MS",
     "PER_QUERY_SECONDS",
     "WRITE_ALLOWANCE_SECONDS",
+    "WRITE_WIDTH_MEASURED_MAX",
     "ArtifactServedPage",
     "BakeabilityFinding",
     "RosterTaskCertificate",
+    "WriteWidth",
     "artifact_served_pages",
     "audiences_phases",
     "campaign_bake_object_count",
     "certify_roster_tasks",
+    "derive_write_width",
     "evaluate_bakeability",
     "main",
     "roster_plan_counts",
     "sibling_index_shard_count",
     "write_allowance_findings",
     "write_term_object_count",
+    "write_width_findings",
 ]
 
 # Conservative per-execution latency budget. The observed envelope in
@@ -375,6 +382,7 @@ def resident(  # noqa: PLR0913 -- one row's certified widths, the ceiling, terms
     terms: BakeMemoryTerms = BAKE_MEMORY_TERMS,
     memory_bytes: int = BAKER_MEMORY_BYTES,
     axes: Mapping[str, int] | None = None,
+    writes: int = WRITES_IN_FLIGHT_BYTES,
 ) -> ResidentModel:
     """Model one row's resident bytes with every held ceiling-wide slot at `ceiling` (03 §3.5).
 
@@ -384,7 +392,8 @@ def resident(  # noqa: PLR0913 -- one row's certified widths, the ceiling, terms
 
     A slot certified at `BAKE_MAX_ROWS` is counted at `ceiling`, so the probe can ask what each
     candidate value means; a slot with its own smaller bound (a fixed axis, the ranked 50)
-    keeps it. At most Q slots' raw rows exist at once (the shaping seam).
+    keeps it. At most Q slots' raw rows exist at once (the shaping seam). `writes` is W, the write
+    buffer at the contract's width unless the width derivation asks about another.
     """
     fixed = {"marketplace_key": 1} if axes is None else axes
     widths = tuple(
@@ -400,7 +409,7 @@ def resident(  # noqa: PLR0913 -- one row's certified widths, the ceiling, terms
     return ResidentModel(
         key=key,
         ceiling=ceiling,
-        writes=WRITES_IN_FLIGHT_BYTES,
+        writes=writes,
         raw=CERTIFIED_QUERY_CAP * held * terms.raw,
         shaped=sum(widths) * terms.shaped,
         kept=sum(kept) * terms.kept,
@@ -523,14 +532,15 @@ def memory_findings(root: pathlib.Path) -> tuple[BakeabilityFinding, ...]:
     return tuple(findings)
 
 
-def memory_models(  # noqa: PLR0913 -- the root, the candidate ceiling, memory and terms
+def memory_models(  # noqa: PLR0913 -- the root, the candidate ceiling, memory, terms and W
     root: pathlib.Path,
     *,
     ceiling: int = BAKE_MAX_ROWS,
     memory_bytes: int = BAKER_MEMORY_BYTES,
     terms: BakeMemoryTerms = BAKE_MEMORY_TERMS,
+    writes: int = WRITES_IN_FLIGHT_BYTES,
 ) -> tuple[ResidentModel, ...]:
-    """Model every D2 row at one ceiling, memory size and set of terms (the probe derives V)."""
+    """Model every D2 row at one ceiling, memory size, set of terms and write buffer."""
     axes = fixed_axes(root)
     return tuple(
         resident(
@@ -540,13 +550,37 @@ def memory_models(  # noqa: PLR0913 -- the root, the candidate ceiling, memory a
             terms=terms,
             memory_bytes=memory_bytes,
             axes=axes,
+            writes=writes,
         )
         for key, certificate in roster_certificates(root)
     )
 
 
+def memory_binding_row(
+    root: pathlib.Path,
+    *,
+    memory_bytes: int = BAKER_MEMORY_BYTES,
+    writes: int = WRITES_IN_FLIGHT_BYTES,
+) -> BindingRow:
+    """Return the binding row and its ceiling at one memory size and write buffer."""
+    return binding_row(
+        tuple(
+            zip(
+                memory_models(root, memory_bytes=memory_bytes, writes=writes),
+                memory_models(
+                    root, ceiling=BAKE_MAX_ROWS + 1, memory_bytes=memory_bytes, writes=writes
+                ),
+                strict=True,
+            )
+        )
+    )
+
+
 # Budget for one sequential immutable write (an S3 PutObject of at most one capped body) from
-# the baker. A budget, not a measurement: the deployed bake's duration is its live check.
+# the baker. A budget, not a measurement: the deployed bake's duration is its live check. On dev
+# one chain's measured equivalent is inside it: 8 in flight at 9.07-11.62 ms per fresh Campaigns
+# object (four bakes, 2026-10-25) and 12.36 ms per fresh Audiences object (trace 10a33158,
+# 2026-10-27) is 72.6-98.9 ms per object per chain [derived].
 PER_OBJECT_WRITE_MS = 100
 
 
@@ -575,6 +609,111 @@ def write_term_object_count(page: str) -> int:
     holds.
     """
     return int(page_write_seconds(page).seconds * 1_000) // PER_OBJECT_WRITE_MS
+
+
+# --- ADR-145: the write width, derived from the memory model and the write budget -----------
+
+AUDIENCES_OBJECTS_PER_CAMPAIGN = Fraction(63, 30)
+"""[measured on dev] objects one fresh Audiences bake wrote per DSP campaign: 63 PutObject (30
+campaign pages, one index shard, the parent body and custody) for 30 campaigns (trace
+10a33158, 2026-10-27). Each campaign there had one 50-row page; a campaign with more segments
+writes more pages, so the stage's runtime write deadline stays the page's one write limit."""
+
+WRITE_WIDTH_MEASURED_MAX = 64
+"""[measured] the widest width the write-throughput probe ran against the dev bucket, from one
+operator host (2026-10-27, validation/RESULTS.md): sibling throughput still rose from 32 to 64
+pairs in flight in every arm, with no 503 SlowDown, so no knee was reached at or below it. A
+wider stage is unmeasured, so the derivation stops here."""
+
+_WRITE_ALLOWANCE_MS = int(WRITE_ALLOWANCE_SECONDS * 1_000)
+_GROWING_WRITE_PAGES = ("audiences", "campaigns")
+"""The pages whose objects grow with their campaigns; every other page writes a fixed set."""
+
+
+def ceiling_objects(page: str, ceiling: int) -> int:
+    """Count the objects a growing page writes at `ceiling` campaigns.
+
+    Campaigns: `campaign_bake_object_count` with All channels, Sponsored ads and one channel each
+    holding every campaign, its at-most count. Audiences: the measured objects per DSP campaign.
+    """
+    if page == "campaigns":
+        return campaign_bake_object_count((ceiling, ceiling, ceiling))
+    if page == "audiences":
+        return math.ceil(ceiling * AUDIENCES_OBJECTS_PER_CAMPAIGN)
+    raise ValueError(f"{page} writes a fixed set of objects, not one that grows.")
+
+
+def width_for_objects(objects: int) -> int:
+    """Return `ceil(objects x PER_OBJECT_WRITE_MS / WRITE_ALLOWANCE)`, the chains writing them."""
+    return max(1, -(-objects * PER_OBJECT_WRITE_MS // _WRITE_ALLOWANCE_MS))
+
+
+@dataclass(frozen=True, slots=True)
+class WriteWidth:
+    """The write width one Baker memory derives, and the terms it is derived from."""
+
+    width: int
+    bound: BindingRow
+    """The memory model's binding row at this width's write buffer, and its ceiling."""
+    page: str
+    """The growing page whose objects at that ceiling need the most chains."""
+    objects: int
+    capped: bool
+    """Whether those objects need more chains than `WRITE_WIDTH_MEASURED_MAX`."""
+
+    @property
+    def writable_objects(self) -> int:
+        """The objects `width` chains write within the write allowance at the budget."""
+        return self.width * _WRITE_ALLOWANCE_MS // PER_OBJECT_WRITE_MS
+
+    def terms(self) -> str:
+        """Print the derivation, so the gate's width is derived in the open, never typed."""
+        text = (
+            f"width {self.width}: ceil({self.objects} {self.page} objects at BAKE_MAX_ROWS="
+            f"{self.bound.ceiling} x {PER_OBJECT_WRITE_MS} ms / {_WRITE_ALLOWANCE_MS} ms) = "
+            f"{width_for_objects(self.objects)}, W {write_buffer_bytes(self.width)} B"
+        )
+        if self.capped:
+            text += (
+                f"; capped at the widest measured width {WRITE_WIDTH_MEASURED_MAX}, whose "
+                f"{self.writable_objects} objects are the page's write ceiling"
+            )
+        return text
+
+
+def derive_write_width(root: pathlib.Path, memory_bytes: int) -> WriteWidth:
+    """Return the smallest width whose own memory ceiling's objects it writes in time (ADR-145).
+
+    W grows with the width and lowers the ceiling, so the width is the smallest one the objects
+    at its own ceiling need no more than, capped at `WRITE_WIDTH_MEASURED_MAX`.
+    """
+    derived: WriteWidth | None = None
+    for width in range(1, WRITE_WIDTH_MEASURED_MAX + 1):
+        bound = memory_binding_row(
+            root, memory_bytes=memory_bytes, writes=write_buffer_bytes(width)
+        )
+        objects, page = max(
+            (ceiling_objects(page, bound.ceiling), page) for page in _GROWING_WRITE_PAGES
+        )
+        derived = WriteWidth(width, bound, page, objects, capped=False)
+        if width_for_objects(objects) <= width:
+            return derived
+    return replace(cast("WriteWidth", derived), capped=True)
+
+
+def write_width_findings(root: pathlib.Path) -> tuple[BakeabilityFinding, ...]:
+    """Refuse a contract width other than the one the deployed memory derives (ADR-145)."""
+    derived = derive_write_width(root, BAKER_MEMORY_BYTES)
+    if derived.width == BAKE_WRITE_WIDTH:
+        return ()
+    return (
+        BakeabilityFinding(
+            "roster",
+            "bake-write-width",
+            f"bake_tasks.baker_write_width is {BAKE_WRITE_WIDTH}; "
+            f"{BAKER_MEMORY_BYTES // MIB} MiB derives {derived.terms()}.",
+        ),
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -896,6 +1035,7 @@ def main() -> int:
         *source_horizon_findings(root),
         *d2_contract_findings(root),
         *memory_findings(root),
+        *write_width_findings(root),
     )
     if findings:
         for finding in sorted(findings, key=lambda item: (item.page_id, item.rule, item.message)):
@@ -928,17 +1068,14 @@ def main() -> int:
         f"  BAKE_MAX_ROWS = floor(({BAKE_RESIDENT_SHARE:g} x memory - {BAKE_FIXED_BYTES} B) / "
         f"{BAKE_BYTES_PER_ROW} B)"
     )
+    # ADR-145: each size's write width is derived with its own write buffer, so each size's
+    # ceiling counts the W that size would deploy.
     for memory_mib in SIZING_MEMORY_MIB:
-        bound = binding_row(
-            tuple(
-                zip(
-                    memory_models(root, memory_bytes=memory_mib * MIB),
-                    memory_models(root, ceiling=BAKE_MAX_ROWS + 1, memory_bytes=memory_mib * MIB),
-                    strict=True,
-                )
-            )
+        derived = derive_write_width(root, memory_mib * MIB)
+        print(
+            f"  {memory_mib} MiB Baker: BAKE_MAX_ROWS={derived.bound.ceiling} (binding "
+            f"{derived.bound.key}); write {derived.terms()}"
         )
-        print(f"  {memory_mib} MiB Baker: BAKE_MAX_ROWS={bound.ceiling} (binding {bound.key})")
     for row in BAKE_TASKS["roster"]:
         page = str(row["page"])
         print(

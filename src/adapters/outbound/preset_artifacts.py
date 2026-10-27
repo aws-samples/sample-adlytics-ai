@@ -3,13 +3,14 @@
 
 Plan 4.5 (DB20) and ADR-145 (streamed writes and the sharded sibling index): `stage` draws a
 publication's sibling stream one pair at a time and writes each as an ordered body->custody
-pair, at most `BAKE_TASKS["s3_chains_per_baker"]` pairs in flight, keeping only each pair's
-descriptor (identity, body digest, custody digest). On the first failure (a write, or the
-stream's own refusal or defect) no further pair is submitted, every in-flight pair is observed,
-and the first error is raised. Then the descriptors, sorted by identity path, are cut into index
-shards of `SIBLING_INDEX_SHARD_ENTRIES` written at `custody/{page}/{variant}/{revision}/index/
-segment-NNNN.json`; the parent custody is the source's header plus one `sibling_index` entry
-per shard; the parent body, then that custody, are written last. `stage` stops there (a GRAPH
+pair, at most `BAKE_WRITE_WIDTH` (the contract's `bake_tasks.baker_write_width`) pairs in
+flight, keeping only each pair's descriptor (identity, body digest, custody digest). On the first
+failure (a write, or the stream's own refusal or defect) no further pair is submitted, every
+in-flight pair is observed, and the first error is raised. Then the descriptors, sorted by
+identity path, are cut into index shards of `SIBLING_INDEX_SHARD_ENTRIES` written at
+`custody/{page}/{variant}/{revision}/index/segment-NNNN.json`; the parent custody is the source's
+header plus one `sibling_index` entry per shard; the parent body, then that custody, are written
+last. `stage` stops there (a GRAPH
 bake task has no pointer capability); `publish` stages and then advances the pointer, completed
 from the request's template with the staged custody's digest.
 
@@ -32,16 +33,16 @@ from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from contextlib import contextmanager
 from contextvars import copy_context
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Final, cast
+from typing import TYPE_CHECKING, cast
 
 from adapters.outbound.telemetry.span_context import correlation
 from adapters.outbound.telemetry.tracing import ARTIFACT_WRITE, span, trace_boundary
+from domain.operations.bake_memory import BAKE_WRITE_WIDTH
 from domain.operations.bake_refusals import (
     IsolatedRefusal,
     IsolatedRefusalReason,
     RefusalScope,
 )
-from domain.operations.generated_execution_graphs import BAKE_TASKS
 from domain.presentation.preset_artifacts import (
     PRESET_ARTIFACT_POINTER_CONFLICT,
     ArtifactBodyWriteResult,
@@ -73,10 +74,7 @@ if TYPE_CHECKING:
         PresetArtifactSiblingPair,
     )
 
-__all__ = ["S3_CHAINS_PER_BAKER", "PresetArtifactPersistence"]
-
-S3_CHAINS_PER_BAKER: Final = int(BAKE_TASKS["s3_chains_per_baker"])
-"""The most sibling body->custody pairs one Baker writes at once (contract `bake_tasks`)."""
+__all__ = ["PresetArtifactPersistence"]
 
 _Pair = tuple[PresetArtifactSiblingWriteResult, PresetArtifactSiblingCustodyWriteResult]
 
@@ -90,7 +88,7 @@ class PresetArtifactPersistence(PresetArtifactPersistencePort, PresetArtifactSta
         pointers: PresetArtifactPointerStorePort,
         custody: PresetArtifactCustodyStorePort | None = None,
         *,
-        write_width: int = S3_CHAINS_PER_BAKER,
+        write_width: int = BAKE_WRITE_WIDTH,
     ) -> None:
         if write_width < 1:
             raise ValueError("preset artifact write width must be at least one pair.")
