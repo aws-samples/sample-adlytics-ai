@@ -44,6 +44,19 @@ function only<T>(items: T[]): T {
 function logicalIdOf(predicate: (resource: Json) => boolean): string {
   return only(Object.entries(resources).filter(([, resource]) => predicate(resource)))[0];
 }
+/** Every `Principal.Service` a role's trust policy names, read from the parsed document. */
+function trustedServices(role: Json): unknown[] {
+  const document = (((role.Properties ?? {}) as Json).AssumeRolePolicyDocument ?? {}) as Json;
+  return ((document.Statement ?? []) as Json[]).flatMap((statement) => {
+    const service = ((statement.Principal ?? {}) as Json).Service;
+    if (service === undefined) return [];
+    return Array.isArray(service) ? service : [service];
+  });
+}
+/** Whether a role trusts exactly this service principal, never a string containing it. */
+function trusts(role: Json, service: string): boolean {
+  return trustedServices(role).some((name) => name === service);
+}
 
 function policyStatements(source: Json): Json[] {
   return resourcesOfType(source, 'AWS::IAM::Policy').flatMap((policy) =>
@@ -73,9 +86,7 @@ const providerFunctionId = logicalIdOf((resource) =>
   && (resource.Properties as Json).Handler === 'adapters.jobs.harness_resource.handler.handler');
 const providerFunction = (resources[providerFunctionId] as Json).Properties as Json;
 const executionRoleId = logicalIdOf((resource) =>
-  resource.Type === 'AWS::IAM::Role'
-  && JSON.stringify((resource.Properties as Json).AssumeRolePolicyDocument)
-    .includes('bedrock-agentcore.amazonaws.com'));
+  resource.Type === 'AWS::IAM::Role' && trusts(resource, 'bedrock-agentcore.amazonaws.com'));
 const providerRoleId = logicalIdOf((resource) =>
   resource.Type === 'AWS::IAM::Role'
   && (resource.Properties as Json).RoleName === 'adlytics-dev-harness-provider');
@@ -447,6 +458,42 @@ describe('HarnessStack', () => {
   it('names the execution role, because the agent client secret admits it by ARN', () => {
     expect(((resources[executionRoleId] as Json).Properties as Json).RoleName)
       .toBe('adlytics-dev-harness-execution');
+    expect(trustedServices(resources[executionRoleId] as Json))
+      .toStrictEqual(['bedrock-agentcore.amazonaws.com']);
+  });
+
+  // O-CODEQL-003: the execution role was once found by any trust policy that mentioned the host.
+  const agentcore = 'bedrock-agentcore.amazonaws.com';
+  const trustRole = (principal: unknown, condition?: Json): Json => ({
+    Type: 'AWS::IAM::Role',
+    Properties: {
+      AssumeRolePolicyDocument: {
+        Statement: [{
+          Action: 'sts:AssumeRole',
+          Effect: 'Allow',
+          Principal: { Service: principal },
+          ...(condition === undefined ? {} : { Condition: condition }),
+        }],
+      },
+    },
+  });
+
+  it.each([
+    { name: 'the service alone', role: trustRole(agentcore) },
+    { name: 'the service among others', role: trustRole(['lambda.amazonaws.com', agentcore]) },
+  ])('finds the execution role by its exact trusted service: $name', ({ role }) => {
+    expect(trusts(role, agentcore)).toBe(true);
+  });
+
+  it.each([
+    { name: 'a subdomain of it', role: trustRole(`runtime-identity.${agentcore}`) },
+    { name: 'a host it prefixes', role: trustRole(`${agentcore}.example.org`) },
+    {
+      name: 'a condition value',
+      role: trustRole('lambda.amazonaws.com', { StringEquals: { 'aws:SourceAccount': agentcore } }),
+    },
+  ])('never takes a trust policy that only contains the service as $name', ({ role }) => {
+    expect(trusts(role, agentcore)).toBe(false);
   });
 
   it('grants the execution role exact model and Memory access, no Gateway IAM, and denies commands', () => {
