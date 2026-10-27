@@ -65,6 +65,18 @@ measurement targets, not request cutoffs:
 
   The local run timed no S3 write. The write ceiling projected from dev's write timings
   (2026-10-25) is in the publisher's [scale envelope](../preset-artifact-publisher.md#scale-envelope).
+
+  Producer cost per written pair (local, 2026-10-27, the 30d sibling stream drawn on one thread
+  with no writer, 3 runs each) [measured offline]. Until 2026-10-27 the bake re-sorted the whole
+  population for every segment; it now sorts each ordering once and slices it (§2), and every
+  pair's bytes are unchanged:
+
+  | Campaigns | Pairs | Thread CPU per pair, mean: before → after | Whole stream: before → after |
+  |---|---|---|---|
+  | 400 | 256 | 2.86–2.90 ms → 2.75–2.76 ms | 0.73–0.74 s → 0.70–0.71 s |
+  | 10,000 | 5,655 | 11.93–12.94 ms → 4.50 ms | 67.5–73.2 s → 25.4–25.5 s |
+
+  The Baker's write rate after the change is not yet measured on dev.
 - **Observed local bulk acceptance (2026-09-18):** the governed 1,000-campaign workflow
   completed in 31,827 ms, proved a bounded 26-plan grouped measurement batch at 1,000
   selections (the five daily series split into two window chunks under the 10,000-row query
