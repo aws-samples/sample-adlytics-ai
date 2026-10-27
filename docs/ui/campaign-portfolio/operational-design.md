@@ -16,6 +16,13 @@ measurement targets, not request cutoffs:
 | `POST /api/presentation/campaign-detail` — tail (live tier) | 8 s measurement target; first-generation attainment measured separately | Current concurrent measurement batch (the serial batch is the recorded 2026-09-14 timeout defect), followed by parallel on-demand insight generation from the assembled artifact. Acceptance reports measurement and slot-generation durations separately; a combined target is not claimed until deployed samples establish it. |
 | `POST /api/presentation/campaign-metric-focus` | 300 ms cached · 8 s first generation | Revision-keyed cache; one direct Converse call on a miss. |
 
+- **A page load is one `campaigns` request (render format 14, 2026-10-26).** The highest and
+  lowest return lists ride in the parent body, so the page fetches no `attributed_roas` ordering
+  to show them, and its load serves no segment whose insight slots precompute leaves cold.
+  Before this format, a load made three requests, and on a dev paced pass on 2026-10-26 the
+  page's browser median ended at 2,050 ms against 1,041 ms for the parent request
+  [measured]. After it, the page is projected to end near the parent request
+  [projection]; the next dev paced pass replaces this projection with a measurement.
 - The measurement and insight fan-out bounds come from configuration and respect the downstream
   quotas (`.kiro/steering/backend-concurrent-execution.md`). Independent slots start concurrently,
   join by declared slot identity, and never wait on one another serially.
@@ -68,6 +75,10 @@ measurement targets, not request cutoffs:
   reason and question) on each model card
   ([ADR-122](../../decisions/adr-122-declare-next-step-targets-as-a-typed-union-checked-against-navigation.md)):
   largest body 225,796 bytes, maximum served form 255,129 bytes, 871 bytes under the cap.
+  Re-measured 2026-10-26 at render format 14, whose bodies carry the return lists
+  (`make accept-campaign-estate-local`): largest body 156,718 bytes against 149,714 at format 13,
+  maximum served form 184,220 bytes against 177,216. The 10,000-campaign estate's largest body
+  stayed 193,293 bytes.
 - A change that cannot meet a budget splits the endpoint or precomputes; raising a Lambda timeout is
   never the first fix (`.kiro/steering/backend-concurrent-execution.md`). Slot generation is already
   parallel; the first-generation budget is re-evaluated from the per-slot timings introduced below.

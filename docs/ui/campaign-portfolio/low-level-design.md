@@ -235,12 +235,25 @@ browser never reorders. The campaign row count is bounded by the artifact declar
 > adds "Sort by Attributed ROAS to find campaigns to fix; you make the change in Amazon Ads."
 >
 > UI refresh 3.2 (readout A.4, D10, 2026-10-22): "Highest return" and "Lowest return" list the first
-> five served rows of segment 0 of the server's own `attributed_roas` orderings, `desc` and `asc`
-> (both baked for every preset, `bakeability.py` `CAMPAIGN_ORDERING_COUNT`), for the same window and
-> channel option; rows whose ROAS is undefined sort last on the server and are skipped. The browser
-> never sorts: if either answer isn't that ordering, window and option, or a request fails, both
-> lists are omitted (`RETURN_LISTS_COPY`). "Delivery per channel" folds into a closed disclosure
-> below the campaign table.
+> five campaigns with a defined Attributed ROAS of the server's own `attributed_roas` orderings,
+> `desc` and `asc`, for the same window and channel option. "Delivery per channel" folds into a
+> closed disclosure below the campaign table.
+> **Amended 2026-10-26 (render format 14).** The lists are baked into every filter's body as
+> `return_lists: {highest, lowest}`, each entry the campaign's display `signature` and its
+> `attributed_roas` and `spend` values at the row grain, ranked over the whole population by the
+> orderings' own comparator (`campaign_return_lists`, `CAMPAIGN_RETURN_LIST_SIZE`). The key is
+> `null` on an empty or insufficient body; a population with no defined ROAS serves two empty
+> lists, and the page shows none. The browser renders the parent's lists as served and makes no
+> sorted request for them, so a page load is one Campaigns request. Every segment served for a
+> user-chosen sort carries its parent's lists unchanged, and user sorts serve as before. Whether a
+> user-chosen ROAS sort should render insight cards is an open product decision; until it is
+> made, a sorted segment serves its insight cards as before. A body baked before format 14 has no
+> `return_lists` and is never decoded: from the deploy until the page's next bake it is the
+> preset's `window_unavailable` absence ([ABS-CAMP-1](../page-absence-copy.md#abs-camp-1) or
+> [ABS-CAMP-2](../page-absence-copy.md#abs-camp-2)) with that preset marked unavailable, never the
+> malformed-artifact refusal. A dialog over it is the domain refusal "No campaign results are
+> published for this period.", and a row chosen on a page served before the deploy is "The
+> requested campaign is not available." ([upgrade behaviour](../preset-artifact-publisher.md#first-bake-and-recovery)).
 > (`CAMPAIGNS_SORT_HINT`). Tile priors name their served prior window ("Aug 8–14, 2026: …").
 > `campaigns`, `portfolio-metric-focus` and `insight-deep-dive` take `filter_id`; a well-formed id
 > the preset doesn't offer is refused with `ADLY-PRESENTATION-0005`, and the browser shows All
