@@ -214,6 +214,8 @@ class TestGateESuppressionMarkers:
             'found.append(f"{where}: no' + 'semgrep must name namespaced rule IDs")',
             "q = 1  # NO" + "SEM",
             "q = 1  # no" + "semantic",
+            "const page = `<!-- no" + "semgrep --!>`;",
+            "<!-- no" + "semgrep --!> a.b",
         ],
         ids=[
             "bare-sql-dash-dash",
@@ -230,6 +232,8 @@ class TestGateESuppressionMarkers:
             "prose-after-a-colon",
             "short-uppercase-form",
             "word-starting-with-the-marker",
+            "bare-html-comment-bang-close",
+            "ids-after-a-bang-close",
         ],
     )
     def test_a_marker_after_whitespace_or_a_leader_is_still_checked(
@@ -245,6 +249,7 @@ class TestGateESuppressionMarkers:
         [
             "    -- no" + "semgrep: a.b",
             "const page = `<!-- no" + "semgrep: a.b -->`;",
+            "const page = `<!-- no" + "semgrep: a.b --!>`;",
             'raise ValueError("no' + 'semgrep is not allowed here")',
             "# a `no" + "semgrep` must name a namespaced rule",
             "assert_no" + "semgrep_finding()",
@@ -252,6 +257,7 @@ class TestGateESuppressionMarkers:
         ids=[
             "named-sql-dash-dash",
             "named-html-comment",
+            "named-html-comment-bang-close",
             "prose-at-a-string-start",
             "prose-in-backticks",
             "inside-an-identifier",

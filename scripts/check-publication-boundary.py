@@ -103,7 +103,10 @@ _MIN_INNER_DIGIT_RUNS = 2
 NOSEC = re.compile(r"#\s*nosec\b(?P<rest>[^#]*)", re.IGNORECASE)
 REVIEWED_BANDIT_IDS = frozenset({"B105", "B106", "B310", "B505", "B506", "B608"})
 SEMGREP_MARKER = re.compile(r"(?:^|(?<=[\s#/*!-]))nosem(?:grep)?(?P<rest>[^#]*)", re.IGNORECASE)
-BLOCK_COMMENT_CLOSE = re.compile(r"\s*(?:\*/|-->).*$")
+# What may follow a marker's IDs on the line is a block or HTML comment closer. The HTML Standard's
+# comment-end-bang state also ends a comment at `--!>`, so it is listed. Text from the first closer
+# on is never read as IDs (O-CODEQL-004).
+COMMENT_CLOSERS = ("*/", "-->", "--!>")
 SEMGREP_IDS = re.compile(
     r":\s*[A-Za-z0-9_-]+(?:[./][A-Za-z0-9_-]+)+(?:,\s*[A-Za-z0-9_-]+(?:[./][A-Za-z0-9_-]+)+)*\s*"
 )
@@ -177,6 +180,12 @@ def _credential_findings(where: str, line: str) -> list[str]:
     return found
 
 
+def _before_comment_close(rest: str) -> str:
+    """Return the text before the earliest comment closer, or all of it when there is none."""
+    ends = [i for i in (rest.find(closer) for closer in COMMENT_CLOSERS) if i >= 0]
+    return rest[: min(ends)] if ends else rest
+
+
 def _marker_findings(where: str, line: str) -> list[str]:
     """Return gate E findings for one source line: suppressions that name no reviewed rule."""
     found: list[str] = []
@@ -185,7 +194,7 @@ def _marker_findings(where: str, line: str) -> list[str]:
         if not ids or not all(t in REVIEWED_BANDIT_IDS for t in ids):
             found.append(f"{where}: nosec must name only reviewed Bandit test IDs")
     for m in SEMGREP_MARKER.finditer(line):
-        if SEMGREP_IDS.fullmatch(BLOCK_COMMENT_CLOSE.sub("", m.group("rest"))) is None:
+        if SEMGREP_IDS.fullmatch(_before_comment_close(m.group("rest"))) is None:
             found.append(f"{where}: `nosemgrep` must name namespaced rule IDs")
     return found
 
