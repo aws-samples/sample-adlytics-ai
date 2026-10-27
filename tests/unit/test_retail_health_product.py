@@ -35,6 +35,8 @@ from test_presentation_handler import (
     presentation_module,  # noqa: F401  # pyright: ignore[reportUnusedImport]
 )
 
+from adapters.jobs.preset_artifact_publisher.retail_source import retail_channel_labels
+from adapters.outbound.media_taxonomy import load_media_taxonomy
 from adapters.outbound.s3.preset_artifacts import PRESET_ARTIFACT_BODY_CONFLICT
 from domain.narrative.shaped_response import UnitKind, Units
 from domain.presentation.artifacts import (
@@ -58,6 +60,7 @@ from domain.presentation.insights import (
 )
 from domain.presentation.next_steps import ProductRefTarget, next_step_target_payload
 from domain.presentation.preset_artifacts import (
+    MAX_PRESET_ARTIFACT_BYTES,
     PresetArtifactBody,
     PresetArtifactCustodyManifest,
     PresetArtifactIndexShardIdentity,
@@ -65,6 +68,7 @@ from domain.presentation.preset_artifacts import (
     PresetArtifactPointer,
     PresetArtifactPointerRosterRequest,
     PresetArtifactPointerRosterResult,
+    PresetArtifactProductAdsIdentity,
     PresetArtifactProductChildIdentity,
     PresetArtifactRevision,
     PresetArtifactSiblingBody,
@@ -76,6 +80,7 @@ from domain.presentation.preset_artifacts import (
     split_parent_custody,
 )
 from domain.presentation.retail_health import (
+    RETAIL_HEALTH_MAX_ROWS,
     RETAIL_HEALTH_ROW_GRAIN,
     RETAIL_HEALTH_TOTAL_METRICS,
     RetailDistributorView,
@@ -88,10 +93,12 @@ from domain.presentation.retail_health import (
 from domain.presentation.retail_health_custody import (
     RetailHealthCustodyManifest,
     RetailHealthCustodyProduct,
+    RetailProductAdsCustody,
     RetailProductChildCustody,
     product_ref_for,
     retail_health_custody_manifest_from_payload,
     retail_health_custody_manifest_payload,
+    retail_product_ads_custody_payload,
     retail_product_child_custody_payload,
 )
 from domain.presentation.retail_product_detail import (
@@ -102,6 +109,9 @@ from domain.presentation.retail_product_detail import (
     RetailAdComparison,
     RetailAdValue,
     RetailDetailReason,
+    RetailProductAdCell,
+    RetailProductAdsArtifact,
+    RetailProductAdsRow,
     RetailProductDetailArtifact,
     RetailProductDetailOutcome,
     RetailProductIdentity,
@@ -110,6 +120,9 @@ from domain.presentation.retail_product_detail import (
     RetailTrafficPoint,
     product_insight_stats,
     retail_ad_comparison,
+    retail_product_ads,
+    retail_product_ads_from_payload,
+    retail_product_ads_payload,
     retail_product_detail_from_payload,
     retail_product_detail_payload,
 )
@@ -296,17 +309,19 @@ def _filled_movers(parent: RetailHealthArtifact) -> RetailHealthArtifact:
     return replace(parent, insights=(*parent.insights[:-1], movers))
 
 
-def _publication(  # noqa: PLR0913 -- one bake and its three fixture switches
+def _publication(  # noqa: PLR0913 -- one bake and its four fixture switches
     identity: str = "publication-1",
     *,
     movers: bool = False,
     ads: bool = False,
     first_title: str | None = None,
+    product_ads: bool = True,
 ) -> _Publication:
-    """Bake one fictional format-8 publication.
+    """Bake one fictional publication at the current render format.
 
     `movers` fills the movers card naming the first row; `ads` gives that row's child ads;
-    `first_title` is the first child's catalog title, as a long Vendor Central title would be.
+    `first_title` is the first child's catalog title, as a long Vendor Central title would be;
+    `product_ads=False` bakes it as render format 11 did, with no Products and ads part.
     """
     parent: RetailHealthArtifact = _retail_health_artifact()
     if first_title is not None:
@@ -327,26 +342,23 @@ def _publication(  # noqa: PLR0913 -- one bake and its three fixture switches
     child_custody: dict[str, PresetArtifactSiblingCustody] = {}
     products: list[RetailHealthCustodyProduct] = []
     pairs: list[tuple[PresetArtifactSiblingBody, PresetArtifactSiblingCustody]] = []
+    details: list[RetailProductDetailArtifact] = []
     for index, row in enumerate(parent.rows):
         first = index == 0
         product = _product(row.child_asin)
         ref = product_ref_for(product)
         identity_ = PresetArtifactProductChildIdentity(ref)
+        details.append(
+            _child(
+                row.title, row.child_asin, ads=ads and first, movers=movers_slot if first else None
+            )
+        )
         public = PresetArtifactSiblingBody(
             PAGE,
             VARIANT,
             revision,
             identity_,
-            canonical_preset_artifact_json(
-                retail_product_detail_payload(
-                    _child(
-                        row.title,
-                        row.child_asin,
-                        ads=ads and first,
-                        movers=movers_slot if first else None,
-                    )
-                )
-            ),
+            canonical_preset_artifact_json(retail_product_detail_payload(details[-1])),
         )
         private = PresetArtifactSiblingCustody(
             PAGE,
@@ -363,6 +375,28 @@ def _publication(  # noqa: PLR0913 -- one bake and its three fixture switches
         child_custody[private.key] = private
         products.append(RetailHealthCustodyProduct(ref, product))
         pairs.append((public, private))
+    if product_ads:
+        part = PresetArtifactSiblingBody(
+            PAGE,
+            VARIANT,
+            revision,
+            PresetArtifactProductAdsIdentity(),
+            canonical_preset_artifact_json(
+                retail_product_ads_payload(retail_product_ads(tuple(details)))
+            ),
+        )
+        part_custody = PresetArtifactSiblingCustody(
+            PAGE,
+            VARIANT,
+            revision,
+            PresetArtifactProductAdsIdentity(),
+            canonical_preset_artifact_json(
+                retail_product_ads_custody_payload(RetailProductAdsCustody(part.digest))
+            ),
+        )
+        child_bodies[part.key] = part
+        child_custody[part_custody.key] = part_custody
+        pairs.append((part, part_custody))
     # ADR-145: the manifest is the header; the stage's index is the children's one digest home.
     custody, shards = indexed_parent_custody(
         body,
@@ -567,7 +601,11 @@ def test_the_parent_custody_names_the_rows_and_its_index_is_the_childrens_one_di
             entry,
         )
     }
-    assert set(indexed) == {PresetArtifactProductChildIdentity(ref) for ref in refs}
+    # Render format 12: the same closed set holds the one Products and ads part.
+    assert set(indexed) == {
+        *(PresetArtifactProductChildIdentity(ref) for ref in refs),
+        PresetArtifactProductAdsIdentity(),
+    }
     for key, body in publication.child_bodies.items():
         descriptor = indexed[body.identity]
         assert descriptor.body_digest == body.digest
@@ -744,7 +782,11 @@ def test_a_child_the_index_does_not_list_refuses_and_a_listed_one_opens(
     publication = _publication()
     pages = _ProductPages(tokens=_TOKENS)
     rows = _serve_parent(presentation_module, pages, publication)["page"]["artifact"]["rows"]
-    first, second = ((key, body) for key, body in publication.child_bodies.items())
+    first, second = (
+        (key, body)
+        for key, body in publication.child_bodies.items()
+        if isinstance(body.identity, PresetArtifactProductChildIdentity)
+    )
     # The manifest still names both rows; the index lists only the second child.
     publication.custody, shards = indexed_parent_custody(
         publication.body,
@@ -787,7 +829,9 @@ def test_a_tampered_index_shard_refuses_and_never_falls_back(
     shard = publication.child_custody[key]
     payload = json.loads(shard.payload_json)
     # Swap the two children's descriptors' custody digests: well-formed, but not the bytes bound.
-    first, second = payload["descriptors"]
+    first, second = (
+        item for item in payload["descriptors"] if item["identity"].startswith("products/")
+    )
     first["custody_digest"], second["custody_digest"] = (
         second["custody_digest"],
         first["custody_digest"],
@@ -929,6 +973,204 @@ def test_open_product_detail_is_a_served_step_never_a_cached_one() -> None:
         )
 
 
+# --- Products and ads: one baked part for every served row (render format 12) ----------------
+
+
+def _products_and_ads_event(**extra: object) -> dict[str, Any]:
+    return _retail_health_event({"session_id": SESSION, "product_ads": True, **extra})
+
+
+@pytest.mark.covers("ADR-125", "ADR-151")
+def test_products_and_ads_reads_every_rows_ad_credit_beside_the_parent_in_one_request(
+    presentation_module: _PresentationModule,  # noqa: F811
+) -> None:
+    """One request serves the page and the part; the part is the children's own figures."""
+    publication = _publication(ads=True)
+    pages = _ProductPages(tokens=_TOKENS)
+    response = presentation_module.handle(
+        _products_and_ads_event(), _runtime(presentation_module, pages, publication)
+    )
+    assert response["statusCode"] == 200
+    page = _served(response)["page"]
+    part = page["product_ads"]
+    rows = page["artifact"]["rows"]
+    assert [row["child_asin"] for row in part["rows"]] == [row["child_asin"] for row in rows]
+    assert part["period"] == page["artifact"]["period"]
+    # The first row's child credits two channels, each with its own figures and change; the
+    # second's states its absence with the child's own reason. Nothing is totalled.
+    first, second = part["rows"]
+    assert [cell["label"] for cell in first["channels"]] == [label for _, label in _AD_CHANNELS]
+    dsp = first["channels"][0]
+    assert (dsp["revenue"]["value"], dsp["revenue"]["display_value"]) == (40, "40.00")
+    assert dsp["revenue"]["units"] == {"kind": "currency", "currency_code": "USD"}
+    assert (dsp["purchases"]["value"], dsp["purchases"]["units"]["kind"]) == (4, "count")
+    assert dsp["revenue_change"]["display_text"] == "+33.3%"
+    assert (second["channels"], second["reason_code"]) == ([], "missing_current_publication")
+    assert first["conversion"]["value"] == "0.02"
+    assert first["conversion"]["grain"] == ["period", "product", "marketplace"]
+    # The page is Retail health's own: the same body and capabilities as without the part.
+    plain = _serve_parent(presentation_module, _ProductPages(tokens=_TOKENS), publication)
+    assert "product_ads" not in plain["page"]
+    assert {key: value for key, value in page.items() if key != "product_ads"}.keys() == (
+        plain["page"].keys()
+    )
+    assert page["artifact"]["boundary"] == plain["page"]["artifact"]["boundary"]
+    # No product key and no server-only reference reaches the browser.
+    text = json.dumps(part)
+    assert "amazon_asin:" not in text
+    assert all(product_ref_for(_product(row["child_asin"])) not in text for row in rows)
+
+
+@pytest.mark.covers("ADR-125", "ADR-151")
+def test_a_publication_baked_before_render_format_12_is_the_tabs_window_absence_never_a_500(
+    presentation_module: _PresentationModule,  # noqa: F811
+) -> None:
+    """Products and ads serves the preset as unpublished; Retail health still serves its body."""
+    publication = _publication(product_ads=False)
+    pages = _ProductPages(tokens=_TOKENS)
+    response = presentation_module.handle(
+        _products_and_ads_event(), _runtime(presentation_module, pages, publication)
+    )
+    assert response["statusCode"] == 200
+    absent = _served(response)
+    assert absent["kind"] == "window_unavailable"
+    assert absent["reason_code"] == "preset_unavailable"
+    preset = next(item for item in absent["temporal"]["presets"] if item["id"] == VARIANT.value)
+    assert preset["availability"] == "unavailable"
+    # Nothing was minted or recorded for the absent tab.
+    assert pages.product_records == []
+    assert pages.artifact_records == []
+    # Paired: the same publication serves Retail health as before.
+    assert _serve_parent(presentation_module, pages, publication)["kind"] == "page"
+
+
+@pytest.mark.covers("ADR-125", "ADR-145")
+def test_a_part_that_disagrees_with_its_bytes_or_its_parents_rows_refuses(
+    presentation_module: _PresentationModule,  # noqa: F811
+) -> None:
+    """A listed part with other bytes or rows is the malformed refusal, never a fallback."""
+    identity = PresetArtifactProductAdsIdentity()
+
+    def with_part(publication: _Publication, payload: dict[str, object]) -> None:
+        key = next(k for k, body in publication.child_bodies.items() if body.identity == identity)
+        publication.child_bodies[key] = replace(
+            publication.child_bodies[key], payload_json=canonical_preset_artifact_json(payload)
+        )
+
+    tampered = _publication(ads=True)
+    payload = json.loads(
+        next(b for b in tampered.child_bodies.values() if b.identity == identity).payload_json
+    )
+    payload["rows"][0]["channels"][0]["revenue"]["display_value"] = "41.00"
+    with_part(tampered, payload)
+    reordered = _publication(ads=True)
+    payload = json.loads(
+        next(b for b in reordered.child_bodies.values() if b.identity == identity).payload_json
+    )
+    payload["rows"].reverse()
+    with_part(reordered, payload)
+    for publication in (tampered, reordered):
+        for attest in (True, False):
+            pages = _ProductPages(tokens=_TOKENS)
+            with pytest.raises(InvariantError, match="malformed"):
+                presentation_module.handle(
+                    _products_and_ads_event(),
+                    _runtime(presentation_module, pages, publication, attest=attest),
+                )
+            assert pages.artifact_records == []
+
+
+@pytest.mark.covers("ADR-125")
+def test_the_products_and_ads_selector_is_exactly_true_and_only_on_retail_health(
+    presentation_module: _PresentationModule,  # noqa: F811
+) -> None:
+    publication = _publication()
+    for value in (False, "true", 1, None):
+        with pytest.raises(ValidationError, match="products and ads request is invalid"):
+            presentation_module.handle(
+                _products_and_ads_event(product_ads=value),
+                _runtime(presentation_module, _ProductPages(tokens=_TOKENS), publication),
+            )
+    event = _event("/api/presentation/scorecard", {"session_id": SESSION, "product_ads": True})
+    event["headers"] = {"Accept": "application/vnd.adlytics.presentation-v2+json"}
+    with pytest.raises(ValidationError, match="request fields are invalid"):
+        presentation_module.handle(
+            event, _runtime(presentation_module, _ProductPages(tokens=_TOKENS), publication)
+        )
+
+
+@pytest.mark.covers("ADR-125")
+def test_the_part_round_trips_canonically_and_refuses_a_figure_outside_its_window() -> None:
+    details = (
+        _child("Fictional Product FICTA", "FICTA", ads=True),
+        _child("Fictional Product FICTB", "FICTB"),
+    )
+    payload = retail_product_ads_payload(retail_product_ads(details))
+    assert retail_product_ads_payload(retail_product_ads_from_payload(payload)) == payload
+    moved = json.loads(json.dumps(payload))
+    moved["rows"][0]["channels"][0]["revenue"]["period"] = {
+        "start": "2026-08-06",
+        "end": "2026-08-12",
+    }
+    totalled = json.loads(json.dumps(payload))
+    totalled["rows"][0]["total"] = totalled["rows"][0]["channels"][0]["revenue"]
+    both = json.loads(json.dumps(payload))
+    both["rows"][1]["channels"] = both["rows"][0]["channels"]
+    for refused in (moved, totalled, both):
+        with pytest.raises(ValueError):
+            retail_product_ads_from_payload(refused)
+    # A part projects only selected details of one window.
+    insufficient = replace(
+        details[1],
+        outcome=RetailProductDetailOutcome.INSUFFICIENT,
+        totals=(),
+        sales_daily=(),
+        traffic_daily=(),
+        ad_attributed=None,
+        evidence_status=None,
+    )
+    with pytest.raises(ValueError, match="selected details of one window"):
+        retail_product_ads((details[0], insufficient))
+
+
+@pytest.mark.covers("ADR-125")
+def test_the_part_fits_the_artifact_cap_at_fifty_rows_crediting_every_governed_channel() -> None:
+    """The largest part a bake can write: 50 rows, each crediting all five taxonomy channels.
+
+    Over the cap, the whole Retail health page would refuse at bake (`body_over_cap`), so this
+    pins the measured worst case well inside it.
+    """
+    channels = retail_channel_labels(load_media_taxonomy(ROOT))
+    assert len(channels) == 5  # the governed taxonomy's channel count
+    large = Decimal("9999999999.99")
+    cells = tuple(
+        RetailProductAdCell(
+            channel,
+            label,
+            RetailAdValue(999_999_999, Units(UnitKind.COUNT), RETAIL_HEALTH_PERIOD),
+            RetailAdValue(large, Units(UnitKind.CURRENCY, "USD"), RETAIL_HEALTH_PERIOD),
+            _ad_rows().rows[0].revenue.change,
+        )
+        for channel, label in channels.items()
+    )
+    conversion = RetailMetricValue(
+        Decimal("0.123456"),
+        _retail_units("conversion_rate_retail"),
+        RETAIL_HEALTH_PERIOD,
+        RETAIL_HEALTH_ROW_GRAIN,
+    )
+    part = RetailProductAdsArtifact(
+        RETAIL_HEALTH_PERIOD,
+        RETAIL_HEALTH_PRIOR,
+        tuple(
+            RetailProductAdsRow(f"B0{index:08d}", conversion, cells)
+            for index in range(RETAIL_HEALTH_MAX_ROWS)
+        ),
+    )
+    encoded = len(canonical_preset_artifact_json(retail_product_ads_payload(part)).encode())
+    assert encoded == 153_652 <= MAX_PRESET_ARTIFACT_BYTES
+
+
 # --- The browser decodes the server's own responses ----------------------------------------
 
 BROWSER_FIXTURES = ROOT / "frontend/test/fixtures"
@@ -943,7 +1185,17 @@ def browser_fixture_responses(module: _PresentationModule) -> dict[str, dict[str
     reference = parent["page"]["artifact"]["rows"][0]["selection_reference"]
     child = module.handle(_product_event(reference), _runtime(module, pages, publication))
     assert child["statusCode"] == 200
-    return {"retail-health-v2.json": parent, "retail-product-v2.json": _served(child)}
+    # Products and ads: the same parent with its part, served to a fresh page store.
+    tab = module.handle(
+        _products_and_ads_event(),
+        _runtime(module, _ProductPages(tokens=_TOKENS), publication),
+    )
+    assert tab["statusCode"] == 200
+    return {
+        "retail-health-v2.json": parent,
+        "retail-product-v2.json": _served(child),
+        "products-and-ads-v2.json": _served(tab),
+    }
 
 
 @pytest.mark.covers("ADR-125")

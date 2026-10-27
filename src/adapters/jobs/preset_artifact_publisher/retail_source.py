@@ -78,6 +78,7 @@ from domain.presentation.preset_artifacts import (
     PresetArtifactCustodyHeader,
     PresetArtifactPage,
     PresetArtifactPointerTemplate,
+    PresetArtifactProductAdsIdentity,
     PresetArtifactProductChildIdentity,
     PresetArtifactPublicationRequest,
     PresetArtifactRevision,
@@ -112,9 +113,11 @@ from domain.presentation.retail_health import (
 from domain.presentation.retail_health_custody import (
     RetailHealthCustodyManifest,
     RetailHealthCustodyProduct,
+    RetailProductAdsCustody,
     RetailProductChildCustody,
     product_ref_for,
     retail_health_custody_manifest_payload,
+    retail_product_ads_custody_payload,
     retail_product_child_custody_payload,
 )
 from domain.presentation.retail_product_detail import (
@@ -133,6 +136,8 @@ from domain.presentation.retail_product_detail import (
     ad_values_by_channel,
     product_insight_stats,
     retail_ad_comparison,
+    retail_product_ads,
+    retail_product_ads_payload,
     retail_product_detail_payload,
 )
 from domain.presentation.retail_product_detail import (
@@ -242,7 +247,11 @@ __all__ = [
 #     are format 9's.
 # 11 — the movers, the stated total and the product sums are read in SQL (ADR-152): an exact
 #     |change| tie at the third mover now keeps the lower ASIN, not the lower title.
-RETAIL_HEALTH_PRESET_RENDER_FORMAT = 11
+# 12 — the bake also writes one `RetailProductAds` part beside the children: every served row's
+#     ad credit and conversion, projected from its child, so Products and ads reads one object
+#     instead of one child per row. The body bytes are format 11's; a format-11 publication
+#     has no part, and Products and ads serves it as the preset's window absence.
+RETAIL_HEALTH_PRESET_RENDER_FORMAT = 12
 
 RETAIL_HEALTH_BOUNDARY = (
     "Retail actuals only. No campaign identifier, ROAS, or advertising "
@@ -1744,9 +1753,17 @@ class RetainedRetailHealthPresetArtifactSource:
             revision,
             capped_preset_artifact_json(retail_health_artifact_payload(rendered.artifact)),
         )
-        children = _child_bodies(self.page, variant, revision, rendered.children)
+        children = (
+            ()
+            if not rendered.children
+            else (
+                *_child_bodies(self.page, variant, revision, rendered.children),
+                _product_ads_part(self.page, variant, revision, rendered.children),
+            )
+        )
         # The manifest is the custody header; the stage adds the sibling index, the children's
-        # one digest home (ADR-145), and refuses children that aren't exactly the served rows.
+        # one digest home (ADR-145), and refuses children that aren't exactly the served rows and
+        # the Products and ads part.
         header = (
             None
             if not rendered.children
@@ -1785,7 +1802,13 @@ class RetainedRetailHealthPresetArtifactSource:
             None
             if header is None
             else frozenset(
-                PresetArtifactProductChildIdentity(child.product_ref) for child in rendered.children
+                (
+                    *(
+                        PresetArtifactProductChildIdentity(child.product_ref)
+                        for child in rendered.children
+                    ),
+                    PresetArtifactProductAdsIdentity(),
+                )
             ),
         )
 
@@ -1860,6 +1883,37 @@ def _child_bodies(  # noqa: PLR0913, PLR0917 -- one parent identity and its chil
         )
         encoded.append((public, private))
     return tuple(encoded)
+
+
+def _product_ads_part(  # noqa: PLR0913, PLR0917 -- one parent identity and its children
+    page: PresetArtifactPage,
+    variant: PresetArtifactVariant,
+    revision: PresetArtifactRevision,
+    children: tuple[RetailProductChild, ...],
+) -> tuple[PresetArtifactSiblingBody, PresetArtifactSiblingCustody]:
+    """Encode the one Products and ads part, projected from the children in row order."""
+    identity = PresetArtifactProductAdsIdentity()
+    public = PresetArtifactSiblingBody(
+        page,
+        variant,
+        revision,
+        identity,
+        capped_preset_artifact_json(
+            retail_product_ads_payload(
+                retail_product_ads(tuple(child.artifact for child in children))
+            )
+        ),
+    )
+    private = PresetArtifactSiblingCustody(
+        page,
+        variant,
+        revision,
+        identity,
+        capped_preset_artifact_json(
+            retail_product_ads_custody_payload(RetailProductAdsCustody(public.digest))
+        ),
+    )
+    return public, private
 
 
 def retail_channel_labels(taxonomy: MediaTaxonomy) -> dict[str, str]:

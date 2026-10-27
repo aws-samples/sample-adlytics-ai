@@ -14,7 +14,8 @@ bake task has no pointer capability); `publish` stages and then advances the poi
 from the request's template with the staged custody's digest.
 
 Retail's closed child set (ADR-125 as amended by ADR-145): a request's `closed_children` must
-equal the stream's identities, checked before any write.
+equal the stream's identities (the served rows' children and, from render format 12, the one
+Products and ads part), checked before any write.
 
 The runtime write deadline (ADR-145, ADR-142): `stage` and `publish` take the invocation's
 `remaining_ms` and the contract's `tail_seconds` as required keywords. Before each pair is
@@ -435,7 +436,7 @@ def _admitted(
 
 
 def _require_closed_children(request: PresetArtifactPublicationRequest) -> None:
-    """Retail's closed child set (ADR-125, ADR-145): the stream's identities are its rows.
+    """Retail's closed child set (ADR-125, ADR-145): its rows' children and Products and ads part.
 
     Checked before any write, so a mismatch writes nothing.
     """
@@ -450,7 +451,7 @@ def _require_closed_children(request: PresetArtifactPublicationRequest) -> None:
     ):
         raise InvariantError(
             PRESET_ARTIFACT_POINTER_CONFLICT,
-            "Product-detail children are exactly the served rows.",
+            "Retail children are exactly the served rows and the Products and ads part.",
             context=_context(request),
         )
 

@@ -6,7 +6,8 @@ row is baked in the parent's publication. The parent custody's header names each
 canonical product key under a server-only ``product_ref``; the children's digests have one home,
 the parent custody's sibling index, which the stage builds. The set stays closed: the stage
 refuses a publication whose children aren't exactly the served rows before any write, so a serve
-can never read a child the bake didn't attest.
+can never read a child the bake didn't attest. From render format 12 the same set also holds one
+Products and ads part, whose private custody binds only its public bytes.
 """
 
 from __future__ import annotations
@@ -20,13 +21,17 @@ from domain.semantics.identity import CommerceScopeKey, MarketplaceKey, ProductK
 
 __all__ = [
     "RETAIL_HEALTH_CUSTODY_MANIFEST_KIND",
+    "RETAIL_PRODUCT_ADS_CUSTODY_KIND",
     "RETAIL_PRODUCT_CHILD_CUSTODY_KIND",
     "RetailHealthCustodyManifest",
     "RetailHealthCustodyProduct",
+    "RetailProductAdsCustody",
     "RetailProductChildCustody",
     "product_ref_for",
     "retail_health_custody_manifest_from_payload",
     "retail_health_custody_manifest_payload",
+    "retail_product_ads_custody_from_payload",
+    "retail_product_ads_custody_payload",
     "retail_product_child_custody_from_payload",
     "retail_product_child_custody_payload",
 ]
@@ -34,6 +39,7 @@ __all__ = [
 RETAIL_HEALTH_CUSTODY_MANIFEST_KIND = "retail_health_custody_manifest/v2"
 """v2 (ADR-145) drops the inline child digests; a v1 manifest is never read in the v2 shape."""
 RETAIL_PRODUCT_CHILD_CUSTODY_KIND = "retail_product_child_custody"
+RETAIL_PRODUCT_ADS_CUSTODY_KIND = "retail_product_ads_custody"
 _DIGEST = re.compile(r"^[a-f0-9]{64}$")
 
 
@@ -206,3 +212,34 @@ def retail_product_child_custody_from_payload(value: object) -> RetailProductChi
     if retail_product_child_custody_payload(custody) != value:
         raise ValueError("retail product child custody is not canonical.")
     return custody
+
+
+@dataclass(frozen=True, slots=True)
+class RetailProductAdsCustody:
+    """The Products and ads part's private custody: the public bytes it accompanies.
+
+    The part names products only by the served rows' child ASINs, in row order, so it needs no
+    product key here; serving checks its rows against the parent body's.
+    """
+
+    body_digest: str
+    kind: str = RETAIL_PRODUCT_ADS_CUSTODY_KIND
+
+    def __post_init__(self) -> None:
+        if self.kind != RETAIL_PRODUCT_ADS_CUSTODY_KIND:
+            raise ValueError("retail product ads custody kind is unsupported.")
+        _digest(self.body_digest, "retail product ads")
+
+
+def retail_product_ads_custody_payload(custody: RetailProductAdsCustody) -> dict[str, object]:
+    """Encode the Products and ads part's private custody."""
+    return {"kind": custody.kind, "body_digest": custody.body_digest}
+
+
+def retail_product_ads_custody_from_payload(value: object) -> RetailProductAdsCustody:
+    """Strictly decode and re-attest the Products and ads part's private custody."""
+    item = _object(value, frozenset({"kind", "body_digest"}), "product ads custody")
+    return RetailProductAdsCustody(
+        _digest(item["body_digest"], "product ads body"),
+        _text(item["kind"], "product ads custody kind"),
+    )

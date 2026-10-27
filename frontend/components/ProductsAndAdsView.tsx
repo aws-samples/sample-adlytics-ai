@@ -2,9 +2,9 @@
 'use client';
 /**
  * Products and ads (UI refresh 3.7, readout A.10): each product's served shipped sales and page
- * views beside what one chosen ad channel credits to it, from the product's baked detail. The two
- * systems sit side by side and are never added, divided or ranked; a row without a served ad
- * section shows the served or catalogued absence instead.
+ * views beside what one chosen ad channel credits to it, from the Products and ads part baked
+ * with the page (render format 12). The two systems sit side by side and are never added,
+ * divided or ranked; a row without a served ad section shows its served absence instead.
  */
 import { useState } from 'react';
 
@@ -16,8 +16,9 @@ import { useVisibleTabs } from './NextStepContext';
 import { RETAIL_HEALTH_EMPTY_TEXT, RETAIL_HEALTH_EMPTY_TITLE, RETAIL_HEALTH_INSUFFICIENT_TEXT, RETAIL_HEALTH_INSUFFICIENT_TITLE } from './RetailHealthRouteAdapter';
 import { retailValue } from './RetailTiles';
 import { windowText } from '@/lib/answer';
-import { adChannelOptions, adValueText, productAdCell, productsAndAdsAnswer, PRODUCTS_AND_ADS_COPY, type ProductAds } from '@/lib/products-and-ads';
+import { adChannelOptions, adValueText, productAdCell, productsAndAdsAnswer, PRODUCTS_AND_ADS_COPY } from '@/lib/products-and-ads';
 import type { RetailHealthArtifact } from '@/lib/retail-health';
+import type { RetailProductAdsArtifact, RetailProductAdsRow } from '@/lib/retail-health-product';
 
 /** The tab's browser-owned framing lines (`docs/ui/products-and-ads/README.md` "Copy"). */
 export const PRODUCTS_AND_ADS_LINES = {
@@ -36,18 +37,17 @@ function rowValue(row: ProductRow, metric: 'retail_revenue_shipped' | 'glance_vi
   return comparison === undefined ? 'Not available' : retailValue(metric, comparison.current);
 }
 
-/** Units per 1,000 page views from the product's served detail totals, or null when not served. */
-function conversion(ads: ProductAds | undefined): string | null {
-  if (ads?.kind !== 'served') return null;
-  const total = ads.detail.totals.find((entry) => entry.metric === 'conversion_rate_retail');
-  return total === undefined ? null : retailValue('conversion_rate_retail', total.current);
+/** Units per 1,000 page views from the product's served conversion, or null when not served. */
+function conversion(ads: RetailProductAdsRow | undefined): string | null {
+  return ads?.conversion == null ? null : retailValue('conversion_rate_retail', ads.conversion);
 }
 
-export function ProductsAndAdsView({ artifact, products }: {
+export function ProductsAndAdsView({ artifact, productAds }: {
   readonly artifact: RetailHealthArtifact;
-  readonly products: ReadonlyMap<string, ProductAds>;
+  /** The part's rows are the artifact's rows in order (its decoder checks); null with no rows. */
+  readonly productAds: RetailProductAdsArtifact | null;
 }) {
-  const options = adChannelOptions(products, artifact.rows);
+  const options = adChannelOptions(productAds);
   const [chosen, setChosen] = useState<string | null>(null);
   const retailTab = useVisibleTabs().find((tab) => tab.tab_id === 'retail-health');
   if (artifact.outcome !== 'complete') {
@@ -61,8 +61,8 @@ export function ProductsAndAdsView({ artifact, products }: {
   }
   // A channel a refreshed window no longer credits falls back to the first one served.
   const channel = options.find((option) => option.channel === chosen) ?? options[0] ?? null;
-  const showConversion = artifact.rows.some((row) => conversion(products.get(row.child_asin)) !== null);
-  const adBasis = [...products.values()].flatMap((ads) => ads.kind === 'served' && ads.detail.ad_attributed !== null && ads.detail.ad_attributed.reason === null ? [ads.detail.ad_attributed.basis] : [])[0] ?? null;
+  const showConversion = (productAds?.rows ?? []).some((row) => conversion(row) !== null);
+  const adBasis = productAds !== null && productAds.rows.some((row) => row.reason === null) ? productAds.basis : null;
   const adHeading = channel === null ? 'Ad-credited sales' : `Ad-credited sales · ${channel.label}`;
   return <CoverageProvider status={artifact.evidence_status} subject="Products and ads"><div className="products-ads">
     <AnswerSentence answer={productsAndAdsAnswer(artifact, '')} />
@@ -90,9 +90,9 @@ export function ProductsAndAdsView({ artifact, products }: {
         <DtColumn className="num">Ad-credited purchases</DtColumn>
         <DtColumn className="num">First-time purchases</DtColumn>
       </DtRow></DtHead>
-      <DtBody>{artifact.rows.map((row) => {
-        const ads = products.get(row.child_asin);
-        const cell = productAdCell(ads, channel?.channel ?? null);
+      <DtBody>{artifact.rows.map((row, index) => {
+        const ads = productAds?.rows[index];
+        const cell = ads === undefined ? { kind: 'absent' as const, text: PRODUCTS_AND_ADS_COPY.notCredited } : productAdCell(ads, channel?.channel ?? null);
         const revenue = row.comparisons.find((entry) => entry.metric === 'retail_revenue_shipped') ?? null;
         return <DtRow key={row.child_asin} data-slot={`pa-${row.child_asin}`}>
           <DtRowHeader className="name"><strong>{row.title}</strong><span className="sub">{row.child_asin}</span></DtRowHeader>
@@ -102,8 +102,8 @@ export function ProductsAndAdsView({ artifact, products }: {
           {showConversion ? <DtCell className="num" label="Units per 1,000 page views">{conversion(ads) ?? 'Not available'}</DtCell> : null}
           {cell.kind === 'absent'
             ? <DtCell className="num pa-absent" label={adHeading}><span className="reason">{cell.text}</span></DtCell>
-            : <DtCell className="num" label={adHeading}><span>{adValueText(cell.row.revenue.current)} <ChangeChip change={cell.row.revenue.change} /></span></DtCell>}
-          <DtCell className="num" label="Ad-credited purchases">{cell.kind === 'absent' ? <><span aria-hidden="true">—</span><span className="sr-only">{cell.text}</span></> : adValueText(cell.row.purchases.current)}</DtCell>
+            : <DtCell className="num" label={adHeading}><span>{adValueText(cell.row.revenue)} <ChangeChip change={cell.row.revenue_change} /></span></DtCell>}
+          <DtCell className="num" label="Ad-credited purchases">{cell.kind === 'absent' ? <><span aria-hidden="true">—</span><span className="sr-only">{cell.text}</span></> : adValueText(cell.row.purchases)}</DtCell>
           <DtCell className="num" label="First-time purchases"><span className="reason">{PRODUCTS_AND_ADS_COPY.notMeasured}</span></DtCell>
         </DtRow>;
       })}</DtBody>

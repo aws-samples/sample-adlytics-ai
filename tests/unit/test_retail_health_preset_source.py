@@ -85,6 +85,7 @@ from domain.presentation.preset_artifacts import (
     PresetArtifactPointerAdvanceRequest,
     PresetArtifactPointerAdvanceResult,
     PresetArtifactPointerTemplate,
+    PresetArtifactProductAdsIdentity,
     PresetArtifactProductChildIdentity,
     PresetArtifactPublicationRequest,
     PresetArtifactRevision,
@@ -110,6 +111,11 @@ from domain.presentation.retail_health import (
 )
 from domain.presentation.retail_health_custody import (
     retail_health_custody_manifest_from_payload,
+)
+from domain.presentation.retail_product_detail import (
+    retail_product_ads,
+    retail_product_ads_from_payload,
+    retail_product_ads_payload,
 )
 from domain.semantics.analytical_resolution import AuthorizedAnalyticalScope
 from domain.shared_kernel.errors import InvariantError
@@ -1601,12 +1607,12 @@ def test_the_retail_decoder_refuses_a_wrong_count_mixed_or_plotted_display_value
 
 @pytest.mark.covers("ADR-084", "ADR-070")
 def test_retail_movers_are_baked_at_two_places_in_the_shipped_revenue_currency() -> None:
-    """Format 4 added display values and two-place movers; formats 5 to 11 keep them."""
+    """Format 4 added display values and two-place movers; formats 5 to 12 keep them."""
     artifact = _rendered(2).artifact
     assert artifact is not None
     movers = artifact.insights[3]
 
-    assert RETAIL_HEALTH_PRESET_RENDER_FORMAT == 11
+    assert RETAIL_HEALTH_PRESET_RENDER_FORMAT == 12
     assert movers.text is not None
     assert re.search(r"changed by -?[\d,]+\.\d{2} USD", movers.text)
 
@@ -1651,6 +1657,8 @@ def test_a_bake_reduces_one_product_detail_child_per_displayed_row() -> None:
 @pytest.mark.covers("ADR-125")
 def test_the_publication_binds_a_closed_child_set_in_its_custody_before_the_pointer() -> None:
     rendered = _rendered(2)
+    artifact = rendered.artifact
+    assert artifact is not None
     source, _, _ = _source(compiler=cast("Compiler", RenderedCompiler(rendered)))
 
     request = source.publication_for(VARIANT)
@@ -1664,12 +1672,29 @@ def test_the_publication_binds_a_closed_child_set_in_its_custody_before_the_poin
     manifest = retail_health_custody_manifest_from_payload(header)
     assert manifest.body_digest == request.body.digest
     pairs = tuple(request.siblings)
+    # Render format 12: the children in row order, then the one Products and ads part.
     assert [public.identity for public, _ in pairs] == [
-        PresetArtifactProductChildIdentity(child.product_ref) for child in rendered.children
+        *(PresetArtifactProductChildIdentity(child.product_ref) for child in rendered.children),
+        PresetArtifactProductAdsIdentity(),
     ]
     assert request.closed_children == {public.identity for public, _ in pairs}
     assert request.closed_children == {
-        PresetArtifactProductChildIdentity(item.product_ref) for item in manifest.products
+        *(PresetArtifactProductChildIdentity(item.product_ref) for item in manifest.products),
+        PresetArtifactProductAdsIdentity(),
+    }
+    *children, (ads_body, ads_custody) = pairs
+    pairs = tuple(children)
+    assert ads_body.key.endswith(f"/{request.body.revision.value}/product-ads.json")
+    # The part is the children's own figures, row by row: nothing re-derived at serve time.
+    served = json.loads(ads_body.payload_json)
+    assert served == retail_product_ads_payload(
+        retail_product_ads(tuple(child.artifact for child in rendered.children))
+    )
+    decoded = retail_product_ads_from_payload(served)
+    assert [row.child_asin for row in decoded.rows] == [row.child_asin for row in artifact.rows]
+    assert json.loads(ads_custody.payload_json) == {
+        "kind": "retail_product_ads_custody",
+        "body_digest": ads_body.digest,
     }
     pointer = staged_pointer(request)
     custody = staged_custody(request)

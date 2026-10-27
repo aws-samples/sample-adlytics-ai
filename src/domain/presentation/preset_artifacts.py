@@ -40,6 +40,7 @@ __all__ = [
     "PresetArtifactPointerRosterRequest",
     "PresetArtifactPointerRosterResult",
     "PresetArtifactPointerTemplate",
+    "PresetArtifactProductAdsIdentity",
     "PresetArtifactProductChildIdentity",
     "PresetArtifactPublicationRequest",
     "PresetArtifactPublicationResult",
@@ -335,6 +336,20 @@ class PresetArtifactProductChildIdentity:
 
 
 @dataclass(frozen=True, slots=True)
+class PresetArtifactProductAdsIdentity:
+    """Retail health's one Products and ads part beneath a parent revision (render format 12).
+
+    It carries what Products and ads shows for every served row, projected from the rows'
+    product-detail children in the same bake, so the tab reads one object, not one per row.
+    """
+
+    @property
+    def path(self) -> str:
+        """Key suffix beneath the parent revision."""
+        return "product-ads"
+
+
+@dataclass(frozen=True, slots=True)
 class PresetArtifactFilterIdentity:
     """One channel filter sibling's parent body beneath the All-channels revision (ADR-127).
 
@@ -383,14 +398,17 @@ class PresetArtifactIndexShardIdentity:
 type PresetArtifactChildIdentity = (
     PresetArtifactSiblingIdentity
     | PresetArtifactProductChildIdentity
+    | PresetArtifactProductAdsIdentity
     | PresetArtifactFilterIdentity
 )
-"""An ordered segment, a product-detail child or a filter sibling; each binds through custody."""
+"""An ordered segment, a product-detail child, Retail's Products and ads part or a filter
+sibling; each binds through custody."""
 type PresetArtifactCustodyIdentity = PresetArtifactChildIdentity | PresetArtifactIndexShardIdentity
 """Any custody-namespace object beneath a revision: a child's custody or an index shard."""
 _CHILD_IDENTITIES = (
     PresetArtifactSiblingIdentity,
     PresetArtifactProductChildIdentity,
+    PresetArtifactProductAdsIdentity,
     PresetArtifactFilterIdentity,
 )
 _CUSTODY_IDENTITIES = (*_CHILD_IDENTITIES, PresetArtifactIndexShardIdentity)
@@ -410,6 +428,8 @@ def child_identity_from_path(path: str) -> PresetArtifactChildIdentity:
             identity = PresetArtifactSiblingIdentity(ordering, int(matched.group(1)), filter_id)
         case ["products", ref]:
             identity = PresetArtifactProductChildIdentity(ref)
+        case ["product-ads"]:
+            identity = PresetArtifactProductAdsIdentity()
         case ["filters", filter_id]:
             identity = PresetArtifactFilterIdentity(filter_id)
         case _:
@@ -939,9 +959,9 @@ class PresetArtifactPublicationRequest:
     pointer_template: PresetArtifactPointerTemplate
     custody_header: PresetArtifactCustodyHeader | None = None
     siblings: PresetArtifactSiblingStream = NO_SIBLINGS
-    closed_children: frozenset[PresetArtifactProductChildIdentity] | None = None
-    """When set, the stream's identities are exactly this set (Retail's served rows), checked by
-    the stage before any write."""
+    closed_children: frozenset[PresetArtifactChildIdentity] | None = None
+    """When set, the stream's identities are exactly this set (Retail's served rows and its
+    Products and ads part), checked by the stage before any write."""
 
     def __post_init__(self) -> None:
         if not isinstance(cast("object", self.body), PresetArtifactBody):

@@ -131,6 +131,10 @@ DEEP_INPUT_REVISIONS: Final[tuple[tuple[str, str], ...]] = (
     # (libyaml's C loader). Parsed values are unchanged; the closure bytes moved. Named .27.7
     # because 2026-10-27.1 to .6 already name other closures on dev integration trees.
     ("2026-10-27.7", "32c5e8a4721092789fe0ffc4775761f66c54ffea89efecf9b6ab9362cd3164ed"),
+    # Perf follow-up A2 (Retail health render format 12): the bake writes one Products and ads
+    # part beside the product-detail children, and the parent serves it on request. Named past
+    # stream C's unmerged 2026-10-27.1 to .7.
+    ("2026-10-27.8", "7e9baa89570ad38f291021a7ef0fbc9d7e78fae200a405e9ca4e97c1ce2fab6e"),
 )
 DEEP_INPUT_REVISION: Final[str] = DEEP_INPUT_REVISIONS[-1][0]
 """The revision every deep cache key carries (``#DEEPINPUT#<revision>``)."""
