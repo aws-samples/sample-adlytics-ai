@@ -9,9 +9,9 @@
 One disputed fact: does the stage's write throughput rise with its width, and where does it stop
 rising? Each run writes `--pairs` synthetic body->custody pairs through the real write path:
 `PresetArtifactPersistence.stage` at `write_width=W` over the real `S3PresetArtifactBodyStore` and
-`S3PresetArtifactCustodyStore`, each holding its own default `session.client("s3")`, exactly as
-`baker.application()` composes them (`--shared-pool` instead gives both stores one client with
-`max_pool_connections=W`). The stage's own code sends every `PutObject` with `IfNoneMatch="*"`,
+`S3PresetArtifactCustodyStore`, both sharing one `session.client("s3")` configured by the Baker's
+own `preset_artifact_write_config(W)`, exactly as `baker.application()` composes them at the
+contract's width. The stage's own code sends every `PutObject` with `IfNoneMatch="*"`,
 body before custody, then the index shard, the parent body and the parent custody. Each pair is
 rendered when the stage draws it, as a page source renders on draw.
 
@@ -59,13 +59,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, NoReturn, cast
 
 import boto3
-from botocore.config import Config
 from botocore.exceptions import ClientError
 
 from adapters.outbound.preset_artifacts import PresetArtifactPersistence
 from adapters.outbound.s3.preset_artifacts import (
     S3PresetArtifactBodyStore,
     S3PresetArtifactCustodyStore,
+    preset_artifact_write_config,
 )
 from domain.operations.generated_execution_graphs import BAKE_TASKS
 from domain.presentation.preset_artifacts import (
@@ -140,7 +140,6 @@ class RunShape:
     pairs: int
     body_bytes: int
     custody_bytes: int
-    shared_pool: bool = False
 
     def __post_init__(self) -> None:
         if self.width < 1 or self.pairs < 1:
@@ -236,20 +235,14 @@ class PrefixedClient:
 
 
 def baker_clients(session: Any, shape: RunShape, counter: SlowDownCounter) -> tuple[Any, Any]:
-    """Build the stores' clients as `baker.application()` does: two default S3 clients.
+    """Build the stores' client as `baker.application()` does: one S3 client for both stores.
 
-    `S3PresetArtifactBodyStore(bucket)` and `S3PresetArtifactCustodyStore(bucket)` each call
-    `boto3.client("s3")` with no configuration. `shared_pool` builds B2's alternative: one client
-    whose pool holds `width` connections, shared by both stores.
+    Its configuration is the Baker's own `preset_artifact_write_config` at the run's width; only
+    the session differs, so the probe runs under the operator's explicit profile.
     """
-    if shape.shared_pool:
-        shared = session.client("s3", config=Config(max_pool_connections=shape.width))
-        clients = (shared, shared)
-    else:
-        clients = (session.client("s3"), session.client("s3"))
-    for client in {id(item): item for item in clients}.values():
-        client.meta.events.register("needs-retry.s3.PutObject", counter.on_needs_retry)
-    return clients
+    shared = session.client("s3", config=preset_artifact_write_config(shape.width))
+    shared.meta.events.register("needs-retry.s3.PutObject", counter.on_needs_retry)
+    return shared, shared
 
 
 def client_config(client: Any) -> dict[str, Any]:
@@ -330,7 +323,7 @@ class _NoPointers:
 
 @dataclass(frozen=True, slots=True)
 class StageClients:
-    """One run's two store clients (one object when the pool is shared) and its 503 counter."""
+    """One run's store clients (the one shared client, as each store holds it) and 503 counter."""
 
     bucket: str
     bodies: Any
@@ -392,7 +385,6 @@ def summarize(  # noqa: PLR0917 -- one run's samples, shape and three measured t
     origin = min(item.started for item in puts)
     return {
         "width": shape.width,
-        "shared_pool": shape.shared_pool,
         "pairs": shape.pairs,
         "objects": len(puts),
         "sibling_objects": len(siblings),
@@ -551,7 +543,6 @@ class ProbeRequest:
     pairs: int
     body_bytes: int
     custody_bytes: int
-    shared_pool: bool
     output: Path
 
 
@@ -577,9 +568,7 @@ def run(
     started = datetime.now(UTC)
     try:
         for repeat, width in schedule(request.widths, request.repeats):
-            shape = RunShape(
-                width, request.pairs, request.body_bytes, request.custody_bytes, request.shared_pool
-            )
+            shape = RunShape(width, request.pairs, request.body_bytes, request.custody_bytes)
             label = f"w{width:03d}-r{repeat}"
             result = measured_run(session, store, run_prefix=run_prefix, label=label, shape=shape)
             result["repeat"] = repeat
@@ -609,7 +598,6 @@ def run(
             "pairs": request.pairs,
             "body_bytes": request.body_bytes,
             "custody_bytes": request.custody_bytes,
-            "shared_pool": request.shared_pool,
             "page": _PAGE.value,
             "variant": _VARIANT.value,
         },
@@ -635,7 +623,6 @@ def arguments(argv: list[str] | None = None) -> ProbeRequest:
     parser.add_argument("--pairs", type=int, required=True)
     parser.add_argument("--body-bytes", type=int, required=True)
     parser.add_argument("--custody-bytes", type=int, required=True)
-    parser.add_argument("--shared-pool", action="store_true")
     parser.add_argument("--output", type=Path, required=True)
     parsed = parser.parse_args(argv)
     if parsed.repeats < 1 or any(width < 1 for width in parsed.widths):
@@ -647,7 +634,6 @@ def arguments(argv: list[str] | None = None) -> ProbeRequest:
         parsed.pairs,
         parsed.body_bytes,
         parsed.custody_bytes,
-        parsed.shared_pool,
         parsed.output,
     )
 

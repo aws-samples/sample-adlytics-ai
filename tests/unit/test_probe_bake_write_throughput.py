@@ -22,6 +22,8 @@ sys.path.insert(0, str(_ROOT))
 
 from validation import probe_bake_write_throughput as probe  # noqa: E402
 
+from adapters.outbound.s3.preset_artifacts import preset_artifact_write_config  # noqa: E402
+
 pytestmark = [pytest.mark.unit, pytest.mark.covers("ADR-145")]
 
 _ACCOUNT = "000000000000"
@@ -178,7 +180,6 @@ def _request(**overrides: Any) -> probe.ProbeRequest:
         "pairs": 12,
         "body_bytes": 300,
         "custody_bytes": 200,
-        "shared_pool": False,
         "output": Path("unused.json"),
     }
     return probe.ProbeRequest(**{**fields, **overrides})
@@ -256,7 +257,9 @@ def test_a_run_writes_fresh_pairs_through_the_real_stage_under_the_probe_prefix(
         assert run["sibling_objects"] == 24
         # The stage's own width: as many PUTs in flight as the width, never more.
         assert run["puts_peak_in_flight"] == run["width"]
-        assert run["distinct_clients"] == 2
+        # The Baker's composition: both stores share one client pooled at the run's width.
+        assert run["distinct_clients"] == 1
+        assert run["client_config"]["max_pool_connections"] == run["width"]
         # Control: the replay path answers 412 then one GET, so fresh 200s are not trivial.
         assert run["replay_control"]["statuses"] == ["PreconditionFailed"]
         assert run["replay_control"]["gets"] == 1
@@ -265,8 +268,11 @@ def test_a_run_writes_fresh_pairs_through_the_real_stage_under_the_probe_prefix(
         assert run["cleanup"]["versions_before"] > 0
         assert run["cleanup"]["empty"] is True
     assert backing.peak <= max(run["width"] for run in result["runs"])
-    # The Baker's clients: two `client("s3")` with no configuration per run, plus the lister.
-    assert session.s3_calls == [{}] * (1 + 2 * len(result["runs"]))
+    # The lister's default client, then one write client per run pooled at that run's width.
+    assert session.s3_calls[0] == {}
+    assert [call["config"].max_pool_connections for call in session.s3_calls[1:]] == [
+        run["width"] for run in result["runs"]
+    ]
     assert result["final_cleanup"]["empty"] is True
     assert backing.objects == {} and backing.versions == {}
 
@@ -276,25 +282,28 @@ def _revision(run: dict[str, Any], namespace: str) -> str:
     return keys[0].split("/")[3]
 
 
-def test_a_shared_pool_is_one_client_holding_width_connections() -> None:
-    session = _FakeSession(_Backing(delay=0))
-    shape = probe.RunShape(32, 4, 300, 200, shared_pool=True)
-    bodies, custody = probe.baker_clients(session, shape, probe.SlowDownCounter())
-    assert bodies is custody
-    assert session.s3_calls[0]["config"].max_pool_connections == 32
-
-
-def test_the_default_clients_carry_the_bakers_default_configuration() -> None:
+def test_the_stores_share_one_client_carrying_the_bakers_write_configuration() -> None:
     session = boto3.Session(
         aws_access_key_id="fictional", aws_secret_access_key="fictional", region_name="us-east-1"
     )
     shape = probe.RunShape(16, 4, 300, 200)
     bodies, custody = probe.baker_clients(session, shape, probe.SlowDownCounter())
-    baker_default = session.client("s3")  # what `S3PresetArtifactBodyStore(bucket)` builds
-    assert bodies is not custody
-    assert probe.client_config(bodies) == probe.client_config(baker_default)
-    assert probe.client_config(custody) == probe.client_config(baker_default)
-    assert probe.client_config(bodies)["max_pool_connections"] == 10
+    # What `preset_artifact_write_client(16)` builds in the Baker, on the operator's session.
+    baker = session.client("s3", config=preset_artifact_write_config(16))
+    assert bodies is custody
+    assert probe.client_config(bodies) == probe.client_config(baker)
+    assert probe.client_config(bodies)["max_pool_connections"] == 16
+
+
+def test_a_write_client_without_a_connection_is_refused() -> None:
+    with pytest.raises(ValueError, match="at least one connection"):
+        preset_artifact_write_config(0)
+    # Positive control: one connection is a valid pool.
+    session = boto3.Session(
+        aws_access_key_id="fictional", aws_secret_access_key="fictional", region_name="us-east-1"
+    )
+    client = session.client("s3", config=preset_artifact_write_config(1))
+    assert probe.client_config(client)["max_pool_connections"] == 1
 
 
 def _attempt(client: Any, status: int) -> list[Any]:
