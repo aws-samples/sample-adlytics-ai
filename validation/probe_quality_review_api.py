@@ -143,7 +143,11 @@ def _call(
 
 @dataclass
 class _Matrix:
-    """Collected check outcomes: names, route, credential class, and statuses only."""
+    """Collected check outcomes: names, route, credential class, and statuses only.
+
+    A fact passes, and is printed as passed, only when its verdict is the literal `True`; any other
+    object is recorded as `False` (O-CODEQL-006).
+    """
 
     checks: list[dict[str, object]]
 
@@ -163,7 +167,7 @@ class _Matrix:
         )
 
     def fact(self, name: str, *, passed: bool, **counts: int) -> None:
-        self.checks.append({"check": name, "passed": passed, **counts})
+        self.checks.append({"check": name, "passed": passed is True, **counts})
 
     @property
     def passed(self) -> bool:
