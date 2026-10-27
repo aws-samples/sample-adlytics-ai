@@ -60,6 +60,8 @@ class PromptRegistryClient:
     update_error: ClientError | None = None
     delete_error: ClientError | None = None
     update_attributes: dict[str, object] | None = None
+    page_size: int | None = None
+    queries: list[dict[str, object]] = field(default_factory=list[dict[str, object]])
 
     def get_item(self, **kwargs: object) -> dict[str, object]:
         key = cast("dict[str, dict[str, str]]", kwargs["Key"])
@@ -87,8 +89,29 @@ class PromptRegistryClient:
         return {"Responses": {"fictional-prompt-registry": list(self.items.values())}}
 
     def query(self, **kwargs: object) -> dict[str, object]:
-        del kwargs
-        return {"Items": list(self.items.values())}
+        """Serve items in record-key order, `page_size` at a time, as DynamoDB pages a Query."""
+        self.queries.append(kwargs)
+        if len(self.queries) > len(self.items) + 1:
+            raise AssertionError("the Query never reached its last page")
+        ordered = sorted(self.items.items())
+        start = kwargs.get("ExclusiveStartKey")
+        if start is not None:
+            key = cast("dict[str, dict[str, str]]", start)
+            if set(key) != {"slot_key", "record_key"}:
+                raise ClientError(
+                    {"Error": {"Code": "ValidationException", "Message": "invalid start key"}},
+                    "Query",
+                )
+            after = key["record_key"]["S"]
+            ordered = [(record, item) for record, item in ordered if record > after]
+        if self.page_size is None or len(ordered) <= self.page_size:
+            return {"Items": [item for _, item in ordered]}
+        page = ordered[: self.page_size]
+        values = cast("dict[str, dict[str, str]]", kwargs["ExpressionAttributeValues"])
+        return {
+            "Items": [item for _, item in page],
+            "LastEvaluatedKey": {"slot_key": values[":slot_key"], "record_key": {"S": page[-1][0]}},
+        }
 
 
 def _registry(client: PromptRegistryClient) -> DynamoInsightPromptRegistry:
@@ -650,6 +673,34 @@ def test_pending_outbox_reads_only_content_free_version_identities() -> None:
     assert work[0].version == 2
 
 
+def _outbox(version: int) -> dict[str, object]:
+    return {
+        "record_type": {"S": "PROMPT_CALIBRATION_OUTBOX"},
+        "slot_id": {"S": "contribution"},
+        "version": {"N": str(version)},
+    }
+
+
+def test_pending_outbox_follows_every_query_page_to_the_last() -> None:
+    """A slot's outbox past one 1 MB page must not lose work that SQS never accepted."""
+    client = PromptRegistryClient(
+        items={f"CALIBRATION_OUTBOX#{n}": _outbox(n) for n in (2, 3, 4)}, page_size=1
+    )
+
+    work = _registry(client).pending_calibration_outbox((InsightSlotId.CONTRIBUTION,))
+
+    assert [(item.slot_id, item.version) for item in work] == [
+        (InsightSlotId.CONTRIBUTION, 2),
+        (InsightSlotId.CONTRIBUTION, 3),
+        (InsightSlotId.CONTRIBUTION, 4),
+    ]
+    assert [query.get("ExclusiveStartKey") for query in client.queries] == [
+        None,
+        {"slot_key": {"S": "SLOT#contribution"}, "record_key": {"S": "CALIBRATION_OUTBOX#2"}},
+        {"slot_key": {"S": "SLOT#contribution"}, "record_key": {"S": "CALIBRATION_OUTBOX#3"}},
+    ]
+
+
 def test_outbox_acknowledgement_conditionally_deletes_the_exact_identity() -> None:
     client = PromptRegistryClient()
 
@@ -776,6 +827,23 @@ def test_a_legacy_version_reads_back_with_no_author_and_no_time() -> None:
     [record] = _registry(client).versions(InsightSlotId.CONTRIBUTION)
 
     assert (record.author, record.created_at) == (None, None)
+
+
+def test_versions_follow_every_query_page_to_the_last() -> None:
+    """A slot's history past one 1 MB page must still list its oldest versions."""
+    client = PromptRegistryClient(
+        items={f"VERSION#{n}": {**_version(), "version": {"N": str(n)}} for n in (1, 2, 3)},
+        page_size=1,
+    )
+
+    records = _registry(client).versions(InsightSlotId.CONTRIBUTION)
+
+    assert [record.version for record in records] == [3, 2, 1]
+    assert [query.get("ExclusiveStartKey") for query in client.queries] == [
+        None,
+        {"slot_key": {"S": "SLOT#contribution"}, "record_key": {"S": "VERSION#1"}},
+        {"slot_key": {"S": "SLOT#contribution"}, "record_key": {"S": "VERSION#2"}},
+    ]
 
 
 @pytest.mark.parametrize(
