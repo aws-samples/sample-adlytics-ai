@@ -334,6 +334,7 @@ test('V2 Campaign projection accepts only a period-bound campaign parent', () =>
     period: window,
     prior_period: { end: '2026-08-14', start: '2026-08-08' },
     reason_codes: [],
+    return_lists: null,
     roster: { channels: [], entries: [], marketplaces: [] },
     rows: [],
     sort: { direction: 'desc', field: 'spend' },

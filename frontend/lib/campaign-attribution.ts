@@ -1676,6 +1676,21 @@ export interface CampaignPortfolioArtifact {
   readonly roster: readonly CampaignPortfolioRosterEntry[];
   /** A baked body's roster (ADR-145): its shards, fetched on the name field's first focus. */
   readonly roster_shards: CampaignPortfolioRosterShards | null;
+  /** The population's highest and lowest Attributed ROAS campaigns (render format 14); null unless complete. */
+  readonly return_lists: CampaignReturnLists | null;
+}
+
+/** One served return-list campaign: its display identity, Attributed ROAS and spend. */
+export interface CampaignReturnEntry {
+  readonly attributed_roas: CampaignPortfolioMetricValue;
+  readonly signature: SafeCampaignDisplaySignature;
+  readonly spend: CampaignPortfolioMetricValue;
+}
+
+/** The server's highest- and lowest-return campaigns, in served order; the browser never ranks. */
+export interface CampaignReturnLists {
+  readonly highest: readonly CampaignReturnEntry[];
+  readonly lowest: readonly CampaignReturnEntry[];
 }
 
 /** What a baked body says about its name roster: its shard count and the bake's revision. */
@@ -1954,10 +1969,12 @@ export function parseCampaignPortfolioArtifact(value: unknown): CampaignPortfoli
   // Render format 11 only (ADR-127, ADR-119): every body names its channel filter and carries
   // its coverage key. The retained format-6, format-7 and format-10 reads retired in the
   // integration change (owner revision, 2026-10-08), so each fails `exact` like any other drift.
+  // Render format 14 adds `return_lists`; a body without it fails `exact` (the server never
+  // serves one: it shows the page's absence until the next bake).
   const item = exact(value, [
     EVIDENCE_STATUS_KEY, 'channel_filter', 'channel_view',
     'evidence', 'insights', 'kind', 'outcome', 'pagination', 'period', 'prior_period', 'reason_codes',
-    'roster', 'rows', 'sort', 'total_count', 'totals', 'trend',
+    'return_lists', 'roster', 'rows', 'sort', 'total_count', 'totals', 'trend',
   ]);
   if (
     item.kind !== 'campaign_portfolio' ||
@@ -2102,6 +2119,8 @@ export function parseCampaignPortfolioArtifact(value: unknown): CampaignPortfoli
     entry.current.value !== null && entry.prior.value !== null &&
     entry.withheld !== isWithheld(coverageEntry(evidence_status, entry.metric))
   ))) return fail();
+  const return_lists = returnLists(item.return_lists, selectedPeriod);
+  if ((return_lists !== null) !== (item.outcome === 'complete')) return fail();
   return {
     channel_filter,
     channel_view,
@@ -2114,6 +2133,7 @@ export function parseCampaignPortfolioArtifact(value: unknown): CampaignPortfoli
     period: selectedPeriod,
     prior_period,
     reason_codes,
+    return_lists,
     roster,
     roster_shards,
     rows,
@@ -2122,6 +2142,24 @@ export function parseCampaignPortfolioArtifact(value: unknown): CampaignPortfoli
     totals,
     trend,
   };
+}
+
+/** Decode the served return lists: equal length, each ROAS defined, at the row grain. */
+function returnLists(value: unknown, periodValue: DateWindow): CampaignReturnLists | null {
+  if (value === null) return null;
+  const item = exact(value, ['highest', 'lowest']);
+  if (!Array.isArray(item.highest) || !Array.isArray(item.lowest) || item.highest.length !== item.lowest.length) return fail();
+  const entry = (raw: unknown): CampaignReturnEntry => {
+    const served = exact(raw, ['attributed_roas', 'signature', 'spend']);
+    const attributed_roas = portfolioMetricValue(served.attributed_roas, periodValue, portfolioMetricSemantics.attributed_roas.grain, 'ratio');
+    if (attributed_roas.value === null) return fail();
+    return {
+      attributed_roas,
+      signature: signature(served.signature),
+      spend: portfolioMetricValue(served.spend, periodValue, portfolioMetricSemantics.spend.grain, 'currency'),
+    };
+  };
+  return { highest: item.highest.map(entry), lowest: item.lowest.map(entry) };
 }
 
 /**

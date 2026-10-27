@@ -4,6 +4,23 @@ Publication-safe conclusions from live source probes and deployed development ac
 account, entity, instance, user, resource, execution, workflow, and invalidation identifiers remain
 in ignored `RESULTS.local.md` and `findings/`; neither is publication content. A conclusion appears
 here only after its exact local evidence was read and folded into the owning contract or design doc.
+## Campaigns return lists (render format 14) on dev — 2026-10-27
+Times are UTC. Synthetic data only. The return-lists branch, merged with main and one other open
+change, was deployed to dev after an identity check, then re-baked by re-landing deliveries. Each
+pass is 9 paced loads of the Campaigns page with the scale-limits harness, timed from navigation
+start to the end of the last presentation response.
+
+| Check | Verdict | What it showed |
+|---|---|---|
+| Before, format 13, 11:20–11:32 | **MEASURED** | 3 Campaigns requests per load, 682,546 bytes; browser p50 2,063 ms against 994 ms for the parent request; 4 insight slot misses [measured on dev]. The 2026-10-26 readout's figures re-derived from its raw rows: 2,050 ms against 1,041 ms. |
+| Upgrade window, 11:56–11:57 | **PASS** | Deployed, Campaigns bodies still format 13: HTTP 200, the window-unavailable absence, no HTTP error. |
+| After, format 14, 12:39–12:50 | **PASS** | 1 Campaigns request per load, 234,931 bytes; browser p50 999 ms, equal to the parent request's; 0 `presentation.insight_generation` `cache_outcome=miss` [measured on dev]. A first pass at 12:24–12:35, with a re-bake running inside it, measured 1,081 ms, also at the parent request's end, and 0 misses. |
+
+**Not exercised live:** a new revision with changed figures; the re-landed deliveries carried the same
+figures. One of the 18 serve calls in the 12:39 pass left no insight slot record, so its cache
+outcome was not observed. The [Campaigns operational design](../docs/ui/campaign-portfolio/operational-design.md#1-latency-and-capacity)
+carries the figures.
+
 ## Staged table writes (ADR-149) on dev — 2026-10-22 to 2026-10-26
 Times are UTC. Synthetic data only, after an identity check before every write.
 

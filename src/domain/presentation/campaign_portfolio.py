@@ -4,9 +4,10 @@
 
 from __future__ import annotations
 
+import heapq
 import re
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
@@ -733,6 +734,13 @@ def order_campaign_portfolio_rows(
             ),
             *stable_unnamed,
         )
+    return tuple(sorted(rows, key=_metric_order_key(sort)))
+
+
+def _metric_order_key(
+    sort: CampaignPortfolioSort,
+) -> Callable[[CampaignPortfolioRow], tuple[bool, Decimal, tuple[str, ...]]]:
+    """Return one metric ordering's comparator key; the return lists rank by the same key."""
     metric = CampaignPortfolioMetric(sort.field.value)
 
     def key(row: CampaignPortfolioRow) -> tuple[bool, Decimal, tuple[str, ...]]:
@@ -744,7 +752,7 @@ def order_campaign_portfolio_rows(
         number = Decimal(value)
         return (False, -number if sort.direction == "desc" else number, row.signature.sort_key)
 
-    return tuple(sorted(rows, key=key))
+    return key
 
 
 def campaign_portfolio_segment(
@@ -799,6 +807,89 @@ def campaign_portfolio_roster(
         )
         for index, row in enumerate(ordered)
     )
+
+
+# --- highest and lowest return (UI refresh 3.2; baked since render format 14) ----------------
+
+CAMPAIGN_RETURN_LIST_SIZE: Final = 5
+"""Campaigns per return list: the first five with a defined Attributed ROAS (Campaigns LLD)."""
+RETURN_LISTS_KEY: Final = "return_lists"
+
+
+@dataclass(frozen=True, slots=True)
+class CampaignReturnEntry:
+    """One return-list campaign: its display identity, its Attributed ROAS and its spend."""
+
+    signature: SafeCampaignDisplaySignature
+    attributed_roas: CampaignPortfolioMetricValue
+    spend: CampaignPortfolioMetricValue
+
+    def __post_init__(self) -> None:
+        if self.attributed_roas.value is None:
+            raise ValueError("a return-list campaign has a defined Attributed ROAS.")
+        if (
+            self.attributed_roas.units.kind is not UnitKind.RATIO
+            or self.spend.units.kind is not UnitKind.CURRENCY
+            or self.attributed_roas.period != self.spend.period
+            or self.attributed_roas.grain != CAMPAIGN_PORTFOLIO_ROW_GRAIN
+            or self.spend.grain != CAMPAIGN_PORTFOLIO_ROW_GRAIN
+        ):
+            raise ValueError("a return-list campaign uses the row semantics of its window.")
+
+
+@dataclass(frozen=True, slots=True)
+class CampaignReturnLists:
+    """The first campaigns of the Attributed ROAS orderings, highest and lowest first.
+
+    Both hold the same campaigns with a defined ROAS, up to `CAMPAIGN_RETURN_LIST_SIZE`; a
+    population with none holds two empty lists, which the page renders as no lists at all.
+    """
+
+    highest: tuple[CampaignReturnEntry, ...]
+    lowest: tuple[CampaignReturnEntry, ...]
+
+    def __post_init__(self) -> None:
+        if len(self.highest) != len(self.lowest) or len(self.highest) > CAMPAIGN_RETURN_LIST_SIZE:
+            raise ValueError("the return lists are equal length and bounded by their size.")
+        for entries, direction in ((self.highest, "desc"), (self.lowest, "asc")):
+            values = [
+                Decimal(cast("CampaignNumber", item.attributed_roas.value)) for item in entries
+            ]
+            if values != sorted(values, reverse=direction == "desc"):
+                raise ValueError("a return list keeps its Attributed ROAS ordering.")
+            if len({item.signature for item in entries}) != len(entries):
+                raise ValueError("a return list names each campaign once.")
+
+
+def campaign_return_lists(rows: tuple[CampaignPortfolioRow, ...]) -> CampaignReturnLists:
+    """Rank the whole population by the `attributed_roas` orderings' own comparator.
+
+    The lists are the first defined-ROAS rows of segment 0 of the desc and asc orderings, which
+    the page fetched before render format 14; an undefined ROAS sorts last in both, so it is
+    filtered out first. `nsmallest` equals `sorted(...)[:n]` without sorting the population:
+    at 10,000 campaigns it measured 20-28 ms per call against 40-108 ms for the two sorts
+    (local, 2026-10-26).
+    """
+    defined = tuple(
+        row
+        for row in rows
+        if row.comparison_for(CampaignPortfolioMetric.ATTRIBUTED_ROAS).current.value is not None
+    )
+
+    def first(direction: str) -> tuple[CampaignReturnEntry, ...]:
+        key = _metric_order_key(
+            CampaignPortfolioSort(CampaignPortfolioSortField.ATTRIBUTED_ROAS, direction)
+        )
+        return tuple(
+            CampaignReturnEntry(
+                row.signature,
+                row.comparison_for(CampaignPortfolioMetric.ATTRIBUTED_ROAS).current,
+                row.comparison_for(CampaignPortfolioMetric.SPEND).current,
+            )
+            for row in heapq.nsmallest(CAMPAIGN_RETURN_LIST_SIZE, defined, key=key)
+        )
+
+    return CampaignReturnLists(first("desc"), first("asc"))
 
 
 # --- the channel filter (ADR-127) ------------------------------------------------------------
@@ -1326,6 +1417,9 @@ class CampaignPortfolioArtifact:
     """A complete multi-channel sibling's By channel, Delivery per channel and not-added tiles."""
     roster_shards: CampaignPortfolioRosterShards | None = None
     """A baked body's roster: its shards and the bake's revision (ADR-145), never with `roster`."""
+    return_lists: CampaignReturnLists | None = None
+    """The whole population's highest and lowest Attributed ROAS campaigns, on a complete
+    portfolio only. Every segment of the body carries its parent's lists unchanged."""
 
     @property
     def filter_id(self) -> str:
@@ -1360,6 +1454,13 @@ class CampaignPortfolioArtifact:
                 for comparison in row.comparisons
             ):
                 raise ValueError("per-channel figures use the sibling's own windows.")
+        if (self.return_lists is not None) != complete:
+            raise ValueError("exactly a complete campaign portfolio carries its return lists.")
+        if self.return_lists is not None and any(
+            entry.spend.period != self.period
+            for entry in (*self.return_lists.highest, *self.return_lists.lowest)
+        ):
+            raise ValueError("campaign return lists use the resolved period.")
         if self.prior_period != _previous_period(self.period):
             raise ValueError("campaign portfolio prior period must be equal-length and preceding.")
         if self.total_count < 0:
@@ -1656,6 +1757,7 @@ def build_campaign_portfolio(
         evidence_status=evidence_status,
         channel_filter=channel_filter,
         channel_view=channel_view,
+        return_lists=campaign_return_lists(rows),
     )
 
 
@@ -1892,6 +1994,24 @@ def campaign_portfolio_artifact_payload(artifact: CampaignPortfolioArtifact) -> 
                 "shards": artifact.roster_shards.shards,
             }
         ),
+        RETURN_LISTS_KEY: _return_lists_payload(artifact.return_lists),
+    }
+
+
+def _return_entry_payload(entry: CampaignReturnEntry) -> dict[str, object]:
+    return {
+        "attributed_roas": _value_payload(entry.attributed_roas),
+        "signature": safe_campaign_display_signature_payload(entry.signature),
+        "spend": _value_payload(entry.spend),
+    }
+
+
+def _return_lists_payload(lists: CampaignReturnLists | None) -> dict[str, object] | None:
+    if lists is None:
+        return None
+    return {
+        "highest": [_return_entry_payload(entry) for entry in lists.highest],
+        "lowest": [_return_entry_payload(entry) for entry in lists.lowest],
     }
 
 
@@ -2321,42 +2441,86 @@ def _channel_view_from_payload(value: object) -> CampaignMultiChannelView | None
     )
 
 
+_ARTIFACT_FIELDS: Final = frozenset(
+    {
+        EVIDENCE_STATUS_KEY,
+        CHANNEL_FILTER_KEY,
+        CHANNEL_VIEW_KEY,
+        RETURN_LISTS_KEY,
+        "evidence",
+        "insights",
+        "kind",
+        "outcome",
+        "period",
+        "prior_period",
+        "reason_codes",
+        "rows",
+        "pagination",
+        "roster",
+        "sort",
+        "total_count",
+        "totals",
+        "trend",
+    }
+)
+_RETURN_ENTRY_FIELDS: Final = frozenset({"attributed_roas", "signature", "spend"})
+
+
+def campaign_portfolio_artifact_superseded(value: object) -> bool:
+    """Whether a decoded body or page record is a Campaigns artifact baked before format 14.
+
+    Such a body has every current field but the return lists, and is never decoded: a deploy
+    that bumps the format leaves the retained body in place until the page's next bake, and
+    until then the page is its not-yet-published absence. Any other shape is not superseded; it
+    stays malformed.
+    """
+    return (
+        isinstance(value, dict)
+        and frozenset(cast("dict[str, object]", value)) == _ARTIFACT_FIELDS - {RETURN_LISTS_KEY}
+        and cast("dict[str, object]", value).get("kind") == "campaign_portfolio"
+    )
+
+
+def _return_entry_from_payload(value: object) -> CampaignReturnEntry:
+    item = _object(value, _RETURN_ENTRY_FIELDS, "campaign return-list entry")
+    return CampaignReturnEntry(
+        safe_campaign_display_signature_from_payload(item["signature"]),
+        _metric_value(item["attributed_roas"], "campaign return-list ROAS"),
+        _metric_value(item["spend"], "campaign return-list spend"),
+    )
+
+
+def _return_lists_from_payload(value: object) -> CampaignReturnLists | None:
+    if value is None:
+        return None
+    item = _object(value, frozenset({"highest", "lowest"}), "campaign return lists")
+    return CampaignReturnLists(
+        tuple(
+            _return_entry_from_payload(entry)
+            for entry in _items(item["highest"], "campaign highest return")
+        ),
+        tuple(
+            _return_entry_from_payload(entry)
+            for entry in _items(item["lowest"], "campaign lowest return")
+        ),
+    )
+
+
 def campaign_portfolio_artifact_from_payload(
     value: object,
 ) -> CampaignPortfolioArtifact:
-    """Decode and re-attest the exact V2 campaign portfolio parent contract (render format 11).
+    """Decode and re-attest the exact V2 campaign portfolio parent contract (render format 14).
 
     Every body carries `evidence_status` (null on an empty or insufficient portfolio),
-    `channel_filter` and `channel_view`. The retained reads of format-6 comparisons without a
-    change key, format-7 bodies without the coverage key and format-10 bodies without a channel
-    filter retired in the integration change: the API, a full re-bake and the browser deploy
-    together (owner revision, 2026-10-08), so each is refused like any other contract error.
+    `channel_filter`, `channel_view` and `return_lists` (null unless complete). The retained
+    reads of format-6 comparisons without a change key, format-7 bodies without the coverage key
+    and format-10 bodies without a channel filter retired in the integration change: the API, a
+    full re-bake and the browser deploy together (owner revision, 2026-10-08), so each is
+    refused like any other contract error. A body baked before format 14 is never decoded
+    either: `campaign_portfolio_artifact_superseded` names it, and serving shows the page's
+    not-yet-published absence until the next bake replaces it.
     """
-    item = _object(
-        value,
-        frozenset(
-            {
-                EVIDENCE_STATUS_KEY,
-                CHANNEL_FILTER_KEY,
-                CHANNEL_VIEW_KEY,
-                "evidence",
-                "insights",
-                "kind",
-                "outcome",
-                "period",
-                "prior_period",
-                "reason_codes",
-                "rows",
-                "pagination",
-                "roster",
-                "sort",
-                "total_count",
-                "totals",
-                "trend",
-            }
-        ),
-        "campaign portfolio artifact",
-    )
+    item = _object(value, _ARTIFACT_FIELDS, "campaign portfolio artifact")
     # A body is wholly pre-display or wholly current; a mixed one is refused before decoding.
     display_value_mode(item)
     try:
@@ -2511,6 +2675,7 @@ def campaign_portfolio_artifact_from_payload(
         _channel_filter_from_payload(item[CHANNEL_FILTER_KEY]),
         _channel_view_from_payload(item[CHANNEL_VIEW_KEY]),
         shards,
+        _return_lists_from_payload(item[RETURN_LISTS_KEY]),
     )
     # ADR-119 decision 4: the block is null only on an empty or insufficient portfolio.
     if result.outcome is CampaignPortfolioOutcome.COMPLETE and result.evidence_status is None:

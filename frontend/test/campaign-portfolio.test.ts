@@ -211,6 +211,7 @@ function insufficientArtifact(): Record<string, unknown> {
     outcome: 'insufficient',
     pagination: null,
     reason_codes: ['missing_catalog'],
+    return_lists: null,
     roster: { channels: [], entries: [], marketplaces: [] },
     rows: [],
     total_count: 0,

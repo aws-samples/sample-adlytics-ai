@@ -76,6 +76,7 @@ from domain.presentation.artifacts import (
     ChannelRowCapabilityRecord,
     ChannelRowCapabilityValidationResult,
     MediaScope,
+    PageArtifact,
     PageArtifactReadRequest,
     PageArtifactRecord,
     PageArtifactValidationResult,
@@ -83,6 +84,7 @@ from domain.presentation.artifacts import (
     ParentCapabilityIssuanceRequest,
     ParentCapabilityIssuanceResult,
     campaign_capability_parent_is_valid,
+    canonical_artifact_json,
     channel_capability_parent_is_valid,
     validate_campaign_selection_capability,
     validate_channel_row_capability,
@@ -1527,6 +1529,61 @@ def test_v2_campaign_preset_serve_mints_row_capabilities_from_the_custody_manife
     capability = cast("dict[str, object]", rows[0]["capability"])
     assert capability["selection_reference"] == record.reference.value
     assert record.safe_signature == campaign_display_signature("Fictional Campaign 001")
+
+
+@pytest.mark.covers("ADR-070")
+def test_a_row_from_a_page_served_before_render_format_14_is_unavailable_never_a_500(
+    presentation_module: _PresentationModule,
+) -> None:
+    """A page record minted before the deploy has no return lists; its rows don't redeem.
+
+    The refusal is the parent check's: it reads no catalog, where a current record's row passes
+    that check and goes on to the campaign lookup.
+    """
+    pages = RecordingPages()
+    catalog = RecordingCatalog()
+    pointer, body, custody = _campaign_preset_artifact_with_custody()
+
+    def runtime() -> object:
+        return _analytical_runtime(
+            presentation_module,
+            _AnalyticalRuntimeRequest(
+                catalog,
+                pages,
+                ScenarioQueries(),
+                preset_artifacts=RecordingPresetArtifacts(pointer, body),
+                preset_custody=RecordingCustodyStore(custody),
+            ),
+        )
+
+    event = _event(LIST_PATH, {"session_id": SESSION})
+    event["headers"] = {"Accept": "application/vnd.adlytics.presentation-v2+json"}
+    assert _body(presentation_module.handle(event, runtime()))["kind"] == "page"
+    capability = pages.campaign_capability_records[0]
+    detail = _event(
+        DETAIL_PATH, {"session_id": SESSION, "selection_reference": capability.reference.value}
+    )
+    detail["headers"] = {"Accept": "application/vnd.adlytics.presentation-v2+json"}
+    # Paired positive control: the current record passes the parent check and reaches the
+    # catalog lookup (this fake catalog then has no alias for it).
+    with pytest.raises(ValidationError):
+        presentation_module.handle(detail, runtime())
+    assert len(catalog.lookup_calls) == 1
+    parent = pages.artifact_records[0]
+    earlier = parent.artifact.payload
+    del earlier["return_lists"]
+    pages.artifact_records[0] = replace(
+        parent,
+        artifact=PageArtifact(
+            parent.artifact.artifact_type,
+            parent.artifact.artifact_version,
+            canonical_artifact_json(earlier),
+        ),
+    )
+    with pytest.raises(ValidationError) as refused:
+        presentation_module.handle(detail, runtime())
+    assert refused.value.description == "The requested campaign is not available."
+    assert len(catalog.lookup_calls) == 1
 
 
 def test_v2_campaign_preset_serve_skips_minting_for_a_pre_custody_bake(

@@ -163,7 +163,10 @@ SUPERSEDED_HISTORY_RETENTION = timedelta(days=30)
 # the parent and filter custody carry only their own rows; the body bytes are format 11's.
 # Format 13 writes each filter's name roster as ordered roster shards and the body names them
 # with the bake's revision (ADR-145); compares fold into one compact record per campaign.
-CAMPAIGN_PRESET_RENDER_FORMAT = 13
+# Format 14 bakes the whole population's highest and lowest Attributed ROAS campaigns into each
+# filter's body (`return_lists`), so a page load reads no ROAS-sorted segment; a format-13 body
+# is the page's not-yet-published absence until the next bake replaces it.
+CAMPAIGN_PRESET_RENDER_FORMAT = 14
 
 
 _COUNTER_INSTANT = datetime(2026, 3, 2, tzinfo=UTC)

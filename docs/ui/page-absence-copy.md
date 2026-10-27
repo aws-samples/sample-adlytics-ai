@@ -129,14 +129,14 @@ persistent status region announces it ([temporal contract §6](temporal-control-
 ### ABS-CAMP-1
 
 - Surface: Campaigns
-- Trigger: `window_unavailable` and the served control has at least one available preset.
+- Trigger: `window_unavailable` and the served control has at least one available preset. After a deploy of Campaigns render format 14, a preset whose body predates it is served as `window_unavailable` and marked unavailable until the page's next bake.
 - Title: "No campaign results for this period"
 - Text: "No campaign results are published for this period. Choose another period above."
 
 ### ABS-CAMP-2
 
 - Surface: Campaigns
-- Trigger: `window_unavailable` and the served control has no available preset (custom periods are off for this page, so presets are the only choosable periods).
+- Trigger: `window_unavailable` and the served control has no available preset (custom periods are off for this page, so presets are the only choosable periods). After a deploy of Campaigns render format 14, a preset whose body predates it counts as unavailable until the page's next bake.
 - Title: "No campaign results for this period"
 - Text: "Campaign results aren't ready to show yet. They're built from your Amazon Ads data, which your administrator connects. When they're ready, you'll see the campaign results your data supports for each published window."
 

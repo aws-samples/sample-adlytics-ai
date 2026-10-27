@@ -1,85 +1,78 @@
 // SPDX-License-Identifier: MIT-0
 /**
- * Campaigns "Highest return" and "Lowest return" (UI refresh 3.2, readout A.4, D10): the first
- * served rows of the server's own Attributed ROAS orderings. The browser never sorts, and when
- * either ordering isn't served for the same window and option, both lists are omitted.
+ * Campaigns "Highest return" and "Lowest return" (UI refresh 3.2, render format 14): the lists
+ * the server bakes into the parent body, rendered in served order. A page load makes exactly one
+ * Campaigns request, so the lists cost no second round trip and no ROAS-sorted serve.
  */
 import assert from 'node:assert/strict';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, test, vi } from 'vitest';
-vi.mock('../lib/presentation-v2', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../lib/presentation-v2')>();
-  return { ...actual, fetchCampaignPresentationV2: vi.fn() };
-});
-import { CampaignPortfolioV2View, DELIVERY_SUMMARY, RETURN_LISTS_COPY } from '../components/CampaignPortfolioV2View';
-import { campaignPresentationV2, fetchCampaignPresentationV2, parsePresentationResultV2, type CampaignParentPresentation, type CampaignPortfolioSort } from '../lib/presentation-v2';
+
+import { parentReady } from '@/lib/presentation-route-state';
+import { campaignPresentationV2, parsePresentationResultV2, type CampaignParentPresentation } from '@/lib/presentation-v2';
 import everything from './fixtures/campaigns-all-v2.json';
 
-const fetchMock = vi.mocked(fetchCampaignPresentationV2);
-function served(): Extract<CampaignParentPresentation, { readonly kind: 'parent' }> {
-  const presentation = campaignPresentationV2(parsePresentationResultV2(JSON.parse(JSON.stringify(everything)), 'campaigns')) as CampaignParentPresentation;
+const fetchParent = vi.hoisted(() => vi.fn());
+vi.mock('@/lib/presentation-v2', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/presentation-v2')>()),
+  fetchCampaignPresentationV2: fetchParent,
+}));
+
+const { campaignRouteAdapter } = await import('@/components/CampaignRouteAdapter');
+const { CampaignPortfolioV2View, DELIVERY_SUMMARY, RETURN_LISTS_COPY } = await import('@/components/CampaignPortfolioV2View');
+
+function served(raw: unknown = everything): Extract<CampaignParentPresentation, { readonly kind: 'parent' }> {
+  const presentation = campaignPresentationV2(parsePresentationResultV2(JSON.parse(JSON.stringify(raw)), 'campaigns')) as CampaignParentPresentation;
   if (presentation.kind !== 'parent') throw new Error('expected a parent');
   return presentation;
 }
-/** The served body as the server would answer one ordering: its rows in reverse for "asc". */
-function ordered(sort: CampaignPortfolioSort): CampaignParentPresentation {
-  const base = served();
-  const rows = sort.direction === 'asc' ? [...base.artifact.rows].reverse() : base.artifact.rows;
-  return { ...base, artifact: { ...base.artifact, rows, sort } };
-}
-beforeEach(() => { fetchMock.mockReset(); });
-afterEach(() => { vi.restoreAllMocks(); });
+const signal = new AbortController().signal;
+beforeEach(() => fetchParent.mockReset());
+afterEach(() => cleanup());
 
-function view(sessionId = 'session-a') {
+function names(region: HTMLElement): (string | null | undefined)[] {
+  return within(region).getAllByRole('listitem').map((item) => item.querySelector('.name')?.firstChild?.textContent);
+}
+
+test('a page load makes one Campaigns request and shows both served lists in served order', async () => {
   const parent = served();
-  return render(<CampaignPortfolioV2View
-    child={null}
-    focusSessionId={sessionId}
-    onClear={() => undefined}
-    onSelect={() => undefined}
-    parent={parent.artifact}
-    selection={{ choice: null, kind: 'idle' }}
-  />);
-}
-
-test('the lists show the first five served rows of each server ordering, in served order', async () => {
-  fetchMock.mockImplementation(async (_session, _selection, _signal, sort) => ordered(sort!));
-  view();
+  fetchParent.mockResolvedValue(parent);
+  const loaded = await campaignRouteAdapter.loadParent('conversation-session', undefined, signal, {});
+  render(<>{campaignRouteAdapter.render(parentReady(loaded), () => undefined, () => undefined, () => undefined, 'conversation-session')}</>);
   const high = await screen.findByRole('region', { name: RETURN_LISTS_COPY.high });
   const low = screen.getByRole('region', { name: RETURN_LISTS_COPY.low });
-  // Two requests, the server's own orderings, segment 0, the same channel option.
-  assert.deepEqual(fetchMock.mock.calls.map((call) => [call[3], call[4], call[5]]), [
-    [{ direction: 'desc', field: 'attributed_roas' }, 0, undefined],
-    [{ direction: 'asc', field: 'attributed_roas' }, 0, undefined],
-  ]);
-  const names = (region: HTMLElement) => within(region).getAllByRole('listitem').map((item) => item.querySelector('.name')?.firstChild?.textContent);
-  const rows = served().artifact.rows.filter((row) => row.comparisons.some((entry) => entry.metric === 'attributed_roas' && entry.current.value !== null));
-  assert.equal(names(high).length, Math.min(5, rows.length));
-  assert.equal(names(high)[0], rows[0]?.signature.effective_name ?? names(high)[0]);
-  assert.equal(names(low)[0], [...rows].reverse()[0]?.signature.effective_name ?? names(low)[0]);
+  await new Promise((resolve) => { setTimeout(resolve, 0); });
+  // One request, the canonical parent: no sort, no segment, no filter.
+  assert.equal(fetchParent.mock.calls.length, 1);
+  assert.deepEqual(fetchParent.mock.calls[0]?.slice(3), [undefined, undefined, undefined]);
+  // The server's orderings: ROAS 3, 3, 2.5, 2 highest first; a tie keeps the server's order.
+  assert.deepEqual(names(high), ['Fictional DSP Prospecting', 'Fictional SP Exact', 'Fictional DSP Retargeting', 'Fictional SB Launch']);
+  assert.deepEqual(names(low), ['Fictional SB Launch', 'Fictional DSP Retargeting', 'Fictional DSP Prospecting', 'Fictional SP Exact']);
+  // Each entry shows its served ROAS and spend.
+  const cells = [...within(high).getAllByRole('listitem')[0]!.querySelectorAll('.num')].map((cell) => cell.textContent);
+  assert.deepEqual(cells, ['3.00×', '700.00 USD']);
 });
 
-test('an ordering that answers for another sort, or fails, omits both lists', async () => {
-  fetchMock.mockImplementation(async () => served());
-  const first = view();
-  await waitFor(() => { assert.equal(fetchMock.mock.calls.length, 2); });
-  await new Promise((resolve) => { setTimeout(resolve, 0); });
+test('a body whose lists are empty renders no lists and requests nothing', () => {
+  const parent = served();
+  const empty = { ...parent.artifact, return_lists: { highest: [], lowest: [] } };
+  const { container } = render(<CampaignPortfolioV2View child={null} focusSessionId="session-a" onClear={() => undefined} onSelect={() => undefined} parent={empty} selection={{ choice: null, kind: 'idle' }} />);
   assert.equal(screen.queryByRole('region', { name: RETURN_LISTS_COPY.high }), null);
-  first.unmount();
-  fetchMock.mockReset();
-  fetchMock.mockImplementation(async () => { throw new Error('down'); });
-  view();
-  await waitFor(() => { assert.equal(fetchMock.mock.calls.length, 2); });
-  await new Promise((resolve) => { setTimeout(resolve, 0); });
-  assert.equal(screen.queryByRole('region', { name: RETURN_LISTS_COPY.low }), null);
-});
-
-test('without a session nothing is requested, and delivery per channel folds below the table', () => {
-  const { container } = view('');
-  assert.equal(fetchMock.mock.calls.length, 0);
+  assert.equal(fetchParent.mock.calls.length, 0);
   const delivery = container.querySelector('[data-slot="cp-delivery"]') as HTMLDetailsElement | null;
-  if (served().artifact.channel_view !== null) {
+  if (parent.artifact.channel_view !== null) {
     assert.equal(delivery?.open, false);
     assert.equal(delivery?.querySelector('summary')?.textContent, DELIVERY_SUMMARY);
   }
+});
+
+test('a complete body without return lists, or with unequal lists, is refused by the decoder', () => {
+  const missing = JSON.parse(JSON.stringify(everything)) as { page: { artifact: Record<string, unknown> } };
+  delete missing.page.artifact.return_lists;
+  assert.throws(() => served(missing));
+  const unequal = JSON.parse(JSON.stringify(everything)) as { page: { artifact: { return_lists: { lowest: unknown[] } } } };
+  unequal.page.artifact.return_lists.lowest.pop();
+  assert.throws(() => served(unequal));
+  // Positive control: the served fixture decodes.
+  assert.ok(served().artifact.return_lists !== null);
 });

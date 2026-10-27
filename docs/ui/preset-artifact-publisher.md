@@ -331,6 +331,19 @@ and the ERROR invariant alarms. The update changes only code, so the backfill ab
 no repository-owned re-bake command exists yet: the next publication bake of each page rebuilds it.
 Deploy the update shortly before a delivery for both pages lands, and check both pages after that bake.
 
+**Updating to Campaigns render format 14 (baked return lists, 2026-10-26).** Each Campaigns body
+carries its highest and lowest return lists ([Campaigns LLD](campaign-portfolio/low-level-design.md)),
+and serving decodes no other shape. A format-13 body is never decoded and never the malformed-artifact
+refusal: from the deploy until that page's next bake, each preset still on a format-13 pointer shows
+the Campaigns window absence with that preset marked unavailable, and raises no alarm. The period
+control marks only the preset being served, so it can still offer another preset whose body is
+format 13; choosing it shows the same absence
+([dev acceptance](../../validation/RESULTS.md#campaigns-return-lists-render-format-14-on-dev--2026-10-27)). The update
+changes only code, so the backfill above doesn't fire: the next Campaigns publication bake rebuilds
+every preset. Deploy it shortly before a Campaigns delivery lands, and check the page after that bake.
+A browser tab loaded before the deploy holds the format-13 decoder and refuses the new body until it
+reloads.
+
 ## Page isolation
 
 A bake limit or failure is one of two things ([ADR-142](../decisions/adr-142-isolate-a-bake-refusal-to-its-own-scope-and-alarm-on-defects.md);

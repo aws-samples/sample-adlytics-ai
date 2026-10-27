@@ -124,6 +124,9 @@ DEEP_INPUT_REVISIONS: Final[tuple[tuple[str, str], ...]] = (
     # Scale limits r2b (ADR-152): the Campaigns bake folds its compares into one compact record
     # per campaign and writes its name roster as shards.
     ("2026-10-25.2", "71a029022ddf25f96537cbd7c5d983ffa9a6264dfc4ea9c9d05991ab51731dcc"),
+    # Perf follow-up A1 (render format 14): each Campaigns body carries its highest and lowest
+    # return lists, and a format-13 body is the page's absence, never decoded.
+    ("2026-10-26.1", "33271938e610d48bf844f4fec09e0e8d5a9f8cc92fe9f0793317b3e2d72b98ec"),
 )
 DEEP_INPUT_REVISION: Final[str] = DEEP_INPUT_REVISIONS[-1][0]
 """The revision every deep cache key carries (``#DEEPINPUT#<revision>``)."""

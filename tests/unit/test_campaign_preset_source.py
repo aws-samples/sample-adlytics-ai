@@ -824,9 +824,9 @@ def test_change_blocks_start_campaign_render_format_seven() -> None:
     Format 8 adds the coverage block (ADR-119), format 9 NextStep.v2 (ADR-122) and format 10
     moves with the compared-metric roster (ADR-125); format 11 bakes the channel filter
     siblings (ADR-127); format 12 indexes every sibling (ADR-145); format 13 shards the name
-    roster (ADR-145); each keeps them.
+    roster (ADR-145); format 14 bakes the return lists; each keeps them.
     """
-    assert CAMPAIGN_PRESET_RENDER_FORMAT == 13
+    assert CAMPAIGN_PRESET_RENDER_FORMAT == 14
     assert PresetArtifactRevision.from_publication_identities(
         ("publication-a",), render_format=CAMPAIGN_PRESET_RENDER_FORMAT
     ) != PresetArtifactRevision.from_publication_identities(("publication-a",), render_format=6)

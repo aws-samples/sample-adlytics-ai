@@ -16,6 +16,20 @@ measurement targets, not request cutoffs:
 | `POST /api/presentation/campaign-detail` — tail (live tier) | 8 s measurement target; first-generation attainment measured separately | Current concurrent measurement batch (the serial batch is the recorded 2026-09-14 timeout defect), followed by parallel on-demand insight generation from the assembled artifact. Acceptance reports measurement and slot-generation durations separately; a combined target is not claimed until deployed samples establish it. |
 | `POST /api/presentation/campaign-metric-focus` | 300 ms cached · 8 s first generation | Revision-keyed cache; one direct Converse call on a miss. |
 
+- **A page load is one `campaigns` request (render format 14, 2026-10-26).** The highest and
+  lowest return lists ride in the parent body, so the page fetches no `attributed_roas` ordering
+  to show them, and its load serves no segment whose insight slots precompute leaves cold.
+  Dev paced passes of 9 page loads each, timed from navigation start to the end of the last
+  presentation response [measured on dev, 2026-10-27,
+  [results](../../../validation/RESULTS.md#campaigns-return-lists-render-format-14-on-dev--2026-10-27)]:
+
+  | Render format | Campaigns requests per load | Browser p50 | Parent request end p50 | Campaigns bytes per load | Insight `cache_outcome=miss` on page loads |
+  |---|---|---|---|---|---|
+  | 13 | 3 | 2,063 ms | 994 ms | 682,546 | 4 |
+  | 14, after the new revisions | 1 | 999 ms | 999 ms | 234,931 | 0 |
+
+  At format 14 the page ends with its parent request. The format-14 revisions carried unchanged
+  figures; a revision with changed figures was not measured.
 - The measurement and insight fan-out bounds come from configuration and respect the downstream
   quotas (`.kiro/steering/backend-concurrent-execution.md`). Independent slots start concurrently,
   join by declared slot identity, and never wait on one another serially.
@@ -44,7 +58,9 @@ measurement targets, not request cutoffs:
   Local evidence (`make accept-campaign-estate-local`, 2026-10-25) baked 30d for 10,000 campaigns
   over all five channels [measured]:
   - 7 filters and 11,320 objects, the gate's count, 896 MB in total, the largest 193,293 bytes;
-  - render 6.7 s;
+  - render 6.7 s. Re-measured 2026-10-27 in alternating runs on one quiet machine: 6.4 s and
+    6.8 s at render format 14, against 6.9 s and 6.1 s at format 13, so the return lists add no
+    measurable render time;
   - a traced peak of 75.4 MB against the model's 82.9 MB.
 
   The local run timed no S3 write. The write ceiling projected from dev's write timings
@@ -68,6 +84,10 @@ measurement targets, not request cutoffs:
   reason and question) on each model card
   ([ADR-122](../../decisions/adr-122-declare-next-step-targets-as-a-typed-union-checked-against-navigation.md)):
   largest body 225,796 bytes, maximum served form 255,129 bytes, 871 bytes under the cap.
+  Re-measured 2026-10-26 at render format 14, whose bodies carry the return lists
+  (`make accept-campaign-estate-local`): largest body 156,718 bytes against 149,714 at format 13,
+  maximum served form 184,220 bytes against 177,216. The 10,000-campaign estate's largest body
+  stayed 193,293 bytes.
 - A change that cannot meet a budget splits the endpoint or precomputes; raising a Lambda timeout is
   never the first fix (`.kiro/steering/backend-concurrent-execution.md`). Slot generation is already
   parallel; the first-generation budget is re-evaluated from the per-slot timings introduced below.
