@@ -21,9 +21,10 @@ added there).
 > dev, Campaigns' PUTs at 8 chains filled only 68–75% of its write phase, and a probe of the
 > real stage writing synthetic pairs to the dev bucket (2026-10-27, from one operator host, not
 > the Lambda) found sibling throughput still rising from 32 to 64 pairs in flight with no 503
-> SlowDown: Audiences-sized pairs at 74, 148, 266 and 403 objects/s at 8, 16, 32 and 64
-> [measured, means of 5 runs; validation/RESULTS.md]. So the width is the smallest one whose memory ceiling's
-> objects, its own write buffer counted, fit the 450 s write allowance at the 100 ms per-object
+> SlowDown: Audiences-sized pairs over one client pooled at the width, the arm the committed
+> probe runs, at 75, 136, 247 and 449 objects/s at 8, 16, 32 and 64 [measured, means of 3 runs;
+> validation/RESULTS.md]. So the width is the smallest one whose memory ceiling's objects,
+> counted structurally and its own write buffer counted, fit the 450 s write allowance at the 100 ms per-object
 > budget, capped at 64, the widest width measured still rising; `make check-bakeability` refuses
 > any other value. Both stores share one S3 client whose pool holds that many connections. A
 > width past 64 is unmeasured; past it the lever is splitting a page's writes across invocations,
@@ -103,7 +104,9 @@ stale.
   - 26 plans at every preset, and a trend equal to the chunked trend captured before the change;
   - roster shards at their edges.
 - `tests/unit/test_preset_bakeability.py`: the certified table recomputed from formulas, the memory
-  constant equal to the stack, and the estate test at the guard within the memory model.
+  constant equal to the stack, and the estate test at the guard within the memory model; the
+  contract's write width the one the deployed memory derives, from the structural Audiences
+  object count at its edges.
 - `infra/test/publisher-stacks.test.ts`: 2,048 MB.
 
 ## Consequences
