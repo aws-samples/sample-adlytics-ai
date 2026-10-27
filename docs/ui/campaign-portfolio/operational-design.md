@@ -88,6 +88,11 @@ measurement targets, not request cutoffs:
   (`make accept-campaign-estate-local`): largest body 156,718 bytes against 149,714 at format 13,
   maximum served form 184,220 bytes against 177,216. The 10,000-campaign estate's largest body
   stayed 193,293 bytes.
+- **On the wire (dev, 2026-10-27) [measured on dev].** The served form reaches the browser
+  gzip-compressed through CloudFront (`Content-Encoding: gzip`, `Vary: Accept-Encoding`): three
+  Campaigns responses in one page load decoded to 227,563–227,670 bytes and crossed the network as
+  20,185–20,960 bytes. A request offering `gzip, br` was also answered with gzip, not Brotli. The
+  handler sets no `Content-Encoding` itself, and none is needed.
 - A change that cannot meet a budget splits the endpoint or precomputes; raising a Lambda timeout is
   never the first fix (`.kiro/steering/backend-concurrent-execution.md`). Slot generation is already
   parallel; the first-generation budget is re-evaluated from the per-slot timings introduced below.
