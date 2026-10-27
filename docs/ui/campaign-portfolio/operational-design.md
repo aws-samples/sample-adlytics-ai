@@ -71,7 +71,7 @@ measurement targets, not request cutoffs:
   population for every segment; it now sorts each ordering once and slices it (§2), and every
   pair's bytes are unchanged:
 
-  | Campaigns | Pairs | Thread CPU per pair, mean: before → after | Whole stream: before → after |
+  | Campaigns | Pairs | Thread CPU per pair, mean: before → after | Whole stream, thread CPU: before → after |
   |---|---|---|---|
   | 400 | 256 | 2.86–2.90 ms → 2.75–2.76 ms | 0.73–0.74 s → 0.70–0.71 s |
   | 10,000 | 5,655 | 11.93–12.94 ms → 4.50 ms | 67.5–73.2 s → 25.4–25.5 s |
