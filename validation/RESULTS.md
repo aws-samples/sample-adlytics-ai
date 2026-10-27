@@ -4,6 +4,17 @@ Publication-safe conclusions from live source probes and deployed development ac
 account, entity, instance, user, resource, execution, workflow, and invalidation identifiers remain
 in ignored `RESULTS.local.md` and `findings/`; neither is publication content. A conclusion appears
 here only after its exact local evidence was read and folded into the owning contract or design doc.
+## Contract parsing, prompt-registry paging and API compression on dev — 2026-10-27
+Times are UTC. Synthetic data only. This change (`feat/perf-hygiene`), merged with public main and one
+unrelated MCP-tooling branch, was deployed to dev with one locked `deploy-all` after an identity check
+(07:03–07:25), then re-baked. PresentationFunction memory stayed at 1,024 MB.
+| Check | Verdict | What it showed |
+|---|---|---|
+| C parser in the deployed layer | **PASS** | The Python dependencies layer the functions run (unchanged by this deploy) ships PyYAML 6.0.3 with `yaml/_yaml.cpython-314-aarch64-linux-gnu.so`, an ARM aarch64 ELF, so the no-fallback rule in [repo structure §4](../docs/repo-structure.md#4-contracts) holds on Lambda. |
+| PresentationFunction cold-start init | **MEASURED** | `@initDuration` over cold-start `REPORT` lines: before, 6 cold starts of 285 invocations (2026-10-26 09:40 to 2026-10-27 04:25), p50 4,170.69 ms, min–max 3,128.34–5,603.89 ms; after, 11 cold starts of 23 invocations (2026-10-27 07:15–08:18, induced by page loads and two 6-request bursts), p50 3,200.06 ms, min–max 1,903.78–3,471.28 ms [measured on dev]. Small samples, and the deployed tree also carried the unrelated branch, so the drop is not isolated to the parser. |
+| Prompt-registry reads | **PASS** | Every slot's `/versions` read and the calibration outbox read returned through the paging loop: 21 slots, up to 29 versions each, and 0 `LastEvaluatedKey` continuations, because every partition still fits one page. The calibration dispatcher ran 20 terminal runs with 0 errors after the deploy. The multi-page path is proven by unit tests only. |
+| `/api/presentation/*` compression | **PASS** | Campaigns responses reached the browser gzip-compressed through CloudFront before and after the deploy and after the re-bake; the figures are in the [Campaigns operational design](../docs/ui/campaign-portfolio/operational-design.md). `/api/me` (158 bytes) stays uncompressed, under CloudFront's 1,000-byte minimum. |
+
 ## Campaigns return lists (render format 14) on dev — 2026-10-27
 Times are UTC. Synthetic data only. The return-lists branch, merged with main and one other open
 change, was deployed to dev after an identity check, then re-baked by re-landing deliveries. Each
