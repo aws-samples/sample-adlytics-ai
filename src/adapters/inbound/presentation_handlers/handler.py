@@ -6306,8 +6306,9 @@ def _v2_parent_request(
     # A roster shard is a part of the served body, never a page: it names no sort or segment.
     if "roster_shard" in fields and fields & {"sort", "segment"}:
         raise ValidationError(PRESENTATION_REFUSED, "The campaign roster shard is invalid.")
-    # Products and ads names its part with exactly `true`; any other value is refused.
-    if "product_ads" in fields and payload["product_ads"] is not True:
+    # Products and ads names its part with exactly `true`; any other value is refused, and so is
+    # a sort, because the part's rows are in the baked order the tab shows.
+    if "product_ads" in fields and (payload["product_ads"] is not True or "sort" in fields):
         raise ValidationError(PRESENTATION_REFUSED, "The products and ads request is invalid.")
     session_id = _text(payload["session_id"], "session_id")
     if len(session_id) > MAX_SESSION_ID_LENGTH:

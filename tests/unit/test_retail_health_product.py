@@ -1085,12 +1085,19 @@ def test_the_products_and_ads_selector_is_exactly_true_and_only_on_retail_health
     presentation_module: _PresentationModule,  # noqa: F811
 ) -> None:
     publication = _publication()
-    for value in (False, "true", 1, None):
+    sorted_ = {"sort": {"field": "retail_revenue_shipped", "direction": "asc"}}
+    for extra in ({"product_ads": False}, {"product_ads": "true"}, {"product_ads": 1}, sorted_):
         with pytest.raises(ValidationError, match="products and ads request is invalid"):
             presentation_module.handle(
-                _products_and_ads_event(product_ads=value),
+                _products_and_ads_event(**extra),
                 _runtime(presentation_module, _ProductPages(tokens=_TOKENS), publication),
             )
+    # Paired: the same sort without the part serves Retail health.
+    sorted_event = _retail_health_event({"session_id": SESSION, **sorted_})
+    response = presentation_module.handle(
+        sorted_event, _runtime(presentation_module, _ProductPages(tokens=_TOKENS), publication)
+    )
+    assert response["statusCode"] == 200
     event = _event("/api/presentation/scorecard", {"session_id": SESSION, "product_ads": True})
     event["headers"] = {"Accept": "application/vnd.adlytics.presentation-v2+json"}
     with pytest.raises(ValidationError, match="request fields are invalid"):
