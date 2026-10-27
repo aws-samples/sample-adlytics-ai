@@ -58,7 +58,9 @@ measurement targets, not request cutoffs:
   Local evidence (`make accept-campaign-estate-local`, 2026-10-25) baked 30d for 10,000 campaigns
   over all five channels [measured]:
   - 7 filters and 11,320 objects, the gate's count, 896 MB in total, the largest 193,293 bytes;
-  - render 6.7 s;
+  - render 6.7 s. Re-measured 2026-10-27 in alternating runs on one quiet machine: 6.4 s and
+    6.8 s at render format 14, against 6.9 s and 6.1 s at format 13, so the return lists add no
+    measurable render time;
   - a traced peak of 75.4 MB against the model's 82.9 MB.
 
   The local run timed no S3 write. The write ceiling projected from dev's write timings
