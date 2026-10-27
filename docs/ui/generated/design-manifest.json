@@ -17,11 +17,11 @@
         },
         {
           "path": "docs/ui/campaign-portfolio/operational-design.md",
-          "sha256": "804c07c6340b7a6e4e64c0bbd135af4cd322a6a51b65499984791ef8af77cee9"
+          "sha256": "30ed4933391ac2e15a2964d4a06e02b9319900eb5ba750c0c82011c77060d755"
         },
         {
           "path": "docs/ui/campaign-portfolio/low-level-design.md",
-          "sha256": "ca72bd6abd7b863b776e4c43431450e6dcfd7ff68fe258e95754a4f04a0b155f"
+          "sha256": "475f34f80d22d7adffa1aef2869c00c126532431aff8e7716640e3928ece0a69"
         },
         {
           "path": "docs/ui/campaign-portfolio/mockup.html",
