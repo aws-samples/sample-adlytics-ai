@@ -2,7 +2,8 @@
 """Mint an AMC refresh token directly into an explicitly selected Secrets Manager secret.
 
 A human must approve the Login with Amazon consent screen. Before consent, the script resolves the
-explicit AWS profile, displays its caller identity, and requires confirmation of the destination.
+explicit AWS profile, displays its caller identity, and requires the operator to confirm the
+destination by typing its secret name, which it does not echo.
 The resulting refresh token and client secret are sent directly to Secrets Manager; neither is
 printed or written to a local file.
 
@@ -44,7 +45,10 @@ class _Destination:
 
 
 def _destination(profile: str, secret_name: str) -> _Destination | None:
-    """Resolve and confirm the exact account before any credential is minted."""
+    """Resolve the exact account and confirm the destination before any credential is minted.
+
+    The operator confirms by typing the destination secret name, which is never echoed.
+    """
     session = boto3.Session(profile_name=profile)
     identity = session.client("sts").get_caller_identity()
     account = str(identity.get("Account", "")).strip()
@@ -54,7 +58,6 @@ def _destination(profile: str, secret_name: str) -> _Destination | None:
 
     print(f"AWS account: {account}")
     print(f"Caller ARN: {arn}")
-    print(f"Destination secret: {secret_name}")
     secrets_manager = session.client("secretsmanager")
     try:
         secrets_manager.describe_secret(SecretId=secret_name)
@@ -65,10 +68,10 @@ def _destination(profile: str, secret_name: str) -> _Destination | None:
         print("Destination secret already exists; refusing to overwrite it.", file=sys.stderr)
         return None
 
-    confirmed = input("Create this new secret in the displayed account? Type 'create': ").strip()
-    return (
-        _Destination(secrets_manager, secret_name) if confirmed == "create" else None
-    )
+    confirmed = input(
+        "Type the destination secret name to create it in the displayed account: "
+    ).strip()
+    return _Destination(secrets_manager, secret_name) if confirmed == secret_name else None
 
 
 def _secret_payload(
