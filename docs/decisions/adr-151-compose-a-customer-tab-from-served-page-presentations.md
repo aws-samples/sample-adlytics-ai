@@ -29,6 +29,11 @@ recovery"), so a new artifact would not reach dev before the customer demo on 20
    `bindings.py` and `frontend/lib/page-bindings.ts`).
 ## Amendment, 2026-10-22 (UI refresh 3.7)
 
+> **Refined 2026-10-27 (perf follow-up A2).** Products and ads no longer requests one product detail
+> per row: it reads Retail health's page with the Products and ads part baked beside it, in one
+> request. The [Products and ads](../ui/products-and-ads/README.md) design doc owns the current
+> behaviour.
+
 A second composed tab, Retail health › Products and ads at `/products-and-ads/` (sources
 `[retail-health]`), reads the served Retail health parent and, for each row, its baked product detail
 (ADR-125) over the row's own capability, at most four in flight. It keeps Retail health's window

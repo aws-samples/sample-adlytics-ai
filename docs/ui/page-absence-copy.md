@@ -143,14 +143,14 @@ persistent status region announces it ([temporal contract §6](temporal-control-
 ### ABS-RH-1
 
 - Surface: Retail health
-- Trigger: `window_unavailable` and the served control has at least one available preset.
+- Trigger: `window_unavailable` and the served control has at least one available preset. On Products and ads, after a deploy of Retail health render format 12, a preset whose publication predates it is served as `window_unavailable` and marked unavailable until the page's next bake.
 - Title: "Retail health isn't published for this period"
 - Text: "Choose another period above to see shipped sales, traffic and returns."
 
 ### ABS-RH-2
 
 - Surface: Retail health
-- Trigger: `window_unavailable` and the served control has no available preset (custom periods are off for this page, so presets are the only choosable periods).
+- Trigger: `window_unavailable` and the served control has no available preset (custom periods are off for this page, so presets are the only choosable periods). On Products and ads, after a deploy of Retail health render format 12, a preset whose publication predates it counts as unavailable until the page's next bake.
 - Title: "Retail health isn't published for this period"
 - Text: "Retail health isn't ready to show yet. It's built from your Vendor Central data, which your administrator connects. When it's ready, you'll see the sales, traffic, conversion and returns your data supports, per product."
 

@@ -75,11 +75,11 @@
         },
         {
           "path": "docs/ui/retail-health/operational-design.md",
-          "sha256": "5d8cce101170a53ee2aafbdbfd840f757a22476913698984fe3547957536b52d"
+          "sha256": "611abdb47adfedcbed326390f1b249c4aabb4f539a5ae5cda5fc30369175ddda"
         },
         {
           "path": "docs/ui/retail-health/low-level-design.md",
-          "sha256": "0e293d5bd0831d2264bd9345770761b892f8145f2ed330692c9a10b1648ba69a"
+          "sha256": "949de1cb977b70212f67833a939ee52b6b4b30d1c9b667098c4f90e38bbd996d"
         },
         {
           "path": "docs/ui/retail-health/mockup.html",

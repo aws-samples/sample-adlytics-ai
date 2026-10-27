@@ -11,6 +11,7 @@ The page applies the authorization and data-protection boundaries from the
 | Path | Budget | What meets it |
 |---|---|---|
 | `POST /api/presentation/retail-health` | 1 s | Baked-artifact serve path under ADR-070: bounded pointer-roster read and one artifact fetch; no request-time preset measurement. |
+| `POST /api/presentation/retail-health` with `product_ads: true` (Products and ads) | 1 s | The same path plus the Products and ads part: one index-shard read, then the part and its custody, all baked; no per-row request ([Products and ads](../products-and-ads/README.md) §2). |
 
 - **Current bake envelope:** each declared `1d`, `7d`, or `14d` variant requires its equal prior,
   executes one grouped 35-plan measurement batch, then reads product hierarchy and reported-total
