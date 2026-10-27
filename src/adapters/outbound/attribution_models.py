@@ -8,6 +8,7 @@ from typing import cast
 
 import yaml
 
+from adapters.outbound import repository_yaml
 from domain.semantics.attribution import (
     AttributionMethod,
     AttributionModel,
@@ -111,14 +112,11 @@ def load_attribution_models(root: Path) -> AttributionModelRegistry:
     if not path.is_file():
         raise AttributionModelError(f"attribution model registry is missing at {path}.")
     text = path.read_text()
-    composed = cast(
-        "object",
-        yaml.compose(text, Loader=yaml.SafeLoader),  # type: ignore[reportUnknownMemberType]
-    )
+    composed = repository_yaml.compose(text)
     if composed is not None and not isinstance(composed, yaml.Node):
         raise AttributionModelError(f"{path}: parser returned an invalid YAML node.")
     _reject_duplicate_keys(composed, str(path))
-    raw = _mapping(cast("object", yaml.safe_load(text)), str(path))
+    raw = _mapping(repository_yaml.safe_load(text), str(path))
     _exact(raw, {"version", "models"}, str(path))
     return AttributionModelRegistry(
         version=_integer(raw["version"], f"{path}.version"),

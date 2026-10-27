@@ -14,8 +14,8 @@ It also loads the data contracts, source packs and media taxonomy, because each 
 carries the platforms its figures can come from (ADR-106). The walk itself is domain code,
 `derive_source_platforms`; this module only reads the files and calls it.
 
-`yaml.safe_load`, never `yaml.load`. The full loader constructs arbitrary Python objects and
-this file is read by a Lambda; ruff's S506 enforces it.
+YAML is parsed only through `adapters.outbound.repository_yaml`, the safe C loader, never the
+full loader: that constructs arbitrary Python objects and this file is read by a Lambda.
 
 Every value is narrowed from `object` before use. This repository-owned executable contract fails
 closed on unknown or duplicate fields and wrong scalar types; additive tolerance applies to upstream
@@ -31,6 +31,7 @@ from typing import cast
 import yaml
 
 from adapters.jobs.contract_validation.loader import load_contracts
+from adapters.outbound import repository_yaml
 from adapters.outbound.attribution_models import (
     REGISTRY_PATH as ATTRIBUTION_MODELS_PATH,
 )
@@ -849,14 +850,11 @@ def load_catalog(root: Path) -> Catalog:
 
     where = str(path)
     text = path.read_text()
-    composed = cast(
-        "object",
-        yaml.compose(text, Loader=yaml.SafeLoader),  # type: ignore[reportUnknownMemberType]
-    )
+    composed = repository_yaml.compose(text)
     if composed is not None and not isinstance(composed, yaml.Node):
         raise CatalogError(f"{where}: parser returned an invalid YAML node.")
     _reject_duplicate_keys(composed, where)
-    raw = _as_mapping(cast("object", yaml.safe_load(text)), where=where)
+    raw = _as_mapping(repository_yaml.safe_load(text), where=where)
     if set(raw) != {
         "version",
         "axis_defaults",

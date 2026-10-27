@@ -24,6 +24,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 from requests import RequestException
 
 from adapters.config import TracingSettings
+from adapters.outbound import repository_yaml
 from adapters.outbound.cloudformation_stack import stack_resource_summaries
 from adapters.outbound.https import HttpsSession, require_https
 from adapters.outbound.telemetry.bootstrap import configure_tracing, flush_traces
@@ -302,7 +303,7 @@ def all_compatibility_findings(
 
 def _load_declaration(raw: bytes, label: str) -> dict[str, object]:
     try:
-        parsed = yaml.safe_load(raw)
+        parsed = repository_yaml.safe_load(raw)
     except yaml.YAMLError as exc:
         raise CompatibilityInspectionError(f"{label} is not valid YAML.") from exc
     return _document(parsed, label)

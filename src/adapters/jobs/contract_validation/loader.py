@@ -5,11 +5,10 @@ The adapter half of contract validation: this module owns YAML, paths and file l
 and the rules that judge what it produces live in `domain/data_contracts`. That split is
 what lets every rule be unit tested without a fixture file.
 
-`yaml.safe_load` throughout, never `yaml.load`. The full loader constructs arbitrary
-Python objects and `contracts/` is read by a Lambda; ruff's S506 enforces this, which is
-why no steering rule restates it.
+YAML is parsed only through `adapters.outbound.repository_yaml`, the safe C loader, never the
+full loader: that constructs arbitrary Python objects and `contracts/` is read by a Lambda.
 
-Every value is narrowed from `object` before use. `safe_load` returns `Any`, so without
+Every value is narrowed from `object` before use. A parsed document is untyped, so without
 narrowing a malformed contract reaches a dataclass as the wrong type and fails somewhere
 unrelated — the `_as_*` helpers turn that into one message naming the file and the key.
 """
@@ -19,8 +18,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import cast
 
-import yaml
-
+from adapters.outbound import repository_yaml
 from domain.data_contracts.contract import (
     CohortGrain,
     CohortTriangle,
@@ -64,7 +62,7 @@ type Mapping = dict[str, object]
 
 def _load_yaml_mapping(path: Path) -> Mapping:
     """Parse a YAML file, requiring a mapping at the top level."""
-    parsed = cast("object", yaml.safe_load(path.read_text()))
+    parsed = repository_yaml.safe_load(path.read_text())
     if not isinstance(parsed, dict):
         raise ContractError(f"{path}: expected a mapping at the top level.")
     return cast("Mapping", parsed)

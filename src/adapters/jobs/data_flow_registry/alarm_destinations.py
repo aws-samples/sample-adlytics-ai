@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 from typing import Any, Final, cast
 
-import yaml
+from adapters.outbound import repository_yaml
 
 CONTRACT_PATH: Final = Path("contracts/operations/alarm-destinations.yaml")
 PYTHON_PATH: Final = Path("src/domain/operations/generated_alarm_destinations.py")
@@ -37,7 +37,7 @@ class AlarmDestinationContractError(ValueError):
 
 def load_contract(root: Path) -> dict[str, Any]:
     """Read the contract and validate its closed shape."""
-    document: object = yaml.safe_load((root / CONTRACT_PATH).read_text())
+    document = repository_yaml.safe_load((root / CONTRACT_PATH).read_text())
     if not isinstance(document, dict):
         raise AlarmDestinationContractError("the alarm-destination contract is malformed.")
     contract = cast("dict[str, Any]", document)

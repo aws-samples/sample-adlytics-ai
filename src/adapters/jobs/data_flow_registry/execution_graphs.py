@@ -24,7 +24,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Final, cast
 
-import yaml
+from adapters.outbound import repository_yaml
 
 CONTRACT_PATH: Final = Path("contracts/operations/execution-graphs.yaml")
 PYTHON_PATH: Final = Path("src/domain/operations/generated_execution_graphs.py")
@@ -64,7 +64,7 @@ def bounds_digest(bounds: dict[str, Any]) -> str:
 
 def load_contract(root: Path) -> dict[str, Any]:
     """Read the contract and validate its closed shape."""
-    document: object = yaml.safe_load((root / CONTRACT_PATH).read_text())
+    document = repository_yaml.safe_load((root / CONTRACT_PATH).read_text())
     if not isinstance(document, dict):
         raise ExecutionGraphContractError("the execution-graph contract is malformed.")
     contract = cast("dict[str, Any]", document)

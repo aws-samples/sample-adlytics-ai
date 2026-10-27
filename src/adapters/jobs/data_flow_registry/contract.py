@@ -9,6 +9,8 @@ from typing import Any, Final, cast
 
 import yaml
 
+from adapters.outbound import repository_yaml
+
 CONTRACT_PATH: Final = Path("contracts/operations/data-flows.yaml")
 GENERATED_PATH: Final = Path("src/domain/operations/generated_data_flows.py")
 INFRA_PATH: Final = Path("infra/lib/stacks/operational-status-processor-stack.ts")
@@ -134,7 +136,7 @@ class DataFlowRegistryError(ValueError):
     """The governed registry or its infrastructure coverage is invalid."""
 
 
-class _StrictSafeLoader(yaml.SafeLoader):
+class _StrictSafeLoader(repository_yaml.RepositoryLoader):
     """Safe YAML loader that rejects duplicate mapping keys."""
 
 
@@ -162,7 +164,7 @@ def load_registry(root: Path) -> dict[str, object]:
     """Load the closed YAML registry, rejecting unknown fields and semantic drift."""
     path = root / CONTRACT_PATH
     try:
-        # A-YAML-SAFELOADER-001: a SafeLoader subclass; see docs/security-dispositions.md
+        # A-YAML-SAFELOADER-001: a CSafeLoader subclass; see docs/security-dispositions.md
         raw = cast("object", yaml.load(path.read_text(), Loader=_StrictSafeLoader))  # noqa: S506  # nosec B506
     except (OSError, yaml.YAMLError) as error:
         raise DataFlowRegistryError(f"could not load {CONTRACT_PATH}: {error}") from error

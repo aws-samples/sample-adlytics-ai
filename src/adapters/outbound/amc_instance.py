@@ -4,10 +4,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import cast
 
 import yaml
 
+from adapters.outbound import repository_yaml
 from domain.semantics.amc_instance import (
     AMC_INSTANCE_KIND_UNKNOWN,
     AmcInstanceResolution,
@@ -25,7 +25,7 @@ def load_amc_instance(root: Path) -> AmcInstanceResolution:
     if not path.is_file():
         return resolve_amc_instance(None)
     try:
-        document = cast("object", yaml.safe_load(path.read_text(encoding="utf-8")))
+        document = repository_yaml.safe_load(path.read_text(encoding="utf-8"))
     except yaml.YAMLError:
         return AmcInstanceResolution(None, AMC_INSTANCE_KIND_UNKNOWN)
     return resolve_amc_instance(document)

@@ -16,7 +16,7 @@ import pathlib
 import sys
 from typing import cast
 
-import yaml
+from adapters.outbound import repository_yaml
 
 CONTRACTS_DIR = pathlib.Path("contracts/insights")
 MATRIX_OUTPUT_PATH = pathlib.Path("docs/ui/generated/insight-deterministic-matrix.md")
@@ -95,7 +95,7 @@ def render() -> str:
     """Project every insight contract into the one committed matrix, sorted by slot id."""
     rows: list[tuple[str, str]] = []
     for path in sorted(CONTRACTS_DIR.glob("*.yaml")):
-        document = cast("dict[str, object]", yaml.safe_load(path.read_text()))
+        document = cast("dict[str, object]", repository_yaml.safe_load(path.read_text()))
         rows.append((str(document.get("id")), _row(document)))
     body = "".join(row for _, row in sorted(rows))
     schema_note = (

@@ -16,7 +16,7 @@ import re
 import sys
 from typing import cast
 
-import yaml
+from adapters.outbound import repository_yaml
 
 MANIFEST_SOURCE_PATH = pathlib.Path("docs/ui/design-manifest.yaml")
 MANIFEST_OUTPUT_PATH = pathlib.Path("docs/ui/generated/design-manifest.json")
@@ -151,7 +151,7 @@ def generated_document(root: pathlib.Path) -> Mapping:  # noqa: PLR0912, PLR0915
     source_path = root / MANIFEST_SOURCE_PATH
     if not source_path.is_file():
         raise ManifestError(f"manifest source is missing: {MANIFEST_SOURCE_PATH}")
-    source = _mapping(yaml.safe_load(source_path.read_text()), str(MANIFEST_SOURCE_PATH))
+    source = _mapping(repository_yaml.safe_load(source_path.read_text()), str(MANIFEST_SOURCE_PATH))
     _exact(
         source,
         {"version", "revision", "parent", "gallery", "shared_owners", "pages"},

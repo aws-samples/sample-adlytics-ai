@@ -8,6 +8,7 @@ from typing import cast
 
 import yaml
 
+from adapters.outbound import repository_yaml
 from domain.presentation.page_schemas import (
     AnalyticalPageSchema,
     Cardinality,
@@ -249,14 +250,11 @@ def load_page_schemas(root: Path) -> PageSchemaSet:
     if not path.is_file():
         raise PageSchemaError(f"page schema manifest is missing at {path}.")
     text = path.read_text()
-    composed = cast(
-        "object",
-        yaml.compose(text, Loader=yaml.SafeLoader),  # type: ignore[reportUnknownMemberType]
-    )
+    composed = repository_yaml.compose(text)
     if composed is not None and not isinstance(composed, yaml.Node):
         raise PageSchemaError(f"{path}: parser returned an invalid YAML node.")
     _reject_duplicate_keys(composed, str(path))
-    raw = _mapping(cast("object", yaml.safe_load(text)), str(path))
+    raw = _mapping(repository_yaml.safe_load(text), str(path))
     _exact(raw, {"version", "context_fields", "pages"}, str(path))
     version = raw["version"]
     if isinstance(version, bool) or not isinstance(version, int):
@@ -273,14 +271,11 @@ def _load_yaml_mapping(path: Path) -> Mapping:
     if not path.is_file():
         raise PageSchemaError(f"page schema manifest is missing at {path}.")
     text = path.read_text()
-    composed = cast(
-        "object",
-        yaml.compose(text, Loader=yaml.SafeLoader),  # type: ignore[reportUnknownMemberType]
-    )
+    composed = repository_yaml.compose(text)
     if composed is not None and not isinstance(composed, yaml.Node):
         raise PageSchemaError(f"{path}: parser returned an invalid YAML node.")
     _reject_duplicate_keys(composed, str(path))
-    return _mapping(cast("object", yaml.safe_load(text)), str(path))
+    return _mapping(repository_yaml.safe_load(text), str(path))
 
 
 def _v2_enum[

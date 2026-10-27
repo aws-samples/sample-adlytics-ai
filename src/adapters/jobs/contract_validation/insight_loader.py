@@ -18,6 +18,7 @@ from adapters.insight_finding_units import (
     metric_scale,
 )
 from adapters.insight_next_steps import SURFACED_SLOTS
+from adapters.outbound import repository_yaml
 from adapters.outbound.metric_dictionary import load_catalog
 from domain.catalog.capability import Catalog
 from domain.data_contracts.contract import ContractError
@@ -56,7 +57,7 @@ _INSIGHTS_DIRECTORY = "insights"
 type Mapping = dict[str, object]
 
 
-class _StrictSafeLoader(yaml.SafeLoader):
+class _StrictSafeLoader(repository_yaml.RepositoryLoader):
     """Safe YAML loader that rejects duplicate mapping keys before construction."""
 
 
