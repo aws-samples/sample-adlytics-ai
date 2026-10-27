@@ -32,14 +32,13 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Final, Protocol, cast
 
 from aws_lambda_powertools import Logger
 
 from adapters.campaign_insight_requests import FindingSource, predicate_findings
 from adapters.inbound.tool_handlers.gateway import contracts_root
 from adapters.inbound.tool_handlers.measurement import (
-    DEFAULT_MAX_ROWS,
     MeasurementExecutionTooling,
     MeasurementTool,
     MeasurementTooling,
@@ -53,6 +52,7 @@ from adapters.jobs.presentation_validation.loader import load_v2_page_schemas
 from adapters.jobs.preset_artifact_publisher.campaign_source import (
     SUPERSEDED_HISTORY_RETENTION,
 )
+from adapters.jobs.preset_artifact_publisher.isolated_refusals import capped_preset_artifact_json
 from adapters.outbound.alert_rules import load_alert_rules
 from adapters.outbound.attribution_models import load_attribution_models
 from adapters.outbound.bake_sources import source_closed
@@ -95,13 +95,11 @@ from domain.presentation.page_schemas import TemporalPresetId, is_calendar_prese
 from domain.presentation.preset_artifacts import (
     PresetArtifactBody,
     PresetArtifactPage,
-    PresetArtifactPointer,
-    PresetArtifactPointerAdvanceRequest,
+    PresetArtifactPointerTemplate,
     PresetArtifactPublicationRequest,
     PresetArtifactRevision,
     PresetArtifactVariant,
     SourceUnchanged,
-    canonical_preset_artifact_json,
 )
 from domain.presentation.scorecard import (
     CHANNEL_FIGURE_MISSING_REASON,
@@ -153,11 +151,13 @@ from domain.presentation.temporal import (
     temporal_preset_label_v2,
 )
 from domain.semantics.identity import ChannelKey, EcosystemKey, PlatformKey
+from domain.shared_kernel.errors import ErrorCode, InvariantError
 from domain.shared_kernel.values import DateRange
 from ports.outbound.publication_selection import (
     PresentationEvidenceInspectionPlan,
     PresentationEvidenceInspectionRequest,
 )
+from ports.outbound.query import BAKE_MAX_ROWS, RowCeiling
 from ports.outbound.semantic_state import scope_horizon_policy
 from ports.outbound.source_coverage import (
     SourceCoverageRequest,
@@ -188,6 +188,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from ports.outbound.source_coverage import SourceCoveragePort
 
 __all__ = [
+    "BOUNDED_READ_TRUNCATED",
     "SCORECARD_PAGE_ID",
     "SCORECARD_PRESET_RENDER_FORMAT",
     "GroupedAnswer",
@@ -208,6 +209,8 @@ __all__ = [
 ]
 
 SCORECARD_PAGE_ID = "scorecard"
+BOUNDED_READ_TRUNCATED: Final = ErrorCode("PRESET_ARTIFACT_BAKE", 6)
+"""A bake read bounded by its axes came back truncated: a defect, never a refusal (ADR-152)."""
 SCORECARD_PRESET_RENDER_FORMAT = 7
 """The Scorecard renderer's output generation (ADR-070 render format). Bump on byte changes.
 
@@ -353,7 +356,8 @@ def _request(  # noqa: PLR0913 — the marketplace and model selectors are keywo
         computed_at=request.computed_at,
         correlation_id=_CORRELATION_ID,
         filters=filters,
-        max_rows=DEFAULT_MAX_ROWS,
+        max_rows=BAKE_MAX_ROWS,
+        row_ceiling=RowCeiling.BAKE,
     )
 
 
@@ -452,7 +456,11 @@ class GroupedAnswer:
 def parse_grouped_answer(
     answer: PresentationMeasurementAnswerSlot, period: DateRange, grains: tuple[str, ...]
 ) -> GroupedAnswer | None:
-    """Parse one grouped answer, or none when it's incoherent (truncated, wrong grain)."""
+    """Parse one grouped answer, or none when it's incoherent (wrong grain, misaligned).
+
+    Every read parsed here is bounded by its axes (the governed taxonomy, the declared cells, a
+    ranked set), never by the catalog, so one cut short is a defect, not a limit (ADR-152).
+    """
     shaped = answer.answer
     group = tuple(GRAIN_COLUMNS[name] for name in grains)
     if shaped is None:
@@ -460,9 +468,14 @@ def parse_grouped_answer(
             {}, None, suppressed=False, never_loaded=True, holes=(period,), covered=()
         )
     metadata, data = shaped.metadata, shaped.data
+    if metadata.truncated:
+        raise InvariantError(
+            BOUNDED_READ_TRUNCATED,
+            "A bake read bounded by its axes returned more rows than its bound.",
+            context={"metric": answer.logical.metric.name, "max_rows": metadata.row_count},
+        )
     if (
-        metadata.truncated
-        or data.grain.dimensions != group
+        data.grain.dimensions != group
         or metadata.requested_coverage_intervals != (period,)
         or metadata.row_count != len(data.values)
     ):
@@ -1241,26 +1254,21 @@ class RetainedScorecardPresetArtifactSource:
             self.page,
             variant,
             revision,
-            canonical_preset_artifact_json(network_scorecard_artifact_payload(rendered.artifact)),
-        )
-        pointer = PresetArtifactPointer(
-            self.page,
-            variant,
-            revision,
-            body.digest,
-            1 if current is None else current.forward_token + 1,
-            None if current is None else current.revision,
-            None,
-            resolved_window=window,
-            comparison_window=prior,
+            capped_preset_artifact_json(network_scorecard_artifact_payload(rendered.artifact)),
         )
         return PresetArtifactPublicationRequest(
             body,
-            PresetArtifactPointerAdvanceRequest(
-                pointer,
+            PresetArtifactPointerTemplate(
+                self.page,
+                variant,
+                revision,
+                body.digest,
+                1 if current is None else current.forward_token + 1,
+                None if current is None else current.revision,
                 None if current is None else self.clock() + SUPERSEDED_HISTORY_RETENTION,
+                resolved_window=window,
+                comparison_window=prior,
             ),
-            None,
         )
 
     def _resolved_windows(  # noqa: PLR0911 -- each unresolvable preset bakes nothing

@@ -2394,7 +2394,8 @@ def _attempt_data(event: AttemptEvent) -> dict[str, object]:
 def _validate_exact_partitions(partitions: tuple[PartitionIdentity, ...]) -> None:
     if not partitions or len(partitions) > MAX_EXACT_CURRENT_PARTITIONS:
         raise ValueError(
-            f"exact CURRENT read requires 1-{MAX_EXACT_CURRENT_PARTITIONS} partitions."
+            f"exact CURRENT read requires 1-{MAX_EXACT_CURRENT_PARTITIONS} partitions "
+            "(the chunked two-pass snapshot's cost bound, ADR-070)."
         )
     if len(set(partitions)) != len(partitions):
         raise ValueError("exact CURRENT read repeats a partition.")

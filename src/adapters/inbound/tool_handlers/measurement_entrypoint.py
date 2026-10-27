@@ -42,7 +42,12 @@ from adapters.inbound.tool_handlers.dimension_labels import DimensionLabelResolv
 from adapters.inbound.tool_handlers.measurement import MeasurementTooling, handle
 from adapters.inbound.tool_handlers.measurement_dispatch import MeasurementDispatch
 from adapters.jobs.contract_validation.loader import load_contracts
-from adapters.outbound.athena.query import AthenaQueryAdapter, AthenaQueryTarget
+from adapters.outbound.athena.query import (
+    INTERACTIVE_WAIT,
+    AthenaQueryAdapter,
+    AthenaQueryTarget,
+    ResultTransport,
+)
 from adapters.outbound.catalog import MetricWindowDefaults, PageWindowCatalog
 from adapters.outbound.commerce_identity import load_commerce_identity_bridge
 from adapters.outbound.dynamodb.semantic_state import DynamoCurrentPublications
@@ -127,6 +132,8 @@ QUERIES = AthenaQueryAdapter(
         workgroup=SETTINGS.athena_workgroup,
         database=SETTINGS.semantic_v2_current_database,
         reuse_minutes=SETTINGS.athena_result_reuse_max_age_minutes,
+        wait=INTERACTIVE_WAIT,
+        results=ResultTransport.PAGED,
     )
 )
 CANONICAL = S3CanonicalAdapter(SETTINGS.semantic_v2_bucket)

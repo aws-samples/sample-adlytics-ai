@@ -4,7 +4,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from collections.abc import Mapping
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import ROUND_HALF_EVEN, Decimal
 from typing import cast
@@ -30,8 +31,9 @@ from adapters.inbound.tool_handlers.measurement import (
     execute_presentation_batch,
 )
 from domain.catalog.freshness import FreshnessStatus
+from domain.measurement.folds import ColumnView, FoldResult
 from domain.measurement.planning import MEASURE_ALIAS
-from domain.narrative.shaped_response import UnitKind, Units
+from domain.narrative.shaped_response import Metadata, UnitKind, Units
 from domain.presentation.analytical_pages import PresentationDimensionLabel
 from domain.presentation.campaign_attribution import (
     PURCHASE_SERIES_GRAIN,
@@ -192,9 +194,14 @@ class CampaignArtifactRenderer:
         inspection so a background baker can derive its immutable artifact revision from the
         exact retained truth it consumed.
         """
+        subsets = filter_subsets(request)
         portfolio_batch = self.measurements.portfolio_batch(
             CampaignPortfolioMeasurementInput(
-                request.selections, request.period, request.prior_period, request.sort
+                request.selections,
+                request.period,
+                request.prior_period,
+                request.sort,
+                bake_subsets=subsets,
             )
         )
         prepared = portfolio_batch.prepared
@@ -228,7 +235,7 @@ class CampaignArtifactRenderer:
         )
         if not identities:
             return CampaignPortfolioRenderResult(None, ())
-        filters = self.reduce_filters(portfolio_batch, executed, request)
+        filters = self.reduce_filters(portfolio_batch, executed, request, subsets)
         if filters is None:
             return CampaignPortfolioRenderResult(None, identities)
         return CampaignPortfolioRenderResult(filters[0], identities, filters[1:])
@@ -337,16 +344,20 @@ class CampaignArtifactRenderer:
         batch: CampaignPortfolioMeasurementBatch,
         executed: PresentationMeasurementExecutionResult,
         request: CampaignArtifactRenderInput,
+        subsets: Mapping[str, frozenset[tuple[str, str]]] | None = None,
     ) -> tuple[CampaignPortfolioArtifact, ...] | None:
         """Render every channel filter sibling from the one measured batch (ADR-127).
 
         All channels first, then each declared option in order. Each sibling reduces only its
         own campaigns' operands; a multi-channel sibling carries no attributed total. Any
         sibling that can't be reduced refuses the whole bake, never a partial filter set.
+        `subsets` are the filter identity sets the bake's daily folds summed into.
         """
         parsed = _parse_portfolio(batch, executed, request.selections)
         if parsed is None:
             return None
+        if subsets is not None:
+            parsed = replace(parsed, subsets=subsets)
         return self.filters_from_parsed(parsed, request)
 
     def filters_from_parsed(
@@ -387,7 +398,13 @@ class CampaignArtifactRenderer:
         selections, period, prior_period = request.selections, request.period, request.prior_period
         multi_channel = request.channel_filter is not None and request.channel_filter.multi_channel
         operands = ("ad_spend", "attributed_revenue_14d", "purchases", "impressions")
-        identities = frozenset((item.campaign.value, item.marketplace.value) for item in selections)
+        filter_id = None if request.channel_filter is None else request.channel_filter.selected
+        # The bake's daily folds summed into these very sets (by reference), so the window
+        # totals and the trend authorize one population.
+        identities = request.parsed.subsets.get(filter_id or "") or frozenset(
+            (item.campaign.value, item.marketplace.value) for item in selections
+        )
+        daily = request.parsed.daily
         semantics = self.change_semantics
         try:
             reduction = reduce_campaign_portfolio(
@@ -395,8 +412,11 @@ class CampaignArtifactRenderer:
                     identities,
                     {metric: answers[("portfolio", metric, "current")][0] for metric in operands},
                     {metric: answers[("portfolio", metric, "prior")][0] for metric in operands},
-                    {metric: answers[("trend", metric, "current")][0] for metric in operands},
+                    {}
+                    if daily is not None
+                    else {metric: answers[("trend", metric, "current")][0] for metric in operands},
                     period,
+                    daily_sums=None if daily is None else daily[filter_id or ""],
                 )
             )
         except ValueError:
@@ -877,7 +897,7 @@ _VIEWABILITY_UNAVAILABLE = "Not available: Amazon DSP viewability hasn't arrived
 class Viewability:
     """One window's DSP viewability operand by campaign, and the days its source hasn't sent."""
 
-    rows: dict[tuple[str, ...], Decimal | int]
+    rows: Mapping[tuple[str, ...], Decimal | int]
     missing: tuple[date, ...]
 
 
@@ -885,9 +905,32 @@ class Viewability:
 class ParsedPortfolio:
     """Every portfolio answer parsed once, keyed by (section, metric, role)."""
 
-    answers: dict[tuple[str, str, str], _PortfolioAnswer]
+    answers: Mapping[tuple[str, str, str], _PortfolioAnswer]
     ratios: frozenset[str]
     viewability: dict[tuple[str, str], Viewability | None]
+    daily: Mapping[str, Mapping[str, Mapping[date, Decimal]]] | None = None
+    """The bake's daily trend: `filter → metric → day → sum`, already authorized per filter."""
+    subsets: Mapping[str, frozenset[tuple[str, str]]] = field(
+        default_factory=dict[str, frozenset[tuple[str, str]]]
+    )
+    """The bake's filter identity sets, the ones its daily folds summed into."""
+
+
+def filter_subsets(
+    request: CampaignArtifactRenderInput,
+) -> dict[str, frozenset[tuple[str, str]]]:
+    """Each channel filter's campaign identities, All channels first (ADR-127)."""
+    channels = _present_channels(request.selections, request.channel_order)
+    keys = tuple(key for key, _ in channels)
+    subsets: dict[str, frozenset[tuple[str, str]]] = {}
+    for option in campaign_channel_filter_options(channels):
+        spans = frozenset(channels_for_filter(option.filter_id, keys))
+        subsets[option.filter_id] = frozenset(
+            (item.campaign.value, item.marketplace.value)
+            for item in request.selections
+            if item.channel.value in spans
+        )
+    return subsets
 
 
 @dataclass(frozen=True, slots=True)
@@ -929,9 +972,24 @@ def _parse_portfolio(
         for answer, (_, metric, _, _) in zip(executed.slots, batch.slots, strict=True)
         if answer.logical.metric.absence_is_typed
     )
+    daily: dict[str, dict[str, Mapping[date, Decimal]]] | None = None
     for answer, (section, metric, role, expected_period) in zip(
         executed.slots, batch.slots, strict=True
     ):
+        folded = answer.folded
+        if folded is not None and metric in VIEWABILITY_OPERANDS:
+            viewability[(metric, role)] = _folded_viewability(folded, expected_period)
+            continue
+        if folded is not None:
+            read = _folded_answer(folded, expected_period, metric)
+            if read is None:
+                return None
+            answers[(section, metric, role)] = read[0]
+            if read[1] is not None:
+                daily = {} if daily is None else daily
+                for filter_id, days in read[1].items():
+                    daily.setdefault(filter_id, {})[metric] = days
+            continue
         if metric in VIEWABILITY_OPERANDS:
             viewability[(metric, role)] = _viewability_answer(answer, expected_period)
             continue
@@ -960,7 +1018,7 @@ def _parse_portfolio(
         for metric in operands
     ):
         return None
-    return ParsedPortfolio(answers, ratios, viewability)
+    return ParsedPortfolio(answers, ratios, viewability, daily)
 
 
 def _present_channels(
@@ -975,7 +1033,7 @@ def _present_channels(
 
 
 def _sum(
-    values: dict[tuple[str, ...], Decimal | int], identities: frozenset[tuple[str, str]]
+    values: Mapping[tuple[str, ...], Decimal | int], identities: frozenset[tuple[str, str]]
 ) -> Decimal:
     """Sum an additive campaign-grain operand; a covered campaign with no row delivered nothing."""
     return sum((Decimal(values.get(identity, 0)) for identity in identities), Decimal())
@@ -1171,6 +1229,91 @@ def _viewability_cell(
     )
 
 
+def _qualifiers(metadata: Metadata) -> tuple[str, ...]:
+    """Return a figure's freshness and data-quality qualifiers, as a held answer states them."""
+    return tuple(
+        sorted(
+            {
+                *metadata.qualified_dq,
+                *(item.rendering for item in metadata.qualifiers),
+                *(
+                    ()
+                    if metadata.freshness_status is FreshnessStatus.FRESH
+                    else (metadata.freshness_status.value,)
+                ),
+            }
+        )
+    )
+
+
+def _folded_complete(
+    folded: FoldResult[object], period: DateRange, kind: UnitKind
+) -> tuple[Units, tuple[str, ...]] | None:
+    """Accept a folded bake read on the held answer's terms (`_complete_answer`).
+
+    Complete, uncut and unsuppressed over its whole window, of the slot's declared unit. A read
+    with no figure is a legitimate zero for a non-monetary metric, as a held one is.
+    """
+    metadata, units = folded.metadata, folded.units
+    if units is None and kind is not UnitKind.CURRENCY:
+        units = Units(kind)
+    if (
+        metadata.requested_coverage_intervals != (period,)
+        or metadata.actual_coverage_intervals != (period,)
+        or metadata.coverage_holes
+        or metadata.suppression.rows_suppressed
+        or folded.truncated
+        or metadata.freshness_status is FreshnessStatus.NEVER_LOADED
+        or metadata.measurement_basis != (MeasurementBasis.AD_ATTRIBUTED,)
+        or units is None
+        or units.kind is not kind
+    ):
+        return None
+    return units, _qualifiers(metadata)
+
+
+def _folded_answer(
+    folded: FoldResult[object], period: DateRange, metric: str
+) -> tuple[_PortfolioAnswer, dict[str, dict[date, Decimal]] | None] | None:
+    """Read one folded bake slot: a compact-record column, or a daily read's filter sums."""
+    complete = _folded_complete(folded, period, _EXPECTED_KINDS[metric])
+    if complete is None:
+        return None
+    units, qualifiers = complete
+    if isinstance(folded.value, ColumnView):
+        if folded.value.negative:
+            return None
+        return (folded.value, units, qualifiers), None
+    return ({}, units, qualifiers), cast("dict[str, dict[date, Decimal]]", folded.value)
+
+
+def _folded_viewability(folded: FoldResult[object], period: DateRange) -> Viewability | None:
+    """Read a folded DSP viewability operand that may cover only some of its window's days."""
+    metadata = folded.metadata
+    column = cast("ColumnView", folded.value)
+    if (
+        metadata.requested_coverage_intervals != (period,)
+        or metadata.suppression.rows_suppressed
+        or folded.truncated
+        or metadata.freshness_status is FreshnessStatus.NEVER_LOADED
+        or metadata.measurement_basis != (MeasurementBasis.AD_ATTRIBUTED,)
+        or column.negative
+    ):
+        return None
+    return Viewability(column, _missing_days(metadata.actual_coverage_intervals, period))
+
+
+def _missing_days(covered: tuple[DateRange, ...], period: DateRange) -> tuple[date, ...]:
+    """Return the days of `period` no covered interval reaches."""
+    days = {
+        interval.start + timedelta(days=offset)
+        for interval in covered
+        for offset in range(interval.days)
+    }
+    every = (period.start + timedelta(days=offset) for offset in range(period.days))
+    return tuple(day for day in every if day not in days)
+
+
 def _viewability_answer(
     answer: PresentationMeasurementAnswerSlot, period: DateRange
 ) -> Viewability | None:
@@ -1306,7 +1449,7 @@ def _complete_answer(
 
 
 type _PortfolioAnswer = tuple[
-    dict[tuple[str, ...], Decimal | int],
+    Mapping[tuple[str, ...], Decimal | int],
     Units,
     tuple[str, ...],
 ]

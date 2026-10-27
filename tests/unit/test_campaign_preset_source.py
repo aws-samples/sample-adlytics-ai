@@ -13,6 +13,7 @@ from typing import Any, cast
 
 import pytest
 from campaign_portfolio_support import all_channels_portfolio, portfolio_row
+from preset_artifact_support import staged_custody, staged_index, staged_pointer
 
 from adapters.campaign_artifact_renderer import (
     CampaignArtifactRenderInput,
@@ -27,6 +28,11 @@ from adapters.jobs.preset_artifact_publisher.campaign_source import (
     retained_campaign_preset_artifact_source,
 )
 from adapters.outbound.preset_artifacts import PresetArtifactPersistence
+from domain.operations.bake_refusals import (
+    IsolatedRefusal,
+    IsolatedRefusalReason,
+    RefusalScope,
+)
 from domain.presentation.analytical_pages import PresentationDimensionLabel
 from domain.presentation.campaign_custody import (
     campaign_custody_manifest_from_payload,
@@ -34,16 +40,21 @@ from domain.presentation.campaign_custody import (
 )
 from domain.presentation.campaign_portfolio import (
     CAMPAIGN_PORTFOLIO_MAX_ROWS,
+    CampaignPortfolioRosterShards,
     CampaignPortfolioSort,
     CampaignPortfolioSortField,
     campaign_portfolio_artifact_from_payload,
+    campaign_roster_shard_from_payload,
+    campaign_roster_shard_identity,
 )
 from domain.presentation.preset_artifacts import (
     MAX_PRESET_ARTIFACT_BYTES,
     ArtifactBodyWriteResult,
     CustodyManifestWriteResult,
     PresetArtifactBody,
+    PresetArtifactCustodyHeader,
     PresetArtifactCustodyManifest,
+    PresetArtifactIndexShardIdentity,
     PresetArtifactPage,
     PresetArtifactPointer,
     PresetArtifactPointerAdvanceOutcome,
@@ -51,6 +62,7 @@ from domain.presentation.preset_artifacts import (
     PresetArtifactPointerAdvanceResult,
     PresetArtifactPointerRosterRequest,
     PresetArtifactPointerRosterResult,
+    PresetArtifactPointerTemplate,
     PresetArtifactPublicationRequest,
     PresetArtifactRevision,
     PresetArtifactSiblingBody,
@@ -62,6 +74,8 @@ from domain.presentation.preset_artifacts import (
     PresetArtifactVariant,
     SourceUnchanged,
     canonical_preset_artifact_json,
+    index_shard_descriptors,
+    split_parent_custody,
 )
 from domain.semantics.analytical_resolution import (
     AuthorizedAnalyticalScope,
@@ -82,11 +96,12 @@ from domain.shared_kernel.errors import InvariantError
 from domain.shared_kernel.values import DateRange
 from ports.outbound.entity_catalog import (
     AnalyticalEntityCatalogPort,
+    BrowsePurpose,
     EntityCatalogBrowseRequest,
     EntityCatalogBrowseResult,
 )
 from ports.outbound.preset_artifacts import PresetArtifactPointerStorePort
-from ports.outbound.query import QueryRequest, QueryResult
+from ports.outbound.query import BAKE_MAX_ROWS, QueryRequest, QueryResult
 from ports.outbound.source_coverage import (
     SourceCoverageBounds,
     SourceCoverageRequest,
@@ -275,9 +290,25 @@ def test_baker_measures_full_population_and_emits_boundless_pagination() -> None
     assert artifact.pagination.total_count == population
     assert artifact.total_count == population
     assert len(artifact.rows) == CAMPAIGN_PORTFOLIO_MAX_ROWS
-    assert len(artifact.roster) == population
-    assert len(request.sibling_bodies) == 19
-    assert len(request.sibling_custody) == 19
+    # ADR-145: the body names its one roster shard and this bake's revision, not the roster.
+    assert artifact.roster == ()
+    assert artifact.roster_shards == CampaignPortfolioRosterShards(
+        request.pointer_template.complete(None).pointer.revision.value, 1
+    )
+    # 19 segments and the one roster shard.
+    assert request.siblings.count == len(tuple(request.siblings)) == 20
+    shard, shard_custody = next(
+        pair
+        for pair in request.siblings
+        if pair[0].identity == campaign_roster_shard_identity("all", 0)
+    )
+    assert artifact.roster_shards is not None
+    entries = campaign_roster_shard_from_payload(
+        json.loads(shard.payload_json), 0, artifact.roster_shards.revision
+    )
+    assert [entry.position for entry in entries] == list(range(population))
+    # A roster shard's custody binds its body and names no canonical row.
+    assert json.loads(shard_custody.payload_json)["rows"] == []
     # The pointer binds All channels, whose totals add up across channels (ADR-127).
     assert tuple(comparison.metric.value for comparison in artifact.totals) == (
         "spend",
@@ -289,12 +320,36 @@ def test_baker_measures_full_population_and_emits_boundless_pagination() -> None
     )
 
 
-def test_baker_refuses_a_population_beyond_the_declared_measurable_bound() -> None:
+@pytest.mark.covers("ADR-152")
+def test_a_population_past_the_memory_ceiling_refuses_the_page_and_names_it() -> None:
+    """The one Campaigns limit (ADR-152): past it the page refuses, never shows empty.
+
+    A truncated bake browse is `population_over_ceiling` with the population and the guard,
+    alarmed with the memory to set.
+    """
     source, catalog, compiler, _ = _source(population=3, truncated=True)
 
-    assert source.publication_for(VARIANT) is None
+    with pytest.raises(IsolatedRefusal) as raised:
+        source.publication_for(VARIANT)
+
+    refusal = raised.value
+    assert (refusal.reason, refusal.scope) == (
+        IsolatedRefusalReason.POPULATION_OVER_CEILING,
+        RefusalScope.PAGE,
+    )
+    assert dict(refusal.refusal_context) == {"guard": BAKE_MAX_ROWS, "population": 4}
     assert compiler.received == []
-    assert len(catalog.calls) == 1
+    (call,) = catalog.calls
+    assert (call.purpose, call.max_candidates) == (BrowsePurpose.BAKE, BAKE_MAX_ROWS)
+
+
+def test_a_population_within_the_memory_ceiling_bakes_every_campaign() -> None:
+    """Paired with the refusal above: an untruncated browse at the ceiling's purpose bakes."""
+    source, catalog, compiler, _ = _source(population=3)
+
+    assert isinstance(source.publication_for(VARIANT), PresetArtifactPublicationRequest)
+    assert len(compiler.received[0].selections) == 3
+    assert catalog.calls[0].purpose is BrowsePurpose.BAKE
 
 
 @pytest.mark.covers("ADR-070")
@@ -304,7 +359,7 @@ def test_revision_derives_from_the_exact_publication_identities_used() -> None:
     request = source.publication_for(VARIANT)
 
     assert isinstance(request, PresetArtifactPublicationRequest)
-    pointer = request.pointer_advance.pointer
+    pointer = request.pointer_template.complete(None).pointer
     assert pointer.revision == PresetArtifactRevision.from_publication_identities(
         ("publication-a", "publication-b"),
         render_format=CAMPAIGN_PRESET_RENDER_FORMAT,
@@ -318,7 +373,7 @@ def test_revision_derives_from_the_exact_publication_identities_used() -> None:
     assert pointer.resolved_window.end.isoformat() == body_payload["period"]["end"]
     assert pointer.comparison_window is not None
     assert pointer.comparison_window.end < pointer.resolved_window.start
-    assert request.pointer_advance.superseded_history_expires_at is None
+    assert request.pointer_template.superseded_history_expires_at is None
 
 
 @pytest.mark.covers("ADR-070")
@@ -326,7 +381,7 @@ def test_a_new_revision_supersedes_the_current_pointer_with_a_history_expiry() -
     source, _, _, _ = _source()
     first = source.publication_for(VARIANT)
     assert isinstance(first, PresetArtifactPublicationRequest)
-    current = first.pointer_advance.pointer
+    current = first.pointer_template.complete(None).pointer
 
     source_two, _, _, _ = _source(
         compiler=Compiler(identities=("publication-c",)),
@@ -335,11 +390,11 @@ def test_a_new_revision_supersedes_the_current_pointer_with_a_history_expiry() -
     request = source_two.publication_for(VARIANT)
 
     assert isinstance(request, PresetArtifactPublicationRequest)
-    pointer = request.pointer_advance.pointer
+    pointer = request.pointer_template.complete(None).pointer
     assert pointer.supersedes == current.revision
     assert pointer.forward_token == current.forward_token + 1
-    assert request.pointer_advance.superseded_history_expires_at is not None
-    assert request.pointer_advance.superseded_history_expires_at > NOW
+    assert request.pointer_template.superseded_history_expires_at is not None
+    assert request.pointer_template.superseded_history_expires_at > NOW
 
 
 def test_an_unchanged_revision_is_not_republished() -> None:
@@ -347,11 +402,13 @@ def test_an_unchanged_revision_is_not_republished() -> None:
     first = source.publication_for(VARIANT)
     assert isinstance(first, PresetArtifactPublicationRequest)
 
-    source_again, _, compiler, _ = _source(pointers=Pointers(pointer=first.pointer_advance.pointer))
+    source_again, _, compiler, _ = _source(
+        pointers=Pointers(pointer=first.pointer_template.complete(None).pointer)
+    )
 
     # S6 §2.8 (D26): unchanged is typed, never None, so a bake can tell it from unavailable.
     assert source_again.publication_for(VARIANT) == SourceUnchanged(
-        first.pointer_advance.pointer.revision
+        first.pointer_template.complete(None).pointer.revision
     )
     assert len(compiler.received) == 1
 
@@ -372,8 +429,8 @@ def test_custody_manifest_rows_align_with_public_rows_and_bind_the_body() -> Non
     request = source.publication_for(VARIANT)
 
     assert isinstance(request, PresetArtifactPublicationRequest)
-    assert request.custody is not None
-    custody = request.custody
+    custody = staged_custody(request)
+    assert custody is not None
     assert (custody.page, custody.variant, custody.revision) == (
         request.body.page,
         request.body.variant,
@@ -381,13 +438,15 @@ def test_custody_manifest_rows_align_with_public_rows_and_bind_the_body() -> Non
     )
     assert custody.key.startswith("custody/campaigns/7d/")
     assert request.body.payload_json.find(custody.digest) == -1
-    pointer = request.pointer_advance.pointer
+    pointer = staged_pointer(request)
     assert pointer.custody_digest == custody.digest
-    manifest = campaign_custody_manifest_from_payload(json.loads(custody.payload_json))
+    header, index = split_parent_custody(custody)
+    manifest = campaign_custody_manifest_from_payload(header)
     assert manifest.body_digest == request.body.digest
     artifact = campaign_portfolio_artifact_from_payload(json.loads(request.body.payload_json))
     assert len(manifest.rows) == len(artifact.rows) == CAMPAIGN_PORTFOLIO_MAX_ROWS
-    assert len(manifest.descriptors) == len(request.sibling_bodies) == 19
+    # ADR-145: the parent lists no sibling inline; its one index shard lists all 19.
+    assert len(index) == 1
     assert tuple(row.safe_signature for row in manifest.rows) == tuple(
         row.signature for row in artifact.rows
     )
@@ -409,34 +468,28 @@ def test_custody_manifest_rows_align_with_public_rows_and_bind_the_body() -> Non
 def test_custody_manifest_codec_round_trips_and_refuses_noncanonical_payloads() -> None:
     source, _, _, _ = _source()
     request = source.publication_for(VARIANT)
-    assert isinstance(request, PresetArtifactPublicationRequest) and request.custody is not None
-    payload = cast("dict[str, object]", json.loads(request.custody.payload_json))
+    assert isinstance(request, PresetArtifactPublicationRequest)
+    assert request.custody_header is not None
+    payload = cast("dict[str, object]", json.loads(request.custody_header.payload_json))
+    assert set(payload) == {"body_digest", "kind", "rows"}
 
     decoded = campaign_custody_manifest_from_payload(payload)
     assert campaign_custody_manifest_payload(decoded) == payload
-
-    legacy = {
-        key: value
-        for key, value in payload.items()
-        if key not in {"descriptors", "filter_siblings"}
-    }
-    legacy_decoded = campaign_custody_manifest_from_payload(legacy)
-    assert legacy_decoded.descriptors == ()
-    assert legacy_decoded.filter_siblings is None
-    assert legacy_decoded.rows == decoded.rows
-    # A manifest baked before render format 11 names no filter on its segment descriptors.
-    retained = {key: value for key, value in payload.items() if key != "filter_siblings"}
-    retained["descriptors"] = [
-        {key: value for key, value in item.items() if key != "filter_id"}
-        for item in cast("list[dict[str, object]]", payload["descriptors"])
-    ]
-    retained_decoded = campaign_custody_manifest_from_payload(retained)
-    assert all(item.filter_id is None for item in retained_decoded.segment_identities())
-    assert campaign_custody_manifest_payload(retained_decoded) == retained
+    # ADR-145: a custody listing its siblings inline (format 11 and before) is refused, as is
+    # a parent custody decoded with the stage's index still in it.
+    inline_forms: tuple[dict[str, object], ...] = (
+        {"descriptors": []},
+        {"descriptors": [], "filter_siblings": []},
+    )
+    for inline in inline_forms:
+        with pytest.raises(ValueError, match="fields are not exact"):
+            campaign_custody_manifest_from_payload({**payload, **inline})
+    with pytest.raises(ValueError, match="fields are not exact"):
+        campaign_custody_manifest_from_payload({**payload, "sibling_index": []})
 
     with pytest.raises(ValueError, match="fields are not exact"):
         campaign_custody_manifest_from_payload({**payload, "extra": True})
-    forged = cast("dict[str, object]", json.loads(request.custody.payload_json))
+    forged = cast("dict[str, object]", json.loads(request.custody_header.payload_json))
     forged_row = cast("dict[str, object]", cast("list[object]", forged["rows"])[0])
     cast("dict[str, object]", forged_row["campaign"])["value"] = " padded:campaign "
     with pytest.raises(ValueError, match=r"not canonical|invalid"):
@@ -454,9 +507,7 @@ class RecordingBodies:
         )
 
     def write_sibling(self, body: PresetArtifactSiblingBody) -> PresetArtifactSiblingWriteResult:
-        # Campaigns writes segment siblings only.
-        identity = cast("PresetArtifactSiblingIdentity", body.identity)
-        self.events.append(f"sibling-body:{identity.value}")
+        self.events.append(f"sibling-body:{body.identity.path}")
         return PresetArtifactSiblingWriteResult(
             body.page,
             body.variant,
@@ -494,8 +545,12 @@ class RecordingCustody:
     def write_sibling(
         self, manifest: PresetArtifactSiblingCustody
     ) -> PresetArtifactSiblingCustodyWriteResult:
-        identity = cast("PresetArtifactSiblingIdentity", manifest.identity)
-        self.events.append(f"sibling-custody:{identity.value}")
+        kind = (
+            "index"
+            if isinstance(manifest.identity, PresetArtifactIndexShardIdentity)
+            else "sibling-custody"
+        )
+        self.events.append(f"{kind}:{manifest.identity.path}")
         return PresetArtifactSiblingCustodyWriteResult(
             manifest.page,
             manifest.variant,
@@ -546,17 +601,14 @@ def _custody_request() -> PresetArtifactPublicationRequest:
     body = PresetArtifactBody(
         PAGE, VARIANT, revision, canonical_preset_artifact_json({"kind": "real"})
     )
-    custody = PresetArtifactCustodyManifest(
-        PAGE,
-        VARIANT,
-        revision,
-        canonical_preset_artifact_json(
-            {"body_digest": body.digest, "kind": "campaign_custody_manifest", "rows": []}
-        ),
-    )
-    pointer = PresetArtifactPointer(PAGE, VARIANT, revision, body.digest, 1, None, custody.digest)
     return PresetArtifactPublicationRequest(
-        body, PresetArtifactPointerAdvanceRequest(pointer), custody
+        body,
+        PresetArtifactPointerTemplate(PAGE, VARIANT, revision, body.digest, 1),
+        PresetArtifactCustodyHeader(
+            canonical_preset_artifact_json(
+                {"body_digest": body.digest, "kind": "campaign_custody_manifest", "rows": []}
+            )
+        ),
     )
 
 
@@ -569,7 +621,9 @@ def test_persistence_writes_body_and_custody_before_the_conditional_pointer() ->
         RecordingCustody(events),
     )
 
-    result = persistence.publish(_custody_request())
+    result = persistence.publish(
+        _custody_request(), remaining_ms=lambda: 600_000, tail_seconds=30.0
+    )
 
     assert events == ["body", "custody", "pointer"]
     assert result.custody is not None
@@ -581,9 +635,10 @@ def test_a_custody_bearing_publication_without_a_custody_store_fails_closed() ->
     persistence = PresetArtifactPersistence(RecordingBodies(events), RecordingPointers(events))
 
     with pytest.raises(InvariantError, match="custody store"):
-        persistence.publish(_custody_request())
+        persistence.publish(_custody_request(), remaining_ms=lambda: 600_000, tail_seconds=30.0)
 
-    assert events == ["body"]
+    # ADR-145: refused before any write, since the stage builds the custody it would write.
+    assert events == []
 
 
 class _RecordingQueries:
@@ -617,25 +672,40 @@ def test_parent_contains_only_canonical_first_segment_and_indexes_every_required
     population = CAMPAIGN_PORTFOLIO_MAX_ROWS + 11
     source, _, _, _ = _source(population=population)
     request = source.publication_for(VARIANT)
-    assert isinstance(request, PresetArtifactPublicationRequest) and request.custody is not None
+    assert isinstance(request, PresetArtifactPublicationRequest)
+    custody = staged_custody(request)
+    assert custody is not None
 
     parent = campaign_portfolio_artifact_from_payload(json.loads(request.body.payload_json))
-    manifest = campaign_custody_manifest_from_payload(json.loads(request.custody.payload_json))
-    identities = tuple(body.identity for body in request.sibling_bodies)
+    pairs = tuple(request.siblings)
+    identities = tuple(public.identity for public, _ in pairs)
+    shards = staged_index(request)
 
     assert parent.sort == CampaignPortfolioSort(CampaignPortfolioSortField.SPEND, "desc")
     assert parent.pagination is not None and parent.pagination.segment_index == 0
     assert len(parent.rows) == CAMPAIGN_PORTFOLIO_MAX_ROWS
-    assert PresetArtifactSiblingIdentity("spend-desc", 0) not in identities
-    assert len(identities) == 19
-    assert {item.identity for item in manifest.descriptors} == set(identities)
+    assert PresetArtifactSiblingIdentity("spend-desc", 0, "all") not in identities
+    # 19 segments and the one roster shard (ADR-145).
+    assert len(identities) == 20
+    assert campaign_roster_shard_identity("all", 0) in identities
+    # ADR-145: every sibling is indexed, sorted by identity path, with its pair's digests.
+    indexed = [item for shard, entry in shards for item in index_shard_descriptors(shard, entry)]
+    assert [item.identity for item in indexed] == sorted(identities, key=lambda item: item.path)
+    by_identity: dict[object, tuple[PresetArtifactSiblingBody, PresetArtifactSiblingCustody]] = {
+        public.identity: (public, private) for public, private in pairs
+    }
+    assert all(
+        (item.body_digest, item.custody_digest)
+        == (by_identity[item.identity][0].digest, by_identity[item.identity][1].digest)
+        for item in indexed
+    )
     assert all(
         len(item.payload_json.encode()) <= MAX_PRESET_ARTIFACT_BYTES
         for item in (
             request.body,
-            request.custody,
-            *request.sibling_bodies,
-            *request.sibling_custody,
+            custody,
+            *(shard for shard, _ in shards),
+            *(item for pair in pairs for item in pair),
         )
     )
 
@@ -650,11 +720,13 @@ def test_persistence_writes_every_sibling_pair_before_parent_and_pointer() -> No
         RecordingBodies(events), RecordingPointers(events), RecordingCustody(events)
     )
 
-    persistence.publish(request)
+    persistence.publish(request, remaining_ms=lambda: 600_000, tail_seconds=30.0)
 
-    assert events[-3:] == ["body", "custody", "pointer"]
-    assert all(event.startswith("sibling-") for event in events[:-3])
-    assert len(events[:-3]) == 38
+    # Every pair, then the one index shard, then the parent body, its custody and the pointer.
+    assert events[-4:] == ["index:index/segment-0000", "body", "custody", "pointer"]
+    assert all(event.startswith("sibling-") for event in events[:-4])
+    # 19 segment pairs and the one roster shard pair.
+    assert len(events[:-4]) == 40
 
 
 @dataclass
@@ -681,7 +753,7 @@ def test_partial_sibling_failure_never_writes_parent_or_advances_pointer() -> No
     )
 
     with pytest.raises(RuntimeError, match="partial sibling write"):
-        persistence.publish(request)
+        persistence.publish(request, remaining_ms=lambda: 600_000, tail_seconds=30.0)
 
     assert "body" not in events
     assert "custody" not in events
@@ -713,15 +785,20 @@ def test_declared_fourteen_day_variant_stays_body_bounded_at_scale(population: i
 
     request = source.publication_for(PresetArtifactVariant("14d"))
 
-    assert isinstance(request, PresetArtifactPublicationRequest) and request.custody is not None
+    assert isinstance(request, PresetArtifactPublicationRequest)
+    custody = staged_custody(request)
+    assert custody is not None
+    shards = staged_index(request)
     bodies = (
         request.body,
-        request.custody,
-        *request.sibling_bodies,
-        *request.sibling_custody,
+        custody,
+        *(shard for shard, _ in shards),
+        *(item for pair in request.siblings for item in pair),
     )
     assert all(len(body.payload_json.encode()) <= MAX_PRESET_ARTIFACT_BYTES for body in bodies)
-    assert len(bodies) == (400 if population == 1_000 else 800)
+    # 200 segment pairs (the parent's and 199 siblings), the roster's 500-entry shard pairs,
+    # and the one shard indexing every sibling.
+    assert len(bodies) == (405 if population == 1_000 else 809)
 
 
 @pytest.mark.covers("ADR-070", "ADR-084")
@@ -746,9 +823,10 @@ def test_change_blocks_start_campaign_render_format_seven() -> None:
 
     Format 8 adds the coverage block (ADR-119), format 9 NextStep.v2 (ADR-122) and format 10
     moves with the compared-metric roster (ADR-125); format 11 bakes the channel filter
-    siblings (ADR-127); each keeps them.
+    siblings (ADR-127); format 12 indexes every sibling (ADR-145); format 13 shards the name
+    roster (ADR-145); each keeps them.
     """
-    assert CAMPAIGN_PRESET_RENDER_FORMAT == 11
+    assert CAMPAIGN_PRESET_RENDER_FORMAT == 13
     assert PresetArtifactRevision.from_publication_identities(
         ("publication-a",), render_format=CAMPAIGN_PRESET_RENDER_FORMAT
     ) != PresetArtifactRevision.from_publication_identities(("publication-a",), render_format=6)

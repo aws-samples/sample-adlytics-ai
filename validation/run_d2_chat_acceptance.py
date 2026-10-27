@@ -17,10 +17,10 @@ same-origin chat route, and judges each turn against an outcome declared before 
   governed absence and state no figure.
 - **ARP.** `repeat_buyer_rate_arp` per cell for the latest vintage both cohort paths hold
   (pack 15 repeat buyers over pack 14 account-ID cohort size), and the standard-path rate.
-- **Outside the Audiences top-N.** Audiences shows the top `audiences_runtime_campaign_bound`
-  campaigns of pack 8's month, ranked as the bake ranks them (largest matched-segment
-  impressions, then key). The selected campaign is the first one beyond that bound, read from
-  the landed pack 8 rows, and chat must answer its segment and campaign figures.
+- **The lowest-ranked Audiences campaign.** Audiences lists every DSP campaign of pack 8's month,
+  ranked as the bake ranks them (largest matched-segment impressions, then key; ADR-141). The
+  selected campaign is the one ranked last, the hardest to reach, read from the landed pack 8
+  rows, and chat must answer its segment and campaign figures.
 - **Labels.** Each turn's evaluator labels are read through the Quality Review API by the turn's
   correlation, within a bounded wait, and the three `*-worst-label` alarms are judged over the
   run's window: OK passes; an ALARM passes only when a label of this run explains it.
@@ -62,7 +62,6 @@ from quality_review_client import (
     reviewer_client,
 )
 
-from adapters.jobs.preset_artifact_publisher.bakeability import audiences_runtime_campaign_bound
 from adapters.outbound.athena.execution import StatementRequest, start
 from adapters.outbound.cloudformation_stack import stack_resource_summaries
 from domain.evaluation.linkage import EvaluationResultStateV1
@@ -270,9 +269,9 @@ def turn_verdict(expect: Expectation, times: Mapping[str, Any]) -> dict[str, obj
     return {"verdict": FAIL if reasons else PASS, "reasons": reasons, "tools": completed}
 
 
-# --- outside the Audiences top-N (C3) --------------------------------------------------------
+# --- the lowest-ranked Audiences campaign (C3) -----------------------------------------------
 
-AUDIENCES_SELECTION = "audiences-first-campaign-beyond-bound-v1"
+AUDIENCES_SELECTION = "audiences-lowest-ranked-campaign-v2"
 AUDIENCES_RANK_SQL = (
     "SELECT campaign_key, max(coalesce(impressions, 0)) AS largest "
     "FROM adlytics_{environment}_v2_current.fct_segment_delivery "
@@ -283,31 +282,25 @@ AUDIENCES_RANK_SQL = (
 """Pack 8's month at campaign grain, DSP behaviour segments only (`_campaign_base`)."""
 
 
-def audiences_outside_selection(
-    rows: Sequence[tuple[str, Decimal]], bound: int
-) -> dict[str, object]:
-    """Rank pack 8's campaigns as the Audiences bake does and pick the first beyond the bound.
+def audiences_lowest_ranked_selection(rows: Sequence[tuple[str, Decimal]]) -> dict[str, object]:
+    """Rank pack 8's campaigns as the Audiences bake does and pick the one ranked last.
 
     The bake ranks by largest matched-segment impressions, descending, then campaign key
-    (`AudiencesSource._ranked`), and shows the first `bound`. The selection is the campaign
-    ranked `bound + 1`: listed by pack 8, not shown by the page. Refused when none is beyond.
+    (`audiences_source._campaign_index`), and lists every campaign. The selection is the last
+    of them. Refused when pack 8 lists none.
     """
-    if bound < 1:
-        raise ValueError("the Audiences campaign bound must be positive")
     keys = [key for key, _ in rows]
     if len(set(keys)) != len(keys):
         raise ValueError("pack 8's campaign list repeats a campaign")
     ranked = sorted(rows, key=lambda row: (-row[1], row[0]))
-    if len(ranked) <= bound:
-        raise ValueError(f"pack 8 lists {len(ranked)} campaigns, none beyond the bound {bound}")
+    if not ranked:
+        raise ValueError("pack 8 lists no campaign for the month")
     return {
         "selection": AUDIENCES_SELECTION,
-        "bound": bound,
         "listed": len(ranked),
-        "shown": [key for key, _ in ranked[:bound]],
-        "selected_item": ranked[bound][0],
-        "selected_rank": bound + 1,
-        "selected_largest_impressions": str(ranked[bound][1]),
+        "selected_item": ranked[-1][0],
+        "selected_rank": len(ranked),
+        "selected_largest_impressions": str(ranked[-1][1]),
     }
 
 
@@ -596,9 +589,8 @@ def _audiences_expectations(
     start, end = (day.isoformat() for day in month)
     sql = AUDIENCES_RANK_SQL.format(environment=environment, start=start, end=end)
     ranked = athena.rows("audiences_rank", sql)
-    selection = audiences_outside_selection(
-        [(str(key), Decimal(str(value))) for key, value in ranked],
-        audiences_runtime_campaign_bound(1),
+    selection = audiences_lowest_ranked_selection(
+        [(str(key), Decimal(str(value))) for key, value in ranked]
     )
     selection.update({"month": [start, end], "sql": sql})
     key = str(selection["selected_item"])

@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import boto3
 from botocore.exceptions import ClientError
@@ -29,11 +29,36 @@ from ports.outbound.preset_artifacts import (
 if TYPE_CHECKING:  # pragma: no cover
     from types_boto3_s3.client import S3Client
 
+    from domain.presentation.preset_artifacts import PresetArtifactChildIdentity
+
 __all__ = ["S3PresetArtifactBodyStore", "S3PresetArtifactCustodyStore"]
 
 PRESET_ARTIFACT_BODY_UNREADABLE = ErrorCode("PRESET_ARTIFACT_BODY", 1)
 PRESET_ARTIFACT_BODY_UNWRITABLE = ErrorCode("PRESET_ARTIFACT_BODY", 2)
 PRESET_ARTIFACT_BODY_CONFLICT = ErrorCode("PRESET_ARTIFACT_BODY", 3)
+
+_MISSING_OBJECT_CODES = frozenset({"NoSuchKey", "404"})
+
+
+def _is_missing(error: Exception) -> bool:
+    """Whether S3 answered that the requested key does not exist."""
+    return (
+        isinstance(error, ClientError)
+        and str(error.response.get("Error", {}).get("Code", "")) in _MISSING_OBJECT_CODES
+    )
+
+
+def _listed_object_missing(key: str) -> InvariantError:
+    """Refuse a sibling or index shard the parent custody lists but S3 lacks (ADR-145, 04 §8).
+
+    Every listed object is written before the custody that lists it, so its absence is an
+    integrity breach, never a dependency that a retry could cure.
+    """
+    return InvariantError(
+        PRESET_ARTIFACT_BODY_CONFLICT,
+        "An object the parent custody lists is missing.",
+        context={"key": key},
+    )
 
 
 class S3PresetArtifactBodyStore(PresetArtifactBodyStorePort):
@@ -145,6 +170,12 @@ class S3PresetArtifactBodyStore(PresetArtifactBodyStorePort):
 
     def read_sibling(self, request: PresetArtifactSiblingReadRequest) -> PresetArtifactSiblingBody:
         """Read and attest exactly one public sibling selected by the parent index."""
+        if request.descriptor.body_digest is None:
+            raise InvariantError(
+                PRESET_ARTIFACT_BODY_CONFLICT,
+                "An index shard has no public body.",
+                context={"identity": request.descriptor.identity.path},
+            )
         key = (
             f"pages/{request.page.value}/{request.variant.value}/{request.revision.value}/"
             f"{request.descriptor.identity.path}.json"
@@ -154,8 +185,8 @@ class S3PresetArtifactBodyStore(PresetArtifactBodyStorePort):
                 request.page,
                 request.variant,
                 request.revision,
-                request.descriptor.identity,
-                self._read_bytes(key).decode(),
+                cast("PresetArtifactChildIdentity", request.descriptor.identity),
+                self._read_bytes(key, listed=True).decode(),
             )
         except UnicodeDecodeError, ValueError:
             raise InvariantError(
@@ -171,11 +202,13 @@ class S3PresetArtifactBodyStore(PresetArtifactBodyStorePort):
             )
         return candidate
 
-    def _read_bytes(self, key: str) -> bytes:
+    def _read_bytes(self, key: str, *, listed: bool = False) -> bytes:
         try:
             response = self._client.get_object(Bucket=self._bucket, Key=key)
             return response["Body"].read()
         except Exception as error:
+            if listed and _is_missing(error):
+                raise _listed_object_missing(key) from None
             raise DependencyError(
                 PRESET_ARTIFACT_BODY_UNREADABLE,
                 "Preset artifact body could not be read.",
@@ -312,7 +345,7 @@ class S3PresetArtifactCustodyStore(PresetArtifactCustodyStorePort):
     def read_sibling(
         self, request: PresetArtifactSiblingReadRequest
     ) -> PresetArtifactSiblingCustody:
-        """Read and attest exactly one custody sibling selected by the parent index."""
+        """Read and attest one custody sibling or index shard the parent custody binds."""
         key = (
             f"custody/{request.page.value}/{request.variant.value}/{request.revision.value}/"
             f"{request.descriptor.identity.path}.json"
@@ -323,7 +356,7 @@ class S3PresetArtifactCustodyStore(PresetArtifactCustodyStorePort):
                 request.variant,
                 request.revision,
                 request.descriptor.identity,
-                self._read_bytes(key).decode(),
+                self._read_bytes(key, listed=True).decode(),
             )
         except UnicodeDecodeError, ValueError:
             raise InvariantError(
@@ -339,11 +372,13 @@ class S3PresetArtifactCustodyStore(PresetArtifactCustodyStorePort):
             )
         return candidate
 
-    def _read_bytes(self, key: str) -> bytes:
+    def _read_bytes(self, key: str, *, listed: bool = False) -> bytes:
         try:
             response = self._client.get_object(Bucket=self._bucket, Key=key)
             return response["Body"].read()
         except Exception as error:
+            if listed and _is_missing(error):
+                raise _listed_object_missing(key) from None
             raise DependencyError(
                 PRESET_ARTIFACT_BODY_UNREADABLE,
                 "Preset artifact custody manifest could not be read.",

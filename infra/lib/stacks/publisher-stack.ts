@@ -14,12 +14,13 @@ import { Construct } from 'constructs';
 
 import { AppConfig, paramPath, semanticV2AthenaWorkgroupName, semanticV2DatabaseName } from '../config';
 import { BAKER_RESERVED_CONCURRENCY, validateAthenaStartBudget } from '../config/athena-start-budget';
-import { ROUTES } from '../generated/execution-graph-protocol';
+import { BAKE_TASKS, ROUTES } from '../generated/execution-graph-protocol';
 import {
   executionGraphAuthority,
   grantGraphWorker,
   grantModeItemRead,
 } from './execution-graph-authority';
+import { buildBakeAlarms } from './execution-graph-alarms';
 import {
   arrivalAlarm,
   boundedStreamMapping,
@@ -168,7 +169,8 @@ export class PublisherStack extends cdk.Stack {
       handler: BAKER_HANDLER,
       sourceAssetPath: props.sourceAssetPath,
       dependencies,
-      memorySize: 1024,
+      // The contract's `bake_tasks.baker_memory_mib`, the memory model's one home (ADR-152).
+      memorySize: BAKE_TASKS.baker_memory_mib,
       timeoutSeconds: BAKE_TIMEOUT_SECONDS,
       reservedConcurrency: BAKER_RESERVED_CONCURRENCY,
       environment: {
@@ -304,9 +306,11 @@ export class PublisherStack extends cdk.Stack {
         conditions: { StringLike: { 's3:prefix': ['canonical/current/*'] } },
       }),
     );
+    // ADR-143: the baker reads each result object from its own bake/ prefix (below), never
+    // GetQueryResults, so the grant is gone (A1, least privilege).
     baker.addToRolePolicy(
       new iam.PolicyStatement({
-        actions: ['athena:StartQueryExecution', 'athena:GetQueryExecution', 'athena:GetQueryResults', 'athena:StopQueryExecution'],
+        actions: ['athena:StartQueryExecution', 'athena:GetQueryExecution', 'athena:StopQueryExecution'],
         resources: [`arn:${this.partition}:athena:${this.region}:${this.account}:workgroup/${semanticV2AthenaWorkgroupName(config.envName, 'bake')}`],
       }),
     );
@@ -388,6 +392,9 @@ export class PublisherStack extends cdk.Stack {
       queue: deadLetterQueue,
       action: staffedAction,
     });
+    // ADR-142 (A1): the isolated-refusal and over-budget alarms, in every environment, because
+    // both bake entries emit their metrics; alarm-only (no IAM, route, storage or function).
+    buildBakeAlarms(this, config, staffedAction);
     baker.addEventSource(
       new sources.SqsEventSource(bakeQueue, {
         batchSize: 1,

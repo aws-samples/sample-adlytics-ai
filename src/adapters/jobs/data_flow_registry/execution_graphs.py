@@ -179,7 +179,7 @@ def check_bake_tasks(contract: dict[str, Any]) -> None:
     counts += ("s3_chains_per_baker", "s3_chains_aggregate")
     counts += ("worker_schedule_seconds", "worker_pass_seconds", "precompute_claim_lease_seconds")
     counts += ("final_authority_members", "final_task_condition_members")
-    counts += ("final_written_pointer_members",)
+    counts += ("final_written_pointer_members", "baker_memory_mib")
     groups = block.get("lane_groups")
     serving = cast("dict[str, object]", contract.get("serving_coalescing") or {})
     guard = serving.get("next_election_min_remaining_ms")

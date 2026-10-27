@@ -46,6 +46,141 @@
           "aggregate_bytes_at_measured_history": 1088191
         }
       }
+    },
+    "remeasure_2026_10_18": {
+      "note": "re-measured 2026-10-18 after ADR-143: Retail health ranks its top 50 in the query",
+      "measured_on": "c09f7232b756a2b03393137af946f216d0df97d2",
+      "cause": "Retail health runs 47 plans at every preset (one ranked-keys read and four ranked series reads replace one spark read per day), budget 240 s; the memory model is printed by check-bakeability",
+      "changed_rows": [
+        "retail-health#1d",
+        "retail-health#7d",
+        "retail-health#14d"
+      ],
+      "digests": {
+        "d2-roster.out": {
+          "before": "sha256:8ce35ae9a9cafb082597394388e76ead2eed24079ba628a045073d66ddfffa5a",
+          "after": "sha256:a6a5b4f9d92d294746a19c56a49c9d4115b9157165cbe02c0fd8f73be7203f8a"
+        },
+        "check-bakeability.out": {
+          "before": "sha256:889a240899c1de6ae54a10ff54bfd26ca7dcd36d4681d9dd653027969a513fc2",
+          "after": "sha256:2680dfbe83504044b29991645657c55e0e710e5f9e73185223e9e612670d9d45"
+        },
+        "pin-section.json": {
+          "before": "sha256:074dad6d06eaaf6060b9e06515f3fab22fea95b56cb487cd8ecd8337fe126e0b",
+          "after": "sha256:05cc68fbabc41febaaba746a21abbca47e54e762a20806619b37ed76d1808a25"
+        }
+      },
+      "pin_aggregate_bytes": {
+        "before": 838395,
+        "after": 833066
+      },
+      "pin_largest_item": {
+        "before": {
+          "sk": "BAKE_SOURCE#scorecard#30d",
+          "bytes": 71062
+        },
+        "after": {
+          "sk": "BAKE_SOURCE#scorecard#30d",
+          "bytes": 71062
+        }
+      }
+    },
+    "remeasure_2026_10_25": {
+      "note": "re-measured 2026-10-25 after ADR-152: page-sized reads in SQL and the derived ceiling",
+      "measured_on": "5739e389b05a5b5420d4cc76d1ba22aeacaf5d3c",
+      "measured_on_note": "the parent commit plus the uncommitted r1r4 tree this receipt commits",
+      "cause": "Retail health runs one batch of 49 plans (the 50's rows, series and ad reads restricted to the ranked keys, two movers plans); Reach counts campaigns with spend in its batch (one plan, no campaign roster read); New customers ranks its gateway in the query",
+      "changed_rows": [
+        "retail-health#1d",
+        "retail-health#7d",
+        "retail-health#14d",
+        "reach#last_complete_month",
+        "reach#last_complete_quarter"
+      ],
+      "digests": {
+        "d2-roster.out": {
+          "before": "sha256:a6a5b4f9d92d294746a19c56a49c9d4115b9157165cbe02c0fd8f73be7203f8a",
+          "after": "sha256:94f7ca933d1edeb770f0470c823389e528891ef7891452a6f4dcab9c684e6cd1"
+        },
+        "check-bakeability.out": {
+          "before": "sha256:2680dfbe83504044b29991645657c55e0e710e5f9e73185223e9e612670d9d45",
+          "after": "sha256:a0af0cdee5db2007b52a17ed1debbe3d3ec4feb1b0fcc1c5b00aa9c427e6a5eb"
+        },
+        "pin-section.json": {
+          "before": "sha256:05cc68fbabc41febaaba746a21abbca47e54e762a20806619b37ed76d1808a25",
+          "after": "sha256:fb72fc6f01267d281f408a4482d0b8706a14e8e39ca17aa3b0324270de586dd8",
+          "format": "json.dumps(certificate_pin_section(), indent=1, sort_keys=True) + newline"
+        }
+      },
+      "pin_aggregate_bytes": {
+        "before": 833066,
+        "after": 833504
+      },
+      "pin_largest_item": {
+        "before": {
+          "sk": "BAKE_SOURCE#scorecard#30d",
+          "bytes": 71062
+        },
+        "after": {
+          "sk": "BAKE_SOURCE#scorecard#30d",
+          "bytes": 71062
+        }
+      }
+    },
+    "remeasure_2026_10_25_r3": {
+      "note": "re-measured 2026-10-25 after the ADR-070 chunked two-pass snapshot raised the exact-read bound from 100 to 1,000",
+      "measured_on": "4579fa9fdaef6fa7e4c4e6b22a3a1dbca8bb4577",
+      "measured_on_note": "the parent commit plus the uncommitted r3 tree this receipt commits",
+      "cause": "reach#last_complete_quarter's ad_spend plan (184 partitions) now binds, so pin_size.over_cap_plans is empty; no count, phase, second, budget or pin byte changed",
+      "changed_rows": [],
+      "digests": {
+        "pin-section.json": {
+          "before": "sha256:fb72fc6f01267d281f408a4482d0b8706a14e8e39ca17aa3b0324270de586dd8",
+          "after": "sha256:563665eb89fd81e25b9057505bbb7a39e2a17b4e3e1c769716be562887c8a639",
+          "format": "json.dumps(certificate_pin_section(), indent=1, sort_keys=True) + newline"
+        }
+      }
+    },
+    "remeasure_2026_10_25_r2a": {
+      "note": "re-measured 2026-10-25 after r2a read every Audiences campaign grouped (ADR-141, ADR-152)",
+      "measured_on": "43701d123901919003599be80b7c230c9e459fe2",
+      "measured_on_note": "the parent commit plus the uncommitted r2a tree this receipt commits",
+      "cause": "audiences#last_complete_month: 24 plans in 3 phases at any campaign count, write term WRITE_ALLOWANCE_SECONDS, budget 600 s; its scope reads change with the grouped campaign reads",
+      "changed_rows": [
+        "audiences#last_complete_month"
+      ],
+      "digests": {
+        "d2-roster.out": {
+          "before": "sha256:94f7ca933d1edeb770f0470c823389e528891ef7891452a6f4dcab9c684e6cd1",
+          "after": "sha256:31c85feff441f73989640c0f6114f13af6c36f75dd9d5231ab81ce2dfc686b85"
+        },
+        "pin-section.json": {
+          "before": "sha256:8999f3d84f690efec21e28ccc89c3258b5a4456dce966a1b8a40c151c4168d3e",
+          "after": "sha256:bd66ebb271d0c191fcbf50ff1f52891c73d0ed8ab6d63d19689ed94acc72b016"
+        }
+      }
+    },
+    "remeasure_2026_10_25_r2b": {
+      "note": "re-measured 2026-10-25 after r2b folded every Campaigns compare into one compact record per campaign (ADR-152)",
+      "measured_on": "9ed67c2ad39ef2f15b65c1508f956dec0f8637be",
+      "measured_on_note": "the parent commit plus the uncommitted r2b tree this receipt commits",
+      "cause": "campaigns#1d/7d/14d/30d: 26 plans at every preset (11 compares as one breakdown per window, one daily read per trend operand), write term WRITE_ALLOWANCE_SECONDS because segments grow with campaigns, budget 570 s",
+      "changed_rows": [
+        "campaigns#1d",
+        "campaigns#7d",
+        "campaigns#14d",
+        "campaigns#30d"
+      ],
+      "digests": {
+        "d2-roster.out": {
+          "before": "sha256:31c85feff441f73989640c0f6114f13af6c36f75dd9d5231ab81ce2dfc686b85",
+          "after": "sha256:a2f182c20eaaa9faa147f5497deb7dfd09beb806fbee118faa68ee7930d6c499"
+        },
+        "pin-section.json": {
+          "before": "sha256:fb72fc6f01267d281f408a4482d0b8706a14e8e39ca17aa3b0324270de586dd8",
+          "after": "sha256:6e0a6a3ffeee087f860835368ef42928bcbb820cf407115c1ce8fb4be821b124"
+        }
+      }
     }
   },
   "owning_design_digest": {
@@ -57,17 +192,17 @@
     {
       "command": "uv run python -m adapters.jobs.preset_artifact_publisher.bakeability --d2-roster",
       "raw_output": "d2-roster.out",
-      "sha256": "sha256:8ce35ae9a9cafb082597394388e76ead2eed24079ba628a045073d66ddfffa5a"
+      "sha256": "sha256:a2f182c20eaaa9faa147f5497deb7dfd09beb806fbee118faa68ee7930d6c499"
     },
     {
       "command": "make check-bakeability",
       "raw_output": "check-bakeability.out",
-      "sha256": "sha256:889a240899c1de6ae54a10ff54bfd26ca7dcd36d4681d9dd653027969a513fc2"
+      "sha256": "sha256:a0af0cdee5db2007b52a17ed1debbe3d3ec4feb1b0fcc1c5b00aa9c427e6a5eb"
     },
     {
       "command": "uv run python <custody>/pin_section.py",
       "raw_output": "pin-section.json",
-      "sha256": "sha256:074dad6d06eaaf6060b9e06515f3fab22fea95b56cb487cd8ecd8337fe126e0b"
+      "sha256": "sha256:6e0a6a3ffeee087f860835368ef42928bcbb820cf407115c1ce8fb4be821b124"
     },
     {
       "command": "python3 <custody>/write_seconds_extract.py graph-bake-delivery/benchmark/extract-bake/spans.json",
@@ -89,23 +224,24 @@
     "campaigns_measured_seconds": 11.2,
     "campaigns_adopted_seconds": 16.6,
     "other_pages": "no deployed write trace: campaigns' 16.6 adopted as a [projection] upper bound",
-    "audiences_branch": "w_aud = 16.6 <= 30, so C = 7 (19 + 6C = 61)"
+    "audiences_branch": "w_aud = WRITE_ALLOWANCE_SECONDS (450): parts grow with campaigns, so the stage's runtime write deadline is the one write limit; 24 plans at any campaign count",
+    "campaigns_branch": "w_campaigns = WRITE_ALLOWANCE_SECONDS (450): segments grow with campaigns, so the stage's runtime write deadline is the one write limit; 26 plans at any campaign count"
   },
   "rows": [
     {
       "key": "campaigns#1d",
       "certified_count": 26,
-      "derivation": "portfolio batch at the 1000-campaign estate bound over 1d and its equal prior; 0 spend-roster reads",
+      "derivation": "portfolio bake batch over 1d and its equal prior, at any campaign count: 22 compares into one compact record per campaign, 4 daily sums over 7 filters; 0 spend-roster reads",
       "phases": [
         26
       ],
       "write_seconds": {
-        "value": 16.6,
-        "marker": "projection",
-        "source": "adopted (conservative) 16.6 s; measured 11.2 s"
+        "value": 450.0,
+        "marker": "derived",
+        "source": "WRITE_ALLOWANCE_SECONDS: bodies grow with campaigns; the stage's deadline limits them"
       },
-      "certification_seconds": 136.6,
-      "budget_seconds": 240,
+      "certification_seconds": 570.0,
+      "budget_seconds": 570,
       "budget_basis": "contract budget, re-certified",
       "source_horizon_days": 123,
       "source_horizon_terms": {
@@ -130,28 +266,29 @@
           "reference_instant": "2025-01-01T00:00:00+00:00",
           "window": "2026-03-01..2026-03-01",
           "prior_window": "2026-02-28..2026-02-28",
-          "campaign_selections": "1000",
+          "campaign_selections": "50",
           "selection_marketplaces": "1",
+          "filters": "7",
           "sort": "spend desc",
           "roster_port": "counting port answering an empty roster"
         },
-        "output": "  campaigns#1d: count 26, phases [26], write 16.6 s [projection], 136.6 s <= 240 s (contract budget, re-certified), source horizon 123 d"
+        "output": "  campaigns#1d: count 26, phases [26], write 450.0 s [derived], 570.0 s <= 570 s (contract budget, re-certified), source horizon 123 d"
       }
     },
     {
       "key": "campaigns#7d",
       "certified_count": 26,
-      "derivation": "portfolio batch at the 1000-campaign estate bound over 7d and its equal prior; 0 spend-roster reads",
+      "derivation": "portfolio bake batch over 7d and its equal prior, at any campaign count: 22 compares into one compact record per campaign, 4 daily sums over 7 filters; 0 spend-roster reads",
       "phases": [
         26
       ],
       "write_seconds": {
-        "value": 16.6,
-        "marker": "projection",
-        "source": "adopted (conservative) 16.6 s; measured 11.2 s"
+        "value": 450.0,
+        "marker": "derived",
+        "source": "WRITE_ALLOWANCE_SECONDS: bodies grow with campaigns; the stage's deadline limits them"
       },
-      "certification_seconds": 136.6,
-      "budget_seconds": 240,
+      "certification_seconds": 570.0,
+      "budget_seconds": 570,
       "budget_basis": "contract budget, re-certified",
       "source_horizon_days": 123,
       "source_horizon_terms": {
@@ -176,28 +313,29 @@
           "reference_instant": "2025-01-01T00:00:00+00:00",
           "window": "2026-02-23..2026-03-01",
           "prior_window": "2026-02-16..2026-02-22",
-          "campaign_selections": "1000",
+          "campaign_selections": "50",
           "selection_marketplaces": "1",
+          "filters": "7",
           "sort": "spend desc",
           "roster_port": "counting port answering an empty roster"
         },
-        "output": "  campaigns#7d: count 26, phases [26], write 16.6 s [projection], 136.6 s <= 240 s (contract budget, re-certified), source horizon 123 d"
+        "output": "  campaigns#7d: count 26, phases [26], write 450.0 s [derived], 570.0 s <= 570 s (contract budget, re-certified), source horizon 123 d"
       }
     },
     {
       "key": "campaigns#14d",
-      "certified_count": 30,
-      "derivation": "portfolio batch at the 1000-campaign estate bound over 14d and its equal prior; 0 spend-roster reads",
+      "certified_count": 26,
+      "derivation": "portfolio bake batch over 14d and its equal prior, at any campaign count: 22 compares into one compact record per campaign, 4 daily sums over 7 filters; 0 spend-roster reads",
       "phases": [
-        30
+        26
       ],
       "write_seconds": {
-        "value": 16.6,
-        "marker": "projection",
-        "source": "adopted (conservative) 16.6 s; measured 11.2 s"
+        "value": 450.0,
+        "marker": "derived",
+        "source": "WRITE_ALLOWANCE_SECONDS: bodies grow with campaigns; the stage's deadline limits them"
       },
-      "certification_seconds": 136.6,
-      "budget_seconds": 270,
+      "certification_seconds": 570.0,
+      "budget_seconds": 570,
       "budget_basis": "contract budget, re-certified",
       "source_horizon_days": 123,
       "source_horizon_terms": {
@@ -222,28 +360,29 @@
           "reference_instant": "2025-01-01T00:00:00+00:00",
           "window": "2026-02-16..2026-03-01",
           "prior_window": "2026-02-02..2026-02-15",
-          "campaign_selections": "1000",
+          "campaign_selections": "50",
           "selection_marketplaces": "1",
+          "filters": "7",
           "sort": "spend desc",
           "roster_port": "counting port answering an empty roster"
         },
-        "output": "  campaigns#14d: count 30, phases [30], write 16.6 s [projection], 136.6 s <= 270 s (contract budget, re-certified), source horizon 123 d"
+        "output": "  campaigns#14d: count 26, phases [26], write 450.0 s [derived], 570.0 s <= 570 s (contract budget, re-certified), source horizon 123 d"
       }
     },
     {
       "key": "campaigns#30d",
-      "certified_count": 34,
-      "derivation": "portfolio batch at the 1000-campaign estate bound over 30d and its equal prior; 0 spend-roster reads",
+      "certified_count": 26,
+      "derivation": "portfolio bake batch over 30d and its equal prior, at any campaign count: 22 compares into one compact record per campaign, 4 daily sums over 7 filters; 0 spend-roster reads",
       "phases": [
-        34
+        26
       ],
       "write_seconds": {
-        "value": 16.6,
-        "marker": "projection",
-        "source": "adopted (conservative) 16.6 s; measured 11.2 s"
+        "value": 450.0,
+        "marker": "derived",
+        "source": "WRITE_ALLOWANCE_SECONDS: bodies grow with campaigns; the stage's deadline limits them"
       },
-      "certification_seconds": 166.6,
-      "budget_seconds": 300,
+      "certification_seconds": 570.0,
+      "budget_seconds": 570,
       "budget_basis": "contract budget, re-certified",
       "source_horizon_days": 123,
       "source_horizon_terms": {
@@ -268,29 +407,29 @@
           "reference_instant": "2025-01-01T00:00:00+00:00",
           "window": "2026-01-31..2026-03-01",
           "prior_window": "2026-01-01..2026-01-30",
-          "campaign_selections": "1000",
+          "campaign_selections": "50",
           "selection_marketplaces": "1",
+          "filters": "7",
           "sort": "spend desc",
           "roster_port": "counting port answering an empty roster"
         },
-        "output": "  campaigns#30d: count 34, phases [34], write 16.6 s [projection], 166.6 s <= 300 s (contract budget, re-certified), source horizon 123 d"
+        "output": "  campaigns#30d: count 26, phases [26], write 450.0 s [derived], 570.0 s <= 570 s (contract budget, re-certified), source horizon 123 d"
       }
     },
     {
       "key": "retail-health#1d",
-      "certified_count": 46,
-      "derivation": "main batch 42 over 1d and its prior with one spark query per day, then the product-ad batch 4 (sequential: reached after the main answer)",
+      "certified_count": 49,
+      "derivation": "one batch of 49 over 1d and its prior: compares and trends, the ranked top-50 keys with the population count and sums, the 50's rows, series and product-ad reads, and the three movers (constant in the catalog, ADR-152)",
       "phases": [
-        42,
-        4
+        49
       ],
       "write_seconds": {
         "value": 16.6,
         "marker": "projection",
         "source": "campaigns' 16.6 adopted as a conservative upper bound: no deployed write trace"
       },
-      "certification_seconds": 226.6,
-      "budget_seconds": 420,
+      "certification_seconds": 196.6,
+      "budget_seconds": 240,
       "budget_basis": "contract budget, re-certified",
       "source_horizon_days": 106,
       "source_horizon_terms": {
@@ -306,32 +445,30 @@
       },
       "counter": {
         "builder": [
-          "adapters.jobs.preset_artifact_publisher.retail_source.retail_health_measurement_batch",
-          "adapters.jobs.preset_artifact_publisher.retail_source.retail_product_ad_batch"
+          "adapters.jobs.preset_artifact_publisher.retail_source.retail_health_measurement_batch"
         ],
         "fixture": {
           "reference_instant": "2025-01-01T00:00:00+00:00",
           "window": "2026-03-01..2026-03-01",
           "prior_window": "2026-02-28..2026-02-28"
         },
-        "output": "  retail-health#1d: count 46, phases [42, 4], write 16.6 s [projection], 226.6 s <= 420 s (contract budget, re-certified), source horizon 106 d"
+        "output": "  retail-health#1d: count 49, phases [49], write 16.6 s [projection], 196.6 s <= 240 s (contract budget, re-certified), source horizon 106 d"
       }
     },
     {
       "key": "retail-health#7d",
-      "certified_count": 70,
-      "derivation": "main batch 66 over 7d and its prior with one spark query per day, then the product-ad batch 4 (sequential: reached after the main answer)",
+      "certified_count": 49,
+      "derivation": "one batch of 49 over 7d and its prior: compares and trends, the ranked top-50 keys with the population count and sums, the 50's rows, series and product-ad reads, and the three movers (constant in the catalog, ADR-152)",
       "phases": [
-        66,
-        4
+        49
       ],
       "write_seconds": {
         "value": 16.6,
         "marker": "projection",
         "source": "campaigns' 16.6 adopted as a conservative upper bound: no deployed write trace"
       },
-      "certification_seconds": 286.6,
-      "budget_seconds": 420,
+      "certification_seconds": 196.6,
+      "budget_seconds": 240,
       "budget_basis": "contract budget, re-certified",
       "source_horizon_days": 106,
       "source_horizon_terms": {
@@ -347,32 +484,30 @@
       },
       "counter": {
         "builder": [
-          "adapters.jobs.preset_artifact_publisher.retail_source.retail_health_measurement_batch",
-          "adapters.jobs.preset_artifact_publisher.retail_source.retail_product_ad_batch"
+          "adapters.jobs.preset_artifact_publisher.retail_source.retail_health_measurement_batch"
         ],
         "fixture": {
           "reference_instant": "2025-01-01T00:00:00+00:00",
           "window": "2026-02-23..2026-03-01",
           "prior_window": "2026-02-16..2026-02-22"
         },
-        "output": "  retail-health#7d: count 70, phases [66, 4], write 16.6 s [projection], 286.6 s <= 420 s (contract budget, re-certified), source horizon 106 d"
+        "output": "  retail-health#7d: count 49, phases [49], write 16.6 s [projection], 196.6 s <= 240 s (contract budget, re-certified), source horizon 106 d"
       }
     },
     {
       "key": "retail-health#14d",
-      "certified_count": 98,
-      "derivation": "main batch 94 over 14d and its prior with one spark query per day, then the product-ad batch 4 (sequential: reached after the main answer)",
+      "certified_count": 49,
+      "derivation": "one batch of 49 over 14d and its prior: compares and trends, the ranked top-50 keys with the population count and sums, the 50's rows, series and product-ad reads, and the three movers (constant in the catalog, ADR-152)",
       "phases": [
-        94,
-        4
+        49
       ],
       "write_seconds": {
         "value": 16.6,
         "marker": "projection",
         "source": "campaigns' 16.6 adopted as a conservative upper bound: no deployed write trace"
       },
-      "certification_seconds": 376.6,
-      "budget_seconds": 420,
+      "certification_seconds": 196.6,
+      "budget_seconds": 240,
       "budget_basis": "contract budget, re-certified",
       "source_horizon_days": 106,
       "source_horizon_terms": {
@@ -388,15 +523,14 @@
       },
       "counter": {
         "builder": [
-          "adapters.jobs.preset_artifact_publisher.retail_source.retail_health_measurement_batch",
-          "adapters.jobs.preset_artifact_publisher.retail_source.retail_product_ad_batch"
+          "adapters.jobs.preset_artifact_publisher.retail_source.retail_health_measurement_batch"
         ],
         "fixture": {
           "reference_instant": "2025-01-01T00:00:00+00:00",
           "window": "2026-02-16..2026-03-01",
           "prior_window": "2026-02-02..2026-02-15"
         },
-        "output": "  retail-health#14d: count 98, phases [94, 4], write 16.6 s [projection], 376.6 s <= 420 s (contract budget, re-certified), source horizon 106 d"
+        "output": "  retail-health#14d: count 49, phases [49], write 16.6 s [projection], 196.6 s <= 240 s (contract budget, re-certified), source horizon 106 d"
       }
     },
     {
@@ -848,18 +982,17 @@
     {
       "key": "reach#last_complete_month",
       "certified_count": 16,
-      "derivation": "1 marketplace(s), every pack published on the base series; 2 sequential roster read(s) (channel, campaign), then measurement",
+      "derivation": "1 marketplace(s), every pack published on the base series; 1 sequential roster read(s) (channel, campaign), then measurement",
       "phases": [
         1,
-        1,
-        14
+        15
       ],
       "write_seconds": {
         "value": 16.6,
         "marker": "projection",
         "source": "campaigns' 16.6 adopted as a conservative upper bound: no deployed write trace"
       },
-      "certification_seconds": 166.6,
+      "certification_seconds": 136.6,
       "budget_seconds": 180,
       "budget_basis": "contract budget, re-certified",
       "source_horizon_days": 261,
@@ -896,24 +1029,23 @@
           "roster_port": "counting port answering an empty roster",
           "instances": "12 over the 12 2025 month starts; the largest"
         },
-        "output": "  reach#last_complete_month: count 16, phases [1, 1, 14], write 16.6 s [projection], 166.6 s <= 180 s (contract budget, re-certified), source horizon 261 d"
+        "output": "  reach#last_complete_month: count 16, phases [1, 15], write 16.6 s [projection], 136.6 s <= 180 s (contract budget, re-certified), source horizon 261 d"
       }
     },
     {
       "key": "reach#last_complete_quarter",
       "certified_count": 8,
-      "derivation": "1 marketplace(s), every pack published on the base series; 2 sequential roster read(s) (channel, campaign), then measurement",
+      "derivation": "1 marketplace(s), every pack published on the base series; 1 sequential roster read(s) (channel, campaign), then measurement",
       "phases": [
         1,
-        1,
-        6
+        7
       ],
       "write_seconds": {
         "value": 16.6,
         "marker": "projection",
         "source": "campaigns' 16.6 adopted as a conservative upper bound: no deployed write trace"
       },
-      "certification_seconds": 136.6,
+      "certification_seconds": 106.6,
       "budget_seconds": 150,
       "budget_basis": "contract budget, re-certified",
       "source_horizon_days": 261,
@@ -950,7 +1082,7 @@
           "roster_port": "counting port answering an empty roster",
           "instances": "4 over the 12 2025 month starts; the largest"
         },
-        "output": "  reach#last_complete_quarter: count 8, phases [1, 1, 6], write 16.6 s [projection], 136.6 s <= 150 s (contract budget, re-certified), source horizon 261 d"
+        "output": "  reach#last_complete_quarter: count 8, phases [1, 7], write 16.6 s [projection], 106.6 s <= 150 s (contract budget, re-certified), source horizon 261 d"
       }
     },
     {
@@ -995,22 +1127,20 @@
     },
     {
       "key": "audiences#last_complete_month",
-      "certified_count": 61,
-      "derivation": "19 + 6C at C = 7 (M = 1, P = 3): list, roster rounds of P + C, C and C, then P x 5 + 3C measurement",
+      "certified_count": 24,
+      "derivation": "24 per marketplace at any campaign count (M = 1, P = 3): P rosters + 4 grouped campaign reads, P x 5 measurement + the history walk, then its withheld part",
       "phases": [
-        1,
-        10,
         7,
-        7,
-        36
+        16,
+        1
       ],
       "write_seconds": {
-        "value": 16.6,
-        "marker": "projection",
-        "source": "campaigns' 16.6 adopted as a conservative upper bound: no deployed write trace"
+        "value": 450.0,
+        "marker": "derived",
+        "source": "WRITE_ALLOWANCE_SECONDS: parts grow with campaigns; the stage's deadline limits them"
       },
-      "certification_seconds": 286.6,
-      "budget_seconds": 300,
+      "certification_seconds": 600.0,
+      "budget_seconds": 600,
       "budget_basis": "contract budget, re-certified",
       "source_horizon_days": 218,
       "source_horizon_terms": {
@@ -1027,7 +1157,7 @@
       },
       "counter": {
         "builder": [
-          "adapters.jobs.preset_artifact_publisher.audiences_source.AudiencesArtifactRenderer._request",
+          "adapters.jobs.preset_artifact_publisher.audiences_source.AudiencesArtifactRenderer.campaign_requests",
           "adapters.jobs.preset_artifact_publisher.audiences_source.AudiencesArtifactRenderer._scopes",
           "adapters.jobs.preset_artifact_publisher.audiences_source.AudiencesArtifactRenderer._roster",
           "adapters.jobs.preset_artifact_publisher.audiences_source.AudiencesArtifactRenderer._plan",
@@ -1036,33 +1166,31 @@
         "fixture": {
           "reference_instant": "2025-01-01T00:00:00+00:00",
           "window": "2024-12-01..2024-12-31",
+          "prior": "2024-11-01..2024-11-30",
           "marketplaces": "1",
           "profile_scopes": "3",
-          "campaign_bound": "7",
-          "write_seconds": "16.6",
-          "served": "every profile and delivery contract for the period",
-          "roster_reads_per_scope": "profile 1, campaign 3",
+          "served": "every profile contract for the period; pack 8 and its prior month",
+          "roster_reads": "profile 1, campaign history 2",
           "roster_port": "counting port answering an empty roster"
         },
-        "output": "  audiences#last_complete_month: count 61, phases [1, 10, 7, 7, 36], write 16.6 s [projection], 286.6 s <= 300 s (contract budget, re-certified), source horizon 218 d"
+        "output": "  audiences#last_complete_month: count 24, phases [7, 16, 1], write 450.0 s [derived], 600.0 s <= 600 s (contract budget, re-certified), source horizon 218 d"
       }
     }
   ],
   "totals": {
     "n": 20,
-    "sum_budget_seconds": 4080,
-    "root_bound_seconds": 4140,
-    "winner_policy_seconds": 7200,
-    "audiences_roster_fan_out_width": 10
+    "sum_budget_seconds": 5070,
+    "root_bound_seconds": 5130,
+    "winner_policy_seconds": 7200
   },
   "lane_result": {
     "n": 20,
     "gray_code_steps": 524288,
     "loads_seconds": [
-      1379.4,
-      1382.6
+      2286.4,
+      2282.6
     ],
-    "makespan_seconds": 1382.6
+    "makespan_seconds": 2286.4
   },
   "o3_scope_families": [
     {
@@ -1999,7 +2127,7 @@
         "reads": 14,
         "blob_bytes": 36734,
         "item_sk": "BAKE_SOURCE#campaigns#14d",
-        "item_bytes": 51629,
+        "item_bytes": 51337,
         "scope_reads": [
           {
             "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-44afe5f0db1ad0490dd9c9a7|snapshot|iso_gregorian|0|UTC|source_business_date",
@@ -2051,7 +2179,7 @@
         "reads": 14,
         "blob_bytes": 48442,
         "item_sk": "BAKE_SOURCE#campaigns#30d",
-        "item_bytes": 67533,
+        "item_bytes": 66949,
         "scope_reads": [
           {
             "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-44afe5f0db1ad0490dd9c9a7|snapshot|iso_gregorian|0|UTC|source_business_date",
@@ -2103,7 +2231,7 @@
         "reads": 11,
         "blob_bytes": 15936,
         "item_sk": "BAKE_SOURCE#retail-health#1d",
-        "item_bytes": 25071,
+        "item_bytes": 25290,
         "scope_reads": [
           {
             "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-44afe5f0db1ad0490dd9c9a7|snapshot|iso_gregorian|0|UTC|source_business_date",
@@ -2155,7 +2283,7 @@
         "reads": 11,
         "blob_bytes": 19122,
         "item_sk": "BAKE_SOURCE#retail-health#7d",
-        "item_bytes": 31071,
+        "item_bytes": 29538,
         "scope_reads": [
           {
             "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-44afe5f0db1ad0490dd9c9a7|snapshot|iso_gregorian|0|UTC|source_business_date",
@@ -2207,7 +2335,7 @@
         "reads": 11,
         "blob_bytes": 22672,
         "item_sk": "BAKE_SOURCE#retail-health#14d",
-        "item_bytes": 37853,
+        "item_bytes": 34276,
         "scope_reads": [
           {
             "scope": "dim_campaign|amazon_retail_us|amazon_us|lens-44afe5f0db1ad0490dd9c9a7|snapshot|iso_gregorian|0|UTC|source_business_date",
@@ -3189,9 +3317,9 @@
         "key": "audiences#last_complete_month",
         "source_horizon_days": 218,
         "reads": 14,
-        "blob_bytes": 3787,
+        "blob_bytes": 3868,
         "item_sk": "BAKE_SOURCE#audiences#last_complete_month",
-        "item_bytes": 9996,
+        "item_bytes": 7403,
         "scope_reads": [
           {
             "scope": "dim_audience_segment|amazon_retail_us|amazon_us|lens-3957043c3d757ec09641cf2c|periodic|iso_gregorian|0|UTC|source_business_date",
@@ -3271,30 +3399,30 @@
       "sk": "BAKE_SOURCE#scorecard#30d",
       "bytes": 71062
     },
-    "aggregate_bytes": 838395,
-    "oracle_aggregate_bytes": 813819,
+    "aggregate_bytes": 830035,
+    "oracle_aggregate_bytes": 805459,
     "headroom": {
       "item_bytes": 328938,
-      "aggregate_bytes": 3161605,
-      "vs_previous_aggregate_bytes": 376564,
+      "aggregate_bytes": 3169965,
+      "vs_previous_aggregate_bytes": 384924,
       "vs_previous_largest_item_bytes": 22471
     },
     "by_history_days": {
       "85": {
-        "largest_item_bytes": 56317,
-        "aggregate_bytes": 623031
+        "largest_item_bytes": 55733,
+        "aggregate_bytes": 614671
       },
       "463": {
         "largest_item_bytes": 71062,
-        "aggregate_bytes": 833635
+        "aggregate_bytes": 825275
       },
       "731": {
         "largest_item_bytes": 71062,
-        "aggregate_bytes": 837271
+        "aggregate_bytes": 828911
       },
       "1257": {
         "largest_item_bytes": 71062,
-        "aggregate_bytes": 838395
+        "aggregate_bytes": 830035
       }
     },
     "invariance": {
@@ -3308,20 +3436,9 @@
     },
     "negative_control_unbounded": {
       "item_over_400000_at_history_days": 670,
-      "aggregate_over_4000000_at_history_days": 380,
-      "aggregate_bytes_at_measured_history": 1088191
+      "aggregate_over_4000000_at_history_days": 381,
+      "aggregate_bytes_at_measured_history": 1079835
     },
-    "over_cap_plans": [
-      [
-        "reach#last_complete_quarter",
-        "ad_spend",
-        184
-      ],
-      [
-        "reach#last_complete_quarter",
-        "ad_spend",
-        184
-      ]
-    ]
+    "over_cap_plans": []
   }
 }

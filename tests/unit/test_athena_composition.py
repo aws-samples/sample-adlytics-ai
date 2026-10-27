@@ -189,6 +189,16 @@ class TestTruncationAndDeterminism:
         assert compose(revenue_plan, max_rows=1).sql.endswith("LIMIT 2")
         assert compose(revenue_plan, max_rows=500).sql.endswith("LIMIT 501")
 
+    def test_a_grouped_fold_reads_every_row_in_grain_order(
+        self, revenue_plan: BoundQueryPlan
+    ) -> None:
+        """Paired: `max_rows=None` (`BAKE_GROUPED`) drops only the `LIMIT`; the order stays."""
+        limited = compose(revenue_plan, max_rows=10).sql
+        grouped = compose(revenue_plan, max_rows=None).sql
+        assert "LIMIT" not in grouped
+        assert grouped.endswith('ORDER BY "amazon_asin"')
+        assert limited == f"{grouped} LIMIT 11"
+
     def test_it_orders_by_the_reported_grain(self, revenue_plan: BoundQueryPlan) -> None:
         """Without ORDER BY, "the first 100 rows" is a different 100 each run."""
         assert 'ORDER BY "amazon_asin"' in compose(revenue_plan, max_rows=10).sql
@@ -283,6 +293,16 @@ class TestMonetaryDrillAcrossCarriesCurrency:
         assert 's0."currency_code" AS "currency_code", s0.value_0' in composed.sql
         assert 'GROUP BY "date_key", "currency_code"' in composed.sql
         assert bound.logical.selected_columns == ("date_key", "currency_code")
+
+    def test_a_grouped_drill_across_drops_only_the_limit(self) -> None:
+        """D1 (dev 2026-10-25): a cross-fact ratio folded per row (`BAKE_GROUPED`) composes."""
+        bound = self._bound("cost_per_purchase")
+        limited = compose(bound, max_rows=10).sql
+        grouped = compose(bound, max_rows=None).sql
+
+        assert "LIMIT" not in grouped
+        assert grouped.endswith('s0."currency_code" = s1."currency_code" ORDER BY 1')
+        assert limited == f"{grouped} LIMIT 11"
 
     def test_two_sided_currency_is_part_of_the_join_key(self) -> None:
         bound = self._bound("cost_per_purchase")

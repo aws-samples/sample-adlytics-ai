@@ -16,9 +16,27 @@ from domain.semantics.analytical_resolution import (
     EntityReference,
 )
 from domain.shared_kernel.values import DateRange
+from ports.outbound.query import BAKE_MAX_ROWS
 
 MAX_ENTITY_CANDIDATES = 25
 MAX_CAMPAIGN_PORTFOLIO_CANDIDATES = 1_000
+
+
+class BrowsePurpose(StrEnum):
+    """Who browses the campaign population, and so how many campaigns it may ask for."""
+
+    INTERACTIVE = "interactive"
+    """A request-time list: at most `MAX_CAMPAIGN_PORTFOLIO_CANDIDATES`."""
+    BAKE = "bake"
+    """A publish-time bake: at most `BAKE_MAX_ROWS`, the ceiling the Baker's memory certifies
+    (ADR-152). Past it the bake refuses the page with `population_over_ceiling`."""
+
+
+def campaign_candidate_limit(purpose: BrowsePurpose) -> int:
+    """Return the most campaigns one browse of this purpose may ask for."""
+    return BAKE_MAX_ROWS if purpose is BrowsePurpose.BAKE else MAX_CAMPAIGN_PORTFOLIO_CANDIDATES
+
+
 MAX_PUBLIC_LABEL_ITEMS = 500
 PUBLIC_LABEL_DIMENSIONS = frozenset(
     {
@@ -118,12 +136,16 @@ class EntityCatalogBrowseRequest:
     current_on: date | None
     context: EntityContext
     max_candidates: int
+    purpose: BrowsePurpose = BrowsePurpose.INTERACTIVE
+    """Whose browse this is: it sets the campaign-only limit (FEAT-008 step 1)."""
 
     def __post_init__(self) -> None:
         if (self.window is None) == (self.current_on is None):
             raise ValueError("entity catalog browse requires exactly one window or current day.")
+        if self.purpose is BrowsePurpose.BAKE and self.kinds != frozenset({EntityKind.CAMPAIGN}):
+            raise ValueError("a bake browse reads the campaign population only.")
         limit = (
-            MAX_CAMPAIGN_PORTFOLIO_CANDIDATES
+            campaign_candidate_limit(self.purpose)
             if self.kinds == frozenset({EntityKind.CAMPAIGN})
             else MAX_ENTITY_CANDIDATES
         )
@@ -141,7 +163,8 @@ class EntityCatalogBrowseResult:
 
     def __post_init__(self) -> None:
         candidates = {(alias.kind, alias.key) for alias in self.aliases}
-        if len(candidates) > MAX_CAMPAIGN_PORTFOLIO_CANDIDATES:
+        # The widest purpose's limit; each request's own `max_candidates` bounds its result.
+        if len(candidates) > max(campaign_candidate_limit(purpose) for purpose in BrowsePurpose):
             raise ValueError("entity catalog returned more candidates than the bounded contract.")
         if self.authorized_count == 0 and not self.truncated:
             object.__setattr__(self, "authorized_count", len(candidates))

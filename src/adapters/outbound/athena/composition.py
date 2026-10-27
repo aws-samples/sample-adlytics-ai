@@ -45,8 +45,26 @@ from domain.measurement.planning import (
     withheld_rows_alias,
 )
 from domain.measurement.publications import BoundQueryPlan
+from domain.measurement.ranking import (
+    RANK_ORDER,
+    RankedMembership,
+    RankedProjection,
+    RankedRead,
+)
 
-__all__ = ["ComposedQuery", "compose", "compose_series"]
+__all__ = [
+    "POPULATION_COUNT",
+    "POPULATION_SUPPRESSED",
+    "RANKED_CTE",
+    "ComposedQuery",
+    "compose",
+    "compose_series",
+    "population_columns",
+    "population_sum_alias",
+]
+
+RANKED_CTE = "ranked"
+"""The one CTE a ranked statement declares: the restriction's top `n` keys and rank values."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,7 +134,9 @@ def _quoted(identifier: str) -> str:
     return f'"{identifier}"'
 
 
-def compose(bound: BoundQueryPlan, max_rows: int) -> ComposedQuery:
+def compose(
+    bound: BoundQueryPlan, max_rows: int | None, ranked: RankedRead | None = None
+) -> ComposedQuery:
     """Build a publication-fenced aggregate query from one bound logical plan.
 
     Shape, and every part of it comes from the plan rather than from a choice made here:
@@ -142,19 +162,39 @@ def compose(bound: BoundQueryPlan, max_rows: int) -> ComposedQuery:
     carries, so joining the dimension would add nothing but the SCD2 fan-out ADR-023 warns
     about. A question needing a product *attribute* — brand, parent ASIN — needs the join and
     a validity predicate with it, and that is a different plan than any built today.
+
+    With `ranked` (ADR-143), the statement opens with the `ranked` CTE (`_ranked_cte`) and either
+    selects the ranked keys themselves or semi-joins its own read to them.
+
+    `max_rows=None` is a grouped fold's read (`RowCeiling.BAKE_GROUPED`): no `LIMIT`, and its
+    `ORDER BY` is what keeps each group contiguous. A single-fact read and a drill-across both
+    fold that way; a cross-fact ratio's per-row figure needs both sides of the same row (ADR-152).
+    A ranked read is never folded without a limit: its `n` is the restriction itself.
     """
     request_plan = bound.logical
+    if ranked is not None:
+        if max_rows is None:
+            raise ValueError("a ranked read is never folded without a row limit.")
+        return _compose_ranked(bound, max_rows, ranked)
     if request_plan.join is not None:
         return _compose_drill_across(bound, max_rows)
+    return _compose_single(bound, max_rows)
 
+
+def _compose_single(
+    request: BoundQueryPlan, max_rows: int | None, leading: tuple[str, ...] = ()
+) -> ComposedQuery:
+    """Build one single-fact read; `leading` predicates (no parameters) open its `WHERE`."""
+    request_plan = request.logical
     projection = _projection(request_plan)
     columns, grouped, aggregates = projection.columns, projection.grouped, projection.aggregates
 
     predicates, parameters = _time_predicates(request_plan, periodic=request_plan.periodic)
-    publication_parameters = ", ".join("?" for _ in bound.primary_ids)
+    predicates[:0] = leading
+    publication_parameters = ", ".join("?" for _ in request.primary_ids)
     predicates.append(f"{_quoted('publication_id')} IN ({publication_parameters})")
-    parameters.extend(bound.primary_ids)
-    _filter_predicates(bound, projection.discriminator, (predicates, parameters))
+    parameters.extend(request.primary_ids)
+    _filter_predicates(request, projection.discriminator, (predicates, parameters))
 
     # S608 is correct that this builds a statement by interpolation, and the interpolation is
     # the point: SQL has no placeholder for an identifier. What makes it safe is upstream and
@@ -169,13 +209,13 @@ def compose(bound: BoundQueryPlan, max_rows: int) -> ComposedQuery:
         f"FROM {_quoted(request_plan.fact)} "
         f"WHERE {' AND '.join(predicates)} "
         f"GROUP BY {grouped} "
-        f"ORDER BY {', '.join(_quoted(name) for name in request_plan.group_by)} "
-        f"LIMIT {max_rows + 1}"
+        f"ORDER BY {', '.join(_quoted(name) for name in request_plan.group_by)}"
+        f"{_limit(max_rows)}"
     )
     return ComposedQuery(sql=sql, parameters=tuple(parameters))
 
 
-def compose_series(plans: tuple[BoundQueryPlan, ...], max_rows: int) -> ComposedQuery:
+def compose_series(plans: tuple[BoundQueryPlan, ...], max_rows: int | None) -> ComposedQuery:
     """Build one publication-fenced statement reading the same plan over several exact periods.
 
         SELECT   period_start, period_end, <group_by>, <carried>, <aggregates>
@@ -222,10 +262,15 @@ def compose_series(plans: tuple[BoundQueryPlan, ...], max_rows: int) -> Composed
         f"FROM {_quoted(first.fact)} "
         f"WHERE {' AND '.join(predicates)} "
         f"GROUP BY {grouped} "
-        f"ORDER BY {ordering} "
-        f"LIMIT {max_rows + 1}"
+        f"ORDER BY {ordering}"
+        f"{_limit(max_rows)}"
     )
     return ComposedQuery(sql=sql, parameters=tuple(parameters))
+
+
+def _limit(max_rows: int | None) -> str:
+    """`LIMIT max_rows + 1`, or nothing for a grouped fold, which reads every row (ADR-152)."""
+    return "" if max_rows is None else f" LIMIT {max_rows + 1}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -446,14 +491,14 @@ def _join_of(plan: QueryPlan) -> JoinSide:
     return join
 
 
-def _compose_drill_across(bound: BoundQueryPlan, max_rows: int) -> ComposedQuery:
+def _compose_drill_across(bound: BoundQueryPlan, max_rows: int | None) -> ComposedQuery:
     """Build the publication-fenced two-subquery join a cross-fact ratio needs.
 
         SELECT   COALESCE(s0.<dim>, s1.<dim>) AS <dim>, s0.value_0, s0.suppressed_0,
                  s1.value_1, s1.suppressed_1
         FROM     (<numerator aggregated>) s0
         FULL JOIN (<denominator aggregated>) s1 ON s0.<dim> = s1.<dim> AND …
-        ORDER BY 1 … LIMIT <max_rows + 1>
+        ORDER BY 1 … LIMIT <max_rows + 1>      (no LIMIT for a grouped fold)
 
     **`FULL JOIN`, not inner.** An inner join silently drops a campaign that spent without
     converting, which is the row somebody asking about waste most needs to see. Keeping it and
@@ -515,7 +560,296 @@ def _compose_drill_across(bound: BoundQueryPlan, max_rows: int) -> ComposedQuery
         f"SELECT {selected} "  # noqa: S608 — see `compose`  # nosec B608
         f"FROM ({numerator.sql}) {numerator.alias} "
         f"FULL JOIN ({denominator.sql}) {denominator.alias} ON {on} "
-        f"ORDER BY {ordering} "
-        f"LIMIT {max_rows + 1}"
+        f"ORDER BY {ordering}"
+        f"{_limit(max_rows)}"
     )
     return ComposedQuery(sql=sql, parameters=(*numerator.parameters, *denominator.parameters))
+
+
+def _rank_order() -> str:
+    """Render the rank rule's one order list (`RANK_ORDER`) as SQL."""
+    return ", ".join(f"{_quoted(field.value)} {direction.value}" for field, direction in RANK_ORDER)
+
+
+def population_sum_alias(index: int) -> str:
+    """Name the nth declared population sum a ranked-keys row carries (ADR-152)."""
+    return f"population_sum_{index}"
+
+
+POPULATION_COUNT = "population_count"
+"""The ranked-keys column holding the partition's population count."""
+POPULATION_SUPPRESSED = "population_suppressed"
+"""The ranked-keys column saying whether any of the partition's population rows was withheld."""
+_SUPPRESSED = "suppressed"
+_POSITION = "rank_position"
+
+
+def population_columns(ranked: RankedRead) -> tuple[str, ...]:
+    """Every population column a ranked-keys row carries after the plan's own aggregates."""
+    return (
+        POPULATION_COUNT,
+        POPULATION_SUPPRESSED,
+        *(population_sum_alias(index) for index in range(len(ranked.restriction.population_sums))),
+    )
+
+
+def _fenced_read(bound: BoundQueryPlan) -> tuple[list[str], list[str]]:
+    """Write one bound single-fact read's fence: its window, publications and filters."""
+    plan = bound.logical
+    predicates, parameters = _time_predicates(plan, periodic=plan.periodic)
+    ids = ", ".join("?" for _ in bound.primary_ids)
+    predicates.append(f"{_quoted('publication_id')} IN ({ids})")
+    parameters.extend(bound.primary_ids)
+    _filter_predicates(bound, _discriminator(plan.suppression_columns), (predicates, parameters))
+    return predicates, parameters
+
+
+def _withheld_flag(plan: QueryPlan) -> str:
+    """Flag a withheld row as 1, else 0; always 0 for a fact that can't withhold."""
+    discriminator = _discriminator(plan.suppression_columns)
+    return f"CASE WHEN {_quoted(discriminator)} THEN 1 ELSE 0 END" if discriminator else "0"
+
+
+def _attributable(plan: QueryPlan) -> str:
+    """Sum the rank metric's attributable rows: withheld ones excluded, as every read does."""
+    column = _quoted(plan.measures[0])
+    discriminator = _discriminator(plan.suppression_columns)
+    if not discriminator:
+        return f"SUM({column})"
+    return f"SUM(CASE WHEN NOT {_quoted(discriminator)} THEN {column} END)"
+
+
+def _keyed(ranked: RankedRead) -> tuple[str, ...]:
+    """Name the ranked grain's CTE columns: the partitions, then key and marketplace."""
+    return (
+        *(_quoted(name) for name in ranked.partition_columns),
+        _quoted("key"),
+        _quoted("marketplace"),
+    )
+
+
+def _source_keyed(ranked: RankedRead) -> tuple[str, ...]:
+    """Select the ranked grain from a fact under the CTE's names."""
+    return (
+        *(_quoted(name) for name in ranked.partition_columns),
+        f"{_quoted(ranked.key_column)} AS {_quoted('key')}",
+        f"{_quoted(ranked.marketplace_column)} AS {_quoted('marketplace')}",
+    )
+
+
+def _rank_sql(ranked: RankedRead, bound: BoundQueryPlan) -> tuple[str, list[str]]:
+    """One rank read summed per ranked key (the rank or the change window), with withholding."""
+    plan = bound.logical
+    carried = tuple(_quoted(name) for name in plan.carried_columns)
+    predicates, parameters = _fenced_read(bound)
+    grouped = ", ".join(
+        (
+            *(_quoted(name) for name in ranked.partition_columns),
+            _quoted(ranked.key_column),
+            _quoted(ranked.marketplace_column),
+            *carried,
+        )
+    )
+    discriminator = _discriminator(plan.suppression_columns)
+    withheld = (
+        ()
+        if not discriminator
+        else (
+            f"SUM(CASE WHEN {_quoted(discriminator)} THEN {_quoted(plan.measures[0])} ELSE 0 END) "
+            f"AS {withheld_alias(0)}",
+            f"SUM(CASE WHEN {_quoted(discriminator)} THEN 1 ELSE 0 END) "
+            f"AS {withheld_rows_alias(0)}",
+        )
+    )
+    selected = ", ".join(
+        (
+            *_source_keyed(ranked),
+            *carried,
+            f"{_attributable(plan)} AS {_quoted('rank_value')}",
+            *withheld,
+        )
+    )
+    sql = (
+        # A-SQL-001: quoted identifiers, values bind as ?; see docs/security-dispositions.md
+        f"SELECT {selected} FROM {_quoted(plan.fact)} "  # noqa: S608  # nosec B608
+        f"WHERE {' AND '.join(predicates)} GROUP BY {grouped}"
+    )
+    return sql, parameters
+
+
+def _joined_on(ranked: RankedRead, alias: str) -> str:
+    return " AND ".join(f'"p".{name} = "{alias}".{name}' for name in _keyed(ranked))
+
+
+def _ranked_cte(ranked: RankedRead) -> tuple[str, list[str]]:
+    """Write the `ranked` CTE: the population, each key's rank value, the top `n` (ADR-143).
+
+        WITH ranked AS (
+          SELECT <grain>, rank_value, <carried>, <withheld>, population_count,
+                 population_suppressed [, (SELECT SUM(m) FROM <sum read>) AS population_sum_i]
+          FROM (SELECT *, COUNT(*) OVER (PARTITION BY <partition>),
+                       MAX(suppressed) OVER (PARTITION BY <partition>),
+                       ROW_NUMBER() OVER (PARTITION BY <partition> ORDER BY <rank order>)
+                FROM (SELECT p.<grain>, p.suppressed, <rank value>, r.<carried>, r.<withheld>
+                      FROM (<every population read's keys and withheld flag, UNION ALL,
+                             grouped per key>) p
+                      LEFT JOIN (<the rank read, summed per key>) r ON <grain>
+                      [LEFT JOIN (<the change read, summed per key>) c ON <grain>]
+                      [WHERE <rank value> > 0 OR p.suppressed = 1]))
+          WHERE rank_position <= n)
+
+    The rank value is `COALESCE(r, 0)`, or `ABS(COALESCE(r, 0) - COALESCE(c, 0))` by change.
+    `POSITIVE` keeps a withheld key whatever its value, so a partition's withholding survives the
+    filter even when every key in it is withheld; a withheld answer refuses at its caller.
+    Every read in it is fenced to its own exact publications, as every composed read is, so the
+    population is the one the batch's compares measured; the count, the withholding and each sum
+    are taken before the top `n` is kept (ADR-152). No key list is built, so the statement's size
+    is independent of the catalog. Parameters bind in text order: sums, population, rank, change.
+    """
+    restriction = ranked.restriction
+    keyed = _keyed(ranked)
+    sums: list[str] = []
+    sum_parameters: list[str] = []
+    for index, bound in enumerate(ranked.sums):
+        predicates, values = _fenced_read(bound)
+        sums.append(
+            # A-SQL-001: quoted identifiers, values bind as ?; see docs/security-dispositions.md
+            f"(SELECT {_attributable(bound.logical)} FROM {_quoted(bound.logical.fact)} "  # noqa: S608  # nosec B608
+            f"WHERE {' AND '.join(predicates)}) AS {population_sum_alias(index)}"
+        )
+        sum_parameters.extend(values)
+    population: list[str] = []
+    population_parameters: list[str] = []
+    for bound in ranked.population:
+        predicates, values = _fenced_read(bound)
+        population.append(
+            # A-SQL-001: quoted identifiers, values bind as ?; see docs/security-dispositions.md
+            f"SELECT {', '.join(_source_keyed(ranked))}, "  # noqa: S608  # nosec B608
+            f"{_withheld_flag(bound.logical)} AS {_quoted(_SUPPRESSED)} "
+            f"FROM {_quoted(bound.logical.fact)} WHERE {' AND '.join(predicates)}"
+        )
+        population_parameters.extend(values)
+    rank_sql, rank_parameters = _rank_sql(ranked, ranked.rank)
+    rank = ranked.rank.logical
+    carried = tuple(_quoted(name) for name in rank.carried_columns)
+    withheld = tuple(alias for alias in rank.result_aliases if alias != measure_alias(0))
+    value = 'COALESCE("r".' + _quoted("rank_value") + ", 0)"
+    change_join, change_parameters = "", []
+    if ranked.change is not None:
+        change_sql, change_parameters = _rank_sql(ranked, ranked.change)
+        change_join = f'LEFT JOIN ({change_sql}) "c" ON {_joined_on(ranked, "c")} '
+        value = f'ABS({value} - COALESCE("c".{_quoted("rank_value")}, 0))'
+    # A key Amazon withheld rows from stays a member under POSITIVE (its value excludes them,
+    # so it may be 0): dropping it would drop the partition's only sign of withholding.
+    positive = (
+        f'WHERE {value} > 0 OR "p".{_quoted(_SUPPRESSED)} = 1 '
+        if restriction.membership is RankedMembership.POSITIVE
+        else ""
+    )
+    grouped_population = (
+        # A-SQL-001: identifiers only; every value binds in the population reads as ?
+        f"SELECT {', '.join(keyed)}, MAX({_quoted(_SUPPRESSED)}) AS {_quoted(_SUPPRESSED)} "  # noqa: S608  # nosec B608
+        f'FROM ({" UNION ALL ".join(population)}) "u" GROUP BY {", ".join(keyed)}'
+    )
+    base = ", ".join(
+        (
+            *(f'"p".{name}' for name in keyed),
+            f'"p".{_quoted(_SUPPRESSED)}',
+            f"{value} AS {_quoted('rank_value')}",
+            *(f'"r".{name}' for name in carried),
+            *(f'COALESCE("r".{name}, 0) AS {name}' for name in withheld),
+        )
+    )
+    partition = ", ".join(_quoted(name) for name in ranked.partition_columns)
+    over = f"PARTITION BY {partition} " if partition else ""
+    windowed = ", ".join(
+        (
+            "*",
+            f"COUNT(*) OVER ({over.strip()}) AS {_quoted(POPULATION_COUNT)}",
+            f"MAX({_quoted(_SUPPRESSED)}) OVER ({over.strip()}) "
+            f"AS {_quoted(POPULATION_SUPPRESSED)}",
+            f"ROW_NUMBER() OVER ({over}ORDER BY {_rank_order()}) AS {_quoted(_POSITION)}",
+        )
+    )
+    kept = ", ".join(
+        (
+            *keyed,
+            _quoted("rank_value"),
+            *carried,
+            *withheld,
+            _quoted(POPULATION_COUNT),
+            _quoted(POPULATION_SUPPRESSED),
+            *sums,
+        )
+    )
+    cte = (
+        # A-SQL-001: quoted identifiers, values bind as ?; see docs/security-dispositions.md
+        f"WITH {_quoted(RANKED_CTE)} AS (SELECT {kept} "  # noqa: S608  # nosec B608
+        f"FROM (SELECT {windowed} FROM (SELECT {base} "
+        f'FROM ({grouped_population}) "p" '
+        f'LEFT JOIN ({rank_sql}) "r" ON {_joined_on(ranked, "r")} '
+        f'{change_join}{positive}) "b") "w" '
+        f"WHERE {_quoted(_POSITION)} <= {restriction.n}) "
+    )
+    return cte, [
+        *sum_parameters,
+        *population_parameters,
+        *rank_parameters,
+        *change_parameters,
+    ]
+
+
+def _compose_ranked(bound: BoundQueryPlan, max_rows: int, ranked: RankedRead) -> ComposedQuery:
+    """Build a statement restricted to the ranked keys: the keys themselves, or a semi-join.
+
+    `RANKED_KEYS` selects `ranked` under the plan's own column and aggregate names, so its rows
+    read exactly as a `METRIC_BY_GRAIN` answer of the rank metric: one row per ranked key, its
+    value the rank value, then the population columns (`population_columns`), which the adapter
+    lifts off before any row reaches an answer. A carried column (the currency) comes from the
+    key's rank row, or the ranked set's own when the key has none, so a zero-revenue key still
+    states the currency. `SEMI_JOIN` is the plan's ordinary read, keeping only rows whose key
+    (and partition) is ranked.
+    """
+    cte, parameters = _ranked_cte(ranked)
+    plan = bound.logical
+    if ranked.restriction.projection is RankedProjection.SEMI_JOIN:
+        fact = _quoted(plan.fact)
+        matched = " AND ".join(
+            f"{_quoted(RANKED_CTE)}.{name} = {fact}.{_quoted(column)}"
+            for name, column in zip(
+                _keyed(ranked),
+                (*ranked.partition_columns, ranked.key_column, ranked.marketplace_column),
+                strict=True,
+            )
+        )
+        exists = (
+            # A-SQL-001: identifiers only, from the plan; no value is interpolated
+            f"EXISTS (SELECT 1 FROM {_quoted(RANKED_CTE)} WHERE {matched})"  # noqa: S608  # nosec B608
+        )
+        # The read's own WHERE gains the semi-join as its first conjunct; nothing else changes.
+        inner = _compose_single(bound, max_rows, (exists,))
+        return ComposedQuery(sql=cte + inner.sql, parameters=(*parameters, *inner.parameters))
+    columns: list[str] = []
+    for name in plan.selected_columns:
+        if name == ranked.key_column:
+            columns.append(f"{_quoted('key')} AS {_quoted(name)}")
+        elif name == ranked.marketplace_column:
+            columns.append(f"{_quoted('marketplace')} AS {_quoted(name)}")
+        elif name in ranked.partition_columns:
+            columns.append(_quoted(name))
+        else:
+            columns.append(
+                f"COALESCE({_quoted(name)}, MAX({_quoted(name)}) OVER ()) AS {_quoted(name)}"
+            )
+    aggregates = ", ".join(
+        f"{_quoted('rank_value')} AS {alias}" if alias == measure_alias(0) else alias
+        for alias in plan.result_aliases
+    )
+    trailing = ", ".join(_quoted(name) for name in population_columns(ranked))
+    ordering = ", ".join((*(_quoted(name) for name in ranked.partition_columns), _rank_order()))
+    sql = (
+        # A-SQL-001: identifiers only, from the plan; every value binds in the CTE as ?
+        f"SELECT {', '.join(columns)}, {aggregates}, {trailing} "  # noqa: S608  # nosec B608
+        f"FROM {_quoted(RANKED_CTE)} ORDER BY {ordering} LIMIT {max_rows + 1}"
+    )
+    return ComposedQuery(sql=cte + sql, parameters=tuple(parameters))

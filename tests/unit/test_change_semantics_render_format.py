@@ -41,6 +41,17 @@ _BAKED_SEMANTICS: tuple[tuple[int, int, str], ...] = (
     # ADR-127: Delivery per channel's viewable rate joins the roster.
     # pragma: allowlist nextline secret (A-ENTROPY-IDENTIFIER-001)
     (11, 9, "7c69615cd2b11fb41d17cebea43721d6675dec6f2599ed0da7ae8c9cbde6a312"),
+    # ADR-145: every sibling is found through the stage's sibling index; the roster is unchanged.
+    # pragma: allowlist nextline secret (A-ENTROPY-IDENTIFIER-001)
+    (12, 10, "7c69615cd2b11fb41d17cebea43721d6675dec6f2599ed0da7ae8c9cbde6a312"),
+    # ADR-152: Retail's movers are ranked in the query (a tie keeps the lower ASIN); the roster
+    # is unchanged.
+    # pragma: allowlist nextline secret (A-ENTROPY-IDENTIFIER-001)
+    (12, 11, "7c69615cd2b11fb41d17cebea43721d6675dec6f2599ed0da7ae8c9cbde6a312"),
+    # ADR-145, ADR-152: Campaigns' name roster is written as shards and its compares fold into
+    # one compact record per campaign; the roster is unchanged.
+    # pragma: allowlist nextline secret (A-ENTROPY-IDENTIFIER-001)
+    (13, 11, "7c69615cd2b11fb41d17cebea43721d6675dec6f2599ed0da7ae8c9cbde6a312"),
 )
 """Each (formats, roster) pair the bakers have rendered, oldest first. Append a row (never edit
 one) whenever a render format moves, and with both formats bumped when the digest changes."""

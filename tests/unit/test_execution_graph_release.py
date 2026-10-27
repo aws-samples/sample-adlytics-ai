@@ -1094,6 +1094,7 @@ from domain.operations.execution_graph_release import (  # noqa: E402
     DurableBakeEffectV3,
     DurableBakeSourceManifest,
     DurableBakeSourceManifestInvalidError,
+    PinRefusal,
     PrecomputeInputV1,
     bake_v3_digest,
     final_transaction_member_count,
@@ -1766,3 +1767,44 @@ def test_h6_contribute_after_a_lost_bind_returns_the_stored_binding() -> None:
     stored = store.read_serving_binding(run.grant_id)
     assert stored is not None and stored.stale
     assert contributed.binding == stored
+
+
+def test_the_roster_contains_exactly_its_keys_and_row_keeps_its_invariant() -> None:
+    """ADR-144: the legacy entry asks `contains` first, so `row` never sees a non-roster key."""
+    roster = BakeRoster.from_contract()
+    assert all(roster.contains(key) for key in roster.keys)
+    assert roster.contains("workspace#7d") is False
+    # Paired: `row` still refuses the same key, so only the branch keeps it acknowledged.
+    with pytest.raises(DurableBakeEffectInvalidError):
+        roster.row("workspace#7d")
+
+
+# --- the pin's refusal (ADR-142, design 02 §3.3, round-2 N5) --------------------------------
+
+
+def test_a_slice_without_a_pin_refusal_hashes_exactly_as_before_and_a_refused_one_differs() -> None:
+    plain = BakeTaskSource("campaigns", "1d", _D, (), 0)
+    # The pre-change digest: the five terms only, so a cohort pinned before the deploy re-hashes.
+    assert plain.digest == bake_v3_digest(
+        "graph-durable-bake-task-source/v1", ["campaigns", "1d", _D, list[str](), 0]
+    )
+    refused = BakeTaskSource("campaigns", "1d", _D, (), 0, PinRefusal(3))
+    assert refused.digest != plain.digest
+    assert refused.digest != BakeTaskSource("campaigns", "1d", _D, (), 0, PinRefusal(2)).digest
+
+
+def test_a_pin_refusal_carries_no_requests_and_its_reason_and_attempts_are_closed() -> None:
+    cases = (
+        (
+            lambda: BakeTaskSource("campaigns", "1d", _D, ("f" * 64,), 1, PinRefusal(3)),
+            "no requests",
+        ),
+        (lambda: PinRefusal(0), "at least one attempt"),
+        (lambda: PinRefusal(3, "throttled"), "closed"),
+    )
+    for build, signal in cases:
+        with pytest.raises(DurableBakeSourceManifestInvalidError) as raised:
+            build()
+        assert signal in str(raised.value.context["detail"])
+    # Paired: a refusal with zero requests constructs.
+    assert BakeTaskSource("campaigns", "1d", _D, (), 0, PinRefusal(1)).pin_refusal == PinRefusal(1)

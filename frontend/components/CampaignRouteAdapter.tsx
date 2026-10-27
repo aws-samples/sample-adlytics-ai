@@ -8,6 +8,8 @@ import {
   PortfolioBandTitle,
   PortfolioBandTitleSkeleton,
   type CampaignSelectionState,
+  type RosterShardLoader,
+  type RosterSource,
 } from './CampaignPortfolioV2View';
 import type { V2RouteAdapter, V2RouteUrlState } from './PresentationV2RouteController';
 import { bindingByRoute } from '@/lib/page-bindings';
@@ -15,6 +17,7 @@ import {
   anyPresetAvailable,
   fetchCampaignPresentationChildV2,
   fetchCampaignPresentationV2,
+  fetchCampaignRosterShardV2,
   focusTemporalSelection,
   type CampaignParentPresentation,
   type CampaignPortfolioSort,
@@ -155,6 +158,32 @@ export function prefetchCampaignSegment(sort: CampaignPortfolioSort, segment: nu
   segmentPrefetch.set(key, { at: now, identity, promise });
 }
 
+/**
+ * Load one roster shard of the filter the last parent load served (ADR-145), under that load's
+ * session and window. The view checks its revision against the body it holds.
+ */
+export const loadCampaignRosterShard: RosterShardLoader = (filterId, shard, signal) => {
+  if (lastParentIdentity === null) return Promise.reject(new PresentationResponseError());
+  const { selection, sessionId } = lastParentIdentity;
+  return fetchCampaignRosterShardV2(sessionId, selection, filterId, shard, signal);
+};
+
+/** The roster source for one served parent: a stale shard reloads that same parent once. */
+function rosterSource(
+  parent: CampaignParentPresentation,
+  replaceParentIntent: (intent: CampaignParentIntent) => void,
+): RosterSource {
+  const pagination = parent.kind === 'parent' ? parent.artifact.pagination : null;
+  const sort = parent.kind === 'parent' ? parent.artifact.sort : undefined;
+  return {
+    load: loadCampaignRosterShard,
+    onStale: () => replaceParentIntent(withFilter(parent, {
+      ...(pagination === null || pagination.segment_index === 0 ? {} : { segment: pagination.segment_index }),
+      ...(sort === undefined ? {} : { sort }),
+    })),
+  };
+}
+
 /** The parent a page-level absence carries (ADR-139). */
 type CampaignAbsence = Extract<CampaignParentPresentation, { readonly kind: 'window_unavailable' }>;
 
@@ -185,6 +214,7 @@ export const campaignRouteAdapter: V2RouteAdapter<
           onSegment: (sort, segment) => replaceParentIntent(withFilter(state.parent, { segment, sort })),
           onSelect: requestChild,
           parent: state.parent.artifact,
+          roster: rosterSource(state.parent, replaceParentIntent),
         } : undefined}
       />
       : <PortfolioBandTitle
@@ -276,6 +306,7 @@ export const campaignRouteAdapter: V2RouteAdapter<
         onSegmentApproach={prefetchCampaignSegment}
         onSort={(sort) => replaceParentIntent(withFilter(state.parent, { sort }))}
         parent={state.parent.artifact}
+        roster={rosterSource(state.parent, replaceParentIntent)}
         selection={selectionState(state)}
       />
     );

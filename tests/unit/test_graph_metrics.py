@@ -10,7 +10,7 @@ Every identity is fictional.
 
 from __future__ import annotations
 
-from collections.abc import Generator
+from collections.abc import Generator, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -26,8 +26,13 @@ from adapters.jobs.preset_artifact_publisher.graph_bake import query_rollup, tas
 from adapters.jobs.trace_contract.contract import load_trace_contract
 from adapters.outbound import preset_artifacts as artifacts_module
 from adapters.outbound.athena import query as athena_query
-from adapters.outbound.athena.execution import StatementOutcome
-from adapters.outbound.athena.query import AthenaQueryAdapter, AthenaQueryTarget
+from adapters.outbound.athena.execution import StartedStatement, StatementOutcome
+from adapters.outbound.athena.query import (
+    INTERACTIVE_WAIT,
+    AthenaQueryAdapter,
+    AthenaQueryTarget,
+    ResultTransport,
+)
 from adapters.outbound.telemetry import graph_metrics
 from adapters.outbound.telemetry.graph_metrics import (
     BakeTaskReading,
@@ -44,6 +49,22 @@ from adapters.outbound.telemetry.span_context import (
 from domain.operations.execution_graph_dispatch import NodeState
 from domain.operations.execution_graph_release import BakeEffectKind
 from domain.shared_kernel.errors import DependencyError, ErrorCode
+from domain.shared_kernel.provenance import Suppression
+from ports.outbound.query import RowCeiling
+
+
+class _NoWithholding:
+    """Stands in for the adapter's withholding accumulator over a stub plan."""
+
+    def __init__(self, _plan: object) -> None:
+        return None
+
+    def add(self, _row: object) -> None:
+        return None
+
+    def result(self) -> Suppression:
+        return Suppression(rows_suppressed=False)
+
 
 pytestmark = [pytest.mark.unit, pytest.mark.covers("ADR-075")]
 
@@ -216,28 +237,33 @@ def _adapter(monkeypatch: pytest.MonkeyPatch, outcome: StatementOutcome | Except
     def composed(*_arguments: object) -> object:
         return SimpleNamespace(sql="s", parameters=())
 
-    def started(*_arguments: object) -> str:
-        return "execution-1"
+    def started(*_arguments: object, **_keywords: object) -> StartedStatement:
+        return StartedStatement("execution-1", 0)
 
-    def fetched(*_arguments: object) -> list[list[str | None]]:
-        return []
+    def fetched(*_arguments: object) -> Iterator[list[str | None]]:
+        return iter([])
 
     monkeypatch.setattr(athena_query, "_refuse_withheld_only", _nothing)
     monkeypatch.setattr(athena_query, "_refuse_unreadable_suppression", _nothing)
     monkeypatch.setattr(athena_query, "compose", composed)
-    monkeypatch.setattr(athena_query, "start", started)
-    monkeypatch.setattr(athena_query, "fetch_rows", fetched)
-    monkeypatch.setattr(athena_query, "_suppression_from", _nothing)
+    monkeypatch.setattr(athena_query, "start_counted", started)
+    monkeypatch.setattr(athena_query, "iter_pages", fetched)
+    monkeypatch.setattr(athena_query, "_SuppressionAccumulator", _NoWithholding)
 
-    def completion(_client: object, _execution: str, *, limit: float) -> StatementOutcome:
-        del limit
+    def completion(
+        _client: object, _execution: str, *, limit: float, wait_policy: str | None
+    ) -> StatementOutcome:
+        del limit, wait_policy
         if isinstance(outcome, Exception):
             raise outcome
         return outcome
 
     monkeypatch.setattr(athena_query, "await_completion", completion)
     return AthenaQueryAdapter(
-        AthenaQueryTarget("fictional-bake", "fictional-current", 0), cast("Any", object())
+        AthenaQueryTarget(
+            "fictional-bake", "fictional-current", 0, INTERACTIVE_WAIT, ResultTransport.PAGED
+        ),
+        cast("Any", object()),
     )
 
 
@@ -248,7 +274,9 @@ def _request() -> Any:
         selected_columns=(),
         result_aliases=(),
     )
-    return SimpleNamespace(plan=SimpleNamespace(logical=logical), max_rows=10)
+    return SimpleNamespace(
+        plan=SimpleNamespace(logical=logical), max_rows=10, ranked=None, ceiling=RowCeiling.BAKE
+    )
 
 
 def test_an_execution_under_a_task_records_statistics_admission_wait_and_correlation(
@@ -304,6 +332,36 @@ def test_a_serve_time_query_without_cohort_correlation_runs_and_records_no_cohor
     )
 
 
+class _Rows:
+    """A fold's sink that keeps nothing."""
+
+    def add(self, _row: object) -> None:
+        return None
+
+
+def test_a_grouped_read_records_its_ceiling_kind_and_no_row_limit_unlike_a_held_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The span drops a None attribute, so a grouped read's required set can't rest on max_rows."""
+    spans = _traced(monkeypatch)
+    stats = StatementOutcome(4096, False, 31, 7, 5, 47, service_processing_millis=4)
+    adapter = _adapter(monkeypatch, stats)
+    held = _request()
+    adapter.run(held)
+    adapter.fold(SimpleNamespace(**{**vars(held), "ceiling": RowCeiling.BAKE_GROUPED}), _Rows())
+
+    recorded = [
+        {key: value for key, value in carried.items() if value is not None}
+        for carried in spans.named("athena.query")
+    ]
+    assert [(item["row_ceiling"], item.get("max_rows")) for item in recorded] == [
+        ("bake", 10),
+        ("bake_grouped", None),
+    ]
+    for item in recorded:
+        assert set(CONTRACT["athena.query"].required_attributes) <= set(item)
+
+
 def test_a_failed_execution_keeps_its_span_with_the_terminal_state_and_no_statistics(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -332,6 +390,7 @@ def test_a_failed_execution_keeps_its_span_with_the_terminal_state_and_no_statis
 def test_a_stage_call_traces_each_body_custody_chain_with_its_size(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from preset_artifact_support import template_of  # noqa: PLC0415
     from test_preset_artifacts import (  # noqa: PLC0415 -- the body and recording-store fixtures
         RecordingBodies,
         RecordingPointers,
@@ -347,7 +406,7 @@ def test_a_stage_call_traces_each_body_custody_chain_with_its_size(
     spans = _traced(monkeypatch)
     body = _body()
     request = PresetArtifactPublicationRequest(
-        body, PresetArtifactPointerAdvanceRequest(_pointer(body))
+        body, template_of(PresetArtifactPointerAdvanceRequest(_pointer(body)))
     )
     events: list[str] = []
     store = artifacts_module.PresetArtifactPersistence(
@@ -355,7 +414,7 @@ def test_a_stage_call_traces_each_body_custody_chain_with_its_size(
     )
 
     with correlated("run-1", "task-1", "cohort-1"):
-        store.stage(request)
+        store.stage(request, remaining_ms=lambda: 600_000, tail_seconds=30.0)
 
     (chain,) = spans.named("artifact.write")
     assert chain == {
@@ -372,6 +431,7 @@ def test_a_stage_call_traces_each_body_custody_chain_with_its_size(
 def test_a_legacy_artifact_write_outside_a_cohort_writes_and_records_no_cohort_fields(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from preset_artifact_support import template_of  # noqa: PLC0415
     from test_preset_artifacts import (  # noqa: PLC0415 -- the body and recording-store fixtures
         RecordingBodies,
         RecordingPointers,
@@ -392,7 +452,11 @@ def test_a_legacy_artifact_write_outside_a_cohort_writes_and_records_no_cohort_f
     )
 
     store.stage(
-        PresetArtifactPublicationRequest(body, PresetArtifactPointerAdvanceRequest(_pointer(body)))
+        PresetArtifactPublicationRequest(
+            body, template_of(PresetArtifactPointerAdvanceRequest(_pointer(body)))
+        ),
+        remaining_ms=lambda: 600_000,
+        tail_seconds=30.0,
     )
 
     (chain,) = spans.named("artifact.write")
@@ -408,12 +472,20 @@ def test_a_legacy_artifact_write_outside_a_cohort_writes_and_records_no_cohort_f
 
 
 def test_the_query_rollup_reports_count_total_p50_and_max_and_counts_unavailable() -> None:
-    def stat(timings: tuple[int, int, int], *, available: bool = True) -> QueryStatistics:
+    def stat(
+        timings: tuple[int, int, int], *, available: bool = True, throttled: int = 0
+    ) -> QueryStatistics:
         queue, engine, total = timings
-        return QueryStatistics("SUCCEEDED", queue, 0, engine, 0, total, 10, 1, available)
+        return QueryStatistics(
+            "SUCCEEDED", queue, 0, engine, 0, total, 10, 1, available, throttled_starts=throttled
+        )
 
     rolled = query_rollup(
-        (stat((5, 30, 40)), stat((1, 10, 12)), stat((9, 50, 70), available=False))
+        (
+            stat((5, 30, 40), throttled=2),
+            stat((1, 10, 12)),
+            stat((9, 50, 70), available=False, throttled=1),
+        )
     )
 
     assert rolled == {
@@ -421,6 +493,7 @@ def test_the_query_rollup_reports_count_total_p50_and_max_and_counts_unavailable
         "statistics_unavailable": 1,
         "scanned_bytes": 30,
         "admission_wait_ms_total": 3,
+        "throttled_starts": 3,
         "queue_ms_total": 15,
         "queue_ms_p50": 5,
         "queue_ms_max": 9,
@@ -454,6 +527,8 @@ def test_each_task_ends_with_one_summary_line_and_one_metric_reading() -> None:
         "phase_render_ms",
         "phase_write_ms",
         "query_executions",
+        "throttled_starts",
+        "deadline_clamped",
     } <= set(summaries[0])
     assert [(item.page, item.variant, item.effect_kind) for item in readings] == [
         ("campaigns", "1d", "written"),

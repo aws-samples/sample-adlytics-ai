@@ -9,7 +9,9 @@ Every invented hash key starts with the shared probe prefix so session cleanup c
 from __future__ import annotations
 
 import json
+import statistics
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, cast
@@ -997,6 +999,85 @@ def test_scope_discovery_returns_strong_current_pointers_for_exact_buckets(
         DateRange(date(2026, 8, 25), date(2026, 8, 25)),
         DateRange(date(2026, 8, 27), date(2026, 8, 27)),
     ]
+
+
+_SERVING_REPEATS = 10
+"""Timed serving reads per size: the read-only stand-in's repeat count (dev, 2026-10-25)."""
+
+
+@pytest.mark.covers("ADR-070")
+@pytest.mark.parametrize("size", [184, 1_000])
+def test_an_exact_read_past_100_partitions_attests_one_vector_in_chunked_passes(  # noqa: PLR0913, PLR0917 -- pytest fixtures and the size
+    probe: str,
+    publications: DynamoPublicationStore,
+    settings: Settings,
+    record_testsuite_property: Callable[[str, object], None],
+    size: int,
+) -> None:
+    """The Reach quarter's 184 day partitions, and 1,000, each attested as one vector.
+
+    `_SERVING_REPEATS` serving reads' per-transaction latency (p50 and max) and `TransactGetItems`
+    count go to the run record's junit suite properties, which xunit2 keeps: the measured latency
+    that derives the exact-read bound (ADR-070).
+    """
+    # The node name's `[184]` isn't a canonical key character; one key per size, as the
+    # prepublication-family test above derives its own.
+    probe = f"{probe.split('[', maxsplit=1)[0]}-{size}"
+    now = datetime.now(UTC).replace(microsecond=0)
+    leases = DynamoLeaseStore(settings.semantic_leases_table)
+    expected: list[SuccessfulPublication] = []
+    for offset in range(size):
+        partition = _partition(probe, date(2026, 4, 1) + timedelta(days=offset))
+        grant = leases.acquire(_lease_request(probe, partition, now)).grant
+        assert grant is not None
+        publication = _publication(
+            probe,
+            grant,
+            _PublicationSpec(published_at=now + timedelta(seconds=1), suffix=f"day-{offset}"),
+        )
+        assert publications.commit(
+            CommitPublicationRequest(publication, grant, _authority(partition))
+        ).accepted
+        expected.append(publication)
+    partitions = tuple(publication.partition for publication in expected)
+
+    assert publications.inspect_exact(partitions).publications == tuple(expected)
+    client = boto3.client("dynamodb")
+    transactions: list[str] = []
+
+    def _counted(**_: object) -> None:
+        transactions.append("call")
+
+    client.meta.events.register("after-call.dynamodb.TransactGetItems", _counted)
+    serving = DynamoCurrentPublications(settings.semantic_publications_table, client)
+    vectors: list[float] = []
+    per_read: list[int] = []
+    for _ in range(_SERVING_REPEATS):
+        before = len(transactions)
+        started = time.perf_counter()
+        assert serving.inspect_exact(partitions).publications == tuple(expected)
+        vectors.append((time.perf_counter() - started) * 1_000)
+        per_read.append(len(transactions) - before)
+    # Every repeat is the same steady-state A, B, C read: one transaction per 100 per phase.
+    assert set(per_read) == {3 * -(-size // 100)}
+    per_transaction = sorted(vector / per_read[0] for vector in vectors)
+    record_testsuite_property(
+        f"exact_read_{size}_partitions",
+        json.dumps(
+            {
+                "repeats": _SERVING_REPEATS,
+                "transact_get_items_per_read": per_read[0],
+                "vector_ms_p50": round(statistics.median(vectors), 1),
+                "vector_ms_max": round(max(vectors), 1),
+                "ms_per_transaction_p50": round(statistics.median(per_transaction), 1),
+                "ms_per_transaction_max": round(per_transaction[-1], 1),
+            }
+        ),
+    )
+    # Paired: one partition never published is a stable absence in its own slot, not a refusal.
+    absent = _partition(probe, date(2026, 4, 1) + timedelta(days=size))
+    inspected = serving.inspect_exact((*partitions[:-1], absent)).publications
+    assert inspected[:-1] == tuple(expected[:-1]) and inspected[-1] is None
 
 
 @pytest.mark.covers("ADR-075")

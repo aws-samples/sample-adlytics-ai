@@ -65,6 +65,7 @@ __all__ = [
     "SEGMENT_PROFILE_FACT",
     "SEGMENT_ROSTER_SCOPE",
     "SERVED_GRAIN_SETS",
+    "GradedRows",
     "PinnedKey",
     "Roster",
     "RosterEntry",
@@ -73,6 +74,7 @@ __all__ = [
     "apply_pinned_roster",
     "apply_roster",
     "coarser_grain_set",
+    "grade_scope_rows",
     "require_roster",
     "roster_column",
     "roster_filters",
@@ -318,6 +320,29 @@ def apply_roster(
         off_roster=tuple(key for key in seen if key not in roster.keys),
         loss=loss,
     )
+
+
+@dataclass(frozen=True, slots=True)
+class GradedRows:
+    """One scope's returned keys graded against its roster: the outcome and the keys it keeps."""
+
+    outcome: RosterOutcome
+    kept: tuple[str, ...]
+    """The returned keys the scope offers: none when the roster withdraws the grain set, else
+    every returned key, off-roster ones included (design §4.4)."""
+
+
+def grade_scope_rows(
+    roster: Roster, returned: Iterable[str], coarser: GrainSet | None
+) -> GradedRows:
+    """Grade one scope's returned keys against its roster: the one grading rule (design 01 §3.3).
+
+    A held answer's roster (`answers.plan_roster_outcome`) and a grouped bake's per-campaign
+    grade both read it, so a campaign grades the same whichever path read it.
+    """
+    seen = tuple(dict.fromkeys(returned))
+    outcome = apply_roster(roster, seen, coarser)
+    return GradedRows(outcome, () if outcome.withdrawn else seen)
 
 
 @dataclass(frozen=True, slots=True)

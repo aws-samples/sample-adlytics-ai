@@ -39,7 +39,12 @@ from adapters.inbound.tool_handlers.measurement import (
     handle,
 )
 from adapters.jobs.contract_validation.loader import load_contracts
-from adapters.outbound.athena.query import AthenaQueryAdapter, AthenaQueryTarget
+from adapters.outbound.athena.query import (
+    INTERACTIVE_WAIT,
+    AthenaQueryAdapter,
+    AthenaQueryTarget,
+    ResultTransport,
+)
 from adapters.outbound.commerce_identity import load_commerce_identity_bridge
 from adapters.outbound.dynamodb.semantic_state import DynamoCurrentPublications
 from adapters.outbound.metric_dictionary import load_catalog
@@ -149,6 +154,8 @@ def harness(settings: Settings) -> _Harness:
                     workgroup=settings.athena_workgroup,
                     database=settings.semantic_v2_current_database,
                     reuse_minutes=settings.athena_result_reuse_max_age_minutes,
+                    wait=INTERACTIVE_WAIT,
+                    results=ResultTransport.PAGED,
                 )
             ),
             publications=publications,

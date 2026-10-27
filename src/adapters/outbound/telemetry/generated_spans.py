@@ -12,6 +12,7 @@ __all__ = [
     "AUTH_REQUEST",
     "BAKE_FAN_OUT",
     "BAKE_FINALIZE",
+    "BAKE_ISOLATED_REFUSAL",
     "BAKE_PHASE",
     "BAKE_RUN",
     "BAKE_SOURCE_PIN",
@@ -144,6 +145,7 @@ BAKE_SOURCE_PIN: Final = "bake.source_pin"
 BAKE_FAN_OUT: Final = "bake.fan_out"
 BAKE_TASK: Final = "bake.task"
 BAKE_PHASE: Final = "bake.phase"
+BAKE_ISOLATED_REFUSAL: Final = "bake.isolated_refusal"
 BAKE_FINALIZE: Final = "bake.finalize"
 ARTIFACT_WRITE: Final = "artifact.write"
 EXECUTION_GRAPH_PROMOTER_PASS: Final = "execution_graph.promoter_pass"

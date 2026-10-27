@@ -23,6 +23,7 @@ from campaign_channel_filter_support import (
     _f,  # pyright: ignore[reportPrivateUsage]
     filter_siblings,
 )
+from preset_artifact_support import staged_custody, staged_index, staged_pointer
 from test_campaign_preset_source import (
     CAMPAIGN_POLICY,
     REQUIREMENT,
@@ -60,8 +61,10 @@ from domain.presentation.campaign_custody import campaign_custody_manifest_from_
 from domain.presentation.campaign_portfolio import (
     CampaignPortfolioArtifact,
     CampaignPortfolioMetric,
+    CampaignPortfolioRosterEntry,
     campaign_portfolio_artifact_from_payload,
     campaign_portfolio_artifact_payload,
+    campaign_roster_shard_from_payload,
 )
 from domain.presentation.evidence_status import withheld_slots
 from domain.presentation.next_steps import NextStepPageTargets, NextStepTargets
@@ -70,6 +73,7 @@ from domain.presentation.preset_artifacts import (
     PresetArtifactBody,
     PresetArtifactCustodyManifest,
     PresetArtifactFilterIdentity,
+    PresetArtifactIndexShardIdentity,
     PresetArtifactPage,
     PresetArtifactPointer,
     PresetArtifactPointerRosterRequest,
@@ -81,6 +85,8 @@ from domain.presentation.preset_artifacts import (
     PresetArtifactSiblingReadRequest,
     PresetArtifactVariant,
     canonical_preset_artifact_json,
+    index_shard_descriptors,
+    split_parent_custody,
 )
 from domain.semantics.analytical_resolution import (
     AuthorizedAnalyticalScope,
@@ -184,10 +190,12 @@ def test_one_bake_binds_every_filter_sibling_under_one_pointer_and_its_custody()
         "All channels",
         "Sponsored ads (all sponsored channels)",
     )
+    pairs = tuple(request.siblings)
+    assert len(pairs) == request.siblings.count
     filters = {
-        _filter_of(item): item
-        for item in request.sibling_bodies
-        if isinstance(item.identity, PresetArtifactFilterIdentity)
+        _filter_of(public): public
+        for public, _ in pairs
+        if isinstance(public.identity, PresetArtifactFilterIdentity)
     }
     assert set(filters) == set(offered) - {"all"}
     for filter_id, sibling in filters.items():
@@ -195,41 +203,42 @@ def test_one_bake_binds_every_filter_sibling_under_one_pointer_and_its_custody()
             f"pages/campaigns/7d/{request.body.revision.value}/filters/{filter_id}.json"
         )
         assert sibling.revision == request.body.revision
-    # All-channels custody is the closed set of every other filter, each bound by digest.
-    assert request.custody is not None
-    manifest = campaign_custody_manifest_from_payload(json.loads(request.custody.payload_json))
+    # ADR-145: All-channels custody is its own rows plus the sibling index, which binds every
+    # filter sibling and every segment by digest; a filter's own custody carries its rows only.
+    custody = staged_custody(request)
+    assert custody is not None
+    header, _ = split_parent_custody(custody)
+    manifest = campaign_custody_manifest_from_payload(header)
     assert manifest.body_digest == request.body.digest
-    bound = {
-        cast("PresetArtifactFilterIdentity", item.identity).filter_id: item
-        for item in manifest.filter_siblings or ()
+    indexed = {
+        item.identity: item
+        for shard, entry in staged_index(request)
+        for item in index_shard_descriptors(shard, entry)
     }
-    assert set(bound) == set(filters)
-    custody_by_identity = {item.identity: item for item in request.sibling_custody}
-    for filter_id, descriptor in bound.items():
-        assert descriptor.body_digest == filters[filter_id].digest
+    assert set(indexed) == {public.identity for public, _ in pairs}
+    custody_by_identity = {private.identity: private for _, private in pairs}
+    for filter_id, sibling in filters.items():
+        descriptor = indexed[PresetArtifactFilterIdentity(filter_id)]
+        assert descriptor.body_digest == sibling.digest
         private = custody_by_identity[descriptor.identity]
         assert descriptor.custody_digest == private.digest
         sibling_manifest = campaign_custody_manifest_from_payload(json.loads(private.payload_json))
-        assert sibling_manifest.body_digest == filters[filter_id].digest
-        assert sibling_manifest.filter_siblings == ()
+        assert sibling_manifest.body_digest == sibling.digest
     # Each filter's segments live under its own filter in the segment identity.
     segments = [
-        item.identity
-        for item in request.sibling_bodies
-        if isinstance(item.identity, PresetArtifactSiblingIdentity)
+        public.identity
+        for public, _ in pairs
+        if isinstance(public.identity, PresetArtifactSiblingIdentity)
     ]
     assert {item.filter_id for item in segments} == set(offered)
-    first = next(item for item in request.sibling_bodies if item.identity in segments)
+    first = next(public for public, _ in pairs if public.identity in segments)
     assert "/segments/" in first.key
     assert first.key.split("/segments/")[1].startswith(
         f"{cast('PresetArtifactSiblingIdentity', first.identity).filter_id}/"
     )
-    # The pointer binds All channels, unchanged in shape.
-    pointer = request.pointer_advance.pointer
-    assert (pointer.body_digest, pointer.custody_digest) == (
-        request.body.digest,
-        request.custody.digest,
-    )
+    # The pointer binds All channels, unchanged in shape, with the staged custody's digest.
+    pointer = staged_pointer(request)
+    assert (pointer.body_digest, pointer.custody_digest) == (request.body.digest, custody.digest)
 
 
 @pytest.mark.covers("ADR-127")
@@ -454,7 +463,7 @@ class _Stores:
 
     @property
     def pointer(self) -> PresetArtifactPointer:
-        return self.request.pointer_advance.pointer
+        return staged_pointer(self.request)
 
     def current(self, page: PresetArtifactPage, variant: PresetArtifactVariant):
         return (
@@ -472,9 +481,9 @@ class _Stores:
 
     def read_sibling(self, request: PresetArtifactSiblingReadRequest) -> PresetArtifactSiblingBody:
         body = next(
-            item
-            for item in self.request.sibling_bodies
-            if item.identity == request.descriptor.identity
+            public
+            for public, _ in self.request.siblings
+            if public.identity == request.descriptor.identity
         )
         if (
             isinstance(body.identity, PresetArtifactFilterIdentity)
@@ -492,17 +501,17 @@ class _Custody:
 
     def read(self, pointer: PresetArtifactPointer) -> PresetArtifactCustodyManifest:
         del pointer
-        assert self.request.custody is not None
-        return self.request.custody
+        custody = staged_custody(self.request)
+        assert custody is not None
+        return custody
 
     def read_sibling(
         self, request: PresetArtifactSiblingReadRequest
     ) -> PresetArtifactSiblingCustody:
-        return next(
-            item
-            for item in self.request.sibling_custody
-            if item.identity == request.descriptor.identity
-        )
+        identity = request.descriptor.identity
+        if isinstance(identity, PresetArtifactIndexShardIdentity):
+            return staged_index(self.request)[identity.shard_index][0]
+        return next(private for _, private in self.request.siblings if private.identity == identity)
 
 
 _TOKENS = tuple(f"{letter * 43}" for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
@@ -543,6 +552,46 @@ def _serve(  # noqa: PLR0913, PLR0917 -- one module, its stores, a body and a pa
     return module.handle(event, _filter_runtime(module, stores))
 
 
+def _roster(
+    module: _PresentationModule, stores: _Stores, artifact: CampaignPortfolioArtifact
+) -> tuple[CampaignPortfolioRosterEntry, ...]:
+    """Read one filter's whole roster through `roster_shard`, each shard of the body's revision."""
+    assert artifact.roster == () and artifact.roster_shards is not None
+    filter_id = artifact.filter_id
+    entries: list[CampaignPortfolioRosterEntry] = []
+    for shard in range(artifact.roster_shards.shards):
+        response = _serve(module, stores, {"filter_id": filter_id, "roster_shard": shard})
+        assert response["statusCode"] == 200, response["body"]
+        body = _body(response)
+        assert body["parent_revision"] == artifact.roster_shards.revision
+        entries.extend(
+            campaign_roster_shard_from_payload(
+                body["shard"], shard, cast("str", body["parent_revision"])
+            )
+        )
+    return tuple(entries)
+
+
+@pytest.mark.covers("ADR-145")
+def test_a_roster_shard_request_is_closed_and_bound_to_the_index(
+    presentation_module: _PresentationModule,  # noqa: F811
+) -> None:
+    """A shard the bake never wrote, a bool, or a shard beside a sort or segment is refused."""
+    stores = _Stores(_bake())
+    assert _serve(presentation_module, stores, {"roster_shard": 0})["statusCode"] == 200
+    bodies: tuple[dict[str, object], ...] = (
+        {"roster_shard": 1},
+        {"roster_shard": True},
+        {"roster_shard": -1},
+        {"roster_shard": 0, "segment": 1},
+        {"roster_shard": 0, "sort": {"field": "spend", "direction": "asc"}},
+    )
+    for body in bodies:
+        with pytest.raises(ValidationError) as refused:
+            _serve(presentation_module, stores, body)
+        assert refused.value.description == "The campaign roster shard is invalid.", body
+
+
 def _served_artifact(response: dict[str, Any]) -> CampaignPortfolioArtifact:
     assert response["statusCode"] == 200, response["body"]
     page = cast("dict[str, Any]", _body(response)["page"])
@@ -570,9 +619,14 @@ def test_each_filter_serves_its_own_rows_and_roster_from_the_one_pointer(
     assert everything.filter_id == "all" and dsp.filter_id == "amazon_dsp"
     assert everything.period == dsp.period
     assert {row.signature.channel for row in dsp.rows} == {"Amazon DSP"}
-    assert {entry.channel for entry in dsp.roster} == {"Amazon DSP"}
-    assert len(everything.roster) == len(ESTATE)
-    assert len(dsp.roster) == 2
+    # Each filter's roster is its own shards, served through the one pointer's index (ADR-145).
+    rosters = {
+        artifact.filter_id: _roster(presentation_module, stores, artifact)
+        for artifact in (everything, dsp)
+    }
+    assert {entry.channel for entry in rosters["amazon_dsp"]} == {"Amazon DSP"}
+    assert len(rosters["all"]) == len(ESTATE)
+    assert len(rosters["amazon_dsp"]) == 2
     # One-channel totals are that channel's own: 700 + 1,400 of spend.
     spend = next(item for item in dsp.totals if item.metric is CampaignPortfolioMetric.SPEND)
     assert spend.current.value == Decimal(2100)

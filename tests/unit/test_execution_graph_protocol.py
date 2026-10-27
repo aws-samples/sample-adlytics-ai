@@ -379,13 +379,13 @@ def test_the_bake_roster_and_start_budget_are_generated_with_exact_values() -> N
         "audiences#last_complete_month",
     ]
     assert list(BAKE_TASKS["budget_seconds"].values()) == [
+        570,
+        570,
+        570,
+        570,
         240,
         240,
-        270,
-        300,
-        420,
-        420,
-        420,
+        240,
         120,
         120,
         120,
@@ -398,9 +398,18 @@ def test_the_bake_roster_and_start_budget_are_generated_with_exact_values() -> N
         180,
         150,
         90,
-        300,
+        600,
     ]
-    assert set(BAKE_TASKS["write_seconds"].values()) == {16.6}
+    # Audiences' parts and Campaigns' segments grow with campaigns, so each write term is the
+    # whole write allowance (ADR-152).
+    assert BAKE_TASKS["write_seconds"]["audiences"] == 450.0
+    assert BAKE_TASKS["write_seconds"]["campaigns"] == 450.0
+    assert {
+        value
+        for page, value in BAKE_TASKS["write_seconds"].items()
+        if page not in {"audiences", "campaigns"}
+    } == {16.6}
+    assert BAKE_TASKS["baker_memory_mib"] == 2048
     assert len(BAKE_TASKS["write_seconds"]) == 7
     assert (BAKE_TASKS["max_tasks"], BAKE_TASKS["certified_query_cap"], BAKE_TASKS["lanes"]) == (
         21,
@@ -420,7 +429,7 @@ def test_the_bake_roster_and_start_budget_are_generated_with_exact_values() -> N
 
 
 _ROSTER_ROW = "    - {page: retail-health, variant: 14d}\n"
-_BUDGET_ROW = '    "retail-health#14d": 420\n'
+_BUDGET_ROW = '    "retail-health#14d": 240\n'
 
 
 @pytest.mark.parametrize(
@@ -432,10 +441,10 @@ _BUDGET_ROW = '    "retail-health#14d": 420\n'
         ("BAKE_ROSTER_COVERAGE", _BUDGET_ROW, ""),
         (
             "BAKE_ROSTER_COVERAGE",
-            "    audiences: 16.6\n",
+            "    audiences: 450.0\n",
             "",
         ),
-        ("BAKE_VALUE_PRECISION", "    campaigns: 16.6\n", "    campaigns: 16.65\n"),
+        ("BAKE_VALUE_PRECISION", "    retail-health: 16.6\n", "    retail-health: 16.65\n"),
         ("BAKE_ROSTER_OVER_MAX_TASKS", "  max_tasks: 21\n", "  max_tasks: 6\n"),
         ("BAKE_MAX_TASKS_OVER_TRANSACTION_BOUND", "  max_tasks: 21\n", "  max_tasks: 23\n"),
         (
@@ -456,7 +465,7 @@ _BUDGET_ROW = '    "retail-health#14d": 420\n'
         ),
         (
             "bake_winner_over_root_bound",
-            '    "retail-health#14d": 420\n',
+            '    "retail-health#14d": 240\n',
             '    "retail-health#14d": 7000\n',
         ),
         (

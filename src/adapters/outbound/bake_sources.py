@@ -42,6 +42,7 @@ from domain.operations.execution_graph_release import (
     BAKE_EXECUTIONS_OVER_CERTIFIED_BOUND,
     BakeTaskSource,
     DurableBakeSourceManifestInvalidError,
+    PinRefusal,
     bake_v3_digest,
 )
 from domain.shared_kernel.errors import ErrorCode, InvariantError
@@ -51,7 +52,7 @@ from ports.outbound.publication_selection import (
     PublicationSelectionExactPort,
     PublicationSelectionExactRequest,
 )
-from ports.outbound.query import PeriodSeriesRequest, QueryRequest, QueryResult
+from ports.outbound.query import FoldRead, PeriodSeriesRequest, QueryRequest, QueryResult, RowSink
 from ports.outbound.semantic_state import InspectExactResult, ScopeHorizon
 
 if TYPE_CHECKING:
@@ -256,16 +257,20 @@ def task_source(  # noqa: PLR0913, PLR0917 -- one roster row and what its dry re
     variant: str,
     reads: tuple[PinnedRead, ...],
     requests: tuple[QueryRequest | PeriodSeriesRequest, ...],
+    *,
+    pin_refusal: PinRefusal | None = None,
 ) -> BakeTaskSource:
     """Build one roster row's pinned slice from its recorded reads and captured requests.
 
     Requests run concurrently, so their digests are stored sorted: the pin names the request
     set and its distinct count, never a completion order. Exact query fan-in still refuses an
-    equal digest over unequal requests.
+    equal digest over unequal requests. A refused row (ADR-142) pins no reads or requests.
     """
     distinct_query_count(tuple(item for item in requests if isinstance(item, QueryRequest)))
     digests = tuple(sorted(bake_request_digest(request) for request in requests))
-    return BakeTaskSource(page, variant, reads_digest(reads), digests, len(set(digests)))
+    return BakeTaskSource(
+        page, variant, reads_digest(reads), digests, len(set(digests)), pin_refusal
+    )
 
 
 # --- pinned clock (A5.1 I6) -------------------------------------------------------------------
@@ -629,6 +634,9 @@ class BakeSourceReads:
 _EMPTY: Final = QueryResult(
     rows=(), bytes_scanned=0, truncated=False, suppression=Suppression(rows_suppressed=False)
 )
+_EMPTY_FOLD: Final = FoldRead(
+    rows_read=0, truncated=False, bytes_scanned=0, suppression=Suppression(rows_suppressed=False)
+)
 
 
 @dataclass
@@ -792,3 +800,15 @@ class BakeQueryCapture:
         if self._admit(request):
             return _EMPTY
         return self.inner.run_series(request)
+
+    def fold(self, request: QueryRequest, sink: RowSink) -> FoldRead:
+        """Capture the request (its sink gets no rows), or stream it through the admission."""
+        if self._admit(request):
+            return _EMPTY_FOLD
+        return self.inner.fold(request, sink)
+
+    def fold_series(self, request: PeriodSeriesRequest, sink: RowSink) -> FoldRead:
+        """Capture the series request (no rows), or stream it through the same admission."""
+        if self._admit(request):
+            return _EMPTY_FOLD
+        return self.inner.fold_series(request, sink)

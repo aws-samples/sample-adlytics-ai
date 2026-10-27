@@ -136,13 +136,13 @@ bake_tasks:
     - {page: retention, variant: latest_with_current_publication}
     - {page: audiences, variant: last_complete_month}
   budget_seconds:
-    "campaigns#1d": 240
-    "campaigns#7d": 240
-    "campaigns#14d": 270
-    "campaigns#30d": 300
-    "retail-health#1d": 420
-    "retail-health#7d": 420
-    "retail-health#14d": 420
+    "campaigns#1d": 570
+    "campaigns#7d": 570
+    "campaigns#14d": 570
+    "campaigns#30d": 570
+    "retail-health#1d": 240
+    "retail-health#7d": 240
+    "retail-health#14d": 240
     "scorecard#7d": 120
     "scorecard#30d": 120
     "scorecard#last_complete_week": 120
@@ -155,25 +155,25 @@ bake_tasks:
     "reach#last_complete_month": 180
     "reach#last_complete_quarter": 150
     "retention#latest_with_current_publication": 90
-    "audiences#last_complete_month": 300
+    "audiences#last_complete_month": 600
   write_seconds:
-    campaigns: 16.6
+    campaigns: 450.0
     retail-health: 16.6
     scorecard: 16.6
     new-customers: 16.6
     reach: 16.6
     retention: 16.6
-    audiences: 16.6
+    audiences: 450.0
   # The certified upper bound on the distinct requests one task's render executes (plan A5.1 I5):
   # the (bound+1)-th distinct request is refused before it starts. One entry per roster row.
   certified_plan_counts:
     "campaigns#1d": 26
     "campaigns#7d": 26
-    "campaigns#14d": 30
-    "campaigns#30d": 34
-    "retail-health#1d": 46
-    "retail-health#7d": 70
-    "retail-health#14d": 98
+    "campaigns#14d": 26
+    "campaigns#30d": 26
+    "retail-health#1d": 49
+    "retail-health#7d": 49
+    "retail-health#14d": 49
     "scorecard#7d": 19
     "scorecard#30d": 19
     "scorecard#last_complete_week": 11
@@ -186,7 +186,7 @@ bake_tasks:
     "reach#last_complete_month": 16
     "reach#last_complete_quarter": 8
     "retention#latest_with_current_publication": 6
-    "audiences#last_complete_month": 61
+    "audiences#last_complete_month": 24
   final_authority_members: 10
   final_task_condition_members: 1
   final_written_pointer_members: 3
@@ -224,6 +224,10 @@ bake_tasks:
   lane_groups: [preset-bake-lane-0, preset-bake-lane-1]
   s3_chains_per_baker: 8
   s3_chains_aggregate: 16
+  # The Baker Lambda's memory, its one home (ADR-152): the stack sizes the function from it and
+  # the memory model derives BAKE_MAX_ROWS from it. Raising it is the operator action for a
+  # memory-sized refusal; `make check-bakeability` prints the ceiling per size.
+  baker_memory_mib: 2048
   max_tasks: 21
   # The precompute readiness timeline (DB26, TD-279), the one home of the armed finalizer's
   # redelivery and of the detector's precompute- and finalizer-blocked thresholds: the graph

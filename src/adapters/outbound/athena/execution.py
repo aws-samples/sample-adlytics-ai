@@ -15,33 +15,51 @@ description, which can reach a caller.
 
 from __future__ import annotations
 
+import csv
+import io
+import random
 import time
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Final
+from typing import IO, TYPE_CHECKING, Final, cast
 
 from botocore.exceptions import ClientError
 
 from adapters.outbound.athena.parameters import sql_literal
-from domain.shared_kernel.errors import DependencyError, ErrorCode
+from domain.measurement.figures import MEASURE_ABSENT
+from domain.shared_kernel.errors import DependencyError, ErrorCode, InvariantError
 
 if TYPE_CHECKING:  # pragma: no cover — kept out of the Lambda import path
     from types_boto3_athena.client import AthenaClient
+    from types_boto3_s3.client import S3Client
 
 __all__ = [
     "MAX_WAIT_SECONDS",
     "POLL_INTERVAL_SECONDS",
     "QUERY_FAILED",
     "QUERY_TIMED_OUT",
+    "RESULT_LOCATION_INVALID",
+    "THROTTLED_START_BASE_SECONDS",
+    "THROTTLED_START_CAP_SECONDS",
     "AthenaTarget",
+    "StartedStatement",
     "StatementOutcome",
     "StatementRequest",
     "await_completion",
     "fetch_rows",
+    "iter_pages",
+    "result_object",
     "start",
+    "start_counted",
+    "stream_result_rows",
 ]
 
 QUERY_FAILED = ErrorCode("ATHENA", 1)
 QUERY_TIMED_OUT = ErrorCode("ATHENA", 2)
+RESULT_LOCATION_INVALID = ErrorCode("ATHENA", 6)
+"""A `SELECT`'s `OutputLocation` is absent or not a CSV result object (ADR-143): a defect.
+
+Numbered 6 because 3, 4 and 5 are taken (`query.py`, `deadline.py`)."""
 
 POLL_INTERVAL_SECONDS: Final = 0.25
 """How often to ask whether a statement has finished.
@@ -66,6 +84,8 @@ reused result.
 MAX_WAIT_SECONDS: Final = 30.0
 """How long an interactive statement may take before it is abandoned.
 
+Interactive callers only; a bake waits within its invocation (ADR-144).
+
 Below the API Gateway integration timeout deliberately: a function outliving its caller burns
 cost and returns nothing. A read needing longer is answering at a grain the interactive
 workgroup should not serve, and the scan cutoff usually stops it first.
@@ -80,6 +100,14 @@ slow one.
 """
 
 TERMINAL: Final = frozenset({"SUCCEEDED", "FAILED", "CANCELLED"})
+
+THROTTLED_START_BASE_SECONDS: Final = 0.5
+"""The full-jitter backoff's base for a throttled start (ADR-144): attempt n sleeps
+`uniform(0, min(cap, base * 2**n))`."""
+THROTTLED_START_CAP_SECONDS: Final = 8.0
+"""The full-jitter backoff's cap for a throttled start (ADR-144)."""
+_THROTTLED: Final = "TooManyRequestsException"
+"""What Athena raises over the account's active-DML quota; the only start error retried."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,8 +148,52 @@ class StatementRequest:
     reuse_minutes: int
 
 
-def start(client: AthenaClient, request: StatementRequest) -> str:
-    """Submit a statement with its values encoded, and return the execution id.
+@dataclass(frozen=True, slots=True)
+class StartedStatement:
+    """A submitted statement's execution id and the throttled starts it waited through."""
+
+    execution_id: str
+    throttled_attempts: int
+
+
+def start(  # noqa: PLR0913 -- the request, its throttle window and its injectable clock
+    client: AthenaClient,
+    request: StatementRequest,
+    *,
+    retry_throttled_until: float | None = None,
+    random_source: random.Random | None = None,
+    clock: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
+) -> str:
+    """Submit a statement and return its execution id; see `start_counted`."""
+    return start_counted(
+        client,
+        request,
+        retry_throttled_until=retry_throttled_until,
+        random_source=random_source,
+        clock=clock,
+        sleep=sleep,
+    ).execution_id
+
+
+def start_counted(  # noqa: PLR0913 -- the request, its throttle window and its injectable clock
+    client: AthenaClient,
+    request: StatementRequest,
+    *,
+    retry_throttled_until: float | None = None,
+    random_source: random.Random | None = None,
+    clock: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
+) -> StartedStatement:
+    """Submit a statement with its values encoded; return its id and its throttled attempts.
+
+    **A throttled start is retried only inside its window** (ADR-144). With
+    `retry_throttled_until` set (a `clock` instant), a `TooManyRequestsException` sleeps
+    `uniform(0, min(8, 0.5 * 2**attempt))` (full jitter, from `random_source`) and resubmits,
+    while `clock() + sleep < retry_throttled_until`. Past the window, and for every other error,
+    it raises today's `QUERY_FAILED`; a throttle's context carries `throttled_attempts`. With no
+    window (an interactive caller by default) nothing is retried. The jitter never touches the
+    request, so it never changes a request's identity or digest.
 
     **Every parameter is encoded here, and this is the only place it happens.** Athena parses an
     `ExecutionParameters` entry as a SQL expression rather than binding it as a value, so an
@@ -137,54 +209,77 @@ def start(client: AthenaClient, request: StatementRequest) -> str:
     deliberately" is necessarily per-statement.
     """
     encoded = [sql_literal(value) for value in request.parameters]
+    # Backoff jitter needs no seed or secret; the OS source keeps a PRNG out of runtime code.
+    jitter = random_source or random.SystemRandom()
+    throttled = 0
+    while True:
+        try:
+            return StartedStatement(_submit(client, request, encoded), throttled)
+        except ClientError as exc:
+            error = exc.response.get("Error", {})
+            code = str(error.get("Code", ""))
+            if code == _THROTTLED and retry_throttled_until is not None:
+                throttled += 1
+                pause = jitter.uniform(
+                    0.0,
+                    min(
+                        THROTTLED_START_CAP_SECONDS,
+                        THROTTLED_START_BASE_SECONDS * 2 ** (throttled - 1),
+                    ),
+                )
+                if clock() + pause < retry_throttled_until:
+                    sleep(pause)
+                    continue
+            context: dict[str, object] = {
+                "cause": type(exc).__name__,
+                "workgroup": request.workgroup,
+                "aws_code": code,
+            }
+            if throttled:
+                context["throttled_attempts"] = throttled
+            raise DependencyError(
+                QUERY_FAILED, "The statement could not be submitted.", context=context
+            ) from None
+        except Exception as exc:
+            raise DependencyError(
+                QUERY_FAILED,
+                "The statement could not be submitted.",
+                context={"cause": type(exc).__name__, "workgroup": request.workgroup},
+            ) from None
+
+
+def _submit(client: AthenaClient, request: StatementRequest, encoded: list[str]) -> str:
+    """Submit one statement once; the SDK's own error propagates to `start_counted`."""
     # Inlined at each call site rather than built as a variable, so pyright checks it
     # against `ResultReuseConfigurationTypeDef` from context instead of inferring a plain dict.
     reuse_enabled = request.reuse_minutes > 0
-    try:
-        if request.parameters:
-            started = client.start_query_execution(
-                QueryString=request.sql,
-                WorkGroup=request.workgroup,
-                QueryExecutionContext={"Database": request.database},
-                ExecutionParameters=encoded,
-                ResultReuseConfiguration={
-                    "ResultReuseByAgeConfiguration": {
-                        "Enabled": reuse_enabled,
-                        "MaxAgeInMinutes": request.reuse_minutes,
-                    }
-                },
-            )
-        else:
-            # A statement with no placeholders must omit the key entirely. Athena rejects an
-            # empty `ExecutionParameters` list rather than treating it as "none".
-            started = client.start_query_execution(
-                QueryString=request.sql,
-                WorkGroup=request.workgroup,
-                QueryExecutionContext={"Database": request.database},
-                ResultReuseConfiguration={
-                    "ResultReuseByAgeConfiguration": {
-                        "Enabled": reuse_enabled,
-                        "MaxAgeInMinutes": request.reuse_minutes,
-                    }
-                },
-            )
-    except ClientError as exc:
-        error = exc.response.get("Error", {})
-        raise DependencyError(
-            QUERY_FAILED,
-            "The statement could not be submitted.",
-            context={
-                "cause": type(exc).__name__,
-                "workgroup": request.workgroup,
-                "aws_code": str(error.get("Code", "")),
+    if request.parameters:
+        started = client.start_query_execution(
+            QueryString=request.sql,
+            WorkGroup=request.workgroup,
+            QueryExecutionContext={"Database": request.database},
+            ExecutionParameters=encoded,
+            ResultReuseConfiguration={
+                "ResultReuseByAgeConfiguration": {
+                    "Enabled": reuse_enabled,
+                    "MaxAgeInMinutes": request.reuse_minutes,
+                }
             },
-        ) from None
-    except Exception as exc:
-        raise DependencyError(
-            QUERY_FAILED,
-            "The statement could not be submitted.",
-            context={"cause": type(exc).__name__, "workgroup": request.workgroup},
-        ) from None
+        )
+    else:
+        # A statement with no placeholders must omit the key entirely. Athena rejects an
+        # empty `ExecutionParameters` list rather than treating it as "none".
+        started = client.start_query_execution(
+            QueryString=request.sql,
+            WorkGroup=request.workgroup,
+            QueryExecutionContext={"Database": request.database},
+            ResultReuseConfiguration={
+                "ResultReuseByAgeConfiguration": {
+                    "Enabled": reuse_enabled,
+                    "MaxAgeInMinutes": request.reuse_minutes,
+                }
+            },
+        )
     return started["QueryExecutionId"]
 
 
@@ -215,6 +310,11 @@ class StatementOutcome:
     service_processing_millis: int = 0
     statistics_present: bool = True
     """Whether the response carried a `Statistics` block at all (A2.2: absence is recorded)."""
+    output_location: str | None = None
+    """`ResultConfiguration.OutputLocation`: where Athena wrote the result object, if it said.
+
+    Read from the same `GetQueryExecution` response. Validated only by the reader that streams
+    it (`stream_result_rows`); a DDL or DML statement's location is never read."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -226,14 +326,21 @@ class _Progress:
     outcome: StatementOutcome
 
 
-def await_completion(client: AthenaClient, execution_id: str, *, limit: float) -> StatementOutcome:
+def await_completion(  # noqa: PLR0913 -- the execution, its limit and its named policy
+    client: AthenaClient, execution_id: str, *, limit: float, wait_policy: str | None = None
+) -> StatementOutcome:
     """Poll to a terminal state and return what the statement cost.
 
     The cost figures are returned rather than discarded because they are the only measure of what a
     statement cost, and a tool that cannot report them cannot explain a bill or a wait. Three of
     the four callers ignore the result; the read path does not.
+
+    A caller with a named `wait_policy` (the read path, ADR-144) gets it on a timeout, with the
+    seconds actually waited and the limit it was given, so a page can tell a bake-wait timeout
+    from any other.
     """
-    deadline = time.monotonic() + limit
+    began = time.monotonic()
+    deadline = began + limit
     while True:
         progress = _state_of(client, execution_id)
         if progress.state == "SUCCEEDED":
@@ -262,14 +369,19 @@ def await_completion(client: AthenaClient, execution_id: str, *, limit: float) -
                 }
             else:
                 cancellation = {"cancellation_requested": True}
+            waited: dict[str, object] = (
+                {"waited_seconds": limit}
+                if wait_policy is None
+                else {
+                    "wait_policy": wait_policy,
+                    "waited_seconds": round(time.monotonic() - began, 3),
+                    "wait_limit_seconds": limit,
+                }
+            )
             raise DependencyError(
                 QUERY_TIMED_OUT,
                 "The statement took too long.",
-                context={
-                    "waited_seconds": limit,
-                    "query_id": execution_id,
-                    **cancellation,
-                },
+                context={**waited, "query_id": execution_id, **cancellation},
             )
         time.sleep(POLL_INTERVAL_SECONDS)
 
@@ -307,6 +419,7 @@ def _state_of(client: AthenaClient, execution_id: str) -> _Progress:
             total_millis=statistics.get("TotalExecutionTimeInMillis", 0),
             service_processing_millis=statistics.get("ServiceProcessingTimeInMillis", 0),
             statistics_present="Statistics" in execution,
+            output_location=execution.get("ResultConfiguration", {}).get("OutputLocation"),
         ),
     )
 
@@ -319,10 +432,17 @@ def fetch_rows(client: AthenaClient, execution_id: str) -> list[list[str | None]
     whose every value is a column name — which surfaces much later as a measurement failure
     rather than here.
     """
-    collected: list[list[str | None]] = []
+    return list(iter_pages(client, execution_id))
+
+
+def iter_pages(client: AthenaClient, execution_id: str) -> Iterator[list[str | None]]:
+    """Yield a result's rows page by page through `GetQueryResults`, header dropped.
+
+    The paged transport's streaming form: a fold reads each page as it arrives, so only one
+    page (at most 1,000 rows) is resident. `fetch_rows` is this, collected.
+    """
     token: str | None = None
     first_page = True
-
     while True:
         try:
             page = (
@@ -336,13 +456,88 @@ def fetch_rows(client: AthenaClient, execution_id: str) -> list[list[str | None]
                 "The statement results could not be read.",
                 context={"cause": type(exc).__name__, "query_id": execution_id},
             ) from None
-
         for index, row in enumerate(page.get("ResultSet", {}).get("Rows", [])):
             if first_page and index == 0:
                 continue
-            collected.append([datum.get("VarCharValue") for datum in row.get("Data", [])])
-
+            yield [datum.get("VarCharValue") for datum in row.get("Data", [])]
         first_page = False
         token = page.get("NextToken")
         if token is None:
-            return collected
+            return
+
+
+def result_object(output_location: str | None) -> tuple[str, str]:
+    """Split a statement's `OutputLocation` into its bucket and key, or raise the invariant.
+
+    A `SELECT` writes one CSV object. A location that is absent, not `s3://`, or not a `.csv`
+    object means the statement and this reader disagree about what was run: a defect, never a
+    dependency to retry. The bucket and prefix are IAM's boundary, not this reader's: the
+    baker's grant covers only `bake/*`, so a location elsewhere fails `AccessDenied`.
+    """
+    if output_location is None or not output_location.startswith("s3://"):
+        raise _location_invalid("absent or not an s3 URI")
+    bucket, _, key = output_location.removeprefix("s3://").partition("/")
+    if not bucket or not key or not key.endswith(".csv"):
+        raise _location_invalid("not a csv result object")
+    return bucket, key
+
+
+def _location_invalid(problem: str) -> InvariantError:
+    return InvariantError(
+        RESULT_LOCATION_INVALID,
+        "The statement's result location is not a result object this reader can read.",
+        context={"problem": problem},
+    )
+
+
+def stream_result_rows(  # noqa: PLR0913 -- the client, the outcome, its id and its width
+    s3: S3Client, outcome: StatementOutcome, *, execution_id: str, cells: int
+) -> Iterator[list[str | None]]:
+    """Yield a `SELECT`'s rows from its result object, one at a time, header dropped (ADR-143).
+
+    One `GetObject`, parsed as a stream, so one buffer is resident whatever the row count, and no
+    `GetQueryResults` call is spent. `csv.QUOTE_NOTNULL` reads an empty unquoted field as `None`
+    and a quoted empty one as `""`, as the paged reader returns an absent `VarCharValue` as
+    `None`; quoted newlines, quotes and commas stay inside their cell. A row whose cell count
+    isn't `cells` means the statement and its mapping disagree: `InvariantError`
+    (`MEASURE_ABSENT`). A read failure, at the start or mid-stream, is `QUERY_FAILED`, which the
+    task retries.
+    """
+    bucket, key = result_object(outcome.output_location)
+    try:
+        body = s3.get_object(Bucket=bucket, Key=key)["Body"]
+    except Exception as exc:
+        raise _unreadable(exc, execution_id) from None
+    try:
+        reader = csv.reader(
+            io.TextIOWrapper(cast("IO[bytes]", body), encoding="utf-8", newline=""),
+            quoting=csv.QUOTE_NOTNULL,
+        )
+        header = True
+        while True:
+            try:
+                row = next(reader)
+            except StopIteration:
+                return
+            except Exception as exc:
+                raise _unreadable(exc, execution_id) from None
+            if header:
+                header = False
+                continue
+            if len(row) != cells:
+                raise InvariantError(
+                    MEASURE_ABSENT,
+                    "A result row's cells don't match the statement's columns.",
+                    context={"cells": len(row), "expected": cells, "query_id": execution_id},
+                )
+            yield cast("list[str | None]", row)
+    finally:
+        body.close()
+
+
+def _unreadable(exc: BaseException, execution_id: str) -> DependencyError:
+    return DependencyError(
+        QUERY_FAILED,
+        "The statement results could not be read.",
+        context={"cause": type(exc).__name__, "query_id": execution_id},
+    )

@@ -18,9 +18,8 @@ capabilities.
 
 Candidate presets `1d`, `7d`, `14d`; default `7d`; comparison `required_equal_prior`;
 display grains `period`, `day`; `custom.availability` always `"unavailable"`. `30d` is not a
-candidate — the per-pack bake snapshot caps a declared preset at 25 days (ADR-070 amendment,
-2026-09-16) — so the control returns it unavailable pending the future two-pass
-verified-snapshot decision named there. Window
+candidate, so the control returns it unavailable. The bake's chunked two-pass snapshot would read
+it (ADR-070 amendment, 2026-10-25); declaring it is this page's own decision. Window
 resolution anchors to the newest published coverage of this page's vendor sources, never to
 wall-clock today. Default resolution uses the shared bake-time ladder owned by the
 [preset artifact publisher](../preset-artifact-publisher.md); every declared preset must pass
@@ -79,7 +78,11 @@ encoder and browser decoder always land in one deploy.
 > never rows that open nothing. A format-7 body decodes as retained: its rows serve as text and
 > open no detail until its pointer moves. **Retired 2026-10-09:** that read is gone from both
 > sides, so a body without the two fixed statuses is refused (owner revision of 2026-10-08: the
-> API, a full re-bake and the browser deploy together). The three new tiles change the compared-metric roster,
+> API, a full re-bake and the browser deploy together). **Amended by ADR-145 (render format
+> 10):** the parent custody names the served products only; each child's digests live in the
+> stage-built sibling index, the stage refuses children that aren't exactly the served rows before
+> any write, and the detail route reads the child through the covering index shard. A ref the index
+> doesn't list is the malformed-artifact refusal. The three new tiles change the compared-metric roster,
 > so Campaigns moves to render format 10 with the same body bytes. The request-time
 > `retail-product` path, its route and the `retail-detail` entries retire in this release.
 
@@ -91,8 +94,8 @@ encoder and browser decoder always land in one deploy.
 | Derived returns and margin (2026-09-17) | Return rate, estimated revenue withheld by returns (labeled estimate), the Amazon margin proxy, and fulfilment rate — exact server-computed compare slots at total grain, plus per-product return rate and Amazon margin on each product row. Typed absences per distributor view and selling program. | Tiles inside their narrative sections with delta chips and caveat lines; the product table's return-rate and Amazon-margin columns; never client arithmetic. |
 | Insights | Fixed roster: `demand-shape`, `returns-pressure`, `ordered-vs-shipped` (Perspective, prompted per ADR-068/069), `retail-movers` (Observed, fully deterministic — no prompt, no cache entry). Slot states `filled` / `silent` / `unavailable` with revision and prompt-version stamps. | The four-slot insight row with designed absence states. |
 | Trend | Dated daily rows carrying every chart-switchable metric (shipped revenue, shipped units, glance views, customer returns) for current and aligned prior, so the metric switcher is a client column selection with no re-request. | Full-width chart with prior overlay, axis labels, legend. |
-| Product rows | Server-ordered, bounded (initially 50, typed truncation beyond): display title, child ASIN, parent ASIN from `dim_product`, shipped revenue + delta, units, returns, glance views, spend spark-style shipped-revenue series, freshness qualifiers. | The product table; the browser never reorders. |
-| Reconciliation | Per-window outcome comparing by-product sums to `*_reported_total` rows for shipped revenue and units: `reconciled` or a dated `discrepancy` with both figures. | The reconciliation state-note; a discrepancy renders dated and explicit, never a silent blend. |
+| Product rows | Server-ordered, bounded (initially 50, typed truncation beyond): display title, child ASIN, parent ASIN from `dim_product`, shipped revenue + delta, units, returns, glance views, spend spark-style shipped-revenue series, freshness qualifiers. At any catalog size the page shows the top 50 by current shipped revenue (then product key) with the stated total of every product. One ranked statement picks the 50 and states the product count and the two product sums over the same population; the 50's rows, series and product detail's ad figures are read for those 50 only, so the bake runs 49 plans at every preset whatever the catalog size ([ADR-143](../../decisions/adr-143-size-bake-reads-by-a-bake-row-ceiling-separate-from-chat.md), [ADR-152](../../decisions/adr-152-read-page-sized-answers-in-sql-with-no-arbitrary-row-ceiling.md)). | The product table; the browser never reorders. |
+| Reconciliation | Per-window outcome comparing by-product sums (the ranked statement's population sums over every product) to `*_reported_total` rows for shipped revenue and units: `reconciled` or a dated `discrepancy` with both figures. | The reconciliation state-note; a discrepancy renders dated and explicit, never a silent blend. |
 | Boundary | Fixed basis-boundary statements. | Visible boundary state-note. |
 
 ### Declared-metric prerequisite
@@ -156,7 +159,9 @@ the group:
 | Profitability | COGS shipped · Amazon margin proxy | — |
 
 `retail-movers` is product-grain and renders inside the Products panel beside the table, not
-in a metric section. Section titles and captions are fixed page copy (no temporal words);
+in a metric section. Its three products are ranked in the query by |current − prior| shipped
+revenue over every product, nonzero only, the lower product key on an exact tie; the domain's
+movers rule orders and phrases them (ADR-152). Section titles and captions are fixed page copy (no temporal words);
 the mockup is the exact composition reference.
 
 ### Metric focus (added 2026-09-17)

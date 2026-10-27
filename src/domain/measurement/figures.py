@@ -44,9 +44,12 @@ __all__ = [
     "MEASURE_NOT_A_QUANTITY",
     "MIXED_CURRENCY",
     "RATIO_SCALE",
+    "CurrencyAccumulator",
     "Figure",
     "Measurement",
     "Withholding",
+    "WithholdingAccumulator",
+    "figure_from_row",
     "measure",
     "total_of",
     "varying_columns",
@@ -218,7 +221,7 @@ def measure(
             undefined_rows=len(rows),
         )
     currency = units.currency_code if units is not None else None
-    read = tuple(_figure_from(plan, row, currency) for row in rows)
+    read = tuple(figure_from_row(plan, row, currency) for row in rows)
     figures = tuple(figure for figure in read if figure is not None)
     return Measurement(
         figures=figures,
@@ -359,12 +362,14 @@ def _combine_across(plan: QueryPlan, row: dict[str, str | int | Decimal | None])
     return ((numerator / denominator) * plan.multiplier).quantize(RATIO_SCALE)
 
 
-def _figure_from(
+def figure_from_row(
     plan: QueryPlan, row: dict[str, str | int | Decimal | None], currency: str | None
 ) -> Figure | None:
     """Read one row into a figure, or raise naming the column that failed.
 
-    Returns None for a row whose quotient is undefined. See `_combine`.
+    Returns None for a row whose quotient is undefined, or whose operand was withheld or not
+    returned. See `_combine`. Per row, so a held answer (`measure`) and a fold
+    (`answers.fold_answer`) read a row into a figure by one rule.
     """
     dimensions: list[tuple[str, str]] = []
     for column in plan.group_by:
@@ -492,17 +497,35 @@ def _one_currency(
     amount to denominate either — it will yield no figure. Refusing there would discard every
     other group over a row that was never going to be reported. ADR-037.
     """
-    absence_is_expected = CURRENCY_COLUMN in plan.partially_written_columns
-    seen: list[str] = []
+    accumulator = CurrencyAccumulator(plan)
     for row in rows:
+        accumulator.add(row)
+    return accumulator.result()
+
+
+class CurrencyAccumulator:
+    """`_one_currency`, one row at a time: a held answer and a fold share one currency rule.
+
+    `add` raises the same `InvariantError` the whole-result check raises for a monetary row that
+    owes a currency and states none; `result` refuses mixed currencies (`MIXED_CURRENCY`).
+    """
+
+    def __init__(self, plan: QueryPlan) -> None:
+        self._plan = plan
+        self._absence_is_expected = CURRENCY_COLUMN in plan.partially_written_columns
+        self._seen: list[str] = []
+
+    def add(self, row: dict[str, str | int | Decimal | None]) -> str | None:
+        """Read one row's currency, if it owes one; return it (None when the row has none)."""
+        plan = self._plan
         value = row.get(CURRENCY_COLUMN)
         if value is None and _withheld_only(plan, row):
             # Every row in this group was withheld and AMC returned no currency with them, so
             # the group has no figure and its amount isn't money anyone can add (AMC-V decision
             # 5). It reads "withheld" through `withholding_in`; the other groups still answer.
-            continue
+            return None
         if value is None and _no_amount_to_denominate(plan, row):
-            continue
+            return None
         if value is None:
             drill_currency_sides: tuple[int, ...] = ()
             if plan.join is not None:
@@ -513,11 +536,11 @@ def _one_currency(
                     )
                     if CURRENCY_COLUMN in carried
                 )
-            if absence_is_expected or (
+            if self._absence_is_expected or (
                 drill_currency_sides
                 and all(row.get(measure_alias(index)) is None for index in drill_currency_sides)
             ):
-                continue
+                return None
             raise InvariantError(
                 MEASURE_ABSENT,
                 "A monetary result row does not say what currency it is in.",
@@ -528,21 +551,28 @@ def _one_currency(
                 },
             )
         code = str(value)
-        if code not in seen:
-            seen.append(code)
+        if code not in self._seen:
+            self._seen.append(code)
+        return code
 
-    if not seen:
-        # Every row was silent, so there is nothing to denominate and no figure will survive —
-        # a row with no currency also had no amount. Reported as an absence of units rather than
-        # an error, which is how an empty monetary result is already treated.
-        return None
-    if len(seen) > 1:
-        raise InvariantError(
-            MIXED_CURRENCY,
-            "This result spans more than one currency, so no single total is correct.",
-            context={"currencies": sorted(seen), "fact": plan.fact, "grain": str(plan.grain)},
-        )
-    return seen[0]
+    def result(self) -> str | None:
+        """Return the one currency every row stated, or None when no row stated one.
+
+        Every row silent means nothing to denominate and no figure will survive: a row with no
+        currency also had no amount. Reported as an absence of units rather than an error. More
+        than one is refused, naming every currency seen.
+        """
+        if len(self._seen) > 1:
+            raise InvariantError(
+                MIXED_CURRENCY,
+                "This result spans more than one currency, so no single total is correct.",
+                context={
+                    "currencies": sorted(self._seen),
+                    "fact": self._plan.fact,
+                    "grain": str(self._plan.grain),
+                },
+            )
+        return self._seen[0] if self._seen else None
 
 
 def withholding_in(
@@ -564,43 +594,65 @@ def withholding_in(
     `amount` and counted in `without_currency`, which the answer reads as the typed "withheld"
     absence (AMC-V decision 5, `WithheldAmount`).
     """
-    amount = Decimal(0)
-    withheld_rows = 0
-    groups = 0
-    without_currency = 0
-    money = CURRENCY_COLUMN in plan.carried_columns
+    accumulator = WithholdingAccumulator(plan)
     for row in rows:
+        accumulator.add(row)
+    return accumulator.result()
+
+
+class WithholdingAccumulator:
+    """`withholding_in`, one row at a time: what a held and a streamed read both measure.
+
+    A streamed read never holds its rows, so the withholding it reports is accumulated as each
+    row arrives; `withholding_in` is this accumulator over a tuple, so the two can't diverge.
+    """
+
+    def __init__(self, plan: QueryPlan) -> None:
+        self._plan = plan
+        self._money = CURRENCY_COLUMN in plan.carried_columns
+        self._amount = Decimal(0)
+        self._withheld_rows = 0
+        self._groups = 0
+        self._without_currency = 0
+        self._total_groups = 0
+
+    def add(self, row: dict[str, str | int | Decimal | None]) -> None:
+        """Measure one result row's withholding."""
+        self._total_groups += 1
         touched = False
-        for index in range(_operand_count(plan)):
+        for index in range(_operand_count(self._plan)):
             count = row.get(withheld_rows_alias(index))
             if not _is_set(count):
                 continue
             touched = True
-            withheld_rows += int(Decimal(str(count)))
+            self._withheld_rows += int(Decimal(str(count)))
             if index == 0:
                 raw = row.get(withheld_alias(index))
                 if raw is None:
                     continue
                 if (
-                    money
+                    self._money
                     and CURRENCY_COLUMN in row
                     and not withheld_money_counts(row[CURRENCY_COLUMN])
                 ):
                     # The row states its currency as NULL, so its withheld amount is never
                     # summed into money: it is typed "withheld" instead (AMC-V decision 5). The
                     # row count still counts.
-                    without_currency += 1
+                    self._without_currency += 1
                 else:
-                    amount += Decimal(str(raw))
+                    self._amount += Decimal(str(raw))
         if touched:
-            groups += 1
-    return Withholding(
-        amount=amount,
-        withheld_rows=withheld_rows,
-        groups=groups,
-        total_groups=len(rows),
-        without_currency=without_currency,
-    )
+            self._groups += 1
+
+    def result(self) -> Withholding:
+        """Return what every row added so far had withheld."""
+        return Withholding(
+            amount=self._amount,
+            withheld_rows=self._withheld_rows,
+            groups=self._groups,
+            total_groups=self._total_groups,
+            without_currency=self._without_currency,
+        )
 
 
 def _no_amount_to_denominate(plan: QueryPlan, row: dict[str, str | int | Decimal | None]) -> bool:

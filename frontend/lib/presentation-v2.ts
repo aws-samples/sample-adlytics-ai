@@ -3,8 +3,10 @@ import {
   campaignPortfolioSortFields,
   parseCampaignAttributionDetailV2,
   parseCampaignPortfolioArtifact,
+  parseCampaignRosterShard,
   type CampaignAttributionDetailV2,
   type CampaignPortfolioArtifact,
+  type CampaignPortfolioRosterEntry,
   type CampaignSelectionCapability,
 } from './campaign-attribution';
 import {
@@ -45,7 +47,7 @@ import { parseRetailHealthArtifact, type RetailHealthArtifact } from './retail-h
 import { parseNetworkScorecardArtifact, type NetworkScorecardArtifact } from './scorecard';
 import { parseNewCustomersArtifact, type NewCustomersArtifact } from './new-customers';
 import { parseReachAndFunnelArtifact, type ReachAndFunnelArtifact } from './reach';
-import { parseAudienceProfileArtifact, type AudienceProfileArtifact } from './audiences';
+import { parseAudienceProfileArtifact, parseAudiencesPart, type AudienceProfileArtifact, type AudiencesPart, type AudiencesPartRequest } from './audiences';
 import { parseRetentionCohortArtifact, type RetentionCohortArtifact } from './retention';
 import { parseRetailProductDetail, type RetailProductDetailArtifact } from './retail-health-product';
 import {
@@ -887,6 +889,32 @@ export async function fetchCampaignPresentationV2(
   return presentation;
 }
 
+/**
+ * Fetch one baked shard of a filter's name roster (ADR-145). The server serves it from the
+ * parent's index, never measuring; a shard of another revision comes back as it is, for the
+ * caller's revision guard to compare with the body it holds.
+ */
+export async function fetchCampaignRosterShardV2(
+  session: string,
+  selection: TemporalSelectionV1 | undefined,
+  filterId: string,
+  shard: number,
+  signal?: AbortSignal,
+): Promise<{ readonly entries: readonly CampaignPortfolioRosterEntry[]; readonly parent_revision: string }> {
+  if (!Number.isInteger(shard) || shard < 0) return fail();
+  const body = { ...(requestBody(session, selection, undefined, undefined, filterId) as Record<string, JsonValue>), roster_shard: shard };
+  const response = await callApi(CAMPAIGN_LIST_PATH, 'POST', body, signal, { accept: PRESENTATION_V2_MEDIA_TYPE });
+  const value = await responseJson(response);
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return fail();
+  const item = value as Record<string, unknown>;
+  const keys = Object.keys(item).sort();
+  if (keys.join(',') !== 'kind,parent_revision,session_id,shard' || item.kind !== 'campaign_roster_shard' || item.session_id !== session) return fail();
+  let parsed: { readonly entries: readonly CampaignPortfolioRosterEntry[]; readonly parent_revision: string };
+  try { parsed = parseCampaignRosterShard(item.shard, shard); } catch { return fail(); }
+  if (parsed.parent_revision !== item.parent_revision) return fail();
+  return parsed;
+}
+
 export async function fetchCampaignPresentationChildV2(
   session: string,
   choice: CampaignSelectionCapability,
@@ -1510,7 +1538,7 @@ export function audiencesPresentationV2(
   if (
     page.page_id !== 'audiences' || page.route !== '/audiences/' || page.actions.length !== 0
     || page.parent_revision !== undefined || page.kind !== 'audiences' || page.artifact_id !== 'audiences'
-    || page.artifact_type !== 'AudienceProfileArtifact' || page.artifact_version !== 1
+    || page.artifact_type !== 'AudienceProfileArtifact' || page.artifact_version !== 2
   ) return fail();
   let artifact: AudienceProfileArtifact;
   try { artifact = parseAudienceProfileArtifact(page.artifact); } catch { return fail(); }
@@ -1527,6 +1555,34 @@ export function audiencesPresentationV2(
   return { artifact, artifact_revision: page.artifact_revision, kind: 'parent', page_context: context, temporal };
 }
 
+/**
+ * Fetch one baked Audiences part (ADR-141): a campaign's page, a later profile page or a later
+ * index shard. The server serves it from the parent's index, never measuring; a part of another
+ * revision comes back as it is, for the caller's revision guard to compare.
+ */
+export async function fetchAudiencesPart(
+  session: string,
+  request: AudiencesPartRequest,
+  signal?: AbortSignal,
+): Promise<{ readonly parent_revision: string; readonly part: AudiencesPart }> {
+  if (!text(session) || session.length > 200) return fail();
+  const selector: JsonValue = request.kind === 'campaign'
+    ? { campaign: { page: request.page, ref: request.ref } }
+    : request.kind === 'profile'
+      ? { profile: { page: request.page, path: request.path } }
+      : { campaign_index: { shard: request.shard } };
+  const body: Record<string, JsonValue> = { session_id: session, ...(selector as Record<string, JsonValue>) };
+  const response = await callApi(AUDIENCES_PATH, 'POST', body, signal, { accept: PRESENTATION_V2_MEDIA_TYPE });
+  const value = await responseJson(response);
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return fail();
+  const item = value as Record<string, unknown>;
+  const keys = Object.keys(item).sort();
+  if (keys.join(',') !== 'kind,parent_revision,part,session_id' || item.kind !== 'audiences_part' || item.session_id !== session) return fail();
+  let parsed: { readonly parent_revision: string; readonly part: AudiencesPart };
+  try { parsed = parseAudiencesPart(item.part, request); } catch { return fail(); }
+  if (parsed.parent_revision !== item.parent_revision) return fail();
+  return parsed;
+}
 /** Fetch the single-preset Audiences page; the page exposes no browser date control. */
 export async function fetchAudiencesPresentationV2(
   session: string,

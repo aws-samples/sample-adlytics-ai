@@ -13,6 +13,7 @@ from typing import Any, cast
 
 import pytest
 from change_support import SEMANTICS
+from preset_artifact_support import indexed_parent_custody
 from test_presentation_handler import (
     CAMPAIGN_PLATFORM_LABELS,
     DIMENSION_LABELS,
@@ -59,6 +60,7 @@ from domain.presentation.next_steps import ProductRefTarget, next_step_target_pa
 from domain.presentation.preset_artifacts import (
     PresetArtifactBody,
     PresetArtifactCustodyManifest,
+    PresetArtifactIndexShardIdentity,
     PresetArtifactPage,
     PresetArtifactPointer,
     PresetArtifactPointerRosterRequest,
@@ -70,6 +72,8 @@ from domain.presentation.preset_artifacts import (
     PresetArtifactSiblingReadRequest,
     PresetArtifactVariant,
     canonical_preset_artifact_json,
+    index_shard_descriptors,
+    split_parent_custody,
 )
 from domain.presentation.retail_health import (
     RETAIL_HEALTH_ROW_GRAIN,
@@ -85,7 +89,6 @@ from domain.presentation.retail_health_custody import (
     RetailHealthCustodyManifest,
     RetailHealthCustodyProduct,
     RetailProductChildCustody,
-    RetailProductChildDigests,
     product_ref_for,
     retail_health_custody_manifest_from_payload,
     retail_health_custody_manifest_payload,
@@ -264,7 +267,10 @@ def _child(  # noqa: PLR0913 -- one product and its two fixture switches
 
 @dataclass
 class _Publication:
-    """One format-8 bake: parent body, custody and one child per displayed row."""
+    """One bake: parent body, custody, one child per displayed row and the children's index.
+
+    `child_custody` holds each child's custody and each index shard, by key.
+    """
 
     pointer: PresetArtifactPointer
     body: PresetArtifactBody
@@ -320,7 +326,7 @@ def _publication(  # noqa: PLR0913 -- one bake and its three fixture switches
     child_bodies: dict[str, PresetArtifactSiblingBody] = {}
     child_custody: dict[str, PresetArtifactSiblingCustody] = {}
     products: list[RetailHealthCustodyProduct] = []
-    digests: list[tuple[str, RetailProductChildDigests]] = []
+    pairs: list[tuple[PresetArtifactSiblingBody, PresetArtifactSiblingCustody]] = []
     for index, row in enumerate(parent.rows):
         first = index == 0
         product = _product(row.child_asin)
@@ -356,22 +362,18 @@ def _publication(  # noqa: PLR0913 -- one bake and its three fixture switches
         child_bodies[public.key] = public
         child_custody[private.key] = private
         products.append(RetailHealthCustodyProduct(ref, product))
-        digests.append((ref, RetailProductChildDigests(public.digest, private.digest)))
-    custody = PresetArtifactCustodyManifest(
-        PAGE,
-        VARIANT,
-        revision,
-        canonical_preset_artifact_json(
-            retail_health_custody_manifest_payload(
-                RetailHealthCustodyManifest(
-                    body.digest,
-                    tuple(products),
-                    tuple(digests),
-                    products[0].product_ref if movers else None,
-                )
+        pairs.append((public, private))
+    # ADR-145: the manifest is the header; the stage's index is the children's one digest home.
+    custody, shards = indexed_parent_custody(
+        body,
+        retail_health_custody_manifest_payload(
+            RetailHealthCustodyManifest(
+                body.digest, tuple(products), products[0].product_ref if movers else None
             )
         ),
+        tuple(pairs),
     )
+    child_custody.update({shard.key: shard for shard in shards})
     pointer = PresetArtifactPointer(PAGE, VARIANT, revision, body.digest, 1, None, custody.digest)
     return _Publication(pointer, body, custody, child_bodies, child_custody)
 
@@ -540,34 +542,38 @@ def _product_event(reference: str, preset: str = "7d", **extra: object) -> dict[
 # --- Custody: the closed child set ---------------------------------------------------------
 
 
-@pytest.mark.covers("ADR-125")
-def test_child_custody_is_a_closed_set_of_the_served_rows() -> None:
-    """A child the rows don't name, or a row with no child, refuses the manifest."""
+def _header(publication: _Publication) -> dict[str, object]:
+    header, _ = split_parent_custody(publication.custody)
+    return header
+
+
+@pytest.mark.covers("ADR-125", "ADR-145")
+def test_the_parent_custody_names_the_rows_and_its_index_is_the_childrens_one_digest_home() -> None:
+    """The manifest carries no child digests; the stage's index lists each child once."""
     publication = _publication()
-    manifest = retail_health_custody_manifest_from_payload(
-        json.loads(publication.custody.payload_json)
-    )
+    header = _header(publication)
+    assert set(header) == {"kind", "body_digest", "products", "movers_product_ref"}
+    manifest = retail_health_custody_manifest_from_payload(header)
     refs = tuple(item.product_ref for item in manifest.products)
-    assert tuple(ref for ref, _ in manifest.product_children) == refs
-    with pytest.raises(ValueError, match="exactly the served rows"):
-        replace(manifest, product_children=manifest.product_children[:1])
-    stranger = product_ref_for(_product("STRANGER"))
-    with pytest.raises(ValueError, match="exactly the served rows"):
-        replace(
-            manifest,
-            product_children=(
-                *manifest.product_children,
-                (stranger, manifest.product_children[0][1]),
-            ),
+    _, index = split_parent_custody(publication.custody)
+    indexed = {
+        item.identity: item
+        for position, entry in enumerate(index)
+        for item in index_shard_descriptors(
+            publication.child_custody[
+                f"custody/retail-health/7d/{publication.pointer.revision.value}/"
+                f"{PresetArtifactIndexShardIdentity(position).path}.json"
+            ],
+            entry,
         )
-    with pytest.raises(ValueError, match="movers product"):
-        replace(manifest, movers_product_ref=stranger)
-    with pytest.raises(ValueError, match="does not name its product"):
-        RetailHealthCustodyProduct(stranger, _product("FICTA"))
-    payload = json.loads(publication.custody.payload_json)
-    payload["product_children"]["0" * 32] = payload["product_children"][refs[0]]
-    with pytest.raises(ValueError):
-        retail_health_custody_manifest_from_payload(payload)
+    }
+    assert set(indexed) == {PresetArtifactProductChildIdentity(ref) for ref in refs}
+    for key, body in publication.child_bodies.items():
+        descriptor = indexed[body.identity]
+        assert descriptor.body_digest == body.digest
+        private = publication.child_custody[key.replace("pages/", "custody/", 1)]
+        assert descriptor.custody_digest == private.digest
+    # The manifest's own codec and its refusals are held in test_retail_health_custody.py.
 
 
 @pytest.mark.covers("ADR-125")
@@ -710,20 +716,16 @@ def test_a_child_missing_from_the_custody_refuses(
     pages = _ProductPages(tokens=_TOKENS)
     parent = _serve_parent(presentation_module, pages, publication)
     rows = parent["page"]["artifact"]["rows"]
-    manifest = retail_health_custody_manifest_from_payload(
-        json.loads(publication.custody.payload_json)
-    )
-    # A manifest naming only the second product: the first row's child is not in it.
-    kept = replace(
-        manifest,
-        products=manifest.products[1:],
-        product_children=manifest.product_children[1:],
-    )
-    publication.custody = PresetArtifactCustodyManifest(
-        PAGE,
-        VARIANT,
-        publication.pointer.revision,
-        canonical_preset_artifact_json(retail_health_custody_manifest_payload(kept)),
+    manifest = retail_health_custody_manifest_from_payload(_header(publication))
+    # A manifest naming only the second product: the first row's product is not in it.
+    kept = replace(manifest, products=manifest.products[1:])
+    publication.custody, _ = indexed_parent_custody(
+        publication.body,
+        retail_health_custody_manifest_payload(kept),
+        tuple(
+            (body, publication.child_custody[key.replace("pages/", "custody/", 1)])
+            for key, body in publication.child_bodies.items()
+        ),
     )
     publication.pointer = replace(publication.pointer, custody_digest=publication.custody.digest)
 
@@ -732,6 +734,80 @@ def test_a_child_missing_from_the_custody_refuses(
             _product_event(rows[0]["selection_reference"]),
             _runtime(presentation_module, pages, publication),
         )
+
+
+@pytest.mark.covers("ADR-125", "ADR-145")
+def test_a_child_the_index_does_not_list_refuses_and_a_listed_one_opens(
+    presentation_module: _PresentationModule,  # noqa: F811
+) -> None:
+    """A served row whose child has no descriptor in the index is malformed, never a fallback."""
+    publication = _publication()
+    pages = _ProductPages(tokens=_TOKENS)
+    rows = _serve_parent(presentation_module, pages, publication)["page"]["artifact"]["rows"]
+    first, second = ((key, body) for key, body in publication.child_bodies.items())
+    # The manifest still names both rows; the index lists only the second child.
+    publication.custody, shards = indexed_parent_custody(
+        publication.body,
+        _header(publication),
+        ((second[1], publication.child_custody[second[0].replace("pages/", "custody/", 1)]),),
+    )
+    publication.child_custody.update({shard.key: shard for shard in shards})
+    publication.pointer = replace(publication.pointer, custody_digest=publication.custody.digest)
+    assert first[1].identity == PresetArtifactProductChildIdentity(
+        product_ref_for(_product(rows[0]["child_asin"]))
+    )
+
+    with pytest.raises(InvariantError, match="malformed"):
+        presentation_module.handle(
+            _product_event(rows[0]["selection_reference"]),
+            _runtime(presentation_module, pages, publication),
+        )
+    # Paired: the row the index lists opens its child through it.
+    response = presentation_module.handle(
+        _product_event(rows[1]["selection_reference"]),
+        _runtime(presentation_module, pages, publication),
+    )
+    assert response["statusCode"] == 200
+
+
+@pytest.mark.covers("ADR-125", "ADR-145")
+def test_a_tampered_index_shard_refuses_and_never_falls_back(
+    presentation_module: _PresentationModule,  # noqa: F811
+) -> None:
+    """Shard bytes that differ from the parent custody's entry are the malformed refusal."""
+    publication = _publication()
+    pages = _ProductPages(tokens=_TOKENS)
+    rows = _serve_parent(presentation_module, pages, publication)["page"]["artifact"]["rows"]
+    _, index = split_parent_custody(publication.custody)
+    assert len(index) == 1
+    key = (
+        f"custody/retail-health/7d/{publication.pointer.revision.value}/"
+        f"{PresetArtifactIndexShardIdentity(0).path}.json"
+    )
+    shard = publication.child_custody[key]
+    payload = json.loads(shard.payload_json)
+    # Swap the two children's descriptors' custody digests: well-formed, but not the bytes bound.
+    first, second = payload["descriptors"]
+    first["custody_digest"], second["custody_digest"] = (
+        second["custody_digest"],
+        first["custody_digest"],
+    )
+    publication.child_custody[key] = replace(
+        shard, payload_json=canonical_preset_artifact_json(payload)
+    )
+
+    with pytest.raises(InvariantError, match="malformed"):
+        presentation_module.handle(
+            _product_event(rows[0]["selection_reference"]),
+            _runtime(presentation_module, pages, publication),
+        )
+    # Paired: the shard as written opens the same row.
+    publication.child_custody[key] = shard
+    response = presentation_module.handle(
+        _product_event(rows[0]["selection_reference"]),
+        _runtime(presentation_module, pages, publication),
+    )
+    assert response["statusCode"] == 200
 
 
 @pytest.mark.covers("ADR-125")

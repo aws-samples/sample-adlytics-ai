@@ -32,7 +32,6 @@ from typing import TYPE_CHECKING, NamedTuple, Protocol, cast
 from adapters.campaign_insight_requests import FindingSource, predicate_findings
 from adapters.inbound.tool_handlers.gateway import contracts_root
 from adapters.inbound.tool_handlers.measurement import (
-    DEFAULT_MAX_ROWS,
     MeasurementExecutionTooling,
     MeasurementTool,
     MeasurementTooling,
@@ -47,6 +46,7 @@ from adapters.jobs.presentation_validation.loader import load_v2_page_schemas
 from adapters.jobs.preset_artifact_publisher.campaign_source import (
     SUPERSEDED_HISTORY_RETENTION,
 )
+from adapters.jobs.preset_artifact_publisher.isolated_refusals import capped_preset_artifact_json
 from adapters.jobs.preset_artifact_publisher.scorecard_source import (
     MARKETPLACE_SELECTOR,
     GroupedAnswer,
@@ -63,7 +63,7 @@ from adapters.outbound.publication_selection import (
     PublicationSelector,
 )
 from adapters.outbound.source_pack import load_source_packs
-from adapters.outbound.spend_roster import SpendRosterReader, ad_product_labels
+from adapters.outbound.spend_roster import SPEND_METRIC, SpendRosterReader, ad_product_labels
 from adapters.producer.packs import load_query_packs
 from domain.measurement.periodic import (
     BUCKET_SCHEME_COLUMN,
@@ -71,7 +71,8 @@ from domain.measurement.periodic import (
     VariantMismatchError,
     active_variant,
 )
-from domain.measurement.rosters import Roster, RosterKind
+from domain.measurement.ranking import RankedMembership, RankedProjection, RankedRestriction
+from domain.measurement.rosters import Roster
 from domain.presentation.calendar_presets import (
     PeriodicContract,
     PresetSection,
@@ -93,13 +94,11 @@ from domain.presentation.page_schemas import TemporalPresetId, is_calendar_prese
 from domain.presentation.preset_artifacts import (
     PresetArtifactBody,
     PresetArtifactPage,
-    PresetArtifactPointer,
-    PresetArtifactPointerAdvanceRequest,
+    PresetArtifactPointerTemplate,
     PresetArtifactPublicationRequest,
     PresetArtifactRevision,
     PresetArtifactVariant,
     SourceUnchanged,
-    canonical_preset_artifact_json,
 )
 from domain.presentation.reach import (
     ACCOUNT,
@@ -134,12 +133,11 @@ from domain.presentation.reach import (
 )
 from domain.semantics.amc_instance import AmcInstanceKind
 from domain.semantics.calendar_periods import CalendarPeriod
-from domain.shared_kernel.values import DateRange
 from ports.outbound.publication_selection import (
     PresentationEvidenceInspectionPlan,
     PresentationEvidenceInspectionRequest,
 )
-from ports.outbound.rosters import RosterRequest
+from ports.outbound.query import BAKE_MAX_ROWS, RowCeiling
 from ports.outbound.semantic_state import scope_horizon_policy
 from ports.outbound.served_periods import ServedPeriodsRequest
 
@@ -199,6 +197,10 @@ FREQUENCY_METRICS = (
 """Each `FrequencyCell` field and the per-bucket dictionary metric planned for it (pack 6)."""
 FREQUENCY_GRAINS = ("marketplace", "frequency_bucket", "identity_space")
 CHANNEL_GRAINS = ("marketplace", "ad_product", "frequency_bucket", "identity_space")
+CAMPAIGN_GRAINS = ("campaign", "marketplace")
+"""The campaign count's ranked grain: its key, then the marketplace (`require_rankable`)."""
+_CAMPAIGNS = ("active_campaigns", "count")
+_PLATFORM_COLUMN = "platform_key"
 _CHANNEL_GRAIN_SET = "channel"
 _AMAZON_ADS = "amazon_ads"
 _PERIOD_GRAIN_SELECTOR = "time_grain"
@@ -268,13 +270,12 @@ class _Read:
 
 @dataclass(frozen=True, slots=True)
 class _FrequencyRead:
-    """One marketplace's frequency for the period: its scheme, channel roster and campaigns."""
+    """One marketplace's frequency for the period: its scheme and channel roster."""
 
     market: str
     period: CalendarPeriod
     scheme: str
     channel_roster: Roster | None
-    active_campaigns: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -283,7 +284,8 @@ class _Reduced:
 
     `series` holds the pack variant each planned (marketplace, role) period was read from (None
     for the base pack); `refused` that this marketplace's prior period was held by two series;
-    `frequency` the marketplace's pack 6 read, None when frequency isn't planned for it.
+    `frequency` the marketplace's pack 6 read, None when frequency isn't planned for it;
+    `active_campaigns` how many campaigns had Amazon Ads spend in the period, when it is.
     """
 
     answers: dict[_Label, GroupedAnswer]
@@ -291,6 +293,7 @@ class _Reduced:
     series: dict[tuple[str, str], str | None]
     refused: bool
     frequency: _FrequencyRead | None = None
+    active_campaigns: int | None = None
 
 
 class _FrequencyPlan(NamedTuple):
@@ -376,7 +379,8 @@ class ReachArtifactRenderer:
                 _GRAIN_SET_SELECTOR: _PLATFORM_GRAIN_SET,
                 ROW_KIND_COLUMN: row_kind,
             },
-            max_rows=DEFAULT_MAX_ROWS,
+            max_rows=BAKE_MAX_ROWS,
+            row_ceiling=RowCeiling.BAKE,
         )
 
     def _served(
@@ -434,7 +438,7 @@ class ReachArtifactRenderer:
             if not dsp and anchored:
                 return self._needs_dsp(request)
             return ReachRenderResult(None, ())
-        answers, measured = self._measured(batch, request)
+        answers, measured, campaigns = self._measured(batch, request)
         if answers is None or not measured:
             # A partial answer, or no marketplace's period landed: nothing to bake, and the page
             # reads its pending or missing state from the serve-time resolution.
@@ -448,7 +452,14 @@ class ReachArtifactRenderer:
             self._market(
                 request,
                 market,
-                _Reduced(answers, revision, series, market in refused, frequency.get(market)),
+                _Reduced(
+                    answers,
+                    revision,
+                    series,
+                    market in refused,
+                    frequency.get(market),
+                    campaigns.get(market),
+                ),
             )
             for market in self.marketplaces
         )
@@ -527,7 +538,8 @@ class ReachArtifactRenderer:
                 ROW_KIND_COLUMN: "window",
                 BUCKET_SCHEME_COLUMN: scheme,
             },
-            max_rows=DEFAULT_MAX_ROWS,
+            max_rows=BAKE_MAX_ROWS,
+            row_ceiling=RowCeiling.BAKE,
         )
 
     def _frequency(
@@ -553,6 +565,9 @@ class ReachArtifactRenderer:
                 (market, cell_field, "frequency"),
                 FREQUENCY_GRAINS,
             )
+        # ADR-152: the count of campaigns with spend is the population count of a one-row
+        # ranked read, so no read lists every campaign.
+        batch.add(self._campaigns_request(market, period), (market, *_CAMPAIGNS), CAMPAIGN_GRAINS)
         channel_roster = None
         channel_scheme = self._scheme(FREQUENCY_CHANNEL, market, period)
         if channel_scheme is not None:
@@ -565,10 +580,33 @@ class ReachArtifactRenderer:
             )
             channel_roster = attached.rosters[0] if attached.rosters else None
             batch.add(attached, (market, "shoppers", "channels"), CHANNEL_GRAINS)
-        campaigns = rosters.roster(
-            RosterRequest(RosterKind.CAMPAIGN, period.window, market, _AMAZON_ADS)
+        return _FrequencyRead(market, period, scheme, channel_roster)
+
+    def _campaigns_request(self, market: str, period: CalendarPeriod) -> MeasurementToolRequest:
+        """Rank Amazon Ads spend per campaign, keeping one: its population counts who spent."""
+        return MeasurementToolRequest(
+            tool=MeasurementTool.METRIC_BY_GRAIN,
+            catalog=self.catalog,
+            contracts=self.contracts,
+            metric_name=SPEND_METRIC,
+            grains=CAMPAIGN_GRAINS,
+            window=period.window,
+            computed_at=self.clock(),
+            correlation_id=_CORRELATION_ID,
+            filters={MARKETPLACE_SELECTOR: market, _PLATFORM_COLUMN: _AMAZON_ADS},
+            max_rows=1,
+            row_ceiling=RowCeiling.BAKE,
+            ranked=RankedRestriction(
+                key="campaign",
+                rank_metric=SPEND_METRIC,
+                rank_window=period.window,
+                population_metrics=(SPEND_METRIC,),
+                population_windows=(period.window,),
+                n=1,
+                projection=RankedProjection.RANKED_KEYS,
+                membership=RankedMembership.POSITIVE,
+            ),
         )
-        return _FrequencyRead(market, period, scheme, channel_roster, len(campaigns.entries))
 
     def _instance_identity(self, request: ReachRenderInput) -> str:
         """Name the governed instance declaration and the period as one evidence identity."""
@@ -597,7 +635,7 @@ class ReachArtifactRenderer:
 
     def _measured(
         self, batch: _Batch, request: ReachRenderInput
-    ) -> tuple[dict[_Label, GroupedAnswer] | None, tuple[str, ...]]:
+    ) -> tuple[dict[_Label, GroupedAnswer] | None, tuple[str, ...], dict[str, int]]:
         prepared = prepare_batch(tuple(batch.plans))
         if len(prepared.plans) != len(batch.labels):
             raise RuntimeError("the Reach batch and its labels must align.")
@@ -629,7 +667,12 @@ class ReachArtifactRenderer:
                 }
             )
         )
-        return self._parsed(executed.slots, batch, request), measured
+        campaigns = {
+            label[0]: sum(item.count for item in answer.population)
+            for answer, label in zip(executed.slots, batch.labels, strict=True)
+            if label[1:] == _CAMPAIGNS
+        }
+        return self._parsed(executed.slots, batch, request), measured, campaigns
 
     @staticmethod
     def _parsed(
@@ -647,7 +690,8 @@ class ReachArtifactRenderer:
                 # Every period planned has a CURRENT publication, so anything short of a
                 # complete answer is missing evidence: no bake, never an undercount.
                 return None
-            if any(key[0] != market for key in item.rows):
+            column = batch.grains[label].index("marketplace")
+            if any(key[column] != market for key in item.rows):
                 return None
             parsed[label] = item
         return parsed
@@ -737,7 +781,7 @@ class ReachArtifactRenderer:
                 prior_refused=reduced.refused,
                 frequency=frequency,
                 channels=() if read is None else self._channels(answers, market, read),
-                active_campaigns=None if read is None else read.active_campaigns,
+                active_campaigns=None if read is None else reduced.active_campaigns,
                 frequency_lag_days=self.frequency_lag_days,
             )
         )
@@ -956,26 +1000,21 @@ class RetainedReachPresetArtifactSource:
             self.page,
             variant,
             revision,
-            canonical_preset_artifact_json(reach_artifact_payload(rendered.artifact)),
-        )
-        pointer = PresetArtifactPointer(
-            self.page,
-            variant,
-            revision,
-            body.digest,
-            1 if current is None else current.forward_token + 1,
-            None if current is None else current.revision,
-            None,
-            # The served period (ADR-116 decision 4), so every preset button names its dates.
-            resolved_window=rendered.artifact.period.window,
+            capped_preset_artifact_json(reach_artifact_payload(rendered.artifact)),
         )
         return PresetArtifactPublicationRequest(
             body,
-            PresetArtifactPointerAdvanceRequest(
-                pointer,
+            PresetArtifactPointerTemplate(
+                self.page,
+                variant,
+                revision,
+                body.digest,
+                1 if current is None else current.forward_token + 1,
+                None if current is None else current.revision,
                 None if current is None else self.clock() + SUPERSEDED_HISTORY_RETENTION,
+                # The served period (ADR-116 decision 4), so every preset button names its dates.
+                resolved_window=rendered.artifact.period.window,
             ),
-            None,
         )
 
     def resolve(self, preset: TemporalPresetId) -> ReachRenderInput | None:
@@ -1084,22 +1123,6 @@ REACH_MATERIALIZATION_UNAVAILABLE = "reach_materialization_unavailable"
 """The reason while the retained-truth configuration or the v2 page entry is absent."""
 
 
-class _CampaignCountOnly:
-    """Reach's campaign roster names: each key itself, reading nothing (review 2026-10-17 #3).
-
-    Reach frequency only counts the campaigns with spend (`len(roster.entries)`); no campaign
-    label reaches the page. So the roster neither refuses on an unnamed campaign nor reads a
-    CURRENT label scope a GRAPH pin can't see.
-    """
-
-    def public_names(
-        self, column: str, values: tuple[str, ...], window: DateRange
-    ) -> dict[str, str]:
-        """Name every key by itself."""
-        del column, window
-        return {value: value for value in values}
-
-
 def retained_reach_preset_artifact_source(  # noqa: PLR0913, PLR0917 -- the closed signature
     settings: PresetArtifactBakeSettings,
     pointers: PresetArtifactPointerStorePort,
@@ -1175,7 +1198,6 @@ def retained_reach_preset_artifact_source(  # noqa: PLR0913, PLR0917 -- the clos
                 queries=queries,
                 labels=labels,
                 clock=current.clock,
-                names=_CampaignCountOnly(),
             ),
         ),
         marketplaces=marketplaces,

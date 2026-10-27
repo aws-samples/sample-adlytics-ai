@@ -9,15 +9,18 @@ from __future__ import annotations
 
 import json
 import pathlib
+import sqlite3
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any, cast
 
 import pytest
+from bake_application_support import apply_with_deadline, legacy_application, remaining_ms
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from preset_artifact_support import published_result
 from publication_support import StubPublications
 
 from adapters.config import PresetArtifactBakeSettings
@@ -27,18 +30,18 @@ from adapters.jobs.contract_validation.loader import load_contracts
 from adapters.jobs.presentation_validation.loader import load_v2_page_schemas
 from adapters.jobs.preset_artifact_publisher import baker as baker_module
 from adapters.jobs.preset_artifact_publisher import new_customers_source
-from adapters.jobs.preset_artifact_publisher.baker import (
+from adapters.jobs.preset_artifact_publisher.bake_results import (
     BakePublication,
     BakeUnavailable,
+)
+from adapters.jobs.preset_artifact_publisher.baker import (
     CampaignPresetArtifactBaker,
     NewCustomersPresetArtifactBaker,
-    PresetArtifactBakeApplication,
     RegisteredPresetArtifactBaker,
     UnavailableCampaignPresetArtifactSource,
     UnavailableNewCustomersPresetArtifactSource,
     UnavailablePresetArtifactBaker,
 )
-from adapters.jobs.preset_artifact_publisher.baker import apply_records as apply_bake_records
 from adapters.jobs.preset_artifact_publisher.new_customers_source import (
     NewCustomersArtifactRenderer,
     NewCustomersRenderInput,
@@ -55,6 +58,7 @@ from adapters.jobs.preset_artifact_publisher.transport import (
     DeclaredBakeIntents,
     load_declared_bake_intents,
 )
+from adapters.outbound.athena.composition import compose
 from adapters.outbound.bake_sources import BakeSourceReads
 from adapters.outbound.metric_dictionary import load_catalog
 from adapters.outbound.telemetry import tracing
@@ -62,7 +66,9 @@ from adapters.outbound.telemetry.generated_spans import PRESET_ARTIFACT_DELIVERY
 from adapters.outbound.telemetry.reporting import OperationLog, Report
 from domain.measurement.pack_coverage import PackDayVersions
 from domain.measurement.planning import measure_alias
+from domain.measurement.ranking import RankedPopulation
 from domain.measurement.rosters import Roster, RosterEntry
+from domain.operations.execution_graph_release import BakeRoster
 from domain.presentation.insights import InsightSlotId, InsightSlotState
 from domain.presentation.new_customers import (
     NEW_CUSTOMERS_PAGE_ID,
@@ -84,10 +90,8 @@ from domain.presentation.page_schemas import (
     TemporalPresetId,
 )
 from domain.presentation.preset_artifacts import (
-    ArtifactBodyWriteResult,
     PresetArtifactPage,
     PresetArtifactPointerAdvanceOutcome,
-    PresetArtifactPointerAdvanceResult,
     PresetArtifactPublicationRequest,
     PresetArtifactPublicationResult,
     PresetArtifactVariant,
@@ -147,7 +151,10 @@ _CONVERSION: dict[str, dict[tuple[str, str], tuple[Decimal, Decimal]]] = {
     "revenue_new_to_brand_12mo": {SP: (Decimal(1200), Decimal(850))},
     "revenue_attributed": {SP: (Decimal(3000), Decimal(2500))},
 }
-_GATEWAY_PRODUCTS = {(SP, "amazon_asin:B0GATE0001"): 5, (SP, "amazon_asin:B0GATE0002"): 3}
+_GATEWAY_PRODUCTS: dict[tuple[tuple[str, str], str], int] = {
+    (SP, "amazon_asin:B0GATE0001"): 5,
+    (SP, "amazon_asin:B0GATE0002"): 3,
+}
 _BUYERS_COUNT = Decimal(4400)
 _WEEK_SPEND = Decimal(5500)
 _CHANNEL_BUYERS: dict[tuple[str, str], Decimal] = {SP: Decimal(300), SB: Decimal(120)}
@@ -175,6 +182,67 @@ class NewCustomersQueries:
     channel_currency: str | None = None
     """The currency the per-channel cost answer carries; None is the marketplace's own."""
     seen: list[QueryRequest] = field(default_factory=list[QueryRequest])
+    gateway: dict[tuple[tuple[str, str], str], int] = field(
+        default_factory=lambda: dict(_GATEWAY_PRODUCTS)
+    )
+    """Fictional halo-inclusive new-to-brand purchases per (ad product, product)."""
+    gateway_suppressed: bool = False
+    """Whether Amazon withheld a gateway row somewhere in the product population."""
+
+    def _gateway(self, request: QueryRequest, market: str) -> QueryResult:
+        """Stand in for the ranked gateway read: each partition's top n above 0, and its count."""
+        plan = request.plan.logical
+        totals: dict[tuple[str, ...], int] = {}
+        for (media, asin), count in self.gateway.items():
+            key = (*media, asin, market) if "amazon_asin" in plan.group_by else media
+            totals[key] = totals.get(key, 0) + count
+        if request.ranked is None:
+            rows = [
+                cast(
+                    "QueryRow",
+                    {
+                        **dict(zip(plan.group_by, key, strict=True)),
+                        measure_alias(0): Decimal(count),
+                    },
+                )
+                for key, count in totals.items()
+            ]
+            return QueryResult(tuple(rows), 1_024, False, Suppression(rows_suppressed=False))
+        restriction = request.ranked.restriction
+        partitions: dict[tuple[str, str], list[tuple[str, int]]] = {}
+        for (channel, ad_product, asin, _market), count in totals.items():
+            if count > 0:
+                partitions.setdefault((channel, ad_product), []).append((asin, count))
+        ranked_rows: list[QueryRow] = []
+        population: list[RankedPopulation] = []
+        for partition in sorted(partitions):
+            ranked = sorted(partitions[partition], key=lambda item: (-item[1], item[0]))
+            population.append(
+                RankedPopulation(partition, len(ranked), (), suppressed=self.gateway_suppressed)
+            )
+            ranked_rows.extend(
+                cast(
+                    "QueryRow",
+                    {
+                        "channel_key": partition[0],
+                        "ad_product_key": partition[1],
+                        "amazon_asin": asin,
+                        "marketplace_key": market,
+                        measure_alias(0): Decimal(count),
+                    },
+                )
+                for asin, count in ranked[: restriction.n]
+            )
+        return QueryResult(
+            tuple(ranked_rows[: request.max_rows]),
+            1_024,
+            len(ranked_rows) > request.max_rows,
+            Suppression(
+                rows_suppressed=self.gateway_suppressed,
+                reason="withheld" if self.gateway_suppressed else None,
+            ),
+            population=tuple(population),
+        )
 
     def _channel_rows(self, request: QueryRequest, market: str) -> list[QueryRow]:
         """Rows of the channel grain set: one per returned ad product, never a total."""
@@ -241,21 +309,7 @@ class NewCustomersQueries:
         if periodic.get("grain_set") == "channel":
             rows = self._channel_rows(request, market)
         elif plan.metric.name == "purchases_new_to_brand_incl_halo_12mo":
-            by_product = "amazon_asin" in plan.group_by
-            totals: dict[tuple[object, ...], int] = {}
-            for (media, asin), count in _GATEWAY_PRODUCTS.items():
-                key = (*media, asin) if by_product else media
-                totals[key] = totals.get(key, 0) + count
-            rows = [
-                cast(
-                    "QueryRow",
-                    {
-                        **dict(zip(plan.group_by, key, strict=True)),
-                        measure_alias(0): Decimal(count),
-                    },
-                )
-                for key, count in totals.items()
-            ]
+            return self._gateway(request, market)
         elif plan.group_by == ("marketplace_key",):
             row: dict[str, str | int | Decimal | None] = {"marketplace_key": market}
             for column in plan.carried_columns:
@@ -553,7 +607,118 @@ def test_an_uncovered_window_bakes_every_channel_s_coverage_text_and_plans_no_ga
         request.plan.logical.group_by
         for request in covered.seen
         if request.plan.logical.metric.name == "purchases_new_to_brand_incl_halo_12mo"
-    ] == [("channel_key", "ad_product_key", "amazon_asin"), ("channel_key", "ad_product_key")]
+    ] == [
+        ("channel_key", "ad_product_key", "amazon_asin", "marketplace_key"),
+        ("channel_key", "ad_product_key"),
+    ]
+
+
+def _gateway_products(count: int) -> dict[tuple[tuple[str, str], str], int]:
+    return {(SP, f"amazon_asin:B0GATE{index:06d}"): count - index for index in range(count)}
+
+
+@pytest.mark.covers("ADR-152")
+@pytest.mark.parametrize(
+    ("products", "shown", "more"),
+    [(9, 9, 0), (10, 10, 0), (11, 10, 1), (50_000, 10, 49_990)],
+)
+def test_the_gateway_is_ranked_in_the_query_and_counts_every_listed_product(
+    products: int, shown: int, more: int
+) -> None:
+    """One ranked read per marketplace keeps 10 per ad product; "N more" is its count."""
+    queries = NewCustomersQueries(PERIOD, gateway=_gateway_products(products))
+    result = _renderer(queries).render_new_customers(ROLLING)
+    assert result.artifact is not None
+    (market,) = result.artifact.markets
+    entry = next(item for item in market.gateway if item.ad_product_key == SP[1])
+    assert (len(entry.rows), entry.more_count) == (shown, more)
+    assert entry.rows[0].asin == "B0GATE000000"  # the most purchases, ASIN the tie
+    (ranked,) = (item for item in queries.seen if item.ranked is not None)
+    assert ranked.ranked is not None
+    restriction = ranked.ranked.restriction
+    assert (restriction.n, restriction.partition_by) == (10, ("channel", "ad_product"))
+    assert ranked.max_rows == 10 * len(LABELS.ad_products)
+
+
+@pytest.mark.covers("ADR-152")
+def test_a_gateway_population_amazon_withheld_bakes_nothing() -> None:
+    """Paired with the ordinary bake: a withheld population is incomplete evidence."""
+    assert _rendered() is not None
+    queries = NewCustomersQueries(PERIOD, gateway_suppressed=True)
+    assert _renderer(queries).render_new_customers(ROLLING).artifact is None
+
+
+def _executed_gateway(withheld: frozenset[str]) -> dict[tuple[str, str], tuple[Any, ...]]:
+    """Run the real composed gateway statement over hand-built rows, keyed by partition.
+
+    Each partition maps to (its keys, population count, population withholding). SQLite stands
+    in for Athena only to execute the statement's filter and window order; the one Athena-only
+    token, `CAST(? AS DATE)`, binds as an ISO date string instead.
+    """
+    queries = NewCustomersQueries(PERIOD)
+    _renderer(queries).render_new_customers(ROLLING)
+    (request,) = (item for item in queries.seen if item.ranked is not None)
+    assert request.ranked is not None
+    composed = compose(request.plan, request.max_rows, request.ranked)
+    publication = request.ranked.rank.primary_ids[0]
+    # (channel, ad product, ASIN, purchases): a positive key, a fully withheld key and a zero
+    # key in one ad product; another ad product whose only key may be fully withheld.
+    rows = (
+        ("ch_a", "ap_a", "amazon_asin:B0A", 5),
+        ("ch_a", "ap_a", "amazon_asin:B0B", 3),
+        ("ch_a", "ap_a", "amazon_asin:B0C", 0),
+        ("ch_b", "ap_b", "amazon_asin:B0D", 4),
+    )
+    database = sqlite3.connect(":memory:")
+    database.execute(
+        'CREATE TABLE "fct_attributed_conversion" ("date_key", "publication_id", "channel_key", '
+        '"ad_product_key", "amazon_asin", "marketplace_key", "rows_suppressed", '
+        '"purchases_new_to_brand_incl_halo_12mo")'
+    )
+    database.executemany(
+        'INSERT INTO "fct_attributed_conversion" VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+            (PERIOD.start.isoformat(), publication, *media, asin, US, asin in withheld, value)
+            for (*media, asin, value) in rows
+        ],
+    )
+    names = (
+        *request.plan.logical.selected_columns,
+        *request.plan.logical.result_aliases,
+        "population_count",
+        "population_suppressed",
+    )
+    result: dict[tuple[str, str], tuple[Any, ...]] = {}
+    for values in database.execute(
+        composed.sql.replace("CAST(? AS DATE)", "?"), composed.parameters
+    ):
+        row = dict(zip(names, values, strict=True))
+        partition = (row["channel_key"], row["ad_product_key"])
+        keys, _, _ = result.get(partition, ((), 0, 0))
+        result[partition] = (
+            (*keys, row["amazon_asin"]),
+            row["population_count"],
+            row["population_suppressed"],
+        )
+    database.close()
+    return result
+
+
+@pytest.mark.covers("ADR-152")
+def test_the_composed_gateway_keeps_a_fully_withheld_key_so_its_withholding_is_reported() -> None:
+    """Paired with the unwithheld control, which drops the zero key.
+
+    A withheld key's value excludes its rows, so it is 0; were `POSITIVE` to drop it, the
+    population would read complete and the page would bake an undercounted top 10 and "N more".
+    """
+    assert _executed_gateway(frozenset()) == {
+        ("ch_a", "ap_a"): (("amazon_asin:B0A", "amazon_asin:B0B"), 2, 0),
+        ("ch_b", "ap_b"): (("amazon_asin:B0D",), 1, 0),
+    }
+    assert _executed_gateway(frozenset({"amazon_asin:B0B", "amazon_asin:B0D"})) == {
+        ("ch_a", "ap_a"): (("amazon_asin:B0A", "amazon_asin:B0B"), 2, 1),
+        ("ch_b", "ap_b"): (("amazon_asin:B0D",), 1, 1),
+    }
 
 
 def test_each_marketplace_is_its_own_batch_and_section_in_its_own_currency() -> None:
@@ -1239,15 +1404,11 @@ class _Persistence:
         default_factory=list[PresetArtifactPublicationRequest]
     )
 
-    def publish(self, request: PresetArtifactPublicationRequest) -> PresetArtifactPublicationResult:
+    def publish(
+        self, request: PresetArtifactPublicationRequest, **_deadline: object
+    ) -> PresetArtifactPublicationResult:
         self.published.append(request)
-        body = request.body
-        return PresetArtifactPublicationResult(
-            ArtifactBodyWriteResult(
-                body.page, body.variant, body.revision, body.key, body.digest, None
-            ),
-            PresetArtifactPointerAdvanceResult(PresetArtifactPointerAdvanceOutcome.ADVANCED),
-        )
+        return published_result(request, PresetArtifactPointerAdvanceOutcome.ADVANCED)
 
 
 def test_the_hand_off_entry_composes_the_application_and_its_calendar_variants_bake(
@@ -1267,7 +1428,7 @@ def test_the_hand_off_entry_composes_the_application_and_its_calendar_variants_b
     ]
     assert new_customers_policy(load_v2_page_schemas(root)) == POLICY
     persistence = _Persistence()
-    application = PresetArtifactBakeApplication(
+    application = legacy_application(
         declared,
         RegisteredPresetArtifactBaker(
             bakers={
@@ -1278,9 +1439,10 @@ def test_the_hand_off_entry_composes_the_application_and_its_calendar_variants_b
             roster_pages=("campaigns", "new-customers"),
         ),
         cast("PresetArtifactPersistencePort", persistence),
+        roster=BakeRoster.from_contract(),
     )
     week = BakeIntent(NEW_CUSTOMERS_PAGE_ID, "last_complete_week")
-    assert application.apply(week.serialize()) is not None
+    assert application.apply(week.serialize(), remaining_ms=remaining_ms, final=False) is not None
     ((request,),) = (persistence.published,)
     assert (request.body.page.value, request.body.variant.value) == (
         NEW_CUSTOMERS_PAGE_ID,
@@ -1288,7 +1450,11 @@ def test_the_hand_off_entry_composes_the_application_and_its_calendar_variants_b
     )
     # Control: an undeclared calendar variant of the same page is acknowledged and bakes nothing.
     assert (
-        application.apply(BakeIntent(NEW_CUSTOMERS_PAGE_ID, "last_complete_quarter").serialize())
+        application.apply(
+            BakeIntent(NEW_CUSTOMERS_PAGE_ID, "last_complete_quarter").serialize(),
+            remaining_ms=remaining_ms,
+            final=False,
+        )
         is None
     )
     assert len(persistence.published) == 1
@@ -1320,7 +1486,7 @@ def test_a_new_customers_bake_is_found_by_page_through_its_log_line_and_its_own_
     monkeypatch.setattr(baker_module, "report_operation", record)
     ours = BakeIntent(NEW_CUSTOMERS_PAGE_ID, "7d")
     other = BakeIntent("retail-health", "7d")
-    application = PresetArtifactBakeApplication(
+    application = legacy_application(
         DeclaredBakeIntents((ours, other)),
         RegisteredPresetArtifactBaker(
             bakers={
@@ -1332,7 +1498,7 @@ def test_a_new_customers_bake_is_found_by_page_through_its_log_line_and_its_own_
         ),
         cast("PresetArtifactPersistencePort", _Persistence()),
     )
-    failures = apply_bake_records(
+    failures = apply_with_deadline(
         {
             "Records": [
                 {"messageId": "one", "body": ours.serialize()},

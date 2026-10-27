@@ -416,3 +416,47 @@ def test_customers_and_buyers_read_distinct_buyers_purchases_and_orders_read_pur
         "the brand in the previous 12 months. It counts purchases, not people: a shopper who buys "
         "twice counts twice. New-to-brand customers or buyers are counted by new-to-brand buyers."
     )
+
+
+@pytest.mark.covers("ADR-143")
+def test_no_tool_can_reach_a_bake_ceiling_and_a_bake_width_is_refused_from_the_wire() -> None:
+    """Chat can't reach either bake kind, and a bake width is refused from the wire.
+
+    No tool declares a ceiling, ranking or reduction, and `max_rows: 50000` from the wire is
+    refused with today's narration text (the paired control: 50,000 is a valid bake width).
+    """
+    from datetime import UTC, date, datetime  # noqa: PLC0415
+    from pathlib import Path  # noqa: PLC0415
+
+    from adapters.inbound.tool_handlers.measurement import (  # noqa: PLC0415
+        MeasurementToolRequest,
+    )
+    from adapters.jobs.contract_validation.loader import load_contracts  # noqa: PLC0415
+    from adapters.outbound.metric_dictionary import load_catalog  # noqa: PLC0415
+    from domain.shared_kernel.errors import ValidationError  # noqa: PLC0415
+    from domain.shared_kernel.values import DateRange  # noqa: PLC0415
+    from ports.outbound.query import BAKE_MAX_ROWS, RowCeiling  # noqa: PLC0415
+
+    root = Path(__file__).resolve().parents[2]
+    generated = json.loads((root / "contracts" / "generated" / "tools.json").read_text())
+    text = json.dumps(generated)
+    for forbidden in ("row_ceiling", "ceiling", "ranked", "reduction", "rank_metric"):
+        assert f'"{forbidden}"' not in text
+
+    def _request(max_rows: int, ceiling: RowCeiling) -> MeasurementToolRequest:
+        return MeasurementToolRequest(
+            tool=MeasurementTool.METRIC_BY_GRAIN,
+            catalog=load_catalog(root),
+            contracts=tuple(contract for _, contract in load_contracts(root)),
+            metric_name="retail_revenue_shipped",
+            grains=("product",),
+            window=DateRange(date(2026, 8, 1), date(2026, 8, 7)),
+            computed_at=datetime(2026, 8, 10, tzinfo=UTC),
+            correlation_id="wire",
+            max_rows=max_rows,
+            row_ceiling=ceiling,
+        )
+
+    with pytest.raises(ValidationError, match="must be between 1 and 10000"):
+        _request(50_000, RowCeiling.NARRATION)
+    assert _request(BAKE_MAX_ROWS, RowCeiling.BAKE).max_rows == BAKE_MAX_ROWS

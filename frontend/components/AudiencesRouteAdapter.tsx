@@ -4,6 +4,7 @@
 import { bindingByRoute } from '@/lib/page-bindings';
 import { PresentationRequestError, PresentationResponseError, type PresentationErrorClass } from '@/lib/presentation';
 import { fetchAudiencesPresentationV2, type AudiencesPresentation } from '@/lib/presentation-v2';
+import { clearAudiencesResume } from './AudiencesParts';
 import { AudiencesView } from './AudiencesView';
 import type { V2RouteAdapter, V2RouteUrlState } from './PresentationV2RouteController';
 
@@ -32,11 +33,13 @@ export const audiencesRouteAdapter: V2RouteAdapter<AudiencesPresentation, never,
   loadParent: (session, selection, signal, invalid) => invalid === null
     ? fetchAudiencesPresentationV2(session, selection, signal)
     : Promise.reject(new PresentationRequestError('validation')),
+  onMount: clearAudiencesResume,
   pageIssueClass,
   pageContext: (parent) => parent.kind === 'parent' && parent.artifact.outcome === 'complete' ? parent.page_context : null,
-  render: (state) => {
+  render: (state, _requestChild, _clearChild, replaceParentIntent, sessionId = '') => {
     if (state.kind !== 'parent_ready' || state.parent.kind !== 'parent') return null;
-    return <AudiencesView artifact={state.parent.artifact} />;
+    // A part from a newer publication reloads the parent once (design 01 §7).
+    return <AudiencesView artifact={state.parent.artifact} reload={() => replaceParentIntent(null)} session={sessionId} />;
   },
   renderLoading: () => <div className="audiences-view" role="status" aria-label="Loading Audiences"><div className="skel card" /><div className="skel card" /></div>,
   renderTemporalControl: false,

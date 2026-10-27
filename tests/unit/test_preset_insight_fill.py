@@ -13,17 +13,20 @@ from types import SimpleNamespace
 from typing import cast
 
 import pytest
+from bake_application_support import legacy_application, remaining_ms
 from campaign_portfolio_support import LABELS, ONE_CHANNEL_FILTER
 from change_support import SEMANTICS
 from insight_key_support import PENDING_INPUT_DIGEST, with_card_digest
+from preset_artifact_support import published_result, template_of
 
 import adapters.jobs.preset_artifact_publisher.insight_fill as insight_fill_module
 from adapters.campaign_insight_requests import portfolio_insight_request_derivation
 from adapters.inbound.presentation_handlers.insights import InsightAssemblyRequest
 from adapters.jobs.contract_validation.insight_loader import load_insight_contracts
-from adapters.jobs.preset_artifact_publisher.baker import (
+from adapters.jobs.preset_artifact_publisher.bake_results import (
     BakePublication,
-    PresetArtifactBakeApplication,
+)
+from adapters.jobs.preset_artifact_publisher.baker import (
     PresetArtifactBaker,
 )
 from adapters.jobs.preset_artifact_publisher.insight_fill import PresetInsightFillChild
@@ -66,13 +69,12 @@ from domain.presentation.insights import (
     InsightWindowProfile,
 )
 from domain.presentation.preset_artifacts import (
-    ArtifactBodyWriteResult,
     PresetArtifactBody,
     PresetArtifactPage,
     PresetArtifactPointer,
     PresetArtifactPointerAdvanceOutcome,
     PresetArtifactPointerAdvanceRequest,
-    PresetArtifactPointerAdvanceResult,
+    PresetArtifactPointerTemplate,
     PresetArtifactPublicationRequest,
     PresetArtifactPublicationResult,
     PresetArtifactRevision,
@@ -132,7 +134,9 @@ def _publication_request(page: str) -> PresetArtifactPublicationRequest:
         canonical_preset_artifact_json({"kind": "fictional"}),
     )
     pointer = PresetArtifactPointer(body.page, body.variant, revision, body.digest, 1)
-    return PresetArtifactPublicationRequest(body, PresetArtifactPointerAdvanceRequest(pointer))
+    return PresetArtifactPublicationRequest(
+        body, template_of(PresetArtifactPointerAdvanceRequest(pointer))
+    )
 
 
 def _assembly(slot_id: InsightSlotId) -> InsightAssemblyRequest:
@@ -319,14 +323,10 @@ class _Baker:
 class _Persistence:
     outcome: PresetArtifactPointerAdvanceOutcome
 
-    def publish(self, request: PresetArtifactPublicationRequest) -> PresetArtifactPublicationResult:
-        body = request.body
-        return PresetArtifactPublicationResult(
-            ArtifactBodyWriteResult(
-                body.page, body.variant, body.revision, body.key, body.digest, None
-            ),
-            PresetArtifactPointerAdvanceResult(self.outcome),
-        )
+    def publish(
+        self, request: PresetArtifactPublicationRequest, **_deadline: object
+    ) -> PresetArtifactPublicationResult:
+        return published_result(request, self.outcome)
 
 
 @pytest.mark.parametrize(
@@ -342,14 +342,14 @@ def test_bake_application_warms_only_after_a_real_pointer_advance(
     intent = BakeIntent("campaigns", "7d")
     request = _publication_request("campaigns")
     child = _RecordingChild()
-    application = PresetArtifactBakeApplication(
+    application = legacy_application(
         declared=DeclaredBakeIntents((intent,)),
         baker=cast("PresetArtifactBaker", _Baker(BakePublication(request))),
         persistence=cast("PresetArtifactPersistencePort", _Persistence(outcome)),
         insight_fill=cast("PresetInsightFillChild", child),
     )
 
-    application.apply(intent.serialize())
+    application.apply(intent.serialize(), remaining_ms=remaining_ms, final=False)
 
     assert len(child.warmed) == expected_warms
 
@@ -497,10 +497,7 @@ def test_child_warms_exactly_the_cache_keys_the_serve_path_would_derive() -> Non
         canonical_preset_artifact_json(campaign_portfolio_artifact_payload(artifact)),
     )
     request = PresetArtifactPublicationRequest(
-        body,
-        PresetArtifactPointerAdvanceRequest(
-            PresetArtifactPointer(body.page, body.variant, revision, body.digest, 1)
-        ),
+        body, PresetArtifactPointerTemplate(body.page, body.variant, revision, body.digest, 1)
     )
     child = PresetInsightFillChild(
         prompts=cast("insight_fill_module.InsightPromptActivationPort", prompts),

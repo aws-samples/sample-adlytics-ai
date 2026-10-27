@@ -35,7 +35,6 @@ class AbsenceTrigger(StrEnum):
 
     REACH_PERIOD_NOT_PUBLISHED = "ABS-REACH-1"
     AUDIENCES_MONTH_NOT_PUBLISHED = "ABS-AUD-1"
-    AUDIENCES_MONTH_OVER_BOUND = "ABS-AUD-2"
     RETENTION_VINTAGE_NOT_PUBLISHED = "ABS-RET-1"
     SCORECARD_WINDOW_NOT_PUBLISHED = "ABS-SC-1"
     SCORECARD_PERIOD_NOT_PUBLISHED = "ABS-SC-2"
@@ -55,10 +54,6 @@ ABSENCE_COPY: Final[Mapping[AbsenceTrigger, str]] = MappingProxyType(
             "Audiences for {period_label} isn't ready to show yet. It's built from your Amazon "
             "Marketing Cloud audience segment data. When it's ready, you'll see which audience "
             "segments your buyers belong to, where there are enough shoppers to show them."
-        ),
-        AbsenceTrigger.AUDIENCES_MONTH_OVER_BOUND: (
-            "Audiences for {period_label} has more segment and campaign detail than this page "
-            "can show. Ask the assistant about a DSP campaign to see its figures."
         ),
         AbsenceTrigger.RETENTION_VINTAGE_NOT_PUBLISHED: (
             "Retention isn't ready to show yet. It's built from your Amazon Marketing Cloud "

@@ -48,6 +48,7 @@ from domain.catalog.capability import Catalog
 from domain.data_contracts.contract import DataContract, FieldMapping
 from domain.measurement.pack_coverage import PackDayVersions
 from domain.measurement.planning import FactShape, FactShapes, PlanRequest, QueryPlan, plan
+from domain.operations.bake_refusals import IsolatedRefusalReason, classify_refusal
 from domain.semantics.commerce_identity import CommerceIdentityBridge
 from domain.semantics.identity import (
     EcosystemKey,
@@ -588,13 +589,7 @@ def test_inspection_enforces_partition_limit_before_current_read(
     environment: PublicationEnvironment,
 ) -> None:
     current = RecordingCurrent()
-    oversized = _sales_plan(
-        environment,
-        DateRange(
-            DAY_ONE,
-            DAY_ONE + timedelta(days=MAX_EXACT_CURRENT_PARTITIONS),
-        ),
-    )
+    oversized = _sales_plan(environment, DateRange(DAY_ONE, DAY_ONE + timedelta(days=1_000)))
 
     with pytest.raises(ValidationError) as raised:
         PublicationSelector(current, environment.packs, environment.bridge).inspect(
@@ -612,6 +607,13 @@ def test_inspection_enforces_partition_limit_before_current_read(
 
     assert str(raised.value.code) == "ADLY-PUBLICATION_SELECTION-0002"
     assert current.exact_calls == []
+    # ADR-142: at a bake this is its page's partitions_over_bound, carrying both figures.
+    refusal = classify_refusal(raised.value)
+    assert refusal.reason is IsolatedRefusalReason.PARTITIONS_OVER_BOUND
+    assert dict(refusal.refusal_context) == {
+        "maximum_partitions": 1_000,
+        "required_partitions": 1_001,
+    }
 
 
 def test_selection_remains_all_or_none_when_one_inspection_partition_is_absent(
@@ -629,25 +631,26 @@ def test_selection_remains_all_or_none_when_one_inspection_partition_is_absent(
     assert len(current.exact_calls) == 2
 
 
-def test_more_than_fifty_partitions_is_validation_before_current_read(
+@pytest.mark.covers("ADR-070")
+def test_more_partitions_than_the_exact_read_bound_is_validation_before_current_read(
     environment: PublicationEnvironment,
 ) -> None:
     current = RecordingCurrent()
     selector = PublicationSelector(current, environment.packs, environment.bridge)
-    oversized = _sales_plan(
-        environment,
-        DateRange(
-            DAY_ONE,
-            DAY_ONE + timedelta(days=MAX_EXACT_CURRENT_PARTITIONS),
-        ),
-    )
+    oversized = _sales_plan(environment, DateRange(DAY_ONE, DAY_ONE + timedelta(days=1_000)))
 
     with pytest.raises(ValidationError) as raised:
         selector.select(PublicationSelectionRequest((oversized,), environment.contracts, NOW))
 
     assert str(raised.value.code) == "ADLY-PUBLICATION_SELECTION-0002"
+    assert raised.value.context == {"required_partitions": 1_001, "maximum_partitions": 1_000}
     assert not raised.value.alarms
     assert current.exact_calls == []
+    # Paired: a quarter's 184 day partitions, over the former 100, bind in one exact read.
+    quarter = _sales_plan(environment, DateRange(DAY_ONE, DAY_ONE + timedelta(days=183)))
+    selected = selector.select(PublicationSelectionRequest((quarter,), environment.contracts, NOW))
+    assert len(current.exact_calls) == 1 and len(current.exact_calls[0]) == 184
+    assert len(selected.plans[0].all_publications) == 184
 
 
 def test_missing_current_pointer_fails_before_any_plan_can_cross_the_query_boundary(
@@ -1290,7 +1293,7 @@ def test_per_pack_inspection_attests_each_pack_in_its_own_read_with_both_windows
 def test_verified_serving_and_per_pack_inspection_both_serve_a_14d_pair(
     environment: PublicationEnvironment,
 ) -> None:
-    """The 14d pair fits the wider serving protocol and each narrower bake-time pack read."""
+    """The 14d pair binds the same evidence selection-wide and as one read per pack."""
     current_window = DateRange(DAY_ONE + timedelta(days=14), DAY_ONE + timedelta(days=27))
     prior_window = DateRange(DAY_ONE, DAY_ONE + timedelta(days=13))
     request = PresentationEvidenceInspectionRequest(
@@ -1331,9 +1334,9 @@ def test_verified_serving_and_per_pack_inspection_both_serve_a_14d_pair(
 def test_per_pack_snapshot_beyond_the_transaction_bound_refuses_before_any_read(
     environment: PublicationEnvironment,
 ) -> None:
-    """No sub-chunking exists: the ADR-070 amendment withdrew presets that would need it."""
+    """A pack is never split across independent reads: over its bound it refuses whole."""
     current = RecordingCurrent()
-    days = MAX_PRESET_SNAPSHOT_PARTITIONS // 2 + 1
+    days = 501
     current_window = DateRange(
         DAY_ONE + timedelta(days=days), DAY_ONE + timedelta(days=2 * days - 1)
     )
@@ -1360,8 +1363,13 @@ def test_per_pack_snapshot_beyond_the_transaction_bound_refuses_before_any_read(
         )
 
     assert str(refused.value.code) == "ADLY-PUBLICATION_SELECTION-0003"
-    assert refused.value.context["required_partitions"] == 2 * days
+    assert refused.value.context["required_partitions"] == 1_002
     assert current.exact_calls == []
+    # ADR-142: the pack's figures, and not its scope, reach the page's refusal.
+    assert dict(classify_refusal(refused.value).refusal_context) == {
+        "maximum_partitions": 1_000,
+        "required_partitions": 1_002,
+    }
 
 
 @pytest.mark.covers("ADR-070")

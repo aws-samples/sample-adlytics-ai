@@ -29,29 +29,26 @@ measurement targets, not request cutoffs:
   structured-output subset does not accept array uniqueness or string constraints, so the adapter
   canonicalizes duplicate/blank citations after native exact-field/type validation and before domain
   verification. This is one observation, not p95 attainment.
-- **Current bake envelope.** The Campaign materializer executes one grouped 26-plan measurement batch
-  per variant at the declared estate bound; it does not issue one batch per displayed campaign. The
-  older approximately 1,300-execution estimate is superseded by the grouped renderer now asserted by
-  the bakeability gate. The deployed baker ceiling is five minutes in `PublisherStack`, not the former
-  fifteen-minute prose value, and remains an execution limit rather than an SLO. Distinct variants may
-  run concurrently, while ordered segments and the name roster add in-memory sorting and immutable
-  writes rather than Athena plans. At the 1,000-campaign bound, 20 segments × 10 orderings produce 199
-  non-parent public/private sibling pairs; with parent public/custody the variant contains 400 immutable
-  bodies. Every body independently enforces the encoded-byte artifact cap, and the build gate checks
-  plan count, body count, maximum body, and total bytes. ADR-074 keeps the concrete bake-completion
-  target in the governed objective registry instead of treating timeout headroom as attainment.
-- **Seven-sibling bake envelope (ADR-127, 2026-10-08).** Each filter writes 2 × 10 orderings ×
-  its segments: All channels and Sponsored ads may each hold the whole 1,000-campaign population
-  (20 segments) and the one-channel siblings partition it (at most 20 + 5 segments), so a variant
-  writes at most 1,300 immutable objects. The 30-day batch is 34 plans, 5 waves of 8 at the 30 s
-  budget, 150 s. `make check-bakeability` checks the page's estimate against the baker itself: the
-  bodies held in memory against half of the 1,024 MB baker (318.5 MB at 245,000 bytes a body,
-  against 536.9 MB), and measurement plus 100 ms per sequential object write against the 300 s
-  timeout (150 s + 130 s). The 100 ms write is a budget, not a measurement. Local evidence
-  (`accept_campaign_estate_local.py`, 2026-10-08) bakes 30d for 1,000 campaigns over all five
-  channels: 7 filters, 64 segments, 1,280 objects (the gate's count for that split), 102.8 MB in
-  total, the largest 228,495 bytes, render 3.3 s and a peak of 201 MB of traced Python allocation.
-  No S3 write was timed; the deployed bake's duration is its live check.
+- **Bake envelope (render format 13, 2026-10-25, [ADR-152](../../decisions/adr-152-read-page-sized-answers-in-sql-with-no-arbitrary-row-ceiling.md)).**
+  The `bake_tasks` contract owns the budgets, and `make check-bakeability` prints every term.
+
+  | Term | Value | What happens past it |
+  |---|---|---|
+  | Reads per variant | 26 at every preset and campaign count, 3 waves at Q = 10, no row `LIMIT` | — |
+  | Campaigns per bake | every authorized campaign, up to `BAKE_MAX_ROWS`, derived from the Baker's memory (`bake_tasks.baker_memory_mib`) | the page's `population_over_ceiling`, alarmed with the memory to set |
+  | Objects per variant | per filter, 2 × (10 orderings × segments + roster shards), plus one index shard per 800 siblings (`campaign_bake_object_count`) | — |
+  | Write term | the whole 450 s write allowance; the segments grow with the campaigns | the page's `bodies_over_invocation` |
+  | Task budget | 570 s per variant, inside the Baker's 900 s timeout | `BakeTaskOverBudget` |
+  | Memory | `resident(campaigns#30d)`: W, the daily sums and one compact record per campaign (`B_record`) | — |
+
+  Local evidence (`make accept-campaign-estate-local`, 2026-10-25) baked 30d for 10,000 campaigns
+  over all five channels [measured]:
+  - 7 filters and 11,320 objects, the gate's count, 896 MB in total, the largest 193,293 bytes;
+  - render 6.7 s;
+  - a traced peak of 75.4 MB against the model's 82.9 MB.
+
+  The local run timed no S3 write. The write ceiling projected from dev's write timings
+  (2026-10-25) is in the publisher's [scale envelope](../preset-artifact-publisher.md#scale-envelope).
 - **Observed local bulk acceptance (2026-09-18):** the governed 1,000-campaign workflow
   completed in 31,827 ms, proved a bounded 26-plan grouped measurement batch at 1,000
   selections (the five daily series split into two window chunks under the 10,000-row query

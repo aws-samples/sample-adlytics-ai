@@ -37,7 +37,6 @@ from typing import TYPE_CHECKING, Protocol, cast
 from adapters.campaign_insight_requests import FindingSource, predicate_findings
 from adapters.inbound.tool_handlers.gateway import contracts_root
 from adapters.inbound.tool_handlers.measurement import (
-    DEFAULT_MAX_ROWS,
     MeasurementExecutionTooling,
     MeasurementTool,
     MeasurementTooling,
@@ -51,6 +50,7 @@ from adapters.jobs.presentation_validation.loader import load_v2_page_schemas
 from adapters.jobs.preset_artifact_publisher.campaign_source import (
     SUPERSEDED_HISTORY_RETENTION,
 )
+from adapters.jobs.preset_artifact_publisher.isolated_refusals import capped_preset_artifact_json
 from adapters.jobs.preset_artifact_publisher.scorecard_source import (
     MARKETPLACE_SELECTOR,
     GroupedAnswer,
@@ -91,13 +91,11 @@ from domain.presentation.page_schemas import RETENTION_CURVE_SECTION
 from domain.presentation.preset_artifacts import (
     PresetArtifactBody,
     PresetArtifactPage,
-    PresetArtifactPointer,
-    PresetArtifactPointerAdvanceRequest,
+    PresetArtifactPointerTemplate,
     PresetArtifactPublicationRequest,
     PresetArtifactRevision,
     PresetArtifactVariant,
     SourceUnchanged,
-    canonical_preset_artifact_json,
 )
 from domain.presentation.retention import (
     ARP_PATH,
@@ -124,6 +122,7 @@ from ports.outbound.publication_selection import (
     PresentationEvidenceInspectionPlan,
     PresentationEvidenceInspectionRequest,
 )
+from ports.outbound.query import BAKE_MAX_ROWS, RowCeiling
 from ports.outbound.semantic_state import scope_horizon_policy
 from ports.outbound.served_periods import ServedPeriods, ServedPeriodsRequest
 
@@ -332,7 +331,8 @@ class RetentionArtifactRenderer:
                 COHORT_PATH_COLUMN: path,
                 COHORT_GRAIN_COLUMN: grain.value,
             },
-            max_rows=DEFAULT_MAX_ROWS,
+            max_rows=BAKE_MAX_ROWS,
+            row_ceiling=RowCeiling.BAKE,
         )
 
     def render_retention(self, request: RetentionRenderInput) -> RetentionRenderResult:
@@ -601,25 +601,20 @@ class RetainedRetentionPresetArtifactSource:
             self.page,
             variant,
             revision,
-            canonical_preset_artifact_json(retention_artifact_payload(rendered.artifact)),
-        )
-        pointer = PresetArtifactPointer(
-            self.page,
-            variant,
-            revision,
-            body.digest,
-            1 if current is None else current.forward_token + 1,
-            None if current is None else current.revision,
-            None,
-            resolved_window=rendered.artifact.period.window,
+            capped_preset_artifact_json(retention_artifact_payload(rendered.artifact)),
         )
         return PresetArtifactPublicationRequest(
             body,
-            PresetArtifactPointerAdvanceRequest(
-                pointer,
+            PresetArtifactPointerTemplate(
+                self.page,
+                variant,
+                revision,
+                body.digest,
+                1 if current is None else current.forward_token + 1,
+                None if current is None else current.revision,
                 None if current is None else self.clock() + SUPERSEDED_HISTORY_RETENTION,
+                resolved_window=rendered.artifact.period.window,
             ),
-            None,
         )
 
     def resolve(self) -> RetentionRenderInput | None:

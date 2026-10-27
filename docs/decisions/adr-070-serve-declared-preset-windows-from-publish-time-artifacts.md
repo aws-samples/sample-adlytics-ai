@@ -2,6 +2,49 @@
 
 Date: 2026-09-15
 Status: Accepted — parent artifact serving implemented in development; displayed-detail bake remains pending
+> **Amendment, 2026-10-25 — the exact read is a chunked two-pass snapshot of up to 1,000
+> partitions.** The verified A/B/C read of 2026-09-22 already reads each phase in transactions of
+> at most 100 items, and accepts only when both head passes agree. Heads only move forward, so that
+> agreement proves one instant however many transactions a pass takes: it's the two-pass verified
+> snapshot named on 2026-09-16. `tests/unit/test_exact_snapshot_chunks.py` drives the real adapter
+> at 1, 100, 101, 184 and 1,000 partitions: one head advance at every gap between transactions for
+> each chunk-edge partition, and every pair of window-edge gaps. The 100 was a leftover of the
+> one-transaction attestation, so `MAX_EXACT_CURRENT_PARTITIONS` is a cost bound: DynamoDB calls
+> grow by one per 100 partitions per pass. That's not the constant-only increase the alternatives
+> reject, which rested on the old two-item attestation. **Derived, 1,000:** the largest N whose
+> worst serving read (3 attempts × 3 × ⌈N/100⌉ transactions) fits the tightest budget of any
+> invocation that runs one.
+>
+> - *Budget.* The presentation function: 29 s, at API Gateway's integration ceiling. An Athena
+>   statement follows the read in the same invocation, and the interactive wait keeps it at least
+>   20 s (the 30 s `MAX_WAIT_SECONDS` less the 10 s `INTERACTIVE_THROTTLED_START_MAX_WAIT_SECONDS`
+>   start window, ADR-144), so the read gets 9 s. The other
+>   callers are looser: chat's MeasurementTool function has 60 s less a 30 s Athena wait, and
+>   chat's quick turn has 120 s.
+> - *Latency.* The p95 of in-Region `TransactGetItems` on dev, 95.0 ms. That's 1,512 calls from
+>   every caller, 2026-10-25 18:56–22:56Z (Logs Insights over `aws/spans`). The p95 is used because
+>   the 3 attempts already make it the worst read. Charging all 90 calls at the single slowest
+>   (317.0 ms, a bake task) models a sequence that never ran. The serving callers' own maximum was
+>   99.8 ms.
+> - *Arithmetic.* ⌊9,000 / (9 × 95.0)⌋ = 10 transactions per pass, so N = 1,000. At 99.8 ms it's
+>   still 10. At 317.0 ms for every call, 90 × 317.0 ms = 28.5 s, inside the function's 29 s. The
+>   slowest call seen since, 402.8 ms (a bake task's pin read, 2026-10-26 00:47–01:27Z), would give
+>   36.3 s if every call took it; no serving call came near it (their maximum was 84.7 ms).
+>   The pointer reads P and P' (one transaction each per attempt while a window is staged) and the
+>   two retry pauses (up to 0.3 s) aren't in the formula. At N = 1,000 they take about 0.9 s of
+>   the statement's 20 s.
+>
+> A slower measurement or a tighter budget re-derives N. The bake policy
+> `MAX_PRESET_SNAPSHOT_PARTITIONS` stays equal to it: no declared preset comes near it, and the
+> Baker's own budget is longer. In the bakeability gate's model (days, doubled for a compared prior,
+> one lens) that's a 500-day preset; a pack with two lenses reaches it at half that. The Reach quarter reads
+> 184 (92 days × 2 lenses in one pack on dev, 2026-10-18,
+> [ADR-146](adr-146-publish-the-reach-quarter-or-retire-it-on-measured-partitions.md)) and bakes.
+> Chat's selection-wide bound is the same constant. A pack is still attested by one verified read, never
+> split. The 2026-10-08 sentence "The two-pass mechanism named in 2026-09-16 isn't needed" is
+> superseded. Current mechanics: [Publication State](../capabilities/publication-state/architecture.md#4-internal-structure);
+> bake policy: [Generation Coordination](../ui/generation-coordination.md).
+> **Proposed amendment, 2026-10-18.** [ADR-146](adr-146-publish-the-reach-quarter-or-retire-it-on-measured-partitions.md) (Proposed) chooses how the Reach quarter is attested. Its branch is now (a′), the chunked two-pass snapshot of the 2026-10-25 amendment above.
 > **Amendment, 2026-10-16.** [ADR-139](adr-139-serve-designed-absence-and-advance-pages-only-with-a-grantable-cohort.md): a GRAPH cohort moves `CURRENT` only under a binding that authorizes serving, and a page's designed absence serves its typed absence or last-bound body. Current serve semantics: [preset artifact publisher, "The serve path"](../ui/preset-artifact-publisher.md#the-serve-path).
 
 > **Proposed amendments, 2026-10-07.** [ADR-116](adr-116-give-every-tab-one-time-model-and-one-window.md) (Proposed) would add `resolved_window` and `comparison_window` to the pointer, so drill links name the target's dates. [ADR-127](adr-127-serve-the-campaigns-channel-filter-from-render-only-siblings-of-one-bake.md) (Proposed) would bind render-only channel filter siblings under one pointer. This decision stays in force, unchanged, until they're accepted.
@@ -241,7 +284,7 @@ are the paved road, and the escape hatch returns only with a derived bound.
 | Alternative | Why rejected |
 |---|---|
 | Chunk the request-time snapshot into per-pack transactions and keep live measurement | Buys headroom for 7D/14D but 30D with prior needs 60 day-partitions per pack — 120 items, over the 100-item cap even alone. Request cost also stays linear in window size and packs; the page contract remains unservable. Per-pack snapshots are adopted, but at bake time. |
-| Raise `MAX_EXACT_CURRENT_PARTITIONS` without changing the read protocol | Pinned by transport: the old attestation used 2 items per partition against DynamoDB's 100-item transactional-read cap. A constant-only increase remains rejected. *(Superseded in scope 2026-09-22: the verified A/B/C servable-head protocol uses at most one item per partition in each transaction and safely raises the serving capability; [Generation Coordination](../ui/generation-coordination.md) retains a separate bake policy.)* |
+| Raise `MAX_EXACT_CURRENT_PARTITIONS` without changing the read protocol | Pinned by transport: the old attestation used 2 items per partition against DynamoDB's 100-item transactional-read cap. A constant-only increase remains rejected. *(Superseded in scope 2026-09-22: the verified A/B/C servable-head protocol uses at most one item per partition in each transaction and safely raises the serving capability; [Generation Coordination](../ui/generation-coordination.md) retains a separate bake policy. 2026-10-25: that protocol's chunked passes carry the bound to a derived 1,000; see the amendment at the top.)* |
 | Shrink presets until live measurement fits | 6 days with prior is the largest fitting window. Surrenders the page contract to an implementation bound and still pays a wide snapshot plus a measurement batch per page view. |
 | Keep both paths: serve baked artifacts, fall back to live measurement | The refused-selection failure returns as a nondeterministic tail, and two serving paths for one contract is standing tech debt. Explicitly rejected in favor of one path. |
 | Bake all eight sort variants | Eightfold storage and bake work for a deterministic reordering of identical rows. *(Superseded 2026-09-17: valid only while the population fits one artifact; ADR-071 bakes orderings because a 50-row reorder cannot express a population ranking.)* |

@@ -35,9 +35,11 @@ from adapters.jobs.contract_validation.insight_loader import load_insight_contra
 from adapters.jobs.contract_validation.loader import load_contracts
 from adapters.jobs.presentation_validation.loader import load_v2_page_schemas
 from adapters.jobs.preset_artifact_publisher import reach_source
-from adapters.jobs.preset_artifact_publisher.baker import (
+from adapters.jobs.preset_artifact_publisher.bake_results import (
     BakePublication,
     BakeUnavailable,
+)
+from adapters.jobs.preset_artifact_publisher.baker import (
     CampaignPresetArtifactBaker,
     ReachPresetArtifactBaker,
     RegisteredPresetArtifactBaker,
@@ -59,6 +61,7 @@ from adapters.outbound.bake_sources import BakeSourceReads
 from adapters.outbound.metric_dictionary import load_catalog
 from domain.measurement.answers import ASSOCIATION_QUALIFIER
 from domain.measurement.planning import measure_alias
+from domain.measurement.ranking import RankedPopulation
 from domain.measurement.rosters import Roster, RosterEntry, RosterKind
 from domain.presentation.insights import InsightSlotId
 from domain.presentation.page_schemas import (
@@ -587,7 +590,7 @@ def test_an_injected_page_entry_bakes_a_publication_equal_to_the_planned_answers
         "last_complete_week",
     )
     # The pointer names the served period, so the Reach route's preset buttons carry dates.
-    pointer = result.request.pointer_advance.pointer
+    pointer = result.request.pointer_template.complete(None).pointer
     assert (pointer.resolved_window, pointer.comparison_window) == (WEEK.window, None)
 
 
@@ -737,10 +740,34 @@ class FrequencyQueries:
     reach: ReachQueries = field(default_factory=ReachQueries)
     missing: tuple[str, ...] = ()
     channels: tuple[str, ...] = ("sponsored_products", "sponsored_brands")
+    campaigns: int = 6
+    """Campaigns with Amazon Ads spend in the period: the count read's population."""
     seen: list[QueryRequest] = field(default_factory=list[QueryRequest])
+    counted: list[QueryRequest] = field(default_factory=list[QueryRequest])
 
     def run(self, request: QueryRequest) -> QueryResult:
         plan = request.plan.logical
+        if plan.fact == "fct_ad_exposure" and request.ranked is not None:
+            # The one-row ranked read: one campaign that spent, and how many did.
+            self.counted.append(request)
+            rows: tuple[QueryRow, ...] = (
+                ()
+                if not self.campaigns
+                else (
+                    {
+                        "campaign_key": "campaign-0",
+                        "marketplace_key": plan.filters["marketplace_key"],
+                        **dict.fromkeys(plan.carried_columns, "USD"),
+                        measure_alias(0): Decimal(10),
+                    },
+                )
+            )
+            population = (
+                (RankedPopulation((), self.campaigns, (), suppressed=False),)
+                if self.campaigns
+                else ()
+            )
+            return QueryResult(rows, 1_024, False, Suppression(False), population=population)
         if plan.fact != "fct_exposure_frequency":
             return self.reach.run(request)
         self.seen.append(request)
@@ -748,7 +775,7 @@ class FrequencyQueries:
         scheme = plan.filters["bucket_scheme"]
         buckets = ("1", "2", "3", "4_6", "7_9", "10_plus") if scheme == "coarse" else FINE
         products = self.channels if plan.filters["grain_set"] == "channel" else (None,)
-        rows: list[QueryRow] = []
+        frequency: list[QueryRow] = []
         for product in products:
             for bucket in buckets:
                 for space in ("account", "device_or_browser"):
@@ -763,14 +790,17 @@ class FrequencyQueries:
                     base = _BUCKET_VALUES.get(measure, 1)
                     value = base if space == "account" else base // 2
                     row[measure_alias(0)] = None if bucket in self.missing else Decimal(value)
-                    rows.append(
+                    frequency.append(
                         {
                             key: row[key]
                             for key in (*plan.group_by, *plan.carried_columns, measure_alias(0))
                         }
                     )
         return QueryResult(
-            rows=tuple(rows), bytes_scanned=1_024, truncated=False, suppression=Suppression(False)
+            rows=tuple(frequency),
+            bytes_scanned=1_024,
+            truncated=False,
+            suppression=Suppression(False),
         )
 
 
@@ -805,21 +835,15 @@ class _FrequencyServed:
 
 @dataclass
 class _Rosters:
-    campaigns: int = 6
     seen: list[RosterRequest] = field(default_factory=list[RosterRequest])
 
     def roster(self, request: RosterRequest) -> Roster:
         self.seen.append(request)
-        if request.kind is RosterKind.CAMPAIGN:
-            entries = tuple(
-                RosterEntry(f"campaign-{index}", f"Campaign {index}")
-                for index in range(self.campaigns)
-            )
-        else:
-            entries = (
-                RosterEntry("sponsored_products", "Sponsored Products"),
-                RosterEntry("sponsored_display", "Sponsored Display"),
-            )
+        assert request.kind is RosterKind.AD_PRODUCT, "Reach reads only the ad-product roster"
+        entries = (
+            RosterEntry("sponsored_products", "Sponsored Products"),
+            RosterEntry("sponsored_display", "Sponsored Display"),
+        )
         return Roster(
             request.kind, request.period, request.marketplace_key, request.platform_key, entries
         )
@@ -939,12 +963,32 @@ def test_frequency_reads_pending_until_pack_6_lands_and_needs_four_campaigns() -
     pending = _frequency_body(TemporalPresetId.LAST_COMPLETE_MONTH, MONTH, renderer)
     assert (pending["state"], pending["expected_after"]) == ("pending", "2026-10-16")
     assert queries.seen == []
-    few, _ = _frequency_renderer(_both(MONTH), rosters=_Rosters(campaigns=3))
+    few, _ = _frequency_renderer(_both(MONTH), FrequencyQueries(campaigns=3))
     needs = _frequency_body(TemporalPresetId.LAST_COMPLETE_MONTH, MONTH, few)
     assert (needs["state"], needs["text"]) == (
         "needs_campaigns",
         "Needs at least 4 active campaigns",
     )
+
+
+@pytest.mark.covers("ADR-152")
+def test_the_campaign_count_is_one_ranked_row_and_its_population_never_a_roster() -> None:
+    """Paired at the 4-campaign line: 4 bake figures; the read lists no campaign."""
+    queries = FrequencyQueries(campaigns=4)
+    renderer, _ = _frequency_renderer(_both(MONTH), queries)
+    assert _frequency_body(TemporalPresetId.LAST_COMPLETE_MONTH, MONTH, renderer)["state"] == (
+        "figures"
+    )
+    (count,) = queries.counted
+    assert count.ranked is not None
+    restriction = count.ranked.restriction
+    assert (count.max_rows, restriction.n, restriction.membership.value) == (1, 1, "positive")
+    assert count.plan.logical.group_by == ("campaign_key", "marketplace_key")
+    rosters = _Rosters()
+    renderer, _ = _frequency_renderer(_both(MONTH), FrequencyQueries(campaigns=0), rosters=rosters)
+    none = _frequency_body(TemporalPresetId.LAST_COMPLETE_MONTH, MONTH, renderer)
+    assert none["state"] == "needs_campaigns"
+    assert {request.kind for request in rosters.seen} == {RosterKind.AD_PRODUCT}
 
 
 def test_the_quarter_preset_resolves_on_pack_6_and_bakes_frequency_only() -> None:

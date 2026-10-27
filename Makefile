@@ -279,7 +279,7 @@ accept-ingestion-v2: ## Deployed V2 ingestion acceptance (synthetic, not AMC): P
 
 # Deterministic local falsification at the governed 1,000-campaign scale. Raw timings and body
 # measurements remain under ignored evidence; no wall-clock threshold is asserted by unit tests.
-accept-campaign-estate-local: ## Render and attest the governed 1,000-campaign segmented estate
+accept-campaign-estate-local: ## Attest the 1,000-campaign estate and bake 10,000 campaigns under the memory model
 	@mkdir -p validation/evidence
 	@evidence_dir="$$(mktemp -d "$(CURDIR)/validation/evidence/campaign-estate.XXXXXX")"; rmdir "$$evidence_dir"; \
 	uv run python scripts/run_record.py run --kind $@ --format exit -- uv run python validation/accept_campaign_estate_local.py --evidence-dir "$$evidence_dir"

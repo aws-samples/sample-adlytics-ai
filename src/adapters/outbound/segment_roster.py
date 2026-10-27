@@ -16,6 +16,11 @@ one query per month: the older months are bound together and read together
 (`PeriodSeriesQueryPort`). Planning and the partitions the selection resolves still grow with
 each retained month, up to the selector's exact-partition bound, past which the roster is refused.
 
+A bake asks the same walk for every listed campaign at once, grouped by campaign
+(`campaign_histories`, design 01 §3.2): it reads the month before itself, as a group-streamed
+figure read, and asks here only about the campaigns that returned no segment then. The walk
+streams through `ObservedKeys`, so it keeps only those campaigns' keys, never rows.
+
 `RosterReaders` routes each roster kind to its reader: ad products and campaigns to spend, and
 segments here.
 """
@@ -24,19 +29,24 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import date, timedelta
 from typing import TYPE_CHECKING
 
+from adapters.outbound.athena.query import ALL_ROWS_WITHHELD
+from domain.measurement.answers import FoldingAnswer
 from domain.measurement.figures import measure
+from domain.measurement.folds import ObservedKeys
 from domain.measurement.periodic import PROFILE_PATH_COLUMN, ROW_KIND_COLUMN
 from domain.measurement.planning import FactShape, PlanRequest, plan
 from domain.measurement.rosters import (
     ROSTER_REFUSED,
+    ROSTER_UNAVAILABLE,
     SEGMENT_PROFILE_FACT,
     Roster,
     RosterEntry,
     RosterKind,
 )
+from domain.operations.bake_refusals import IsolatedRefusal, IsolatedRefusalReason, RefusalScope
 from domain.semantics.audience_segments import (
     SEGMENT_FACT_NAMESPACES,
     SEGMENT_ID_COLUMN,
@@ -46,19 +56,29 @@ from domain.semantics.audience_segments import (
 )
 from domain.semantics.calendar_periods import period_containing
 from domain.semantics.time import TimeGrain
-from domain.shared_kernel.errors import DomainError, ValidationError
+from domain.shared_kernel.errors import DomainError, InvariantError, ValidationError
 from domain.shared_kernel.values import DateRange
 from ports.outbound.publication_selection import (
     PublicationSelectionPort,
     PublicationSelectionRequest,
 )
 from ports.outbound.query import (
-    MAX_ROWS_CEILING,
+    BAKE_MAX_ROWS,
+    FoldingQueryPort,
     PeriodSeriesQueryPort,
     PeriodSeriesRequest,
     QueryRequest,
+    RowCeiling,
+    row_ceiling,
 )
-from ports.outbound.rosters import RosterPort, RosterRequest
+from ports.outbound.rosters import (
+    CampaignHistories,
+    CampaignHistoriesRequest,
+    CampaignHistory,
+    CampaignHistoryPort,
+    RosterPort,
+    RosterRequest,
+)
 from ports.outbound.segment_labels import SegmentLabelPort, SegmentLabelRequest
 from ports.outbound.served_periods import ServedPeriodsPort, ServedPeriodsRequest
 
@@ -79,11 +99,35 @@ SEGMENT_METRIC = "segment_reach"
 PROFILE_SEGMENT_METRIC = "segment_exposed_shoppers"
 """Every returned C2 segment row carries its exposed shoppers (packs 10-12)."""
 SEGMENT_ROW_KIND = "segment"
+_CAMPAIGN_KEY = "campaign_key"
+
+
+@dataclass(frozen=True, slots=True)
+class _Walk:
+    """One history walk: the campaigns it observed, and those a withheld month left unknowable."""
+
+    observed: frozenset[str]
+    gaps: frozenset[str]
+
+
+def _older(published: frozenset[tuple[date, date]], prior: DateRange) -> tuple[DateRange, ...]:
+    """Return the published months older than `prior`, newest first.
+
+    They are read only to learn whether a campaign ran before, never graded against.
+    """
+    return tuple(
+        DateRange(start, end) for start, end in sorted(published, reverse=True) if end < prior.start
+    )
 
 
 def _previous_month(period: DateRange) -> DateRange:
     month = period_containing(TimeGrain.MONTH, period.start - timedelta(days=1))
     return DateRange(month.start, month.end)
+
+
+def _roster_query(request: RosterRequest, plan: BoundQueryPlan) -> QueryRequest:
+    """Build one roster read at the caller kind's row ceiling (ADR-143)."""
+    return QueryRequest(plan=plan, max_rows=row_ceiling(request.ceiling), ceiling=request.ceiling)
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,21 +151,11 @@ class SegmentRosterReader:
         if request.fact == SEGMENT_PROFILE_FACT:
             return self._profile_roster(request)
         prior = _previous_month(request.period)
-        writers = tuple(item for item in self.contracts if item.target_table == SEGMENT_FACT)
-        population = {"marketplace_key": request.marketplace_key}
-        served = self.periods.served_periods(
-            ServedPeriodsRequest(writers, population, self.clock())
-        )
-        published = {(period.start, period.end) for _contract, period in served.publications}
-        # Older published months, newest first: read only to learn whether this campaign was
-        # observed before, never graded against.
-        older = tuple(
-            DateRange(start, end)
-            for start, end in sorted(published, reverse=True)
-            if end < prior.start
-        )
+        published = self._published(request.marketplace_key)
+        older = _older(published, prior)
+        campaign = (dict(request.filters).get(_CAMPAIGN_KEY, ""),)
         if (prior.start, prior.end) not in published:
-            if self._observed_in_any(request, older):
+            if self._observed_campaigns(request, older, campaign).observed:
                 # This campaign was observed before the unpublished month, so that month is a gap
                 # in its history, not its first month: its missing segments can't be named.
                 raise DomainError(
@@ -130,7 +164,7 @@ class SegmentRosterReader:
                     f"{prior.end.isoformat()} isn't published, though this campaign was "
                     "measured in an earlier month, so which segments it reached then can't be "
                     "read and no segment breakdown is answered against it.",
-                    context={"roster": request.kind.value},
+                    context={"roster": request.kind.value, "roster_refusal": "history_gap"},
                 )
             return self._first_month(request)
         keys = self._segments_in(request, prior)
@@ -140,7 +174,7 @@ class SegmentRosterReader:
         named = self.labels.labels(
             SegmentLabelRequest(namespace, request.marketplace_key, keys, prior.end)
         )
-        if not keys and not self._observed_in_any(request, older):
+        if not keys and not self._observed_campaigns(request, older, campaign).observed:
             return self._first_month(request)
         entries = tuple(
             RosterEntry(key, named[key].display if key in named else unnamed_segment_label(key))
@@ -183,7 +217,7 @@ class SegmentRosterReader:
                 ROSTER_REFUSED,
                 f"No one buyer-profile delivery writes profile path {path!r}, so its segments "
                 "can't be listed.",
-                context={"roster": request.kind.value},
+                context={"roster": request.kind.value, "roster_refusal": "no_writer"},
             )
         prior = _previous_month(request.period)
         population = {"marketplace_key": request.marketplace_key}
@@ -199,7 +233,7 @@ class SegmentRosterReader:
                     f"{prior.end.isoformat()} isn't published, though an earlier month is, so "
                     "which segments it listed then can't be read and no segment breakdown is "
                     "answered against it.",
-                    context={"roster": request.kind.value},
+                    context={"roster": request.kind.value, "roster_refusal": "history_gap"},
                 )
             return self._first_month(request)
         keys = self._profile_segments_in(request, (writers, str(namespace)), prior)
@@ -261,7 +295,8 @@ class SegmentRosterReader:
         except DomainError as error:
             raise self._refused(request, month, error) from error
         selection = self._select(request, (logical,), month)
-        result = self.queries.run(QueryRequest(plan=selection.plans[0], max_rows=MAX_ROWS_CEILING))
+        result = self.queries.run(_roster_query(request, selection.plans[0]))
+        _refuse_bake_truncation(request, result.truncated)
         if result.truncated or not selection.coverage.covers_all((month,)):
             raise self._unreadable(request, month)
         return tuple(
@@ -285,20 +320,66 @@ class SegmentRosterReader:
             first_period=True,
         )
 
-    def _observed_in_any(self, request: RosterRequest, months: tuple[DateRange, ...]) -> bool:
-        """Whether the campaign returned any segment in one of these published months, newest first.
+    def campaign_histories(self, request: CampaignHistoriesRequest) -> CampaignHistories:
+        """Grade every listed campaign's earlier history at once, grouped by campaign (01 §3.2).
 
-        One selection and one statement however much history is retained: every month is planned
-        as the prior-month read is, all are bound in one selection (at most
-        `MAX_EXACT_CURRENT_PARTITIONS` partitions, refused beyond it), and one statement reads
-        them together, each month fenced to its own publications. A month Amazon withheld whole
-        can't say whether the campaign ran, so it is reached only as a newest-first walk would
-        reach it: the months newer than it are read first, and only a campaign absent from all of
-        them reads on into it, whose read refuses.
+        For a bake's campaigns with no segments the month before: one newest-first walk over the
+        older published months, grouped by campaign rather than read once per campaign. A
+        campaign observed before an unpublished previous month is a history gap; one never
+        observed is in its first month; one observed while the previous month is published has
+        an empty roster that isn't its first. A walk that reaches a month Amazon withheld whole
+        can't say whether a campaign ran then, so every campaign still unobserved there is a gap.
+        """
+        prior = _previous_month(request.period)
+        published = self._published(request.marketplace_key)
+        scope = RosterRequest(
+            kind=RosterKind.SEGMENT,
+            period=request.period,
+            marketplace_key=request.marketplace_key,
+            platform_key=request.platform_key,
+            fact=SEGMENT_FACT,
+            ceiling=RowCeiling.BAKE,
+        )
+        walk = self._observed_campaigns(scope, _older(published, prior), request.campaigns)
+        prior_published = (prior.start, prior.end) in published
+        histories: dict[str, CampaignHistory] = {}
+        for campaign in request.campaigns:
+            if campaign in walk.gaps:
+                histories[campaign] = CampaignHistory.HISTORY_GAP
+            elif campaign not in walk.observed:
+                histories[campaign] = CampaignHistory.FIRST_MONTH
+            else:
+                histories[campaign] = (
+                    CampaignHistory.OBSERVED if prior_published else CampaignHistory.HISTORY_GAP
+                )
+        return CampaignHistories(histories)
+
+    def _published(self, marketplace_key: str) -> frozenset[tuple[date, date]]:
+        """Every published month of segment delivery for the marketplace."""
+        writers = tuple(item for item in self.contracts if item.target_table == SEGMENT_FACT)
+        served = self.periods.served_periods(
+            ServedPeriodsRequest(writers, {"marketplace_key": marketplace_key}, self.clock())
+        )
+        return frozenset((period.start, period.end) for _contract, period in served.publications)
+
+    def _observed_campaigns(
+        self, request: RosterRequest, months: tuple[DateRange, ...], campaigns: tuple[str, ...]
+    ) -> _Walk:
+        """Which campaigns returned any segment in these published months, newest first.
+
+        The one history walk, for chat's one campaign (the request filters it) and a bake's
+        every campaign (grouped by campaign). One selection and one statement however much
+        history is retained: every month is planned as the prior-month read is, all are bound
+        in one selection (at most `MAX_EXACT_CURRENT_PARTITIONS` partitions, refused beyond
+        it), and one statement reads them together, each month fenced to its own publications.
+        A month Amazon withheld whole can't say whether a campaign ran, so it is reached only
+        as a newest-first walk would reach it: the months newer than it are read first, and
+        only a campaign absent from all of them reads on into it, whose read refuses.
         """
         if not months:
-            return False
-        logical = tuple(self._plan_month(request, month) for month in months)
+            return _Walk(frozenset(), frozenset())
+        grains = ("audience_segment",) if request.filters else ("campaign", "audience_segment")
+        logical = tuple(self._plan_month(request, month, grains) for month in months)
         span = DateRange(months[-1].start, months[0].end)
         selection = self._select(request, logical, span)
         if not selection.coverage.covers_all(months):
@@ -312,28 +393,63 @@ class SegmentRosterReader:
             ),
             len(bound),
         )
-        return any(
-            self._observed_in(request, part)
-            for part in (bound[:withheld], bound[withheld:])
-            if part
-        )
+        newer, older = bound[:withheld], bound[withheld:]
+        listed = frozenset(campaigns)
+        observed = self._observed_in(request, newer, listed) if newer else frozenset[str]()
+        pending = listed - observed
+        if not pending or not older:
+            return _Walk(observed, frozenset())
+        try:
+            observed |= self._observed_in(request, older, pending)
+        except ValidationError as error:
+            # Chat narrates the refusal; a bake isolates it to the campaigns that reach it.
+            if request.filters or error.code != ALL_ROWS_WITHHELD:
+                raise
+            return _Walk(observed, pending)
+        return _Walk(observed, frozenset())
 
-    def _observed_in(self, request: RosterRequest, bound: tuple[BoundQueryPlan, ...]) -> bool:
-        """Read these bound months in one statement: whether the campaign returned any segment."""
-        result = self.queries.run_series(PeriodSeriesRequest(bound, MAX_ROWS_CEILING))
-        observed = bool(measure(bound[0].logical, result.rows).figures)
-        # A truncated result still proves a returned segment; only an empty page would mislead.
-        if result.truncated and not observed:
-            raise self._unreadable(
-                request, DateRange(bound[-1].logical.window.start, bound[0].logical.window.end)
+    def _observed_in(
+        self, request: RosterRequest, bound: tuple[BoundQueryPlan, ...], asked: frozenset[str]
+    ) -> frozenset[str]:
+        """Read these bound months in one statement: which `asked` campaigns returned a segment.
+
+        Chat's one campaign is held as today: a returned row is proof, an empty truncated page
+        is unreadable. A bake's grouped read has no row limit (`BAKE_GROUPED`): it streams every
+        row through `ObservedKeys` keeping only the asked campaigns' keys, so it holds at most
+        the campaigns it grades, however many others retained history holds (ADR-152).
+        """
+        pinned = dict(request.filters).get(_CAMPAIGN_KEY)
+        if pinned is not None:
+            series = PeriodSeriesRequest(bound, row_ceiling(request.ceiling), request.ceiling)
+            result = self.queries.run_series(series)
+            observed = bool(measure(bound[0].logical, result.rows).figures)
+            if result.truncated and not observed:
+                _refuse_bake_truncation(request, truncated=True)
+                raise self._unreadable(
+                    request, DateRange(bound[-1].logical.window.start, bound[0].logical.window.end)
+                )
+            return frozenset({pinned}) if observed else frozenset()
+        # Grouped (a bake): stream the keys, never the rows.
+        # Read even when nothing is asked, so a bake's requests depend only on its served periods.
+        fold = ObservedKeys(
+            (_CAMPAIGN_KEY,), max(len(asked), 1), among=frozenset((key,) for key in asked)
+        )
+        grouped = PeriodSeriesRequest(bound, BAKE_MAX_ROWS, RowCeiling.BAKE_GROUPED)
+        self._folding().fold_series(grouped, FoldingAnswer(bound[0].logical, fold))
+        return frozenset(key[0] for key in fold.value())
+
+    def _folding(self) -> FoldingQueryPort:
+        if not isinstance(self.queries, FoldingQueryPort):
+            raise InvariantError(
+                ROSTER_UNAVAILABLE, "A segment history walk needs a folding query port."
             )
-        return observed
+        return self.queries
 
     def _segments_in(self, request: RosterRequest, month: DateRange) -> tuple[str, ...]:
         """Plan, bind and read the segments the campaign returned in one published month."""
-        logical = self._plan_month(request, month)
+        logical = self._plan_month(request, month, ("audience_segment",))
         selection = self._select(request, (logical,), month)
-        result = self.queries.run(QueryRequest(plan=selection.plans[0], max_rows=MAX_ROWS_CEILING))
+        result = self.queries.run(_roster_query(request, selection.plans[0]))
         if result.truncated or not selection.coverage.covers_all((month,)):
             raise self._unreadable(request, month)
         return tuple(
@@ -345,8 +461,14 @@ class SegmentRosterReader:
             )
         )
 
-    def _plan_month(self, request: RosterRequest, month: DateRange) -> QueryPlan:
-        """Plan the campaign's returned segments in one published month, as a figure is planned."""
+    def _plan_month(
+        self, request: RosterRequest, month: DateRange, grains: tuple[str, ...]
+    ) -> QueryPlan:
+        """Plan the returned segments in one published month, as a figure is planned.
+
+        Chat's one campaign reads at `audience_segment`; a bake's every campaign at
+        `(campaign, audience_segment)`, which keeps both exact axes grouped (design 01 §3.1).
+        """
         filters = {
             "marketplace_key": request.marketplace_key,
             "platform_key": request.platform_key,
@@ -360,7 +482,7 @@ class SegmentRosterReader:
                 self.catalog,
                 PlanRequest(
                     SEGMENT_METRIC,
-                    ("audience_segment",),
+                    grains,
                     month,
                     filters,
                     # A history month is read for its keys only; it is graded by nothing.
@@ -406,7 +528,7 @@ class SegmentRosterReader:
     def _unreadable(
         request: RosterRequest, span: DateRange, *, reason: str | None = None
     ) -> DomainError:
-        context = {"roster": request.kind.value}
+        context = {"roster": request.kind.value, "roster_refusal": "unreadable"}
         if reason is not None:
             context["reason"] = reason
         return DomainError(
@@ -425,6 +547,17 @@ class RosterReaders(RosterPort):
     spend: RosterPort
     segments: RosterPort | None = None
 
+    def campaign_histories(self, request: CampaignHistoriesRequest) -> CampaignHistories:
+        """Read grouped campaign histories from the segment reader."""
+        if not isinstance(self.segments, CampaignHistoryPort):
+            raise DomainError(
+                ROSTER_REFUSED,
+                "Segment rosters can't be read in this runtime, so no segment breakdown is "
+                "answered.",
+                context={"roster": RosterKind.SEGMENT.value},
+            )
+        return self.segments.campaign_histories(request)
+
     def roster(self, request: RosterRequest) -> Roster:
         """Read the roster from the reader that owns its kind."""
         if request.kind is not RosterKind.SEGMENT:
@@ -437,3 +570,17 @@ class RosterReaders(RosterPort):
                 context={"roster": request.kind.value},
             )
         return self.segments.roster(request)
+
+
+def _refuse_bake_truncation(request: RosterRequest, truncated: bool) -> None:
+    """Refuse a bake's page when its roster read was cut at the bake width (ADR-142).
+
+    A bake read (`ceiling` not `NARRATION`) is `rows_over_ceiling` at page scope, with the
+    width it asked for. Chat's read keeps its `ROSTER_REFUSED` answer, which it narrates.
+    """
+    if truncated and request.ceiling is not RowCeiling.NARRATION:
+        raise IsolatedRefusal(
+            IsolatedRefusalReason.ROWS_OVER_CEILING,
+            RefusalScope.PAGE,
+            max_rows=row_ceiling(request.ceiling),
+        )

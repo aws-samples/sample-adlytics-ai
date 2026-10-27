@@ -23,9 +23,11 @@ from adapters.inbound.tool_handlers.measurement import MeasurementTooling
 from adapters.jobs.contract_validation.insight_loader import load_insight_contracts
 from adapters.jobs.contract_validation.loader import load_contracts
 from adapters.jobs.preset_artifact_publisher import scorecard_source
+from adapters.jobs.preset_artifact_publisher.bake_results import (
+    BakeUnavailable,
+)
 from adapters.jobs.preset_artifact_publisher.baker import (
     PAGE_BAKERS,
-    BakeUnavailable,
     CampaignPresetArtifactBaker,
     RegisteredPresetArtifactBaker,
     UnavailableCampaignPresetArtifactSource,
@@ -1325,7 +1327,7 @@ def test_a_calendar_preset_bakes_its_latest_covered_period_with_no_prior() -> No
     # The latest complete ISO week ending on or before Sep 16 is Mon Sep 7 to Sun Sep 13.
     assert iso_week.period == DateRange(date(2026, 9, 7), date(2026, 9, 13))
     assert iso_week.prior_period is None
-    pointer = month.pointer_advance.pointer
+    pointer = month.pointer_template.complete(None).pointer
     assert (pointer.resolved_window, pointer.comparison_window) == (august.period, None)
     body = json.loads(month.body.payload_json)
     assert body["period_label"] == "August 2026"

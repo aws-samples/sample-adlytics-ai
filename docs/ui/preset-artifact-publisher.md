@@ -138,13 +138,14 @@ The Audiences materializer (`src/adapters/jobs/preset_artifact_publisher/audienc
 the same way and stays closed, answering `audiences_materialization_unavailable`, unless the v2 `audiences`
 page entry declares exactly the entry the [Audiences](audiences/low-level-design.md) LLD specifies; that LLD
 owns the entry, the artifact contract, the absence texts, the paid states and the insight. It bakes the
-latest complete month any buyer-profile path has published, from retained publications only, in four steps
-across every governed marketplace. Each step runs at most `athena_query_batch_max_concurrency` reads at once
-and joins them by identity: the served months (one read per marketplace), the DSP campaign lists (one
-planned batch), every published profile path's and every campaign's segment roster, then one measurement
-batch holding every figure. Each figure is planned through the measurement layer chat reads, graded against
-its own delivery's roster and never planned across paths or campaigns; every share, index, CPM and ROAS is
-computed in domain code (`src/domain/presentation/audiences.py`).
+latest complete month any buyer-profile path has published, from retained publications only: 24 statements
+per marketplace at any campaign count, each phase at most `athena_query_batch_max_concurrency` at once.
+Phase 1 reads each profile path's roster and every DSP campaign's three figures and prior-month segments,
+each once for all campaigns; phase 2 the profile measurement and the history walk for campaigns with no
+segments last month. Each figure is planned through the measurement layer chat reads and graded against its
+own path's or campaign's roster; every share, index, CPM and ROAS is computed in domain code
+(`src/domain/presentation/audiences.py`). The campaign pages are written as parts, one campaign at a time
+([entity-streamed reads](#bake-width-and-the-memory-model)).
 
 A real materializer resolves current-plus-prior coverage, takes per-pack evidence snapshots, executes the
 page's bounded measurement batch, renders immutable artifacts, derives the revision from exact
@@ -210,6 +211,33 @@ DynamoDB table with `CURRENT` plus immutable revision history. A page that decla
 [ADR-071](../decisions/adr-071-reach-the-full-campaign-estate-through-baked-ordered-segments.md) also
 persists ordered public/private siblings and a parent custody manifest under the same revision closure.
 The pointer remains the sole commit point: all required bytes and digests attest before it advances.
+
+**Streamed writes and the sharded sibling index** ([ADR-145](../decisions/adr-145-serve-ten-thousand-campaigns-with-a-sharded-roster-and-streamed-writes.md)).
+A source's publication carries its parent body, a pointer template (every pointer field but the
+custody digest), its page's own custody fields as a header, and its siblings as a re-iterable stream
+of body/custody pairs with a declared count. Campaigns renders each segment and filter sibling as the
+stage draws it; Retail wraps its product-detail children. One stage writes every source, in order:
+
+1. Retail's closed child set: the stream's identities must be exactly the served rows, else an
+   invariant before any write.
+2. The pairs, body then custody, at most 8 in flight, drawing the next pair only as one completes
+   and keeping only its descriptor (identity, body digest, custody digest). The first failure, or a
+   refusal the stream raises (a sibling over its cap), stops submission; the pairs in flight are
+   observed and the error is raised.
+3. The descriptors, sorted by identity path, in index shards of 800 at
+   `custody/{page}/{variant}/{revision}/index/segment-NNNN.json`. A descriptor is at most 256 bytes,
+   so a shard fits the cap.
+4. The parent body, then the parent custody: the header plus `sibling_index`, one
+   `{first_identity, last_identity, digest}` per shard. The pointer is the template completed with
+   that custody's digest.
+
+The stage reports every write chain (each pair, each shard, the parent) and its bytes, which are the
+task's `pairs` and `written_bytes` on both entries. Every sibling of every source is indexed, and a
+sibling-free page writes no custody. A serve reads a sibling in two levels: pointer, parent custody,
+the shard whose range covers the identity (checked against the parent's digest), the descriptor, then
+the body and custody (each checked against it). An identity no shard lists, a listed shard or sibling
+that S3 doesn't hold, or one whose bytes don't match, is the malformed-artifact refusal, never a
+fallback.
 Superseded history receives retention TTL; current records do not expire. Baked bodies are
 capability-free, and the serve path mints session custody.
 
@@ -294,15 +322,101 @@ flow identity is a required recovery capability. The custom-resource path remain
 revision/pointer boundary, but neither substitutes for dependency-aware scheduling or objective
 attainment evidence.
 
+**Updating to the sharded sibling index ([ADR-145](../decisions/adr-145-serve-ten-thousand-campaigns-with-a-sharded-roster-and-streamed-writes.md)).**
+Campaigns render format 12 and Retail health render format 10 name their siblings and product-detail
+children only through the sibling index, and serving reads no other shape. A Campaigns (format 11) or
+Retail health (format 9) pointer baked before the update has no index, so from the deploy until that
+page's next bake every view of it is the malformed-artifact refusal: the page shows its failed state
+and the ERROR invariant alarms. The update changes only code, so the backfill above doesn't fire, and
+no repository-owned re-bake command exists yet: the next publication bake of each page rebuilds it.
+Deploy the update shortly before a delivery for both pages lands, and check both pages after that bake.
+
+## Page isolation
+
+A bake limit or failure is one of two things ([ADR-142](../decisions/adr-142-isolate-a-bake-refusal-to-its-own-scope-and-alarm-on-defects.md);
+the closed table is `src/domain/operations/bake_refusals.py`):
+
+- **An isolated refusal** (a scale limit, a data-history gap or a dependency that stayed down) is
+  its own scope's designed absence, and everything else publishes. Designed absence has three
+  scopes. An **item** (one Audiences campaign or profile path) or a **section** (only a section
+  that declares `period_anchor: false`) renders its absence inside a body that publishes, and the
+  absence is part of the revision. A **page** refusal settles the page's
+  `<page>_materialization_unavailable` absence: the page keeps its last good body, its siblings
+  advance, and on the graph entry the cohort still binds. A source decides the scope; the page
+  execution refuses a claim the page doesn't declare. Every body a source builds is size-checked
+  first, so an over-cap body is that page's `body_over_cap`, never the D18 failure.
+- **A defect** (over the certified query count, a plan-count mismatch, any invariant, the D18
+  ceiling reached past a source's check) still holds every page on the graph entry and only its own
+  page on the legacy entry, and pages the operator.
+
+Both entries render through one page execution (`page_bake.py`), so the classification is the same:
+a source's `DomainError` or `ValidationError` is the page's `source_refused` (or
+`partitions_over_bound` for the selector's exact-partition bounds); a bake-wait timeout is
+`statement_time_over_invocation` on any receive; any other dependency failure retries, and on the
+record's final receive is the page's `dependency_unavailable` instead of a dead letter. One
+exception on the legacy entry: a write that stays down on the final receive (`stage_page`'s stage
+or pointer write) still dead-letters the record (`BakeDeadLettered`); the graph entry settles it
+as `dependency_unavailable`.
+
+**The pin's bounded retry.** On the graph entry the fan-out's pin pass retries a dependency
+failure in place, per row and around its own release-store calls, up to three attempts with full
+jitter (0.5 s base, 4 s cap) and only while 60 s of the invocation remain for the pin write. A row
+whose attempts run out pins with zero requests and its `pin_refusal`; the cohort proceeds and that
+row's task settles `dependency_unavailable`. A release-store call whose attempts run out re-raises,
+as before.
+
+**The runtime write deadline.** `stage` and `publish` take the invocation's remaining time and the
+contract's `tail_seconds` (30 s) as required arguments. Before each body/custody pair is submitted,
+less than the tail left stops submission, the pairs in flight are observed, and the page settles
+`bodies_over_invocation`: no index shard, parent, custody or pointer is written, so the pairs
+already written are unreferenced objects no custody names. A page-scope refusal the stream raises
+while the stage draws it settles the page's absence the same way. Telemetry for all of it is in
+[observability](../concepts/observability.md#32-application-spans-and-metrics).
+
+## Bake width and the memory model
+Every bake read is page-sized or bounded by governed axes ([ADR-152](../decisions/adr-152-read-page-sized-answers-in-sql-with-no-arbitrary-row-ceiling.md)). A page that shows a ranked slice reads it ranked in SQL, with the population's count and sums in the same statement (the [query path](../capabilities/query-path/architecture.md#row-ceilings-result-transports-and-folds) owns the shapes). A read grouped only by days, marketplaces and governed media-taxonomy axes is bounded by them. A read that renders one entity at a time is **entity-streamed**: it reads `ORDER BY` its grain through a `GroupSink` (`group_stream.py`), a fold that hands one entity's rows at a time across a one-slot queue, so only the groups in flight are resident. Audiences reads every DSP campaign this way: a count pass in the render builds the campaign index, and a page pass, the same requests answered by result reuse, renders each campaign's pages as the stage writes them. Its reads have no row `LIMIT` (`BAKE_GROUPED`): the sink, not the row count, bounds memory. Campaigns renders every campaign whole, so it folds its reads into one compact record per campaign (`KeyedColumns`, one column per read) and keeps at most `BAKE_MAX_ROWS` records; its reads have no row `LIMIT` either. No current bake read uses the streamed reduction ceiling (`BAKE_MAX_STREAMED_ROWS`). The Baker streams each result from its result object, so one buffer is resident at any row count.
+
+A bounded read that comes back cut is a defect. An entity-wide read cut at `BAKE_MAX_ROWS` is its page's `rows_over_ceiling` (or `population_over_ceiling`), and the `isolated_refusal` line names the operator action: raise the Baker memory.
+
+`make check-bakeability` certifies every roster row's resident bytes term by term and prints them:
+
+```text
+resident(row) = W                               # writes in flight: 2 x S3 chains per baker x 256,000 B
+              + Q x max_held x B_raw            # raw rows of at most Q slots being shaped at once
+              + sum(held widths) x B_shaped     # every shaped answer, resident until the render ends
+              + sum(fold max_kept) x B_kept     # each fold's enforced bound
+              + max_held x B_render             # the render's own per-row structures
+              + sum(record stores) x B_record   # one compact record per entity, and its rows
+certified iff resident(row) <= 0.5 x the Baker's memory
+```
+
+A held slot's width is read from the batch the source builds: its fixed axes' own bound (days, marketplaces and media-taxonomy terms), its ranked bound (50 rows, 3 movers, 10 per ad product), or `BAKE_MAX_ROWS` for a population read. `resident` is affine in that ceiling, so the ceiling is derived, not chosen: `BAKE_MAX_ROWS = floor((0.5 x memory − BAKE_FIXED_BYTES) / BAKE_BYTES_PER_ROW)`, the binding row's intercept and slope (`domain/operations/bake_memory.py`). The gate recomputes both from the real batches and fails on any difference, and prints the ceiling at 1,024, 2,048, 4,096 and 10,240 MiB. The per-row byte terms are the row-ceiling probe's (`validation/probe_bake_row_ceiling.py`), recorded with their date in `BAKE_MEMORY_TERMS`; `B_record` is the real Campaigns bake's traced peak per campaign. The Baker's memory has one home, `bake_tasks.baker_memory_mib` in `contracts/operations/execution-graphs.yaml`: the stack sizes the function from it and the model derives the ceiling from it. Bodies stream, so `W` is the only body term.
+
+## Scale envelope
+The one home of each page's own-absence thresholds at publish time. The README's [sizing table](../../README.md#sizing-for-large-catalogs) links here.
+
+| Threshold | Value | Above it | Owner |
+|---|---|---|---|
+| `BAKE_MAX_ROWS`, rows one held entity-wide answer may keep | derived from the Baker's memory and printed by `make check-bakeability` | that page's `rows_over_ceiling`; raise the Baker memory | ADR-152 |
+| Audiences DSP campaigns | every campaign with delivery in the month, each with every segment, in 50-row pages. Its reads have no row limit; the campaign index, its segment set and one campaign's segments are each held up to `BAKE_MAX_ROWS` | the page's `rows_over_ceiling`; raise the Baker memory | ADR-141 |
+| Retail health product rows | the top 50 by current shipped revenue, with the count and sums of every product, at any catalog size | none | [Retail LLD](retail-health/low-level-design.md) |
+| Campaigns population | every campaign, up to the memory-derived ceiling `BAKE_MAX_ROWS` | the page's `population_over_ceiling`, which alarms with the operator action: raise `bake_tasks.baker_memory_mib` | ADR-152 |
+| Campaigns and Audiences writes | the stage's runtime write deadline; their bodies grow with campaigns, so each is certified at the whole write allowance. Projected to reach the deadline (900 s less the 30 s tail) at about 62,000–85,000 campaigns and, on Audiences, about 35,700–45,700 DSP campaigns in a month, both below the 4,096 and 10,240 MiB `BAKE_MAX_ROWS` [projection, linear in objects written: dev's write phase took 9.07–11.62 ms per fresh Campaigns object over four 131-object bakes (2026-10-25, aws/spans); 1.132–1.2128 Campaigns objects per campaign (the 10,000-campaign estate and `campaign_bake_object_count`); 2.1 Audiences objects per DSP campaign on dev; a fresh Audiences write is assumed to cost what a Campaigns one does, unmeasured]. A redelivered stage whose objects already exist is slower: each conditional PUT is refused and the object re-read, 26.84 ms per object over one replayed 63-object Audiences bake, so Audiences crosses at about 15,400 then [projection]. Campaigns passes its 570 s budget from about 40,000–56,000; Audiences its 600 s budget from about 24,600–31,500, or about 10,600 replayed. Both count write time only, so each crossing is if anything lower | the page's `bodies_over_invocation`. The write waits on S3 at `s3_chains_per_baker` pairs in flight: on dev those PUTs filled 68–75% of Campaigns' write phase, so more Baker memory (CPU and network share) isn't shown to shorten it | ADR-145 |
+| Exact-read partitions per source pack | 1,000 (`MAX_PRESET_SNAPSHOT_PARTITIONS`, equal to Publication State's exact-read bound). It's derived so the worst serving read fits the presentation function's 29 s with the Athena statement's 20 s kept: ⌊9,000 / (9 × 95.0 ms p95 in-Region)⌋ = 10 transactions per pass (ADR-070). The gate's model, days doubled for the prior and one lens, fits a 500-day preset; the Reach quarter's pin reads 184, 92 days × 2 lenses. Each 100 partitions add 3 sequential DynamoDB transactions per attempt | `make check-bakeability` refuses the declaration; at a bake, that page's `partitions_over_bound` | ADR-070 |
+
 ## Scaling and operational gaps
 
-The legacy bake unit is one variant. On the `GRAPH` path one page row's scale failure withholds the
-whole cohort, so every page stays on its last good generation until a cohort serves; isolating a
-page's failure as that page's absence is designed, not built (README
-[Known limits](../../README.md#known-limits)). When a page approaches its page-owned envelope, decompose into
-revision-bound required children rather than raising a timeout. Current unresolved controls are:
+The legacy bake unit is one variant. A page's scale failure is that page's own absence on either
+entry ([Page isolation](#page-isolation)); a defect still withholds the whole `GRAPH` cohort, so
+every page stays on its last good generation until a cohort serves. When a page approaches its
+page-owned envelope, decompose into revision-bound required children rather than raising a timeout.
+Current unresolved controls are:
 
 - the [target pipeline](#target-pipeline) mandated by ADR-075, including complete cohort
   registration and retirement of global fan-out;
-- implemented queue-age, DLQ, bake-duration, and publication-lag alarms; and
-- objective values and error-budget policy under ADR-074.
+- implemented queue-age, DLQ, bake-duration, and publication-lag alarms;
+- objective values and error-budget policy under ADR-074; and
+- the Campaigns and Audiences write ceiling: one invocation writes a page's every object, so
+  past the projected sizes in the [scale envelope](#scale-envelope) the page stays on its last
+  good version. Lifting it (more write concurrency, or a page's writes split across
+  invocations) is an owner-approved follow-up (2026-10-26), not built yet.

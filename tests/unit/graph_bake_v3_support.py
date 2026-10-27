@@ -14,7 +14,9 @@ from __future__ import annotations
 
 # The publication fixture spec is a shared test seam.
 # pyright: reportPrivateUsage=false
+import random
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Any, cast
@@ -28,6 +30,7 @@ from graph_consumer_support import (
     publish_settled,
     sqs_record,
 )
+from preset_artifact_support import staged_advance, staged_result
 from publication_support import _PublicationSpec, successful_publication
 
 from adapters.jobs.execution_graph.dispatcher import DispatchContext, dispatch_shard
@@ -35,7 +38,7 @@ from adapters.jobs.execution_graph.fence_settler import due_shards
 from adapters.jobs.execution_graph.instantiate import ingestion_node_plan
 from adapters.jobs.execution_graph.post_grant_consumer import ConsumeResult, post_grant_envelope
 from adapters.jobs.execution_graph.promoter import PromoterContext, arm_pass
-from adapters.jobs.preset_artifact_publisher.baker import (
+from adapters.jobs.preset_artifact_publisher.bake_results import (
     BakePublication,
     BakeResult,
     BakeUnavailable,
@@ -46,6 +49,8 @@ from adapters.jobs.preset_artifact_publisher.graph_bake import (
     GraphBakeRuntime,
     task_node_name,
 )
+from adapters.jobs.preset_artifact_publisher.isolated_refusals import note_isolated_refusal
+from adapters.jobs.preset_artifact_publisher.page_bake import ProcessBakeLedger
 from adapters.jobs.preset_artifact_publisher.transport import (
     BakeDelivery,
     BakeIntent,
@@ -59,6 +64,7 @@ from adapters.outbound.dynamodb.preset_artifacts import (
     pointer_transaction_items,
 )
 from adapters.outbound.publication_selection import publication_digest
+from domain.operations.bake_refusals import IsolatedRefusal
 from domain.operations.execution_graph_release import (
     BakeRoster,
     BakeRosterRow,
@@ -66,13 +72,11 @@ from domain.operations.execution_graph_release import (
     unavailable_reason,
 )
 from domain.presentation.preset_artifacts import (
-    ArtifactBodyWriteResult,
-    CustodyManifestWriteResult,
     PresetArtifactBody,
-    PresetArtifactCustodyManifest,
+    PresetArtifactCustodyHeader,
     PresetArtifactPage,
     PresetArtifactPointer,
-    PresetArtifactPointerAdvanceRequest,
+    PresetArtifactPointerTemplate,
     PresetArtifactPublicationRequest,
     PresetArtifactRevision,
     PresetArtifactStageResult,
@@ -121,7 +125,7 @@ class PointerKeys(FakeDynamo):
         """
         page, variant = key.split("#")
         request = _publication(BakeIntent(page, variant), identity, None)
-        items = pointer_transaction_items(POINTER_TABLE, request.pointer_advance)
+        items = pointer_transaction_items(POINTER_TABLE, staged_advance(request))
         self.transact_write_items(TransactItems=list(items))
 
 
@@ -259,6 +263,10 @@ class LakeSources:
     """Keys whose render runs every query, then raises the first query error (precedence)."""
     render_raises: dict[str, Exception] = field(default_factory=dict[str, Exception])
     """Keys whose task render (replay, not capturing) raises after its queries ran."""
+    notes: dict[str, tuple[IsolatedRefusal, ...]] = field(
+        default_factory=dict[str, tuple[IsolatedRefusal, ...]]
+    )
+    """Item or section refusals a key's source notes on every render (ADR-142)."""
 
     def registered_pages(self) -> tuple[str, ...]:
         return self.pages
@@ -302,6 +310,10 @@ class LakeSources:
                     errors.append(error)
             if errors and name in self.gather:
                 raise errors[0]
+        for note in self.notes.get(name, ()):
+            note_isolated_refusal(
+                note.reason, note.scope, note.count, section=cast("str", note.section)
+            )
         if (
             name in self.render_raises
             and self.reads.mode.value == "replay"
@@ -326,27 +338,18 @@ def _publication(
     body = PresetArtifactBody(
         page, variant, revision, canonical_preset_artifact_json({"identity": identity})
     )
-    custody = PresetArtifactCustodyManifest(
-        page,
-        variant,
-        revision,
-        canonical_preset_artifact_json({"body_digest": body.digest}),
-    )
-    pointer = PresetArtifactPointer(
-        page,
-        variant,
-        revision,
-        body.digest,
-        1 if current is None else current.forward_token + 1,
-        None if current is None else current.revision,
-        custody.digest,
-    )
     return PresetArtifactPublicationRequest(
         body,
-        PresetArtifactPointerAdvanceRequest(
-            pointer, None if current is None else NOW + timedelta(days=30)
+        PresetArtifactPointerTemplate(
+            page,
+            variant,
+            revision,
+            body.digest,
+            1 if current is None else current.forward_token + 1,
+            None if current is None else current.revision,
+            None if current is None else NOW + timedelta(days=30),
         ),
-        custody,
+        PresetArtifactCustodyHeader(canonical_preset_artifact_json({"body_digest": body.digest})),
     )
 
 
@@ -356,20 +359,20 @@ class Stage:
 
     staged: list[str] = field(default_factory=list[str])
 
-    def stage(self, request: PresetArtifactPublicationRequest) -> PresetArtifactStageResult:
+    calls: list[tuple[int, float]] = field(default_factory=list[tuple[int, float]])
+    """Each stage call's (remaining ms, tail seconds): the write deadline it was given."""
+
+    def stage(
+        self,
+        request: PresetArtifactPublicationRequest,
+        *,
+        remaining_ms: Callable[[], int],
+        tail_seconds: float,
+    ) -> PresetArtifactStageResult:
+        self.calls.append((remaining_ms(), tail_seconds))
         body = request.body
         self.staged.append(f"{body.page.value}#{body.variant.value}")
-        custody = request.custody
-        return PresetArtifactStageResult(
-            ArtifactBodyWriteResult(
-                body.page, body.variant, body.revision, body.key, body.digest, "v1"
-            ),
-            None
-            if custody is None
-            else CustodyManifestWriteResult(
-                custody.page, custody.variant, custody.revision, custody.key, custody.digest, "v1"
-            ),
-        )
+        return staged_result(request)
 
 
 @dataclass(frozen=True)
@@ -396,6 +399,10 @@ class Bake:
     """Every POST_GRANT invariant signal a task counted."""
     visibility_calls: list[tuple[str, str, int]] = field(default_factory=list[tuple[str, str, int]])
     """Every bake-queue visibility override: (queue URL, receipt handle, seconds)."""
+    remaining_ms: Callable[[], int] = field(default=lambda: 600_000)
+    """The fictional invocation's remaining time (the Lambda context's callable)."""
+    slept: list[float] = field(default_factory=list[float])
+    """Every pin-pass backoff sleep (ADR-142), recorded instead of slept."""
     sources: LakeSources = field(init=False)
     runtime: BakeRuntime = field(init=False)
     graph: GraphBakeRuntime = field(init=False)
@@ -415,6 +422,9 @@ class Bake:
             pointer_table=POINTER_TABLE,
             query_cap=10,
             now=lambda: NOW,
+            process=ProcessBakeLedger(peak=lambda: 0.0),
+            sleep=self.slept.append,
+            jitter=random.Random(0),  # noqa: S311 -- a deterministic test jitter
         )
         self.graph = GraphBakeRuntime(
             release_store(self.tables),
@@ -441,11 +451,13 @@ class Bake:
         arm_and_dispatch(self.tables, run, "bake")
         return run
 
-    def fan_out(self, run: str, receive_count: int = 1) -> ConsumeResult:
+    def fan_out(
+        self, run: str, receive_count: int = 1, remaining_ms: Callable[[], int] = lambda: 800_000
+    ) -> ConsumeResult:
         node = self.node(run, "bake")
         envelope = post_grant_envelope(sqs_record(node, receive_count), CohortMember.BAKE)
         assert envelope is not None
-        return self.graph.consume(envelope, lambda: 800_000)
+        return self.graph.consume(envelope, remaining_ms)
 
     def dispatch(self, run: str) -> None:
         record = release_store(self.tables).read_run(run)
@@ -474,7 +486,8 @@ class Bake:
         body = parse_bake_v3_body(record["body"])
         assert body is not None
         return self.graph.consume_v3(
-            BakeDelivery(body, record["body"], record["messageId"], receive_count)
+            BakeDelivery(body, record["body"], record["messageId"], receive_count),
+            self.remaining_ms,
         )
 
     def task(self, run: str, key: str, receive_count: int = 1) -> ConsumeResult:

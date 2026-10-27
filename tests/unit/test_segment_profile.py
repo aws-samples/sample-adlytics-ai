@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import json
 import pathlib
-import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime
@@ -53,7 +52,6 @@ from adapters.jobs.ingest_delivery.semantic_sidecar import SemanticSidecarOutcom
 from adapters.jobs.presentation_validation.loader import load_v2_page_schemas
 from adapters.jobs.preset_artifact_publisher import audiences_source
 from adapters.jobs.preset_artifact_publisher.audiences_source import (
-    AUDIENCES_BODY_OVER_BOUND,
     AUDIENCES_ENVELOPE_MAX_BYTES,
     AUDIENCES_RENDER_FORMAT,
     AUDIENCES_ROW_MAX_BYTES,
@@ -67,10 +65,12 @@ from adapters.jobs.preset_artifact_publisher.audiences_source import (
     governed_campaign_names,
     retained_audiences_preset_artifact_source,
 )
-from adapters.jobs.preset_artifact_publisher.baker import (
-    AudiencesPresetArtifactBaker,
+from adapters.jobs.preset_artifact_publisher.bake_results import (
     BakePublication,
     BakeUnavailable,
+)
+from adapters.jobs.preset_artifact_publisher.baker import (
+    AudiencesPresetArtifactBaker,
     CampaignPresetArtifactBaker,
     RegisteredPresetArtifactBaker,
     UnavailableCampaignPresetArtifactSource,
@@ -112,7 +112,6 @@ from domain.presentation.audiences import (
     VIEW_NAMESPACES,
     AudienceMarket,
     AudienceProfileArtifact,
-    AudienceUnavailableArtifact,
     CampaignAudiences,
     CampaignRowRequest,
     DeliveryState,
@@ -123,11 +122,11 @@ from domain.presentation.audiences import (
     ProfileView,
     ViewRequest,
     audiences_artifact_payload,
+    audiences_campaign_page_payload,
     bonferroni_z,
     build_view,
     campaign_segment,
     over_index_findings,
-    require_audiences_unavailable_artifact_payload,
     segment_figures,
     segment_over_index_slot,
 )
@@ -170,8 +169,21 @@ from domain.shared_kernel.errors import DomainError, InvariantError, ValidationE
 from domain.shared_kernel.provenance import Suppression
 from domain.shared_kernel.values import DateRange
 from ports.outbound.canonical import CanonicalDestination
-from ports.outbound.query import QueryRequest, QueryResult, QueryRow
-from ports.outbound.rosters import RosterRequest
+from ports.outbound.query import (
+    FoldRead,
+    PeriodSeriesRequest,
+    QueryRequest,
+    QueryResult,
+    QueryRow,
+    RowSink,
+    statement_limit,
+)
+from ports.outbound.rosters import (
+    CampaignHistories,
+    CampaignHistoriesRequest,
+    CampaignHistory,
+    RosterRequest,
+)
 from ports.outbound.segment_labels import SegmentLabelRequest
 from ports.outbound.served_periods import ServedPeriods, ServedPeriodsRequest
 
@@ -208,6 +220,8 @@ OCTOBER = DateRange(date(2026, 10, 1), date(2026, 10, 31))
 AUGUST = DateRange(date(2026, 8, 1), date(2026, 8, 31))
 MONTH = CalendarPeriod(SEPTEMBER.start, SEPTEMBER.end, TimeGrain.MONTH)
 OCTOBER_MONTH = CalendarPeriod(OCTOBER.start, OCTOBER.end, TimeGrain.MONTH)
+REVISION = "a" * 64
+"""A fictional publication revision for an artifact built outside a render."""
 ASI = SegmentNamespace.AMC_ASI
 DSP = SegmentNamespace.AMC_DSP_BEHAVIOR
 
@@ -638,6 +652,11 @@ class _Served:
 class _Rosters:
     by_path: dict[str, Roster] = field(default_factory=dict[str, Roster])
     seen: list[RosterRequest] = field(default_factory=list[RosterRequest])
+    grades: dict[str, CampaignHistory] = field(default_factory=dict[str, CampaignHistory])
+    """Each campaign's history grade; any other is a first month."""
+    histories_seen: list[CampaignHistoriesRequest] = field(
+        default_factory=list[CampaignHistoriesRequest]
+    )
 
     def roster(self, request: RosterRequest) -> Roster:
         self.seen.append(request)
@@ -654,6 +673,15 @@ class _Rosters:
             first_period=True,
         )
         return replace(found, period=request.period, filters=request.filters)
+
+    def campaign_histories(self, request: CampaignHistoriesRequest) -> CampaignHistories:
+        self.histories_seen.append(request)
+        return CampaignHistories(
+            {
+                campaign: self.grades.get(campaign, CampaignHistory.FIRST_MONTH)
+                for campaign in request.campaigns
+            }
+        )
 
 
 DSP_LABELS = {
@@ -946,9 +974,11 @@ def test_paid_profile_unobserved_reads_the_paid_text_and_the_page_defaults_to_ds
             DeliveryState("asi_lifestyle", None, _observed(False)),
         ),
     )
-    market = AudienceMarket(US, unobserved, standard, CampaignAudiences(False, ()))
+    market = AudienceMarket(US, unobserved, standard, CampaignAudiences(False))
     assert market.default_view == DSP_VIEW
-    body = audiences_artifact_payload(AudienceProfileArtifact(MONTH, (market,), POLICY.buyers_min))
+    body = audiences_artifact_payload(
+        AudienceProfileArtifact(MONTH, (market,), POLICY.buyers_min, REVISION)
+    )
     paid, dsp = body["markets"][0]["views"]  # type: ignore[index]
     assert (paid["paid_state"], paid["callout"]) == ("not_observed", ASI_NEEDS_PAID_FEATURE_TEXT)
     assert (dsp["paid_state"], dsp["callout"]) == ("standard", None)
@@ -964,8 +994,7 @@ def test_paid_profile_unobserved_reads_the_paid_text_and_the_page_defaults_to_ds
         ),
     )
     assert (
-        AudienceMarket(US, observed, standard, CampaignAudiences(False, ())).default_view
-        == PAID_VIEW
+        AudienceMarket(US, observed, standard, CampaignAudiences(False)).default_view == PAID_VIEW
     )
 
 
@@ -983,8 +1012,9 @@ def test_partial_enrolment_names_asi_segments_by_id_and_still_shows_the_index() 
     body = audiences_artifact_payload(
         AudienceProfileArtifact(
             MONTH,
-            (AudienceMarket(US, view, standard, CampaignAudiences(False, ())),),
+            (AudienceMarket(US, view, standard, CampaignAudiences(False)),),
             POLICY.buyers_min,
+            REVISION,
         )
     )
     (row,) = body["markets"][0]["views"][0]["rows"]  # type: ignore[index]
@@ -1027,7 +1057,7 @@ def test_an_unclassified_segment_carries_no_provider_label_and_a_classified_one_
     )
     body = audiences_artifact_payload(
         AudienceProfileArtifact(
-            MONTH, (AudienceMarket(US, paid, view, CampaignAudiences(False, ())),), 30
+            MONTH, (AudienceMarket(US, paid, view, CampaignAudiences(False)),), 30, REVISION
         )
     )
     rows = cast("Any", body["markets"])[0]["views"][1]["rows"]
@@ -1149,7 +1179,7 @@ def test_a_paid_view_with_both_deliveries_ranks_and_names_each_inside_its_own_ba
     standard = _view(DSP_VIEW, PaidState.STANDARD, (DeliveryState("dsp_exposed_only", None),))
     body = audiences_artifact_payload(
         AudienceProfileArtifact(
-            MONTH, (AudienceMarket(US, view, standard, CampaignAudiences(False, ())),), 30
+            MONTH, (AudienceMarket(US, view, standard, CampaignAudiences(False)),), 30, REVISION
         )
     )
     paid = cast("Any", body["markets"])[0]["views"][0]
@@ -1181,7 +1211,7 @@ def test_the_materializer_is_registered_and_opens_with_the_committed_page_entry(
     assert audiences_policy_declared(schemas)
 
 
-def test_only_the_committed_audiences_v1_declaration_opens_the_source() -> None:
+def test_only_the_committed_audiences_v2_declaration_opens_the_source() -> None:
     schemas = load_v2_page_schemas(ROOT)
     page = next(item for item in schemas.pages if item.page_id == "audiences")
     assert page.navigation is not None
@@ -1219,7 +1249,7 @@ def test_only_the_committed_audiences_v1_declaration_opens_the_source() -> None:
 
     refused: dict[str, dict[str, object]] = {
         "wrong type": {"artifacts": (replace(artifact, artifact_type="RetentionCohortArtifact"),)},
-        "wrong version": {"artifacts": (replace(artifact, version=2),)},
+        "wrong version": {"artifacts": (replace(artifact, version=1),)},
         "an outcome missing": {"artifacts": (replace(artifact, outcomes=("complete", "empty")),)},
         "two artifacts": {"artifacts": (artifact, replace(artifact, artifact_id="other"))},
         "parent-child mode": {"mode": PresentationPageMode.SELECTABLE_PARENT_CHILD},
@@ -1274,13 +1304,18 @@ def test_only_the_committed_audiences_v1_declaration_opens_the_source() -> None:
 
 @dataclass
 class _Bake:
-    """The stores one bake reads: published months, rows per plan, rosters and labels."""
+    """The stores one bake reads: published months, rows per plan, rosters and labels.
+
+    Answers held reads (`run`) and streamed ones (`fold`), each from the same rows, the streamed
+    ones `ORDER BY` their grain as the composed statement orders them.
+    """
 
     published: frozenset[tuple[str, DateRange]]
     seen: list[QueryRequest] = field(default_factory=list[QueryRequest])
     campaigns: tuple[str, ...] = ("camp-1",)
     """The DSP campaigns pack 8 returned; campaign `camp-{n}` reached n x 30,000 impressions."""
     served_seen: list[ServedPeriodsRequest] = field(default_factory=list[ServedPeriodsRequest])
+    folded: list[QueryRequest] = field(default_factory=list[QueryRequest])
 
     def served_periods(self, request: ServedPeriodsRequest) -> ServedPeriods:
         self.served_seen.append(request)
@@ -1308,12 +1343,13 @@ class _Bake:
             ("asi_in_market", "segment_buyers_new_to_brand"): {"41001": 16},
         }
         rows: list[QueryRow] = []
+        alias = measure_alias(0)
         if logical.group_by == ("marketplace_key",):
             value = {"profiled_exposed_total": 2400, "profiled_buyers_total": 120}[measure]
-            rows.append({"marketplace_key": US, measure_alias(0): value})
+            rows.append({"marketplace_key": US, alias: value})
         elif path is not None:
             rows.extend(
-                {"marketplace_key": US, "segment_id": key, measure_alias(0): value}
+                {"marketplace_key": US, "segment_id": key, alias: value}
                 for key, value in segment[(path, measure)].items()
             )
         else:
@@ -1324,31 +1360,42 @@ class _Bake:
                 "dsp_spend": Decimal("210.00"),
                 "segment_attributed_revenue": Decimal("123.00"),
             }[measure]
-            campaign = logical.filters.get("campaign_key")
-            if measure == "impressions" and campaign is not None:
-                value *= int(str(campaign).removeprefix("camp-"))
-            row: QueryRow = {"marketplace_key": US, "segment_id": "41001", measure_alias(0): value}
+            row: QueryRow = {"marketplace_key": US, "segment_id": "41001", alias: value}
             if money:
                 row = {**row, "currency_code": "USD"}
-            if "campaign_key" in logical.group_by:
-                rows.extend({**row, "campaign_key": key} for key in self.campaigns)
-            else:
-                rows.append(row)
+            for key in self.campaigns:
+                scale = int(key.removeprefix("camp-")) if measure == "impressions" else 1
+                rows.append({**row, "campaign_key": key, alias: cast("Any", value) * scale})
         return QueryResult(
             rows=tuple(rows), bytes_scanned=1, truncated=False, suppression=Suppression(False)
         )
+
+    def run_series(self, request: PeriodSeriesRequest) -> QueryResult:
+        del request
+        raise AssertionError("an Audiences render reads no series itself.")
+
+    def fold(self, request: QueryRequest, sink: RowSink) -> FoldRead:
+        self.folded.append(request)
+        result = self.run(request)
+        group = request.plan.logical.group_by
+        rows = sorted(result.rows, key=lambda row: tuple(str(row[column]) for column in group))
+        for row in rows:
+            sink.add(row)
+        return FoldRead(len(rows), result.truncated, 1, result.suppression)
+
+    def fold_series(self, request: PeriodSeriesRequest, sink: RowSink) -> FoldRead:
+        del request, sink
+        raise AssertionError("an Audiences render reads no series itself.")
 
 
 CAMPAIGN_NAMES = {("campaign_key", "camp-1"): "Fall prospecting"}
 """The governed catalog's one named campaign; every other campaign reads chat's placeholder."""
 
 
-def _renderer(  # noqa: PLR0913 -- published months, rosters, fan-out and the campaign bound
+def _renderer(
     published: frozenset[tuple[str, DateRange]],
     rosters: _Rosters | None = None,
-    bound: int = 1,
-    *,
-    campaign_bound: int = 13,
+    bound: int = 4,
 ) -> tuple[AudiencesArtifactRenderer, _Bake]:
     store = _Bake(published)
     stub = StubPublications()
@@ -1366,6 +1413,7 @@ def _renderer(  # noqa: PLR0913 -- published months, rosters, fan-out and the ca
                 query_batch_max_concurrency=bound,
             ),
             rosters=rosters,
+            histories=rosters,
             segment_labels=_Labels(DSP_LABELS),
             marketplaces=(US,),
             insight_contract=INSIGHT,
@@ -1373,7 +1421,6 @@ def _renderer(  # noqa: PLR0913 -- published months, rosters, fan-out and the ca
             campaign_labels=governed_campaign_names(
                 DimensionLabelResolver(_LabelCatalog(dict(CAMPAIGN_NAMES)), SCOPE)
             ),
-            campaign_bound=campaign_bound,
         ),
         store,
     )
@@ -1384,6 +1431,14 @@ def test_a_renderer_refuses_multiple_markets_before_any_query_port_call() -> Non
     with pytest.raises(ValueError, match="exactly one governed marketplace"):
         replace(renderer, marketplaces=(US, "amazon_uk"))
     assert (store.seen, store.served_seen) == ([], [])
+
+
+def test_a_renderer_needs_a_query_bound_that_streams_every_campaign_read_at_once() -> None:
+    """The count pass merges four streamed reads; each holds its admission slot while it runs."""
+    with pytest.raises(ValueError, match="streams its campaign reads at once"):
+        _renderer(frozenset({(DSP_EXPOSED, SEPTEMBER)}), bound=3)
+    renderer, _ = _renderer(frozenset({(DSP_EXPOSED, SEPTEMBER)}), bound=4)
+    assert renderer.tooling.query_batch_max_concurrency == 4
 
 
 def test_multi_market_source_composition_returns_its_named_refusal(
@@ -1397,7 +1452,7 @@ def test_multi_market_source_composition_returns_its_named_refusal(
         athena_workgroup="fictional-workgroup",
         semantic_v2_current_database="fictional-database",
         athena_result_reuse_max_age_minutes=1,
-        athena_query_batch_max_concurrency=1,
+        athena_query_batch_max_concurrency=4,
     )
 
     def two_marketplaces(_root: pathlib.Path) -> int:
@@ -1416,6 +1471,22 @@ class _Pointers:
         del page, variant
 
 
+def _campaign_pages(result: AudiencesRenderResult) -> list[dict[str, Any]]:
+    """Run the page pass as the stage draws it: every campaign page's payload, in key order."""
+    assert result.artifact is not None and result.campaigns is not None
+    return [
+        cast("dict[str, Any]", audiences_campaign_page_payload(page, result.artifact.revision))
+        for page in result.campaigns.start().pages()
+    ]
+
+
+def _campaign_section(result: AudiencesRenderResult) -> dict[str, Any]:
+    """Return the parent's campaign section payload: its state and index shard 0."""
+    assert result.artifact is not None
+    payload = cast("dict[str, Any]", audiences_artifact_payload(result.artifact))
+    return cast("dict[str, Any]", payload["markets"][0]["campaign_audiences"])
+
+
 def test_an_injected_page_entry_bakes_a_publication_equal_to_the_planned_answers() -> None:
     published = frozenset({(DSP_EXPOSED, SEPTEMBER), (PERFORMANCE, SEPTEMBER)})
     renderer, store = _renderer(published)
@@ -1426,7 +1497,6 @@ def test_an_injected_page_entry_bakes_a_publication_equal_to_the_planned_answers
         served=lambda: frozenset({(DSP_EXPOSED, MONTH)}),
         pointers=cast("object", _Pointers()),  # type: ignore[arg-type]
         clock=lambda: NOW,
-        row_budget=300,
     )
     baker = RegisteredPresetArtifactBaker(
         bakers={
@@ -1439,12 +1509,13 @@ def test_an_injected_page_entry_bakes_a_publication_equal_to_the_planned_answers
     baked = baker.bake(BakeIntent("audiences", "last_complete_month"))
     assert isinstance(baked, BakePublication)
     body = json.loads(baked.request.body.payload_json)
-    assert baked.request.pointer_advance.pointer.resolved_window == SEPTEMBER
+    assert baked.request.pointer_template.complete(None).pointer.resolved_window == SEPTEMBER
     assert (body["type"], body["version"], body["outcome"]) == (
         "AudienceProfileArtifact",
-        1,
+        2,
         "complete",
     )
+    assert body["revision"] == baked.request.body.revision.value
     (market,) = body["markets"]
     paid, dsp = market["views"]
     assert market["default_view"] == DSP_VIEW
@@ -1483,8 +1554,25 @@ def test_an_injected_page_entry_bakes_a_publication_equal_to_the_planned_answers
     assert "segment figures never add up" in dsp["caption"]
     assert body["boundary"] == [BOUNDARY_TEXT, SEGMENT_IDS_SENTENCE]
     assert "Amazon's segments" not in json.dumps(body)
+    # The campaign index lists the one campaign by its governed name; its page is a part.
+    assert market["campaign_audiences"]["index"] == [
+        {
+            "campaign_ref": "campaign-1",
+            "campaign_label": "Fall prospecting",
+            "segment_count": 1,
+            "page_count": 1,
+            "state": "available",
+            "text": None,
+        }
+    ]
+    assert baked.request.siblings.count == 1
+    ((page_body, custody),) = tuple(baked.request.siblings)
+    page = json.loads(page_body.payload_json)
+    assert page_body.identity.path == "segments/campaign-1/impressions-desc/segment-0000"
+    assert json.loads(custody.payload_json)["body_digest"] == page_body.digest
+    assert page["parent_revision"] == body["revision"]
     # Campaign audiences: CPM and ROAS inside one campaign and segment row, currencies agreeing.
-    (campaign,) = market["campaign_audiences"]["rows"]
+    (campaign,) = page["rows"]
     assert (campaign["segment_cpm"], campaign["segment_roas_attributed"]) == (
         {"value": "7.00", "currency": "USD", "text": "7.00 USD"},
         "0.59",
@@ -1521,16 +1609,28 @@ def test_a_missing_total_bakes_every_share_of_its_delivery_not_available() -> No
     assert body["outcome"] == "insufficient"
 
 
-def _bake_with(change: Callable[[QueryRequest, QueryResult], QueryResult]) -> Any:
-    """Bake the September DSP and campaign deliveries with one answer changed."""
-    renderer, store = _renderer(frozenset({(DSP_EXPOSED, SEPTEMBER), (PERFORMANCE, SEPTEMBER)}))
+def _rendered_with(
+    change: Callable[[QueryRequest, QueryResult], QueryResult],
+    published: frozenset[tuple[str, DateRange]] = frozenset(
+        {(DSP_EXPOSED, SEPTEMBER), (PERFORMANCE, SEPTEMBER)}
+    ),
+    campaigns: tuple[str, ...] = ("camp-1",),
+) -> tuple[AudiencesRenderResult, _Bake]:
+    """Render September's DSP and campaign deliveries with one answer changed."""
+    renderer, store = _renderer(published)
+    store.campaigns = campaigns
     original = store.run
 
     def run(request: QueryRequest) -> QueryResult:
         return change(request, original(request))
 
     object.__setattr__(store, "run", run)
-    result = renderer.render_audiences(AudiencesRenderInput(MONTH))
+    return renderer.render_audiences(AudiencesRenderInput(MONTH)), store
+
+
+def _bake_with(change: Callable[[QueryRequest, QueryResult], QueryResult]) -> Any:
+    """Bake the September DSP and campaign deliveries with one answer changed."""
+    result, _ = _rendered_with(change)
     assert result.artifact is not None
     return cast("Any", audiences_artifact_payload(result.artifact))
 
@@ -1594,13 +1694,18 @@ def test_campaign_roas_needs_agreeing_currencies_and_nothing_divides_by_a_missin
     )  # fmt: skip
 
 
+def _only_rows(change: Callable[[QueryRequest, QueryResult], QueryResult]) -> list[Any]:
+    result, _ = _rendered_with(change)
+    return [row for page in _campaign_pages(result) for row in page["rows"]]
+
+
 def test_a_campaign_row_with_disagreeing_currencies_bakes_no_roas_quotient() -> None:
     def euro_sales(request: QueryRequest, result: QueryResult) -> QueryResult:
         if _measure(request) != "segment_attributed_revenue":
             return result
         return replace(result, rows=tuple({**row, "currency_code": "EUR"} for row in result.rows))
 
-    (row,) = _bake_with(euro_sales)["markets"][0]["campaign_audiences"]["rows"]  # type: ignore[index]
+    (row,) = _only_rows(euro_sales)
     assert (row["segment_roas_attributed"], row["roas_text"]) == (None, ROAS_CURRENCY_TEXT)
     assert (row["segment_cpm"], row["cpm_text"]) == (
         {"value": "7.00", "currency": "USD", "text": "7.00 USD"},
@@ -1608,79 +1713,79 @@ def test_a_campaign_row_with_disagreeing_currencies_bakes_no_roas_quotient() -> 
     )
     assert "0.59" not in json.dumps(row)
     # Control: agreeing currencies bake the quotient with no reason.
-    (agreeing,) = _bake_with(lambda _request, result: result)["markets"][0]["campaign_audiences"][
-        "rows"
-    ]  # type: ignore[index]
+    (agreeing,) = _only_rows(lambda _request, result: result)
     assert (agreeing["segment_roas_attributed"], agreeing["roas_text"]) == ("0.59", None)
 
 
-@dataclass
-class _Concurrent(_Rosters):
-    """A roster port that only answers once two reads are in flight, and counts them."""
-
-    gate: threading.Barrier = field(default_factory=lambda: threading.Barrier(2, timeout=5))
-    lock: threading.Lock = field(default_factory=threading.Lock)
-    in_flight: int = 0
-    peak: int = 0
-
-    def roster(self, request: RosterRequest) -> Roster:
-        with self.lock:
-            self.in_flight += 1
-            self.peak = max(self.peak, self.in_flight)
-        try:
-            # A serial reader would wait here alone and break the barrier.
-            self.gate.wait()
-            return _Rosters.roster(self, request)
-        finally:
-            with self.lock:
-                self.in_flight -= 1
-
-
-def test_campaign_rosters_are_read_together_under_the_bound_and_paired_by_campaign() -> None:
-    rosters = _Concurrent({"dsp_exposed_only": _roster("dsp_exposed_only", "41001", "41003")})
-    renderer, store = _renderer(
-        frozenset({(DSP_EXPOSED, SEPTEMBER), (PERFORMANCE, SEPTEMBER)}), rosters, bound=2
+def test_every_campaign_is_read_once_grouped_and_paged_one_campaign_at_a_time() -> None:
+    """Design 01 §3.1: no read is per campaign, so three campaigns cost what one does."""
+    result, store = _rendered_with(
+        lambda _request, answer: answer, campaigns=("camp-1", "camp-2", "camp-3")
     )
-    object.__setattr__(store, "campaigns", ("camp-1", "camp-2", "camp-3"))
-    result = renderer.render_audiences(AudiencesRenderInput(MONTH))
     assert result.artifact is not None
     # One served-months read for the marketplace, holding all five contracts.
     (served,) = store.served_seen
     assert {item.contract_id for item in served.contracts} == {
         *PACKS, METADATA, PERFORMANCE,
     }  # fmt: skip
-    # One campaign-list query, then one roster per delivery: the path and each campaign.
-    listing = [item for item in store.seen if "campaign_key" in item.plan.logical.group_by]
-    assert len(listing) == 1
-    read = [dict(item.filters).get("campaign_key") for item in rosters.seen]
-    assert sorted(read, key=str) == [None, "camp-1", "camp-2", "camp-3"]
-    # Two at a time: the configured bound, never more and never one after another.
-    assert rosters.peak == 2
-    # Five profile figures and three per campaign, nothing per campaign before the batch.
-    assert len(store.seen) == 1 + 5 + 3 * 3
-    # Each campaign's row reads its own figures: camp-n's 210.00 over n x 30,000 impressions.
-    body = cast("Any", audiences_artifact_payload(result.artifact))
-    rows = body["markets"][0]["campaign_audiences"]["rows"]
+    # The count pass: the three campaign figures, each once for every campaign, streamed.
+    counted = [item.plan.logical.metric.name for item in store.folded]
+    assert sorted(counted) == sorted(
+        ["segment_impressions", "segment_spend", "segment_attributed_revenue"]
+    )
+    assert all("campaign_key" not in item.plan.logical.filters for item in store.folded)
+    # Grouped: no row limit, so a large estate's rows never refuse (ADR-152 decision 7).
+    assert all(statement_limit(item.max_rows, item.ceiling) is None for item in store.folded)
+    # Five profile figures beside them, and nothing per campaign.
+    assert len(store.seen) == 5 + 3
+    pages = _campaign_pages(result)
+    # The page pass re-reads the same three requests (result reuse), adding no distinct one.
+    assert len(store.folded) == 6
+
+    def plans(reads: list[QueryRequest]) -> list[str]:
+        return sorted(repr(item.plan) for item in reads)
+
+    assert plans(store.folded[3:]) == plans(store.folded[:3])
     # Each campaign reads by its governed name or chat's numbered placeholder, never its key,
-    # under an opaque per-artifact reference.
-    assert [
-        (row["campaign_ref"], row["campaign_label"], row["segment_cpm"]["value"]) for row in rows
-    ] == [
-        ("campaign-1", "Fall prospecting", "7.00"),
-        ("campaign-2", "Unnamed campaign 1", "3.50"),
-        ("campaign-3", "Unnamed campaign 2", "2.33"),
+    # under an opaque reference by rank: camp-3 has the most impressions, camp-1 the fewest.
+    assert [(page["campaign_ref"], page["campaign_label"]) for page in pages] == [
+        ("campaign-3", "Fall prospecting"),
+        ("campaign-2", "Unnamed campaign 1"),
+        ("campaign-1", "Unnamed campaign 2"),
     ]
-    assert "camp-" not in json.dumps(body)
+    # Each campaign's own figures: 210.00 over n x 30,000 impressions.
+    assert [page["rows"][0]["segment_cpm"]["value"] for page in pages] == ["7.00", "3.50", "2.33"]
+    index = _campaign_section(result)
+    assert [entry["campaign_label"] for entry in index["index"]] == [
+        "Unnamed campaign 2",
+        "Unnamed campaign 1",
+        "Fall prospecting",
+    ]
+    assert "camp-" not in json.dumps([*pages, index])
+
+
+def test_campaigns_with_equal_impressions_rank_by_the_key_numbering_their_references() -> None:
+    def equal(request: QueryRequest, result: QueryResult) -> QueryResult:
+        if _measure(request) != "impressions":
+            return result
+        return replace(result, rows=tuple({**row, measure_alias(0): 30000} for row in result.rows))
+
+    result, _ = _rendered_with(equal, campaigns=("camp-2", "camp-1"))
+    assert result.artifact is not None
+    index = _campaign_section(result)
+    assert [(entry["campaign_ref"], entry["campaign_label"]) for entry in index["index"]] == [
+        ("campaign-1", "Fall prospecting"),
+        ("campaign-2", "Unnamed campaign 1"),
+    ]
 
 
 def test_a_campaign_segment_only_spend_returns_bakes_a_row_with_each_reason() -> None:
     def no_impressions(request: QueryRequest, result: QueryResult) -> QueryResult:
-        # The campaign's own figures; the list that ranks the campaigns still comes back.
-        if _measure(request) != "impressions" or "campaign_key" not in request.plan.logical.filters:
+        if _measure(request) != "impressions":
             return result
         return replace(result, rows=())
 
-    (row,) = _bake_with(no_impressions)["markets"][0]["campaign_audiences"]["rows"]  # type: ignore[index]
+    (row,) = _only_rows(no_impressions)
     assert (row["segment_id"], row["segment_impressions"], row["segment_cpm"]) == (
         "41001",
         None,
@@ -1688,25 +1793,69 @@ def test_a_campaign_segment_only_spend_returns_bakes_a_row_with_each_reason() ->
     )
     assert (row["cpm_text"], row["segment_roas_attributed"]) == (NO_IMPRESSIONS_TEXT, "0.59")
     # Control: with impressions back, the row computes its CPM.
-    (whole,) = _bake_with(lambda _request, result: result)["markets"][0]["campaign_audiences"][
-        "rows"
-    ]  # type: ignore[index]
+    (whole,) = _only_rows(lambda _request, result: result)
     assert (whole["segment_cpm"], whole["cpm_text"]) == (
         {"value": "7.00", "currency": "USD", "text": "7.00 USD"},
         None,
     )
 
 
-def test_a_campaign_list_answered_for_another_marketplace_bakes_nothing() -> None:
-    def foreign_listing(request: QueryRequest, result: QueryResult) -> QueryResult:
+def test_a_campaign_read_answered_for_another_marketplace_bakes_nothing() -> None:
+    def foreign(request: QueryRequest, result: QueryResult) -> QueryResult:
         if "campaign_key" not in request.plan.logical.group_by:
             return result
         return replace(
             result, rows=tuple({**row, "marketplace_key": "amazon_uk"} for row in result.rows)
         )
 
-    with pytest.raises(RuntimeError, match="another marketplace's campaigns"):
-        _bake_with(foreign_listing)
+    with pytest.raises(RuntimeError, match="another marketplace's rows"):
+        _rendered_with(foreign)
+
+
+def test_one_campaigns_history_gap_refuses_only_that_campaign() -> None:
+    """Design 01 §3.2: a gap in one campaign's own history is that campaign's own sentence."""
+    published = frozenset({(DSP_EXPOSED, SEPTEMBER), (PERFORMANCE, SEPTEMBER)})
+    rosters = _Rosters(
+        {"dsp_exposed_only": _roster("dsp_exposed_only", "41001", "41003")},
+        grades={"camp-2": CampaignHistory.HISTORY_GAP},
+    )
+    renderer, store = _renderer(published, rosters)
+    store.campaigns = ("camp-1", "camp-2")
+    result = renderer.render_audiences(AudiencesRenderInput(MONTH))
+    assert result.artifact is not None
+    index = _campaign_section(result)
+    states = {entry["campaign_label"]: (entry["state"], entry["text"]) for entry in index["index"]}
+    assert states == {
+        "Unnamed campaign 1": (
+            "refused",
+            "Unnamed campaign 1 can't be broken down by segment for September 2026: part of its "
+            "earlier segment history isn't available, so its segments can't be checked against "
+            "last month's.",
+        ),
+        "Fall prospecting": ("available", None),
+    }
+    # Every campaign R1 didn't grade is asked about at once, sorted.
+    assert [item.campaigns for item in rosters.histories_seen] == [("camp-1", "camp-2")]
+    # Only the available campaign has a page; the profile still renders.
+    assert [page["campaign_label"] for page in _campaign_pages(result)] == ["Fall prospecting"]
+    assert audiences_artifact_payload(result.artifact)["outcome"] == "complete"
+
+
+def test_r1_grades_each_campaign_against_its_own_segments_the_month_before() -> None:
+    """With August published, each campaign's roster is its own August segments (design 01)."""
+    published = frozenset(
+        {(DSP_EXPOSED, SEPTEMBER), (PERFORMANCE, SEPTEMBER), (PERFORMANCE, AUGUST)}
+    )
+    renderer, store = _renderer(published)
+    store.campaigns = ("camp-1",)
+    result = renderer.render_audiences(AudiencesRenderInput(MONTH))
+    r1 = [item for item in store.folded if item.plan.logical.metric.name == "segment_reach"]
+    assert [item.plan.logical.window for item in r1] == [AUGUST]
+    assert all("campaign_key" in item.plan.logical.group_by for item in r1)
+    # camp-1 returned 41001 in August and again in September: graded, not asked about history.
+    renderer_rosters = cast("_Rosters", renderer.rosters)
+    assert [item.campaigns for item in renderer_rosters.histories_seen] == [()]
+    assert [page["state"] for page in _campaign_pages(result)] == ["available"]
 
 
 @dataclass
@@ -1742,13 +1891,12 @@ def test_a_matching_generation_one_pointer_is_rebuilt_with_its_resolved_window()
             served=lambda: frozenset({(DSP_EXPOSED, MONTH)}),
             pointers=cast("Any", _CurrentPointers(_HeldPointer(revision))),
             clock=lambda: NOW,
-            row_budget=300,
         )
 
     old = PresetArtifactRevision.from_publication_identities(identities, render_format=1)
     upgraded = source(old).publication_for(PresetArtifactVariant("last_complete_month"))
     assert isinstance(upgraded, PresetArtifactPublicationRequest)
-    pointer = upgraded.pointer_advance.pointer
+    pointer = upgraded.pointer_template.complete(None).pointer
     assert (pointer.resolved_window, pointer.supersedes, pointer.forward_token) == (
         SEPTEMBER,
         old,
@@ -1761,6 +1909,9 @@ def test_a_matching_generation_one_pointer_is_rebuilt_with_its_resolved_window()
     assert pointer.revision == current
     unchanged = source(current).publication_for(PresetArtifactVariant("last_complete_month"))
     assert unchanged == SourceUnchanged(current)  # D26: revision_current, never unavailable
+
+
+_RENDER_INPUTS = "audiences-render-inputs.v3:"
 
 
 def test_a_label_or_roster_only_change_advances_the_audiences_revision() -> None:
@@ -1782,13 +1933,21 @@ def test_a_label_or_roster_only_change_advances_the_audiences_revision() -> None
     rostered = _renderer(
         published, _Rosters({"dsp_exposed_only": _roster("dsp_exposed_only", "41001", "41004")})
     )[0]
+    gapped = _renderer(
+        published,
+        _Rosters(
+            {"dsp_exposed_only": _roster("dsp_exposed_only", "41001", "41003")},
+            grades={"camp-1": CampaignHistory.HISTORY_GAP},
+        ),
+    )[0]
     changed = {
         "segment label": _identities(renamed),
         "campaign label": _identities(campaign_named),
         "roster": _identities(rostered),
+        "a campaign's history refusal only": _identities(gapped),
     }
     # The measured publications are the same, so only the render-inputs identity differs.
-    measured = {item for item in baseline if not item.startswith("audiences-render-inputs.v2:")}
+    measured = {item for item in baseline if not item.startswith(_RENDER_INPUTS)}
     assert all(measured < set(identities) for identities in changed.values())
     assert {name: identities != baseline for name, identities in changed.items()} == dict.fromkeys(
         changed, True
@@ -1796,7 +1955,7 @@ def test_a_label_or_roster_only_change_advances_the_audiences_revision() -> None
 
 
 def _measured_only(identities: tuple[str, ...]) -> set[str]:
-    return {item for item in identities if not item.startswith("audiences-render-inputs.v2:")}
+    return {item for item in identities if not item.startswith(_RENDER_INPUTS)}
 
 
 def _unrevised(result: AudiencesRenderResult) -> object:
@@ -1829,158 +1988,19 @@ def test_a_paid_state_only_change_advances_the_audiences_revision() -> None:
 def test_a_campaign_publication_only_change_advances_the_audiences_revision() -> None:
     unpublished, _ = _renderer(frozenset({(DSP_EXPOSED, SEPTEMBER)}))
     empty, store = _renderer(frozenset({(DSP_EXPOSED, SEPTEMBER), (PERFORMANCE, SEPTEMBER)}))
-    # Pack 8 published September with no campaign, so it plans no campaign figure.
+    # Pack 8 published September with no campaign: the section is empty, not pending.
     store.campaigns = ()
     before = unpublished.render_audiences(AudiencesRenderInput(MONTH))
     after = empty.render_audiences(AudiencesRenderInput(MONTH))
     assert _unrevised(before) != _unrevised(after)
-    assert _measured_only(before.publication_identities) == _measured_only(
-        after.publication_identities
-    )
     assert before.publication_identities != after.publication_identities
-
-
-def _listing(impressions: dict[str, int]) -> Callable[[QueryRequest, QueryResult], QueryResult]:
-    """Give pack 8's campaign list each campaign's matched-segment impressions."""
-
-    def change(request: QueryRequest, result: QueryResult) -> QueryResult:
-        if "campaign_key" not in request.plan.logical.group_by:
-            return result
-        alias = measure_alias(0)
-        return replace(
-            result,
-            rows=tuple(
-                {**row, alias: impressions[str(row["campaign_key"])]} for row in result.rows
-            ),
-        )
-
-    return change
-
-
-def _bounded_bake(campaigns: tuple[str, ...], campaign_bound: int) -> tuple[Any, _Bake]:
-    published = frozenset({(DSP_EXPOSED, SEPTEMBER), (PERFORMANCE, SEPTEMBER)})
-    renderer, store = _renderer(published, campaign_bound=campaign_bound)
-    store.campaigns = campaigns
-    original = store.run
-    listing = _listing({"camp-1": 10_000, "camp-2": 30_000, "camp-3": 20_000})
-
-    def run(request: QueryRequest) -> QueryResult:
-        return listing(request, original(request))
-
-    object.__setattr__(store, "run", run)
-    result = renderer.render_audiences(AudiencesRenderInput(MONTH))
-    assert result.artifact is not None
-    body = cast("Any", audiences_artifact_payload(result.artifact))
-    return body["markets"][0]["campaign_audiences"], store
-
-
-def _measured_campaigns(store: _Bake) -> set[str]:
-    return {
-        str(request.plan.logical.filters["campaign_key"])
-        for request in store.seen
-        if "campaign_key" in request.plan.logical.filters
-    }
-
-
-def test_the_page_shows_the_top_campaigns_by_impressions_with_the_servers_note() -> None:
-    campaigns, store = _bounded_bake(("camp-1", "camp-2", "camp-3"), campaign_bound=2)
-    # By largest matched-segment impressions, descending; the third is never measured.
-    assert [(row["campaign_ref"], row["campaign_label"]) for row in campaigns["rows"]] == [
-        ("campaign-1", "Unnamed campaign 1"),
-        ("campaign-2", "Unnamed campaign 2"),
-    ]
-    assert _measured_campaigns(store) == {"camp-2", "camp-3"}
-    assert campaigns["shown_text"] == "Showing 2 of 3 campaigns"
-    # Control: with every listed campaign within the bound, all are shown and no note serves.
-    every, store = _bounded_bake(("camp-1", "camp-2", "camp-3"), campaign_bound=3)
-    assert [row["campaign_label"] for row in every["rows"]] == [
-        "Unnamed campaign 1",
-        "Unnamed campaign 2",
-        "Fall prospecting",
-    ]
-    assert _measured_campaigns(store) == {"camp-1", "camp-2", "camp-3"}
-    assert every["shown_text"] is None
-
-
-def test_campaigns_with_equal_impressions_rank_by_the_order_numbering_their_references() -> None:
-    published = frozenset({(DSP_EXPOSED, SEPTEMBER), (PERFORMANCE, SEPTEMBER)})
-    renderer, store = _renderer(published, campaign_bound=1)
-    store.campaigns = ("camp-2", "camp-1")
-    result = renderer.render_audiences(AudiencesRenderInput(MONTH))
-    assert result.artifact is not None
-    body = cast("Any", audiences_artifact_payload(result.artifact))
-    campaigns = body["markets"][0]["campaign_audiences"]
-    assert [row["campaign_label"] for row in campaigns["rows"]] == ["Fall prospecting"]
-    assert campaigns["shown_text"] == "Showing 1 of 2 campaigns"
-
-
-def test_an_over_bound_new_month_publishes_a_typed_pointer_that_supersedes_the_prior_month() -> (
-    None
-):
-    renderer, _ = _renderer(frozenset({(DSP_EXPOSED, SEPTEMBER), (PERFORMANCE, SEPTEMBER)}))
-    template = renderer.render_audiences(AudiencesRenderInput(MONTH))
-    artifact = template.artifact
-    assert artifact is not None
-
-    @dataclass(frozen=True)
-    class MonthlyCompiler:
-        def render_audiences(self, request: AudiencesRenderInput) -> AudiencesRenderResult:
-            return AudiencesRenderResult(
-                replace(artifact, month=request.period),
-                (*template.publication_identities, f"month:{request.period.start.isoformat()}"),
-            )
-
-    def source(
-        period: CalendarPeriod,
-        row_budget: int,
-        pointers: _Pointers | _CurrentPointers,
-    ) -> AudiencesPresetArtifactBaker:
-        return AudiencesPresetArtifactBaker(
-            RetainedAudiencesPresetArtifactSource(
-                compiler=MonthlyCompiler(),
-                served=lambda: frozenset({(DSP_EXPOSED, period)}),
-                pointers=cast("Any", pointers),
-                clock=lambda: NOW,
-                row_budget=row_budget,
-            )
-        )
-
-    intent = BakeIntent("audiences", "last_complete_month")
-    first = source(MONTH, 300, _Pointers()).bake(intent)
-    assert isinstance(first, BakePublication)
-    first_payload = json.loads(first.request.body.payload_json)
-    rows = sum(len(view["rows"]) for view in first_payload["markets"][0]["views"]) + len(
-        first_payload["markets"][0]["campaign_audiences"]["rows"]
-    )
-    assert isinstance(source(MONTH, rows, _Pointers()).bake(intent), BakePublication)
-
-    second = source(
-        OCTOBER_MONTH,
-        rows - 1,
-        _CurrentPointers(first.request.pointer_advance.pointer),
-    ).bake(intent)
-    assert isinstance(second, BakePublication)
-    unavailable = require_audiences_unavailable_artifact_payload(
-        json.loads(second.request.body.payload_json)
-    )
-    assert unavailable == AudienceUnavailableArtifact(
-        OCTOBER, "October 2026", AUDIENCES_BODY_OVER_BOUND
-    )
-    pointer = second.request.pointer_advance.pointer
-    assert (pointer.resolved_window, pointer.supersedes, pointer.forward_token) == (
-        OCTOBER,
-        first.request.body.revision,
-        2,
-    )
-    # Paired pre-fix control: the target-month marker, not September's body, is authoritative.
-    assert pointer.body_digest == second.request.body.digest
-    assert pointer.body_digest != first.request.body.digest
+    assert after.campaigns is None  # no campaign, no page pass
 
 
 def test_wide_rows_and_the_envelope_stay_within_their_registered_ceilings() -> None:
     long_name = "N" * 120
 
-    def encoded(segments: int, campaign_segments: int) -> int:
+    def encoded(segments: int, campaign_segments: int) -> tuple[int, int]:
         ids = tuple(str(50_000 + index) for index in range(segments))
         delivered = tuple(str(60_000 + index) for index in range(campaign_segments))
         published = frozenset({(DSP_EXPOSED, SEPTEMBER), (PERFORMANCE, SEPTEMBER)})
@@ -2019,20 +2039,25 @@ def test_wide_rows_and_the_envelope_stay_within_their_registered_ceilings() -> N
         result = renderer.render_audiences(AudiencesRenderInput(MONTH))
         assert result.artifact is not None
         payload = audiences_artifact_payload(result.artifact)
-        return len(canonical_preset_artifact_json(payload).encode())
+        (page,) = _campaign_pages(result)
+        return (
+            len(canonical_preset_artifact_json(payload).encode()),
+            len(canonical_preset_artifact_json(page).encode()),
+        )
 
-    base = encoded(1, 1)
-    # One profile row and one campaign row with the envelope, then 40 more of each.
-    assert base <= AUDIENCES_ENVELOPE_MAX_BYTES + 2 * AUDIENCES_ROW_MAX_BYTES
-    assert encoded(41, 1) - base <= 40 * AUDIENCES_ROW_MAX_BYTES
-    assert encoded(1, 41) - base <= 40 * AUDIENCES_ROW_MAX_BYTES
+    parent, page = encoded(1, 1)
+    # One profile row with the envelope, one campaign row with its page's, then 40 more of each.
+    assert parent <= AUDIENCES_ENVELOPE_MAX_BYTES + AUDIENCES_ROW_MAX_BYTES
+    assert page <= AUDIENCES_ENVELOPE_MAX_BYTES + AUDIENCES_ROW_MAX_BYTES
+    assert encoded(41, 1)[0] - parent <= 40 * AUDIENCES_ROW_MAX_BYTES
+    assert encoded(1, 41)[1] - page <= 40 * AUDIENCES_ROW_MAX_BYTES
 
 
-def test_the_prefetch_walk_reaches_every_campaign_scope_read_and_executes_no_query() -> None:
+def test_the_prefetch_walk_reaches_every_campaign_read_family_and_executes_no_query() -> None:
     """A5.1 prefetch: one synthetic listed campaign per marketplace, every query answered empty.
 
-    Control: the same month's real render lists campaigns only from pack 8's answer, so with no
-    answer it reads no campaign-scope roster at all.
+    Control: the same month's real render lists campaigns only from pack 8's answer, so the
+    history walk is asked only about the campaigns the answer returned.
     """
     published = frozenset({(DSP_EXPOSED, SEPTEMBER), (PERFORMANCE, SEPTEMBER)})
     renderer, store = _renderer(published, _Rosters())
@@ -2040,14 +2065,13 @@ def test_the_prefetch_walk_reaches_every_campaign_scope_read_and_executes_no_que
 
     renderer.prefetch_audiences(AudiencesRenderInput(MONTH))
 
-    assert store.seen == []  # no query reached the port
-    campaigns = {dict(item.filters).get("campaign_key") for item in rosters.seen}
-    assert "campaign:prefetch-0001" in campaigns
+    assert (store.seen, store.folded) == ([], [])  # no query reached the port
+    assert [item.campaigns for item in rosters.histories_seen] == [("campaign:prefetch-0001",)]
     control, control_store = _renderer(published, _Rosters())
     control_store.seen.clear()
     control.render_audiences(AudiencesRenderInput(MONTH))
-    seen = cast("_Rosters", control.rosters).seen
-    assert "campaign:prefetch-0001" not in {dict(item.filters).get("campaign_key") for item in seen}
+    seen = cast("_Rosters", control.rosters).histories_seen
+    assert [item.campaigns for item in seen] == [("camp-1",)]
 
 
 def test_the_prefetch_walk_reaches_the_naming_step() -> None:

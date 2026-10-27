@@ -1,23 +1,30 @@
 [
   {
-    "accept": true,
-    "base": "complete",
-    "control": null,
     "name": "complete as served",
-    "set": []
-  },
-  {
-    "accept": true,
-    "base": "in_roster_unavailable",
-    "control": null,
-    "name": "in-roster unavailable as served",
-    "set": []
-  },
-  {
-    "accept": true,
     "base": "complete",
+    "accept": true,
     "control": null,
+    "set": []
+  },
+  {
+    "name": "in-roster unavailable as served",
+    "base": "in_roster_unavailable",
+    "accept": true,
+    "control": null,
+    "set": []
+  },
+  {
+    "name": "campaign page as served",
+    "base": "campaign_page",
+    "accept": true,
+    "control": null,
+    "set": []
+  },
+  {
     "name": "index 2.50 as the server writes it",
+    "base": "complete",
+    "accept": true,
+    "control": null,
     "set": [
       {
         "path": [
@@ -46,10 +53,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "index 2.50 as the server writes it",
     "name": "index 2.5/2.5x",
+    "base": "complete",
+    "accept": false,
+    "control": "index 2.50 as the server writes it",
     "set": [
       {
         "path": [
@@ -78,10 +85,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "index '1.333'/'1.333'x",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -110,10 +117,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "index '01.33'/'01.33'x",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -142,10 +149,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "index '+1.33'/'+1.33'x",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -174,10 +181,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "index '1.33E+0'/'1.33E+0'x",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -206,10 +213,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "index '-1.33'/'-1.33'x",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -238,10 +245,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "index ' 1.33'/' 1.33'x",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -270,10 +277,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "index display disagrees with raw",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -302,10 +309,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "index with an over-long coefficient",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -334,10 +341,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "index display without raw",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -366,16 +373,13 @@
     ]
   },
   {
-    "accept": true,
-    "base": "complete",
-    "control": null,
     "name": "CPM 12.50 USD as the server writes it",
+    "base": "campaign_page",
+    "accept": true,
+    "control": null,
     "set": [
       {
         "path": [
-          "markets",
-          0,
-          "campaign_audiences",
           "rows",
           0,
           "segment_cpm"
@@ -389,16 +393,13 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "CPM 12.50 USD as the server writes it",
     "name": "CPM 12.5/12.5 USD",
+    "base": "campaign_page",
+    "accept": false,
+    "control": "CPM 12.50 USD as the server writes it",
     "set": [
       {
         "path": [
-          "markets",
-          0,
-          "campaign_audiences",
           "rows",
           0,
           "segment_cpm"
@@ -412,16 +413,13 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "CPM 7/7 USD",
+    "base": "campaign_page",
+    "accept": false,
+    "control": "campaign page as served",
     "set": [
       {
         "path": [
-          "markets",
-          0,
-          "campaign_audiences",
           "rows",
           0,
           "segment_cpm"
@@ -435,16 +433,13 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "CPM 7.000/7.000 USD",
+    "base": "campaign_page",
+    "accept": false,
+    "control": "campaign page as served",
     "set": [
       {
         "path": [
-          "markets",
-          0,
-          "campaign_audiences",
           "rows",
           0,
           "segment_cpm"
@@ -458,16 +453,13 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "CPM display names another currency",
+    "base": "campaign_page",
+    "accept": false,
+    "control": "campaign page as served",
     "set": [
       {
         "path": [
-          "markets",
-          0,
-          "campaign_audiences",
           "rows",
           0,
           "segment_cpm"
@@ -481,16 +473,13 @@
     ]
   },
   {
-    "accept": true,
-    "base": "complete",
-    "control": null,
     "name": "ROAS 3.00 as the server writes it",
+    "base": "campaign_page",
+    "accept": true,
+    "control": null,
     "set": [
       {
         "path": [
-          "markets",
-          0,
-          "campaign_audiences",
           "rows",
           0,
           "segment_roas_attributed"
@@ -499,9 +488,6 @@
       },
       {
         "path": [
-          "markets",
-          0,
-          "campaign_audiences",
           "rows",
           0,
           "segment_roas_attributed_text"
@@ -511,16 +497,13 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "ROAS 3.00 as the server writes it",
     "name": "ROAS 3/3x",
+    "base": "campaign_page",
+    "accept": false,
+    "control": "ROAS 3.00 as the server writes it",
     "set": [
       {
         "path": [
-          "markets",
-          0,
-          "campaign_audiences",
           "rows",
           0,
           "segment_roas_attributed"
@@ -529,9 +512,6 @@
       },
       {
         "path": [
-          "markets",
-          0,
-          "campaign_audiences",
           "rows",
           0,
           "segment_roas_attributed_text"
@@ -541,16 +521,13 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "ROAS 0.590/0.590x",
+    "base": "campaign_page",
+    "accept": false,
+    "control": "campaign page as served",
     "set": [
       {
         "path": [
-          "markets",
-          0,
-          "campaign_audiences",
           "rows",
           0,
           "segment_roas_attributed"
@@ -559,9 +536,6 @@
       },
       {
         "path": [
-          "markets",
-          0,
-          "campaign_audiences",
           "rows",
           0,
           "segment_roas_attributed_text"
@@ -571,10 +545,10 @@
     ]
   },
   {
-    "accept": true,
-    "base": "complete",
-    "control": null,
     "name": "share one as the server writes it",
+    "base": "complete",
+    "accept": true,
+    "control": null,
     "set": [
       {
         "path": [
@@ -587,17 +561,17 @@
           "segment_buyer_share"
         ],
         "value": {
-          "text": "100.0%",
-          "value": "1.0000"
+          "value": "1.0000",
+          "text": "100.0%"
         }
       }
     ]
   },
   {
-    "accept": true,
-    "base": "complete",
-    "control": null,
     "name": "share zero as the server writes it",
+    "base": "complete",
+    "accept": true,
+    "control": null,
     "set": [
       {
         "path": [
@@ -610,40 +584,17 @@
           "segment_buyer_share"
         ],
         "value": {
-          "text": "0.0%",
-          "value": "0.0000"
+          "value": "0.0000",
+          "text": "0.0%"
         }
       }
     ]
   },
   {
-    "accept": true,
-    "base": "complete",
-    "control": null,
     "name": "share 0.0005 as the server writes it",
-    "set": [
-      {
-        "path": [
-          "markets",
-          0,
-          "views",
-          1,
-          "rows",
-          0,
-          "segment_buyer_share"
-        ],
-        "value": {
-          "text": "0.0%",
-          "value": "0.0005"
-        }
-      }
-    ]
-  },
-  {
+    "base": "complete",
     "accept": true,
-    "base": "complete",
     "control": null,
-    "name": "share 0.0015 as the server writes it",
     "set": [
       {
         "path": [
@@ -656,17 +607,40 @@
           "segment_buyer_share"
         ],
         "value": {
-          "text": "0.2%",
-          "value": "0.0015"
+          "value": "0.0005",
+          "text": "0.0%"
         }
       }
     ]
   },
   {
-    "accept": false,
+    "name": "share 0.0015 as the server writes it",
     "base": "complete",
-    "control": "share one as the server writes it",
+    "accept": true,
+    "control": null,
+    "set": [
+      {
+        "path": [
+          "markets",
+          0,
+          "views",
+          1,
+          "rows",
+          0,
+          "segment_buyer_share"
+        ],
+        "value": {
+          "value": "0.0015",
+          "text": "0.2%"
+        }
+      }
+    ]
+  },
+  {
     "name": "above-one share 1.0001",
+    "base": "complete",
+    "accept": false,
+    "control": "share one as the server writes it",
     "set": [
       {
         "path": [
@@ -686,10 +660,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "share one as the server writes it",
     "name": "above-one share 1.9999",
+    "base": "complete",
+    "accept": false,
+    "control": "share one as the server writes it",
     "set": [
       {
         "path": [
@@ -709,10 +683,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "share zero as the server writes it",
     "name": "negative zero share",
+    "base": "complete",
+    "accept": false,
+    "control": "share zero as the server writes it",
     "set": [
       {
         "path": [
@@ -732,10 +706,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "share 0.0005 as the server writes it",
     "name": "share 0.0005 rounded half up",
+    "base": "complete",
+    "accept": false,
+    "control": "share 0.0005 as the server writes it",
     "set": [
       {
         "path": [
@@ -755,10 +729,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "share 0.0015 as the server writes it",
     "name": "share 0.0015 rounded half down",
+    "base": "complete",
+    "accept": false,
+    "control": "share 0.0015 as the server writes it",
     "set": [
       {
         "path": [
@@ -778,10 +752,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "noncanonical share 0.4/40.0%",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -801,10 +775,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "noncanonical share 0.40000/40.0%",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -824,10 +798,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "noncanonical share 0.4000/40%",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -847,10 +821,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "paid view segment-ID sentence replaced",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -865,10 +839,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "DSP view segment-ID sentence replaced",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -883,10 +857,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "campaign segment-ID sentence replaced",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -900,10 +874,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "boundary slot 1 replaced",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -917,10 +891,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "boundary slot 2 replaced",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -934,10 +908,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "boundary slots swapped",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -951,10 +925,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "boundary carries a third slot",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -969,10 +943,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "in_roster_unavailable",
-    "control": "in-roster unavailable as served",
     "name": "missing-total delivery text replaced",
+    "base": "in_roster_unavailable",
+    "accept": false,
+    "control": "in-roster unavailable as served",
     "set": [
       {
         "path": [
@@ -989,10 +963,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "in_roster_unavailable",
-    "control": "in-roster unavailable as served",
     "name": "missing-total delivery text absent",
+    "base": "in_roster_unavailable",
+    "accept": false,
+    "control": "in-roster unavailable as served",
     "set": [
       {
         "path": [
@@ -1009,10 +983,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "in_roster_unavailable",
-    "control": "in-roster unavailable as served",
     "name": "in-roster unavailable reason replaced",
+    "base": "in_roster_unavailable",
+    "accept": false,
+    "control": "in-roster unavailable as served",
     "set": [
       {
         "path": [
@@ -1029,10 +1003,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "in_roster_unavailable",
-    "control": "in-roster unavailable as served",
     "name": "missing-total insight reason replaced",
+    "base": "in_roster_unavailable",
+    "accept": false,
+    "control": "in-roster unavailable as served",
     "set": [
       {
         "path": [
@@ -1051,10 +1025,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "in_roster_unavailable",
-    "control": "in-roster unavailable as served",
     "name": "in-roster unavailable without its reason",
+    "base": "in_roster_unavailable",
+    "accept": false,
+    "control": "in-roster unavailable as served",
     "set": [
       {
         "path": [
@@ -1071,10 +1045,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "in_roster_unavailable",
-    "control": "in-roster unavailable as served",
     "name": "in-roster unavailable with a share",
+    "base": "in_roster_unavailable",
+    "accept": false,
+    "control": "in-roster unavailable as served",
     "set": [
       {
         "path": [
@@ -1087,17 +1061,17 @@
           "segment_buyer_share"
         ],
         "value": {
-          "text": "35.0%",
-          "value": "0.3500"
+          "value": "0.3500",
+          "text": "35.0%"
         }
       }
     ]
   },
   {
-    "accept": false,
-    "base": "in_roster_unavailable",
-    "control": "in-roster unavailable as served",
     "name": "in-roster unavailable with an index",
+    "base": "in_roster_unavailable",
+    "accept": false,
+    "control": "in-roster unavailable as served",
     "set": [
       {
         "path": [
@@ -1126,10 +1100,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "in_roster_unavailable",
-    "control": "in-roster unavailable as served",
     "name": "in-roster unavailable relabelled value",
+    "base": "in_roster_unavailable",
+    "accept": false,
+    "control": "in-roster unavailable as served",
     "set": [
       {
         "path": [
@@ -1146,10 +1120,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "in_roster_unavailable",
-    "control": "in-roster unavailable as served",
     "name": "missing-total delivery with totals",
+    "base": "in_roster_unavailable",
+    "accept": false,
+    "control": "in-roster unavailable as served",
     "set": [
       {
         "path": [
@@ -1178,10 +1152,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "in_roster_unavailable",
-    "control": "in-roster unavailable as served",
     "name": "missing-total delivery with a filled insight",
+    "base": "in_roster_unavailable",
+    "accept": false,
+    "control": "in-roster unavailable as served",
     "set": [
       {
         "path": [
@@ -1201,17 +1175,17 @@
             "output_class": "perspective",
             "prompt_version": "deterministic-v1",
             "state": "filled",
-            "text": "Amazon audience segments (paid) \u00b7 Lifestyle \u00b7 September 2026: buyers over-index in Segment 41001 (name not available yet): 45.0% of buyers against 25.0% of the shoppers your ads reached. Ad-touched buyers in the month \u00b7 may have bought before seeing an ad. Only segments with at least 30 buyers are named."
+            "text": "Amazon audience segments (paid) · Lifestyle · September 2026: buyers over-index in Segment 41001 (name not available yet): 45.0% of buyers against 25.0% of the shoppers your ads reached. Ad-touched buyers in the month · may have bought before seeing an ad. Only segments with at least 30 buyers are named."
           }
         ]
       }
     ]
   },
   {
-    "accept": false,
-    "base": "in_roster_unavailable",
-    "control": "in-roster unavailable as served",
     "name": "missing-total delivery called complete",
+    "base": "in_roster_unavailable",
+    "accept": false,
+    "control": "in-roster unavailable as served",
     "set": [
       {
         "path": [
@@ -1240,10 +1214,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "unavailable row in a delivery whose total came back",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -1320,10 +1294,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "value row with text",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -1340,10 +1314,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "value row without its index",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -1372,10 +1346,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "below-minimum row with an index",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -1404,10 +1378,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "below-minimum row without its reason",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -1424,10 +1398,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "roster gap without its reason",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -1444,10 +1418,10 @@
     ]
   },
   {
-    "accept": true,
-    "base": "complete",
-    "control": null,
     "name": "roster gap with the partial-figures reason",
+    "base": "complete",
+    "accept": true,
+    "control": null,
     "set": [
       {
         "path": [
@@ -1464,10 +1438,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "roster gap with the partial-figures reason",
     "name": "roster gap reason replaced",
+    "base": "complete",
+    "accept": false,
+    "control": "roster gap with the partial-figures reason",
     "set": [
       {
         "path": [
@@ -1484,10 +1458,10 @@
     ]
   },
   {
-    "accept": true,
-    "base": "in_roster_unavailable",
-    "control": null,
     "name": "paid roster gaps in delivery order",
+    "base": "in_roster_unavailable",
+    "accept": true,
+    "control": null,
     "set": [
       {
         "path": [
@@ -1525,10 +1499,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "in_roster_unavailable",
-    "control": "paid roster gaps in delivery order",
     "name": "paid roster gaps out of delivery order",
+    "base": "in_roster_unavailable",
+    "accept": false,
+    "control": "paid roster gaps in delivery order",
     "set": [
       {
         "path": [
@@ -1566,10 +1540,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "in_roster_unavailable",
-    "control": "in-roster unavailable as served",
     "name": "paid rows out of delivery order",
+    "base": "in_roster_unavailable",
+    "accept": false,
+    "control": "in-roster unavailable as served",
     "set": [
       {
         "path": [
@@ -1581,60 +1555,60 @@
         ],
         "value": [
           {
+            "segment_id": "41001",
+            "name": null,
+            "display_name": "Segment 41001 (name not available yet)",
+            "provider_label": null,
             "category_level_1": null,
             "category_path": null,
-            "display_name": "Segment 41001 (name not available yet)",
-            "name": null,
             "profile_path": "asi_lifestyle",
-            "provider_label": null,
-            "segment_buyer_share": {
-              "text": "45.0%",
-              "value": "0.4500"
-            },
+            "state": "value",
+            "text": null,
             "segment_buyers": 54,
+            "segment_buyers_text": "54",
+            "segment_exposed_shoppers": 600,
             "segment_buyers_new_to_brand": 21,
             "segment_buyers_new_to_brand_text": "21",
-            "segment_buyers_text": "54",
-            "segment_exposed_share": {
-              "text": "25.0%",
-              "value": "0.2500"
+            "segment_buyer_share": {
+              "value": "0.4500",
+              "text": "45.0%"
             },
-            "segment_exposed_shoppers": 600,
-            "segment_id": "41001",
+            "segment_exposed_share": {
+              "value": "0.2500",
+              "text": "25.0%"
+            },
             "segment_index": "1.80",
-            "segment_index_text": "1.80x",
-            "state": "value",
-            "text": null
+            "segment_index_text": "1.80x"
           },
           {
+            "segment_id": "41001",
+            "name": null,
+            "display_name": "Segment 41001 (name not available yet)",
+            "provider_label": null,
             "category_level_1": null,
             "category_path": null,
-            "display_name": "Segment 41001 (name not available yet)",
-            "name": null,
             "profile_path": "asi_in_market",
-            "provider_label": null,
-            "segment_buyer_share": null,
+            "state": "not_available",
+            "text": "Not available: this month's profiled total didn't come back, so no share or index is computed.",
             "segment_buyers": 42,
+            "segment_buyers_text": "42",
+            "segment_exposed_shoppers": 480,
             "segment_buyers_new_to_brand": 16,
             "segment_buyers_new_to_brand_text": "16",
-            "segment_buyers_text": "42",
+            "segment_buyer_share": null,
             "segment_exposed_share": null,
-            "segment_exposed_shoppers": 480,
-            "segment_id": "41001",
             "segment_index": null,
-            "segment_index_text": null,
-            "state": "not_available",
-            "text": "Not available: this month's profiled total didn't come back, so no share or index is computed."
+            "segment_index_text": null
           }
         ]
       }
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "roster gap in a delivery that didn't come back",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -1661,10 +1635,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "row in a delivery that didn't come back",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -1678,7 +1652,7 @@
           {
             "category_level_1": null,
             "category_path": null,
-            "display_name": "Demo - Age 25-34 \u00b7 Amazon",
+            "display_name": "Demo - Age 25-34 · Amazon",
             "name": "Demo - Age 25-34",
             "profile_path": "asi_in_market",
             "provider_label": "Amazon",
@@ -1706,10 +1680,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "value row without its buyer count",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -1738,10 +1712,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "observed paid view with a callout",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -1756,10 +1730,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "DSP view with a callout",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -1774,10 +1748,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "paid default with no paid delivery",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -1790,10 +1764,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "in_roster_unavailable",
-    "control": "in-roster unavailable as served",
     "name": "DSP default while the paid view is observed and came back",
+    "base": "in_roster_unavailable",
+    "accept": false,
+    "control": "in-roster unavailable as served",
     "set": [
       {
         "path": [
@@ -1806,10 +1780,10 @@
     ]
   },
   {
-    "accept": true,
-    "base": "complete",
-    "control": null,
     "name": "missing period text as the server writes it",
+    "base": "complete",
+    "accept": true,
+    "control": null,
     "set": [
       {
         "path": [
@@ -1826,10 +1800,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "missing period text as the server writes it",
     "name": "missing period text naming another latest month",
+    "base": "complete",
+    "accept": false,
+    "control": "missing period text as the server writes it",
     "set": [
       {
         "path": [
@@ -1846,10 +1820,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "missing period text as the server writes it",
     "name": "missing period text with a replaced suffix",
+    "base": "complete",
+    "accept": false,
+    "control": "missing period text as the server writes it",
     "set": [
       {
         "path": [
@@ -1866,10 +1840,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "missing period text as the server writes it",
     "name": "pending period text with another day",
+    "base": "complete",
+    "accept": false,
+    "control": "missing period text as the server writes it",
     "set": [
       {
         "path": [
@@ -1886,10 +1860,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "missing period text as the server writes it",
     "name": "unpublished period without its text",
+    "base": "complete",
+    "accept": false,
+    "control": "missing period text as the server writes it",
     "set": [
       {
         "path": [
@@ -1906,10 +1880,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "in_roster_unavailable",
-    "control": "in-roster unavailable as served",
     "name": "published paid period without its latest period",
+    "base": "in_roster_unavailable",
+    "accept": false,
+    "control": "in-roster unavailable as served",
     "set": [
       {
         "path": [
@@ -1927,10 +1901,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "in_roster_unavailable",
-    "control": "in-roster unavailable as served",
     "name": "latest available period runs backwards",
+    "base": "in_roster_unavailable",
+    "accept": false,
+    "control": "in-roster unavailable as served",
     "set": [
       {
         "path": [
@@ -1951,10 +1925,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "market outcome differs from the artifact's",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -1967,10 +1941,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "complete outcome without starter questions",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -1981,60 +1955,60 @@
     ]
   },
   {
-    "accept": true,
-    "base": "in_roster_unavailable",
-    "control": null,
     "name": "insufficient outcome with its display text",
-    "set": [
-      {
-        "path": [
-          "outcome"
-        ],
-        "value": "insufficient"
-      },
-      {
-        "path": [
-          "markets",
-          0,
-          "outcome"
-        ],
-        "value": "insufficient"
-      },
-      {
-        "path": [
-          "starter_questions"
-        ],
-        "value": []
-      }
-    ]
-  },
-  {
-    "accept": false,
     "base": "in_roster_unavailable",
-    "control": "insufficient outcome with its display text",
-    "name": "insufficient outcome with starter questions",
-    "set": [
-      {
-        "path": [
-          "outcome"
-        ],
-        "value": "insufficient"
-      },
-      {
-        "path": [
-          "markets",
-          0,
-          "outcome"
-        ],
-        "value": "insufficient"
-      }
-    ]
-  },
-  {
     "accept": true,
-    "base": "in_roster_unavailable",
     "control": null,
+    "set": [
+      {
+        "path": [
+          "outcome"
+        ],
+        "value": "insufficient"
+      },
+      {
+        "path": [
+          "markets",
+          0,
+          "outcome"
+        ],
+        "value": "insufficient"
+      },
+      {
+        "path": [
+          "starter_questions"
+        ],
+        "value": []
+      }
+    ]
+  },
+  {
+    "name": "insufficient outcome with starter questions",
+    "base": "in_roster_unavailable",
+    "accept": false,
+    "control": "insufficient outcome with its display text",
+    "set": [
+      {
+        "path": [
+          "outcome"
+        ],
+        "value": "insufficient"
+      },
+      {
+        "path": [
+          "markets",
+          0,
+          "outcome"
+        ],
+        "value": "insufficient"
+      }
+    ]
+  },
+  {
     "name": "every delivery filled in a complete month",
+    "base": "in_roster_unavailable",
+    "accept": true,
+    "control": null,
     "set": [
       {
         "path": [
@@ -2046,7 +2020,27 @@
           0
         ],
         "value": {
+          "profile_path": "asi_in_market",
+          "label": "Lifestyle",
+          "returned": true,
+          "total_returned": true,
+          "total_text": null,
+          "profiled_buyers_total": 120,
+          "profiled_buyers_total_text": "120",
+          "profiled_exposed_total": 2400,
+          "profiled_exposed_total_text": "2400",
           "first_month_note": "First month: segments with too few shoppers aren't listed.",
+          "roster_note": null,
+          "paid_state": {
+            "feature_observed": true,
+            "period_published": true,
+            "expected_after": "2026-10-02",
+            "latest_available_period": {
+              "start": "2026-09-01",
+              "end": "2026-09-30"
+            }
+          },
+          "period_text": null,
           "insights": [
             {
               "artifact_revision": "rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr",
@@ -2055,29 +2049,11 @@
               "output_class": "perspective",
               "prompt_version": "deterministic-v1",
               "state": "filled",
-              "text": "Amazon audience segments (paid) \u00b7 Lifestyle \u00b7 September 2026: buyers over-index in Segment 41001 (name not available yet): 45.0% of buyers against 25.0% of the shoppers your ads reached. Ad-touched buyers in the month \u00b7 may have bought before seeing an ad. Only segments with at least 30 buyers are named."
+              "text": "Amazon audience segments (paid) · Lifestyle · September 2026: buyers over-index in Segment 41001 (name not available yet): 45.0% of buyers against 25.0% of the shoppers your ads reached. Ad-touched buyers in the month · may have bought before seeing an ad. Only segments with at least 30 buyers are named."
             }
           ],
-          "label": "Lifestyle",
-          "paid_state": {
-            "expected_after": "2026-10-02",
-            "feature_observed": true,
-            "latest_available_period": {
-              "end": "2026-09-30",
-              "start": "2026-09-01"
-            },
-            "period_published": true
-          },
-          "period_text": null,
-          "profile_path": "asi_in_market",
-          "profiled_buyers_total": 120,
-          "profiled_buyers_total_text": "120",
-          "profiled_exposed_total": 2400,
-          "profiled_exposed_total_text": "2400",
-          "returned": true,
-          "roster_note": null,
-          "total_returned": true,
-          "total_text": null
+          "page_count": 1,
+          "paging_text": null
         }
       },
       {
@@ -2090,30 +2066,30 @@
         ],
         "value": [
           {
+            "segment_id": "41001",
+            "name": null,
+            "display_name": "Segment 41001 (name not available yet)",
+            "provider_label": null,
             "category_level_1": null,
             "category_path": null,
-            "display_name": "Segment 41001 (name not available yet)",
-            "name": null,
             "profile_path": "asi_lifestyle",
-            "provider_label": null,
-            "segment_buyer_share": {
-              "text": "45.0%",
-              "value": "0.4500"
-            },
+            "state": "value",
+            "text": null,
             "segment_buyers": 54,
+            "segment_buyers_text": "54",
+            "segment_exposed_shoppers": 600,
             "segment_buyers_new_to_brand": 21,
             "segment_buyers_new_to_brand_text": "21",
-            "segment_buyers_text": "54",
-            "segment_exposed_share": {
-              "text": "25.0%",
-              "value": "0.2500"
+            "segment_buyer_share": {
+              "value": "0.4500",
+              "text": "45.0%"
             },
-            "segment_exposed_shoppers": 600,
-            "segment_id": "41001",
+            "segment_exposed_share": {
+              "value": "0.2500",
+              "text": "25.0%"
+            },
             "segment_index": "1.80",
-            "segment_index_text": "1.80x",
-            "state": "value",
-            "text": null
+            "segment_index_text": "1.80x"
           }
         ]
       },
@@ -2135,17 +2111,17 @@
             "output_class": "perspective",
             "prompt_version": "deterministic-v1",
             "state": "filled",
-            "text": "Amazon audience segments (paid) \u00b7 Lifestyle \u00b7 September 2026: buyers over-index in Segment 41001 (name not available yet): 45.0% of buyers against 25.0% of the shoppers your ads reached. Ad-touched buyers in the month \u00b7 may have bought before seeing an ad. Only segments with at least 30 buyers are named."
+            "text": "Amazon audience segments (paid) · Lifestyle · September 2026: buyers over-index in Segment 41001 (name not available yet): 45.0% of buyers against 25.0% of the shoppers your ads reached. Ad-touched buyers in the month · may have bought before seeing an ad. Only segments with at least 30 buyers are named."
           }
         ]
       }
     ]
   },
   {
-    "accept": false,
-    "base": "in_roster_unavailable",
-    "control": "every delivery filled in a complete month",
     "name": "insufficient outcome without display text",
+    "base": "in_roster_unavailable",
+    "accept": false,
+    "control": "every delivery filled in a complete month",
     "set": [
       {
         "path": [
@@ -2157,7 +2133,27 @@
           0
         ],
         "value": {
+          "profile_path": "asi_in_market",
+          "label": "Lifestyle",
+          "returned": true,
+          "total_returned": true,
+          "total_text": null,
+          "profiled_buyers_total": 120,
+          "profiled_buyers_total_text": "120",
+          "profiled_exposed_total": 2400,
+          "profiled_exposed_total_text": "2400",
           "first_month_note": "First month: segments with too few shoppers aren't listed.",
+          "roster_note": null,
+          "paid_state": {
+            "feature_observed": true,
+            "period_published": true,
+            "expected_after": "2026-10-02",
+            "latest_available_period": {
+              "start": "2026-09-01",
+              "end": "2026-09-30"
+            }
+          },
+          "period_text": null,
           "insights": [
             {
               "artifact_revision": "rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr",
@@ -2166,29 +2162,11 @@
               "output_class": "perspective",
               "prompt_version": "deterministic-v1",
               "state": "filled",
-              "text": "Amazon audience segments (paid) \u00b7 Lifestyle \u00b7 September 2026: buyers over-index in Segment 41001 (name not available yet): 45.0% of buyers against 25.0% of the shoppers your ads reached. Ad-touched buyers in the month \u00b7 may have bought before seeing an ad. Only segments with at least 30 buyers are named."
+              "text": "Amazon audience segments (paid) · Lifestyle · September 2026: buyers over-index in Segment 41001 (name not available yet): 45.0% of buyers against 25.0% of the shoppers your ads reached. Ad-touched buyers in the month · may have bought before seeing an ad. Only segments with at least 30 buyers are named."
             }
           ],
-          "label": "Lifestyle",
-          "paid_state": {
-            "expected_after": "2026-10-02",
-            "feature_observed": true,
-            "latest_available_period": {
-              "end": "2026-09-30",
-              "start": "2026-09-01"
-            },
-            "period_published": true
-          },
-          "period_text": null,
-          "profile_path": "asi_in_market",
-          "profiled_buyers_total": 120,
-          "profiled_buyers_total_text": "120",
-          "profiled_exposed_total": 2400,
-          "profiled_exposed_total_text": "2400",
-          "returned": true,
-          "roster_note": null,
-          "total_returned": true,
-          "total_text": null
+          "page_count": 1,
+          "paging_text": null
         }
       },
       {
@@ -2201,30 +2179,30 @@
         ],
         "value": [
           {
+            "segment_id": "41001",
+            "name": null,
+            "display_name": "Segment 41001 (name not available yet)",
+            "provider_label": null,
             "category_level_1": null,
             "category_path": null,
-            "display_name": "Segment 41001 (name not available yet)",
-            "name": null,
             "profile_path": "asi_lifestyle",
-            "provider_label": null,
-            "segment_buyer_share": {
-              "text": "45.0%",
-              "value": "0.4500"
-            },
+            "state": "value",
+            "text": null,
             "segment_buyers": 54,
+            "segment_buyers_text": "54",
+            "segment_exposed_shoppers": 600,
             "segment_buyers_new_to_brand": 21,
             "segment_buyers_new_to_brand_text": "21",
-            "segment_buyers_text": "54",
-            "segment_exposed_share": {
-              "text": "25.0%",
-              "value": "0.2500"
+            "segment_buyer_share": {
+              "value": "0.4500",
+              "text": "45.0%"
             },
-            "segment_exposed_shoppers": 600,
-            "segment_id": "41001",
+            "segment_exposed_share": {
+              "value": "0.2500",
+              "text": "25.0%"
+            },
             "segment_index": "1.80",
-            "segment_index_text": "1.80x",
-            "state": "value",
-            "text": null
+            "segment_index_text": "1.80x"
           }
         ]
       },
@@ -2246,7 +2224,7 @@
             "output_class": "perspective",
             "prompt_version": "deterministic-v1",
             "state": "filled",
-            "text": "Amazon audience segments (paid) \u00b7 Lifestyle \u00b7 September 2026: buyers over-index in Segment 41001 (name not available yet): 45.0% of buyers against 25.0% of the shoppers your ads reached. Ad-touched buyers in the month \u00b7 may have bought before seeing an ad. Only segments with at least 30 buyers are named."
+            "text": "Amazon audience segments (paid) · Lifestyle · September 2026: buyers over-index in Segment 41001 (name not available yet): 45.0% of buyers against 25.0% of the shoppers your ads reached. Ad-touched buyers in the month · may have bought before seeing an ad. Only segments with at least 30 buyers are named."
           }
         ]
       },
@@ -2273,10 +2251,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "delivery with two insights",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -2316,10 +2294,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "unreturned delivery with its total returned",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -2336,16 +2314,13 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "campaign CPM with its absence text",
+    "base": "campaign_page",
+    "accept": false,
+    "control": "campaign page as served",
     "set": [
       {
         "path": [
-          "markets",
-          0,
-          "campaign_audiences",
           "rows",
           0,
           "cpm_text"
@@ -2355,16 +2330,13 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "campaign ROAS with its absence text",
+    "base": "campaign_page",
+    "accept": false,
+    "control": "campaign page as served",
     "set": [
       {
         "path": [
-          "markets",
-          0,
-          "campaign_audiences",
           "rows",
           0,
           "roas_text"
@@ -2374,10 +2346,58 @@
     ]
   },
   {
-    "accept": true,
+    "name": "campaign page of another revision",
+    "base": "campaign_page",
+    "accept": false,
+    "control": "campaign page as served",
+    "set": [
+      {
+        "path": [
+          "parent_revision"
+        ],
+        "value": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    ]
+  },
+  {
+    "name": "campaign page past its last",
+    "base": "campaign_page",
+    "accept": false,
+    "control": "campaign page as served",
+    "set": [
+      {
+        "path": [
+          "page"
+        ],
+        "value": 1
+      }
+    ]
+  },
+  {
+    "name": "campaign page withdrawn with rows",
+    "base": "campaign_page",
+    "accept": false,
+    "control": "campaign page as served",
+    "set": [
+      {
+        "path": [
+          "state"
+        ],
+        "value": "withdrawn"
+      },
+      {
+        "path": [
+          "text"
+        ],
+        "value": "Gone."
+      }
+    ]
+  },
+  {
+    "name": "pending campaigns with no index",
     "base": "complete",
+    "accept": true,
     "control": null,
-    "name": "pending campaigns with no rows",
     "set": [
       {
         "path": [
@@ -2393,17 +2413,26 @@
           "markets",
           0,
           "campaign_audiences",
-          "rows"
+          "campaign_count"
+        ],
+        "value": 0
+      },
+      {
+        "path": [
+          "markets",
+          0,
+          "campaign_audiences",
+          "index"
         ],
         "value": []
       }
     ]
   },
   {
-    "accept": false,
+    "name": "pending campaigns with an index",
     "base": "complete",
-    "control": "pending campaigns with no rows",
-    "name": "pending campaigns with rows",
+    "accept": false,
+    "control": "pending campaigns with no index",
     "set": [
       {
         "path": [
@@ -2417,10 +2446,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "display minimum as a boolean",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -2431,10 +2460,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "count above the browser's exact integers",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -2451,10 +2480,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "basic-format expected-after date",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -2472,10 +2501,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "unpadded month start",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -2487,10 +2516,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "index with Arabic-Indic digits",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -2502,7 +2531,7 @@
           0,
           "segment_index"
         ],
-        "value": "1.\u0663\u0663"
+        "value": "1.٣٣"
       },
       {
         "path": [
@@ -2519,10 +2548,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "expected-after date with Arabic-Indic digits",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -2535,15 +2564,15 @@
           "paid_state",
           "expected_after"
         ],
-        "value": "\u0662\u0660\u0662\u0666-10-16"
+        "value": "٢٠٢٦-10-16"
       }
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "year-zero month start",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -2555,10 +2584,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "view label of a byte-order mark",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -2568,15 +2597,15 @@
           1,
           "label"
         ],
-        "value": "\ufeff"
+        "value": "﻿"
       }
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "view label of an information separator",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -2591,10 +2620,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "blank segment display name",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -2611,10 +2640,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "unknown provider label",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -2631,17 +2660,17 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "blank campaign label",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
           "markets",
           0,
           "campaign_audiences",
-          "rows",
+          "index",
           0,
           "campaign_label"
         ],
@@ -2650,321 +2679,120 @@
     ]
   },
   {
-    "accept": true,
-    "base": "complete",
-    "control": null,
     "name": "two campaigns as the server writes them",
+    "base": "complete",
+    "accept": true,
+    "control": null,
     "set": [
       {
         "path": [
           "markets",
           0,
           "campaign_audiences",
-          "rows"
+          "index"
         ],
         "value": [
           {
             "campaign_label": "Fall prospecting",
             "campaign_ref": "campaign-1",
-            "category_level_1": null,
-            "category_path": null,
-            "cpm_text": null,
-            "display_name": "Demo - Age 25-34 \u00b7 Amazon",
-            "name": "Demo - Age 25-34",
-            "provider_label": "Amazon",
-            "roas_text": null,
-            "segment_cpm": {
-              "currency": "USD",
-              "text": "7.00 USD",
-              "value": "7.00"
-            },
-            "segment_id": "41001",
-            "segment_impressions": 30000,
-            "segment_impressions_text": "30000",
-            "segment_roas_attributed": "0.59",
-            "segment_roas_attributed_text": "0.59x"
+            "page_count": 1,
+            "segment_count": 1,
+            "state": "available",
+            "text": null
           },
           {
             "campaign_label": "Unnamed campaign 1",
             "campaign_ref": "campaign-2",
-            "category_level_1": null,
-            "category_path": null,
-            "cpm_text": null,
-            "display_name": "Demo - Age 25-34 \u00b7 Amazon",
-            "name": "Demo - Age 25-34",
-            "provider_label": "Amazon",
-            "roas_text": null,
-            "segment_cpm": {
-              "currency": "USD",
-              "text": "7.00 USD",
-              "value": "7.00"
-            },
-            "segment_id": "41001",
-            "segment_impressions": 30000,
-            "segment_impressions_text": "30000",
-            "segment_roas_attributed": "0.59",
-            "segment_roas_attributed_text": "0.59x"
+            "page_count": 1,
+            "segment_count": 1,
+            "state": "available",
+            "text": null
           }
         ]
+      },
+      {
+        "path": [
+          "markets",
+          0,
+          "campaign_audiences",
+          "campaign_count"
+        ],
+        "value": 2
       }
     ]
   },
   {
-    "accept": false,
+    "name": "campaign references skip a rank",
     "base": "complete",
+    "accept": false,
     "control": "two campaigns as the server writes them",
-    "name": "campaign references skip an ordinal",
     "set": [
       {
         "path": [
           "markets",
           0,
           "campaign_audiences",
-          "rows"
+          "index"
         ],
         "value": [
           {
             "campaign_label": "Fall prospecting",
             "campaign_ref": "campaign-1",
-            "category_level_1": null,
-            "category_path": null,
-            "cpm_text": null,
-            "display_name": "Demo - Age 25-34 \u00b7 Amazon",
-            "name": "Demo - Age 25-34",
-            "provider_label": "Amazon",
-            "roas_text": null,
-            "segment_cpm": {
-              "currency": "USD",
-              "text": "7.00 USD",
-              "value": "7.00"
-            },
-            "segment_id": "41001",
-            "segment_impressions": 30000,
-            "segment_impressions_text": "30000",
-            "segment_roas_attributed": "0.59",
-            "segment_roas_attributed_text": "0.59x"
+            "page_count": 1,
+            "segment_count": 1,
+            "state": "available",
+            "text": null
           },
           {
             "campaign_label": "Unnamed campaign 1",
             "campaign_ref": "campaign-3",
-            "category_level_1": null,
-            "category_path": null,
-            "cpm_text": null,
-            "display_name": "Demo - Age 25-34 \u00b7 Amazon",
-            "name": "Demo - Age 25-34",
-            "provider_label": "Amazon",
-            "roas_text": null,
-            "segment_cpm": {
-              "currency": "USD",
-              "text": "7.00 USD",
-              "value": "7.00"
-            },
-            "segment_id": "41001",
-            "segment_impressions": 30000,
-            "segment_impressions_text": "30000",
-            "segment_roas_attributed": "0.59",
-            "segment_roas_attributed_text": "0.59x"
+            "page_count": 1,
+            "segment_count": 1,
+            "state": "available",
+            "text": null
           }
         ]
+      },
+      {
+        "path": [
+          "markets",
+          0,
+          "campaign_audiences",
+          "campaign_count"
+        ],
+        "value": 2
       }
     ]
   },
   {
-    "accept": false,
+    "name": "an index whose count isn't its entries",
     "base": "complete",
+    "accept": false,
     "control": "two campaigns as the server writes them",
-    "name": "one campaign reference under two labels",
     "set": [
       {
         "path": [
           "markets",
           0,
           "campaign_audiences",
-          "rows"
+          "index"
         ],
         "value": [
           {
             "campaign_label": "Fall prospecting",
             "campaign_ref": "campaign-1",
-            "category_level_1": null,
-            "category_path": null,
-            "cpm_text": null,
-            "display_name": "Demo - Age 25-34 \u00b7 Amazon",
-            "name": "Demo - Age 25-34",
-            "provider_label": "Amazon",
-            "roas_text": null,
-            "segment_cpm": {
-              "currency": "USD",
-              "text": "7.00 USD",
-              "value": "7.00"
-            },
-            "segment_id": "41001",
-            "segment_impressions": 30000,
-            "segment_impressions_text": "30000",
-            "segment_roas_attributed": "0.59",
-            "segment_roas_attributed_text": "0.59x"
-          },
-          {
-            "campaign_label": "Unnamed campaign 1",
-            "campaign_ref": "campaign-1",
-            "category_level_1": null,
-            "category_path": null,
-            "cpm_text": null,
-            "display_name": "Demo - Age 25-34 \u00b7 Amazon",
-            "name": "Demo - Age 25-34",
-            "provider_label": "Amazon",
-            "roas_text": null,
-            "segment_cpm": {
-              "currency": "USD",
-              "text": "7.00 USD",
-              "value": "7.00"
-            },
-            "segment_id": "41001",
-            "segment_impressions": 30000,
-            "segment_impressions_text": "30000",
-            "segment_roas_attributed": "0.59",
-            "segment_roas_attributed_text": "0.59x"
-          }
-        ]
-      }
-    ]
-  },
-  {
-    "accept": false,
-    "base": "complete",
-    "control": "two campaigns as the server writes them",
-    "name": "one campaign's rows split by another's",
-    "set": [
-      {
-        "path": [
-          "markets",
-          0,
-          "campaign_audiences",
-          "rows"
-        ],
-        "value": [
-          {
-            "campaign_label": "Fall prospecting",
-            "campaign_ref": "campaign-1",
-            "category_level_1": null,
-            "category_path": null,
-            "cpm_text": null,
-            "display_name": "Demo - Age 25-34 \u00b7 Amazon",
-            "name": "Demo - Age 25-34",
-            "provider_label": "Amazon",
-            "roas_text": null,
-            "segment_cpm": {
-              "currency": "USD",
-              "text": "7.00 USD",
-              "value": "7.00"
-            },
-            "segment_id": "41001",
-            "segment_impressions": 30000,
-            "segment_impressions_text": "30000",
-            "segment_roas_attributed": "0.59",
-            "segment_roas_attributed_text": "0.59x"
+            "page_count": 1,
+            "segment_count": 1,
+            "state": "available",
+            "text": null
           },
           {
             "campaign_label": "Unnamed campaign 1",
             "campaign_ref": "campaign-2",
-            "category_level_1": null,
-            "category_path": null,
-            "cpm_text": null,
-            "display_name": "Demo - Age 25-34 \u00b7 Amazon",
-            "name": "Demo - Age 25-34",
-            "provider_label": "Amazon",
-            "roas_text": null,
-            "segment_cpm": {
-              "currency": "USD",
-              "text": "7.00 USD",
-              "value": "7.00"
-            },
-            "segment_id": "41001",
-            "segment_impressions": 30000,
-            "segment_impressions_text": "30000",
-            "segment_roas_attributed": "0.59",
-            "segment_roas_attributed_text": "0.59x"
-          },
-          {
-            "campaign_label": "Fall prospecting",
-            "campaign_ref": "campaign-1",
-            "category_level_1": null,
-            "category_path": null,
-            "cpm_text": null,
-            "display_name": "Demo - Age 25-34 \u00b7 Amazon",
-            "name": "Demo - Age 25-34",
-            "provider_label": "Amazon",
-            "roas_text": null,
-            "segment_cpm": {
-              "currency": "USD",
-              "text": "7.00 USD",
-              "value": "7.00"
-            },
-            "segment_id": "41001",
-            "segment_impressions": 30000,
-            "segment_impressions_text": "30000",
-            "segment_roas_attributed": "0.59",
-            "segment_roas_attributed_text": "0.59x"
-          }
-        ]
-      }
-    ]
-  },
-  {
-    "accept": true,
-    "base": "complete",
-    "control": null,
-    "name": "two campaigns shown of fourteen",
-    "set": [
-      {
-        "path": [
-          "markets",
-          0,
-          "campaign_audiences",
-          "rows"
-        ],
-        "value": [
-          {
-            "campaign_label": "Fall prospecting",
-            "campaign_ref": "campaign-1",
-            "category_level_1": null,
-            "category_path": null,
-            "cpm_text": null,
-            "display_name": "Demo - Age 25-34 \u00b7 Amazon",
-            "name": "Demo - Age 25-34",
-            "provider_label": "Amazon",
-            "roas_text": null,
-            "segment_cpm": {
-              "currency": "USD",
-              "text": "7.00 USD",
-              "value": "7.00"
-            },
-            "segment_id": "41001",
-            "segment_impressions": 30000,
-            "segment_impressions_text": "30000",
-            "segment_roas_attributed": "0.59",
-            "segment_roas_attributed_text": "0.59x"
-          },
-          {
-            "campaign_label": "Unnamed campaign 1",
-            "campaign_ref": "campaign-2",
-            "category_level_1": null,
-            "category_path": null,
-            "cpm_text": null,
-            "display_name": "Demo - Age 25-34 \u00b7 Amazon",
-            "name": "Demo - Age 25-34",
-            "provider_label": "Amazon",
-            "roas_text": null,
-            "segment_cpm": {
-              "currency": "USD",
-              "text": "7.00 USD",
-              "value": "7.00"
-            },
-            "segment_id": "41001",
-            "segment_impressions": 30000,
-            "segment_impressions_text": "30000",
-            "segment_roas_attributed": "0.59",
-            "segment_roas_attributed_text": "0.59x"
+            "page_count": 1,
+            "segment_count": 1,
+            "state": "available",
+            "text": null
           }
         ]
       },
@@ -2973,335 +2801,133 @@
           "markets",
           0,
           "campaign_audiences",
-          "shown_text"
+          "campaign_count"
         ],
-        "value": "Showing 2 of 14 campaigns"
+        "value": 3
       }
     ]
   },
   {
-    "accept": false,
+    "name": "an index entry whose pages don't match its segments",
     "base": "complete",
-    "control": "two campaigns shown of fourteen",
-    "name": "shown note with every campaign listed shown",
-    "set": [
-      {
-        "path": [
-          "markets",
-          0,
-          "campaign_audiences",
-          "rows"
-        ],
-        "value": [
-          {
-            "campaign_label": "Fall prospecting",
-            "campaign_ref": "campaign-1",
-            "category_level_1": null,
-            "category_path": null,
-            "cpm_text": null,
-            "display_name": "Demo - Age 25-34 \u00b7 Amazon",
-            "name": "Demo - Age 25-34",
-            "provider_label": "Amazon",
-            "roas_text": null,
-            "segment_cpm": {
-              "currency": "USD",
-              "text": "7.00 USD",
-              "value": "7.00"
-            },
-            "segment_id": "41001",
-            "segment_impressions": 30000,
-            "segment_impressions_text": "30000",
-            "segment_roas_attributed": "0.59",
-            "segment_roas_attributed_text": "0.59x"
-          },
-          {
-            "campaign_label": "Unnamed campaign 1",
-            "campaign_ref": "campaign-2",
-            "category_level_1": null,
-            "category_path": null,
-            "cpm_text": null,
-            "display_name": "Demo - Age 25-34 \u00b7 Amazon",
-            "name": "Demo - Age 25-34",
-            "provider_label": "Amazon",
-            "roas_text": null,
-            "segment_cpm": {
-              "currency": "USD",
-              "text": "7.00 USD",
-              "value": "7.00"
-            },
-            "segment_id": "41001",
-            "segment_impressions": 30000,
-            "segment_impressions_text": "30000",
-            "segment_roas_attributed": "0.59",
-            "segment_roas_attributed_text": "0.59x"
-          }
-        ]
-      },
-      {
-        "path": [
-          "markets",
-          0,
-          "campaign_audiences",
-          "shown_text"
-        ],
-        "value": "Showing 2 of 2 campaigns"
-      }
-    ]
-  },
-  {
     "accept": false,
-    "base": "complete",
-    "control": "two campaigns shown of fourteen",
-    "name": "shown note naming fewer campaigns than its rows",
-    "set": [
-      {
-        "path": [
-          "markets",
-          0,
-          "campaign_audiences",
-          "rows"
-        ],
-        "value": [
-          {
-            "campaign_label": "Fall prospecting",
-            "campaign_ref": "campaign-1",
-            "category_level_1": null,
-            "category_path": null,
-            "cpm_text": null,
-            "display_name": "Demo - Age 25-34 \u00b7 Amazon",
-            "name": "Demo - Age 25-34",
-            "provider_label": "Amazon",
-            "roas_text": null,
-            "segment_cpm": {
-              "currency": "USD",
-              "text": "7.00 USD",
-              "value": "7.00"
-            },
-            "segment_id": "41001",
-            "segment_impressions": 30000,
-            "segment_impressions_text": "30000",
-            "segment_roas_attributed": "0.59",
-            "segment_roas_attributed_text": "0.59x"
-          },
-          {
-            "campaign_label": "Unnamed campaign 1",
-            "campaign_ref": "campaign-2",
-            "category_level_1": null,
-            "category_path": null,
-            "cpm_text": null,
-            "display_name": "Demo - Age 25-34 \u00b7 Amazon",
-            "name": "Demo - Age 25-34",
-            "provider_label": "Amazon",
-            "roas_text": null,
-            "segment_cpm": {
-              "currency": "USD",
-              "text": "7.00 USD",
-              "value": "7.00"
-            },
-            "segment_id": "41001",
-            "segment_impressions": 30000,
-            "segment_impressions_text": "30000",
-            "segment_roas_attributed": "0.59",
-            "segment_roas_attributed_text": "0.59x"
-          }
-        ]
-      },
-      {
-        "path": [
-          "markets",
-          0,
-          "campaign_audiences",
-          "shown_text"
-        ],
-        "value": "Showing 1 of 14 campaigns"
-      }
-    ]
-  },
-  {
-    "accept": false,
-    "base": "complete",
-    "control": "two campaigns shown of fourteen",
-    "name": "shown note reworded",
-    "set": [
-      {
-        "path": [
-          "markets",
-          0,
-          "campaign_audiences",
-          "rows"
-        ],
-        "value": [
-          {
-            "campaign_label": "Fall prospecting",
-            "campaign_ref": "campaign-1",
-            "category_level_1": null,
-            "category_path": null,
-            "cpm_text": null,
-            "display_name": "Demo - Age 25-34 \u00b7 Amazon",
-            "name": "Demo - Age 25-34",
-            "provider_label": "Amazon",
-            "roas_text": null,
-            "segment_cpm": {
-              "currency": "USD",
-              "text": "7.00 USD",
-              "value": "7.00"
-            },
-            "segment_id": "41001",
-            "segment_impressions": 30000,
-            "segment_impressions_text": "30000",
-            "segment_roas_attributed": "0.59",
-            "segment_roas_attributed_text": "0.59x"
-          },
-          {
-            "campaign_label": "Unnamed campaign 1",
-            "campaign_ref": "campaign-2",
-            "category_level_1": null,
-            "category_path": null,
-            "cpm_text": null,
-            "display_name": "Demo - Age 25-34 \u00b7 Amazon",
-            "name": "Demo - Age 25-34",
-            "provider_label": "Amazon",
-            "roas_text": null,
-            "segment_cpm": {
-              "currency": "USD",
-              "text": "7.00 USD",
-              "value": "7.00"
-            },
-            "segment_id": "41001",
-            "segment_impressions": 30000,
-            "segment_impressions_text": "30000",
-            "segment_roas_attributed": "0.59",
-            "segment_roas_attributed_text": "0.59x"
-          }
-        ]
-      },
-      {
-        "path": [
-          "markets",
-          0,
-          "campaign_audiences",
-          "shown_text"
-        ],
-        "value": "Showing top 2 of 14 campaigns"
-      }
-    ]
-  },
-  {
-    "accept": false,
-    "base": "complete",
-    "control": "two campaigns shown of fourteen",
-    "name": "shown note with a zero-padded count",
-    "set": [
-      {
-        "path": [
-          "markets",
-          0,
-          "campaign_audiences",
-          "rows"
-        ],
-        "value": [
-          {
-            "campaign_label": "Fall prospecting",
-            "campaign_ref": "campaign-1",
-            "category_level_1": null,
-            "category_path": null,
-            "cpm_text": null,
-            "display_name": "Demo - Age 25-34 \u00b7 Amazon",
-            "name": "Demo - Age 25-34",
-            "provider_label": "Amazon",
-            "roas_text": null,
-            "segment_cpm": {
-              "currency": "USD",
-              "text": "7.00 USD",
-              "value": "7.00"
-            },
-            "segment_id": "41001",
-            "segment_impressions": 30000,
-            "segment_impressions_text": "30000",
-            "segment_roas_attributed": "0.59",
-            "segment_roas_attributed_text": "0.59x"
-          },
-          {
-            "campaign_label": "Unnamed campaign 1",
-            "campaign_ref": "campaign-2",
-            "category_level_1": null,
-            "category_path": null,
-            "cpm_text": null,
-            "display_name": "Demo - Age 25-34 \u00b7 Amazon",
-            "name": "Demo - Age 25-34",
-            "provider_label": "Amazon",
-            "roas_text": null,
-            "segment_cpm": {
-              "currency": "USD",
-              "text": "7.00 USD",
-              "value": "7.00"
-            },
-            "segment_id": "41001",
-            "segment_impressions": 30000,
-            "segment_impressions_text": "30000",
-            "segment_roas_attributed": "0.59",
-            "segment_roas_attributed_text": "0.59x"
-          }
-        ]
-      },
-      {
-        "path": [
-          "markets",
-          0,
-          "campaign_audiences",
-          "shown_text"
-        ],
-        "value": "Showing 02 of 14 campaigns"
-      }
-    ]
-  },
-  {
-    "accept": false,
-    "base": "complete",
-    "control": "pending campaigns with no rows",
-    "name": "pending campaigns with a shown note",
-    "set": [
-      {
-        "path": [
-          "markets",
-          0,
-          "campaign_audiences",
-          "pending_text"
-        ],
-        "value": "DSP campaigns by segment for September 2026 haven't arrived yet."
-      },
-      {
-        "path": [
-          "markets",
-          0,
-          "campaign_audiences",
-          "rows"
-        ],
-        "value": []
-      },
-      {
-        "path": [
-          "markets",
-          0,
-          "campaign_audiences",
-          "shown_text"
-        ],
-        "value": "Showing 2 of 14 campaigns"
-      }
-    ]
-  },
-  {
-    "accept": false,
-    "base": "complete",
     "control": "complete as served",
-    "name": "campaign reference is its canonical key",
     "set": [
       {
         "path": [
           "markets",
           0,
           "campaign_audiences",
-          "rows",
+          "index",
+          0,
+          "page_count"
+        ],
+        "value": 2
+      }
+    ]
+  },
+  {
+    "name": "an available entry with a note",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
+    "set": [
+      {
+        "path": [
+          "markets",
+          0,
+          "campaign_audiences",
+          "index",
+          0,
+          "text"
+        ],
+        "value": "Not shown."
+      }
+    ]
+  },
+  {
+    "name": "a refused entry as the server writes it",
+    "base": "complete",
+    "accept": true,
+    "control": null,
+    "set": [
+      {
+        "path": [
+          "markets",
+          0,
+          "campaign_audiences",
+          "index",
+          0,
+          "state"
+        ],
+        "value": "refused"
+      },
+      {
+        "path": [
+          "markets",
+          0,
+          "campaign_audiences",
+          "index",
+          0,
+          "text"
+        ],
+        "value": "Its history isn't available."
+      },
+      {
+        "path": [
+          "markets",
+          0,
+          "campaign_audiences",
+          "index",
+          0,
+          "page_count"
+        ],
+        "value": 0
+      }
+    ]
+  },
+  {
+    "name": "a refused entry with pages",
+    "base": "complete",
+    "accept": false,
+    "control": "a refused entry as the server writes it",
+    "set": [
+      {
+        "path": [
+          "markets",
+          0,
+          "campaign_audiences",
+          "index",
+          0,
+          "state"
+        ],
+        "value": "refused"
+      },
+      {
+        "path": [
+          "markets",
+          0,
+          "campaign_audiences",
+          "index",
+          0,
+          "text"
+        ],
+        "value": "Its history isn't available."
+      }
+    ]
+  },
+  {
+    "name": "campaign reference is its canonical key",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
+    "set": [
+      {
+        "path": [
+          "markets",
+          0,
+          "campaign_audiences",
+          "index",
           0,
           "campaign_ref"
         ],
@@ -3310,49 +2936,36 @@
     ]
   },
   {
-    "accept": false,
+    "name": "campaign entry carries its canonical key",
     "base": "complete",
+    "accept": false,
     "control": "complete as served",
-    "name": "campaign row carries its canonical key",
     "set": [
       {
         "path": [
           "markets",
           0,
           "campaign_audiences",
-          "rows",
+          "index",
           0
         ],
         "value": {
-          "campaign_key": "camp-1",
           "campaign_label": "Fall prospecting",
           "campaign_ref": "campaign-1",
-          "category_level_1": null,
-          "category_path": null,
-          "cpm_text": null,
-          "display_name": "Demo - Age 25-34 \u00b7 Amazon",
-          "name": "Demo - Age 25-34",
-          "provider_label": "Amazon",
-          "roas_text": null,
-          "segment_cpm": {
-            "currency": "USD",
-            "text": "7.00 USD",
-            "value": "7.00"
-          },
-          "segment_id": "41001",
-          "segment_impressions": 30000,
-          "segment_impressions_text": "30000",
-          "segment_roas_attributed": "0.59",
-          "segment_roas_attributed_text": "0.59x"
+          "page_count": 1,
+          "segment_count": 1,
+          "state": "available",
+          "text": null,
+          "campaign_key": "camp-1"
         }
       }
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "market carries its canonical marketplace key",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -3361,43 +2974,31 @@
         ],
         "value": {
           "campaign_audiences": {
-            "basis_label": "DSP-attributed sales \u00f7 DSP spend \u00b7 14-day attribution, conversion date",
-            "limit_text": "Campaign grain shows which segments perform, not which line item to change.",
-            "pending_text": null,
-            "rows": [
+            "basis_label": "DSP-attributed sales ÷ DSP spend · 14-day attribution, conversion date",
+            "campaign_count": 1,
+            "index": [
               {
                 "campaign_label": "Fall prospecting",
                 "campaign_ref": "campaign-1",
-                "category_level_1": null,
-                "category_path": null,
-                "cpm_text": null,
-                "display_name": "Demo - Age 25-34 \u00b7 Amazon",
-                "name": "Demo - Age 25-34",
-                "provider_label": "Amazon",
-                "roas_text": null,
-                "segment_cpm": {
-                  "currency": "USD",
-                  "text": "7.00 USD",
-                  "value": "7.00"
-                },
-                "segment_id": "41001",
-                "segment_impressions": 30000,
-                "segment_impressions_text": "30000",
-                "segment_roas_attributed": "0.59",
-                "segment_roas_attributed_text": "0.59x"
+                "page_count": 1,
+                "segment_count": 1,
+                "state": "available",
+                "text": null
               }
             ],
-            "segment_ids_sentence": "DSP behaviour segments and Amazon audience segments (paid) use different IDs, so they're never linked or compared as one list.",
-            "shown_text": null
+            "index_shards": 1,
+            "limit_text": "Campaign grain shows which segments perform, not which line item to change.",
+            "pending_text": null,
+            "refused_text": null,
+            "segment_ids_sentence": "DSP behaviour segments and Amazon audience segments (paid) use different IDs, so they're never linked or compared as one list."
           },
           "default_view": "dsp_exposed_only",
-          "marketplace_key": "amazon_us",
           "outcome": "complete",
           "views": [
             {
-              "buyer_label": "Ad-touched buyers in the month \u00b7 may have bought before seeing an ad",
+              "buyer_label": "Ad-touched buyers in the month · may have bought before seeing an ad",
               "callout": null,
-              "caption": "Amazon audience segments (paid) \u00b7 September 2026 \u00b7 segment figures never add up",
+              "caption": "Amazon audience segments (paid) · September 2026 · segment figures never add up",
               "deliveries": [
                 {
                   "first_month_note": null,
@@ -3415,14 +3016,16 @@
                     }
                   ],
                   "label": "In-market",
+                  "page_count": 0,
+                  "paging_text": null,
                   "paid_state": {
-                    "expected_after": "2026-10-16",
                     "feature_observed": true,
+                    "period_published": false,
+                    "expected_after": "2026-10-16",
                     "latest_available_period": {
-                      "end": "2026-08-31",
-                      "start": "2026-08-01"
-                    },
-                    "period_published": false
+                      "start": "2026-08-01",
+                      "end": "2026-08-31"
+                    }
                   },
                   "period_text": "Figures for September 2026 are expected after 16 Oct 2026.",
                   "profile_path": "asi_in_market",
@@ -3451,14 +3054,16 @@
                     }
                   ],
                   "label": "Lifestyle",
+                  "page_count": 0,
+                  "paging_text": null,
                   "paid_state": {
-                    "expected_after": "2026-10-16",
                     "feature_observed": true,
+                    "period_published": false,
+                    "expected_after": "2026-10-16",
                     "latest_available_period": {
-                      "end": "2026-08-31",
-                      "start": "2026-08-01"
-                    },
-                    "period_published": false
+                      "start": "2026-08-01",
+                      "end": "2026-08-31"
+                    }
                   },
                   "period_text": "Figures for September 2026 are expected after 16 Oct 2026.",
                   "profile_path": "asi_lifestyle",
@@ -3481,9 +3086,9 @@
               "view": "asi_all_exposed"
             },
             {
-              "buyer_label": "Ad-touched buyers in the month \u00b7 may have bought before seeing an ad",
+              "buyer_label": "Ad-touched buyers in the month · may have bought before seeing an ad",
               "callout": null,
-              "caption": "DSP-exposed buyers only \u00b7 September 2026 \u00b7 segment figures never add up",
+              "caption": "DSP-exposed buyers only · September 2026 · segment figures never add up",
               "deliveries": [
                 {
                   "first_month_note": null,
@@ -3501,6 +3106,8 @@
                     }
                   ],
                   "label": "DSP behaviour segments",
+                  "page_count": 1,
+                  "paging_text": null,
                   "paid_state": null,
                   "period_text": null,
                   "profile_path": "dsp_exposed_only",
@@ -3534,7 +3141,7 @@
                 {
                   "category_level_1": null,
                   "category_path": null,
-                  "display_name": "Demo - Age 25-34 \u00b7 Amazon",
+                  "display_name": "Demo - Age 25-34 · Amazon",
                   "name": "Demo - Age 25-34",
                   "profile_path": "dsp_exposed_only",
                   "provider_label": "Amazon",
@@ -3560,7 +3167,7 @@
                 {
                   "category_level_1": null,
                   "category_path": null,
-                  "display_name": "ExperianDemographicsGenderFemale_LiveRamp \u00b7 Third party",
+                  "display_name": "ExperianDemographicsGenderFemale_LiveRamp · Third party",
                   "name": "ExperianDemographicsGenderFemale_LiveRamp",
                   "profile_path": "dsp_exposed_only",
                   "provider_label": "Third party",
@@ -3587,16 +3194,17 @@
               "segment_ids_sentence": "DSP behaviour segments and Amazon audience segments (paid) use different IDs, so they're never linked or compared as one list.",
               "view": "dsp_exposed_only"
             }
-          ]
+          ],
+          "marketplace_key": "amazon_us"
         }
       }
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "blank view label",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -3611,10 +3219,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "served insight not bound to a page reference",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -3633,10 +3241,10 @@
     ]
   },
   {
-    "accept": true,
-    "base": "complete",
-    "control": null,
     "name": "evidence slot as the server writes it",
+    "base": "complete",
+    "accept": true,
+    "control": null,
     "set": [
       {
         "path": [
@@ -3654,17 +3262,17 @@
             "reason_text": "No buyer profile was measured for this month.",
             "recovery_text": null,
             "role_label": "This month",
-            "slot_label": "Amazon audience segments (paid) \u00b7 In-market"
+            "slot_label": "Amazon audience segments (paid) · In-market"
           }
         ]
       }
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "evidence slot as the server writes it",
     "name": "evidence slot without its reason",
+    "base": "complete",
+    "accept": false,
+    "control": "evidence slot as the server writes it",
     "set": [
       {
         "path": [
@@ -3682,17 +3290,17 @@
             "reason_text": " ",
             "recovery_text": null,
             "role_label": "This month",
-            "slot_label": "Amazon audience segments (paid) \u00b7 In-market"
+            "slot_label": "Amazon audience segments (paid) · In-market"
           }
         ]
       }
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "evidence slot as the server writes it",
     "name": "evidence slot with an unpadded date",
+    "base": "complete",
+    "accept": false,
+    "control": "evidence slot as the server writes it",
     "set": [
       {
         "path": [
@@ -3710,17 +3318,17 @@
             "reason_text": "No buyer profile was measured for this month.",
             "recovery_text": null,
             "role_label": "This month",
-            "slot_label": "Amazon audience segments (paid) \u00b7 In-market"
+            "slot_label": "Amazon audience segments (paid) · In-market"
           }
         ]
       }
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "evidence slot as the server writes it",
     "name": "evidence slot with a reversed period",
+    "base": "complete",
+    "accept": false,
+    "control": "evidence slot as the server writes it",
     "set": [
       {
         "path": [
@@ -3738,17 +3346,17 @@
             "reason_text": "No buyer profile was measured for this month.",
             "recovery_text": null,
             "role_label": "This month",
-            "slot_label": "Amazon audience segments (paid) \u00b7 In-market"
+            "slot_label": "Amazon audience segments (paid) · In-market"
           }
         ]
       }
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "month runs backwards",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -3760,10 +3368,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "evidence status version 1",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -3775,10 +3383,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "artifact carries an unknown field",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -3789,10 +3397,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "profile row carries an unknown field",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -3809,10 +3417,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "artifact type replaced",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -3823,24 +3431,38 @@
     ]
   },
   {
-    "accept": false,
+    "name": "artifact version 1",
     "base": "complete",
+    "accept": false,
     "control": "complete as served",
-    "name": "artifact version 2",
     "set": [
       {
         "path": [
           "version"
         ],
-        "value": 2
+        "value": 1
       }
     ]
   },
   {
-    "accept": false,
+    "name": "artifact naming no publication revision",
     "base": "complete",
+    "accept": false,
     "control": "complete as served",
+    "set": [
+      {
+        "path": [
+          "revision"
+        ],
+        "value": "rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr"
+      }
+    ]
+  },
+  {
     "name": "artifact version as a boolean",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -3851,10 +3473,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "DSP delivery returned flag as a number",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -3871,10 +3493,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "artifact outcome outside its vocabulary",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -3893,10 +3515,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "DSP view with the paid view's observed state",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -3911,10 +3533,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "artifact serves two markets",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -3923,42 +3545,31 @@
         "value": [
           {
             "campaign_audiences": {
-              "basis_label": "DSP-attributed sales \u00f7 DSP spend \u00b7 14-day attribution, conversion date",
-              "limit_text": "Campaign grain shows which segments perform, not which line item to change.",
-              "pending_text": null,
-              "rows": [
+              "basis_label": "DSP-attributed sales ÷ DSP spend · 14-day attribution, conversion date",
+              "campaign_count": 1,
+              "index": [
                 {
                   "campaign_label": "Fall prospecting",
                   "campaign_ref": "campaign-1",
-                  "category_level_1": null,
-                  "category_path": null,
-                  "cpm_text": null,
-                  "display_name": "Demo - Age 25-34 \u00b7 Amazon",
-                  "name": "Demo - Age 25-34",
-                  "provider_label": "Amazon",
-                  "roas_text": null,
-                  "segment_cpm": {
-                    "currency": "USD",
-                    "text": "7.00 USD",
-                    "value": "7.00"
-                  },
-                  "segment_id": "41001",
-                  "segment_impressions": 30000,
-                  "segment_impressions_text": "30000",
-                  "segment_roas_attributed": "0.59",
-                  "segment_roas_attributed_text": "0.59x"
+                  "page_count": 1,
+                  "segment_count": 1,
+                  "state": "available",
+                  "text": null
                 }
               ],
-              "segment_ids_sentence": "DSP behaviour segments and Amazon audience segments (paid) use different IDs, so they're never linked or compared as one list.",
-              "shown_text": null
+              "index_shards": 1,
+              "limit_text": "Campaign grain shows which segments perform, not which line item to change.",
+              "pending_text": null,
+              "refused_text": null,
+              "segment_ids_sentence": "DSP behaviour segments and Amazon audience segments (paid) use different IDs, so they're never linked or compared as one list."
             },
             "default_view": "dsp_exposed_only",
             "outcome": "complete",
             "views": [
               {
-                "buyer_label": "Ad-touched buyers in the month \u00b7 may have bought before seeing an ad",
+                "buyer_label": "Ad-touched buyers in the month · may have bought before seeing an ad",
                 "callout": null,
-                "caption": "Amazon audience segments (paid) \u00b7 September 2026 \u00b7 segment figures never add up",
+                "caption": "Amazon audience segments (paid) · September 2026 · segment figures never add up",
                 "deliveries": [
                   {
                     "first_month_note": null,
@@ -3976,14 +3587,16 @@
                       }
                     ],
                     "label": "In-market",
+                    "page_count": 0,
+                    "paging_text": null,
                     "paid_state": {
-                      "expected_after": "2026-10-16",
                       "feature_observed": true,
+                      "period_published": false,
+                      "expected_after": "2026-10-16",
                       "latest_available_period": {
-                        "end": "2026-08-31",
-                        "start": "2026-08-01"
-                      },
-                      "period_published": false
+                        "start": "2026-08-01",
+                        "end": "2026-08-31"
+                      }
                     },
                     "period_text": "Figures for September 2026 are expected after 16 Oct 2026.",
                     "profile_path": "asi_in_market",
@@ -4012,14 +3625,16 @@
                       }
                     ],
                     "label": "Lifestyle",
+                    "page_count": 0,
+                    "paging_text": null,
                     "paid_state": {
-                      "expected_after": "2026-10-16",
                       "feature_observed": true,
+                      "period_published": false,
+                      "expected_after": "2026-10-16",
                       "latest_available_period": {
-                        "end": "2026-08-31",
-                        "start": "2026-08-01"
-                      },
-                      "period_published": false
+                        "start": "2026-08-01",
+                        "end": "2026-08-31"
+                      }
                     },
                     "period_text": "Figures for September 2026 are expected after 16 Oct 2026.",
                     "profile_path": "asi_lifestyle",
@@ -4042,9 +3657,9 @@
                 "view": "asi_all_exposed"
               },
               {
-                "buyer_label": "Ad-touched buyers in the month \u00b7 may have bought before seeing an ad",
+                "buyer_label": "Ad-touched buyers in the month · may have bought before seeing an ad",
                 "callout": null,
-                "caption": "DSP-exposed buyers only \u00b7 September 2026 \u00b7 segment figures never add up",
+                "caption": "DSP-exposed buyers only · September 2026 · segment figures never add up",
                 "deliveries": [
                   {
                     "first_month_note": null,
@@ -4062,6 +3677,8 @@
                       }
                     ],
                     "label": "DSP behaviour segments",
+                    "page_count": 1,
+                    "paging_text": null,
                     "paid_state": null,
                     "period_text": null,
                     "profile_path": "dsp_exposed_only",
@@ -4095,7 +3712,7 @@
                   {
                     "category_level_1": null,
                     "category_path": null,
-                    "display_name": "Demo - Age 25-34 \u00b7 Amazon",
+                    "display_name": "Demo - Age 25-34 · Amazon",
                     "name": "Demo - Age 25-34",
                     "profile_path": "dsp_exposed_only",
                     "provider_label": "Amazon",
@@ -4121,7 +3738,7 @@
                   {
                     "category_level_1": null,
                     "category_path": null,
-                    "display_name": "ExperianDemographicsGenderFemale_LiveRamp \u00b7 Third party",
+                    "display_name": "ExperianDemographicsGenderFemale_LiveRamp · Third party",
                     "name": "ExperianDemographicsGenderFemale_LiveRamp",
                     "profile_path": "dsp_exposed_only",
                     "provider_label": "Third party",
@@ -4152,42 +3769,31 @@
           },
           {
             "campaign_audiences": {
-              "basis_label": "DSP-attributed sales \u00f7 DSP spend \u00b7 14-day attribution, conversion date",
-              "limit_text": "Campaign grain shows which segments perform, not which line item to change.",
-              "pending_text": null,
-              "rows": [
+              "basis_label": "DSP-attributed sales ÷ DSP spend · 14-day attribution, conversion date",
+              "campaign_count": 1,
+              "index": [
                 {
                   "campaign_label": "Fall prospecting",
                   "campaign_ref": "campaign-1",
-                  "category_level_1": null,
-                  "category_path": null,
-                  "cpm_text": null,
-                  "display_name": "Demo - Age 25-34 \u00b7 Amazon",
-                  "name": "Demo - Age 25-34",
-                  "provider_label": "Amazon",
-                  "roas_text": null,
-                  "segment_cpm": {
-                    "currency": "USD",
-                    "text": "7.00 USD",
-                    "value": "7.00"
-                  },
-                  "segment_id": "41001",
-                  "segment_impressions": 30000,
-                  "segment_impressions_text": "30000",
-                  "segment_roas_attributed": "0.59",
-                  "segment_roas_attributed_text": "0.59x"
+                  "page_count": 1,
+                  "segment_count": 1,
+                  "state": "available",
+                  "text": null
                 }
               ],
-              "segment_ids_sentence": "DSP behaviour segments and Amazon audience segments (paid) use different IDs, so they're never linked or compared as one list.",
-              "shown_text": null
+              "index_shards": 1,
+              "limit_text": "Campaign grain shows which segments perform, not which line item to change.",
+              "pending_text": null,
+              "refused_text": null,
+              "segment_ids_sentence": "DSP behaviour segments and Amazon audience segments (paid) use different IDs, so they're never linked or compared as one list."
             },
             "default_view": "dsp_exposed_only",
             "outcome": "complete",
             "views": [
               {
-                "buyer_label": "Ad-touched buyers in the month \u00b7 may have bought before seeing an ad",
+                "buyer_label": "Ad-touched buyers in the month · may have bought before seeing an ad",
                 "callout": null,
-                "caption": "Amazon audience segments (paid) \u00b7 September 2026 \u00b7 segment figures never add up",
+                "caption": "Amazon audience segments (paid) · September 2026 · segment figures never add up",
                 "deliveries": [
                   {
                     "first_month_note": null,
@@ -4205,14 +3811,16 @@
                       }
                     ],
                     "label": "In-market",
+                    "page_count": 0,
+                    "paging_text": null,
                     "paid_state": {
-                      "expected_after": "2026-10-16",
                       "feature_observed": true,
+                      "period_published": false,
+                      "expected_after": "2026-10-16",
                       "latest_available_period": {
-                        "end": "2026-08-31",
-                        "start": "2026-08-01"
-                      },
-                      "period_published": false
+                        "start": "2026-08-01",
+                        "end": "2026-08-31"
+                      }
                     },
                     "period_text": "Figures for September 2026 are expected after 16 Oct 2026.",
                     "profile_path": "asi_in_market",
@@ -4241,14 +3849,16 @@
                       }
                     ],
                     "label": "Lifestyle",
+                    "page_count": 0,
+                    "paging_text": null,
                     "paid_state": {
-                      "expected_after": "2026-10-16",
                       "feature_observed": true,
+                      "period_published": false,
+                      "expected_after": "2026-10-16",
                       "latest_available_period": {
-                        "end": "2026-08-31",
-                        "start": "2026-08-01"
-                      },
-                      "period_published": false
+                        "start": "2026-08-01",
+                        "end": "2026-08-31"
+                      }
                     },
                     "period_text": "Figures for September 2026 are expected after 16 Oct 2026.",
                     "profile_path": "asi_lifestyle",
@@ -4271,9 +3881,9 @@
                 "view": "asi_all_exposed"
               },
               {
-                "buyer_label": "Ad-touched buyers in the month \u00b7 may have bought before seeing an ad",
+                "buyer_label": "Ad-touched buyers in the month · may have bought before seeing an ad",
                 "callout": null,
-                "caption": "DSP-exposed buyers only \u00b7 September 2026 \u00b7 segment figures never add up",
+                "caption": "DSP-exposed buyers only · September 2026 · segment figures never add up",
                 "deliveries": [
                   {
                     "first_month_note": null,
@@ -4291,6 +3901,8 @@
                       }
                     ],
                     "label": "DSP behaviour segments",
+                    "page_count": 1,
+                    "paging_text": null,
                     "paid_state": null,
                     "period_text": null,
                     "profile_path": "dsp_exposed_only",
@@ -4324,7 +3936,7 @@
                   {
                     "category_level_1": null,
                     "category_path": null,
-                    "display_name": "Demo - Age 25-34 \u00b7 Amazon",
+                    "display_name": "Demo - Age 25-34 · Amazon",
                     "name": "Demo - Age 25-34",
                     "profile_path": "dsp_exposed_only",
                     "provider_label": "Amazon",
@@ -4350,7 +3962,7 @@
                   {
                     "category_level_1": null,
                     "category_path": null,
-                    "display_name": "ExperianDemographicsGenderFemale_LiveRamp \u00b7 Third party",
+                    "display_name": "ExperianDemographicsGenderFemale_LiveRamp · Third party",
                     "name": "ExperianDemographicsGenderFemale_LiveRamp",
                     "profile_path": "dsp_exposed_only",
                     "provider_label": "Third party",
@@ -4384,10 +3996,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "market views swapped",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -4397,9 +4009,9 @@
         ],
         "value": [
           {
-            "buyer_label": "Ad-touched buyers in the month \u00b7 may have bought before seeing an ad",
+            "buyer_label": "Ad-touched buyers in the month · may have bought before seeing an ad",
             "callout": null,
-            "caption": "DSP-exposed buyers only \u00b7 September 2026 \u00b7 segment figures never add up",
+            "caption": "DSP-exposed buyers only · September 2026 · segment figures never add up",
             "deliveries": [
               {
                 "first_month_note": null,
@@ -4417,6 +4029,8 @@
                   }
                 ],
                 "label": "DSP behaviour segments",
+                "page_count": 1,
+                "paging_text": null,
                 "paid_state": null,
                 "period_text": null,
                 "profile_path": "dsp_exposed_only",
@@ -4450,7 +4064,7 @@
               {
                 "category_level_1": null,
                 "category_path": null,
-                "display_name": "Demo - Age 25-34 \u00b7 Amazon",
+                "display_name": "Demo - Age 25-34 · Amazon",
                 "name": "Demo - Age 25-34",
                 "profile_path": "dsp_exposed_only",
                 "provider_label": "Amazon",
@@ -4476,7 +4090,7 @@
               {
                 "category_level_1": null,
                 "category_path": null,
-                "display_name": "ExperianDemographicsGenderFemale_LiveRamp \u00b7 Third party",
+                "display_name": "ExperianDemographicsGenderFemale_LiveRamp · Third party",
                 "name": "ExperianDemographicsGenderFemale_LiveRamp",
                 "profile_path": "dsp_exposed_only",
                 "provider_label": "Third party",
@@ -4504,9 +4118,9 @@
             "view": "dsp_exposed_only"
           },
           {
-            "buyer_label": "Ad-touched buyers in the month \u00b7 may have bought before seeing an ad",
+            "buyer_label": "Ad-touched buyers in the month · may have bought before seeing an ad",
             "callout": null,
-            "caption": "Amazon audience segments (paid) \u00b7 September 2026 \u00b7 segment figures never add up",
+            "caption": "Amazon audience segments (paid) · September 2026 · segment figures never add up",
             "deliveries": [
               {
                 "first_month_note": null,
@@ -4524,14 +4138,16 @@
                   }
                 ],
                 "label": "In-market",
+                "page_count": 0,
+                "paging_text": null,
                 "paid_state": {
-                  "expected_after": "2026-10-16",
                   "feature_observed": true,
+                  "period_published": false,
+                  "expected_after": "2026-10-16",
                   "latest_available_period": {
-                    "end": "2026-08-31",
-                    "start": "2026-08-01"
-                  },
-                  "period_published": false
+                    "start": "2026-08-01",
+                    "end": "2026-08-31"
+                  }
                 },
                 "period_text": "Figures for September 2026 are expected after 16 Oct 2026.",
                 "profile_path": "asi_in_market",
@@ -4560,14 +4176,16 @@
                   }
                 ],
                 "label": "Lifestyle",
+                "page_count": 0,
+                "paging_text": null,
                 "paid_state": {
-                  "expected_after": "2026-10-16",
                   "feature_observed": true,
+                  "period_published": false,
+                  "expected_after": "2026-10-16",
                   "latest_available_period": {
-                    "end": "2026-08-31",
-                    "start": "2026-08-01"
-                  },
-                  "period_published": false
+                    "start": "2026-08-01",
+                    "end": "2026-08-31"
+                  }
                 },
                 "period_text": "Figures for September 2026 are expected after 16 Oct 2026.",
                 "profile_path": "asi_lifestyle",
@@ -4594,10 +4212,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "market carries one view",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -4607,9 +4225,9 @@
         ],
         "value": [
           {
-            "buyer_label": "Ad-touched buyers in the month \u00b7 may have bought before seeing an ad",
+            "buyer_label": "Ad-touched buyers in the month · may have bought before seeing an ad",
             "callout": null,
-            "caption": "Amazon audience segments (paid) \u00b7 September 2026 \u00b7 segment figures never add up",
+            "caption": "Amazon audience segments (paid) · September 2026 · segment figures never add up",
             "deliveries": [
               {
                 "first_month_note": null,
@@ -4627,14 +4245,16 @@
                   }
                 ],
                 "label": "In-market",
+                "page_count": 0,
+                "paging_text": null,
                 "paid_state": {
-                  "expected_after": "2026-10-16",
                   "feature_observed": true,
+                  "period_published": false,
+                  "expected_after": "2026-10-16",
                   "latest_available_period": {
-                    "end": "2026-08-31",
-                    "start": "2026-08-01"
-                  },
-                  "period_published": false
+                    "start": "2026-08-01",
+                    "end": "2026-08-31"
+                  }
                 },
                 "period_text": "Figures for September 2026 are expected after 16 Oct 2026.",
                 "profile_path": "asi_in_market",
@@ -4663,14 +4283,16 @@
                   }
                 ],
                 "label": "Lifestyle",
+                "page_count": 0,
+                "paging_text": null,
                 "paid_state": {
-                  "expected_after": "2026-10-16",
                   "feature_observed": true,
+                  "period_published": false,
+                  "expected_after": "2026-10-16",
                   "latest_available_period": {
-                    "end": "2026-08-31",
-                    "start": "2026-08-01"
-                  },
-                  "period_published": false
+                    "start": "2026-08-01",
+                    "end": "2026-08-31"
+                  }
                 },
                 "period_text": "Figures for September 2026 are expected after 16 Oct 2026.",
                 "profile_path": "asi_lifestyle",
@@ -4697,10 +4319,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "paid deliveries reordered",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -4727,14 +4349,16 @@
               }
             ],
             "label": "Lifestyle",
+            "page_count": 0,
+            "paging_text": null,
             "paid_state": {
-              "expected_after": "2026-10-16",
               "feature_observed": true,
+              "period_published": false,
+              "expected_after": "2026-10-16",
               "latest_available_period": {
-                "end": "2026-08-31",
-                "start": "2026-08-01"
-              },
-              "period_published": false
+                "start": "2026-08-01",
+                "end": "2026-08-31"
+              }
             },
             "period_text": "Figures for September 2026 are expected after 16 Oct 2026.",
             "profile_path": "asi_lifestyle",
@@ -4763,14 +4387,16 @@
               }
             ],
             "label": "In-market",
+            "page_count": 0,
+            "paging_text": null,
             "paid_state": {
-              "expected_after": "2026-10-16",
               "feature_observed": true,
+              "period_published": false,
+              "expected_after": "2026-10-16",
               "latest_available_period": {
-                "end": "2026-08-31",
-                "start": "2026-08-01"
-              },
-              "period_published": false
+                "start": "2026-08-01",
+                "end": "2026-08-31"
+              }
             },
             "period_text": "Figures for September 2026 are expected after 16 Oct 2026.",
             "profile_path": "asi_in_market",
@@ -4788,10 +4414,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "paid delivery missing",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -4818,14 +4444,16 @@
               }
             ],
             "label": "In-market",
+            "page_count": 0,
+            "paging_text": null,
             "paid_state": {
-              "expected_after": "2026-10-16",
               "feature_observed": true,
+              "period_published": false,
+              "expected_after": "2026-10-16",
               "latest_available_period": {
-                "end": "2026-08-31",
-                "start": "2026-08-01"
-              },
-              "period_published": false
+                "start": "2026-08-01",
+                "end": "2026-08-31"
+              }
             },
             "period_text": "Figures for September 2026 are expected after 16 Oct 2026.",
             "profile_path": "asi_in_market",
@@ -4843,10 +4471,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "insight id replaced",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -4865,10 +4493,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "insight output class replaced",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -4887,10 +4515,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "insight state replaced",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -4909,10 +4537,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "silent insight without its absence class",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -4931,10 +4559,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "in_roster_unavailable",
-    "control": "in-roster unavailable as served",
     "name": "filled insight with an absence class",
+    "base": "in_roster_unavailable",
+    "accept": false,
+    "control": "in-roster unavailable as served",
     "set": [
       {
         "path": [
@@ -4953,10 +4581,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "in_roster_unavailable",
-    "control": "in-roster unavailable as served",
     "name": "filled insight without its text",
+    "base": "in_roster_unavailable",
+    "accept": false,
+    "control": "in-roster unavailable as served",
     "set": [
       {
         "path": [
@@ -4975,10 +4603,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "served page context label blank",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [
@@ -4989,10 +4617,10 @@
     ]
   },
   {
-    "accept": false,
-    "base": "complete",
-    "control": "complete as served",
     "name": "served page context expiry blank",
+    "base": "complete",
+    "accept": false,
+    "control": "complete as served",
     "set": [
       {
         "path": [

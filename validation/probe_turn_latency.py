@@ -19,6 +19,11 @@ the telemetry-derived bake interval are known only after the bake, so `--bind-dr
 --output <sample>` binds them later and writes the `ChatLatencySampleV1` artifact. A refused or
 malformed bind writes nothing.
 
+The latency diagnosis (`--turns <ChatLatencyTurnsV1 list>`, instead of `--manifest`) runs a
+class-labelled turn list of 2 to 60 turns through the same per-turn run and join. Each turn's
+evidence and the summary carry its class, and the summary groups first-text, after-tool-text and
+stream-end percentiles by class. It takes no D8 sample flag: D8 samples stay six-prompt only.
+
 For each turn it joins five sources by the turn's own correlation, trace, and time window:
 
 1. the client's own arrival times: response headers, first event, first text, each tool event,
@@ -55,6 +60,7 @@ from typing import Any, cast
 import boto3
 from accept_managed_harness import (
     _decoded_frames,  # pyright: ignore[reportPrivateUsage]
+    _StageError,  # pyright: ignore[reportPrivateUsage]
 )
 from cognito_personas import app_client, load_persona, published_parameter, sign_in
 
@@ -82,6 +88,10 @@ _HARNESS_LOG_PREFIX = "/aws/bedrock-agentcore/runtimes/harness_"
 _QUERY_TIMEOUT_SECONDS = 90
 # Spans, EMF, and Lambda logs arrive in CloudWatch after the turn; wait before reading them.
 _TELEMETRY_SETTLE_SECONDS = 75
+_SIGN_IN_REFRESH_SECONDS = 600
+"""Sign the persona in again after 10 minutes: its Cognito access token lives 15 (the auth
+stack's `accessTokenValidity`), and the route refuses an expired one with 403, so a run longer
+than one token never sends a turn on an expiring one."""
 _MAX_FILTER_PAGES = 400
 _DURATION = re.compile(r"\bDuration: ([\d.]+) ms")
 _INIT_DURATION = re.compile(r"Init Duration: ([\d.]+) ms")
@@ -217,6 +227,224 @@ def with_outside_list_item(manifest: ChatManifest, item: str) -> ChatManifest:
         for step in manifest.steps
     )
     return ChatManifest(manifest.path, manifest.sha256, manifest.persona_id, item, steps)
+
+
+LATENCY_TURNS_SCHEMA = "chat-latency-turns/v1"
+TURN_CLASSES = ("warm_up", "single_tool", "multi_tool", "clarification")
+"""The closed turn classes of a latency turn list; exactly one `warm_up`, and it runs first."""
+MIN_LATENCY_TURNS = 2
+MAX_LATENCY_TURNS = 60
+MAX_QUESTION_CHARS = 2_000
+_TURN_ID = re.compile(r"^[a-z0-9-]{1,40}$")
+_TURN_FIELDS = frozenset({"turn_id", "class", "conversation", "question", "follow_up_of"})
+
+
+@dataclass(frozen=True, slots=True)
+class LatencyTurns:
+    """A class-labelled turn list for the latency diagnosis (`ChatLatencyTurnsV1`).
+
+    `steps` run through the same per-turn run and join as the manifest's; `classes[i]` labels
+    `steps[i]`. It is never a D8 sample: the six-prompt manifest stays the only sample input.
+    """
+
+    path: Path
+    sha256: str
+    persona_id: str
+    steps: tuple[Step, ...]
+    classes: tuple[str, ...]
+
+
+def _latency_turn(item: object, earlier: Mapping[str, str]) -> tuple[Step, str]:
+    """Validate one turn against the turns before it; return its step and class."""
+    if not isinstance(item, dict) or not frozenset(cast("dict[str, object]", item)) <= _TURN_FIELDS:
+        raise SampleError("a latency turn is malformed")
+    turn = cast("dict[str, object]", item)
+    turn_id, kind = turn.get("turn_id"), turn.get("class")
+    conversation, question = turn.get("conversation"), turn.get("question")
+    if not isinstance(turn_id, str) or _TURN_ID.fullmatch(turn_id) is None:
+        raise SampleError("a latency turn_id is not [a-z0-9-]{1,40}")
+    if turn_id in earlier:
+        raise SampleError("a latency turn_id is repeated")
+    if kind not in TURN_CLASSES:
+        raise SampleError("a latency turn has an unknown class")
+    if not isinstance(conversation, str) or not conversation.strip():
+        raise SampleError("a latency turn has a blank conversation")
+    if not isinstance(question, str) or not question.strip():
+        raise SampleError("a latency turn has a blank question")
+    if len(question) > MAX_QUESTION_CHARS:
+        raise SampleError("a latency turn question is over 2,000 characters")
+    if OUTSIDE_PLACEHOLDER in question:
+        raise SampleError("a latency turn names the outside-list placeholder")
+    follow_up = turn.get("follow_up_of")
+    if follow_up is not None and (
+        not isinstance(follow_up, str) or earlier.get(follow_up) != conversation
+    ):
+        raise SampleError("a latency follow_up_of names no earlier turn of its conversation")
+    return Step(turn_id, conversation, question), cast("str", kind)
+
+
+def load_latency_turns(path: Path) -> LatencyTurns:
+    """Load a `ChatLatencyTurnsV1` list; any violation refuses the whole list and nothing runs."""
+    raw = path.read_bytes()
+    try:
+        document: object = json.loads(raw)
+    except json.JSONDecodeError as error:
+        raise SampleError("the latency turn list is not JSON") from error
+    if not isinstance(document, dict) or document.get("schema_version") != LATENCY_TURNS_SCHEMA:
+        raise SampleError("the latency turn list has the wrong schema")
+    typed = cast("dict[str, object]", document)
+    if typed.get("persona_id") != "probe-a":
+        raise SampleError("the latency turn list must name the probe-a persona")
+    turns = typed.get("turns")
+    if not isinstance(turns, list):
+        raise SampleError("the latency turn list has no turns")
+    items = cast("list[object]", turns)
+    if not MIN_LATENCY_TURNS <= len(items) <= MAX_LATENCY_TURNS:
+        raise SampleError("the latency turn list must hold 2 to 60 turns")
+    earlier: dict[str, str] = {}
+    steps: list[Step] = []
+    classes: list[str] = []
+    for item in items:
+        step, kind = _latency_turn(item, earlier)
+        earlier[step.label] = step.conversation
+        steps.append(step)
+        classes.append(kind)
+    if classes.count("warm_up") != 1 or classes[0] != "warm_up":
+        raise SampleError("the latency turn list needs exactly one warm_up, first")
+    return LatencyTurns(
+        path, hashlib.sha256(raw).hexdigest(), "probe-a", tuple(steps), tuple(classes)
+    )
+
+
+def nearest_rank(values: Sequence[int], percent: int) -> int:
+    """Return the nearest-rank percentile, `sorted(values)[ceil(percent/100*n)-1]`."""
+    if not values:
+        raise ValueError("a percentile needs at least one value")
+    ordered = sorted(values)
+    return ordered[-(-percent * len(ordered) // 100) - 1]
+
+
+_CLASS_MEASURES = {
+    "first_text": "first_text",
+    "after_tool_text": "first_answer_text",
+    "stream_end": "stream_end",
+}
+
+
+def class_percentiles(summaries: Sequence[Mapping[str, object]]) -> dict[str, object]:
+    """Group first-text, after-tool-text and stream-end client times by turn class.
+
+    Each measure is n, nearest-rank median and nearest-rank p95 over the turns of that class
+    that observed it. The warm-up turn is discarded, as the method runs warm after it.
+    """
+    grouped: dict[str, object] = {}
+    for kind in TURN_CLASSES[1:]:
+        rows = [row for row in summaries if row.get("class") == kind]
+        measures: dict[str, object] = {"turns": len(rows)}
+        for measure, client_key in _CLASS_MEASURES.items():
+            values = [
+                value
+                for row in rows
+                for value in [cast("Mapping[str, object]", row["client_ms"]).get(client_key)]
+                if isinstance(value, int)
+            ]
+            measures[measure] = (
+                {
+                    "n": len(values),
+                    "median_ms": nearest_rank(values, 50),
+                    "p95_ms": nearest_rank(values, 95),
+                }
+                if values
+                else {"n": 0, "median_ms": None, "p95_ms": None}
+            )
+        grouped[kind] = measures
+    return grouped
+
+
+def latency_turns_summary(
+    turn_list: LatencyTurns, summaries: Sequence[Mapping[str, object]]
+) -> dict[str, object]:
+    """Build the `--turns` summary: the list it ran, every labelled turn, and the class groups."""
+    return {
+        "schema_version": "chat-latency-summary/v1",
+        "turns_path": turn_list.path.name,
+        "turns_sha256": turn_list.sha256,
+        "rule": "nearest-rank sorted(values)[ceil(p/100*n)-1]; the warm_up turn is discarded",
+        "by_class": class_percentiles(summaries),
+        "turns": [dict(row) for row in summaries],
+    }
+
+
+def hop_split(
+    times: ClientTimes,
+    *,
+    route_spans: Sequence[Mapping[str, object]],
+    harness: Mapping[str, object],
+    timing: Mapping[str, object],
+) -> dict[str, object]:
+    """Split send to stream end at the route span's start and the harness span's start (Q0).
+
+    Read from existing spans only: the client's send instant and stream end, the route's
+    `conversation.turn` span start and the Harness's `POST /invocations` start. Each hop crosses
+    hosts' clocks, so it is inferred, not one clock. A hop whose span is missing is None and
+    named in `unmeasured`, never substituted.
+    """
+    turn = next((span for span in route_spans if span["name"] == "conversation.turn"), None)
+    route_start = cast("int", turn["start_epoch_ms"]) if turn is not None else None
+    post = harness.get("post_start_epoch_ms")
+    harness_start = post if isinstance(post, int) else None
+    end = None if times.stream_end_ms is None else times.sent_epoch_ms + times.stream_end_ms
+    unmeasured = [
+        name
+        for name, value in (
+            ("route_span", route_start),
+            ("harness_span", harness_start),
+            ("stream_end", end),
+        )
+        if value is None
+    ]
+
+    def gap(later: int | None, earlier: int | None) -> int | None:
+        return None if later is None or earlier is None else later - earlier
+
+    return {
+        "client_send_to_route_start_ms": gap(route_start, times.sent_epoch_ms),
+        "route_start_to_harness_start_ms": gap(harness_start, route_start),
+        "harness_start_to_stream_end_ms": gap(end, harness_start),
+        "harness_total_ms": harness.get("harness_total_ms"),
+        "route_cold_start": timing.get("cold_start"),
+        "invoke_harness_spans": sum(
+            1 for span in route_spans if span["name"] == "Bedrock AgentCore.InvokeHarness"
+        ),
+        "unmeasured": unmeasured,
+    }
+
+
+_D8_FLAGS = (
+    "phase",
+    "output",
+    "acceptance_execution_id",
+    "accepted_generation",
+    "generation_unit",
+    "preflight_completed_at",
+    "graph_store_stack",
+    "target_cohort_revision",
+    "outside_selection_receipt",
+    "bind_draft",
+    "select_outside_list_item",
+    "first_root_launch_at",
+    "target_bake_run_id",
+    "bake_run_started_at",
+    "bake_finalize_ended_at",
+)
+
+
+def refuse_d8_flags_with_turns(args: argparse.Namespace) -> None:
+    """D8 samples stay six-prompt only: `--turns` takes no sample, bind or selection flag."""
+    named = [name for name in _D8_FLAGS if getattr(args, name, None)]
+    if named:
+        flags = ", ".join(f"--{name.replace('_', '-')}" for name in named)
+        raise SampleError(f"--turns takes no D8 sample flag ({flags})")
 
 
 def _sorted_campaign_keys(keys: object, what: str) -> list[str]:
@@ -547,6 +775,10 @@ class ClientTimes:
     text_deltas: int = 0
     released_text: str = ""
     refusal_reason: str = ""
+    stream_error: str | None = None
+    """Why the body was not a complete SSE stream (an error page), or None; never its text."""
+    content_type: str = ""
+    body_bytes: int = 0
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -557,7 +789,13 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--expected-account", required=True)
     parser.add_argument("--gap-seconds", type=int, default=45)
     parser.add_argument("--rounds", type=int, default=1, choices=range(1, 6), metavar="1-5")
-    parser.add_argument("--manifest", type=Path, required=True)
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--manifest", type=Path)
+    source.add_argument(
+        "--turns",
+        type=Path,
+        help="A class-labelled ChatLatencyTurnsV1 list (latency diagnosis; no D8 sample flags).",
+    )
     parser.add_argument("--phase", choices=sorted(_PHASES))
     parser.add_argument("--output", type=Path)
     parser.add_argument("--acceptance-execution-id")
@@ -590,12 +828,29 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def needs_sign_in(signed_in_at: float, now: float) -> bool:
+    """Whether the persona's token is old enough to be refreshed before the next turn."""
+    return now - signed_in_at >= _SIGN_IN_REFRESH_SECONDS
+
+
 def _ms(seconds: float | None) -> int | None:
     return None if seconds is None else round(seconds * 1000)
 
 
-def _call(*, origin: str, token: str, csrf: str, question: str, session_id: str) -> ClientTimes:
-    """Send one turn and stamp every arrival against the moment the request left."""
+def _call(
+    *,
+    origin: str,
+    token: str,
+    csrf: str,
+    question: str,
+    session_id: str,
+    record_stream_errors: bool = False,
+) -> ClientTimes:
+    """Send one turn and stamp every arrival against the moment the request left.
+
+    With `record_stream_errors` (the `--turns` diagnosis) a body that isn't a complete SSE
+    stream is recorded on the turn and the run continues; a D8 sample still refuses it.
+    """
     payload = json.dumps(
         {
             "schema_version": "ConversationRequest.v3",
@@ -632,7 +887,17 @@ def _call(*, origin: str, token: str, csrf: str, question: str, session_id: str)
         # The body's end, which the browser waits for after `done` (frontend `sendChat`).
         times.stream_end_ms = _ms(time.monotonic() - started)
     times.ended_epoch_ms = int(time.time() * 1000)
-    events, _ = _decoded_frames(chunks)
+    times.content_type = response.headers.get("content-type", "")[:80]
+    times.body_bytes = sum(len(chunk) for _, chunk in chunks)
+    try:
+        events, _ = _decoded_frames(chunks)
+    except _StageError as error:
+        # A body that isn't a complete SSE stream (a gateway or error page) is this turn's
+        # recorded failure; the run continues, so no other turn's telemetry is lost.
+        if not record_stream_errors:
+            raise
+        times.stream_error = error.reason
+        events = []
     texts = [at for at, event in events if isinstance(event, ConversationTextEventV4)]
     tools = [(at, event) for at, event in events if isinstance(event, ConversationToolEventV4)]
     last_tool = max((at for at, _ in tools), default=None)
@@ -1813,30 +2078,46 @@ def _select_main(args: argparse.Namespace, ports: SelectionPorts | None = None) 
 def main(argv: list[str] | None = None) -> int:
     """Run the sequence, join each turn's telemetry, and print the sanitized breakdown."""
     args = _parser().parse_args(argv)
+    turn_list: LatencyTurns | None = None
+    if args.turns is not None:
+        try:
+            refuse_d8_flags_with_turns(args)
+            turn_list = load_latency_turns(args.turns)
+        except (OSError, SampleError) as error:
+            print(f"the latency turn list is refused: {error}")
+            return 2
     if args.bind_draft is not None or args.select_outside_list_item:
         return _bind_main(args) if args.bind_draft is not None else _select_main(args)
     if args.environment != "dev" or args.region != _REGION:
         print("this probe runs only against the approved dev region")
         return 2
-    try:
-        selection = _recorded_selection(args)
-        manifest = with_outside_list_item(
-            load_chat_manifest(args.manifest), selection["outside_list_item"]
-        )
-    except (OSError, json.JSONDecodeError, SampleError) as error:
-        print(f"the chat manifest is refused: {error}")
-        return 2
+    manifest: ChatManifest | None = None
+    selection: dict[str, Any] = {}
+    if turn_list is None:
+        try:
+            selection = _recorded_selection(args)
+            manifest = with_outside_list_item(
+                load_chat_manifest(args.manifest), selection["outside_list_item"]
+            )
+        except (OSError, json.JSONDecodeError, SampleError) as error:
+            print(f"the chat manifest is refused: {error}")
+            return 2
+    steps = manifest.steps if manifest is not None else cast("LatencyTurns", turn_list).steps
+    classes = (
+        dict(zip((step.label for step in turn_list.steps), turn_list.classes, strict=True))
+        if turn_list is not None
+        else {}
+    )
     session = boto3.Session(profile_name=args.profile, region_name=args.region)
     if session.client("sts").get_caller_identity()["Account"] != args.expected_account:
         print("explicit profile did not resolve to the expected account")
         return 2
     ssm = session.client("ssm")
     origin = published_parameter(ssm, args.environment, "publicBaseUrl").rstrip("/")
-    tokens = sign_in(
-        session.client("cognito-idp"),
-        load_persona(ssm, args.environment, "probe-a"),
-        app_client(session, args.environment),
-    )
+    persona = load_persona(ssm, args.environment, "probe-a")
+    client = app_client(session, args.environment)
+    tokens = sign_in(session.client("cognito-idp"), persona, client)
+    signed_in_at = time.monotonic()
     csrf = secrets.token_urlsafe(24)
     logs = _Logs(session)
     groups = _stack_log_groups(session, args.environment)
@@ -1852,22 +2133,24 @@ def main(argv: list[str] | None = None) -> int:
     sample_started = datetime.datetime.now(datetime.UTC).isoformat()
     turns: list[tuple[int, Step, ClientTimes]] = []
     for round_index in range(args.rounds):
-        conversations = {
-            step.conversation: f"turn-latency-{uuid.uuid4()}" for step in manifest.steps
-        }
-        for step in manifest.steps:
+        conversations = {step.conversation: f"turn-latency-{uuid.uuid4()}" for step in steps}
+        for step in steps:
             receipt = (
                 phase_reads.head()
                 if phase_reads is not None and args.phase == "during-bake"
                 else None
             )
             before = None if phase_reads is None else phase_reads.generation()
+            if needs_sign_in(signed_in_at, time.monotonic()):
+                tokens = sign_in(session.client("cognito-idp"), persona, client)
+                signed_in_at = time.monotonic()
             times = _call(
                 origin=origin,
                 token=tokens.access_token,
                 csrf=csrf,
                 question=step.question,
                 session_id=conversations[step.conversation],
+                record_stream_errors=turn_list is not None,
             )
             turns.append((round_index, step, times))
             if phase_reads is not None and before is not None:
@@ -1887,11 +2170,17 @@ def main(argv: list[str] | None = None) -> int:
             print(
                 f"ran {step.label} round {round_index + 1}: status {times.status}, "
                 f"terminal {times.terminal}, first text {times.first_text_ms} ms, "
-                f"terminal at {times.terminal_ms} ms",
+                f"terminal at {times.terminal_ms} ms"
+                + (
+                    ""
+                    if times.stream_error is None
+                    else f", stream {times.stream_error} ({times.content_type}, "
+                    f"{times.body_bytes} B)"
+                ),
                 flush=True,
             )
             time.sleep(args.gap_seconds)
-    if args.phase is not None:
+    if args.phase is not None and manifest is not None:
         try:
             write_atomic(
                 Path(args.output),
@@ -1945,6 +2234,9 @@ def main(argv: list[str] | None = None) -> int:
             "turn": step.label,
             "status": times.status,
             "terminal": times.terminal,
+            "stream_error": times.stream_error,
+            "content_type": times.content_type,
+            "body_bytes": times.body_bytes,
             # The client's send time, so offsets below can be placed on the wall clock later.
             "sent_epoch_ms": times.sent_epoch_ms,
             "client_ms": {
@@ -1994,7 +2286,10 @@ def main(argv: list[str] | None = None) -> int:
             "harness_runtime": _harness_metrics(logs, harness_group, times),
             "harness_session": _harness_session_start(logs, harness_group, times),
             "lambda_reports": _lambda_reports(logs, groups, times),
+            "hop_split": hop_split(times, route_spans=route_spans, harness=harness, timing=timing),
         }
+        if classes:
+            summary["class"] = classes[step.label]
         summaries.append(summary)
         (evidence_dir / f"{round_index + 1}-{step.label}.json").write_text(
             json.dumps(
@@ -2009,10 +2304,13 @@ def main(argv: list[str] | None = None) -> int:
             ),
             encoding="utf-8",
         )
+    document: object = summaries
+    if turn_list is not None:
+        document = latency_turns_summary(turn_list, summaries)
     (evidence_dir / "turn-latency-summary.json").write_text(
-        json.dumps(summaries, indent=1), encoding="utf-8"
+        json.dumps(document, indent=1), encoding="utf-8"
     )
-    print(json.dumps(summaries, indent=1))
+    print(json.dumps(document, indent=1))
     shown = evidence_dir.relative_to(_ROOT) if evidence_dir.is_relative_to(_ROOT) else evidence_dir
     print(f"evidence: {shown}")
     return 0 if all(item["terminal"] == "done" for item in summaries) else 1

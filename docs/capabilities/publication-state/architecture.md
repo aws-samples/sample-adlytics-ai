@@ -6,9 +6,12 @@ Publication State stores four independent records: append-only attempt events, e
 leases, immutable successful publications, and conditional `CURRENT` selectors. A resolver strongly
 reads selectors and their referenced immutable successes before returning exact coverage.
 
-One verified exact read supports at most **100 logical partitions**; a scope read covers every
-GSI-discovered key, discovered once per call, in chunks of 100. A serving read uses five ordered
-DynamoDB transactional reads (an authority read skips P and P'):
+One verified exact read supports at most **1,000 logical partitions** (`MAX_EXACT_CURRENT_PARTITIONS`,
+a cost bound: at the p95 in-Region latency measured on dev, 95.0 ms per transaction, the worst read,
+3 attempts × 3 × 10 transactions, takes 8.6 s of the presentation function's 29 s and leaves the
+following Athena statement its 20 s: ADR-070 2026-10-25); a scope read covers every GSI-discovered key, discovered once per call. Each phase
+reads in ordered transactions of at most 100 items, so DynamoDB calls grow by one per 100 partitions
+per phase. A serving read uses five ordered phases (an authority read skips P and P'):
 
 1. **Discover heads (A).** Read every requested complete size-guarded `CURRENT` envelope and
    normalize its servable state through the closed decoder below.
@@ -63,11 +66,12 @@ Each phase contains at most one item per logical partition. DynamoDB supports an
 100 items in one atomic `TransactGetItems`, with serializable isolation against writes and a 4 MB
 aggregate response limit. A/C read complete `CURRENT` envelopes and B reads immutable publications;
 both item forms share the existing per-item guard derived from
-`(4 MB - 800,000 bytes headroom) / 100`, so a worst-case 100-item phase remains below the aggregate
-limit including request/response framing. The 100-partition boundary is rejected before I/O when
-either item count or the existing encoded-item guard cannot hold.
+`(4 MB - 800,000 bytes headroom) / 100`, so a worst-case 100-item transaction remains below the
+aggregate limit including request/response framing. A read over the partition bound is rejected
+before I/O.
 
-A=C bridges the three transactions because the write authority is monotonic:
+A=C bridges the phases, and every transaction within a phase, because the write authority is
+monotonic:
 
 - a missing `CURRENT` may become present but is never deleted/recreated, so `ABSENT` cannot recur;
 - first creation may seed `NONE`; only a positive-fence projection can replace it, no writer can set
@@ -77,6 +81,12 @@ A=C bridges the three transactions because the write authority is monotonic:
 - legacy-to-explicit projection of the same authority pair is the same normalized servable state;
 - an authority advance while the projected predecessor stays selected does not change normalized
   servability and therefore remains available.
+
+So a head that reads the same in A and C held that value throughout. Every A transaction precedes
+every C transaction, so each partition's unchanged interval contains the instant between the last A
+and the first C, and an accepted vector is the table at that instant however many transactions a
+phase takes ([ADR-070](../../decisions/adr-070-serve-declared-preset-windows-from-publish-time-artifacts.md),
+2026-10-25; `tests/unit/test_exact_snapshot_chunks.py`).
 
 A resolved move between A and C (a servable advance, or a window flip inside the read) changes the
 resolved vector and refuses that attempt before any query starts. An authority-only commit, another

@@ -36,9 +36,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Protocol, runtime_checkable
+from enum import StrEnum
+from typing import Final, Protocol, runtime_checkable
 
 from domain.measurement.publications import BoundQueryPlan
+from domain.measurement.ranking import RankedPopulation, RankedRead
+from domain.operations.bake_memory import BAKER_MEMORY_BYTES, bake_max_rows
 from domain.shared_kernel.provenance import Suppression
 
 type QueryParam = str | int | Decimal | bool
@@ -53,22 +56,97 @@ partial and must say so. Capping the request keeps that decision visible instead
 letting a caller ask for a million rows and quietly receive a page.
 """
 
+BAKE_MAX_ROWS: Final = bake_max_rows(BAKER_MEMORY_BYTES)
+"""The most rows one publish-time held answer may keep (ADR-143, ADR-152): derived, not chosen.
+
+The deployed Baker's memory certifies it (`domain.operations.bake_memory`), never narration: a
+bake renders a page, it does not narrate. Finite on purpose, because an unbounded fetch crashed
+dev (2026-08-22). Only an entity-wide read still holds a population this wide; a larger Baker
+raises it (`make check-bakeability` prints it per Baker size).
+"""
+
+BAKE_LONGEST_WINDOW_DAYS: Final = 31
+"""The longest bake window, in days; the bakeability gate holds it equal to the page policies."""
+
+BAKE_MAX_STREAMED_ROWS: Final = BAKE_LONGEST_WINDOW_DAYS * BAKE_MAX_ROWS
+"""The most rows a publish-time reduction may stream through its fold: derived, not chosen.
+
+A reduction streams a daily or monthly series of a population the held ceiling already bounds,
+so its ceiling is the longest window times that population. Its memory is the fold's enforced
+`max_kept`, not its rows.
+"""
+
+
+class RowCeiling(StrEnum):
+    """Which caller kind a read belongs to, and so which row ceiling bounds it (ADR-143).
+
+    Not a tool input: chat and request-time presentation reads are always `NARRATION`.
+    """
+
+    NARRATION = "narration"
+    """Chat and presentation live reads: `MAX_ROWS_CEILING`."""
+    BAKE = "bake"
+    """Publish-time held answers: `BAKE_MAX_ROWS`."""
+    BAKE_STREAMED = "bake_streamed"
+    """Publish-time reductions: `BAKE_MAX_STREAMED_ROWS`."""
+    BAKE_GROUPED = "bake_grouped"
+    """Publish-time folds whose sink is the memory bound (ADR-152 decision 7): no row `LIMIT`.
+
+    The statement returns every row and never truncates; `max_rows` is what the sink keeps
+    (`BAKE_MAX_ROWS`), and the sink's overflow is the read's only limit. Folded only, never held.
+    """
+
+
+def row_ceiling(kind: RowCeiling) -> int:
+    """Return the most rows one read of this caller kind may ask for (a grouped sink may keep)."""
+    match kind:
+        case RowCeiling.NARRATION:
+            return MAX_ROWS_CEILING
+        case RowCeiling.BAKE | RowCeiling.BAKE_GROUPED:
+            return BAKE_MAX_ROWS
+        case RowCeiling.BAKE_STREAMED:
+            return BAKE_MAX_STREAMED_ROWS
+
+
+def statement_limit(max_rows: int, ceiling: RowCeiling) -> int | None:
+    """Return the rows a statement may return before it is truncated; None for a grouped fold."""
+    return None if ceiling is RowCeiling.BAKE_GROUPED else max_rows
+
+
+def _require_rows_within(max_rows: int, ceiling: RowCeiling) -> None:
+    """Refuse a row bound outside 1..the caller kind's ceiling (the port's `ValueError`)."""
+    if max_rows < 1:
+        raise ValueError("max_rows must be at least 1.")
+    bound = row_ceiling(ceiling)
+    if max_rows > bound:
+        if ceiling is RowCeiling.NARRATION:
+            raise ValueError(
+                f"max_rows {max_rows} exceeds {MAX_ROWS_CEILING}. A result that large "
+                "cannot be narrated honestly, so asking for it hides a truncation."
+            )
+        raise ValueError(
+            f"max_rows {max_rows} exceeds the {ceiling.value} ceiling {bound}, which the "
+            "baker's memory model certifies."
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class QueryRequest:
-    """A validated plan, plus how many rows the caller can use."""
+    """A validated plan, plus how many rows the caller can use and which ceiling bounds it.
+
+    `ranked` restricts the read to a ranked set computed inside the statement (Retail's top 50,
+    ADR-143): publish-time only, never a tool input.
+    """
 
     plan: BoundQueryPlan
     max_rows: int
+    ceiling: RowCeiling = RowCeiling.NARRATION
+    ranked: RankedRead | None = None
 
     def __post_init__(self) -> None:
-        if self.max_rows < 1:
-            raise ValueError("max_rows must be at least 1.")
-        if self.max_rows > MAX_ROWS_CEILING:
-            raise ValueError(
-                f"max_rows {self.max_rows} exceeds {MAX_ROWS_CEILING}. A result that large "
-                "cannot be narrated honestly, so asking for it hides a truncation."
-            )
+        _require_rows_within(self.max_rows, self.ceiling)
+        if self.ranked is not None and self.ceiling is RowCeiling.NARRATION:
+            raise ValueError("a ranked restriction is a publish-time read, never a narration one.")
 
 
 def _series_shape(bound: BoundQueryPlan) -> tuple[object, ...]:
@@ -104,11 +182,12 @@ class PeriodSeriesRequest:
 
     plans: tuple[BoundQueryPlan, ...]
     max_rows: int
+    ceiling: RowCeiling = RowCeiling.NARRATION
 
     def __post_init__(self) -> None:
         if not self.plans:
             raise ValueError("a period series reads at least one period.")
-        QueryRequest(self.plans[0], self.max_rows)  # the same row bound as one plan
+        _require_rows_within(self.max_rows, self.ceiling)  # the same row bound as one plan
         if any(item.logical.join is not None or not item.logical.periodic for item in self.plans):
             raise ValueError("a period series reads one periodic fact per plan.")
         shape = _series_shape(self.plans[0])
@@ -143,6 +222,36 @@ class QueryResult:
     docs/concepts/provenance-chain.md.
     """
 
+    population: tuple[RankedPopulation, ...] = ()
+    """A ranked-keys read's whole population, one entry per partition with a member (ADR-152).
+
+    Empty for every other read. The rows are the ranked keys only; this is what the statement
+    measured about every key before it kept the top `n`.
+    """
+
+
+class RowSink(Protocol):
+    """Consumes a read's rows one at a time (a fold's row rules, `domain.measurement.answers`)."""
+
+    def add(self, row: QueryRow) -> None:
+        """Take one result row; the sink keeps only its own bounded summary."""
+        ...
+
+
+@dataclass(frozen=True, slots=True)
+class FoldRead:
+    """What a streamed read cost and said about itself; its rows went to the sink only.
+
+    `rows_read` counts every row the statement returned, including the one past `max_rows`
+    that detects truncation; the sink received at most `max_rows`. `suppression` is measured
+    from the rows the sink received by the same accumulator a held read uses.
+    """
+
+    rows_read: int
+    truncated: bool
+    bytes_scanned: int
+    suppression: Suppression
+
 
 @runtime_checkable
 class QueryPort(Protocol):
@@ -155,7 +264,7 @@ class QueryPort(Protocol):
         """Execute a registered template.
 
         Raises DependencyError once retries are exhausted. Never leaks an SDK
-        exception type.
+        exception type. A `BAKE_GROUPED` request is folded only: `run` refuses it.
         """
         ...
 
@@ -170,4 +279,22 @@ class PeriodSeriesQueryPort(QueryPort, Protocol):
         Refuses before executing whatever `run` would refuse for any one of the plans, such as a
         publication Amazon withheld whole. Raises DependencyError once retries are exhausted.
         """
+        ...
+
+
+@runtime_checkable
+class FoldingQueryPort(PeriodSeriesQueryPort, Protocol):
+    """A `PeriodSeriesQueryPort` that also streams a read through a sink (ADR-143).
+
+    A reduction never holds its rows: each one goes to the sink as it is read, and only the
+    sink's bounded summary survives. Implemented for both result transports, so a fold reads
+    the same rows whichever transport the composition named.
+    """
+
+    def fold(self, request: QueryRequest, sink: RowSink) -> FoldRead:
+        """Execute one plan and hand each kept row to `sink`; refuse as `run` refuses."""
+        ...
+
+    def fold_series(self, request: PeriodSeriesRequest, sink: RowSink) -> FoldRead:
+        """Execute one period series and hand each kept row to `sink`; refuse as `run_series`."""
         ...

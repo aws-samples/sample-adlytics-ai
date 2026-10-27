@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT-0
 import { type Answer } from './answer';
 import { displayFigure } from './exact-format';
-/** Strict browser decoder for server-owned AudienceProfileArtifact v1. */
+/** Strict browser decoder for server-owned AudienceProfileArtifact v2 and its parts (ADR-141). */
 
 export type AudiencesOutcome = 'complete' | 'empty' | 'insufficient';
 export type AudienceViewId = 'asi_all_exposed' | 'dsp_exposed_only';
@@ -40,6 +40,10 @@ export interface AudienceDelivery {
   readonly paid_state: AudiencePaidState | null;
   readonly period_text: string | null;
   readonly insights: readonly AudienceInsight[];
+  /** The path's 50-row pages; page 0 rides in the parent, later pages are parts. */
+  readonly page_count: number;
+  /** The server's "Segments 1–50 of 150" for page 0, or null when one page holds them all. */
+  readonly paging_text: string | null;
 }
 export interface AudienceSegmentNames {
   readonly segment_id: string;
@@ -82,9 +86,6 @@ export interface AudienceView {
   readonly not_available: readonly AudienceUnavailableRow[];
 }
 export interface CampaignAudienceRow extends AudienceSegmentNames {
-  /** An opaque per-artifact reference (`campaign-N`), never the campaign's canonical key. */
-  readonly campaign_ref: string;
-  readonly campaign_label: string;
   readonly segment_impressions: number | null;
   readonly segment_impressions_text: string | null;
   readonly segment_cpm: { readonly value: string; readonly currency: string; readonly text: string } | null;
@@ -93,19 +94,34 @@ export interface CampaignAudienceRow extends AudienceSegmentNames {
   readonly segment_roas_attributed_text: string | null;
   readonly roas_text: string | null;
 }
+export type CampaignEntryState = 'available' | 'withdrawn' | 'refused';
+export interface CampaignIndexEntry {
+  /** An opaque per-artifact reference (`campaign-N`, by rank), never the campaign's key. */
+  readonly campaign_ref: string;
+  readonly campaign_label: string;
+  readonly segment_count: number;
+  readonly page_count: number;
+  readonly state: CampaignEntryState;
+  /** The withdrawal note or the refusal sentence; null when available. */
+  readonly text: string | null;
+}
+export interface AudienceCampaigns {
+  readonly limit_text: string;
+  readonly pending_text: string | null;
+  /** The section's own sentence when the month's campaign figures aren't complete. */
+  readonly refused_text: string | null;
+  readonly segment_ids_sentence: string;
+  readonly basis_label: string;
+  readonly campaign_count: number;
+  readonly index_shards: number;
+  /** Index shard 0; later shards are parts. */
+  readonly index: readonly CampaignIndexEntry[];
+}
 export interface AudienceMarket {
   readonly outcome: AudiencesOutcome;
   readonly default_view: AudienceViewId;
   readonly views: readonly [AudienceView, AudienceView];
-  readonly campaign_audiences: {
-    readonly limit_text: string;
-    readonly pending_text: string | null;
-    /** The server's "Showing N of M campaigns" when the page shows fewer than pack 8 listed. */
-    readonly shown_text: string | null;
-    readonly segment_ids_sentence: string;
-    readonly basis_label: string;
-    readonly rows: readonly CampaignAudienceRow[];
-  };
+  readonly campaign_audiences: AudienceCampaigns;
 }
 export interface AudienceEvidenceSlot {
   readonly slot_label: string;
@@ -116,7 +132,9 @@ export interface AudienceEvidenceSlot {
 }
 export interface AudienceProfileArtifact {
   readonly type: 'AudienceProfileArtifact';
-  readonly version: 1;
+  readonly version: 2;
+  /** The publication's revision; every part names it as its `parent_revision`. */
+  readonly revision: string;
   readonly outcome: AudiencesOutcome;
   readonly month: { readonly start: string; readonly end: string; readonly label: string };
   readonly display_minimum: number;
@@ -138,6 +156,8 @@ const INDEX = /^(0|[1-9]\d{0,25})\.\d{2}$/;
 const MONEY = /^-?(0|[1-9]\d{0,25})\.\d{2}$/;
 const SHARE = /^(0|1)\.(\d{4})$/;
 const REF = /^[A-Za-z0-9_-]{43}$/;
+// A publication's revision as the server's `PresetArtifactRevision` writes it: a lowercase SHA-256.
+const PUBLICATION_REVISION = /^[0-9a-f]{64}$/;
 // Server-pinned sentences (domain.semantics.audience_segments and domain.presentation.audiences).
 const PAID_CALLOUT = 'Needs the Amazon Insights paid feature (Audience Segment Insights). No data has arrived for this workspace.';
 const SEGMENT_IDS_SENTENCE = "DSP behaviour segments and Amazon audience segments (paid) use different IDs, so they're never linked or compared as one list.";
@@ -245,7 +265,7 @@ function servedPeriodTexts(state: AudiencePaidState, monthLabel: string): readon
   ];
 }
 function delivery(value: unknown, expectedPath: ProfilePath, paid: boolean, monthLabel: string): AudienceDelivery {
-  const item = exact(value, ['first_month_note', 'insights', 'label', 'paid_state', 'period_text', 'profile_path', 'profiled_buyers_total', 'profiled_buyers_total_text', 'profiled_exposed_total', 'profiled_exposed_total_text', 'returned', 'roster_note', 'total_returned', 'total_text']);
+  const item = exact(value, ['first_month_note', 'insights', 'label', 'page_count', 'paging_text', 'paid_state', 'period_text', 'profile_path', 'profiled_buyers_total', 'profiled_buyers_total_text', 'profiled_exposed_total', 'profiled_exposed_total_text', 'returned', 'roster_note', 'total_returned', 'total_text']);
   if (item.profile_path !== expectedPath || typeof item.returned !== 'boolean' || typeof item.total_returned !== 'boolean') return fail();
   const buyersTotal = countPair(item.profiled_buyers_total, item.profiled_buyers_total_text);
   const exposedTotal = countPair(item.profiled_exposed_total, item.profiled_exposed_total_text);
@@ -262,8 +282,11 @@ function delivery(value: unknown, expectedPath: ProfilePath, paid: boolean, mont
   if (total_text !== (item.returned && !item.total_returned ? TOTAL_NOT_AVAILABLE_TEXT : null)) return fail();
   if (!item.total_returned && insights[0]!.state !== 'silent') return fail();
   if (item.returned && !item.total_returned && insights[0]!.absence_reason !== TOTAL_NOT_AVAILABLE_TEXT) return fail();
+  const page_count = nonnegativeInteger(item.page_count);
+  const paging_text = nullableText(item.paging_text);
+  if ((page_count >= 1) !== item.returned || (paging_text !== null) !== (page_count > 1)) return fail();
   return {
-    first_month_note: nullableText(item.first_month_note), insights, label: text(item.label), paid_state: parsedPaid,
+    first_month_note: nullableText(item.first_month_note), insights, label: text(item.label), page_count, paging_text, paid_state: parsedPaid,
     period_text, profile_path: expectedPath, profiled_buyers_total: buyersTotal.value, profiled_buyers_total_text: buyersTotal.display,
     profiled_exposed_total: exposedTotal.value, profiled_exposed_total_text: exposedTotal.display, returned: item.returned, roster_note: nullableText(item.roster_note),
     total_returned: item.total_returned, total_text,
@@ -320,23 +343,11 @@ function view(value: unknown, expected: AudienceViewId, paths: readonly ProfileP
   for (const roster of [rows, missing]) {
     if (roster.some((entry, index) => index > 0 && paths.indexOf(roster[index - 1]!.profile_path) > paths.indexOf(entry.profile_path))) return fail();
   }
+  if (paths.some((path) => [...rows, ...missing].filter((entry) => entry.profile_path === path).length > PAGE_ROWS)) return fail();
   return { buyer_label: text(item.buyer_label), callout, caption: text(item.caption), deliveries, display_minimum_text: text(item.display_minimum_text), label: text(item.label), not_available: missing, paid_state, rows, segment_ids_sentence: SEGMENT_IDS_SENTENCE, view: expected };
 }
-/** References number campaigns `campaign-1`, `campaign-2`, … in row order, one label each, rows grouped. */
-function campaignRefsGrouped(rows: readonly CampaignAudienceRow[]): boolean {
-  const labels = new Map<string, string>();
-  let last: string | undefined;
-  for (const row of rows) {
-    if (!labels.has(row.campaign_ref) && row.campaign_ref !== `campaign-${labels.size + 1}`) return false;
-    if ((labels.get(row.campaign_ref) ?? row.campaign_label) !== row.campaign_label) return false;
-    if (labels.has(row.campaign_ref) && last !== row.campaign_ref) return false;
-    labels.set(row.campaign_ref, row.campaign_label);
-    last = row.campaign_ref;
-  }
-  return true;
-}
 function campaignRow(value: unknown): CampaignAudienceRow {
-  const item = exact(value, ['campaign_label', 'campaign_ref', 'category_level_1', 'category_path', 'cpm_text', 'display_name', 'name', 'provider_label', 'roas_text', 'segment_cpm', 'segment_id', 'segment_impressions', 'segment_impressions_text', 'segment_roas_attributed', 'segment_roas_attributed_text']);
+  const item = exact(value, ['category_level_1', 'category_path', 'cpm_text', 'display_name', 'name', 'provider_label', 'roas_text', 'segment_cpm', 'segment_id', 'segment_impressions', 'segment_impressions_text', 'segment_roas_attributed', 'segment_roas_attributed_text']);
   const impressions = countPair(item.segment_impressions, item.segment_impressions_text);
   const cpm = item.segment_cpm === null ? null : exact(item.segment_cpm, ['currency', 'text', 'value']);
   const segment_cpm = cpm === null ? null : { currency: text(cpm.currency), text: text(cpm.text), value: canonical(cpm.value, MONEY) };
@@ -346,18 +357,37 @@ function campaignRow(value: unknown): CampaignAudienceRow {
   const segment_roas_attributed_text = nullableText(item.segment_roas_attributed_text);
   const roas_text = nullableText(item.roas_text);
   if ((segment_roas_attributed === null) !== (segment_roas_attributed_text === null) || (segment_roas_attributed === null) !== (roas_text !== null) || (segment_roas_attributed !== null && segment_roas_attributed_text !== `${segment_roas_attributed}x`)) return fail();
-  return { ...names(item), campaign_label: text(item.campaign_label), campaign_ref: text(item.campaign_ref), cpm_text, roas_text, segment_cpm, segment_impressions: impressions.value, segment_impressions_text: impressions.display, segment_roas_attributed, segment_roas_attributed_text };
+  return { ...names(item), cpm_text, roas_text, segment_cpm, segment_impressions: impressions.value, segment_impressions_text: impressions.display, segment_roas_attributed, segment_roas_attributed_text };
 }
-const SHOWN = /^Showing ([1-9][0-9]*) of ([1-9][0-9]*) campaigns$/;
-/** The shown note, judged as the server judges it: exact copy, fewer shown than listed, never pending. */
-function shownNote(value: unknown, campaigns: number, pending: boolean): string | null {
-  const note = nullableText(value);
-  if (note === null) return null;
-  const match = SHOWN.exec(note);
-  if (match === null || pending) return fail();
-  const shown = Number(match[1]);
-  if (!(campaigns <= shown && shown < Number(match[2]))) return fail();
-  return note;
+const PAGE_ROWS = 50;
+const INDEX_SHARD_ENTRIES = 100;
+const CAMPAIGN_REF = /^campaign-[1-9]\d{0,5}$/;
+const pagesFor = (rows: number): number => Math.max(1, Math.ceil(rows / PAGE_ROWS));
+/** Index entries numbered `campaign-N` by rank from `firstRank`, judged as the server judges them. */
+function indexEntries(value: unknown, firstRank: number): readonly CampaignIndexEntry[] {
+  return array(value).map((raw, offset) => {
+    const item = exact(raw, ['campaign_label', 'campaign_ref', 'page_count', 'segment_count', 'state', 'text']);
+    if (item.campaign_ref !== `campaign-${firstRank + offset}`) return fail();
+    const state = oneOf(item.state, ['available', 'withdrawn', 'refused'] as const);
+    const entryText = nullableText(item.text);
+    const segment_count = nonnegativeInteger(item.segment_count);
+    const page_count = nonnegativeInteger(item.page_count);
+    if ((entryText === null) !== (state === 'available') || page_count !== (state === 'refused' ? 0 : pagesFor(segment_count))) return fail();
+    return { campaign_label: text(item.campaign_label), campaign_ref: item.campaign_ref as string, page_count, segment_count, state, text: entryText };
+  });
+}
+function campaigns(value: unknown): AudienceCampaigns {
+  const item = exact(value, ['basis_label', 'campaign_count', 'index', 'index_shards', 'limit_text', 'pending_text', 'refused_text', 'segment_ids_sentence']);
+  const campaign_count = nonnegativeInteger(item.campaign_count);
+  const index_shards = positiveInteger(item.index_shards);
+  const pending_text = nullableText(item.pending_text);
+  const refused_text = nullableText(item.refused_text);
+  const index = indexEntries(item.index, 1);
+  if (item.segment_ids_sentence !== SEGMENT_IDS_SENTENCE) return fail();
+  if ((pending_text !== null || refused_text !== null) && campaign_count > 0) return fail();
+  if (pending_text !== null && refused_text !== null) return fail();
+  if (index_shards !== Math.max(1, Math.ceil(campaign_count / INDEX_SHARD_ENTRIES)) || index.length !== Math.min(campaign_count, INDEX_SHARD_ENTRIES)) return fail();
+  return { basis_label: text(item.basis_label), campaign_count, index, index_shards, limit_text: text(item.limit_text), pending_text, refused_text, segment_ids_sentence: SEGMENT_IDS_SENTENCE };
 }
 function market(value: unknown, monthLabel: string): AudienceMarket {
   const item = exact(value, ['campaign_audiences', 'default_view', 'outcome', 'views']);
@@ -365,18 +395,13 @@ function market(value: unknown, monthLabel: string): AudienceMarket {
   if (viewsValue.length !== 2) return fail();
   const paid = view(viewsValue[0], 'asi_all_exposed', PAID_PATHS, monthLabel);
   const dsp = view(viewsValue[1], 'dsp_exposed_only', DSP_PATHS, monthLabel);
-  const campaign = exact(item.campaign_audiences, ['basis_label', 'limit_text', 'pending_text', 'rows', 'segment_ids_sentence', 'shown_text']);
+  const campaign_audiences = campaigns(item.campaign_audiences);
   const outcome = oneOf(item.outcome, ['complete', 'empty', 'insufficient'] as const);
   const default_view = oneOf(item.default_view, ['asi_all_exposed', 'dsp_exposed_only'] as const);
   if (default_view !== (paid.paid_state === 'observed' && paid.deliveries.some((entry) => entry.returned) ? 'asi_all_exposed' : 'dsp_exposed_only')) return fail();
-  const campaignRows = array(campaign.rows).map(campaignRow);
-  const pending_text = nullableText(campaign.pending_text);
-  if (!campaignRefsGrouped(campaignRows)) return fail();
-  const shown_text = shownNote(campaign.shown_text, new Set(campaignRows.map((row) => row.campaign_ref)).size, pending_text !== null);
-  if (campaign.segment_ids_sentence !== SEGMENT_IDS_SENTENCE || (pending_text !== null && campaignRows.length > 0)) return fail();
   if (outcome !== 'complete' && ![paid, dsp].flatMap((entry) => entry.deliveries).some((entry) => entry.period_text !== null || entry.total_text !== null || (entry.insights[0]?.absence_reason ?? null) !== null)) return fail();
   return {
-    campaign_audiences: { basis_label: text(campaign.basis_label), limit_text: text(campaign.limit_text), pending_text, rows: campaignRows, segment_ids_sentence: SEGMENT_IDS_SENTENCE, shown_text },
+    campaign_audiences,
     default_view,
     outcome, views: [paid, dsp],
   };
@@ -392,8 +417,9 @@ function evidence(value: unknown): AudienceProfileArtifact['evidence_status'] {
 }
 
 export function parseAudienceProfileArtifact(value: unknown): AudienceProfileArtifact {
-  const item = exact(value, ['boundary', 'display_minimum', 'evidence_status', 'markets', 'month', 'outcome', 'page_context_expires_at', 'page_context_label', 'starter_questions', 'type', 'version']);
-  if (item.type !== 'AudienceProfileArtifact' || item.version !== 1) return fail();
+  const item = exact(value, ['boundary', 'display_minimum', 'evidence_status', 'markets', 'month', 'outcome', 'page_context_expires_at', 'page_context_label', 'revision', 'starter_questions', 'type', 'version']);
+  if (item.type !== 'AudienceProfileArtifact' || item.version !== 2) return fail();
+  const revision = canonical(item.revision, PUBLICATION_REVISION);
   const monthValue = exact(item.month, ['end', 'label', 'start']);
   const month = { end: isoDate(monthValue.end), label: text(monthValue.label), start: isoDate(monthValue.start) };
   if (month.end < month.start) return fail();
@@ -406,7 +432,7 @@ export function parseAudienceProfileArtifact(value: unknown): AudienceProfileArt
   if (boundaryValue.length !== 2 || boundaryValue[0] !== BOUNDARY_TEXT || boundaryValue[1] !== SEGMENT_IDS_SENTENCE) return fail();
   const starter_questions = array(item.starter_questions).map(text);
   if (starter_questions.length !== (outcome === 'complete' ? 2 : 0)) return fail();
-  return { boundary: [BOUNDARY_TEXT, SEGMENT_IDS_SENTENCE], display_minimum: positiveInteger(item.display_minimum), evidence_status: evidence(item.evidence_status), markets, month, outcome, page_context_expires_at: text(item.page_context_expires_at), page_context_label: text(item.page_context_label), starter_questions, type: 'AudienceProfileArtifact', version: 1 };
+  return { boundary: [BOUNDARY_TEXT, SEGMENT_IDS_SENTENCE], display_minimum: positiveInteger(item.display_minimum), evidence_status: evidence(item.evidence_status), markets, month, outcome, page_context_expires_at: text(item.page_context_expires_at), page_context_label: text(item.page_context_label), revision, starter_questions, type: 'AudienceProfileArtifact', version: 2 };
 }
 
 /**
@@ -433,4 +459,78 @@ export function audiencesAnswer(artifact: AudienceProfileArtifact): Answer {
   }
   const reason = view.deliveries.flatMap((delivery) => delivery.insights).find((slot) => slot.absence_reason !== null && slot.absence_class !== 'evaluated-quiet')?.absence_reason ?? null;
   return { kind: 'fallback', text: reason ?? `No segment met the over-index rule in ${artifact.month.label}.` };
+}
+
+export interface AudienceCampaignPage {
+  readonly kind: 'campaign';
+  readonly campaign_ref: string;
+  readonly campaign_label: string;
+  readonly page: number;
+  readonly page_count: number;
+  readonly paging_text: string | null;
+  readonly state: 'available' | 'withdrawn';
+  readonly text: string | null;
+  readonly rows: readonly CampaignAudienceRow[];
+}
+export interface AudienceProfilePage {
+  readonly kind: 'profile';
+  readonly profile_path: ProfilePath;
+  readonly page: number;
+  readonly page_count: number;
+  readonly paging_text: string;
+  readonly rows: readonly AudienceRow[];
+  readonly not_available: readonly AudienceUnavailableRow[];
+}
+export interface AudienceIndexShard {
+  readonly kind: 'campaign_index';
+  readonly shard: number;
+  readonly entries: readonly CampaignIndexEntry[];
+}
+export type AudiencesPart = AudienceCampaignPage | AudienceProfilePage | AudienceIndexShard;
+/** What the browser asks the server for: one campaign page, one later profile page or one later index shard. */
+export type AudiencesPartRequest =
+  | { readonly kind: 'campaign'; readonly ref: string; readonly page: number }
+  | { readonly kind: 'profile'; readonly path: ProfilePath; readonly page: number }
+  | { readonly kind: 'campaign_index'; readonly shard: number };
+
+const PART_TYPES = { campaign: 'AudienceCampaignPage', campaign_index: 'AudienceCampaignIndex', profile: 'AudienceProfilePage' } as const;
+const PART_KEYS = {
+  campaign: ['campaign_label', 'campaign_ref', 'page', 'page_count', 'paging_text', 'rows', 'state', 'text'],
+  campaign_index: ['entries', 'shard'],
+  profile: ['not_available', 'page', 'page_count', 'paging_text', 'profile_path', 'rows', 'total_returned'],
+} as const;
+
+/**
+ * Decode one served part strictly, as the server's `require_audiences_part_payload` does, and
+ * check it is the part asked for under `parentRevision`. A part of another revision is refused
+ * by the caller's revision guard, not here: `parent_revision` is returned for it to compare.
+ */
+export function parseAudiencesPart(value: unknown, request: AudiencesPartRequest): { readonly parent_revision: string; readonly part: AudiencesPart } {
+  const item = exact(value, ['parent_revision', 'type', 'version', ...PART_KEYS[request.kind]]);
+  if (item.type !== PART_TYPES[request.kind] || item.version !== 1) return fail();
+  const parent_revision = canonical(item.parent_revision, PUBLICATION_REVISION);
+  if (request.kind === 'campaign_index') {
+    const shard = positiveInteger(item.shard);
+    const entries = indexEntries(item.entries, shard * INDEX_SHARD_ENTRIES + 1);
+    if (shard !== request.shard || entries.length < 1 || entries.length > INDEX_SHARD_ENTRIES) return fail();
+    return { parent_revision, part: { entries, kind: 'campaign_index', shard } };
+  }
+  const page = nonnegativeInteger(item.page);
+  const page_count = positiveInteger(item.page_count);
+  const paging_text = nullableText(item.paging_text);
+  if (page !== request.page || page >= page_count) return fail();
+  if (request.kind === 'profile') {
+    if (item.profile_path !== request.path || typeof item.total_returned !== 'boolean' || paging_text === null || page < 1) return fail();
+    const owner: AudienceDelivery = { first_month_note: null, insights: [], label: '', page_count, paging_text, paid_state: null, period_text: null, profile_path: request.path, profiled_buyers_total: null, profiled_buyers_total_text: null, profiled_exposed_total: null, profiled_exposed_total_text: null, returned: true, roster_note: null, total_returned: item.total_returned, total_text: null };
+    const rows = array(item.rows).map((entry) => row(entry, [owner]));
+    const not_available = array(item.not_available).map((entry) => unavailable(entry, [owner]));
+    if (rows.length + not_available.length > PAGE_ROWS) return fail();
+    return { parent_revision, part: { kind: 'profile', not_available, page, page_count, paging_text, profile_path: request.path, rows } };
+  }
+  if (item.campaign_ref !== request.ref || !CAMPAIGN_REF.test(request.ref)) return fail();
+  const state = oneOf(item.state, ['available', 'withdrawn'] as const);
+  const partText = nullableText(item.text);
+  const rows = array(item.rows).map(campaignRow);
+  if ((partText === null) !== (state === 'available') || rows.length > PAGE_ROWS || (state === 'withdrawn' && (rows.length > 0 || paging_text !== null))) return fail();
+  return { parent_revision, part: { campaign_label: text(item.campaign_label), campaign_ref: request.ref, kind: 'campaign', page, page_count, paging_text, rows, state, text: partText } };
 }

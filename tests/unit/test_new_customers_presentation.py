@@ -327,7 +327,9 @@ class _Stores:
         pointers: list[PresetArtifactPointer | None] = []
         for variant in request.variants:
             published = self.bodies.get(variant.value) if request.page.value == PAGE else None
-            pointers.append(None if published is None else published.pointer_advance.pointer)
+            pointers.append(
+                None if published is None else published.pointer_template.complete(None).pointer
+            )
         return PresetArtifactPointerRosterResult(request, tuple(pointers))
 
     def read(self, pointer: PresetArtifactPointer) -> PresetArtifactBody:
@@ -452,7 +454,7 @@ def test_each_pointer_names_its_window_so_the_control_dates_every_baked_preset(
     """ADR-116 decision 4: the date control names each baked preset's dates, as the mockups do."""
     every = {variant: _publication(variant) for variant in WINDOWS}
     for variant, publication in every.items():
-        pointer = publication.pointer_advance.pointer
+        pointer = publication.pointer_template.complete(None).pointer
         payload = json.loads(publication.body.payload_json)
         assert pointer.resolved_window == _served_window(payload["period"]), variant
         assert pointer.comparison_window == _served_window(payload["prior_period"]), variant
@@ -473,13 +475,8 @@ def test_each_pointer_names_its_window_so_the_control_dates_every_baked_preset(
     bare = {
         variant: replace(
             publication,
-            pointer_advance=replace(
-                publication.pointer_advance,
-                pointer=replace(
-                    publication.pointer_advance.pointer,
-                    resolved_window=None,
-                    comparison_window=None,
-                ),
+            pointer_template=replace(
+                publication.pointer_template, resolved_window=None, comparison_window=None
             ),
         )
         for variant, publication in every.items()

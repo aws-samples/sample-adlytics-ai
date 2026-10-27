@@ -4,7 +4,7 @@ Publication-safe conclusions from live source probes and deployed development ac
 account, entity, instance, user, resource, execution, workflow, and invalidation identifiers remain
 in ignored `RESULTS.local.md` and `findings/`; neither is publication content. A conclusion appears
 here only after its exact local evidence was read and folded into the owning contract or design doc.
-## Staged table writes (ADR-149) on dev — 2026-10-22 and 2026-10-26
+## Staged table writes (ADR-149) on dev — 2026-10-22 to 2026-10-26
 Times are UTC. Synthetic data only, after an identity check before every write.
 
 | Check | Verdict | What it showed |
@@ -12,11 +12,37 @@ Times are UTC. Synthetic data only, after an identity check before every write.
 | Scratch probe, 2026-10-22 01:02–03:44 | **PASS** | On scratch databases and roles, removed afterwards: the staged `MERGE` wrote rows identical to the old writer's on five tables, edge values and a record at the 200,000-byte bound included; a re-run inserted nothing; the four-count verification refused each of 7 tampers. At 1,000 to 100,000 rows a unit's read, stage, `MERGE` and verification took 5.4–15.0 s, max of 3 runs [measured on dev]. `IS NOT DISTINCT FROM` dropped correct all-NULL rows, so the equal-or-both-NULL form replaced it ([ADR-149](../docs/decisions/adr-149-write-each-table-unit-with-one-set-based-merge-from-a-staged-object.md) decision 2). |
 | Row ceilings, 2026-10-22 | **SET** | A local memory measurement with no AWS gave 50,000 rows per unit and 20,000 per delivery, the largest grid values inside half the writers' memory and the 900 s run ([write discipline](../docs/capabilities/load-path/write-discipline.md) §11). |
 | Large delivery, 2026-10-26 12:28–12:50 | **PASS** | A product hierarchy with 3,000 added fictional products, then one vendor sales day of 3,007 active products, the design's large-seller tier and about 3.6 times the old limit. Every table unit, up to 3,226 rows, wrote with 2 statements and verified; the day's 3,007 rows and their shipped revenue equal the delivery's reported total on Athena; no refusal, dead letter or alarm. Table writer peak 278 MB, delivery function peak 317 MB [measured on dev]. |
+| Dev deployment, 2026-10-25 18:59–19:13 | **PASS** | With the scale-limits integration deployed, its re-bake landing: 30 GRAPH table sets of 27–28 rows each wrote with 2 statements and finalized, 6.9 s median and 9.2 s max per set, no refusal, park or budget return. The staging bucket, its 7-day expiry, the 54 staging tables and the table writer's staging grants matched the design [measured on dev]. |
 | Dev deployment, 2026-10-26 00:47–01:27 | **PASS** | With the scale-limits integration deployed: 30 GRAPH table sets of 27–28 rows each wrote with 2 statements, 6.7 s median and 8.7 s max per set, table writer peak 191 MB, no refusal, park or budget return [measured on dev]. |
 
 **Not exercised live:** a delivery near the 20,000-row ceiling, and wide windows landed in 30-partition
 chunks (ADR-149 decision 8, deferred).
 
+
+## Scale limits on dev: every page at every size, and bake write time — 2026-10-26
+Times are UTC. Synthetic data only (7 products, 60 campaigns). The scale-limits branch, merged with the
+ingestion branch, was deployed to dev with one locked `deploy-all` after an identity check, then re-baked
+by re-landing 10 deliveries (2026-10-25 23:53 to 2026-10-26 01:40).
+
+| Check | Verdict | What it showed |
+|---|---|---|
+| Pages, scripted browser | **PASS** | 27 content loads and 81 timed loads: every page call HTTP 200, 0 console errors, 0 CSP violations, no "Showing N of M". Campaigns lists 60 of 60 campaigns; Audiences renders its per-campaign pages; Reach last quarter shows its designed absence, because the dataset has no spend for 1–15 July. |
+| Chat | **PASS** | 10 live turns, all complete; `top_n` ranked products and campaigns across the population. |
+| Exact-read bound (1,000 partitions) | **PASS** | No selection refused as too large; in-Region exact reads p95 86.1 ms, under the 95.0 ms the bound was derived at ([ADR-070](../docs/decisions/adr-070-serve-declared-preset-windows-from-publish-time-artifacts.md)) [measured on dev]. |
+| Retail health bake | **PASS** | 14-day computing time outside Athena 3.7–3.9 s, from 7.9 s before the fix, at 2,048 MB [measured on dev]. No bake used more than 294 MB. |
+| Bake write time | **MEASURED** | Campaigns wrote 9.07–11.62 ms per S3 object with 8 writes in flight; a redelivered Audiences bake 26.84 ms [measured on dev, 2026-10-25 23:04–23:06]. Scaled linearly, Campaigns' writes pass the 900 s run at about 62,000–85,000 campaigns and Audiences' at about 35,700–45,700 DSP campaigns in a month, about 15,400 redelivered [projection]. [Sizing for large catalogs](../README.md#sizing-for-large-catalogs) and the [scale envelope](../docs/ui/preset-artifact-publisher.md#scale-envelope) carry them. |
+
+**Not exercised live:** sizes above dev's 60 campaigns. The 10,000- and 100,000-row figures in the
+sizing guidance come from local runs and `make check-bakeability`, not from a deployment.
+
+## Ranked bake statements on Athena (ADR-152) — 2026-10-25
+Times are UTC. `validation/probe_bake_row_ceiling.py` ran at 04:09 on `feat/scale-limits-v2`, from the
+tree committed with this entry, against dev's bake workgroup after an identity check. Read-only SQL over generated rows, no table and no customer data. Nothing was deployed.
+
+| Check | Verdict | What it showed |
+|---|---|---|
+| P2 `ranked`, 100,000 keys | **PASS** | Retail's top 50 with the count and sums, the movers by \|change\|, and the New customers gateway per ad product, with and without withholding: every key, count, sum and withholding flag equals the Python rule [verified]. The withheld case failed by reading before the `POSITIVE` fix; a unit test reproduces that on SQLite. |
+| P2a, P2c | **PASS** | Both readers agree on every cell; bake results reuse as documented [verified]. |
 
 ## Amazon DSP campaign detail cost per click on dev — 2026-10-19
 Times are UTC. **Deployed source: `1c50b8ed`**, one locked `deploy-all` run that ended at 04:15
@@ -173,7 +199,8 @@ a later cohort baked all 20 page rows with no failure and authorized serving wit
 
 **Not exercised live:** probe behaviour added after `76dcf62d` (contract-derived page lists, the
 NOT_PROVEN receipt on a failed render, the refusal-reason names) is unit-proven; the over-bound
-Audiences leg stays deferred (TD-D2-OVERBOUND-LIVE in [validation](README.md)).
+Audiences leg was deferred, and on 2026-10-25 its subject, the page-level over-bound body, was deleted
+([ADR-141](../docs/decisions/adr-141-reach-every-audiences-campaign-through-grouped-reads-and-per-campaign-pages.md)).
 
 ## Path-scoped body-size exclusion on dev (ADR-078) — 2026-10-06
 

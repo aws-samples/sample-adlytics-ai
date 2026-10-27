@@ -5,6 +5,9 @@ Retail health. The new API route's `infra/` change is approved within its own bu
 recorded by the workflow orchestrator under the owner's delegated overnight authorization (2026-10-07).
 Not implemented.
 
+> **Proposed amendment, 2026-10-18.** [ADR-145](adr-145-serve-ten-thousand-campaigns-with-a-sharded-roster-and-streamed-writes.md) (Proposed) would move each product-detail child's body and custody digests out of the parent custody's `product_children` set into the publication's sharded sibling digest index, which every source's siblings use. The parent custody would keep the served products and their server-only references, the closed-set rule would be checked when the children are staged, and the product-detail read would verify the child through the index. Implemented 2026-10-26 by the scale-limits change (PR #20) and live-validated on dev: where it differs from this decision, the amendment describes the code. ADR-145's acceptance is the owner's review.
+
+> **Proposed amendment, 2026-10-25.** [ADR-152](adr-152-read-page-sized-answers-in-sql-with-no-arbitrary-row-ceiling.md) (Proposed) would read product detail's ad figures in the Retail batch, restricted to the ranked 50, so a large catalog no longer blanks the ad section; an absent ad answer is then only missing Amazon Marketing Cloud evidence. Implemented 2026-10-26 by the scale-limits change (PR #20) and live-validated on dev: where it differs from this decision, the amendment describes the code. ADR-152's acceptance is the owner's review.
 ## Context
 
 Retail health rows aren't interactive today [repo: `frontend/components/RetailHealthView.tsx:351-354`].

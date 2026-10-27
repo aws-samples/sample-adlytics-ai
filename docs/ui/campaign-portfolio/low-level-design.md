@@ -8,7 +8,7 @@ This document owns exact wire contracts, artifact schemas, capability custody, U
 
 | Route | Method/auth | Accepted body | Explicitly forbidden |
 |---|---|---|---|
-| `/api/presentation/campaigns` | `POST`, custom request authorizer | `{session_id}`, optionally `temporal_selection: TemporalSelection.v1` restricted to `omitted` or a declared preset, `sort: {field, direction}` where `field` is one of the artifact-declared sortable columns and `direction` is `asc` or `desc`, and `segment: n` — a bounded non-negative index into the baked ordering ([ADR-071](../../decisions/adr-071-reach-the-full-campaign-estate-through-baked-ordered-segments.md)); the default is the first segment of the artifact's declared server order. | owner, canonical campaign/channel/marketplace/platform, selection reference, page context, caller comparator, raw `visible_window`, custom temporal selection ([ADR-070](../../decisions/adr-070-serve-declared-preset-windows-from-publish-time-artifacts.md)), undeclared sort fields, out-of-range segment indexes, free-text search input (filtering is client-side over the baked roster), unknown fields. |
+| `/api/presentation/campaigns` | `POST`, custom request authorizer | `{session_id}`, optionally `temporal_selection: TemporalSelection.v1` restricted to `omitted` or a declared preset, `sort: {field, direction}` where `field` is one of the artifact-declared sortable columns and `direction` is `asc` or `desc`, and `segment: n` — a bounded non-negative index into the baked ordering ([ADR-071](../../decisions/adr-071-reach-the-full-campaign-estate-through-baked-ordered-segments.md)); the default is the first segment of the artifact's declared server order. Or `roster_shard: n`, one shard of the (optionally `filter_id`-named) filter's baked name roster, never with `sort` or `segment` ([ADR-145](../../decisions/adr-145-serve-ten-thousand-campaigns-with-a-sharded-roster-and-streamed-writes.md)). | owner, canonical campaign/channel/marketplace/platform, selection reference, page context, caller comparator, raw `visible_window`, custom temporal selection ([ADR-070](../../decisions/adr-070-serve-declared-preset-windows-from-publish-time-artifacts.md)), undeclared sort fields, out-of-range segment indexes, free-text search input (filtering is client-side over the baked roster), unknown fields. |
 | `/api/presentation/campaign-detail` | `POST`, same authorizer | `{session_id, selection_reference}` | temporal selection, visible/comparison window, owner, canonical selector, page context, unknown fields. |
 | `/api/presentation/campaign-metric-focus` | `POST`, same authorizer | `{session_id, selection_reference, metric}` where `metric` is one of the insight contract's declared focusable slots; window, comparator, and grain derive from the redeemed capability's parent. | temporal selection, any window or grain field, owner, canonical selector, page context, unknown fields. |
 | `/api/presentation/portfolio-metric-focus` (added 2026-09-17, [shared metric-focus contract](../metric-focus-contract.md)) | `POST`, same authorizer | `{session_id, metric, temporal_selection}` where `metric` is a declared focusable portfolio metric and the selection is restricted to `omitted` or a declared preset; the payload derives from the served baked portfolio artifact. | custom temporal selection, any window or grain field, selection reference, canonical selectors, unknown fields. |
@@ -18,12 +18,11 @@ The authorizer supplies owner and correlation identity. Session ID is nonblank/b
 Window resolution anchors to the newest published coverage of the page's sources, never to
 wall-clock today: each preset's dates are derived backward from the coverage end, and an
 unavailable preset states in plain words what coverage it needs. Campaign declares candidate
-`1D`, `7D`, `14D` and no Custom entry: its temporal control returns
+`1D`, `7D`, `14D`, `30D` and no Custom entry: its temporal control returns
 `custom.availability: "unavailable"`
 ([ADR-070](../../decisions/adr-070-serve-declared-preset-windows-from-publish-time-artifacts.md)).
-`30D` is not a candidate — the per-pack bake snapshot caps a declared preset at 25 days
-(ADR-070 amendment, 2026-09-16) — so the control returns it unavailable pending the future
-two-pass verified-snapshot decision named there. `1D` is a served candidate (declaration
+`30D` (60 day-partitions per pack with its prior) is within the bake's exact-read bound (ADR-070
+amendments, 2026-10-08 and 2026-10-25). `1D` is a served candidate (declaration
 exception removed 2026-09-17): the portfolio bakes and serves a one-day window with its
 required one-day prior. A campaign opened at one day returns the declared `insufficient`
 detail outcome with reason `too_short_series`, because V1/V2 purchase-series rendering
@@ -295,7 +294,39 @@ misaligned body leaves the pointer unchanged or makes serving fail closed. Canon
 reads no sibling. Every other request follows pointer → parent/custody index → one sibling pair,
 re-attests revision, ordering, pagination, digests, signatures, and mints no more than the 50
 served-row capabilities. Every public, custody, and served page body is independently bounded at
-256,000 encoded bytes.
+256,000 encoded bytes. **Amended by [ADR-145](../../decisions/adr-145-serve-ten-thousand-campaigns-with-a-sharded-roster-and-streamed-writes.md)
+(render format 12):** no Campaigns custody lists siblings inline. Parent custody carries canonical
+segment zero's rows and the stage's sharded sibling index, which binds every segment and channel
+filter sibling; a request reads pointer → parent custody → covering index shard → one sibling pair
+([the publisher's streamed writes](../preset-artifact-publisher.md#the-artifact-store)).
+
+**Every campaign, limited only by the Baker's memory (render format 13, 2026-10-25,
+[ADR-152](../../decisions/adr-152-read-page-sized-answers-in-sql-with-no-arbitrary-row-ceiling.md),
+[ADR-145](../../decisions/adr-145-serve-ten-thousand-campaigns-with-a-sharded-roster-and-streamed-writes.md)).**
+Supersedes the embedded-roster wire rule above for baked bodies.
+- **Reads.** The bake reads 26 statements at every preset and population: each of the 11 compares
+  is one breakdown per window, and each trend operand is one daily read. None has a row `LIMIT`.
+- **One record per campaign.** The compares fold into one compact record per campaign
+  (`KeyedColumns`, one column per read, the authorized campaigns only). The daily reads fold into
+  each channel filter's daily sums (`AuthorizedDailySums`). Each row becomes a figure by the held
+  answer's own rule, so the segments are byte-equal to the held compares'
+  (`tests/unit/test_campaign_portfolio_accumulator.py`).
+- **The one limit.** The bake browses at most `BAKE_MAX_ROWS` campaigns, a ceiling derived from
+  the Baker's memory. Past it the page is `population_over_ceiling`: it keeps its last good body,
+  and the `isolated_refusal` line names the memory to set. The stage's runtime write deadline
+  (`bodies_over_invocation`) bounds the writes. Nothing else caps the population, and no shown
+  subset exists.
+- **Roster shards.** A baked body's `roster` is `{revision, shards}`: the filter's name roster
+  is written as ordered siblings `{filter}/roster/segment-NNNN` of 500 entries each, each naming
+  the bake's revision as `parent_revision`.
+  - `POST /api/presentation/campaigns` with `roster_shard: n` (with `filter_id`, never with
+    `sort` or `segment`) serves one shard through the parent custody's index. A shard the bake
+    never wrote is a 400, and a listed shard that fails its digest is the malformed-artifact
+    refusal.
+  - The browser fetches the shards on the name field's first focus, never on load, at most two
+    in flight. A shard of another revision reloads the parent once; a second one shows "Campaign
+    names didn't load. Try again." While they load, the field shows "Loading campaign names…".
+  - The request-time list keeps its embedded roster.
 
 **Insight slots** appear on both artifacts as a fixed `insights` section: per declared slot —
 slot id, output class, state (`filled` | `silent` | `unavailable`), text and evidence line when

@@ -37,12 +37,31 @@ from adapters.jobs.preset_artifact_publisher.audiences_source import (
     AUDIENCES_MATERIALIZATION_UNAVAILABLE,
     retained_audiences_preset_artifact_source,
 )
+from adapters.jobs.preset_artifact_publisher.bake_results import (
+    BakePublication,
+    BakeResult,
+    BakeUnavailable,
+    BakeUnchanged,
+)
 from adapters.jobs.preset_artifact_publisher.campaign_source import (
     retained_campaign_preset_artifact_source,
 )
 from adapters.jobs.preset_artifact_publisher.insight_fill import PresetInsightFillChild
 from adapters.jobs.preset_artifact_publisher.new_customers_source import (
     retained_new_customers_preset_artifact_source,
+)
+from adapters.jobs.preset_artifact_publisher.page_bake import (
+    PROCESS_LEDGER,
+    PageParts,
+    PageRender,
+    PageWindow,
+    RefusalLineage,
+    emit_isolated_refusals,
+    guarded,
+    page_absence,
+    render_page,
+    report_over_budget,
+    stage_page,
 )
 from adapters.jobs.preset_artifact_publisher.reach_source import (
     REACH_MATERIALIZATION_UNAVAILABLE,
@@ -67,7 +86,12 @@ from adapters.jobs.preset_artifact_publisher.transport import (
     load_declared_bake_intents,
     parse_bake_v3_body,
 )
-from adapters.outbound.athena.query import AthenaQueryAdapter, AthenaQueryTarget
+from adapters.outbound.athena.query import (
+    BAKE_INVOCATION_WAIT,
+    AthenaQueryAdapter,
+    AthenaQueryTarget,
+    ResultTransport,
+)
 from adapters.outbound.bake_sources import BakeClock, BakeQueryCapture, BakeSourceReads
 from adapters.outbound.commerce_identity import load_commerce_identity_bridge
 from adapters.outbound.dynamodb.execution_graph_release import DynamoGraphReleaseStore
@@ -85,7 +109,13 @@ from adapters.outbound.s3.preset_artifacts import (
 from adapters.outbound.source_pack import load_source_packs
 from adapters.outbound.sqs.insight_continuation import SqsInsightContinuation
 from adapters.outbound.telemetry.bootstrap import configure_tracing, flushes_traces
-from adapters.outbound.telemetry.graph_metrics import emit_cutover_drop
+from adapters.outbound.telemetry.graph_metrics import (
+    BAKE_TELEMETRY_LOSS_METRIC,
+    emit_bake_trace_signal,
+    emit_cutover_drop,
+    emit_isolated_refusal,
+    emit_task_over_budget,
+)
 from adapters.outbound.telemetry.reporting import (
     METRICS,
     LogSeverity,
@@ -94,13 +124,15 @@ from adapters.outbound.telemetry.reporting import (
     report_error,
     report_operation,
 )
-from adapters.outbound.telemetry.span_context import admitted
+from adapters.outbound.telemetry.span_context import admitted, collecting
 from adapters.outbound.telemetry.tracing import (
     PRESET_ARTIFACT_DELIVERY,
     PRESET_ARTIFACT_PROCESS,
+    Recording,
     span,
     trace_boundary,
 )
+from domain.operations.bake_refusals import IsolatedRefusal, RefusalGroup, group_refusals
 from domain.operations.companions import (
     CompanionFlow,
     CompanionFlowRequest,
@@ -117,6 +149,7 @@ from domain.operations.execution_graph_release import (
     CohortMember,
     unavailable_reason,
 )
+from domain.operations.generated_execution_graphs import BAKE_TASKS, ROUTES
 from domain.operations.status import CompletionOutcome, FlowState
 from domain.presentation.audiences import AUDIENCES_PAGE_ID
 from domain.presentation.new_customers import NEW_CUSTOMERS_PAGE_ID
@@ -124,7 +157,6 @@ from domain.presentation.preset_artifacts import (
     PresetArtifactPage,
     PresetArtifactPublicationRequest,
     PresetArtifactPublicationResult,
-    PresetArtifactRevision,
     PresetArtifactVariant,
     SourceUnchanged,
 )
@@ -138,22 +170,21 @@ from ports.outbound.preset_artifacts import (
     PresetArtifactPointerStorePort,
 )
 from ports.outbound.query import (
+    FoldingQueryPort,
+    FoldRead,
     PeriodSeriesQueryPort,
     PeriodSeriesRequest,
     QueryPort,
     QueryRequest,
     QueryResult,
+    RowSink,
 )
 
 __all__ = [
     "NOT_GRAPH_BAKED_PAGES",
     "PAGE_BAKERS",
     "AthenaBatchAdmission",
-    "BakePublication",
     "BakeRegistryMismatchError",
-    "BakeResult",
-    "BakeUnavailable",
-    "BakeUnchanged",
     "PresetArtifactBakeApplication",
     "RegisteredPresetArtifactBaker",
     "apply_records",
@@ -227,7 +258,17 @@ class AthenaBatchAdmission:
             lambda: cast("PeriodSeriesQueryPort", self._queries).run_series(request)
         )
 
-    def _admitted(self, execute: Callable[[], QueryResult]) -> QueryResult:
+    def fold(self, request: QueryRequest, sink: RowSink) -> FoldRead:
+        """Stream one read through `sink` under the same FIFO ticket and capacity (ADR-143)."""
+        return self._admitted(lambda: cast("FoldingQueryPort", self._queries).fold(request, sink))
+
+    def fold_series(self, request: PeriodSeriesRequest, sink: RowSink) -> FoldRead:
+        """Stream one period series through `sink` under the same admission (ADR-143)."""
+        return self._admitted(
+            lambda: cast("FoldingQueryPort", self._queries).fold_series(request, sink)
+        )
+
+    def _admitted[R](self, execute: Callable[[], R]) -> R:
         ticket = object()
         queued = monotonic()
         with self._condition:
@@ -249,32 +290,6 @@ class AthenaBatchAdmission:
             with self._condition:
                 self._active -= 1
                 self._condition.notify_all()
-
-
-@dataclass(frozen=True, slots=True)
-class BakePublication:
-    """A real page baker's capability-free artifact ready for persistence."""
-
-    request: PresetArtifactPublicationRequest
-
-
-@dataclass(frozen=True, slots=True)
-class BakeUnavailable:
-    """Typed result used until a page-specific baker is registered."""
-
-    intent: BakeIntent
-    reason: str
-
-
-@dataclass(frozen=True, slots=True)
-class BakeUnchanged:
-    """The source computed the revision the current pointer carries: nothing to write (D26)."""
-
-    intent: BakeIntent
-    revision: PresetArtifactRevision
-
-
-BakeResult = BakePublication | BakeUnavailable | BakeUnchanged
 
 
 class PresetArtifactBaker(Protocol):
@@ -845,6 +860,8 @@ class _BakeReportContext:
     plan_digest: str
     completed: int
     total: int
+    delivery: Recording | None = None
+    """The record's `PRESET_ARTIFACT_DELIVERY` span: the parent of its refusal spans (ADR-142)."""
 
 
 class GraphBakeConsumer(Protocol):
@@ -856,8 +873,8 @@ class GraphBakeConsumer(Protocol):
         """Consume one fan-out envelope; the result's `acknowledge` decides the batch item."""
         ...
 
-    def consume_v3(self, delivery: BakeDelivery) -> ConsumeResult:
-        """Consume one V3 task or finalize message."""
+    def consume_v3(self, delivery: BakeDelivery, remaining_ms: Callable[[], int]) -> ConsumeResult:
+        """Consume one V3 task or finalize message; a task's deadline derives from the time."""
         ...
 
 
@@ -867,10 +884,16 @@ def _legacy_mode() -> AuthorityMode:
 
 @dataclass(frozen=True, slots=True)
 class PresetArtifactBakeApplication:
-    """Validate closed FIFO data, invoke the page baker, then persist a real artifact only."""
+    """Validate closed FIFO data, render through the one page execution, persist real artifacts.
+
+    `parts.baker` is the registry; a roster page renders only through `render_page` (ADR-142).
+    """
 
     declared: DeclaredBakeIntents
-    baker: PresetArtifactBaker
+    parts: PageParts
+    """The registry, the counted query port and the process ledger every page renders on."""
+    roster: BakeRoster
+    """The roster rows: a declared intent with a row renders under its window (ADR-144)."""
     persistence: PresetArtifactPersistencePort
     insight_fill: PresetInsightFillChild | None = None
     graph: GraphBakeConsumer | None = None
@@ -881,21 +904,56 @@ class PresetArtifactBakeApplication:
     """S6 §2.9 (D6, AGG3-6): counts a legacy intent dropped in GRAPH, or refused at its write."""
     clock: BakeClock = field(default_factory=BakeClock)
     """The sources' one bake clock (A5.1 I6), opened on the wall clock for the legacy render."""
+    refusal_metric: Callable[[str, int], None] = emit_isolated_refusal
+    """ADR-142: one `BakeIsolatedRefusal*` datapoint per refusal group."""
+    over_budget_metric: Callable[[], None] = emit_task_over_budget
+    """ADR-142: one `BakeTaskOverBudget` datapoint per over-budget bake."""
 
-    def apply(
+    def apply(  # noqa: PLR0913 -- the record, its lineage and the invocation's deadline inputs
         self,
         body: object,
         context: _BakeReportContext | None = None,
+        *,
+        remaining_ms: Callable[[], int],
+        final: bool,
     ) -> BakeResult | PresetArtifactPublicationResult | None:
-        """Acknowledge malformed data; retry only a real baking or persistence failure."""
+        """Acknowledge malformed data; retry only a real baking or persistence failure.
+
+        A declared intent with no roster row (a page with no bake source) takes the registry's
+        fallback, which runs no statement, so it needs no window. A roster intent renders through
+        `render_page` under the invocation's `remaining_ms` and its row (ADR-144), then writes
+        through `stage_page`.
+        """
         intent = BakeIntent.parse(body)
         if intent is None or not self.declared.contains(intent):
             return None
+        key = f"{intent.page}#{intent.variant}"
+        if not self.roster.contains(key):
+            started = monotonic()
+            fallback = self.parts.baker.bake(intent)
+            if isinstance(fallback, BakePublication):
+                raise ValueError("a declared page outside the bake roster produced an artifact.")
+            _report_bake(
+                _BakeResultReport(
+                    intent,
+                    "unchanged" if isinstance(fallback, BakeUnchanged) else "unavailable",
+                    _BakeStageDurations(int((monotonic() - started) * 1_000), 0),
+                    context,
+                )
+            )
+            return fallback
+        window = PageWindow(
+            remaining_ms, self.roster.row(key), float(BAKE_TASKS["tail_seconds"]), final
+        )
         started = monotonic()
         # A5.1 I6: the pre-cutover legacy render is the one wall-clock bake (census-pinned).
-        with self.clock.legacy_wall():
-            result = self.baker.bake(intent)
+        with collecting() as statistics, self.clock.legacy_wall():
+            page = render_page(self.parts, intent, window)
+        result = page.result
         source_ms = int((monotonic() - started) * 1_000)
+        observed = _PageReport(
+            sum(item.throttled_starts for item in statistics), page, self.parts.process.peak()
+        )
         if isinstance(result, BakeUnavailable | BakeUnchanged):
             # D26: an unchanged page writes nothing, as an unavailable one does; only the
             # report label differs (a report change, not a write change).
@@ -905,8 +963,10 @@ class PresetArtifactBakeApplication:
                     "unchanged" if isinstance(result, BakeUnchanged) else "unavailable",
                     _BakeStageDurations(source_ms, 0),
                     context,
+                    observed,
                 )
             )
+            self._settled(page.groups, intent, window, (started, context))
             return result
         request = result.request
         if (request.body.page.value, request.body.variant.value) != (intent.page, intent.variant):
@@ -915,9 +975,10 @@ class PresetArtifactBakeApplication:
             )
         persist_started = monotonic()
         try:
-            published = self.persistence.publish(request)
+            published = stage_page(self.persistence.publish, request, window)
         except LegacyPointerAfterCutoverError:
             # AGG3-6: the CAS committed after this batch read the mode; zero effect, acked.
+            # No body was published, so nothing is emitted.
             self.cutover_drop(LEGACY_BAKE_AFTER_CUTOVER, 1)
             _report_bake(
                 _BakeResultReport(
@@ -925,21 +986,93 @@ class PresetArtifactBakeApplication:
                     "after_cutover",
                     _BakeStageDurations(source_ms, int((monotonic() - persist_started) * 1_000)),
                     context,
+                    observed,
                 )
             )
             return None
+        durations = _BakeStageDurations(source_ms, int((monotonic() - persist_started) * 1_000))
+        if isinstance(published, IsolatedRefusal):
+            # ADR-145: the write deadline came first, or a sibling the stream rendered refused
+            # the page. `publish` wrote no pointer, so the page keeps its last good legacy
+            # pointer; its one page group replaces the item notes.
+            absence = page_absence(intent)
+            _report_bake(_BakeResultReport(intent, "unavailable", durations, context, observed))
+            self._settled(group_refusals((published,)), intent, window, (started, context))
+            return absence
         if self.insight_fill is not None and published.pointer.outcome.value == "advanced":
             # §5.3: enqueued strictly after the pointer advanced; best-effort by contract.
             self.insight_fill.warm(request)
         _report_bake(
-            _BakeResultReport(
-                intent,
-                "published",
-                _BakeStageDurations(source_ms, int((monotonic() - persist_started) * 1_000)),
-                context,
-            )
+            _BakeResultReport(intent, "published", durations, context, observed, published)
         )
+        self._settled(page.groups, intent, window, (started, context))
         return published
+
+    def _settled(  # noqa: PLR0913, PLR0917 -- the groups, the intent, its window, its measure
+        self,
+        groups: tuple[RefusalGroup, ...],
+        intent: BakeIntent,
+        window: PageWindow,
+        measured: tuple[float, _BakeReportContext | None],
+    ) -> None:
+        """Emit a final outcome's refusal groups and over-budget report once (ADR-142).
+
+        Called only once the outcome is final (published, unchanged or unavailable): a receive
+        that raises emits nothing, and its redelivery renders again and emits. Each emission
+        runs through the telemetry guard, so it never changes the business result.
+        """
+        started, context = measured
+        seconds = monotonic() - started
+        lineage = RefusalLineage(
+            "legacy",
+            intent.page,
+            intent.variant,
+            execution_id=None if context is None else context.execution_id,
+        )
+        if groups:
+            guarded(
+                lambda: emit_isolated_refusals(
+                    LOGGER, groups, lineage, replayed=False, metric=self.refusal_metric
+                ),
+                _telemetry_lost,
+            )
+        over: list[bool] = []
+        guarded(
+            lambda: over.append(
+                report_over_budget(
+                    LOGGER,
+                    seconds,
+                    window.row,
+                    lineage,
+                    replayed=False,
+                    metric=self.over_budget_metric,
+                )
+            ),
+            _telemetry_lost,
+        )
+        delivery = None if context is None else context.delivery
+        if delivery is not None:
+            names = ",".join(f"{group.scope.value}:{group.reason.value}" for group in groups)
+            delivery.record(isolated_refusals=names or None, over_budget=any(over) or None)
+
+
+def _telemetry_lost(cause: str) -> None:
+    """Report one lost legacy telemetry emission: a WARNING line and the loss count (A2.2)."""
+    guarded(
+        lambda: report_operation(
+            OperationLog(
+                operation=_OPERATION,
+                component=_COMPONENT,
+                phase="telemetry",
+                outcome="telemetry_unavailable",
+                severity=LogSeverity.WARNING,
+                details={"cause": cause},
+            ),
+            LOGGER,
+        ),
+        lambda _cause: None,
+    )
+    guarded(lambda: emit_bake_trace_signal(BAKE_TELEMETRY_LOSS_METRIC, 1), lambda _cause: None)
 
 
 @dataclass(frozen=True, slots=True)
@@ -951,6 +1084,16 @@ class _BakeStageDurations:
 
 
 @dataclass(frozen=True, slots=True)
+class _PageReport:
+    """What a roster page's render observed: its throttled starts and its page execution."""
+
+    throttled_starts: int
+    page: PageRender
+    memory_peak_mb: float
+    """The process's peak at the end of the page's render (`ru_maxrss`, through the ledger)."""
+
+
+@dataclass(frozen=True, slots=True)
 class _BakeResultReport:
     """One per-bake lifecycle projection with optional invocation lineage."""
 
@@ -958,6 +1101,10 @@ class _BakeResultReport:
     outcome: str
     durations: _BakeStageDurations
     context: _BakeReportContext | None
+    observed: _PageReport | None = None
+    """A roster page's render; None for a declared page with no bake source (no render)."""
+    published: PresetArtifactPublicationResult | None = None
+    """A published page's stage result: its write chains and bytes (ADR-145), as on the graph."""
 
 
 def _report_bake(request: _BakeResultReport) -> None:
@@ -966,6 +1113,21 @@ def _report_bake(request: _BakeResultReport) -> None:
     outcome = request.outcome
     durations = request.durations
     context = request.context
+    observed = request.observed
+    page = (
+        {}
+        if observed is None
+        else {
+            "throttled_starts": observed.throttled_starts,
+            "deadline_clamped": observed.page.deadline_clamped,
+            # 02 §3.6: the page observation's memory and process fields, as on the graph entry.
+            "memory_peak_mb": observed.memory_peak_mb,
+            "rss_before_mb": observed.page.entry.rss_before_mb,
+            "process_baseline_mb": observed.page.entry.process_baseline_mb,
+            "process_id": observed.page.entry.process_id,
+            "process_bake_ordinal": observed.page.entry.process_bake_ordinal,
+        }
+    )
     lineage = (
         {}
         if context is None
@@ -976,6 +1138,12 @@ def _report_bake(request: _BakeResultReport) -> None:
             "completed": context.completed,
             "total": context.total,
         }
+    )
+    published = request.published
+    written = (
+        {}
+        if published is None
+        else {"pairs": published.pairs, "written_bytes": published.written_bytes}
     )
     report_operation(
         OperationLog(
@@ -990,6 +1158,8 @@ def _report_bake(request: _BakeResultReport) -> None:
                 "source_ms": durations.source_ms,
                 "persist_ms": durations.persist_ms,
                 "total_ms": durations.source_ms + durations.persist_ms,
+                **page,
+                **written,
                 **lineage,
             },
         ),
@@ -997,17 +1167,14 @@ def _report_bake(request: _BakeResultReport) -> None:
     )
 
 
-def _unbounded_ms() -> int:
-    return 1_000_000_000
-
-
 @dataclass(frozen=True, slots=True)
 class _BakeTelemetry:
     execution_id: str
     plan_digest: str
     total: int
-    remaining_ms: Callable[[], int] = _unbounded_ms
-    """The invocation's remaining time (the Lambda context's); the graph bake's reserve."""
+    remaining_ms: Callable[[], int] | None = None
+    """The invocation's remaining time (the Lambda context's callable); None is a defect that
+    `apply_records` refuses before any record (`BAKE_DEADLINE_UNBOUND`, ADR-144)."""
 
 
 def _batch_telemetry(event: object, execution_id: str) -> _BakeTelemetry:
@@ -1137,6 +1304,23 @@ def apply_records(
         return ()
     invocation = telemetry or _batch_telemetry(cast("dict[str, object]", event), uuid4().hex)
     mode = application.mode()
+    remaining_ms = invocation.remaining_ms
+    if remaining_ms is None:
+        # ADR-144: no bake on either entry runs without the invocation's deadline. A deployed
+        # Lambda always has the callable, so only a mis-composed caller reaches this.
+        report_error(
+            InvariantError(
+                BAKE_DEADLINE_UNBOUND_CODE,
+                "A bake invocation has no remaining-time callable.",
+                context={"signal": BAKE_DEADLINE_UNBOUND},
+            ),
+            Report(operation=_OPERATION, correlation_id=invocation.execution_id, logger=LOGGER),
+        )
+        return tuple(
+            str(cast("dict[str, object]", raw).get("messageId", ""))
+            for raw in cast("list[object]", records)
+            if isinstance(raw, dict)
+        )
     failures: list[str] = []
     completed = 0
     for ordinal, raw in enumerate(cast("list[object]", records), start=1):
@@ -1144,7 +1328,7 @@ def apply_records(
             completed += 1
             continue
         record = cast("dict[str, object]", raw)
-        graph = _graph_record(record, application, (mode, invocation))
+        graph = _graph_record(record, application, (mode, invocation, remaining_ms))
         if graph is not None:
             completed += 1 if graph else 0
             if not graph:
@@ -1173,7 +1357,10 @@ def apply_records(
                         invocation.plan_digest,
                         completed + 1,
                         invocation.total,
+                        delivery_span,
                     ),
+                    remaining_ms=remaining_ms,
+                    final=_final_receive(record),
                 )
                 _emit_bake_companion(record, result)
                 completed += 1
@@ -1213,6 +1400,25 @@ def apply_records(
 GRAPH_DISPATCH_NOT_ACTIVE_CODE = ErrorCode("GRAPH_POST_GRANT", 6)
 """A graph bake envelope received outside `GRAPH`: zero effect, left for the DLQ."""
 
+BAKE_DEADLINE_UNBOUND: Final = "BAKE_DEADLINE_UNBOUND"
+BAKE_DEADLINE_UNBOUND_CODE = ErrorCode("PRESET_ARTIFACT_BAKE", 5)
+"""An invocation with no remaining-time callable: every record a batch-item failure (ADR-144)."""
+
+
+def _final_receive(record: dict[str, object]) -> bool:
+    """Whether a legacy record is on its last receive; an unreadable count is not final.
+
+    Read as `_delivery` reads a V3 record's count and compared as `BakeDelivery.final` compares,
+    so a count it can't read retries rather than settling an absence, and the queue's
+    `maxReceiveCount` still dead-letters it.
+    """
+    attributes = record.get("attributes")
+    typed = cast("dict[str, object]", attributes) if isinstance(attributes, dict) else {}
+    receive = typed.get("ApproximateReceiveCount")
+    if not isinstance(receive, str) or not receive.isdecimal():
+        return False
+    return int(receive) >= int(ROUTES["bake"]["max_receive_count"])
+
 
 def _delivery(record: dict[str, object], body: BakeV3Body) -> BakeDelivery | None:
     attributes = record.get("attributes")
@@ -1241,7 +1447,7 @@ def _delivery(record: dict[str, object], body: BakeV3Body) -> BakeDelivery | Non
 def _graph_record(
     record: dict[str, object],
     application: PresetArtifactBakeApplication,
-    batch: tuple[AuthorityMode, _BakeTelemetry],
+    batch: tuple[AuthorityMode, _BakeTelemetry, Callable[[], int]],
 ) -> bool | None:
     """Route a graph envelope (plan 4.6); None for a legacy intent, else whether it is acked.
 
@@ -1250,7 +1456,7 @@ def _graph_record(
     with the graph bake composed; in any other mode it is refused with zero effect and left
     unacknowledged, as TableWriter does. A malformed body is refused before any side effect.
     """
-    mode, invocation = batch
+    mode, invocation, remaining_ms = batch
     report = Report(operation=_OPERATION, correlation_id=invocation.execution_id, logger=LOGGER)
     try:
         v3 = parse_bake_v3_body(record.get("body"))
@@ -1277,8 +1483,8 @@ def _graph_record(
                 BakeEnvelopeError("a V3 bake record has no valid receive attributes."), report
             )
             return False
-        return application.graph.consume_v3(delivery).acknowledge
-    result = application.graph.consume(cast("PostGrantEnvelope", envelope), invocation.remaining_ms)
+        return application.graph.consume_v3(delivery, remaining_ms).acknowledge
+    result = application.graph.consume(cast("PostGrantEnvelope", envelope), remaining_ms)
     return result.acknowledge
 
 
@@ -1312,6 +1518,10 @@ def application() -> PresetArtifactBakeApplication:
                     workgroup=settings.athena_workgroup,
                     database=settings.semantic_v2_current_database,
                     reuse_minutes=settings.athena_result_reuse_max_age_minutes,
+                    wait=BAKE_INVOCATION_WAIT,
+                    # ADR-143: the baker streams each result object from its bake/ prefix;
+                    # the probe's reader parity and reuse checks passed on 2026-10-18.
+                    results=ResultTransport.OBJECT,
                 )
             ),
             settings.athena_query_batch_max_concurrency,
@@ -1344,16 +1554,22 @@ def application() -> PresetArtifactBakeApplication:
         admission=admission,
     )
     declared = load_declared_bake_intents(contracts_root())
+    # One page execution for both entries (ADR-142): never a None query port, so an unconfigured
+    # deployment still renders each roster page's unavailable result under its count.
+    parts = PageParts(
+        baker=baker, queries=queries or BakeQueryCapture(_NoQueries()), process=PROCESS_LEDGER
+    )
     if not graph_table:
         return PresetArtifactBakeApplication(
             declared=declared,
-            baker=baker,
+            parts=parts,
+            roster=roster,
             persistence=persistence,
             insight_fill=_insight_fill_child(settings),
             clock=clock,
         )
-    # The V3 graph bake shares the composed registry, reader, port and persistence; graph_bake
-    # imports this module's result types, so it is imported here, at composition.
+    # The V3 graph bake shares the composed registry, reader, port and persistence; it is
+    # imported here, at composition, so a deployment without the graph authority never loads it.
     from adapters.jobs.preset_artifact_publisher.graph_bake import (  # noqa: PLC0415
         BakeRuntime,
         GraphBakeRuntime,
@@ -1371,7 +1587,8 @@ def application() -> PresetArtifactBakeApplication:
     now = lambda: datetime.now(UTC)  # noqa: E731
     return PresetArtifactBakeApplication(
         declared=declared,
-        baker=baker,
+        parts=parts,
+        roster=roster,
         persistence=persistence,
         insight_fill=_insight_fill_child(settings),
         clock=clock,
@@ -1381,7 +1598,7 @@ def application() -> PresetArtifactBakeApplication:
                 roster=roster,
                 baker=baker,
                 reads=reads or BakeSourceReads(_NoCurrentReads(), _NoCurrentReads(), clock),
-                queries=queries or BakeQueryCapture(_NoQueries()),
+                queries=parts.queries,
                 stage=persistence,
                 pointers=pointers,
                 pointer_table=settings.pointer_table,
@@ -1389,6 +1606,7 @@ def application() -> PresetArtifactBakeApplication:
                 now=now,
                 logger=LOGGER,
                 admission=admission,
+                process=parts.process,
             ),
             now,
             LOGGER,
@@ -1409,6 +1627,18 @@ class _NoQueries:
 
     def run_series(self, request: PeriodSeriesRequest) -> QueryResult:
         del request
+        raise InvariantError(
+            ErrorCode("PRESET_ARTIFACT_BAKE", 3), "an unconfigured bake reached a query."
+        )
+
+    def fold(self, request: QueryRequest, sink: RowSink) -> FoldRead:
+        del request, sink
+        raise InvariantError(
+            ErrorCode("PRESET_ARTIFACT_BAKE", 3), "an unconfigured bake reached a query."
+        )
+
+    def fold_series(self, request: PeriodSeriesRequest, sink: RowSink) -> FoldRead:
+        del request, sink
         raise InvariantError(
             ErrorCode("PRESET_ARTIFACT_BAKE", 3), "an unconfigured bake reached a query."
         )

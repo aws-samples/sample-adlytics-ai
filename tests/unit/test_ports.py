@@ -21,7 +21,19 @@ from domain.shared_kernel.values import DateRange
 from ports.outbound.canonical import CanonicalDatasetWritePort, CanonicalMaterializeRequest
 from ports.outbound.identity_provider import ExchangeCodeRequest, IdentityProviderPort
 from ports.outbound.publication_selection import PublicationSelectionPort
-from ports.outbound.query import MAX_ROWS_CEILING, QueryPort, QueryRequest, QueryResult
+from ports.outbound.query import (
+    BAKE_LONGEST_WINDOW_DAYS,
+    BAKE_MAX_ROWS,
+    BAKE_MAX_STREAMED_ROWS,
+    MAX_ROWS_CEILING,
+    PeriodSeriesRequest,
+    QueryPort,
+    QueryRequest,
+    QueryResult,
+    RowCeiling,
+    row_ceiling,
+    statement_limit,
+)
 from ports.outbound.source_aligned import SourceAlignedReadPort, SourceAlignedWritePort
 from ports.outbound.source_coverage import (
     SourceCoveragePort,
@@ -68,7 +80,7 @@ class TestQueryPortShape:
         rule someone has to remember.
         """
         fields = QueryRequest.__dataclass_fields__.keys()
-        assert set(fields) == {"plan", "max_rows"}
+        assert set(fields) == {"plan", "max_rows", "ceiling", "ranked"}
         assert not any("sql" in f.lower() for f in fields)
 
     def test_what_crosses_is_a_validated_plan(self, revenue_plan: BoundQueryPlan) -> None:
@@ -106,6 +118,58 @@ class TestQueryPortShape:
                 return None
 
         assert isinstance(Fake(), QueryPort)
+
+
+class TestRowCeilingPerCallerKind:
+    """ADR-143: one ceiling per caller kind; chat's narration bound is unchanged."""
+
+    def test_the_default_kind_is_narration_with_chats_unchanged_bound(
+        self, revenue_plan: BoundQueryPlan
+    ) -> None:
+        request = QueryRequest(plan=revenue_plan, max_rows=MAX_ROWS_CEILING)
+        assert request.ceiling is RowCeiling.NARRATION
+        assert (MAX_ROWS_CEILING, row_ceiling(RowCeiling.NARRATION)) == (10_000, 10_000)
+
+    @pytest.mark.parametrize(
+        ("kind", "bound"),
+        [
+            (RowCeiling.NARRATION, MAX_ROWS_CEILING),
+            (RowCeiling.BAKE, BAKE_MAX_ROWS),
+            (RowCeiling.BAKE_STREAMED, BAKE_MAX_STREAMED_ROWS),
+            (RowCeiling.BAKE_GROUPED, BAKE_MAX_ROWS),
+        ],
+    )
+    def test_each_kind_admits_its_bound_and_refuses_one_more(
+        self, revenue_plan: BoundQueryPlan, kind: RowCeiling, bound: int
+    ) -> None:
+        """Paired: exactly the bound constructs; one row more is the port's ValueError."""
+        assert row_ceiling(kind) == bound
+        assert QueryRequest(plan=revenue_plan, max_rows=bound, ceiling=kind).max_rows == bound
+        with pytest.raises(ValueError, match="max_rows"):
+            QueryRequest(plan=revenue_plan, max_rows=bound + 1, ceiling=kind)
+        with pytest.raises(ValueError, match="max_rows"):
+            PeriodSeriesRequest((revenue_plan,), bound + 1, kind)
+
+    def test_a_streamed_bake_width_is_refused_under_narration(
+        self, revenue_plan: BoundQueryPlan
+    ) -> None:
+        """Paired: the same width a reduction may stream is chat's over-bound refusal."""
+        streamed = QueryRequest(
+            plan=revenue_plan, max_rows=BAKE_MAX_STREAMED_ROWS, ceiling=RowCeiling.BAKE_STREAMED
+        )
+        assert streamed.max_rows == BAKE_MAX_STREAMED_ROWS
+        with pytest.raises(ValueError, match="cannot be narrated honestly"):
+            QueryRequest(plan=revenue_plan, max_rows=BAKE_MAX_STREAMED_ROWS)
+
+    def test_only_a_grouped_read_has_no_statement_limit(self) -> None:
+        """Paired: a grouped fold's statement reads every row; every other kind asks its own."""
+        assert statement_limit(BAKE_MAX_ROWS, RowCeiling.BAKE_GROUPED) is None
+        for kind in (RowCeiling.NARRATION, RowCeiling.BAKE, RowCeiling.BAKE_STREAMED):
+            assert statement_limit(7, kind) == 7
+
+    def test_the_streamed_ceiling_is_derived_from_the_held_one(self) -> None:
+        assert BAKE_MAX_STREAMED_ROWS == BAKE_LONGEST_WINDOW_DAYS * BAKE_MAX_ROWS
+        assert MAX_ROWS_CEILING <= BAKE_MAX_ROWS <= 50_000  # finite, never above the proposal
 
 
 class TestQueryResultCarriesProvenance:

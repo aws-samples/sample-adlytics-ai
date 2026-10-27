@@ -481,6 +481,118 @@ function sortLabel(sort: CampaignPortfolioSort): string {
 /** A query "Search All channels" carries across the filter change that remounts the table. */
 let pendingFindQuery: string | null = null;
 
+/** One shard of a filter's baked name roster and the revision it was baked under (ADR-145). */
+export type RosterShardLoader = (filterId: string, shard: number, signal: AbortSignal) => Promise<{
+  readonly entries: readonly CampaignPortfolioArtifact['roster'][number][];
+  readonly parent_revision: string;
+}>;
+
+/** Where a baked body's roster shards come from, and how to reload a parent they outlived. */
+export interface RosterSource {
+  readonly load: RosterShardLoader;
+  readonly onStale: () => void;
+}
+
+/** Catalog copy for the name field while its roster loads or after a shard failed (A2). */
+export const ROSTER_LOADING_TEXT = 'Loading campaign names…';
+export const ROSTER_FAILED_TEXT = "Campaign names didn't load. Try again.";
+/** At most two roster shard requests in flight (ADR-145). */
+const ROSTER_SHARDS_IN_FLIGHT = 2;
+/** Loaded rosters by revision and filter: a segment request remounts the field, never refetches. */
+const rosterCache = new Map<string, readonly CampaignPortfolioArtifact['roster'][number][]>();
+/**
+ * A shard of another revision reloads the parent once (`rosterReloaded`) and loads its roster
+ * when the new parent arrives (`pendingRosterLoad`); a second disagreement shows the failure.
+ */
+let rosterReloaded = false;
+let pendingRosterLoad = false;
+
+class RosterRevisionChanged extends Error {}
+
+async function loadRosterShards(
+  shards: number,
+  revision: string,
+  filterId: string,
+  load: RosterShardLoader,
+  signal: AbortSignal,
+): Promise<readonly CampaignPortfolioArtifact['roster'][number][]> {
+  const loaded: (readonly CampaignPortfolioArtifact['roster'][number][])[] = [];
+  let next = 0;
+  const worker = async () => {
+    while (next < shards) {
+      const shard = next;
+      next += 1;
+      const result = await load(filterId, shard, signal);
+      if (result.parent_revision !== revision) throw new RosterRevisionChanged();
+      loaded[shard] = result.entries;
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(ROSTER_SHARDS_IN_FLIGHT, shards) }, worker));
+  return loaded.flat();
+}
+
+type RosterState =
+  | { readonly kind: 'idle' | 'loading' | 'failed' }
+  | { readonly kind: 'ready'; readonly entries: readonly CampaignPortfolioArtifact['roster'][number][] };
+
+/**
+ * The roster a name field searches: the body's own, or its baked shards, fetched on the field's
+ * first focus and never on page load. `start` begins (or retries) the fetch.
+ */
+function useRoster(artifact: CampaignPortfolioArtifact, source: RosterSource | undefined): readonly [RosterState, () => void] {
+  // Only a parsed baked body names shards; a body holding its roster has none.
+  const shards = artifact.roster_shards ?? null;
+  const filterId = artifact.channel_filter.selected;
+  const key = shards === null ? null : `${shards.revision}|${filterId}`;
+  const initial = (): RosterState => {
+    if (shards === null) return { entries: artifact.roster, kind: 'ready' };
+    const cached = key === null ? undefined : rosterCache.get(key);
+    return cached === undefined ? { kind: 'idle' } : { entries: cached, kind: 'ready' };
+  };
+  const [held, setHeld] = useState<{ readonly key: string | null; readonly state: RosterState }>(() => ({ key, state: initial() }));
+  const state = held.key === key ? held.state : initial();
+  const controller = useRef<AbortController | null>(null);
+  useEffect(() => () => controller.current?.abort(), []);
+  const start = () => {
+    if (shards === null || key === null || source === undefined) return;
+    if (state.kind === 'loading' || state.kind === 'ready') return;
+    controller.current?.abort();
+    const abort = new AbortController();
+    controller.current = abort;
+    setHeld({ key, state: { kind: 'loading' } });
+    loadRosterShards(shards.shards, shards.revision, filterId, source.load, abort.signal).then(
+      (entries) => {
+        rosterReloaded = false;
+        rosterCache.set(key, entries);
+        if (!abort.signal.aborted) setHeld({ key, state: { entries, kind: 'ready' } });
+      },
+      (error: unknown) => {
+        if (abort.signal.aborted) return;
+        abort.abort();
+        if (error instanceof RosterRevisionChanged && !rosterReloaded) {
+          rosterReloaded = true;
+          pendingRosterLoad = true;
+          source.onStale();
+          return;
+        }
+        rosterReloaded = false;
+        setHeld({ key, state: { kind: 'failed' } });
+      },
+    );
+  };
+  // The parent reloaded after a shard of another revision: load the new roster at once, from a
+  // callback rather than the effect body.
+  useEffect(() => {
+    if (!pendingRosterLoad || key === null) return undefined;
+    const timer = window.setTimeout(() => {
+      pendingRosterLoad = false;
+      start();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  });
+  return [state, start] as const;
+}
+
 /** Open one roster entry: in hand, request its detail; otherwise fetch its canonical segment first. */
 function openRosterEntry(
   artifact: CampaignPortfolioArtifact,
@@ -504,7 +616,7 @@ function openRosterEntry(
  * keys move through at most eight matches, Enter opens one, Escape clears the list. Matching stays
  * in the browser over the roster (ADR-071); a request never carries the query.
  */
-export function FindCampaign({ artifact, filter, hinted = false, id, onFilter, onOpen }: {
+export function FindCampaign({ artifact, filter, hinted = false, id, onFilter, onOpen, roster }: {
   readonly artifact: CampaignPortfolioArtifact;
   readonly filter: CampaignChannelFilter;
   /** The portfolio's field names its scope and Enter under it (mockup campaigns.html). */
@@ -512,7 +624,11 @@ export function FindCampaign({ artifact, filter, hinted = false, id, onFilter, o
   readonly id: string;
   readonly onFilter?: (filterId: string) => void;
   readonly onOpen: (entry: CampaignPortfolioArtifact['roster'][number]) => void;
+  /** Where a baked body's roster shards load from (ADR-145). */
+  readonly roster?: RosterSource | undefined;
 }) {
+  const [names, loadNames] = useRoster(artifact, roster);
+  const entries = names.kind === 'ready' ? names.entries : [];
   const [query, setQuery] = useState(() => {
     const pending = pendingFindQuery;
     return pending ?? '';
@@ -522,7 +638,7 @@ export function FindCampaign({ artifact, filter, hinted = false, id, onFilter, o
   const trimmed = query.trim().toLowerCase();
   const matches = trimmed.length === 0
     ? []
-    : artifact.roster.filter((entry) => rosterEntryLabel(entry).toLowerCase().includes(trimmed)).slice(0, 8);
+    : entries.filter((entry) => rosterEntryLabel(entry).toLowerCase().includes(trimmed)).slice(0, 8);
   const listId = `${id}-list`;
   const hintId = `${id}-hint`;
   const allChannels = filter.selected === 'all';
@@ -530,7 +646,7 @@ export function FindCampaign({ artifact, filter, hinted = false, id, onFilter, o
   const scope = allChannels
     ? 'every channel'
     : filter.selected === 'sponsored' ? 'sponsored channels only' : `${selectedLabel(filter)} only`;
-  const none = trimmed.length > 0 && matches.length === 0;
+  const none = names.kind === 'ready' && trimmed.length > 0 && matches.length === 0;
   const open = (entry: CampaignPortfolioArtifact['roster'][number]) => { setQuery(''); onOpen(entry); };
   return <div className="find-campaign">
     <label htmlFor={id}>Find a campaign</label>
@@ -543,6 +659,7 @@ export function FindCampaign({ artifact, filter, hinted = false, id, onFilter, o
       autoComplete="off"
       id={id}
       onChange={(event) => { setQuery(event.target.value); setActive(0); }}
+      onFocus={loadNames}
       onKeyDown={(event) => {
         if (event.key === 'ArrowDown' && matches.length > 0) { event.preventDefault(); setActive((index) => (index + 1) % matches.length); }
         if (event.key === 'ArrowUp' && matches.length > 0) { event.preventDefault(); setActive((index) => (index - 1 + matches.length) % matches.length); }
@@ -571,8 +688,10 @@ export function FindCampaign({ artifact, filter, hinted = false, id, onFilter, o
     </ul>
     {/* The roster this field searches: a one-channel option's is that channel's alone. */}
     {hinted ? <p className="find-hint" id={hintId}>Enter on a match opens that campaign&apos;s detail. Matches come from {scope}.</p> : null}
-    {/* Mounted empty, so the no-match line is announced when it fills. */}
+    {/* Mounted empty, so the roster's loading, failure and no-match lines are announced. */}
     <p className="find-none" role="status">
+      {names.kind === 'loading' ? ROSTER_LOADING_TEXT : null}
+      {names.kind === 'failed' ? <>{ROSTER_FAILED_TEXT}{' '}<button type="button" className="btn link" onClick={loadNames}>Try again</button></> : null}
       {!none ? null : allChannels
         ? <>No campaign matches &ldquo;{query.trim()}&rdquo;.</>
         : <>No {selectedLabel(filter)} campaign matches &ldquo;{query.trim()}&rdquo;.{' '}
@@ -581,8 +700,9 @@ export function FindCampaign({ artifact, filter, hinted = false, id, onFilter, o
   </div>;
 }
 
-function PortfolioTable({ artifact, onFilter, onSegment, onSegmentApproach, onSelect, onSort, selection }: {
+function PortfolioTable({ artifact, onFilter, onSegment, onSegmentApproach, onSelect, onSort, roster, selection }: {
   readonly artifact: CampaignPortfolioArtifact;
+  readonly roster?: RosterSource | undefined;
   readonly onFilter?: (filterId: string) => void;
   readonly onSegment?: (sort: CampaignPortfolioSort, segment: number) => void;
   readonly onSegmentApproach?: (sort: CampaignPortfolioSort, segment: number) => void;
@@ -659,6 +779,7 @@ function PortfolioTable({ artifact, onFilter, onSegment, onSegmentApproach, onSe
         hinted
         id="find-campaign"
         onOpen={(entry) => openRosterEntry(artifact, entry, onSelect, onSegment)}
+        roster={roster}
         {...(onFilter === undefined ? {} : { onFilter })}
       />
     </div>
@@ -1241,6 +1362,7 @@ export interface CampaignSwitcherActions {
   readonly onSegment: (sort: CampaignPortfolioSort, segment: number) => void;
   readonly onSelect: (capability: CampaignSelectionCapability) => void;
   readonly parent: CampaignPortfolioArtifact;
+  readonly roster?: RosterSource | undefined;
 }
 
 /**
@@ -1251,7 +1373,7 @@ export interface CampaignSwitcherActions {
  * first. The jump field searches the estate-wide name roster, whose positions are
  * canonical-ordering positions (ADR-071): a jump lands in the canonical ordering.
  */
-function CampaignSwitcher({ command, onSegment, onSelect, parent }: CampaignSwitcherActions) {
+function CampaignSwitcher({ command, onSegment, onSelect, parent, roster }: CampaignSwitcherActions) {
   const index = rosterIndex(parent, command);
   if (index === null) return null;
   const pagination = parent.pagination;
@@ -1301,7 +1423,7 @@ function CampaignSwitcher({ command, onSegment, onSelect, parent }: CampaignSwit
         onClick={() => swap(1)}
       ><span aria-hidden="true">›</span></button>
     </nav>
-    <FindCampaign artifact={parent} filter={parent.channel_filter} id="campaign-jump" onOpen={jumpTo} />
+    <FindCampaign artifact={parent} filter={parent.channel_filter} id="campaign-jump" onOpen={jumpTo} roster={roster} />
   </>;
 }
 
@@ -1392,8 +1514,10 @@ function ClosedState({ description, title }: { readonly description: string; rea
   </div>;
 }
 
-export function CampaignPortfolioV2View({ child, closedCampaign = null, detailStep = null, fallback = null, focusSelectionReference = null, focusSessionId = '', focusTemporalSelection, onClear, onFilter, onSegment, onSegmentApproach, onSelect, onSort, parent, scorecardStep = null, selection }: {
+export function CampaignPortfolioV2View({ child, closedCampaign = null, detailStep = null, fallback = null, focusSelectionReference = null, focusSessionId = '', focusTemporalSelection, onClear, onFilter, onSegment, onSegmentApproach, onSelect, onSort, parent, roster, scorecardStep = null, selection }: {
   readonly child: CampaignAttributionDetailV2 | null;
+  /** Where a baked body's roster shards load from (ADR-145). */
+  readonly roster?: RosterSource | undefined;
   /** The campaign a window change closed because no single row matched it (ia §7.2 11a). */
   readonly closedCampaign?: string | null;
   readonly detailStep?: InsightNextStep | null;
@@ -1479,7 +1603,7 @@ export function CampaignPortfolioV2View({ child, closedCampaign = null, detailSt
           title="Insights"
         />
         <PortfolioTrend artifact={parent} />
-        <PortfolioTable artifact={parent} onSelect={onSelect} selection={selection} {...(onFilter === undefined ? {} : { onFilter })} {...(onSort === undefined ? {} : { onSort })} {...(onSegment === undefined ? {} : { onSegment })} {...(onSegmentApproach === undefined ? {} : { onSegmentApproach })} />
+        <PortfolioTable artifact={parent} onSelect={onSelect} roster={roster} selection={selection} {...(onFilter === undefined ? {} : { onFilter })} {...(onSort === undefined ? {} : { onSort })} {...(onSegment === undefined ? {} : { onSegment })} {...(onSegmentApproach === undefined ? {} : { onSegmentApproach })} />
         {/* UI refresh 3.2 (readout A.4): delivery per channel is a media buyer's detail, so it folds below the table. */}
         {view === null ? null : <details className="about cp-delivery" data-slot="cp-delivery">
           <summary>{DELIVERY_SUMMARY}</summary>

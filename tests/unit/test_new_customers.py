@@ -1186,7 +1186,9 @@ def test_gateway_rows_are_bounded_ordered_and_shared_of_their_own_channel_only()
     products = {
         f"B0GATE{index:04d}": (f"Fictional product {index}", 20 - index) for index in range(12)
     }
-    entry = gateway_entry(("sponsored_products", "Sponsored Products"), products, 300)
+    entry = gateway_entry(
+        ("sponsored_products", "Sponsored Products"), products, 300, listed_count=12
+    )
     assert entry.state is GatewayState.ROWS
     assert len(entry.rows) == GATEWAY_LIMIT
     assert [row.ntb_purchases for row in entry.rows] == list(range(20, 10, -1))
@@ -1197,16 +1199,53 @@ def test_gateway_rows_are_bounded_ordered_and_shared_of_their_own_channel_only()
 
 def test_gateway_no_purchases_is_decided_on_the_halo_inclusive_total_never_step_1() -> None:
     halo_only = gateway_entry(
-        ("sponsored_display", "Sponsored Display"), {"B0HALO0001": ("Halo product", 3)}, 3
+        ("sponsored_display", "Sponsored Display"),
+        {"B0HALO0001": ("Halo product", 3)},
+        3,
+        listed_count=1,
     )
     assert halo_only.state is GatewayState.ROWS
-    none = gateway_entry(("sponsored_display", "Sponsored Display"), {}, 0)
+    none = gateway_entry(("sponsored_display", "Sponsored Display"), {}, 0, listed_count=0)
     assert (none.state, none.text) == (
         GatewayState.NO_NTB_PURCHASES,
         "No new-to-brand purchases were credited to Sponsored Display in this window.",
     )
-    no_row = gateway_entry(("sponsored_display", "Sponsored Display"), {}, None)
+    no_row = gateway_entry(("sponsored_display", "Sponsored Display"), {}, None, listed_count=0)
     assert no_row.state is GatewayState.NO_NTB_PURCHASES
+
+
+@pytest.mark.covers("ADR-152")
+@pytest.mark.parametrize(
+    ("listed", "shown", "more"),
+    [
+        (9, 9, None),
+        (10, 10, None),
+        (11, 10, "And 1 more products."),
+        (50_000, 10, "And 49990 more products."),
+    ],
+)
+def test_the_more_line_counts_the_channels_whole_listed_population(
+    listed: int, shown: int, more: str | None
+) -> None:
+    """The query hands at most 10 products; the "N more" counts every listed product."""
+    products = {
+        f"B0GATE{index:04d}": (f"Fictional product {index}", 100 - index)
+        for index in range(min(listed, GATEWAY_LIMIT))
+    }
+    entry = gateway_entry(
+        ("sponsored_products", "Sponsored Products"), products, 10_000, listed_count=listed
+    )
+    assert (len(entry.rows), entry.more_text) == (shown, more)
+
+
+def test_a_listed_count_below_the_products_shown_is_refused() -> None:
+    with pytest.raises(ValueError, match="at least the products it shows"):
+        gateway_entry(
+            ("sponsored_products", "Sponsored Products"),
+            {"B0GATE0001": ("Fictional", 5), "B0GATE0002": ("Fictional", 4)},
+            9,
+            listed_count=1,
+        )
 
 
 def test_an_uncovered_window_reads_the_coverage_text_with_its_first_covered_date() -> None:
@@ -1232,7 +1271,10 @@ def _market(rows: tuple[StepOneInput, ...] = (_input(),)) -> NewCustomersMarket:
         new_buyers=new_buyers_outside_declared_periods((TimeGrain.WEEK, TimeGrain.MONTH)),
         gateway=tuple(
             gateway_entry(
-                (row.ad_product_key, row.ad_product_label), {"B0GATE0001": ("Fictional", 5)}, 5
+                (row.ad_product_key, row.ad_product_label),
+                {"B0GATE0001": ("Fictional", 5)},
+                5,
+                listed_count=1,
             )
             for row in built
         ),

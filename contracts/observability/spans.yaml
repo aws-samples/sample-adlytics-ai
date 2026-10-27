@@ -9,10 +9,12 @@ spans:
     # or precompute cohort correlation carries all three, and a serve-time chat query records
     # them absent (owner decision 2026-10-15 ~04:25Z, the insight.model.call pattern). Bake
     # trace completeness enforces the cohort case.
-    required_attributes: [metric, facts, max_rows]
+    # max_rows is the statement's row LIMIT, absent for a grouped read (row_ceiling bake_grouped).
+    required_attributes: [metric, facts, row_ceiling]
     allowed_attributes:
       - metric
       - facts
+      - row_ceiling
       - max_rows
       - bytes_scanned
       - cache_hit
@@ -29,6 +31,10 @@ spans:
       - service_processing_millis
       - admission_wait_millis
       - statistics_unavailable
+      - wait_policy
+      - wait_limit_s
+      - start_throttled_attempts
+      - transport
       - run_id
       - task_id
       - cohort_revision
@@ -672,6 +678,8 @@ spans:
       - stage
       - completed
       - total
+      - isolated_refusals
+      - over_budget
       - error_type
       - error_class
       - error_code
@@ -1078,7 +1086,7 @@ spans:
     name: bake.source_pin
     parent: BAKE_RUN
     required_attributes: [run_id, task_id, cohort_revision, task_count]
-    allowed_attributes: [run_id, task_id, cohort_revision, task_count, outcome, error_type, error_class, error_code, alarms]
+    allowed_attributes: [run_id, task_id, cohort_revision, task_count, pin_attempts, outcome, error_type, error_class, error_code, alarms]
     propagation: lexical
     purpose: Time the winner's one current selection, its zero-Athena bind pass and the durable source pin.
   - constant: BAKE_FAN_OUT
@@ -1092,7 +1100,7 @@ spans:
     name: bake.task
     parent: current
     required_attributes: [run_id, task_id, cohort_revision, page, variant, lane, attempt, planned_query_count, budget_seconds]
-    allowed_attributes: [run_id, task_id, cohort_revision, page, variant, lane, attempt, planned_query_count, budget_seconds, effect_kind, reason, query_count, distinct_count, max_occupancy, queue_ms, admission_wait_ms, pairs, bytes, outcome, error_type, error_class, error_code, alarms]
+    allowed_attributes: [run_id, task_id, cohort_revision, page, variant, lane, attempt, planned_query_count, budget_seconds, effect_kind, reason, query_count, distinct_count, max_occupancy, queue_ms, admission_wait_ms, pairs, bytes, isolated_refusals, over_budget, outcome, error_type, error_class, error_code, alarms]
     propagation: current
     purpose: Explain one roster task's duration against its budget, its query fan-in and admission, and its writes.
   - constant: BAKE_PHASE
@@ -1102,6 +1110,15 @@ spans:
     allowed_attributes: [run_id, task_id, cohort_revision, phase, outcome, error_type, error_class, error_code, alarms]
     propagation: lexical
     purpose: Time one closed phase of a roster task (plan, query, write) so phase time is readable per task.
+  # ADR-142: one span per (scope, reason) refusal group on either bake entry, failed, beneath
+  # `bake.task` (graph) or the record's `preset_artifact.publish.delivery` (legacy).
+  - constant: BAKE_ISOLATED_REFUSAL
+    name: bake.isolated_refusal
+    parent: current
+    required_attributes: [entry, page, variant, scope, reason, refusal_class, count, replayed]
+    allowed_attributes: [entry, page, variant, scope, reason, refusal_class, count, replayed, rows_read, max_rows, encoded_bytes, max_bytes, bodies, max_bodies, written, required_partitions, maximum_partitions, waited_seconds, wait_limit_seconds, population, guard, attempts, error_type, error_class, error_code, alarms]
+    propagation: current
+    purpose: Mark one isolated bake refusal group failed, with its closed reason, scope, item count and only its reason's allowlisted figures.
   - constant: BAKE_FINALIZE
     name: bake.finalize
     parent: current

@@ -50,7 +50,13 @@ from adapters.jobs.ingest_delivery.semantic_ingestion import (
 )
 from adapters.jobs.ingest_delivery.semantic_sidecar import SemanticSidecarOutcome
 from adapters.outbound.athena.composition import compose, compose_series
-from adapters.outbound.athena.query import ALL_ROWS_WITHHELD, AthenaQueryAdapter, AthenaQueryTarget
+from adapters.outbound.athena.query import (
+    ALL_ROWS_WITHHELD,
+    INTERACTIVE_WAIT,
+    AthenaQueryAdapter,
+    AthenaQueryTarget,
+    ResultTransport,
+)
 from adapters.outbound.audience_segment_providers import (
     load_segment_providers,
     parse_segment_providers,
@@ -95,6 +101,7 @@ from domain.measurement.rosters import (
 )
 from domain.narrative.publication import RenderingKind
 from domain.narrative.shaped_response import NonAdditivity, ShapedResponse
+from domain.operations.bake_refusals import IsolatedRefusal, IsolatedRefusalReason, RefusalScope
 from domain.producer.models import AccessTier, SuppressionPolicy
 from domain.semantics.audience_segments import (
     ASI_NEEDS_PAID_FEATURE_TEXT,
@@ -125,8 +132,25 @@ from domain.shared_kernel.values import DateRange
 from domain.shopper_aggregates.loss import DEGRADED_NOTE, LossGrade
 from ports.outbound.canonical import CanonicalDestination
 from ports.outbound.publication_selection import PublicationSelection, PublicationSelectionRequest
-from ports.outbound.query import MAX_ROWS_CEILING, PeriodSeriesRequest, QueryRequest, QueryResult
-from ports.outbound.rosters import RosterRequest
+from ports.outbound.query import (
+    BAKE_MAX_ROWS,
+    MAX_ROWS_CEILING,
+    FoldRead,
+    PeriodSeriesRequest,
+    QueryRequest,
+    QueryResult,
+    QueryRow,
+    RowCeiling,
+    RowSink,
+    row_ceiling,
+    statement_limit,
+)
+from ports.outbound.rosters import (
+    CampaignHistories,
+    CampaignHistoriesRequest,
+    CampaignHistory,
+    RosterRequest,
+)
 from ports.outbound.segment_labels import SegmentLabelRequest
 from ports.outbound.served_periods import ServedPeriods, ServedPeriodsRequest
 
@@ -1586,6 +1610,98 @@ def test_a_truncated_history_read_proves_observation_but_never_absence() -> None
     assert reader({}, cut=False).roster(_roster_request()) == FIRST_MONTH
 
 
+def test_a_truncated_bake_roster_read_refuses_its_page_and_chat_keeps_its_answer() -> None:
+    """ADR-142: at the bake ceiling the cut read is rows_over_ceiling with its width."""
+    older = _months_before(AUGUST, 3)
+    built = _history_reader((*older, _MONTHS[1]), {})
+    cut = replace(built, queries=_History({}, series_truncated=True))
+    bake = replace(_roster_request(), ceiling=RowCeiling.BAKE)
+    with pytest.raises(IsolatedRefusal) as refused:
+        cut.roster(bake)
+    assert (refused.value.reason, refused.value.scope) == (
+        IsolatedRefusalReason.ROWS_OVER_CEILING,
+        RefusalScope.PAGE,
+    )
+    assert dict(refused.value.refusal_context) == {"max_rows": row_ceiling(RowCeiling.BAKE)}
+    # Paired: chat's read (the narration ceiling) keeps its own ROSTER_REFUSED answer.
+    with pytest.raises(DomainError) as chat:
+        cut.roster(_roster_request())
+    assert chat.value.code == ROSTER_REFUSED and not isinstance(chat.value, IsolatedRefusal)
+
+
+@dataclass
+class _GroupedHistory(_History):
+    """A folding port applying the port's rule: a `BAKE_GROUPED` series has no row limit."""
+
+    series: list[PeriodSeriesRequest] = field(default_factory=list[PeriodSeriesRequest])
+
+    def fold(self, request: QueryRequest, sink: RowSink) -> FoldRead:
+        del request, sink
+        raise AssertionError("a bake's history walk reads one series.")
+
+    def fold_series(self, request: PeriodSeriesRequest, sink: RowSink) -> FoldRead:
+        self.series.append(request)
+        rows = [
+            {
+                **row,
+                "campaign_key": campaign,
+                "period_start": window.start.isoformat(),
+                "period_end": window.end.isoformat(),
+            }
+            for window in (item.logical.window for item in request.plans)
+            for (start, campaign), month in self.rows.items()
+            if start == window.start
+            for row in month
+        ]
+        limit = statement_limit(request.max_rows, request.ceiling)
+        for row in rows if limit is None else rows[:limit]:
+            sink.add(cast("QueryRow", row))
+        truncated = limit is not None and len(rows) > limit
+        return FoldRead(len(rows), truncated, 1, Suppression(rows_suppressed=False))
+
+
+def _histories(
+    rows: dict[tuple[date, str], tuple[dict[str, object], ...]],
+) -> tuple[CampaignHistories, list[PeriodSeriesRequest]]:
+    queries = _GroupedHistory(rows)
+    reader = replace(_history_reader((_JULY, *_MONTHS), rows), queries=queries)
+    graded = reader.campaign_histories(
+        CampaignHistoriesRequest(SEPTEMBER, US, "amazon_ads", (CAMPAIGN_KEY, OTHER_CAMPAIGN))
+    )
+    return graded, queries.series
+
+
+def test_a_bake_history_walk_reads_every_row_and_holds_only_the_campaigns_it_grades() -> None:
+    """ADR-152 decision 7: rows (months x campaigns x segments) cost time, never a refusal.
+
+    One campaign returning more segments than `BAKE_MAX_ROWS` in July is still read whole and
+    graded; more campaigns in retained history than the bake may hold are ignored, not refused.
+    """
+    wide: tuple[dict[str, object], ...] = tuple(
+        {"segment_id": f"4{index:06d}", measure_alias(0): 1000}
+        for index in range(BAKE_MAX_ROWS + 1)
+    )
+    graded, (series,) = _histories({(JULY.start, CAMPAIGN_KEY): wide})
+    # One statement over the older months, with no row limit.
+    assert [item.logical.window for item in series.plans] == [JULY]
+    assert statement_limit(series.max_rows, series.ceiling) is None
+    assert graded.histories == {
+        CAMPAIGN_KEY: CampaignHistory.OBSERVED,
+        OTHER_CAMPAIGN: CampaignHistory.FIRST_MONTH,
+    }
+    # Paired: more unlisted campaigns in history than the bake may hold are ignored.
+    crowded = {
+        (JULY.start, f"campaign:synthetic-{index}"): _segment_rows("41001")
+        for index in range(BAKE_MAX_ROWS + 1)
+    }
+    crowded[(JULY.start, OTHER_CAMPAIGN)] = _segment_rows("41002")
+    graded, _ = _histories(crowded)
+    assert graded.histories == {
+        CAMPAIGN_KEY: CampaignHistory.FIRST_MONTH,
+        OTHER_CAMPAIGN: CampaignHistory.OBSERVED,
+    }
+
+
 def test_history_past_the_selection_bound_is_refused_as_the_rosters_own_answer() -> None:
     """The selector's bound is reached over history the user never named, so the roster refuses."""
     older = _months_before(AUGUST, 3)
@@ -1600,6 +1716,7 @@ def test_history_past_the_selection_bound_is_refused_as_the_rosters_own_answer()
     )
     assert refused.value.context == {
         "roster": RosterKind.SEGMENT.value,
+        "roster_refusal": "unreadable",
         "reason": str(SELECTION_TOO_LARGE),
     }
     assert refused.value.__cause__ is too_large
@@ -1693,7 +1810,10 @@ def test_a_period_series_refuses_a_month_withheld_whole_before_athena() -> None:
         ),
     )
     adapter = AthenaQueryAdapter(
-        AthenaQueryTarget("unit-workgroup", "unit-current", 0), cast("Any", _NoAthena())
+        AthenaQueryTarget(
+            "unit-workgroup", "unit-current", 0, INTERACTIVE_WAIT, ResultTransport.PAGED
+        ),
+        cast("Any", _NoAthena()),
     )
     with pytest.raises(ValidationError) as refused:
         adapter.run_series(PeriodSeriesRequest((_bound_month(AUGUST), withheld), 10))

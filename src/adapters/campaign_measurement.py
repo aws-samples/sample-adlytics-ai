@@ -10,9 +10,10 @@ only governed batches that can be reduced into presentation artifacts.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Any
 
 from adapters.inbound.tool_handlers.measurement import (
     DEFAULT_MAX_ROWS,
@@ -24,6 +25,7 @@ from adapters.inbound.tool_handlers.measurement import (
 )
 from domain.catalog.capability import Catalog
 from domain.data_contracts.contract import DataContract
+from domain.measurement.folds import AuthorizedDailySums, Fold, KeyedColumns
 from domain.presentation.campaign_attribution import (
     CampaignDeliverySlot,
     SafeCampaignDisplaySignature,
@@ -34,7 +36,7 @@ from domain.semantics.identity import CampaignKey, ChannelKey, MarketplaceKey
 from domain.shared_kernel.errors import ErrorCode, InvariantError
 from domain.shared_kernel.values import DateRange
 from ports.outbound.publication_selection import PresentationEvidenceRole
-from ports.outbound.query import MAX_ROWS_CEILING
+from ports.outbound.query import BAKE_MAX_ROWS, MAX_ROWS_CEILING, RowCeiling
 from ports.outbound.rosters import RosterPort
 
 ARTIFACT_MALFORMED = ErrorCode("ARTIFACT", 1)
@@ -49,6 +51,8 @@ DSP_QUALITY_METRICS = (
 """A campaign's DSP media-quality operands; all four are measured together or not at all."""
 DSP_QUALITY_NOT_MEASURED_FOR_CHANNEL = "dsp_quality_not_measured_for_channel"
 """The typed absence a campaign outside Amazon DSP carries for its DSP media quality."""
+CAMPAIGN_IDENTITY_COLUMNS = ("campaign_key", "marketplace_key")
+"""The columns a campaign-grain figure is keyed by: one campaign in one marketplace."""
 
 
 def measures_dsp_quality(channel: ChannelKey) -> bool:
@@ -95,11 +99,26 @@ class CampaignPortfolioMeasurementInput:
     period: DateRange
     prior_period: DateRange
     sort: CampaignPortfolioSort
+    bake_subsets: Mapping[str, frozenset[tuple[str, str]]] | None = None
+    """Each channel filter's campaign identities, given only by the bake (ADR-152).
+
+    Given, the batch is the bake's: every compare folds into one compact record per campaign
+    (`KeyedColumns`) and each trend operand is one daily read folded into these subsets' sums,
+    held by reference (they are the renderer's own sets). None is the request-time shape the
+    narration path can read: held compares and the day-chunked trend (ADR-143).
+    """
 
     def __post_init__(self) -> None:
         identities = tuple((item.campaign, item.marketplace) for item in self.selections)
         if len(set(identities)) != len(identities):
             raise ValueError("campaign portfolio selections must be canonical-identity unique.")
+        if self.bake_subsets is not None and not self.bake_subsets:
+            raise ValueError("a bake portfolio declares at least its All channels subset.")
+
+    @property
+    def identities(self) -> frozenset[tuple[str, str]]:
+        """Every selected campaign's `(campaign_key, marketplace_key)`."""
+        return frozenset((item.campaign.value, item.marketplace.value) for item in self.selections)
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,6 +142,8 @@ class CampaignPortfolioMeasurementBatch:
 
     prepared: PreparedMeasurementBatch
     slots: tuple[tuple[str, str, str, DateRange], ...]
+    figures: KeyedColumns | None = None
+    """The bake's one compact record per campaign, which every compare slot folds into."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,51 +172,112 @@ class CampaignArtifactMeasurementService:
     ) -> CampaignPortfolioMeasurementBatch:
         """Prepare the unfiltered authorized-population portfolio cohort."""
         current, prior = request.period, request.prior_period
-        population_max_rows = len(request.selections)
-        measurements: list[MeasurementToolRequest] = []
-        slots: list[tuple[str, str, str, DateRange]] = []
-        for metric in ("ad_spend", "roas_attributed_14d", "purchases", "ctr"):
-            measurements.append(
-                self._compare(
-                    metric,
-                    current,
-                    prior,
-                    {},
-                    max_rows=population_max_rows,
-                )
-            )
-            slots.extend((("row", metric, "current", current), ("row", metric, "prior", prior)))
+        compares: list[tuple[str, str]] = [
+            ("row", metric) for metric in ("ad_spend", "roas_attributed_14d", "purchases", "ctr")
+        ]
         # Delivery per channel (ADR-127 decision 4): clicks per campaign, so each channel's CTR,
         # CPC and CPM come from its own summed operands; and, when the cohort has Amazon DSP
         # campaigns, its viewability operands from the DSP views dataset.
-        delivery = ["clicks"]
+        compares.append(("delivery", "clicks"))
         if any(item.channel.value == DSP_CHANNEL_KEY for item in request.selections):
-            delivery.extend(VIEWABILITY_OPERANDS)
-        for metric in delivery:
+            compares.extend(("delivery", metric) for metric in VIEWABILITY_OPERANDS)
+        trend = ("ad_spend", "attributed_revenue_14d", "purchases", "impressions")
+        compares.extend(("portfolio", metric) for metric in trend)
+        if request.bake_subsets is not None:
+            return self._bake_portfolio_batch(request, tuple(compares), trend)
+        population_max_rows = len(request.selections)
+        measurements: list[MeasurementToolRequest] = []
+        slots: list[tuple[str, str, str, DateRange]] = []
+        for section, metric in compares:
             measurements.append(
                 self._compare(metric, current, prior, {}, max_rows=population_max_rows)
             )
-            slots.extend(
-                (("delivery", metric, "current", current), ("delivery", metric, "prior", prior))
-            )
-        for metric in ("ad_spend", "attributed_revenue_14d", "purchases", "impressions"):
-            measurements.append(
-                self._compare(
-                    metric,
-                    current,
-                    prior,
-                    {},
-                    max_rows=population_max_rows,
-                )
-            )
-            slots.extend(
-                (("portfolio", metric, "current", current), ("portfolio", metric, "prior", prior))
-            )
-            for daily in self._portfolio_daily(metric, current, len(request.selections)):
-                measurements.append(daily)
-                slots.append(("trend", metric, "current", daily.window))
+            slots.extend(((section, metric, "current", current), (section, metric, "prior", prior)))
+            if section == "portfolio":
+                for daily in self._portfolio_daily(metric, current, len(request.selections)):
+                    measurements.append(daily)
+                    slots.append(("trend", metric, "current", daily.window))
         prepared = self._prepare(tuple(measurements), "Campaign Portfolio")
         return CampaignPortfolioMeasurementBatch(prepared, tuple(slots))
+
+    def _bake_portfolio_batch(
+        self,
+        request: CampaignPortfolioMeasurementInput,
+        compares: tuple[tuple[str, str], ...],
+        trend: tuple[str, ...],
+    ) -> CampaignPortfolioMeasurementBatch:
+        """Prepare the bake's 26 reads: compares into one compact record, one daily read each.
+
+        A compare is one breakdown per window, the same plans `COMPARE_WINDOWS` makes, each
+        folded into its own column of the shared `KeyedColumns` store, among the selected
+        campaigns only. No read carries a row `LIMIT` (`BAKE_GROUPED`): the store keeps at most
+        the population, which the bake's browse bounds by `BAKE_MAX_ROWS`, so the population is
+        the one limit (ADR-152).
+        """
+        subsets = request.bake_subsets
+        if subsets is None:  # pragma: no cover - the caller chose the bake shape
+            raise ValueError("a bake portfolio declares its filter subsets.")
+        windows = (("current", request.period), ("prior", request.prior_period))
+        columns = tuple(
+            f"{section}:{metric}:{role}" for section, metric in compares for role, _ in windows
+        )
+        figures = KeyedColumns(
+            CAMPAIGN_IDENTITY_COLUMNS, columns, BAKE_MAX_ROWS, request.identities
+        )
+        measurements: list[MeasurementToolRequest] = []
+        slots: list[tuple[str, str, str, DateRange]] = []
+        for section, metric in compares:
+            for role, window in windows:
+                measurements.append(
+                    self._breakdown(
+                        metric,
+                        window,
+                        ("campaign", "marketplace"),
+                        figures.column(f"{section}:{metric}:{role}"),
+                    )
+                )
+                slots.append((section, metric, role, window))
+        days = tuple(
+            request.period.start + timedelta(days=offset) for offset in range(request.period.days)
+        )
+
+        def daily_sums() -> AuthorizedDailySums:
+            return AuthorizedDailySums(
+                subsets, days, identity=CAMPAIGN_IDENTITY_COLUMNS, day_column="date_key"
+            )
+
+        for metric in trend:
+            measurements.append(
+                self._breakdown(
+                    metric, request.period, ("date", "campaign", "marketplace"), daily_sums
+                )
+            )
+            slots.append(("trend", metric, "current", request.period))
+        prepared = self._prepare(tuple(measurements), "Campaign Portfolio")
+        return CampaignPortfolioMeasurementBatch(prepared, tuple(slots), figures)
+
+    def _breakdown(
+        self,
+        metric: str,
+        period: DateRange,
+        grains: tuple[str, ...],
+        reduction: Callable[[], Fold[Any]],
+    ) -> MeasurementToolRequest:
+        """One bake read of `metric` over `period`, folded, with no row limit."""
+        return MeasurementToolRequest(
+            tool=MeasurementTool.METRIC_BY_GRAIN,
+            catalog=self.dependencies.catalog,
+            contracts=self.dependencies.contracts,
+            metric_name=metric,
+            grains=grains,
+            window=period,
+            computed_at=self.dependencies.clock(),
+            correlation_id="campaign-artifact",
+            filters={},
+            max_rows=BAKE_MAX_ROWS,
+            row_ceiling=RowCeiling.BAKE_GROUPED,
+            reduction=reduction,
+        )
 
     def detail_batch(
         self, request: CampaignDetailMeasurementInput

@@ -15,7 +15,7 @@ from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from functools import partial
 from time import monotonic
-from typing import Any, cast
+from typing import Any, Final, cast
 from urllib.parse import urlencode
 
 from aws_lambda_powertools import Logger
@@ -84,7 +84,12 @@ from adapters.insight_requests import InsightRequestContext
 from adapters.jobs.contract_validation.insight_loader import load_insight_contracts
 from adapters.jobs.contract_validation.loader import load_contracts
 from adapters.jobs.presentation_validation.loader import load_page_schemas, load_v2_page_schemas
-from adapters.outbound.athena.query import AthenaQueryAdapter, AthenaQueryTarget
+from adapters.outbound.athena.query import (
+    INTERACTIVE_WAIT,
+    AthenaQueryAdapter,
+    AthenaQueryTarget,
+    ResultTransport,
+)
 from adapters.outbound.attribution_models import load_attribution_models
 from adapters.outbound.bedrock.insights import BedrockInsightGenerator, InsightModelRouteModels
 from adapters.outbound.catalog import (
@@ -182,10 +187,11 @@ from domain.presentation.audiences import (
     AUDIENCES_ARTIFACT_TYPE,
     AUDIENCES_ARTIFACT_VERSION,
     AUDIENCES_PAGE_ID,
-    AUDIENCES_UNAVAILABLE_ARTIFACT_TYPE,
-    AudienceUnavailableArtifact,
+    AudiencesPart,
+    audiences_artifact_superseded,
+    audiences_part_identity,
     require_audiences_artifact_payload,
-    require_audiences_unavailable_artifact_payload,
+    require_audiences_part_payload,
     resolve_audiences_payload,
 )
 from domain.presentation.calendar_presets import ResolveCalendarPresetResult
@@ -271,8 +277,9 @@ from domain.presentation.campaign_portfolio import (
     campaign_portfolio_artifact_payload,
     campaign_portfolio_comparison,
     campaign_portfolio_evidence_status,
-    campaign_portfolio_segment,
     campaign_portfolio_segment_from_payload,
+    campaign_roster_shard_from_payload,
+    campaign_roster_shard_identity,
     reduce_campaign_portfolio,
 )
 from domain.presentation.campaigns import (
@@ -424,16 +431,25 @@ from domain.presentation.page_schemas import (
 )
 from domain.presentation.preset_artifacts import (
     PresetArtifactBody,
+    PresetArtifactChildIdentity,
     PresetArtifactCustodyManifest,
     PresetArtifactFilterIdentity,
+    PresetArtifactIndexShardIdentity,
     PresetArtifactPage,
     PresetArtifactPointer,
     PresetArtifactPointerRosterRequest,
     PresetArtifactPointerRosterResult,
     PresetArtifactProductChildIdentity,
+    PresetArtifactSiblingBody,
+    PresetArtifactSiblingCustody,
     PresetArtifactSiblingDescriptor,
+    PresetArtifactSiblingIdentity,
+    PresetArtifactSiblingIndexEntry,
     PresetArtifactSiblingReadRequest,
     PresetArtifactVariant,
+    covering_index_shard,
+    index_shard_descriptors,
+    split_parent_custody,
 )
 from domain.presentation.reach import (
     REACH_ARTIFACT_TYPE,
@@ -551,6 +567,7 @@ from ports.outbound.entity_catalog import (
     MAX_CAMPAIGN_PORTFOLIO_CANDIDATES,
     MAX_ENTITY_CANDIDATES,
     AnalyticalEntityCatalogPort,
+    BrowsePurpose,
     EntityCatalogBrowseRequest,
     EntityCatalogLookupRequest,
 )
@@ -727,6 +744,8 @@ class _V2ParentPresentationInput:
     campaign_segment: int = 0
     filter_id: str = ALL_CHANNELS_FILTER_ID
     """Campaigns' channel filter (ADR-127 decision 6); omitted means All channels."""
+    campaign_roster_shard: int | None = None
+    """One shard of the filter's baked name roster (ADR-145), instead of a page."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -3399,6 +3418,10 @@ def _v2_campaign_preset_parent_response(
     generation = _served_generation(input_request.runtime, pointer)
     body = bodies.read(pointer)
     _attest_campaign_preset_body(pointer, body)
+    if request.campaign_roster_shard is not None:
+        return _campaign_roster_shard_response(
+            request, input_request.runtime, (pointer, body), request.campaign_roster_shard
+        )
     try:
         payload = json.loads(body.payload_json)
         artifact = campaign_portfolio_artifact_from_payload(payload)
@@ -3442,10 +3465,58 @@ def _v2_campaign_preset_parent_response(
     )
 
 
-def _campaign_preset_segment(  # noqa: PLR0912, PLR0915
+def _campaign_roster_shard_response(  # noqa: PLR0913, PLR0917 -- the request, runtime, parent, shard
+    request: _V2ParentPresentationInput,
+    runtime: PresentationRuntime,
+    parent: tuple[PresetArtifactPointer, PresetArtifactBody],
+    shard: int,
+) -> dict[str, Any]:
+    """Serve one baked shard of a filter's name roster through the parent custody's index.
+
+    Existence is the index's: a shard or filter the bake never wrote is a 400. A listed shard
+    whose bytes or fields disagree with its descriptor, the request or this revision is the
+    malformed-artifact refusal (ADR-145), never a fallback.
+    """
+    pointer, body = parent
+    custody_store = runtime.preset_artifact_custody
+    if custody_store is None or pointer.custody_digest is None:
+        raise _malformed_artifact()
+    manifest = custody_store.read(pointer)
+    _attest_campaign_preset_custody(pointer, manifest)
+    header, index = _parent_index(manifest)
+    if header.get("body_digest") != body.digest:
+        raise _malformed_artifact()
+    identity = campaign_roster_shard_identity(request.filter_id, shard)
+    descriptor = _indexed_descriptor(runtime, pointer, index, identity)
+    if descriptor is None:
+        raise ValidationError(PRESENTATION_REFUSED, "The campaign roster shard is invalid.")
+    sibling = _read_indexed(runtime, pointer, identity, descriptor)
+    try:
+        payload = cast("dict[str, object]", json.loads(sibling.body.payload_json))
+        campaign_roster_shard_from_payload(payload, shard, pointer.revision.value)
+        custody = campaign_custody_manifest_from_payload(json.loads(sibling.custody.payload_json))
+    except TypeError, ValueError, json.JSONDecodeError:
+        raise _malformed_artifact() from None
+    if custody.body_digest != sibling.body.digest or custody.rows:
+        raise _malformed_artifact()
+    return _json(
+        200,
+        {
+            "kind": "campaign_roster_shard",
+            "session_id": request.session_id,
+            "parent_revision": pointer.revision.value,
+            "shard": payload,
+        },
+    )
+
+
+def _campaign_preset_segment(  # noqa: PLR0912 -- one custody chain, each refusal its own
     input_request: _CampaignPresetCustodyReadRequest,
 ) -> _CampaignPresetResolvedSegment:
-    """Resolve one pointer-bound segment without measurement, catalog reads, or reordering."""
+    """Resolve one pointer-bound segment without measurement, catalog reads, or reordering.
+
+    A non-canonical segment is read through the parent custody's sibling index (ADR-145).
+    """
     custody_store = input_request.runtime.preset_artifact_custody
     pointer = input_request.pointer
     filtered = input_request.filter_parent
@@ -3454,6 +3525,7 @@ def _campaign_preset_segment(  # noqa: PLR0912, PLR0915
         if custody_store is None:
             raise _malformed_artifact()
         parent_manifest = filtered.manifest
+        index = filtered.index
     else:
         if pointer.custody_digest is None:
             canonical = (
@@ -3468,38 +3540,13 @@ def _campaign_preset_segment(  # noqa: PLR0912, PLR0915
             raise _malformed_artifact()
         manifest_object = custody_store.read(pointer)
         _attest_campaign_preset_custody(pointer, manifest_object)
+        header, index = _parent_index(manifest_object)
         try:
-            parent_manifest = campaign_custody_manifest_from_payload(
-                json.loads(manifest_object.payload_json)
-            )
-        except TypeError, ValueError, json.JSONDecodeError:
+            parent_manifest = campaign_custody_manifest_from_payload(header)
+        except TypeError, ValueError:
             raise _malformed_artifact() from None
         if parent_manifest.body_digest != input_request.body.digest:
             raise _malformed_artifact()
-
-    # Format 3 retained the complete population and had no sibling descriptors. Keep this
-    # migration read until every forward-only pointer has advanced to format 4; it still uses
-    # retained bytes only and mints capabilities solely for the selected bounded segment.
-    if (
-        not parent_manifest.descriptors
-        and len(input_request.artifact.rows) == input_request.artifact.total_count
-    ):
-        legacy = campaign_portfolio_segment(
-            input_request.artifact,
-            input_request.sort,
-            input_request.segment_index,
-        )
-        if legacy is None:
-            raise ValidationError(PRESENTATION_REFUSED, "The campaign segment is out of range.")
-        custody_by_signature = {row.safe_signature: row for row in parent_manifest.rows}
-        legacy_custody = tuple(
-            custody_by_signature[row.signature]
-            for row in legacy.rows
-            if row.signature in custody_by_signature
-        )
-        if len(legacy_custody) != len(legacy.rows):
-            raise _malformed_artifact()
-        return _CampaignPresetResolvedSegment(legacy, legacy_custody)
 
     canonical = (
         input_request.sort == CampaignPortfolioSort(CampaignPortfolioSortField.SPEND, "desc")
@@ -3516,74 +3563,138 @@ def _campaign_preset_segment(  # noqa: PLR0912, PLR0915
     pagination = input_request.artifact.pagination
     if pagination is None or not 0 <= input_request.segment_index < pagination.segment_count:
         raise ValidationError(PRESENTATION_REFUSED, "The campaign segment is out of range.")
-    ordering = f"{input_request.sort.field.value}-{input_request.sort.direction}"
-    descriptor = next(
-        (
-            item
-            for item, identity in zip(
-                parent_manifest.descriptors, parent_manifest.segment_identities(), strict=True
-            )
-            if identity.ordering == ordering
-            and identity.segment_index == input_request.segment_index
+    sibling = _indexed_sibling(
+        input_request.runtime,
+        pointer,
+        index,
+        PresetArtifactSiblingIdentity(
+            f"{input_request.sort.field.value}-{input_request.sort.direction}",
+            input_request.segment_index,
+            ALL_CHANNELS_FILTER_ID if filtered is None else filtered.filter_id,
         ),
-        None,
     )
-    if descriptor is None:
-        raise _malformed_artifact()
-    sibling_request = PresetArtifactSiblingReadRequest(
-        pointer.page,
-        pointer.variant,
-        pointer.revision,
-        descriptor,
-    )
-    body_store = input_request.runtime.preset_artifact_bodies
-    if body_store is None:
-        raise _malformed_artifact()
-    public = body_store.read_sibling(sibling_request)
-    private = custody_store.read_sibling(sibling_request)
-    if (
-        public.page,
-        public.variant,
-        public.revision,
-        public.identity,
-        public.digest,
-    ) != (
-        pointer.page,
-        pointer.variant,
-        pointer.revision,
-        descriptor.identity,
-        descriptor.body_digest,
-    ) or (
-        private.page,
-        private.variant,
-        private.revision,
-        private.identity,
-        private.digest,
-    ) != (
-        pointer.page,
-        pointer.variant,
-        pointer.revision,
-        descriptor.identity,
-        descriptor.custody_digest,
-    ):
-        raise _malformed_artifact()
     try:
         segment = campaign_portfolio_segment_from_payload(
-            json.loads(public.payload_json), input_request.artifact
+            json.loads(sibling.body.payload_json), input_request.artifact
         )
-        segment_manifest = campaign_custody_manifest_from_payload(json.loads(private.payload_json))
+        segment_manifest = campaign_custody_manifest_from_payload(
+            json.loads(sibling.custody.payload_json)
+        )
     except TypeError, ValueError, json.JSONDecodeError:
         raise _malformed_artifact() from None
     if (
         segment.sort != input_request.sort
         or segment.pagination is None
         or segment.pagination.segment_index != input_request.segment_index
-        or segment_manifest.descriptors
-        or segment_manifest.body_digest != public.digest
+        or segment_manifest.body_digest != sibling.body.digest
         or not custody_rows_align(segment_manifest, tuple(row.signature for row in segment.rows))
     ):
         raise _malformed_artifact()
     return _CampaignPresetResolvedSegment(segment, segment_manifest.rows)
+
+
+def _parent_index(
+    manifest: PresetArtifactCustodyManifest,
+) -> tuple[dict[str, object], tuple[PresetArtifactSiblingIndexEntry, ...]]:
+    """Split an attested parent custody into its page header and its sibling index."""
+    try:
+        return split_parent_custody(manifest)
+    except TypeError, ValueError, json.JSONDecodeError:
+        raise _malformed_artifact() from None
+
+
+@dataclass(frozen=True, slots=True)
+class _IndexedSibling:
+    """One sibling read through the index: its descriptor, public body and private custody."""
+
+    descriptor: PresetArtifactSiblingDescriptor
+    body: PresetArtifactSiblingBody
+    custody: PresetArtifactSiblingCustody
+
+
+def _indexed_sibling(  # noqa: PLR0913, PLR0917 -- one pointer-bound, index-bound read
+    runtime: PresentationRuntime,
+    pointer: PresetArtifactPointer,
+    index: tuple[PresetArtifactSiblingIndexEntry, ...],
+    identity: PresetArtifactChildIdentity,
+) -> _IndexedSibling:
+    """Read one sibling through the parent custody's index (ADR-145, the two-level read).
+
+    pointer -> parent custody (attested by the caller) -> the index shard whose range covers the
+    identity, digest-checked against the parent's entry -> the identity's descriptor -> its body
+    and custody, each digest-checked. An identity no shard covers or lists, an unreadable or
+    tampered shard, or a sibling whose bytes don't match is the malformed-artifact refusal,
+    never a fallback.
+    """
+    descriptor = _indexed_descriptor(runtime, pointer, index, identity)
+    if descriptor is None:
+        raise _malformed_artifact()
+    return _read_indexed(runtime, pointer, identity, descriptor)
+
+
+def _indexed_descriptor(  # noqa: PLR0913, PLR0917 -- one pointer-bound, index-bound lookup
+    runtime: PresentationRuntime,
+    pointer: PresetArtifactPointer,
+    index: tuple[PresetArtifactSiblingIndexEntry, ...],
+    identity: PresetArtifactChildIdentity,
+) -> PresetArtifactSiblingDescriptor | None:
+    """Find an identity's descriptor in the covering index shard, or None when it isn't listed.
+
+    An unreadable or tampered shard is the malformed-artifact refusal; an identity no shard
+    covers or lists is the caller's to refuse.
+    """
+    custody_store = runtime.preset_artifact_custody
+    position = covering_index_shard(index, identity)
+    if custody_store is None:
+        raise _malformed_artifact()
+    if position is None:
+        return None
+    entry = index[position]
+    try:
+        shard = custody_store.read_sibling(
+            PresetArtifactSiblingReadRequest(
+                pointer.page,
+                pointer.variant,
+                pointer.revision,
+                PresetArtifactSiblingDescriptor(
+                    PresetArtifactIndexShardIdentity(position), None, entry.digest
+                ),
+            )
+        )
+        descriptors = index_shard_descriptors(shard, entry)
+    except InvariantError, TypeError, ValueError, json.JSONDecodeError:
+        raise _malformed_artifact() from None
+    return next((item for item in descriptors if item.identity == identity), None)
+
+
+def _read_indexed(  # noqa: PLR0913, PLR0917 -- one pointer-bound read of a listed sibling
+    runtime: PresentationRuntime,
+    pointer: PresetArtifactPointer,
+    identity: PresetArtifactChildIdentity,
+    descriptor: PresetArtifactSiblingDescriptor,
+) -> _IndexedSibling:
+    """Read a listed sibling's body and custody, each checked against its descriptor."""
+    bodies = runtime.preset_artifact_bodies
+    custody_store = runtime.preset_artifact_custody
+    if bodies is None or custody_store is None:
+        raise _malformed_artifact()
+    request = PresetArtifactSiblingReadRequest(
+        pointer.page, pointer.variant, pointer.revision, descriptor
+    )
+    try:
+        public = bodies.read_sibling(request)
+        private = custody_store.read_sibling(request)
+    except InvariantError:
+        raise _malformed_artifact() from None
+    expected = (pointer.page, pointer.variant, pointer.revision, identity)
+    if (
+        (public.page, public.variant, public.revision, public.identity) != expected
+        or (private.page, private.variant, private.revision, private.identity) != expected
+        or public.digest != descriptor.body_digest
+        or private.digest != descriptor.custody_digest
+    ):
+        raise _malformed_artifact()
+    return _IndexedSibling(descriptor, public, private)
 
 
 def _attest_campaign_preset_custody(
@@ -4213,27 +4324,144 @@ def _scorecard_window_unavailable(  # noqa: PLR0913, PLR0917 -- the request and 
     )
 
 
+_AUDIENCES_PART_FIELDS: Final = frozenset({"campaign", "profile", "campaign_index"})
+"""The Audiences parts a request may name, at most one (design 01 §5)."""
+_AUDIENCES_PART_INVALID: Final = "The Audiences part requested is invalid."
+_AUDIENCES_MAX_PAGE: Final = 9_999
+
+
+@dataclass(frozen=True, slots=True)
+class _AudiencesPartRequest:
+    """One requested Audiences part: what it is, its sibling identity and its fields."""
+
+    part: AudiencesPart
+    identity: PresetArtifactSiblingIdentity
+    fields: dict[str, object]
+    """The part body's fields that must equal the request (its reference and page)."""
+
+
+def _audiences_page(value: object, lowest: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValidationError(PRESENTATION_REFUSED, _AUDIENCES_PART_INVALID)
+    if not lowest <= value <= _AUDIENCES_MAX_PAGE:
+        raise ValidationError(PRESENTATION_REFUSED, _AUDIENCES_PART_INVALID)
+    return value
+
+
+def _audiences_identity(
+    part: AudiencesPart, page: int, subject: str
+) -> PresetArtifactSiblingIdentity:
+    """Return the part's sibling identity; a subject the bake never names is the closed 400."""
+    try:
+        return audiences_part_identity(part, page, subject)
+    except ValueError as error:
+        raise ValidationError(PRESENTATION_REFUSED, _AUDIENCES_PART_INVALID) from error
+
+
+def _audiences_part_request(event: dict[str, Any]) -> _AudiencesPartRequest | None:
+    """Decode at most one Audiences part selector, closed; None when the parent is asked for."""
+    payload = _body(event)
+    named = sorted(_AUDIENCES_PART_FIELDS & set(payload))
+    if not named:
+        return None
+    raw = payload[named[0]]
+    if len(named) > 1 or not isinstance(raw, dict):
+        raise ValidationError(PRESENTATION_REFUSED, _AUDIENCES_PART_INVALID)
+    value = cast("dict[str, object]", raw)
+    if named[0] == "campaign":
+        ref = value.get("ref")
+        if set(value) != {"ref", "page"} or not isinstance(ref, str):
+            raise ValidationError(PRESENTATION_REFUSED, _AUDIENCES_PART_INVALID)
+        page = _audiences_page(value["page"], 0)
+        return _AudiencesPartRequest(
+            AudiencesPart.CAMPAIGN,
+            _audiences_identity(AudiencesPart.CAMPAIGN, page, ref),
+            {"campaign_ref": ref, "page": page},
+        )
+    if named[0] == "profile":
+        path = value.get("path")
+        if set(value) != {"path", "page"} or not isinstance(path, str):
+            raise ValidationError(PRESENTATION_REFUSED, _AUDIENCES_PART_INVALID)
+        page = _audiences_page(value["page"], 1)
+        return _AudiencesPartRequest(
+            AudiencesPart.PROFILE,
+            _audiences_identity(AudiencesPart.PROFILE, page, path),
+            {"profile_path": path, "page": page},
+        )
+    if set(value) != {"shard"}:
+        raise ValidationError(PRESENTATION_REFUSED, _AUDIENCES_PART_INVALID)
+    shard = _audiences_page(value["shard"], 1)
+    return _AudiencesPartRequest(
+        AudiencesPart.CAMPAIGN_INDEX,
+        audiences_part_identity(AudiencesPart.CAMPAIGN_INDEX, shard),
+        {"shard": shard},
+    )
+
+
+def _audiences_part_response(  # noqa: PLR0913, PLR0917 -- the request, runtime, parent, part
+    request: _V2ParentPresentationInput,
+    runtime: PresentationRuntime,
+    parent: tuple[PresetArtifactPointer, PresetArtifactBody],
+    part: _AudiencesPartRequest,
+) -> dict[str, Any]:
+    """Serve one baked Audiences part through the parent custody's index, never measuring.
+
+    Existence is the index's: an identity it doesn't list (an unknown reference, a page past a
+    campaign's last, an unserved path) is a 400. A listed part whose bytes or fields disagree
+    with its descriptor or request is the malformed-artifact refusal (ADR-125 rule 3).
+    """
+    pointer, body = parent
+    custody_store = runtime.preset_artifact_custody
+    if custody_store is None or pointer.custody_digest is None:
+        raise _malformed_artifact()
+    manifest = custody_store.read(pointer)
+    _attest_campaign_preset_custody(pointer, manifest)
+    header, index = _parent_index(manifest)
+    if header.get("body_digest") != body.digest:
+        raise _malformed_artifact()
+    descriptor = _indexed_descriptor(runtime, pointer, index, part.identity)
+    if descriptor is None:
+        raise ValidationError(PRESENTATION_REFUSED, _AUDIENCES_PART_INVALID)
+    sibling = _read_indexed(runtime, pointer, part.identity, descriptor)
+    try:
+        payload = require_audiences_part_payload(
+            json.loads(sibling.body.payload_json), part.part, pointer.revision.value
+        )
+        custody = cast("dict[str, object]", json.loads(sibling.custody.payload_json))
+    except TypeError, ValueError, json.JSONDecodeError:
+        raise _malformed_artifact() from None
+    if custody.get("body_digest") != sibling.body.digest or any(
+        payload.get(key) != value for key, value in part.fields.items()
+    ):
+        raise _malformed_artifact()
+    return _json(
+        200,
+        {
+            "kind": "audiences_part",
+            "session_id": request.session_id,
+            "parent_revision": pointer.revision.value,
+            "part": payload,
+        },
+    )
+
+
 def _audiences_window_unavailable(  # noqa: PLR0913, PLR0917
     request: _V2ParentPresentationInput,
     runtime: PresentationRuntime,
     preset: TemporalPresetId,
     pointers: tuple[ServedPresetWindow, ...],
-    unavailable: AudienceUnavailableArtifact | None = None,
     *,
     operation: str = AUDIENCES_PATH,
 ) -> dict[str, Any]:
-    """Serve a calendar page's one-preset pending state for a missing or unavailable body.
+    """Serve a calendar page's one-preset pending state for a missing body.
 
     Audiences' own, and Reach's for a preset with no pointer: the pending window is the latest
     complete period of the preset's grain on the request date. The message is the trigger's
     catalog row (ADR-139); only Reach appends ABS-ALT.
     """
     policy = _v2_page_schema(operation).temporal_policy
-    if unavailable is None:
-        pending = latest_complete_period(calendar_preset_grain(preset), runtime.clock().date())
-        window, label = DateRange(pending.start, pending.end), pending.label
-    else:
-        window, label = unavailable.month, unavailable.month_label
+    pending = latest_complete_period(calendar_preset_grain(preset), runtime.clock().date())
+    window, label = DateRange(pending.start, pending.end), pending.label
     served = ServedPeriod(
         preset,
         window,
@@ -4247,10 +4475,8 @@ def _audiences_window_unavailable(  # noqa: PLR0913, PLR0917
     )
     if operation == REACH_PATH:
         trigger = AbsenceTrigger.REACH_PERIOD_NOT_PUBLISHED
-    elif unavailable is None:
-        trigger = AbsenceTrigger.AUDIENCES_MONTH_NOT_PUBLISHED
     else:
-        trigger = AbsenceTrigger.AUDIENCES_MONTH_OVER_BOUND
+        trigger = AbsenceTrigger.AUDIENCES_MONTH_NOT_PUBLISHED
     message = absence_message(
         trigger,
         period_label=label,
@@ -4536,6 +4762,7 @@ def _v2_audiences_parent_response(  # noqa: PLR0912, PLR0915 -- one strict serve
     request = _v2_parent_request(input_request.event, AUDIENCES_PATH)
     if request.temporal_selection.kind is TemporalSelectionKind.CUSTOM:
         raise ValidationError(PRESENTATION_REFUSED, "temporal_selection is invalid.")
+    part = _audiences_part_request(input_request.event)
     schema = _v2_page_schema(AUDIENCES_PATH)
     policy = schema.temporal_policy
     preset = (
@@ -4556,6 +4783,8 @@ def _v2_audiences_parent_response(  # noqa: PLR0912, PLR0915 -- one strict serve
     windows = _served_pointer_windows(policy, own)
     pointer = own.pointer_for(PresetArtifactVariant(preset.value))
     if pointer is None:
+        if part is not None:
+            raise ValidationError(PRESENTATION_REFUSED, _AUDIENCES_PART_INVALID)
         return _audiences_window_unavailable(request, runtime, preset, windows)
     if pointer.resolved_window is None:
         raise _malformed_artifact()
@@ -4564,16 +4793,21 @@ def _v2_audiences_parent_response(  # noqa: PLR0912, PLR0915 -- one strict serve
     generation = _served_generation(runtime, pointer)
     body = bodies.read(pointer)
     _attest_campaign_preset_body(pointer, body)
+    if part is not None:
+        return _audiences_part_response(request, runtime, (pointer, body), part)
     try:
-        loaded_payload = cast("object", json.loads(body.payload_json))
-        if isinstance(loaded_payload, dict):
-            object_payload = cast("dict[str, object]", loaded_payload)
-            if object_payload.get("type") == AUDIENCES_UNAVAILABLE_ARTIFACT_TYPE:
-                unavailable = require_audiences_unavailable_artifact_payload(object_payload)
-                if pointer.resolved_window != unavailable.month:
-                    raise ValueError("audiences unavailable body window does not match its pointer")
-                return _audiences_window_unavailable(request, runtime, preset, windows, unavailable)
-        payload = require_audiences_artifact_payload(cast("object", loaded_payload))
+        decoded = cast("object", json.loads(body.payload_json))
+    except json.JSONDecodeError:
+        raise _malformed_artifact() from None
+    if audiences_artifact_superseded(decoded):
+        # A body baked before this artifact version is the page's not-yet-published absence,
+        # as a missing pointer is, until the first re-bake after the deploy replaces it.
+        unserved = tuple(window for window in windows if window.preset is not preset)
+        return _audiences_window_unavailable(request, runtime, preset, unserved)
+    try:
+        payload = require_audiences_artifact_payload(decoded)
+        if payload["revision"] != pointer.revision.value:
+            raise ValueError("audiences body names another revision than its pointer")
         month = cast("dict[str, str]", payload["month"])
         window = DateRange(date.fromisoformat(month["start"]), date.fromisoformat(month["end"]))
         if pointer.resolved_window != window:
@@ -4984,11 +5218,10 @@ def _retail_health_custody(  # noqa: PLR0913, PLR0917 -- one pointer-bound read
         raise _malformed_artifact()
     manifest_object = store.read(pointer)
     _attest_campaign_preset_custody(pointer, manifest_object)
+    header, _ = _parent_index(manifest_object)
     try:
-        manifest = retail_health_custody_manifest_from_payload(
-            json.loads(manifest_object.payload_json)
-        )
-    except TypeError, ValueError, json.JSONDecodeError:
+        manifest = retail_health_custody_manifest_from_payload(header)
+    except TypeError, ValueError:
         raise _malformed_artifact() from None
     if manifest.body_digest != body.digest or len(manifest.products) != len(artifact.rows):
         raise _malformed_artifact()
@@ -5251,7 +5484,7 @@ def _refresh_required() -> DomainError:
     )
 
 
-def _redeem_retail_product(  # noqa: PLR0912, PLR0915 -- one ordered custody chain
+def _redeem_retail_product(
     request: _RetailProductRequest, owner: str, runtime: PresentationRuntime
 ) -> _RedeemedRetailProduct:
     """Redeem one row capability and read its child only through the parent's custody.
@@ -5325,37 +5558,22 @@ def _redeem_retail_product(  # noqa: PLR0912, PLR0915 -- one ordered custody cha
         raise _malformed_artifact()
     manifest_object = custody_store.read(pointer)
     _attest_campaign_preset_custody(pointer, manifest_object)
+    header, index = _parent_index(manifest_object)
     try:
-        manifest = retail_health_custody_manifest_from_payload(
-            json.loads(manifest_object.payload_json)
-        )
-    except TypeError, ValueError, json.JSONDecodeError:
+        manifest = retail_health_custody_manifest_from_payload(header)
+    except TypeError, ValueError:
         raise _malformed_artifact() from None
     product_ref = parts[3]
-    digests = manifest.child(product_ref)
     if (
         manifest.body_digest != pointer.body_digest
-        or digests is None
         or manifest.product(product_ref) != capability.product
     ):
         raise _malformed_artifact()
-    read_request = PresetArtifactSiblingReadRequest(
-        pointer.page,
-        pointer.variant,
-        pointer.revision,
-        PresetArtifactSiblingDescriptor(
-            PresetArtifactProductChildIdentity(product_ref),
-            digests.body_digest,
-            digests.custody_digest,
-        ),
+    # The child's one digest home is the index (ADR-145): a ref it doesn't list is malformed.
+    child = _indexed_sibling(
+        runtime, pointer, index, PresetArtifactProductChildIdentity(product_ref)
     )
-    try:
-        child_body = bodies.read_sibling(read_request)
-        child_custody = custody_store.read_sibling(read_request)
-    except InvariantError:
-        raise _malformed_artifact() from None
-    if child_body.digest != digests.body_digest or child_custody.digest != digests.custody_digest:
-        raise _malformed_artifact()
+    child_body, child_custody = child.body, child.custody
     try:
         private = retail_product_child_custody_from_payload(json.loads(child_custody.payload_json))
         detail = retail_product_detail_from_payload(json.loads(child_body.payload_json))
@@ -5997,13 +6215,18 @@ def _v2_parent_request(
     if operation in {CAMPAIGN_LIST_PATH, RETAIL_HEALTH_PATH}:
         allowed.add("sort")
     if operation == CAMPAIGN_LIST_PATH:
-        allowed.update({"segment", "filter_id"})
+        allowed.update({"segment", "filter_id", "roster_shard"})
+    if operation == AUDIENCES_PATH:
+        allowed.update(_AUDIENCES_PART_FIELDS)
     if fields - allowed or "session_id" not in fields:
         raise ValidationError(
             PRESENTATION_REFUSED,
             "The presentation request fields are invalid.",
             context={"outcome": "invalid_fields", "n": len(fields - allowed)},
         )
+    # A roster shard is a part of the served body, never a page: it names no sort or segment.
+    if "roster_shard" in fields and fields & {"sort", "segment"}:
+        raise ValidationError(PRESENTATION_REFUSED, "The campaign roster shard is invalid.")
     session_id = _text(payload["session_id"], "session_id")
     if len(session_id) > MAX_SESSION_ID_LENGTH:
         raise ValidationError(PRESENTATION_REFUSED, "session_id is too long.")
@@ -6028,7 +6251,21 @@ def _v2_parent_request(
             _retail_health_sort(payload.get("sort")) if operation == RETAIL_HEALTH_PATH else None
         ),
         filter_id=_campaign_filter_id(payload.get("filter_id")),
+        campaign_roster_shard=(
+            _campaign_roster_shard(payload["roster_shard"]) if "roster_shard" in fields else None
+        ),
     )
+
+
+def _campaign_roster_shard(value: object) -> int:
+    """Accept one bounded roster shard index (ADR-145); a bool or negative value is refused."""
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or not 0 <= value <= MAX_CAMPAIGN_SEGMENT_INDEX
+    ):
+        raise ValidationError(PRESENTATION_REFUSED, "The campaign roster shard is invalid.")
+    return value
 
 
 _GOVERNED_FILTER_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
@@ -6053,6 +6290,10 @@ class _CampaignFilterParent:
     artifact: CampaignPortfolioArtifact
     body_digest: str
     manifest: CampaignCustodyManifest | None = None
+    index: tuple[PresetArtifactSiblingIndexEntry, ...] = ()
+    """The pointer's sibling index, through which this filter's segments are read (ADR-145)."""
+    filter_id: str = ALL_CHANNELS_FILTER_ID
+    """The filter whose segments these are: each segment's identity names it (ADR-127)."""
 
 
 def _campaign_filter_parent(  # noqa: PLR0913, PLR0917 -- one pointer-bound sibling read
@@ -6062,10 +6303,10 @@ def _campaign_filter_parent(  # noqa: PLR0913, PLR0917 -- one pointer-bound sibl
     artifact: CampaignPortfolioArtifact,
     filter_id: str,
 ) -> _CampaignFilterParent:
-    """Read the filter sibling the pointer's All-channels custody binds (ADR-127 decision 2).
+    """Read the filter sibling the pointer's All-channels custody indexes (ADR-127, ADR-145).
 
     An id the preset doesn't offer is refused with its own code; a sibling the body offers but the
-    custody doesn't bind, or whose bytes don't match, is the malformed-artifact refusal, never
+    index doesn't bind, or whose bytes don't match, is the malformed-artifact refusal, never
     a fallback to All channels.
     """
     if filter_id == ALL_CHANNELS_FILTER_ID:
@@ -6076,57 +6317,33 @@ def _campaign_filter_parent(  # noqa: PLR0913, PLR0917 -- one pointer-bound sibl
             PRESENTATION_FILTER_NOT_OFFERED, "The channel filter isn't offered for this window."
         )
     custody_store = runtime.preset_artifact_custody
-    body_store = runtime.preset_artifact_bodies
-    if pointer.custody_digest is None or custody_store is None or body_store is None:
+    if pointer.custody_digest is None or custody_store is None:
         raise _malformed_artifact()
     manifest_object = custody_store.read(pointer)
     _attest_campaign_preset_custody(pointer, manifest_object)
+    header, index = _parent_index(manifest_object)
     try:
-        parent_manifest = campaign_custody_manifest_from_payload(
-            json.loads(manifest_object.payload_json)
-        )
-    except TypeError, ValueError, json.JSONDecodeError:
+        parent_manifest = campaign_custody_manifest_from_payload(header)
+    except TypeError, ValueError:
         raise _malformed_artifact() from None
-    bound = frozenset(
-        cast("PresetArtifactFilterIdentity", item.identity).filter_id
-        for item in parent_manifest.filter_siblings or ()
-    )
-    descriptor = parent_manifest.filter_sibling(filter_id)
-    if (
-        parent_manifest.body_digest != body.digest
-        or descriptor is None
-        or bound != offered.offered - {ALL_CHANNELS_FILTER_ID}
-    ):
+    if parent_manifest.body_digest != body.digest:
         raise _malformed_artifact()
-    sibling_request = PresetArtifactSiblingReadRequest(
-        pointer.page, pointer.variant, pointer.revision, descriptor
-    )
-    public = body_store.read_sibling(sibling_request)
-    private = custody_store.read_sibling(sibling_request)
-    expected = (pointer.page, pointer.variant, pointer.revision, descriptor.identity)
-    if (
-        (public.page, public.variant, public.revision, public.identity) != expected
-        or (private.page, private.variant, private.revision, private.identity) != expected
-        or public.digest != descriptor.body_digest
-        or private.digest != descriptor.custody_digest
-    ):
-        raise _malformed_artifact()
+    sibling = _indexed_sibling(runtime, pointer, index, PresetArtifactFilterIdentity(filter_id))
     try:
-        sibling = campaign_portfolio_artifact_from_payload(json.loads(public.payload_json))
-        manifest = campaign_custody_manifest_from_payload(json.loads(private.payload_json))
+        filtered = campaign_portfolio_artifact_from_payload(json.loads(sibling.body.payload_json))
+        manifest = campaign_custody_manifest_from_payload(json.loads(sibling.custody.payload_json))
     except TypeError, ValueError, json.JSONDecodeError:
         raise _malformed_artifact() from None
     if (
-        sibling.channel_filter is None
-        or sibling.channel_filter.selected != filter_id
-        or sibling.channel_filter.options != offered.options
-        or (sibling.period, sibling.prior_period) != (artifact.period, artifact.prior_period)
-        or manifest.body_digest != public.digest
-        or manifest.filter_siblings != ()
-        or not custody_rows_align(manifest, tuple(row.signature for row in sibling.rows))
+        filtered.channel_filter is None
+        or filtered.channel_filter.selected != filter_id
+        or filtered.channel_filter.options != offered.options
+        or (filtered.period, filtered.prior_period) != (artifact.period, artifact.prior_period)
+        or manifest.body_digest != sibling.body.digest
+        or not custody_rows_align(manifest, tuple(row.signature for row in filtered.rows))
     ):
         raise _malformed_artifact()
-    return _CampaignFilterParent(sibling, public.digest, manifest)
+    return _CampaignFilterParent(filtered, sibling.body.digest, manifest, index, filter_id)
 
 
 def _campaign_portfolio_sort(value: object) -> CampaignPortfolioSort | None:
@@ -7060,6 +7277,7 @@ def _list_page(
             max_candidates=(
                 MAX_CAMPAIGN_PORTFOLIO_CANDIDATES if portfolio else MAX_ENTITY_CANDIDATES
             ),
+            purpose=BrowsePurpose.INTERACTIVE,
         )
     )
     grouped = _campaign_histories(result.aliases)
@@ -10471,6 +10689,8 @@ QUERIES = AthenaQueryAdapter(
         workgroup=SETTINGS.athena_workgroup,
         database=SETTINGS.semantic_v2_current_database,
         reuse_minutes=SETTINGS.athena_result_reuse_max_age_minutes,
+        wait=INTERACTIVE_WAIT,
+        results=ResultTransport.PAGED,
     )
 )
 MEASUREMENTS = MeasurementTooling(

@@ -11,6 +11,11 @@ four"). On 2026-10-17 (UTC) the owner approved `insight_slot_unavailable` as a d
 > withheld cohort and cleared on the next serving one ([D2 live acceptance](../../validation/RESULTS.md#d2-pages-and-graph-control-plane-live-acceptance-on-dev--2026-10-18)).
 > The decision is unchanged.
 
+> **Proposed amendment, 2026-10-18.** [ADR-142](adr-142-isolate-a-bake-refusal-to-its-own-scope-and-alarm-on-defects.md) (Proposed) would give designed absence two more scopes inside a published body (one item, one non-anchor section), add a closed isolated-refusal class with one failed span, one bounded log line and one metric per refusal group, and make an over-budget task an alarm. [ADR-141](adr-141-reach-every-audiences-campaign-through-grouped-reads-and-per-campaign-pages.md) (Proposed) would retire the Audiences page-level over-bound absence. Implemented 2026-10-26 by the scale-limits change (PR #20) and live-validated on dev: where these amendments differ from this decision, they describe the code. Their acceptance is the owner's review.
+
+> **Marker, 2026-10-25 (UTC).** The Audiences page-level over-bound absence row and the body it
+> served are deleted ([ADR-141](adr-141-reach-every-audiences-campaign-through-grouped-reads-and-per-campaign-pages.md) amendment of 2026-10-25).
+
 ## Context
 In dev every grant-bearing page returned 409 `ungranted_generation` because one empty source made
 every cohort ungrantable. Reach, Audiences and Retention had no Amazon Marketing Cloud data yet, so

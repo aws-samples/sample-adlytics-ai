@@ -15,6 +15,46 @@ A semantic planner resolves declared metric semantics, axes, filters, and requir
 
 Target atomic operations remain server-owned contracts; independent calls and browser/model joins never simulate an atomic result.
 
+## Statement wait policies
+
+Every `AthenaQueryTarget` names its wait policy (`StatementWait`, `src/adapters/outbound/athena/query.py`); the field has no default, so no composition gets another caller's wait ([ADR-144](../../decisions/adr-144-wait-for-a-bake-statement-within-its-invocation.md)).
+
+| Policy | Callers | Statement wait | Throttled start (`TooManyRequestsException`) |
+|---|---|---|---|
+| `interactive` | chat's measurement tool, presentation, insight precompute | `MAX_WAIT_SECONDS` (30 s) from the start, below the API Gateway integration timeout | retried for up to 10 s inside the 30 s, so at least 20 s remain for the statement |
+| `bake_invocation` | the Baker, on both bake entries | until the page's statement deadline: the invocation's remaining time less the row's write term and the contract's 30 s tail, set by `page_bake.render_page` | retried for up to 60 s, never past the deadline |
+
+A throttled start backs off with full jitter (`uniform(0, min(8, 0.5 × 2^attempt))` seconds); past its window, or on any other start error, the statement fails as before (`ATHENA/1`, with `throttled_attempts`). A bake statement outside `render_page` has no deadline and is an invariant (`ATHENA/5`). On a timeout the error carries `wait_policy`, `waited_seconds` and `wait_limit_seconds`. `BATCH_MAX_WAIT_SECONDS` (600 s) stays the semantic writer's wait; the bake doesn't use it.
+
+## Row ceilings, result transports and folds
+Every read names the caller kind whose row ceiling bounds it (`RowCeiling`, `src/ports/outbound/query.py`; [ADR-143](../../decisions/adr-143-size-bake-reads-by-a-bake-row-ceiling-separate-from-chat.md)). The kind isn't a tool input, so chat can't reach a bake ceiling.
+| Kind | Callers | Most rows one read may ask for | Why |
+|---|---|---|---|
+| `NARRATION` | chat's measurement tool, presentation live reads | 500 by default, `MAX_ROWS_CEILING` (10,000) at most | a model can't narrate more honestly; unchanged |
+| `BAKE` | publish-time held answers, every bake source and the rosters it reads | `BAKE_MAX_ROWS`, derived from the Baker's memory (`domain/operations/bake_memory.py`; value in [the publisher's scale envelope](../../ui/preset-artifact-publisher.md#scale-envelope)) | an entity-wide page holds its population or streams it one entity at a time; every other bake read is page-sized ([ADR-152](../../decisions/adr-152-read-page-sized-answers-in-sql-with-no-arbitrary-row-ceiling.md)) |
+| `BAKE_STREAMED` | none as of 2026-10-26: Campaigns' daily sums and Audiences read `BAKE_GROUPED` | `BAKE_LONGEST_WINDOW_DAYS` (31) × `BAKE_MAX_ROWS`, derived | a daily series of a population the held ceiling bounds |
+| `BAKE_GROUPED` | entity-streamed reads, Audiences' grouped history walk and every Campaigns bake read | no row limit; the sink keeps at most `BAKE_MAX_ROWS` | the sink bounds memory, so rows never do; folded only, `run` refuses it |
+
+Every other statement asks for `LIMIT max_rows + 1`; one row more than asked is a truncated read, never shown as a page of an unknown whole. In a bake, a page-sized or axis-bounded read cut short is a defect; only an entity-wide read refuses ([ADR-152](../../decisions/adr-152-read-page-sized-answers-in-sql-with-no-arbitrary-row-ceiling.md)).
+
+Every `AthenaQueryTarget` also names its result transport (`ResultTransport`, no default):
+- `PAGED` pages `GetQueryResults`, at most 1,000 rows a call: chat, presentation and insight precompute.
+- `OBJECT` streams the statement's CSV result object with one `s3:GetObject` (`stream_result_rows`), one buffer resident at any row count. Only the Baker reads this way, from its own `bake/` result prefix; result reuse stays inside one workgroup, so a reused bake result is also under `bake/`.
+
+A bake slot is read **held** (its answer keeps every row, up to `BAKE_MAX_ROWS`) or as a **reduction**: the rows stream through a fold (`src/domain/measurement/folds.py`: `ObservedKeys`, `KeysByGroup`, `AuthorizedDailySums`) that keeps only a bounded summary and enforces its own `max_kept`; keeping more is the same refusal as a truncated read. `fold_answer` applies a held answer's per-row rules and builds its metadata with the one `answer_metadata` builder, so a held and a folded answer over the same rows can't differ. A fold reads a simple one-measure, unjoined plan only; anything else is refused when the batch is prepared. The exception is a fold that keeps each row's figure and combines none, which may read a ratio or a joined plan. The presentation batch shapes or folds each slot in the worker that ran it, so a slot's raw rows are gone when its worker returns. Slots over one request share one statement whatever each declares: a request any slot folds is streamed once, each fold slot gets its own fresh fold of that stream, and a held slot sharing it keeps the rows a held read would.
+
+An **entity-streamed** read is a reduction whose fold is a `GroupSink` (`src/adapters/jobs/preset_artifact_publisher/group_stream.py`; ADR-152): composed reads `ORDER BY` their grain, so each entity's rows arrive together, and the sink hands one entity's figures at a time across a one-slot queue to the render, which merges several such reads by key (`src/domain/measurement/groups.py`, code-point order, as Trino orders `varchar`). Its read is `BAKE_GROUPED`, with no `LIMIT`, and its `max_kept` bounds one entity, not the population. Each read holds its admission slot while it streams, so the query bound must admit every read of one merge. Audiences reads every DSP campaign this way.
+
+A **compact record** is the reduction for a page that renders every entity at once (`KeyedColumns`; ADR-152). Each read folds into its own column of one store keyed by the entity, among the authorized entities only, so an entity costs one key and one list of values however many reads describe it. Every record is declared before the first figure, so the store never overflows and concurrent workers never insert into it. Campaigns folds its 11 compares this way, as one breakdown per window; the narration path keeps its held compares.
+
+A publish-time read may also carry a **ranked restriction** (`src/domain/measurement/ranking.py`; ADR-143, ADR-152): one `ranked` CTE ranks a declared population inside the statement, fenced to the publications of the batch's own reads of it, and the read either returns the ranked keys (`RANKED_KEYS`) or semi-joins its own rows to them (`SEMI_JOIN`, also for a comparison). The restriction declares:
+- **what ranks:** the rank metric's sum over its window (`VALUE`), or `|current − prior|` (`ABS_CHANGE`, Retail's movers). One order list, rank value descending then key, renders both the SQL and the Python sort;
+- **who is a member:** every key with a population row (`ANY_ROW`), or only a rank value above 0 (`POSITIVE`), which still keeps a key Amazon withheld rows from so the population's withholding is never filtered away;
+- **per partition:** `partition_by` grains keep their own top `n` (`ROW_NUMBER() OVER (PARTITION BY …)`), as the New customers gateway does per ad product;
+- **population figures:** a `RANKED_KEYS` read returns the population count, whether any population row was withheld, and declared population sums, taken before the top `n` is kept. The adapter lifts them off the rows into `QueryResult.population`, refuses figures that differ within a partition (`RANKING/2`), and marks the read suppressed when the population was. The tool envelope is unchanged.
+
+Retail health ranks its top 50 (with its product count and sums), its three movers, and the 50's rows, series and ad reads this way; the New customers gateway its top 10 per ad product with each one's count; Reach its count of campaigns with spend. Chat's `measurement_top_n` still ranks in Python under the narration ceiling.
+
 ## Athena workgroups and the batch start budget
 
 Each execution class runs in its own Athena workgroup, so a burst in one class never queues another's queries or reads its results. `DataV2Stack` owns all of them; consumers derive the physical names with `semanticV2AthenaWorkgroupName` and never configure one by hand.
@@ -46,6 +86,6 @@ Every non-CHAT Athena caller has a fixed maximum of concurrent executions: its L
 
 The rule is `Σ(reserved × cap) ≤ batch_athena_budget ≤ active_dml_quota − chat_reserve_active_dml`, which at the initial values is 41 ≤ 41 ≤ 180. Every row is present exactly once, every value is an integer, a reserved concurrency of 0 is a quiesced row and an absent one (unreserved, unbounded) is refused, and the Baker cap may not fall below the certified query cap of 10 the bake budgets are proven at.
 
-The three limits live only in the `athena_start_budget` block of `contracts/operations/execution-graphs.yaml`: `active_dml_quota: 200` is this account's Active DML quota as read back on 2026-10-13, and `chat_reserve_active_dml: 20` is design-proposed headroom for CHAT, not a service requirement. A customer with a different quota changes the contract constant. One rule is implemented twice: `cdk synth` runs `validateAthenaStartBudget` over the configured maximum each stack can render and throws on violation, and `validation/probe_athena_workgroup_migration.py` runs the Python twin over the deployed reserved concurrency, so console drift is caught. Neither accepts a configured or supplied limit that differs from the contract.
+The three limits live only in the `athena_start_budget` block of `contracts/operations/execution-graphs.yaml`: `active_dml_quota: 200` is this account's Active DML quota as read back on 2026-10-13 (the README's [prerequisites](../../../README.md#prerequisites) say how to read yours), and `chat_reserve_active_dml: 20` is design-proposed headroom for CHAT, not a service requirement. A customer with a different quota changes the contract constant. One rule is implemented twice: `cdk synth` runs `validateAthenaStartBudget` over the configured maximum each stack can render and throws on violation, and `validation/probe_athena_workgroup_migration.py` runs the Python twin over the deployed reserved concurrency, so console drift is caught. Neither accepts a configured or supplied limit that differs from the contract.
 
 Raising Q is a config change that also raises the contract budget. As projections, not certified values: Q16 makes the total 53 and Q24 makes it 69.

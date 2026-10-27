@@ -13,11 +13,12 @@ to this tab.
 
 | Operation | Route | Browser intent | Server responsibility |
 |---|---|---|---|
-| Audiences | `POST /api/presentation/audiences` [proposal] | Session; optional `TemporalSelection.v2` restricted to `omitted` or `last_complete_month` | Resolve the month, serve its baked artifact with both profile paths and every DSP campaign's segment rows |
+| Audiences | `POST /api/presentation/audiences` [proposal] | Session; optional `TemporalSelection.v2` restricted to `omitted` or `last_complete_month`; optionally one part (a campaign page, a profile page or a campaign index shard) | Resolve the month and serve its baked parent, or the one baked part asked for |
 | Audiences metric focus | `POST /api/presentation/audiences-metric-focus` [proposal] | Session, a declared focusable metric, the selection | Derive the focus payload from the baked artifact |
 
-The profile selector and the DSP campaign selector choose among values the artifact already carries, so they
-don't re-request. Both routes are new API Gateway routes and need their own `infra/` approval.
+The profile selector chooses among paths the parent already carries, so it doesn't re-request. Choosing a DSP
+campaign, or another page of a profile or campaign, fetches that one baked part
+([LLD](low-level-design.md#audienceprofileartifact-v2)). Both routes are new API Gateway routes and need their own `infra/` approval.
 
 ### Composition (top to bottom, per the mockup)
 

@@ -12,6 +12,8 @@ so the slice's live checks on dev are pending. Amends
 returns, see its 2026-10-08 amendment) and
 [ADR-071](adr-071-reach-the-full-campaign-estate-through-baked-ordered-segments.md) when accepted.
 
+> **Proposed amendment, 2026-10-18.** [ADR-145](adr-145-serve-ten-thousand-campaigns-with-a-sharded-roster-and-streamed-writes.md) (Proposed) would shard each filter sibling's name roster into ordered sibling bodies and move every filter's segment descriptors from its custody into one sharded custody digest index per publication. Implemented 2026-10-26 by the scale-limits change (PR #20) and live-validated on dev: where it differs from this decision, the amendment describes the code. ADR-145's acceptance is the owner's review.
+
 ## Context
 
 The owner's coverage gap 1 is a DSP versus sponsored split and filter. Campaigns has no channel filter
@@ -74,7 +76,8 @@ artifact, rendered from the same batch in the same bake, under one pointer.**
 ## Consequences
 
 - Four measurement batches per publication instead of three, and up to seven render-only siblings per
-  preset, which the low-level design checks against the bakeability gate. At the 1,000-campaign bound
+  preset, which the low-level design checks against the bakeability gate. At the 1,000-campaign bound (removed 2026-10-25 by
+  [ADR-152](adr-152-read-page-sized-answers-in-sql-with-no-arbitrary-row-ceiling.md) decision 8)
   a variant writes at most 1,300 immutable objects (2 × 10 orderings × 65 segments). The gate checks
   that count against the baker's own memory and timeout, not against itself, and the local estate
   acceptance bakes seven siblings at the bound and holds its object count equal to the gate's count

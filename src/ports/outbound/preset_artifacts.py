@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from domain.presentation.preset_artifacts import (
     ArtifactBodyWriteResult,
@@ -26,6 +26,9 @@ from domain.presentation.preset_artifacts import (
     PresetArtifactStageResult,
     PresetArtifactVariant,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 __all__ = [
     "LegacyPointerAfterCutoverError",
@@ -118,8 +121,18 @@ class PresetArtifactPointerStorePort(Protocol):
 class PresetArtifactPersistencePort(Protocol):
     """Persist a rendered body before attempting its forward-only pointer transition."""
 
-    def publish(self, request: PresetArtifactPublicationRequest) -> PresetArtifactPublicationResult:
-        """Write immutable body evidence first, then conditionally advance its pointer."""
+    def publish(
+        self,
+        request: PresetArtifactPublicationRequest,
+        *,
+        remaining_ms: Callable[[], int],
+        tail_seconds: float,
+    ) -> PresetArtifactPublicationResult:
+        """Write immutable body evidence first, then conditionally advance its pointer.
+
+        `remaining_ms` and `tail_seconds` bound the stage's writes (ADR-145): required, with no
+        default, so no caller writes without the invocation's deadline.
+        """
         ...
 
 
@@ -130,6 +143,15 @@ class PresetArtifactStagePort(Protocol):
     A GRAPH bake task holds only this port; the finalizer alone constructs pointer members.
     """
 
-    def stage(self, request: PresetArtifactPublicationRequest) -> PresetArtifactStageResult:
-        """Write siblings (bounded body->custody pairs), then the parent body and custody."""
+    def stage(
+        self,
+        request: PresetArtifactPublicationRequest,
+        *,
+        remaining_ms: Callable[[], int],
+        tail_seconds: float,
+    ) -> PresetArtifactStageResult:
+        """Stream siblings (bounded body->custody pairs), the index, then the parent (ADR-145).
+
+        Refuses the page (`bodies_over_invocation`) when its write deadline is reached first.
+        """
         ...

@@ -14,16 +14,19 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
+from preset_artifact_support import staged_custody, staged_index, staged_pointer
 from publication_support import PublicationSpec, StubPublications, successful_publication
 
 from adapters.config import PresetArtifactBakeSettings
-from adapters.inbound.tool_handlers.measurement import DEFAULT_MAX_ROWS, MeasurementTooling
+from adapters.inbound.tool_handlers.measurement import MeasurementTooling
 from adapters.jobs.contract_validation.insight_loader import load_insight_contracts
 from adapters.jobs.contract_validation.loader import load_contracts
 from adapters.jobs.presentation_validation.loader import load_v2_page_schemas
 from adapters.jobs.preset_artifact_publisher import retail_source as retail_source_module
-from adapters.jobs.preset_artifact_publisher.baker import (
+from adapters.jobs.preset_artifact_publisher.bake_results import (
     BakePublication,
+)
+from adapters.jobs.preset_artifact_publisher.baker import (
     RetailHealthPresetArtifactBaker,
 )
 from adapters.jobs.preset_artifact_publisher.insight_fill import PresetInsightFillChild
@@ -55,6 +58,9 @@ from adapters.retail_insight_requests import (
     retail_payload_without_ephemera,
 )
 from domain.measurement.planning import measure_alias
+from domain.measurement.ranking import RANKED_INVARIANT, RankBy, RankedPopulation, RankedProjection
+from domain.narrative.shaped_response import UnitKind
+from domain.operations.bake_refusals import IsolatedRefusal, IsolatedRefusalReason, RefusalScope
 from domain.presentation.compared_metrics import presentation_labels
 from domain.presentation.currency_display import without_display_values
 from domain.presentation.evidence_status import CoverageState, write_evidence_status
@@ -78,12 +84,14 @@ from domain.presentation.preset_artifacts import (
     PresetArtifactPointer,
     PresetArtifactPointerAdvanceRequest,
     PresetArtifactPointerAdvanceResult,
+    PresetArtifactPointerTemplate,
     PresetArtifactProductChildIdentity,
     PresetArtifactPublicationRequest,
     PresetArtifactRevision,
     PresetArtifactVariant,
     SourceUnchanged,
     canonical_preset_artifact_json,
+    index_shard_descriptors,
 )
 from domain.presentation.retail_health import (
     RETAIL_HEALTH_INSIGHT_IDS,
@@ -101,16 +109,22 @@ from domain.presentation.retail_health import (
     retail_health_coverage_facts,
 )
 from domain.presentation.retail_health_custody import (
-    RetailProductChildDigests,
     retail_health_custody_manifest_from_payload,
 )
 from domain.semantics.analytical_resolution import AuthorizedAnalyticalScope
+from domain.shared_kernel.errors import InvariantError
 from domain.shared_kernel.provenance import Suppression
 from domain.shared_kernel.values import DateRange
 from ports.outbound.canonical import CanonicalDatasetReadPort
 from ports.outbound.preset_artifacts import PresetArtifactPointerStorePort
 from ports.outbound.publication_selection import PresentationEvidenceInspectionPort
-from ports.outbound.query import QueryRequest, QueryResult, QueryRow
+from ports.outbound.query import (
+    BAKE_LONGEST_WINDOW_DAYS,
+    QueryRequest,
+    QueryResult,
+    QueryRow,
+    RowCeiling,
+)
 from ports.outbound.semantic_state import CurrentPublicationPort
 from ports.outbound.source_coverage import (
     SourceCoverageBounds,
@@ -224,13 +238,104 @@ class RetailQueries:
     products: tuple[str, ...]
     period: DateRange
     seen: list[QueryRequest] = field(default_factory=list[QueryRequest])
+    revenue: dict[str, Decimal] | None = None
+    """Current shipped revenue per product, replacing the base value; an absent product has no
+    current shipped-revenue row (it is still in the population through the other metrics)."""
+
+    def __post_init__(self) -> None:
+        self._position = {asin: index for index, asin in enumerate(self.products)}
+
+    def _omitted(  # noqa: PLR0913 -- one row's plan, product, day and window role
+        self, plan: Any, asin: str | None, day: date | None, *, is_current: bool
+    ) -> bool:
+        return (
+            self.revenue is not None
+            and plan.metric.name == "retail_revenue_shipped"
+            and is_current
+            and asin is not None
+            and day is None
+            and asin not in self.revenue
+        )
+
+    def _rank_value(self, asin: str) -> Decimal:
+        if self.revenue is not None:
+            return self.revenue.get(asin, Decimal(0))
+        return self._value("retail_revenue_shipped", (asin, None), is_current=True)
+
+    def _shipped(self, asin: str, *, is_current: bool) -> Decimal:
+        if is_current and self.revenue is not None:
+            return self.revenue.get(asin, Decimal(0))
+        return self._value("retail_revenue_shipped", (asin, None), is_current=is_current)
+
+    def _ranked(self, request: QueryRequest) -> tuple[str, ...]:
+        """Stand in for the statement's `ranked` CTE: every fake product is in the population."""
+        ranked = request.ranked
+        assert ranked is not None
+        restriction = ranked.restriction
+        if restriction.rank_by is RankBy.ABS_CHANGE:
+            changes = {
+                asin: abs(
+                    self._shipped(asin, is_current=True) - self._shipped(asin, is_current=False)
+                )
+                for asin in self.products
+            }
+            moved = sorted(
+                (asin for asin in self.products if changes[asin]), key=lambda a: (-changes[a], a)
+            )
+            return tuple(moved[: restriction.n])
+        order = sorted(self.products, key=lambda asin: (-self._rank_value(asin), asin))
+        return tuple(order[: restriction.n])
+
+    def _population(self) -> RankedPopulation:
+        """Stand in for the CTE population figures: every fake product, two current sums."""
+        return RankedPopulation(
+            (),
+            len(self.products),
+            (
+                (
+                    "retail_revenue_shipped",
+                    sum((self._shipped(a, is_current=True) for a in self.products), Decimal(0)),
+                ),
+                (
+                    "units_shipped",
+                    sum(
+                        (
+                            self._value("units_shipped", (a, None), is_current=True)
+                            for a in self.products
+                        ),
+                        Decimal(0),
+                    ),
+                ),
+            ),
+            suppressed=False,
+        )
 
     def run(self, request: QueryRequest) -> QueryResult:
         self.seen.append(request)
         plan = request.plan.logical
         group = plan.group_by
         is_current = plan.window == self.period
-        product_axis: tuple[str | None, ...] = self.products if "amazon_asin" in group else (None,)
+        if request.ranked is not None and (
+            request.ranked.restriction.projection is RankedProjection.RANKED_KEYS
+        ):
+            keyed: tuple[QueryRow, ...] = tuple(
+                {
+                    "amazon_asin": asin,
+                    "marketplace_key": MARKETPLACE,
+                    **dict.fromkeys(plan.carried_columns, "USD"),
+                    measure_alias(0): self._rank_value(asin),
+                }
+                for asin in self._ranked(request)
+            )
+            return QueryResult(
+                rows=keyed[: request.max_rows],
+                bytes_scanned=1_024,
+                truncated=len(keyed) > request.max_rows,
+                suppression=Suppression(False),
+                population=(self._population(),),
+            )
+        products = self._ranked(request) if request.ranked is not None else self.products
+        product_axis: tuple[str | None, ...] = products if "amazon_asin" in group else (None,)
         date_axis: tuple[date | None, ...] = (
             tuple(plan.window.start + timedelta(days=offset) for offset in range(plan.window.days))
             if "date_key" in group
@@ -247,6 +352,8 @@ class RetailQueries:
             for day in date_axis
             for channel in channel_axis
         ):
+            if self._omitted(plan, asin, day, is_current=is_current):
+                continue
             row: dict[str, str | int | Decimal | None] = {"marketplace_key": MARKETPLACE}
             if asin is not None:
                 row["amazon_asin"] = asin
@@ -282,12 +389,58 @@ class RetailQueries:
         if asin is None:
             # A daily trend value over the single marketplace.
             return Decimal(2) if is_current else Decimal(1)
-        base = Decimal(self.products.index(asin) + 1)
+        base = Decimal(self._position[asin] + 1)
         if day is not None:
             # One shipped-revenue spark point per product per day.
             return base
+        if self.revenue is not None and metric == "retail_revenue_shipped" and is_current:
+            return self.revenue[asin]
         multiplier = CURRENT_MULTIPLIER[metric]
         return base * multiplier if is_current else base
+
+
+RANK_PARITY_CASES = (
+    "products-1",
+    "products-2",
+    "products-45",
+    "products-61",
+    "products-600",
+    "ties-60",
+    "zero-30-12",
+    "zero-60-20",
+)
+"""The fixtures whose display order was captured once from the base's Python sort."""
+
+RANK_PARITY_FIXTURE = ROOT / "tests" / "fixtures" / "retail-rank-parity-v1.json"
+"""The base's displayed order per case, captured at 4b38b647 (current shipped revenue
+descending, then child ASIN) before the ranking moved into the query."""
+
+
+def _rank_case(name: str) -> tuple[tuple[str, ...], dict[str, Decimal] | None]:
+    """Build one parity case's products and current shipped revenue (fictional values)."""
+    kind, count_text, *rest = name.split("-")
+    products = _products(int(count_text))
+    if kind == "products":
+        return products, None
+    if kind == "ties":
+        # Many equal revenues, unaligned with ASIN order, so the tie key decides.
+        return products, {
+            asin: Decimal(((index * 7) % 13 + 1) * 10) for index, asin in enumerate(products)
+        }
+    zero_count = int(rest[0])
+    # Spread evenly over the ASIN order, so zero-revenue products interleave with the others.
+    zero = {
+        asin
+        for index, asin in enumerate(products)
+        if (index * zero_count) % len(products) < zero_count
+    }
+    if len(zero) != zero_count:
+        raise AssertionError(f"{name}: {len(zero)} zero-revenue products, not {zero_count}.")
+    return products, {
+        asin: Decimal((index % 9 + 1) * 10)
+        for index, asin in enumerate(products)
+        if asin not in zero
+    }
 
 
 def _renderer(
@@ -397,65 +550,223 @@ def test_renderer_builds_a_complete_reconciled_artifact_from_retained_truth() ->
     assert "reported-total-publication-1" in rendered.publication_identities
 
 
-@pytest.mark.covers("ADR-070")
-def test_fourteen_day_product_series_is_chunked_below_its_query_row_ceiling(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Paired: 2,520 grouped rows render; every one-day query keeps the 500-row ceiling."""
+def _ranked_renderer(
+    products: tuple[str, ...],
+    queries: RetailQueries,
+    period: DateRange = PERIOD,
+) -> RetailHealthArtifactRenderer:
+    del period
+    return _renderer(
+        queries,
+        FakeHierarchy(_hierarchy_result(products)),
+        FakeReported(
+            RetailReportedTotals(Decimal(0), Decimal(0), ("reported-total-publication-1",))
+        ),
+    )
+
+
+@pytest.mark.covers("ADR-143")
+@pytest.mark.parametrize("days", [1, 7, 14])
+def test_retail_certifies_49_plans_at_every_preset(days: int) -> None:
+    """Compares and trends, the ranked keys, four series, the movers and the ads, at any window."""
+    assert retail_source_module.retail_health_bake_plan_count(ROOT, days) == 49
+
+
+@pytest.mark.covers("ADR-143", "ADR-152")
+def test_every_product_grain_read_is_restricted_to_the_ranked_keys_within_its_bound() -> None:
+    """One ranked-keys read; rows, series, ads and movers each semi-join it, page-sized."""
     products = _products(45)
     period = DateRange(date(2026, 8, 6), date(2026, 8, 19))
     prior = DateRange(date(2026, 7, 23), date(2026, 8, 5))
     queries = RetailQueries(products, period)
-    renderer = _renderer(
-        queries,
-        FakeHierarchy(_hierarchy_result(products)),
-        FakeReported(
-            RetailReportedTotals(
-                _expected_product_revenue(45),
-                _expected_product_units(45),
-                ("reported-total-publication-1",),
-            )
-        ),
+    rendered = _ranked_renderer(products, queries).render_retail_health(
+        RetailHealthRenderInput(period, prior)
     )
-
-    rendered = renderer.render_retail_health(RetailHealthRenderInput(period, prior))
-
     assert rendered.artifact is not None and len(rendered.artifact.rows) == 45
-    spark = [
-        request
-        for request in queries.seen
-        if {"date_key", "amazon_asin"} <= set(request.plan.logical.group_by)
+    ranked = [request for request in queries.seen if request.ranked is not None]
+    keys = [
+        item
+        for item in ranked
+        if item.ranked is not None
+        and item.ranked.restriction.projection is RankedProjection.RANKED_KEYS
     ]
-    assert len(spark) == 2 * 2 * period.days
-    assert sum(request.plan.logical.window.days for request in spark) * len(products) > 500
+    series = [item for item in ranked if "date_key" in item.plan.logical.group_by]
+    assert len(keys) == 1 and keys[0].max_rows == RETAIL_HEALTH_MAX_ROWS
+    assert len(series) == 4
     assert all(
-        request.plan.logical.window.days == 1 and request.max_rows == DEFAULT_MAX_ROWS
-        for request in spark
+        item.plan.logical.window.days == period.days
+        and item.max_rows == RETAIL_HEALTH_MAX_ROWS * BAKE_LONGEST_WINDOW_DAYS
+        and item.ceiling is RowCeiling.BAKE
+        for item in series
+    )
+    bounds = sorted(
+        (item.ranked.restriction.n, item.max_rows)
+        for item in ranked
+        if item.ranked is not None and item not in keys and item not in series
+    )
+    # 14 row compares at 50, two movers at 3, four product x channel ads at 50 x 2 channels.
+    assert bounds == [(3, 3)] * 2 + [(50, 50)] * 14 + [(50, 100)] * 4
+    # Every read the batch makes asks for a bake ceiling, never chat's narration bound.
+    assert all(item.ceiling is RowCeiling.BAKE for item in queries.seen)
+    assert not any(
+        {"date_key", "amazon_asin"} <= set(item.plan.logical.group_by) and item.ranked is None
+        for item in queries.seen
     )
 
-    # Paired failing control: one unchunked 14-day request truncates at the refusing
-    # measurement-answer layer, so the renderer returns no partial artifact.
-    def _single_window(window: DateRange) -> tuple[DateRange, ...]:
-        return (window,)
 
-    monkeypatch.setattr(retail_source_module, "_daily_windows", _single_window)
-    control_queries = RetailQueries(products, period)
-    refused = _renderer(
-        control_queries,
-        FakeHierarchy(_hierarchy_result(products)),
-        FakeReported(
-            RetailReportedTotals(
-                _expected_product_revenue(45),
-                _expected_product_units(45),
-                ("reported-total-publication-1",),
-            )
-        ),
-    ).render_retail_health(RetailHealthRenderInput(period, prior))
-    assert refused.artifact is None
-    assert any(
-        request.plan.logical.window.days == period.days and request.max_rows == DEFAULT_MAX_ROWS
-        for request in control_queries.seen
+@pytest.mark.covers("ADR-143", "ADR-152")
+def test_a_600_product_catalog_bakes_its_top_50_with_the_stated_total() -> None:
+    """600 products bake 50 rows of 600; each series read returns at most 50 x days rows."""
+    products, _ = _rank_case("products-600")
+    queries = RetailQueries(products, PERIOD)
+    artifact = (
+        _ranked_renderer(products, queries)
+        .render_retail_health(RetailHealthRenderInput(PERIOD, PRIOR))
+        .artifact
     )
+    assert artifact is not None
+    assert (len(artifact.rows), artifact.total_count) == (RETAIL_HEALTH_MAX_ROWS, 600)
+    assert artifact.truncation == RETAIL_HEALTH_MAX_ROWS
+    series = [
+        item
+        for item in queries.seen
+        if item.ranked is not None and "date_key" in item.plan.logical.group_by
+    ]
+    # Each series read returns at most 50 x days rows, whatever the catalog.
+    assert all(
+        len(queries.run(item).rows) <= RETAIL_HEALTH_MAX_ROWS * item.plan.logical.window.days
+        for item in series
+    )
+
+
+@pytest.mark.covers("ADR-152")
+def test_a_100000_product_catalog_bakes_50_rows_its_sums_and_every_childs_ad_section() -> None:
+    """No catalog size refuses or blanks: 50 rows of 100,000, the sums the population's."""
+    count = 100_000
+    rendered = _rendered(count)
+    artifact = rendered.artifact
+    assert artifact is not None
+    assert (len(artifact.rows), artifact.total_count) == (RETAIL_HEALTH_MAX_ROWS, count)
+    reconciliation = artifact.reconciliation
+    assert reconciliation is not None and reconciliation.outcome == "reconciled"
+    assert len(rendered.children) == RETAIL_HEALTH_MAX_ROWS
+    for child in rendered.children:
+        ads = child.artifact.ad_attributed
+        assert ads is not None
+        assert [item.label for item in ads.rows] == list(CHANNEL_LABELS.values())
+
+
+MOVERS_PARITY_FIXTURE = ROOT / "tests" / "fixtures" / "retail-movers-parity-v1.json"
+"""The base's movers, product count and product sums per rank case, captured at 5739e389 from
+the Python whole-population reduction before the movers and sums moved into the query."""
+
+
+@pytest.mark.covers("ADR-152")
+@pytest.mark.parametrize("case", RANK_PARITY_CASES)
+def test_the_sql_movers_count_and_sums_equal_the_base_python_reduction(case: str) -> None:
+    """Golden: movers text, stated total and both product sums are the base's, in USD."""
+    golden = json.loads(MOVERS_PARITY_FIXTURE.read_text(encoding="utf-8"))["cases"][case]
+    products, revenue = _rank_case(case)
+    artifact = (
+        _ranked_renderer(products, RetailQueries(products, PERIOD, revenue=revenue))
+        .render_retail_health(RetailHealthRenderInput(PERIOD, PRIOR))
+        .artifact
+    )
+    assert artifact is not None
+    movers = artifact.insights[3]
+    assert (movers.state.value, movers.text) == (golden["movers_state"], golden["movers_text"])
+    assert artifact.total_count == golden["total_count"]
+    reconciliation = artifact.reconciliation
+    assert reconciliation is not None
+    assert (str(reconciliation.product_revenue), str(reconciliation.product_units)) == (
+        golden["product_revenue"],
+        golden["product_units"],
+    )
+
+
+@pytest.mark.covers("ADR-143")
+@pytest.mark.parametrize("case", RANK_PARITY_CASES)
+def test_the_ranked_order_equals_the_base_python_order(case: str) -> None:
+    """Golden: the ranked keys' order is the base's, captured once at 4b38b647."""
+    golden = json.loads(RANK_PARITY_FIXTURE.read_text(encoding="utf-8"))["cases"][case]
+    products, revenue = _rank_case(case)
+    artifact = (
+        _ranked_renderer(products, RetailQueries(products, PERIOD, revenue=revenue))
+        .render_retail_health(RetailHealthRenderInput(PERIOD, PRIOR))
+        .artifact
+    )
+    assert artifact is not None
+    assert [row.child_asin for row in artifact.rows] == golden["displayed_child_asins"]
+    assert artifact.total_count == golden["total_count"]
+
+
+@pytest.mark.covers("ADR-143")
+def test_fewer_than_50_revenue_products_bake_every_product_zero_revenue_last_by_key() -> None:
+    """30 products, 12 without shipped revenue: all 30 bake, the 12 last in key order."""
+    products, revenue = _rank_case("zero-30-12")
+    assert revenue is not None
+    artifact = (
+        _ranked_renderer(products, RetailQueries(products, PERIOD, revenue=revenue))
+        .render_retail_health(RetailHealthRenderInput(PERIOD, PRIOR))
+        .artifact
+    )
+    assert artifact is not None and len(artifact.rows) == 30
+    zero = sorted(
+        asin.removeprefix("amazon_asin:").upper() for asin in products if asin not in revenue
+    )
+    assert [row.child_asin for row in artifact.rows[-12:]] == zero
+
+
+@pytest.mark.covers("ADR-143")
+def test_the_sparks_for_the_50_shown_equal_the_per_day_values() -> None:
+    """Golden against the fake's per-day value: each shown product's spark is its base value."""
+    products = _products(61)
+    artifact = (
+        _ranked_renderer(products, RetailQueries(products, PERIOD))
+        .render_retail_health(RetailHealthRenderInput(PERIOD, PRIOR))
+        .artifact
+    )
+    assert artifact is not None
+    for row in artifact.rows:
+        base = Decimal(int(row.child_asin.removeprefix("FICT")))
+        assert [point.value for point in row.shipped_revenue_spark] == [base] * PERIOD.days
+
+
+class _DriftingQueries(RetailQueries):
+    """A ranked read that disagrees with the declared population in one named way."""
+
+    drift: str = ""
+
+    def run(self, request: QueryRequest) -> QueryResult:
+        result = super().run(request)
+        ranked = request.ranked
+        if ranked is None:
+            return result
+        keyed = ranked.restriction.projection is RankedProjection.RANKED_KEYS
+        rows = list(result.rows)
+        if keyed and self.drift == "outside":
+            rows[-1] = {**rows[-1], "amazon_asin": "amazon_asin:fict99999"}
+        elif keyed and self.drift == "value":
+            rows[0] = {**rows[0], measure_alias(0): Decimal(rows[0][measure_alias(0)] or 0) + 1}
+        elif keyed and self.drift == "count":
+            rows = rows[:-1]
+        elif not keyed and self.drift == "series":
+            rows.append({**rows[0], "amazon_asin": self.products[0]})
+        return replace(result, rows=tuple(rows))
+
+
+@pytest.mark.covers("ADR-143")
+@pytest.mark.parametrize("drift", ["outside", "value", "count", "series"])
+def test_a_ranked_read_that_disagrees_with_the_population_is_an_invariant(drift: str) -> None:
+    """Paired with every passing render above: each disagreement is a page defect."""
+    products = _products(61)
+    queries = _DriftingQueries(products, PERIOD)
+    queries.drift = drift
+    with pytest.raises(InvariantError) as raised:
+        _ranked_renderer(products, queries).render_retail_health(
+            RetailHealthRenderInput(PERIOD, PRIOR)
+        )
+    assert raised.value.code == RANKED_INVARIANT
 
 
 @pytest.mark.covers("ADR-119")
@@ -726,7 +1037,7 @@ def test_revision_derives_from_the_exact_publication_identities_used() -> None:
     request = source.publication_for(VARIANT)
 
     assert isinstance(request, PresetArtifactPublicationRequest)
-    pointer = request.pointer_advance.pointer
+    pointer = request.pointer_template.complete(None).pointer
     assert pointer.revision == PresetArtifactRevision.from_publication_identities(
         ("publication-a", "publication-b"),
         render_format=RETAIL_HEALTH_PRESET_RENDER_FORMAT,
@@ -741,7 +1052,7 @@ def test_revision_derives_from_the_exact_publication_identities_used() -> None:
     assert pointer.comparison_window is not None
     assert pointer.comparison_window.end < pointer.resolved_window.start
     assert pointer.custody_digest is None
-    assert request.custody is None
+    assert request.custody_header is None
     assert (request.body.page, request.body.variant) == (PAGE, VARIANT)
     decoded = retail_health_artifact_from_payload(json.loads(request.body.payload_json))
     assert decoded.outcome is RetailHealthOutcome.EMPTY
@@ -752,11 +1063,13 @@ def test_an_unchanged_revision_is_not_republished() -> None:
     first = source.publication_for(VARIANT)
     assert isinstance(first, PresetArtifactPublicationRequest)
 
-    source_again, compiler, _ = _source(pointers=Pointers(pointer=first.pointer_advance.pointer))
+    source_again, compiler, _ = _source(
+        pointers=Pointers(pointer=first.pointer_template.complete(None).pointer)
+    )
 
     # S6 §2.8 (D26): unchanged is typed, never None, so a bake can tell it from unavailable.
     assert source_again.publication_for(VARIANT) == SourceUnchanged(
-        first.pointer_advance.pointer.revision
+        first.pointer_template.complete(None).pointer.revision
     )
     assert len(compiler.received) == 1
 
@@ -765,7 +1078,7 @@ def test_a_new_revision_supersedes_the_current_pointer_with_a_history_expiry() -
     source, _, _ = _source()
     first = source.publication_for(VARIANT)
     assert isinstance(first, PresetArtifactPublicationRequest)
-    current = first.pointer_advance.pointer
+    current = first.pointer_template.complete(None).pointer
 
     source_two, _, _ = _source(
         compiler=Compiler(identities=("publication-c",)),
@@ -774,11 +1087,11 @@ def test_a_new_revision_supersedes_the_current_pointer_with_a_history_expiry() -
     request = source_two.publication_for(VARIANT)
 
     assert isinstance(request, PresetArtifactPublicationRequest)
-    pointer = request.pointer_advance.pointer
+    pointer = request.pointer_template.complete(None).pointer
     assert pointer.supersedes == current.revision
     assert pointer.forward_token == current.forward_token + 1
-    assert request.pointer_advance.superseded_history_expires_at is not None
-    assert request.pointer_advance.superseded_history_expires_at > NOW
+    assert request.pointer_template.superseded_history_expires_at is not None
+    assert request.pointer_template.superseded_history_expires_at > NOW
 
 
 def test_an_undeclared_variant_and_an_unavailable_render_bake_nothing() -> None:
@@ -1130,10 +1443,7 @@ def test_retail_fill_child_warms_exactly_the_cache_keys_the_serve_overlay_derive
 
     child.warm(
         PresetArtifactPublicationRequest(
-            body,
-            PresetArtifactPointerAdvanceRequest(
-                PresetArtifactPointer(body.page, body.variant, revision, body.digest, 1)
-            ),
+            body, PresetArtifactPointerTemplate(body.page, body.variant, revision, body.digest, 1)
         )
     )
 
@@ -1291,12 +1601,12 @@ def test_the_retail_decoder_refuses_a_wrong_count_mixed_or_plotted_display_value
 
 @pytest.mark.covers("ADR-084", "ADR-070")
 def test_retail_movers_are_baked_at_two_places_in_the_shipped_revenue_currency() -> None:
-    """Format 4 added display values and two-place movers; formats 5 to 8 keep them."""
+    """Format 4 added display values and two-place movers; formats 5 to 11 keep them."""
     artifact = _rendered(2).artifact
     assert artifact is not None
     movers = artifact.insights[3]
 
-    assert RETAIL_HEALTH_PRESET_RENDER_FORMAT == 9
+    assert RETAIL_HEALTH_PRESET_RENDER_FORMAT == 11
     assert movers.text is not None
     assert re.search(r"changed by -?[\d,]+\.\d{2} USD", movers.text)
 
@@ -1346,19 +1656,38 @@ def test_the_publication_binds_a_closed_child_set_in_its_custody_before_the_poin
     request = source.publication_for(VARIANT)
 
     assert isinstance(request, PresetArtifactPublicationRequest)
-    assert request.custody is not None
-    pointer = request.pointer_advance.pointer
-    assert pointer.custody_digest == request.custody.digest
-    manifest = retail_health_custody_manifest_from_payload(json.loads(request.custody.payload_json))
+    # ADR-145: the manifest is the custody header; the children are the stream, and the stage's
+    # index is their one digest home, checked against the served rows before any write.
+    assert request.custody_header is not None
+    header = json.loads(request.custody_header.payload_json)
+    assert set(header) == {"kind", "body_digest", "products", "movers_product_ref"}
+    manifest = retail_health_custody_manifest_from_payload(header)
     assert manifest.body_digest == request.body.digest
-    children = dict(manifest.product_children)
-    assert [body.identity for body in request.sibling_bodies] == [
+    pairs = tuple(request.siblings)
+    assert [public.identity for public, _ in pairs] == [
         PresetArtifactProductChildIdentity(child.product_ref) for child in rendered.children
     ]
-    for public, private in zip(request.sibling_bodies, request.sibling_custody, strict=True):
+    assert request.closed_children == {public.identity for public, _ in pairs}
+    assert request.closed_children == {
+        PresetArtifactProductChildIdentity(item.product_ref) for item in manifest.products
+    }
+    pointer = staged_pointer(request)
+    custody = staged_custody(request)
+    assert custody is not None
+    assert pointer.custody_digest == custody.digest
+    indexed = {
+        item.identity: item
+        for shard, entry in staged_index(request)
+        for item in index_shard_descriptors(shard, entry)
+    }
+    for public, private in pairs:
         ref = cast("PresetArtifactProductChildIdentity", public.identity).product_ref
         assert public.key.endswith(f"/{pointer.revision.value}/products/{ref}.json")
-        assert children[ref] == RetailProductChildDigests(public.digest, private.digest)
+        descriptor = indexed[public.identity]
+        assert (descriptor.body_digest, descriptor.custody_digest) == (
+            public.digest,
+            private.digest,
+        )
         # The public child names the product by display identity only.
         assert "amazon_asin:" not in public.payload_json
         assert ref not in public.payload_json
@@ -1372,7 +1701,7 @@ class _RecordingPersistence:
         default_factory=list[PresetArtifactPublicationRequest]
     )
 
-    def publish(self, request: PresetArtifactPublicationRequest) -> None:
+    def publish(self, request: PresetArtifactPublicationRequest, **_deadline: object) -> None:
         self.calls.append(request)
 
 
@@ -1382,32 +1711,49 @@ def _bake_and_persist(products: int) -> tuple[_RecordingPersistence, int]:
     persistence = _RecordingPersistence()
     result = RetailHealthPresetArtifactBaker(source).bake(BakeIntent("retail-health", "7d"))
     assert isinstance(result, BakePublication)
-    persistence.publish(result.request)
+    persistence.publish(result.request, remaining_ms=lambda: 600_000, tail_seconds=30.0)
     return persistence, len(result.request.body.payload_json.encode())
 
 
 @pytest.mark.covers("ADR-125")
-def test_d18_an_over_cap_retail_parent_fails_closed_before_any_persistence_call() -> None:
-    """Paired: 45 products render under the cap and persist; 50 raise the typed D18 error.
+def test_an_over_cap_retail_parent_is_the_pages_body_over_cap_before_any_persistence_call() -> None:
+    """Paired: 45 products render under the cap and persist; 50 refuse the page (ADR-142 §3.4).
 
-    The parent body is constructed while the source renders, before the baker returns, so an
-    over-cap body never reaches persistence and no content is dropped.
+    The source checks the encoded parent before it builds the body, so an over-cap body is the
+    page's `body_over_cap` absence (alarmed) and never reaches persistence; D18 stays the
+    last-line invariant behind it.
     """
     written, observed = _bake_and_persist(45)
     assert len(written.calls) == 1
     assert observed == 254_046 <= MAX_PRESET_ARTIFACT_BYTES  # the audit's 45-product census
 
-    with pytest.raises(PresetArtifactBodyCeilingError) as refused:
+    with pytest.raises(IsolatedRefusal) as refused:
         _bake_and_persist(RETAIL_HEALTH_MAX_ROWS)
-    assert refused.value.reason == RETAIL_BODY_CEILING
-    assert refused.value.observed_bytes == 279_577 > MAX_PRESET_ARTIFACT_BYTES  # 50 products
+    assert (refused.value.reason, refused.value.scope) == (
+        IsolatedRefusalReason.BODY_OVER_CAP,
+        RefusalScope.PAGE,
+    )
+    assert dict(refused.value.refusal_context) == {
+        "encoded_bytes": 279_577,  # 50 products
+        "max_bytes": MAX_PRESET_ARTIFACT_BYTES,
+    }
+    # The last line: an over-cap body built directly is still the typed D18 defect.
+    revision = PresetArtifactRevision.from_publication_identities(("publication-1",))
+    with pytest.raises(PresetArtifactBodyCeilingError) as ceiling:
+        PresetArtifactBody(
+            PresetArtifactPage("retail-health"),
+            PresetArtifactVariant("7d"),
+            revision,
+            '{"k":"' + "x" * MAX_PRESET_ARTIFACT_BYTES + '"}',
+        )
+    assert ceiling.value.reason == RETAIL_BODY_CEILING
 
 
 @pytest.mark.covers("ADR-125")
 def test_plan_4_3_every_current_read_precedes_the_first_query() -> None:
     """Make every CURRENT read precede the first query, with an unchanged artifact.
 
-    The bind pass needs the whole read set before any query: both inspections, the hierarchy
+    The bind pass needs the whole read set before any query: the one inspection, the hierarchy
     and the reported totals happen first, and the render still yields its two rows.
     """
     events: list[str] = []
@@ -1449,5 +1795,94 @@ def test_plan_4_3_every_current_read_precedes_the_first_query() -> None:
 
     assert rendered.artifact is not None and len(rendered.artifact.rows) == 2
     first_query = events.index("query")
-    assert events[:first_query] == ["read"] * 4
+    assert events[:first_query] == ["read"] * 3
     assert "read" not in events[first_query:]
+
+
+@pytest.mark.covers("ADR-143")
+def test_a_ranked_series_states_the_qualifiers_the_merged_per_day_answers_stated() -> None:
+    """Golden (round-2 N7): one whole-window answer carries the merged per-day qualifiers.
+
+    With a DQ caveat and a stale load, the base's per-day answers over the same rows, merged,
+    state the same qualifiers.
+    """
+    from adapters.inbound.tool_handlers.measurement import (  # noqa: PLC0415
+        PresentationMeasurementAnswerSlot,
+    )
+    from domain.catalog.freshness import Coverage as FactCoverage  # noqa: PLC0415
+    from domain.measurement.answers import (  # noqa: PLC0415
+        AnswerRequest,
+        MeasurementContext,
+        answer_measurement,
+    )
+    from domain.shared_kernel.provenance import FreshnessStatus, MeasurementBasis  # noqa: PLC0415
+    from ports.outbound.publication_selection import PresentationEvidenceRole  # noqa: PLC0415
+
+    batch = retail_source_module.retail_health_measurement_batch(
+        retail_source_module.RetailHealthMeasurementBatchRequest(
+            METRIC_CATALOG, CONTRACTS, PERIOD, PRIOR, NOW, len(CHANNEL_LABELS)
+        )
+    )
+    (plan,) = (
+        item.logical
+        for item, label in zip(batch.prepared.plans, batch.slots, strict=True)
+        if label[:3] == ("spark", "retail_revenue_shipped", "current")
+    )
+    caveat = ("dq-fictional-caveat",)
+    loaded = datetime(2026, 8, 20, 6, tzinfo=UTC)
+    products = _products(3)
+
+    def _rows(window: DateRange) -> tuple[QueryRow, ...]:
+        return tuple(
+            {
+                "date_key": (window.start + timedelta(days=offset)).isoformat(),
+                "amazon_asin": asin,
+                "marketplace_key": MARKETPLACE,
+                **dict.fromkeys(plan.carried_columns, "USD"),
+                measure_alias(0): Decimal(index + 1),
+            }
+            for offset in range(window.days)
+            for index, asin in enumerate(products)
+        )
+
+    def _parsed(window: DateRange) -> Any:
+        coverage = FactCoverage(
+            fact_name=plan.fact,
+            window=window,
+            freshness=FreshnessStatus.STALE,
+            measurement_basis=MeasurementBasis.RETAIL_ACTUAL,
+            valid_grains=("date", "product", "marketplace"),
+            loaded_at=loaded,
+            intervals=(window,),
+        )
+        answer = answer_measurement(
+            AnswerRequest(
+                plan=replace(plan, window=window),
+                context=MeasurementContext(computed_at=NOW, correlation_id="retail-health"),
+                rows=_rows(window),
+                suppression=Suppression(False),
+                coverage=coverage,
+                applied_defaults={},
+                additive=True,
+                qualified_dq=caveat,
+            )
+        )
+        slot = PresentationMeasurementAnswerSlot(PresentationEvidenceRole.CURRENT, plan, answer)
+        return retail_source_module._answer_rows(  # pyright: ignore[reportPrivateUsage]
+            slot, window, ("date_key", "amazon_asin", "marketplace_key"), UnitKind.CURRENCY
+        )
+
+    whole = _parsed(PERIOD)
+    days = [
+        _parsed(DateRange(PERIOD.start + timedelta(days=n), PERIOD.start + timedelta(days=n)))
+        for n in range(PERIOD.days)
+    ]
+    assert whole is not None and all(day is not None for day in days)
+    merged_rows: dict[tuple[str, ...], Decimal | int] = {}
+    for day in days:
+        merged_rows.update(day[0])
+    merged_qualifiers = tuple(sorted({item for day in days for item in day[2]}))
+    assert whole[0] == merged_rows
+    assert whole[2] == merged_qualifiers
+    assert any("dq-fictional-caveat" in item for item in whole[2])
+    assert "stale" in whole[2]
