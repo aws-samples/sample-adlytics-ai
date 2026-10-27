@@ -127,6 +127,10 @@ DEEP_INPUT_REVISIONS: Final[tuple[tuple[str, str], ...]] = (
     # Perf follow-up A1 (render format 14): each Campaigns body carries its highest and lowest
     # return lists, and a format-13 body is the page's absence, never decoded.
     ("2026-10-26.1", "33271938e610d48bf844f4fec09e0e8d5a9f8cc92fe9f0793317b3e2d72b98ec"),
+    # Perf hygiene F4: the closure's YAML parsing goes through adapters.outbound.repository_yaml
+    # (libyaml's C loader). Parsed values are unchanged; the closure bytes moved. Named .27.7
+    # because 2026-10-27.1 to .6 already name other closures on dev integration trees.
+    ("2026-10-27.7", "32c5e8a4721092789fe0ffc4775761f66c54ffea89efecf9b6ab9362cd3164ed"),
 )
 DEEP_INPUT_REVISION: Final[str] = DEEP_INPUT_REVISIONS[-1][0]
 """The revision every deep cache key carries (``#DEEPINPUT#<revision>``)."""
