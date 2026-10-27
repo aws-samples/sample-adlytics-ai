@@ -19,10 +19,17 @@ measurement targets, not request cutoffs:
 - **A page load is one `campaigns` request (render format 14, 2026-10-26).** The highest and
   lowest return lists ride in the parent body, so the page fetches no `attributed_roas` ordering
   to show them, and its load serves no segment whose insight slots precompute leaves cold.
-  Before this format, a load made three requests, and on a dev paced pass on 2026-10-26 the
-  page's browser median ended at 2,050 ms against 1,041 ms for the parent request
-  [measured]. After it, the page is projected to end near the parent request
-  [projection]; the next dev paced pass replaces this projection with a measurement.
+  Dev paced passes of 9 page loads each, timed from navigation start to the end of the last
+  presentation response [measured on dev, 2026-10-27,
+  [results](../../../validation/RESULTS.md#campaigns-return-lists-render-format-14-on-dev--2026-10-27)]:
+
+  | Render format | Campaigns requests per load | Browser p50 | Parent request end p50 | Campaigns bytes per load | Insight `cache_outcome=miss` on page loads |
+  |---|---|---|---|---|---|
+  | 13 | 3 | 2,063 ms | 994 ms | 682,546 | 4 |
+  | 14, after the new revisions | 1 | 999 ms | 999 ms | 234,931 | 0 |
+
+  At format 14 the page ends with its parent request. The format-14 revisions carried unchanged
+  figures; a revision with changed figures was not measured.
 - The measurement and insight fan-out bounds come from configuration and respect the downstream
   quotas (`.kiro/steering/backend-concurrent-execution.md`). Independent slots start concurrently,
   join by declared slot identity, and never wait on one another serially.
