@@ -11,8 +11,6 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Literal, cast
 
-import yaml
-
 from adapters.jobs.fixture_generation.shape import (
     CampaignDay,
     CatalogShape,
@@ -22,6 +20,7 @@ from adapters.jobs.fixture_generation.shape import (
     load_catalog_shape,
 )
 from adapters.jobs.fixture_generation.values import ShapeValues
+from adapters.outbound import repository_yaml
 from domain.data_contracts.contract import DataContract
 
 CATALOG_PATH = Path("contracts/shared/synthetic-entity-catalog.yaml")
@@ -593,7 +592,7 @@ class GovernedValueProvider:
 def load_synthetic_entity_catalog(root: Path) -> SyntheticEntityCatalog:
     """Load the governed fictional identity catalog with strict narrowing."""
     path = root / CATALOG_PATH
-    raw = _mapping(cast("object", yaml.safe_load(path.read_text())), str(path))
+    raw = _mapping(repository_yaml.safe_load(path.read_text()), str(path))
     if raw.get("version") != CATALOG_VERSION:
         raise SyntheticCatalogError(f"{path}: version must be {CATALOG_VERSION}.")
     reserved = _mapping(raw.get("reserved_identifiers"), "reserved_identifiers")

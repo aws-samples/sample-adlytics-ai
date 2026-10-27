@@ -12,8 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import cast
 
-import yaml
-
+from adapters.outbound import repository_yaml
 from domain.semantics.audience_segments import (
     NamespaceRule,
     ProviderEntry,
@@ -88,4 +87,4 @@ def parse_segment_providers(document: object) -> SegmentProviderClassification:
 def load_segment_providers(root: Path) -> SegmentProviderClassification:
     """Read and narrow the classification under `root`; a missing file raises."""
     path = root / SEGMENT_PROVIDERS_PATH
-    return parse_segment_providers(cast("object", yaml.safe_load(path.read_text(encoding="utf-8"))))
+    return parse_segment_providers(repository_yaml.safe_load(path.read_text(encoding="utf-8")))

@@ -10,6 +10,8 @@ from typing import Any, Final, cast
 
 import yaml
 
+from adapters.outbound import repository_yaml
+
 SPAN_CONTRACT_PATH: Final = Path("contracts/observability/spans.yaml")
 GENERATED_SPANS_PATH: Final = Path("src/adapters/outbound/telemetry/generated_spans.py")
 _SCHEMA_FIELDS: Final = frozenset({"version", "spans"})
@@ -79,7 +81,7 @@ class TraceContract:
         return frozenset(span.constant for span in self.spans)
 
 
-class _StrictSafeLoader(yaml.SafeLoader):
+class _StrictSafeLoader(repository_yaml.RepositoryLoader):
     """Safe YAML loader that rejects duplicate mapping keys."""
 
 

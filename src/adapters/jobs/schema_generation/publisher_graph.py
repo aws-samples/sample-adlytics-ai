@@ -11,8 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import cast
 
-import yaml
-
+from adapters.outbound import repository_yaml
 from domain.semantics.publication import (
     CanonicalDatasetKey,
     CanonicalPublisherBinding,
@@ -38,7 +37,7 @@ def load_publication_graph(
 ) -> PublicationGraph:
     """Parse the strict publisher declaration and delegate graph completeness to the domain."""
     path = root / GRAPH_PATH
-    parsed = cast("object", yaml.safe_load(path.read_text()))
+    parsed = repository_yaml.safe_load(path.read_text())
     if not isinstance(parsed, dict):
         raise PublisherGraphLoadError(f"{path}: expected a mapping at the top level.")
     document = cast("Mapping", parsed)

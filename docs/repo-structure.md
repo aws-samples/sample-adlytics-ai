@@ -200,6 +200,8 @@ contracts/
 
 Contracts are consumed by Python ingestion/tools and TypeScript infrastructure. Generated files project governed declarations and never replace their source.
 
+Python code under `src/` parses every repository YAML file through `src/adapters/outbound/repository_yaml.py`: libyaml's C parser with PyYAML's safe constructor, and no pure-Python fallback, because the PyYAML wheels the lock file resolves for macOS arm64 and the Lambda's `aarch64-manylinux2014` target both ship the extension. Each loader keeps its own duplicate-key check, over the composed node tree or in a mapping constructor. Contract loading runs at module scope, so it is part of every Lambda cold start. Offline, PresentationFunction's module-scope loads took 1,451–1,642 ms with the pure-Python parser and 206–223 ms with the C parser (3 runs each, Python 3.14.6 on an arm64 laptop, 2026-10-27) [measured offline]; Lambda at 1,024 MB has less CPU, so these figures do not transfer. On dev at 1,024 MB, PresentationFunction's cold-start `@initDuration` p50 was 3,200.06 ms over 11 cold starts after the change, against 4,170.69 ms over 6 before (2026-10-26 to 2026-10-27) [measured on dev]; the samples are small and the deployed tree carried one unrelated branch ([dated result](../validation/RESULTS.md#contract-parsing-prompt-registry-paging-and-api-compression-on-dev--2026-10-27)). Both parsers build identical values and node trees for all 73 tracked YAML files. Repository scripts and tests are outside this rule. A follow-up idea, untested: an A/B of PresentationFunction at 1,769 MB (one full vCPU) against its 1,024 MB, to see whether more CPU shortens the rest of its cold start.
+
 ## 5. `frontend/`
 
 ```

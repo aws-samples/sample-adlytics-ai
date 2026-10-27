@@ -7,8 +7,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import cast
 
-import yaml
-
+from adapters.outbound import repository_yaml
 from domain.presentation.alert_rules import (
     AlertDirection,
     AlertRule,
@@ -70,7 +69,7 @@ def _rule(value: object, index: int) -> AlertRule:
 
 def load_alert_rules(root: Path) -> tuple[AlertRule, ...]:
     """Read every governed rule; contract consistency is checked by `validate_alert_rules`."""
-    document = yaml.safe_load((root / ALERT_RULES_PATH).read_text())
+    document = repository_yaml.safe_load((root / ALERT_RULES_PATH).read_text())
     item = _mapping(document, str(ALERT_RULES_PATH), frozenset({"version", "rules"}))
     if item["version"] != 1:
         raise AlertRuleError(f"{ALERT_RULES_PATH}: version must be 1.")

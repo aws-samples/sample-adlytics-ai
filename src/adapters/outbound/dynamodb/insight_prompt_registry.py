@@ -54,6 +54,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from types_boto3_dynamodb.client import DynamoDBClient
     from types_boto3_dynamodb.type_defs import (
         AttributeValueTypeDef,
+        QueryInputTypeDef,
         TransactWriteItemTypeDef,
     )
 
@@ -407,26 +408,23 @@ class DynamoInsightPromptRegistry(InsightPromptRegistryPort):
         for slot_id in slot_ids:
             if slot_id in DETERMINISTIC_SLOT_IDS:
                 continue
-            try:
-                response = self._dynamodb.query(
-                    TableName=self._table,
-                    KeyConditionExpression=(
+            for item in self._query_all(
+                {
+                    "TableName": self._table,
+                    "KeyConditionExpression": (
                         "#slot_key = :slot_key AND begins_with(#record_key, :prefix)"
                     ),
-                    ExpressionAttributeNames={
+                    "ExpressionAttributeNames": {
                         "#slot_key": _SLOT_KEY,
                         "#record_key": _RECORD_KEY,
                     },
-                    ExpressionAttributeValues={
+                    "ExpressionAttributeValues": {
                         ":slot_key": write_text(_slot(slot_id)),
                         ":prefix": write_text(_CALIBRATION_OUTBOX_PREFIX),
                     },
-                    ConsistentRead=True,
-                )
-            except Exception as error:
-                self._read_error(error)
-            for raw in response.get("Items", []):
-                item = dict(raw)
+                    "ConsistentRead": True,
+                }
+            ):
                 try:
                     if (
                         read_text(item, _RECORD_TYPE) != _CALIBRATION_OUTBOX_RECORD
@@ -864,20 +862,18 @@ class DynamoInsightPromptRegistry(InsightPromptRegistryPort):
         """Read immutable version and calibration records for one declared slot newest first."""
         if slot_id is InsightSlotId.MOVERS:
             return ()
-        try:
-            response = self._dynamodb.query(
-                TableName=self._table,
-                KeyConditionExpression="#slot_key = :slot_key",
-                ExpressionAttributeNames={"#slot_key": _SLOT_KEY},
-                ExpressionAttributeValues={":slot_key": write_text(_slot(slot_id))},
-                ConsistentRead=True,
-            )
-        except Exception as error:
-            self._read_error(error)
+        items = self._query_all(
+            {
+                "TableName": self._table,
+                "KeyConditionExpression": "#slot_key = :slot_key",
+                "ExpressionAttributeNames": {"#slot_key": _SLOT_KEY},
+                "ExpressionAttributeValues": {":slot_key": write_text(_slot(slot_id))},
+                "ConsistentRead": True,
+            }
+        )
         versions: dict[int, dict[str, AttributeValueTypeDef]] = {}
         cases: dict[int, list[InsightCalibrationCaseResult]] = {}
-        for raw in response.get("Items", []):
-            item = dict(raw)
+        for item in items:
             try:
                 record_type = read_text(item, _RECORD_TYPE)
                 version = _read_number(item, _VERSION)
@@ -1179,6 +1175,25 @@ class DynamoInsightPromptRegistry(InsightPromptRegistryPort):
                 "ConditionExpression": "attribute_not_exists(slot_key) AND attribute_not_exists(record_key)",
             }
         }
+
+    def _query_all(self, request: QueryInputTypeDef) -> list[dict[str, AttributeValueTypeDef]]:
+        """Read every page of one Query, following `LastEvaluatedKey` to the last page.
+
+        One Query page stops at 1 MB, so reading only the first would drop a slot's later
+        versions or outbox work silently once its partition outgrows that.
+        """
+        items: list[dict[str, AttributeValueTypeDef]] = []
+        page: QueryInputTypeDef = request
+        while True:
+            try:
+                response = self._dynamodb.query(**page)
+            except Exception as error:
+                self._read_error(error)
+            items.extend(dict(raw) for raw in response.get("Items", []))
+            last = response.get("LastEvaluatedKey")
+            if last is None:
+                return items
+            page = {**request, "ExclusiveStartKey": last}
 
     @staticmethod
     def _read_error(error: Exception) -> NoReturn:

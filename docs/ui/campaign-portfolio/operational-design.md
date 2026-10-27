@@ -88,6 +88,18 @@ measurement targets, not request cutoffs:
   (`make accept-campaign-estate-local`): largest body 156,718 bytes against 149,714 at format 13,
   maximum served form 184,220 bytes against 177,216. The 10,000-campaign estate's largest body
   stayed 193,293 bytes.
+- **On the wire (dev, 2026-10-27) [measured on dev].** The served form reaches the browser
+  gzip-compressed through CloudFront (`Content-Encoding: gzip`, `Vary: Accept-Encoding`): in each of
+  three page loads, before and after a deploy and after a re-bake, three Campaigns responses
+  decoded to 227,563–227,670 bytes and crossed the network as 20,185–20,960 bytes
+  ([dated result](../../../validation/RESULTS.md#contract-parsing-prompt-registry-paging-and-api-compression-on-dev--2026-10-27)).
+  A request offering `gzip, br` was also answered with gzip, not Brotli. CloudFront compresses at
+  the edge: the `/api/*` behaviour in `infra/lib/stacks/frontend-stack.ts` leaves CDK's `compress`
+  at its default, `true` [verified in aws-cdk-lib's cache-behavior source, 2026-10-27]. The handler
+  sets no `Content-Encoding`, so that `compress` default is what keeps these responses compressed.
+  Brotli would need a cache policy
+  that enables it ([CloudFront: serve compressed files](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/ServingCompressedFiles.html),
+  read 2026-10-27).
 - A change that cannot meet a budget splits the endpoint or precomputes; raising a Lambda timeout is
   never the first fix (`.kiro/steering/backend-concurrent-execution.md`). Slot generation is already
   parallel; the first-generation budget is re-evaluated from the per-slot timings introduced below.

@@ -7,9 +7,8 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import cast
 
-import yaml
-
 from adapters.jobs.schema_generation.merge import MergedColumn
+from adapters.outbound import repository_yaml
 
 COMPATIBILITY_FILE = Path("contracts/shared/iceberg-schema-compatibility.yaml")
 MIGRATION_NULL_MEANING = "not_yet_available"
@@ -69,7 +68,7 @@ def _columns(value: object, *, where: str) -> tuple[PhysicalColumn, ...]:
 def load_physical_schema_compatibility(root: Path) -> PhysicalSchemaCompatibility:
     """Load the committed historical baseline without accepting partial shapes."""
     path = root / COMPATIBILITY_FILE
-    raw: object = yaml.safe_load(path.read_text())
+    raw = repository_yaml.safe_load(path.read_text())
     if not isinstance(raw, dict):
         raise PhysicalSchemaError(f"{path} must contain a mapping.")
     document = cast("dict[object, object]", raw)

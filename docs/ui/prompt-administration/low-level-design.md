@@ -94,6 +94,11 @@ One DynamoDB table, on-demand, PITR:
   an API crash or queue failure. Send-before-delete replay may duplicate a queue message, which the
   worker lease converges.
 - Version numbers are dense integers assigned by the API, never by the caller.
+- The `/versions` read and the dispatcher's outbox read are strongly consistent Queries on
+  `SLOT#{slot_id}` that follow `LastEvaluatedKey` to the last page, so a slot whose records pass one
+  1 MB Query page still lists every version and drains every retained outbox item. On dev on
+  2026-10-27 every slot, at up to 29 versions, still fit one page, so unit tests alone exercise the
+  multi-page path ([dated result](../../../validation/RESULTS.md#contract-parsing-prompt-registry-paging-and-api-compression-on-dev--2026-10-27)).
 - *Amended 2026-10-01 (B1):* each version record written since then carries its attribution:
   `author_kind` (`operator` or `system`), then `operator` (the authorizer-verified Cognito
   subject) or `system_author` (`contract-seed`), and `created_at` (ISO 8601 UTC). A record with

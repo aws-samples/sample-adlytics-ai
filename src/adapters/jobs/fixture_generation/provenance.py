@@ -9,10 +9,9 @@ from enum import StrEnum
 from pathlib import Path
 from typing import cast
 
-import yaml
-
 from adapters.amc_csv import AmcCsvEscapeError, dict_rows
 from adapters.jobs.fixture_generation.catalog import SyntheticEntityCatalog
+from adapters.outbound import repository_yaml
 
 PROVENANCE_PATH = Path("contracts/shared/fixture-provenance.yaml")
 _IGNORED = frozenset({".DS_Store", ".gitkeep"})
@@ -78,7 +77,7 @@ def _text(value: object, label: str) -> str:
 def load_fixture_evidence_manifest(root: Path) -> FixtureEvidenceManifest:
     """Load and validate the exhaustive fixture-evidence declaration."""
     path = root / PROVENANCE_PATH
-    raw = _mapping(cast("object", yaml.safe_load(path.read_text())), str(path))
+    raw = _mapping(repository_yaml.safe_load(path.read_text()), str(path))
     if raw.get("version") != 1:
         raise FixtureProvenanceError(f"{path}: version must be 1.")
     entries = tuple(_entry(raw_entry) for raw_entry in _list(raw.get("entries"), "entries"))

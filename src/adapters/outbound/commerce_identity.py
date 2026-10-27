@@ -9,6 +9,7 @@ from typing import cast
 
 import yaml
 
+from adapters.outbound import repository_yaml
 from domain.semantics.commerce_identity import (
     CommerceIdentityBridge,
     MarketplaceDisplayName,
@@ -35,14 +36,11 @@ def load_commerce_identity_bridge(root: Path) -> CommerceIdentityBridge:
     """Load marketplace aliases and product namespace rules into strict domain values."""
     path = root / BRIDGE_PATH
     text = path.read_text()
-    composed = cast(
-        "object",
-        yaml.compose(text, Loader=yaml.SafeLoader),  # type: ignore[reportUnknownMemberType]
-    )
+    composed = repository_yaml.compose(text)
     if composed is not None and not isinstance(composed, yaml.Node):
         raise CommerceIdentityLoadError(f"{path}: parser returned an invalid node.")
     _reject_duplicate_keys(composed, str(path))
-    document = _mapping(cast("object", yaml.safe_load(text)), str(path))
+    document = _mapping(repository_yaml.safe_load(text), str(path))
     _keys(
         document,
         (

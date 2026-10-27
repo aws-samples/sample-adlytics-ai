@@ -8,8 +8,7 @@ from datetime import date
 from pathlib import Path
 from typing import cast
 
-import yaml
-
+from adapters.outbound import repository_yaml
 from domain.semantics.identity import (
     AcquisitionChannelGroupKey,
     AdProductKey,
@@ -37,7 +36,7 @@ type RawMapping = dict[str, object]
 def load_media_taxonomy(root: Path) -> MediaTaxonomy:
     """Load every named axis and exact effective-dated source mapping."""
     path = root / TAXONOMY_PATH
-    raw = _mapping(cast("object", yaml.safe_load(path.read_text())), str(path))
+    raw = _mapping(repository_yaml.safe_load(path.read_text()), str(path))
     # Version 2 added `exposure_source_sets` (ADR-101, business-outcomes C-16). The key set is
     # exact, so a version-1 loader would reject a version-2 file either way; the version names
     # that break rather than leaving it to a key-set error.

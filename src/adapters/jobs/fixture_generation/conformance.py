@@ -36,8 +36,6 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Final, cast
 
-import yaml
-
 from adapters.amc_csv import dict_rows, escape_finding, read_rows, write_rows
 from adapters.jobs.contract_validation.loader import load_contracts, load_registry
 from adapters.jobs.fixture_generation.catalog import load_synthetic_entity_catalog
@@ -47,6 +45,7 @@ from adapters.jobs.fixture_generation.exposure import EXPOSURE_CONTRACT, PathRea
 from adapters.jobs.fixture_generation.frequency import FREQUENCY_CONTRACTS
 from adapters.jobs.fixture_generation.periodic import BUYER_BOUNDS, BuyerBound
 from adapters.jobs.fixture_generation.shapes import WINDOW_COLUMNS, ResultShape
+from adapters.outbound import repository_yaml
 from adapters.producer.packs import load_query_packs
 from adapters.producer.results import parse_csv_result
 from domain.data_contracts.contract import DataContract, FieldMapping
@@ -211,7 +210,7 @@ def _exact_keys(raw: RawMapping, keys: frozenset[str], label: str) -> None:
 def load_suppression_output(root: Path) -> SuppressionOutput:
     """Read the registry's live suppression shape and its threshold bars."""
     path = root / REGISTRY_PATH
-    raw = _mapping(cast("object", yaml.safe_load(path.read_text())), str(path))
+    raw = _mapping(repository_yaml.safe_load(path.read_text()), str(path))
     block = _mapping(raw.get("suppression_output"), "suppression_output")
     _exact_keys(
         block,
@@ -257,7 +256,7 @@ def load_suppression_output(root: Path) -> SuppressionOutput:
 def load_pending_columns(root: Path) -> frozenset[tuple[str, str]]:
     """Read every (table, column) the registry records a `pending` live claim on."""
     path = root / REGISTRY_PATH
-    raw = _mapping(cast("object", yaml.safe_load(path.read_text())), str(path))
+    raw = _mapping(repository_yaml.safe_load(path.read_text()), str(path))
     pending: set[tuple[str, str]] = set()
     for table, value in _mapping(raw.get("tables"), "tables").items():
         columns = _mapping(value, f"tables.{table}").get("columns")
@@ -270,7 +269,7 @@ def load_pending_columns(root: Path) -> frozenset[tuple[str, str]]:
 def load_conformance_declaration(root: Path) -> ConformanceDeclaration:
     """Read every column marker and trap deviation, refusing an unknown key or status."""
     path = root / DECLARATION_PATH
-    document = _mapping(cast("object", yaml.safe_load(path.read_text())), str(path))
+    document = _mapping(repository_yaml.safe_load(path.read_text()), str(path))
     raw = _mapping(document.get(DECLARATION_KEY), f"{path}: {DECLARATION_KEY}")
     _exact_keys(raw, frozenset({"marked_columns", "trap_deviations"}), DECLARATION_KEY)
     markers: list[ColumnMarker] = []
