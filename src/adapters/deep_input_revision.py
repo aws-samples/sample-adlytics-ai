@@ -127,6 +127,9 @@ DEEP_INPUT_REVISIONS: Final[tuple[tuple[str, str], ...]] = (
     # Perf follow-up A1 (render format 14): each Campaigns body carries its highest and lowest
     # return lists, and a format-13 body is the page's absence, never decoded.
     ("2026-10-26.1", "33271938e610d48bf844f4fec09e0e8d5a9f8cc92fe9f0793317b3e2d72b98ec"),
+    # Perf follow-up B: Campaigns segments order each population once per ordering; bytes
+    # unchanged. Named .5 because perf branches and dev integration trees hold .1 to .4.
+    ("2026-10-27.5", "48c99611044ae764b3717d0bb2579d26ee8f56dca98145892257a8402dfc4a9f"),
     # Perf hygiene F4: the closure's YAML parsing goes through adapters.outbound.repository_yaml
     # (libyaml's C loader). Parsed values are unchanged; the closure bytes moved. Named .27.7
     # because 2026-10-27.1 to .6 already name other closures on dev integration trees.
@@ -139,6 +142,13 @@ DEEP_INPUT_REVISIONS: Final[tuple[tuple[str, str], ...]] = (
     # perf hygiene F4's 2026-10-27.7. Named .28.2 because 2026-10-27.1 to .9 and 2026-10-28.1
     # name closures on other branches and dev integration trees.
     ("2026-10-28.2", "69f23a462faf86586a669466d5a5cea370a06f47fe5dc6de209e1fbe4f07b1ee"),
+    # feat/perf-campaigns-sort-once rebased onto public main ef80b3df: perf follow-up B's
+    # 2026-10-27.5 over A1's 2026-10-26.1 and perf hygiene F4's 2026-10-27.7. Named .28.3
+    # because 2026-10-27.1 to .9, 2026-10-28.1 and 2026-10-28.2 name other closures.
+    ("2026-10-28.3", "3209684462cacfbab124ce8fce7e2ea91039de0e76fdfceb8f06b5a96e710b18"),
+    # feat/perf-campaigns-sort-once rebased onto public main ea39cf4a: its 2026-10-28.3 over
+    # A2's 2026-10-28.2. Named .28.4 because 2026-10-28.1 to .3 name other closures.
+    ("2026-10-28.4", "addda0e7bcdbbf79cfadcafa1f8b445037c969e11bea2f5e3d6e3ace78b06c64"),
 )
 DEEP_INPUT_REVISION: Final[str] = DEEP_INPUT_REVISIONS[-1][0]
 """The revision every deep cache key carries (``#DEEPINPUT#<revision>``)."""

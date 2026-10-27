@@ -1065,6 +1065,7 @@ tiers:
       tests:
       - tests/unit/test_campaign_channel_filter.py
       - tests/unit/test_campaign_portfolio.py
+      - tests/unit/test_campaign_portfolio_segments.py
       - tests/unit/test_campaign_preset_source.py
       - tests/unit/test_change_semantics.py
       - tests/unit/test_contribution_scope.py
@@ -3022,6 +3023,7 @@ tiers:
       tests:
       - tests/unit/test_bake_roster_names_composition.py
       - tests/unit/test_campaign_channel_filter.py
+      - tests/unit/test_campaign_portfolio_segments.py
       - tests/unit/test_campaign_preset_source.py
       - tests/unit/test_change_semantics_render_format.py
       - tests/unit/test_preset_bakeability.py
