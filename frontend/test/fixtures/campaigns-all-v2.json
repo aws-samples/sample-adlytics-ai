@@ -1151,7 +1151,7 @@
         {
           "absence_class": "generation-pending",
           "absence_reason": "This insight could not be generated just now; it retries automatically and appears on a later view.",
-          "artifact_revision": "sha256:c2faeb1cc4582bdc0651714b9d94d2f909b3f40b00a25e7048df0714e22d6fd6",
+          "artifact_revision": "sha256:acf75cff20840bd7eb55b41ac37fd5e627876ed443a2511942b6807ee830260b",
           "evidence_line": null,
           "id": "contribution",
           "output_class": "perspective",
@@ -1162,7 +1162,7 @@
         {
           "absence_class": "ineligible",
           "absence_reason": "This insight requires a portfolio-level direction, which is not available for this view and window.",
-          "artifact_revision": "sha256:c2faeb1cc4582bdc0651714b9d94d2f909b3f40b00a25e7048df0714e22d6fd6",
+          "artifact_revision": "sha256:acf75cff20840bd7eb55b41ac37fd5e627876ed443a2511942b6807ee830260b",
           "evidence_line": null,
           "id": "divergence",
           "output_class": "perspective",
@@ -1173,7 +1173,7 @@
         {
           "absence_class": "generation-pending",
           "absence_reason": "This insight could not be generated just now; it retries automatically and appears on a later view.",
-          "artifact_revision": "sha256:c2faeb1cc4582bdc0651714b9d94d2f909b3f40b00a25e7048df0714e22d6fd6",
+          "artifact_revision": "sha256:acf75cff20840bd7eb55b41ac37fd5e627876ed443a2511942b6807ee830260b",
           "evidence_line": null,
           "id": "exposure",
           "output_class": "perspective",
@@ -1182,7 +1182,7 @@
           "text": null
         },
         {
-          "artifact_revision": "sha256:c2faeb1cc4582bdc0651714b9d94d2f909b3f40b00a25e7048df0714e22d6fd6",
+          "artifact_revision": "sha256:acf75cff20840bd7eb55b41ac37fd5e627876ed443a2511942b6807ee830260b",
           "evidence_line": "Server-ranked absolute changes.",
           "id": "movers",
           "output_class": "observed",
@@ -1208,8 +1208,390 @@
         "start": "2026-08-08"
       },
       "reason_codes": [],
+      "return_lists": {
+        "highest": [
+          {
+            "attributed_roas": {
+              "basis": "ad_attributed",
+              "display_value": null,
+              "grain": [
+                "period",
+                "campaign",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-21",
+                "start": "2026-08-15"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "ratio"
+              },
+              "value": "3"
+            },
+            "signature": {
+              "channel": "Amazon DSP",
+              "effective_name": "Fictional DSP Prospecting",
+              "effective_name_status": "available",
+              "effective_name_valid_from": "2026-01-01",
+              "effective_name_valid_to": null,
+              "marketplace": "United States",
+              "platform": "Amazon Ads"
+            },
+            "spend": {
+              "basis": "ad_attributed",
+              "display_value": "700.00",
+              "grain": [
+                "period",
+                "campaign",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-21",
+                "start": "2026-08-15"
+              },
+              "units": {
+                "currency_code": "USD",
+                "kind": "currency"
+              },
+              "value": "700"
+            }
+          },
+          {
+            "attributed_roas": {
+              "basis": "ad_attributed",
+              "display_value": null,
+              "grain": [
+                "period",
+                "campaign",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-21",
+                "start": "2026-08-15"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "ratio"
+              },
+              "value": "3"
+            },
+            "signature": {
+              "channel": "Sponsored Products",
+              "effective_name": "Fictional SP Exact",
+              "effective_name_status": "available",
+              "effective_name_valid_from": "2026-01-01",
+              "effective_name_valid_to": null,
+              "marketplace": "United States",
+              "platform": "Amazon Ads"
+            },
+            "spend": {
+              "basis": "ad_attributed",
+              "display_value": "350.00",
+              "grain": [
+                "period",
+                "campaign",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-21",
+                "start": "2026-08-15"
+              },
+              "units": {
+                "currency_code": "USD",
+                "kind": "currency"
+              },
+              "value": "350"
+            }
+          },
+          {
+            "attributed_roas": {
+              "basis": "ad_attributed",
+              "display_value": null,
+              "grain": [
+                "period",
+                "campaign",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-21",
+                "start": "2026-08-15"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "ratio"
+              },
+              "value": "2.5"
+            },
+            "signature": {
+              "channel": "Amazon DSP",
+              "effective_name": "Fictional DSP Retargeting",
+              "effective_name_status": "available",
+              "effective_name_valid_from": "2026-01-01",
+              "effective_name_valid_to": null,
+              "marketplace": "United States",
+              "platform": "Amazon Ads"
+            },
+            "spend": {
+              "basis": "ad_attributed",
+              "display_value": "1400.00",
+              "grain": [
+                "period",
+                "campaign",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-21",
+                "start": "2026-08-15"
+              },
+              "units": {
+                "currency_code": "USD",
+                "kind": "currency"
+              },
+              "value": "1400"
+            }
+          },
+          {
+            "attributed_roas": {
+              "basis": "ad_attributed",
+              "display_value": null,
+              "grain": [
+                "period",
+                "campaign",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-21",
+                "start": "2026-08-15"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "ratio"
+              },
+              "value": "2"
+            },
+            "signature": {
+              "channel": "Sponsored Brands",
+              "effective_name": "Fictional SB Launch",
+              "effective_name_status": "available",
+              "effective_name_valid_from": "2026-01-01",
+              "effective_name_valid_to": null,
+              "marketplace": "United States",
+              "platform": "Amazon Ads"
+            },
+            "spend": {
+              "basis": "ad_attributed",
+              "display_value": "420.00",
+              "grain": [
+                "period",
+                "campaign",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-21",
+                "start": "2026-08-15"
+              },
+              "units": {
+                "currency_code": "USD",
+                "kind": "currency"
+              },
+              "value": "420"
+            }
+          }
+        ],
+        "lowest": [
+          {
+            "attributed_roas": {
+              "basis": "ad_attributed",
+              "display_value": null,
+              "grain": [
+                "period",
+                "campaign",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-21",
+                "start": "2026-08-15"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "ratio"
+              },
+              "value": "2"
+            },
+            "signature": {
+              "channel": "Sponsored Brands",
+              "effective_name": "Fictional SB Launch",
+              "effective_name_status": "available",
+              "effective_name_valid_from": "2026-01-01",
+              "effective_name_valid_to": null,
+              "marketplace": "United States",
+              "platform": "Amazon Ads"
+            },
+            "spend": {
+              "basis": "ad_attributed",
+              "display_value": "420.00",
+              "grain": [
+                "period",
+                "campaign",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-21",
+                "start": "2026-08-15"
+              },
+              "units": {
+                "currency_code": "USD",
+                "kind": "currency"
+              },
+              "value": "420"
+            }
+          },
+          {
+            "attributed_roas": {
+              "basis": "ad_attributed",
+              "display_value": null,
+              "grain": [
+                "period",
+                "campaign",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-21",
+                "start": "2026-08-15"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "ratio"
+              },
+              "value": "2.5"
+            },
+            "signature": {
+              "channel": "Amazon DSP",
+              "effective_name": "Fictional DSP Retargeting",
+              "effective_name_status": "available",
+              "effective_name_valid_from": "2026-01-01",
+              "effective_name_valid_to": null,
+              "marketplace": "United States",
+              "platform": "Amazon Ads"
+            },
+            "spend": {
+              "basis": "ad_attributed",
+              "display_value": "1400.00",
+              "grain": [
+                "period",
+                "campaign",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-21",
+                "start": "2026-08-15"
+              },
+              "units": {
+                "currency_code": "USD",
+                "kind": "currency"
+              },
+              "value": "1400"
+            }
+          },
+          {
+            "attributed_roas": {
+              "basis": "ad_attributed",
+              "display_value": null,
+              "grain": [
+                "period",
+                "campaign",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-21",
+                "start": "2026-08-15"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "ratio"
+              },
+              "value": "3"
+            },
+            "signature": {
+              "channel": "Amazon DSP",
+              "effective_name": "Fictional DSP Prospecting",
+              "effective_name_status": "available",
+              "effective_name_valid_from": "2026-01-01",
+              "effective_name_valid_to": null,
+              "marketplace": "United States",
+              "platform": "Amazon Ads"
+            },
+            "spend": {
+              "basis": "ad_attributed",
+              "display_value": "700.00",
+              "grain": [
+                "period",
+                "campaign",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-21",
+                "start": "2026-08-15"
+              },
+              "units": {
+                "currency_code": "USD",
+                "kind": "currency"
+              },
+              "value": "700"
+            }
+          },
+          {
+            "attributed_roas": {
+              "basis": "ad_attributed",
+              "display_value": null,
+              "grain": [
+                "period",
+                "campaign",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-21",
+                "start": "2026-08-15"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "ratio"
+              },
+              "value": "3"
+            },
+            "signature": {
+              "channel": "Sponsored Products",
+              "effective_name": "Fictional SP Exact",
+              "effective_name_status": "available",
+              "effective_name_valid_from": "2026-01-01",
+              "effective_name_valid_to": null,
+              "marketplace": "United States",
+              "platform": "Amazon Ads"
+            },
+            "spend": {
+              "basis": "ad_attributed",
+              "display_value": "350.00",
+              "grain": [
+                "period",
+                "campaign",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-21",
+                "start": "2026-08-15"
+              },
+              "units": {
+                "currency_code": "USD",
+                "kind": "currency"
+              },
+              "value": "350"
+            }
+          }
+        ]
+      },
       "roster": {
-        "revision": "0c911a92916912f715923a5015c1df69e18d4e7e9e47f2a0e442675e95e8c4ab",
+        "revision": "eab7ee00554bce2eafdb575e3e7e03c15e6765d90f649b087d3547e7ad576963",
         "shards": 1
       },
       "rows": [

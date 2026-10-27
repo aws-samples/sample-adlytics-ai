@@ -18,6 +18,8 @@ import type {
   CampaignPortfolioComparison,
   CampaignPortfolioMetricValue,
   CampaignPortfolioRow,
+  CampaignReturnEntry,
+  CampaignReturnLists,
   CampaignSelectionCapability,
 } from '@/lib/campaign-attribution';
 import { formatCount, formatIsoDate, formatIsoDateRange } from '@/lib/exact-format';
@@ -28,7 +30,6 @@ import { isCapabilityExpired, type PresentationErrorClass } from '@/lib/presenta
 import {
   campaignFocusMetrics,
   fetchCampaignMetricFocus,
-  fetchCampaignPresentationV2,
   fetchInsightDeepDive,
   fetchPortfolioMetricFocus,
   multiChannelFocusMetrics,
@@ -847,75 +848,28 @@ export const RETURN_LISTS_COPY = {
   high: 'Highest return',
   low: 'Lowest return',
   order: 'Attributed ROAS · in the order the server returns',
-  size: 5,
 } as const;
 
-type ReturnOrder =
-  | { readonly kind: 'pending' }
-  | { readonly kind: 'served'; readonly high: readonly CampaignPortfolioRow[]; readonly low: readonly CampaignPortfolioRow[] }
-  | { readonly kind: 'omitted' };
-
-function definedReturn(row: CampaignPortfolioRow): boolean {
-  return row.comparisons.some((comparison) => comparison.metric === 'attributed_roas' && comparison.current.value !== null);
-}
-
 /**
- * The first served rows of the server's own Attributed ROAS orderings, descending and ascending
- * (segment 0 of each, ADR-071), for the same window and channel option. The browser never sorts:
- * if either ordering isn't served for this window and option, both lists are omitted (D10).
- * Rows whose ROAS is undefined sort last on the server in both directions, so they're skipped.
+ * The served body's own return lists (render format 14): the population's first campaigns of
+ * the Attributed ROAS orderings, highest and lowest first, baked with the page, so a page load
+ * makes no further request. The browser never sorts or slices them, and a body with no defined
+ * ROAS serves two empty lists, which render as none.
  */
-function ReturnLists({ parent, sessionId, temporalSelection }: {
-  readonly parent: CampaignPortfolioArtifact;
-  readonly sessionId: string;
-  readonly temporalSelection: TemporalSelectionV1 | undefined;
-}) {
-  const option = parent.channel_filter.selected;
-  const selectionKey = JSON.stringify(temporalSelection ?? null);
-  const { end, start } = parent.period;
-  // Each answer is kept with the request it answers, so a changed window or option reads as pending.
-  const requestKey = JSON.stringify([sessionId, selectionKey, option, start, end]);
-  const [answered, setAnswered] = useState<{ readonly key: string; readonly order: ReturnOrder } | null>(null);
-  const order: ReturnOrder = answered?.key === requestKey ? answered.order : { kind: 'pending' };
-  useEffect(() => {
-    if (sessionId === '') return;
-    const setOrder = (next: ReturnOrder) => setAnswered({ key: requestKey, order: next });
-    const controller = new AbortController();
-    const selection = (JSON.parse(selectionKey) as TemporalSelectionV1 | null) ?? undefined;
-    const filter = option === 'all' ? undefined : option;
-    const ordering = (direction: CampaignPortfolioSort['direction']) => fetchCampaignPresentationV2(sessionId, selection, controller.signal, { direction, field: 'attributed_roas' }, 0, filter);
-    Promise.all([ordering('desc'), ordering('asc')]).then(([high, low]) => {
-      const rows = (served: typeof high, direction: CampaignPortfolioSort['direction']) => (
-        served.kind === 'parent' && served.artifact.outcome === 'complete' &&
-        served.artifact.sort.field === 'attributed_roas' && served.artifact.sort.direction === direction &&
-        served.artifact.period.start === start && served.artifact.period.end === end &&
-        served.artifact.channel_filter.selected === option
-          ? served.artifact.rows.filter(definedReturn).slice(0, RETURN_LISTS_COPY.size)
-          : null
-      );
-      const highRows = rows(high, 'desc');
-      const lowRows = rows(low, 'asc');
-      setOrder(highRows === null || lowRows === null || highRows.length === 0 ? { kind: 'omitted' } : { high: highRows, kind: 'served', low: lowRows });
-    }).catch(() => { if (!controller.signal.aborted) setOrder({ kind: 'omitted' }); });
-    return () => controller.abort();
-  }, [end, option, requestKey, selectionKey, sessionId, start]);
-  if (order.kind !== 'served') return null;
-  const list = (title: string, rows: readonly CampaignPortfolioRow[], slot: string) => <section className="card section cp-return-list" aria-labelledby={`${slot}-heading`} data-slot={slot}>
+function ReturnLists({ lists }: { readonly lists: CampaignReturnLists | null }) {
+  if (lists === null || lists.highest.length === 0) return null;
+  const list = (title: string, entries: readonly CampaignReturnEntry[], slot: string) => <section className="card section cp-return-list" aria-labelledby={`${slot}-heading`} data-slot={slot}>
     <h3 id={`${slot}-heading`}>{title}</h3>
     <p className="footnote">{RETURN_LISTS_COPY.order}</p>
-    <ol>{rows.map((row) => {
-      const roas = row.comparisons.find((comparison) => comparison.metric === 'attributed_roas');
-      const spend = row.comparisons.find((comparison) => comparison.metric === 'spend');
-      return <li key={row.capability.selection_reference}>
-        <span className="name">{campaignName(row)}<span className="sub">{row.signature.channel}</span></span>
-        <span className="num"><strong>{roas === undefined ? null : <PortfolioValue metric="attributed_roas" value={roas.current} />}</strong></span>
-        <span className="num">{spend === undefined ? null : <PortfolioValue metric="spend" value={spend.current} />}</span>
-      </li>;
-    })}</ol>
+    <ol>{entries.map((entry, index) => <li key={index}>
+      <span className="name">{campaignName(entry)}<span className="sub">{entry.signature.channel}</span></span>
+      <span className="num"><strong><PortfolioValue metric="attributed_roas" value={entry.attributed_roas} /></strong></span>
+      <span className="num"><PortfolioValue metric="spend" value={entry.spend} /></span>
+    </li>)}</ol>
   </section>;
   return <div className="cp-return-lists">
-    {list(RETURN_LISTS_COPY.high, order.high, 'cp-top')}
-    {list(RETURN_LISTS_COPY.low, order.low, 'cp-low')}
+    {list(RETURN_LISTS_COPY.high, lists.highest, 'cp-top')}
+    {list(RETURN_LISTS_COPY.low, lists.lowest, 'cp-low')}
   </div>;
 }
 
@@ -1588,7 +1542,7 @@ export function CampaignPortfolioV2View({ child, closedCampaign = null, detailSt
       ? <CoverageProvider status={parent.evidence_status} subject="Campaigns">
         <AnswerSentence answer={campaignsAnswer(parent, portfolioOutcomeCopy(parent.outcome).description)} />
         <PortfolioTiles artifact={parent} filterId={filterId} focus={portfolioFocus} sessionId={focusSessionId} temporalSelection={focusTemporalSelection} />
-        <ReturnLists parent={parent} sessionId={focusSessionId} temporalSelection={focusTemporalSelection} />
+        <ReturnLists lists={parent.return_lists} />
         <InsightRow
           campaignSegment={parent.pagination?.segment_index ?? 0}
           campaignSort={parent.sort}

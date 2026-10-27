@@ -48,6 +48,7 @@ from domain.presentation.campaign_portfolio import (
     build_campaign_portfolio,
     campaign_portfolio_artifact_from_payload,
     campaign_portfolio_artifact_payload,
+    campaign_portfolio_artifact_superseded,
     campaign_portfolio_comparison,
     campaign_portfolio_evidence_status,
     campaign_portfolio_segment,
@@ -1034,3 +1035,120 @@ def test_an_undefined_ratio_sorts_after_every_value(direction: str) -> None:
         CampaignPortfolioSort(CampaignPortfolioSortField.ATTRIBUTED_ROAS, direction),
     )
     assert ordered[-1] is undefined
+
+
+def _ranked_population(count: int) -> tuple[CampaignPortfolioRow, ...]:
+    """Rows whose spend falls with the index and whose ROAS rises with it: 1.00, 1.01, ..."""
+    return tuple(
+        portfolio_row(
+            campaign_display_signature(f"Campaign {index:02d}"),
+            CampaignSelectionCapability(f"{index:043d}", datetime(2099, 1, 1, tzinfo=UTC)),
+            PERIOD,
+            Decimal(1000 - index),
+            roas=(Decimal(f"1.{index:02d}"), Decimal("2")),
+        )
+        for index in range(count)
+    )
+
+
+def _return_names(artifact: CampaignPortfolioArtifact) -> tuple[list[str | None], list[str | None]]:
+    lists = artifact.return_lists
+    assert lists is not None
+    return (
+        [entry.signature.effective_name for entry in lists.highest],
+        [entry.signature.effective_name for entry in lists.lowest],
+    )
+
+
+@pytest.mark.covers("ADR-070")
+def test_the_parent_body_carries_the_whole_populations_return_lists() -> None:
+    """The lists rank all 55 campaigns, not the canonical segment the parent body serves.
+
+    The canonical (spend, desc) segment 0 holds Campaign 00 to 49; the highest ROAS sit in 50 to
+    54, so a list read from the served rows alone would miss every one of them.
+    """
+    population = complete_portfolio(PERIOD, _ranked_population(55))
+    parent = campaign_portfolio_segment(
+        population, CampaignPortfolioSort(CampaignPortfolioSortField.SPEND, "desc"), 0
+    )
+    assert parent is not None
+    assert [row.signature.effective_name for row in parent.rows][-1] == "Campaign 49"
+    highest, lowest = _return_names(parent)
+    assert highest == ["Campaign 54", "Campaign 53", "Campaign 52", "Campaign 51", "Campaign 50"]
+    assert lowest == ["Campaign 00", "Campaign 01", "Campaign 02", "Campaign 03", "Campaign 04"]
+    lists = parent.return_lists
+    assert lists is not None
+    top = lists.highest[0]
+    # Each entry carries the served row values at the row grain: ROAS a ratio, spend in USD.
+    assert (top.attributed_roas.value, top.attributed_roas.units) == (Decimal("1.54"), RATIO)
+    assert (top.spend.value, top.spend.units) == (Decimal(946), USD)
+    assert top.attributed_roas.grain == top.spend.grain == CAMPAIGN_PORTFOLIO_ROW_GRAIN
+    payload = campaign_portfolio_artifact_payload(parent)
+    assert campaign_portfolio_artifact_from_payload(payload) == parent
+    # A user-sorted segment joins its parent's facts, so it carries the same lists unchanged.
+    sorted_segment = campaign_portfolio_segment(
+        population, CampaignPortfolioSort(CampaignPortfolioSortField.ATTRIBUTED_ROAS, "asc"), 1
+    )
+    assert sorted_segment is not None
+    assert sorted_segment.return_lists == parent.return_lists
+
+
+@pytest.mark.covers("ADR-070", "ADR-087")
+def test_return_lists_skip_an_undefined_roas_and_are_empty_without_one() -> None:
+    rows = _ranked_population(3)
+    some = complete_portfolio(PERIOD, (rows[0], _undefined_roas_row(rows[1]), rows[2]))
+    assert _return_names(some) == (["Campaign 02", "Campaign 00"], ["Campaign 00", "Campaign 02"])
+    none = complete_portfolio(PERIOD, tuple(_undefined_roas_row(row) for row in rows))
+    assert _return_names(none) == ([], [])
+    # Positive control: an empty portfolio carries no lists, and a complete one must.
+    assert (
+        _build_served(
+            period=PERIOD,
+            sort=CampaignPortfolioSort(CampaignPortfolioSortField.SPEND, "desc"),
+            rows=(),
+            totals=(),
+            trend=None,
+            evidence=(CampaignListEvidence("Governed campaign catalog", PERIOD, (PERIOD,)),),
+        ).return_lists
+        is None
+    )
+    with pytest.raises(ValueError, match="carries its return lists"):
+        replace(some, return_lists=None)
+
+
+def _reorder_highest(payload: dict[str, object]) -> None:
+    lists = cast("dict[str, list[object]]", payload["return_lists"])
+    lists["highest"].reverse()
+
+
+def _shorten_lowest(payload: dict[str, object]) -> None:
+    lists = cast("dict[str, list[object]]", payload["return_lists"])
+    lists["lowest"].pop()
+
+
+@pytest.mark.covers("ADR-070")
+@pytest.mark.parametrize("mutate", (_reorder_highest, _shorten_lowest))
+def test_the_codec_refuses_a_reordered_or_unequal_return_list(
+    mutate: Callable[[dict[str, object]], None],
+) -> None:
+    payload = campaign_portfolio_artifact_payload(complete_portfolio(PERIOD, _ranked_population(6)))
+    mutate(payload)
+    with pytest.raises(ValueError, match="return list"):
+        campaign_portfolio_artifact_from_payload(payload)
+
+
+@pytest.mark.covers("ADR-070")
+def test_only_a_format_13_body_is_superseded() -> None:
+    """A body without the return lists is the page's absence; any other drift stays malformed."""
+    payload = campaign_portfolio_artifact_payload(complete_portfolio(PERIOD, _ranked_population(3)))
+    assert not campaign_portfolio_artifact_superseded(payload)
+    earlier = {key: value for key, value in payload.items() if key != "return_lists"}
+    assert campaign_portfolio_artifact_superseded(earlier)
+    with pytest.raises(ValueError, match="fields are not exact"):
+        campaign_portfolio_artifact_from_payload(earlier)
+    # Another missing key, or another kind, is not a superseded format: it is malformed.
+    assert not campaign_portfolio_artifact_superseded(
+        {key: value for key, value in earlier.items() if key != "roster"}
+    )
+    assert not campaign_portfolio_artifact_superseded({**earlier, "kind": "campaign_list"})
+    assert not campaign_portfolio_artifact_superseded([earlier])

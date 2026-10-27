@@ -38,9 +38,10 @@ export function completePortfolioCoverage(window: { readonly end: string; readon
 }
 
 /**
- * Return a hand-built portfolio body in its served format-11 form: the one-channel filter, no
- * channel view, and the coverage block (complete only; `null` on an empty or insufficient body).
- * A body that already states its coverage keeps it.
+ * Return a hand-built portfolio body in its served form: the one-channel filter, no channel
+ * view, the coverage block and the return lists (complete only; `null` on an empty or
+ * insufficient body). A complete body's lists are empty, which renders none; a body that
+ * already states its coverage or lists keeps them.
  */
 export function asServedPortfolio(payload: Record<string, unknown>): Record<string, unknown> {
   const complete = payload.outcome === 'complete';
@@ -48,6 +49,7 @@ export function asServedPortfolio(payload: Record<string, unknown>): Record<stri
     channel_filter: ONE_CHANNEL_FILTER,
     channel_view: null,
     evidence_status: complete ? completePortfolioCoverage(payload.period as { end: string; start: string }) : null,
+    return_lists: complete ? { highest: [], lowest: [] } : null,
     ...payload,
   };
 }

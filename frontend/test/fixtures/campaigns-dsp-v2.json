@@ -139,7 +139,7 @@
         {
           "absence_class": "generation-pending",
           "absence_reason": "This insight could not be generated just now; it retries automatically and appears on a later view.",
-          "artifact_revision": "sha256:19a786150cb313401c6424432d52cb9f5771d13d9e90d33bac64ed9f84a30d1c",
+          "artifact_revision": "sha256:4c5dba271ed4a0b83966317198a33c8e6101fcf2c1a6a990618a0fc02f7da768",
           "evidence_line": null,
           "id": "contribution",
           "output_class": "perspective",
@@ -150,7 +150,7 @@
         {
           "absence_class": "evaluated-quiet",
           "absence_reason": "No campaign moved against the portfolio's direction enough to call out in this view.",
-          "artifact_revision": "sha256:19a786150cb313401c6424432d52cb9f5771d13d9e90d33bac64ed9f84a30d1c",
+          "artifact_revision": "sha256:4c5dba271ed4a0b83966317198a33c8e6101fcf2c1a6a990618a0fc02f7da768",
           "evidence_line": null,
           "id": "divergence",
           "output_class": "perspective",
@@ -161,7 +161,7 @@
         {
           "absence_class": "generation-pending",
           "absence_reason": "This insight could not be generated just now; it retries automatically and appears on a later view.",
-          "artifact_revision": "sha256:19a786150cb313401c6424432d52cb9f5771d13d9e90d33bac64ed9f84a30d1c",
+          "artifact_revision": "sha256:4c5dba271ed4a0b83966317198a33c8e6101fcf2c1a6a990618a0fc02f7da768",
           "evidence_line": null,
           "id": "exposure",
           "output_class": "perspective",
@@ -170,7 +170,7 @@
           "text": null
         },
         {
-          "artifact_revision": "sha256:19a786150cb313401c6424432d52cb9f5771d13d9e90d33bac64ed9f84a30d1c",
+          "artifact_revision": "sha256:4c5dba271ed4a0b83966317198a33c8e6101fcf2c1a6a990618a0fc02f7da768",
           "evidence_line": "Server-ranked absolute changes.",
           "id": "movers",
           "output_class": "observed",
@@ -196,8 +196,202 @@
         "start": "2026-08-08"
       },
       "reason_codes": [],
+      "return_lists": {
+        "highest": [
+          {
+            "attributed_roas": {
+              "basis": "ad_attributed",
+              "display_value": null,
+              "grain": [
+                "period",
+                "campaign",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-21",
+                "start": "2026-08-15"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "ratio"
+              },
+              "value": "3"
+            },
+            "signature": {
+              "channel": "Amazon DSP",
+              "effective_name": "Fictional DSP Prospecting",
+              "effective_name_status": "available",
+              "effective_name_valid_from": "2026-01-01",
+              "effective_name_valid_to": null,
+              "marketplace": "United States",
+              "platform": "Amazon Ads"
+            },
+            "spend": {
+              "basis": "ad_attributed",
+              "display_value": "700.00",
+              "grain": [
+                "period",
+                "campaign",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-21",
+                "start": "2026-08-15"
+              },
+              "units": {
+                "currency_code": "USD",
+                "kind": "currency"
+              },
+              "value": "700"
+            }
+          },
+          {
+            "attributed_roas": {
+              "basis": "ad_attributed",
+              "display_value": null,
+              "grain": [
+                "period",
+                "campaign",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-21",
+                "start": "2026-08-15"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "ratio"
+              },
+              "value": "2.5"
+            },
+            "signature": {
+              "channel": "Amazon DSP",
+              "effective_name": "Fictional DSP Retargeting",
+              "effective_name_status": "available",
+              "effective_name_valid_from": "2026-01-01",
+              "effective_name_valid_to": null,
+              "marketplace": "United States",
+              "platform": "Amazon Ads"
+            },
+            "spend": {
+              "basis": "ad_attributed",
+              "display_value": "1400.00",
+              "grain": [
+                "period",
+                "campaign",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-21",
+                "start": "2026-08-15"
+              },
+              "units": {
+                "currency_code": "USD",
+                "kind": "currency"
+              },
+              "value": "1400"
+            }
+          }
+        ],
+        "lowest": [
+          {
+            "attributed_roas": {
+              "basis": "ad_attributed",
+              "display_value": null,
+              "grain": [
+                "period",
+                "campaign",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-21",
+                "start": "2026-08-15"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "ratio"
+              },
+              "value": "2.5"
+            },
+            "signature": {
+              "channel": "Amazon DSP",
+              "effective_name": "Fictional DSP Retargeting",
+              "effective_name_status": "available",
+              "effective_name_valid_from": "2026-01-01",
+              "effective_name_valid_to": null,
+              "marketplace": "United States",
+              "platform": "Amazon Ads"
+            },
+            "spend": {
+              "basis": "ad_attributed",
+              "display_value": "1400.00",
+              "grain": [
+                "period",
+                "campaign",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-21",
+                "start": "2026-08-15"
+              },
+              "units": {
+                "currency_code": "USD",
+                "kind": "currency"
+              },
+              "value": "1400"
+            }
+          },
+          {
+            "attributed_roas": {
+              "basis": "ad_attributed",
+              "display_value": null,
+              "grain": [
+                "period",
+                "campaign",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-21",
+                "start": "2026-08-15"
+              },
+              "units": {
+                "currency_code": null,
+                "kind": "ratio"
+              },
+              "value": "3"
+            },
+            "signature": {
+              "channel": "Amazon DSP",
+              "effective_name": "Fictional DSP Prospecting",
+              "effective_name_status": "available",
+              "effective_name_valid_from": "2026-01-01",
+              "effective_name_valid_to": null,
+              "marketplace": "United States",
+              "platform": "Amazon Ads"
+            },
+            "spend": {
+              "basis": "ad_attributed",
+              "display_value": "700.00",
+              "grain": [
+                "period",
+                "campaign",
+                "marketplace"
+              ],
+              "period": {
+                "end": "2026-08-21",
+                "start": "2026-08-15"
+              },
+              "units": {
+                "currency_code": "USD",
+                "kind": "currency"
+              },
+              "value": "700"
+            }
+          }
+        ]
+      },
       "roster": {
-        "revision": "0c911a92916912f715923a5015c1df69e18d4e7e9e47f2a0e442675e95e8c4ab",
+        "revision": "eab7ee00554bce2eafdb575e3e7e03c15e6765d90f649b087d3547e7ad576963",
         "shards": 1
       },
       "rows": [

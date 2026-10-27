@@ -708,6 +708,71 @@ def test_a_format_10_body_is_refused_and_the_format_11_body_serves(
         assert refused.value.code == ARTIFACT_MALFORMED
 
 
+@pytest.mark.covers("ADR-070")
+def test_a_format_13_body_is_the_pages_absence_and_never_a_500(
+    presentation_module: _PresentationModule,  # noqa: F811
+) -> None:
+    """After the format-14 deploy, a retained body without return lists is unpublished.
+
+    The parent serves the designed window absence with the preset marked unavailable, a
+    dialog over it is the domain refusal, and any other drift stays the malformed refusal.
+    """
+    pointer, body, custody = _campaign_preset_artifact_with_custody()
+
+    def serve(served: PresetArtifactBody, path: str = LIST_PATH, **fields: object) -> Any:
+        event = _event(path, {"session_id": SESSION, **fields})
+        event["headers"] = {"Accept": "application/vnd.adlytics.presentation-v2+json"}
+        return presentation_module.handle(
+            event,
+            _analytical_runtime(
+                presentation_module,
+                _AnalyticalRuntimeRequest(
+                    RecordingCatalog(),
+                    RecordingPages(),
+                    ScenarioQueries(),
+                    preset_artifacts=RecordingPresetArtifacts(
+                        replace(pointer, body_digest=served.digest), served
+                    ),
+                    preset_custody=RecordingCustodyStore(custody),
+                ),
+            ),
+        )
+
+    # Paired positive control: the format-14 body serves its parent with both lists.
+    page = cast("dict[str, Any]", _body(serve(body))["page"])
+    lists = campaign_portfolio_artifact_from_payload(page["artifact"]).return_lists
+    assert lists is not None and lists.highest and len(lists.highest) == len(lists.lowest)
+    earlier = cast("dict[str, Any]", json.loads(body.payload_json))
+    del earlier["return_lists"]
+    earlier_body = replace(body, payload_json=canonical_preset_artifact_json(earlier))
+    response = serve(earlier_body)
+    assert response["statusCode"] == 200
+    absent = _body(response)
+    assert (absent["kind"], absent["reason_code"]) == ("window_unavailable", "preset_unavailable")
+    presets = cast("dict[str, Any]", absent["temporal"])["presets"]
+    availability = {
+        preset["id"]: (preset["availability"], preset["reason_code"]) for preset in presets
+    }
+    assert availability[pointer.variant.value] == ("unavailable", "preset_unavailable")
+    with pytest.raises(AdlyticsError) as dialog:
+        serve(earlier_body, FOCUS_PATH, metric="spend")
+    assert str(dialog.value.code) == "ADLY-PRESENTATION-0002"
+    with pytest.raises(AdlyticsError) as deep:
+        serve(
+            earlier_body,
+            DEEP_DIVE_PATH,
+            slot_id="contribution",
+            sort={"direction": "desc", "field": "spend"},
+        )
+    assert str(deep.value.code) == "ADLY-PRESENTATION-0002"
+    assert deep.value.description == "No campaign results are published for this period."
+    # Another missing key is not an earlier format: it stays the malformed-artifact refusal.
+    del earlier["roster"]
+    with pytest.raises(AdlyticsError) as malformed:
+        serve(replace(body, payload_json=canonical_preset_artifact_json(earlier)))
+    assert malformed.value.code == ARTIFACT_MALFORMED
+
+
 @pytest.mark.covers("ADR-127")
 def test_a_multi_channel_focus_refuses_purchases_and_roas_and_a_channel_serves_them(
     presentation_module: _PresentationModule,  # noqa: F811

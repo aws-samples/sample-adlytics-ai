@@ -275,6 +275,7 @@ from domain.presentation.campaign_portfolio import (
     build_campaign_portfolio,
     campaign_portfolio_artifact_from_payload,
     campaign_portfolio_artifact_payload,
+    campaign_portfolio_artifact_superseded,
     campaign_portfolio_comparison,
     campaign_portfolio_evidence_status,
     campaign_portfolio_segment_from_payload,
@@ -1514,6 +1515,8 @@ def _portfolio_metric_focus_response(
             selection=selection,
         )
     )
+    if campaign_portfolio_artifact_superseded(read.payload):
+        raise _campaign_body_superseded()
     try:
         artifact = campaign_portfolio_artifact_from_payload(read.payload)
     except TypeError, ValueError:
@@ -1921,6 +1924,9 @@ def _portfolio_direction_extract(
     metric: str,
 ) -> Callable[[dict[str, object]], tuple[str, Decimal, Decimal | None] | None]:
     def extract(payload: dict[str, object]) -> tuple[str, Decimal, Decimal | None] | None:
+        if campaign_portfolio_artifact_superseded(payload):
+            # A sibling preset baked before render format 14 is unpublished: no direction.
+            return None
         try:
             artifact = campaign_portfolio_artifact_from_payload(payload)
         except TypeError, ValueError:
@@ -1989,6 +1995,8 @@ def _deep_parent_resolution(  # noqa: PLR0915 -- one ordered parent and sibling 
     )
     selected_variant = "" if selected is None else selected.value
     filtered: _CampaignFilterParent | None = None
+    if not retail and campaign_portfolio_artifact_superseded(read.payload):
+        raise _campaign_body_superseded()
     try:
         if retail:
             artifact = retail_health_artifact_from_payload(read.payload)
@@ -3424,8 +3432,22 @@ def _v2_campaign_preset_parent_response(
         )
     try:
         payload = json.loads(body.payload_json)
+    except json.JSONDecodeError:
+        raise _malformed_artifact() from None
+    if campaign_portfolio_artifact_superseded(payload):
+        # A body baked before render format 14 is this preset's not-yet-published absence, as a
+        # missing pointer is, until the page's next bake replaces it (never decoded, never 500).
+        unserved = PresetArtifactPointerRosterResult(
+            roster.request,
+            tuple(
+                None if candidate is not None and candidate.variant == variant else candidate
+                for candidate in roster.pointers
+            ),
+        )
+        return _campaign_preset_unavailable(request, input_request.runtime, unserved)
+    try:
         artifact = campaign_portfolio_artifact_from_payload(payload)
-    except TypeError, ValueError, json.JSONDecodeError:
+    except TypeError, ValueError:
         raise _malformed_artifact() from None
     temporal = _campaign_preset_temporal(request, artifact, roster)
     sort = request.campaign_sort or CampaignPortfolioSort(CampaignPortfolioSortField.SPEND, "desc")
@@ -7216,6 +7238,13 @@ def _selection_unavailable() -> ValidationError:
     )
 
 
+def _campaign_body_superseded() -> DomainError:
+    """Refuse a dialog over a Campaigns body baked before render format 14: it is unpublished."""
+    return DomainError(
+        PRESENTATION_UNAVAILABLE, "No campaign results are published for this period."
+    )
+
+
 def _channel_selection_unavailable() -> ValidationError:
     return ValidationError(
         PRESENTATION_REFUSED,
@@ -8147,6 +8176,11 @@ def _validated_campaign_capability(
     )
     parent = parent_result.artifact
     if parent_result.outcome is not ResolutionOutcome.RESOLVED or parent is None:
+        raise _selection_unavailable()
+    if parent.artifact.artifact_type == CAMPAIGN_PORTFOLIO_ARTIFACT_TYPE and (
+        campaign_portfolio_artifact_superseded(parent.artifact.payload)
+    ):
+        # A page served before render format 14 holds no redeemable row after the deploy.
         raise _selection_unavailable()
     try:
         parent_model = (
