@@ -1223,9 +1223,9 @@ def test_the_baker_composes_one_s3_client_for_both_stores_pooled_at_the_write_wi
     bodies, custody = baker._bodies, baker._custody
     assert isinstance(bodies, _RecordingStore) and isinstance(custody, _RecordingStore)
     assert bodies.client is custody.client
-    # 21 pooled connections for the contract's 21 pairs in flight, not botocore's default 10.
-    assert bodies.client.meta.config.max_pool_connections == 21
-    assert baker._width == 21
+    # 23 pooled connections for the contract's 23 pairs in flight, not botocore's default 10.
+    assert bodies.client.meta.config.max_pool_connections == 23
+    assert baker._width == 23
 
 
 def test_control_a_cap_of_3_observes_exactly_3_in_flight(

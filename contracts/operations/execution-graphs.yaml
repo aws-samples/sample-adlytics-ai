@@ -231,7 +231,7 @@ bake_tasks:
   # (BAKE_MAX_ROWS at this memory, its write buffer counted) fit the write allowance at the
   # per-object write budget, capped by the widest measured width. `make check-bakeability`
   # refuses any other value and prints the derivation; change it with baker_memory_mib.
-  baker_write_width: 21
+  baker_write_width: 23
   max_tasks: 21
   # The precompute readiness timeline (DB26, TD-279), the one home of the armed finalizer's
   # redelivery and of the detector's precompute- and finalizer-blocked thresholds: the graph

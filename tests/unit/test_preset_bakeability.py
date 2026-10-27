@@ -524,10 +524,10 @@ def test_the_widths_are_read_from_the_batches_the_sources_build() -> None:
 
 @pytest.mark.covers("ADR-152")
 def test_the_ceiling_is_derived_from_the_bakers_memory_by_the_binding_row() -> None:
-    """V at the deployed 2,048 MiB is 44,980 rows; the gate recomputes the intercept and slope."""
-    assert BAKE_MAX_ROWS_FOR_TEST == bake_max_rows(2048 * 1024 * 1024) == 44_980
+    """V at the deployed 2,048 MiB is 44,937 rows; the gate recomputes the intercept and slope."""
+    assert BAKE_MAX_ROWS_FOR_TEST == bake_max_rows(2048 * 1024 * 1024) == 44_937
     # At the deployed width's W; a 1,024 MiB Baker derives its own width (the sizing line).
-    assert bake_max_rows(1024 * 1024 * 1024) == 22_262
+    assert bake_max_rows(1024 * 1024 * 1024) == 22_219
     pairs = tuple(
         zip(
             bakeability.memory_models(ROOT),
@@ -538,9 +538,9 @@ def test_the_ceiling_is_derived_from_the_bakers_memory_by_the_binding_row() -> N
     bound = bakeability.binding_row(pairs)
     assert (bound.key, bound.fixed_bytes, bound.bytes_per_row, bound.ceiling) == (
         "audiences#last_complete_month",
-        10_755_720,
+        11_779_720,
         23_632,
-        44_980,
+        44_937,
     )
     assert not [
         item for item in bakeability.memory_findings(ROOT) if item.rule == "bake-memory-derivation"
@@ -601,11 +601,11 @@ def test_the_gate_prints_the_memory_model_and_its_binding_row(
     assert bakeability.main() == 0
     out = capsys.readouterr().out
     assert f"BAKE_MAX_ROWS={BAKE_MAX_ROWS_FOR_TEST}" in out
-    assert "1024 MiB Baker: BAKE_MAX_ROWS=22479 (binding audiences#last_complete_month)" in out
+    assert "1024 MiB Baker: BAKE_MAX_ROWS=22457 (binding audiences#last_complete_month)" in out
     assert "10240 MiB Baker: BAKE_MAX_ROWS=225792" in out
     # ADR-145: each size's write width, derived with its own write buffer, printed in the open.
-    assert "2048 MiB Baker: BAKE_MAX_ROWS=44980 (binding audiences#last_complete_month); " in out
-    assert "write width 21: ceil(94458 audiences objects at BAKE_MAX_ROWS=44980" in out
+    assert "2048 MiB Baker: BAKE_MAX_ROWS=44937 (binding audiences#last_complete_month); " in out
+    assert "write width 23: ceil(101620 audiences objects at BAKE_MAX_ROWS=44937" in out
     assert "capped at the widest measured width 64, whose 288000 objects" in out
     for row in BAKE_TASKS["roster"]:
         assert f"memory {row['page']}#{row['variant']}: W " in out
@@ -658,17 +658,17 @@ def test_the_retail_estate_at_the_bake_ceiling_stays_within_its_modelled_bytes()
 
 @pytest.mark.covers("ADR-145")
 def test_the_contract_write_width_is_the_one_the_deployed_memory_derives() -> None:
-    """21 pairs write the 2,048 MiB ceiling's Audiences objects inside the 450 s allowance."""
+    """23 pairs write the 2,048 MiB ceiling's Audiences objects inside the 450 s allowance."""
     derived = bakeability.derive_write_width(ROOT, BAKER_MEMORY_BYTES)
     assert (derived.width, derived.page, derived.objects, derived.capped) == (
-        21,
+        23,
         "audiences",
-        94_458,  # objects at 44,980 DSP campaigns, 63 objects per 30 campaigns measured on dev
+        101_620,  # objects at 44,937 DSP campaigns, the at-most structural count
         False,
     )
-    assert (derived.bound.key, derived.bound.ceiling) == ("audiences#last_complete_month", 44_980)
-    # W counts the width it derives: 2 objects x 21 pairs x 256,000 B.
-    assert write_buffer_bytes(21) == WRITES_IN_FLIGHT_BYTES == 10_752_000
+    assert (derived.bound.key, derived.bound.ceiling) == ("audiences#last_complete_month", 44_937)
+    # W counts the width it derives: 2 objects x 23 pairs x 256,000 B.
+    assert write_buffer_bytes(23) == WRITES_IN_FLIGHT_BYTES == 11_776_000
     assert bakeability.write_width_findings(ROOT) == ()
 
 
@@ -676,34 +676,57 @@ def test_the_contract_write_width_is_the_one_the_deployed_memory_derives() -> No
 def test_a_width_chosen_without_its_own_write_buffer_is_a_finding(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """22 is what the 8-wide buffer's 45,262-row ceiling asks; counting W at 22 lowers it."""
+    """22 pairs write 99,000 objects, short of the 101,670 at 22's own 44,959-row ceiling."""
     monkeypatch.setattr(bakeability, "BAKE_WRITE_WIDTH", 22)
     (finding,) = bakeability.write_width_findings(ROOT)
     assert (finding.page_id, finding.rule) == ("roster", "bake-write-width")
     assert finding.message.startswith(
-        "bake_tasks.baker_write_width is 22; 2048 MiB derives width 21"
+        "bake_tasks.baker_write_width is 22; 2048 MiB derives width 23"
     )
 
 
 @pytest.mark.covers("ADR-145")
 def test_a_width_past_the_widest_measured_one_is_capped_with_its_write_ceiling() -> None:
-    """At 10,240 MiB the ceiling's objects need 106 pairs; only 64 were measured still rising."""
+    """At 10,240 MiB the ceiling's objects need 114 pairs; only 64 were measured still rising."""
     derived = bakeability.derive_write_width(ROOT, 10_240 * 1024 * 1024)
     assert (derived.width, derived.capped, derived.page) == (64, True, "audiences")
-    assert bakeability.width_for_objects(derived.objects) == 106
+    assert bakeability.width_for_objects(derived.objects) == 114
     # 64 chains x 450,000 ms / 100 ms per object: the objects one invocation's writes certify.
     assert derived.writable_objects == 288_000
 
 
 def test_the_width_covers_its_objects_exactly_at_the_allowance_boundary() -> None:
-    """21 chains x 4,500 objects each fill the 450 s allowance; one object more needs a chain."""
-    assert bakeability.width_for_objects(94_500) == 21
-    assert bakeability.width_for_objects(94_501) == 22
+    """23 chains x 4,500 objects each fill the 450 s allowance; one object more needs a chain."""
+    assert bakeability.width_for_objects(103_500) == 23
+    assert bakeability.width_for_objects(103_501) == 24
     assert bakeability.width_for_objects(1) == 1
 
 
 def test_only_the_pages_whose_objects_grow_with_campaigns_count_toward_the_width() -> None:
     assert bakeability.ceiling_objects("campaigns", 10_000) == 12_128  # objects per variant
-    assert bakeability.ceiling_objects("audiences", 30) == 63  # the measured dev bake's objects
+    # 449 index parts + 3 paths x 1,797 profile parts (89,874 items each) + 44,937 campaign
+    # pages = 50,777 sibling pairs, their 64 index shards and the parent pair.
+    assert bakeability.ceiling_objects("audiences", 44_937) == 101_620  # objects per bake
     with pytest.raises(ValueError, match="fixed set of objects"):
         bakeability.ceiling_objects("scorecard", 10_000)
+
+
+@pytest.mark.covers("ADR-145")
+@pytest.mark.parametrize(
+    ("shape", "objects"),
+    [
+        # One fresh dev bake (2026-10-27): 30 one-page campaigns, paths inside the parent.
+        ((30, 30, (50, 50, 50)), 63),
+        ((100, 100, (0, 0, 0)), 203),
+        ((101, 100, (0, 0, 0)), 205),  # the index's 101st entry is a part pair
+        ((1, 1, (50, 0, 0)), 5),
+        ((1, 1, (51, 0, 0)), 7),  # a path's 51st item is a profile part pair
+        ((1, 800, (0, 0, 0)), 1_603),
+        ((1, 801, (0, 0, 0)), 1_606),  # the 801st sibling pair needs a second index shard
+    ],
+)
+def test_an_audiences_bake_writes_its_parent_pair_its_part_pairs_and_their_index_shards(
+    shape: tuple[int, int, tuple[int, ...]], objects: int
+) -> None:
+    """`shape` is (listed campaigns, campaign pages, each profile path's items)."""
+    assert bakeability.audiences_bake_object_count(*shape) == objects

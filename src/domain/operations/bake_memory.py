@@ -100,7 +100,7 @@ WRITES_IN_FLIGHT_BYTES: Final = write_buffer_bytes(BAKE_WRITE_WIDTH)
 """W: the write buffer at the contract's width, the most a bake's writes hold at once (bodies
 stream)."""
 
-BAKE_FIXED_BYTES: Final = 10_755_720
+BAKE_FIXED_BYTES: Final = 11_779_720
 """The binding row's resident bytes at V = 0 (`audiences#last_complete_month`): W plus its
 fixed-width slots. Recomputed and held equal by `make check-bakeability`."""
 

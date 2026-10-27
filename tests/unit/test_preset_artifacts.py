@@ -452,7 +452,7 @@ def _require_occupancy_within(observed: int, width: int) -> None:
 
 
 def test_stage_writes_at_most_the_contract_width_and_custody_never_precedes_its_body() -> None:
-    assert BAKE_WRITE_WIDTH == 21  # pairs in flight: the contract's derived baker_write_width
+    assert BAKE_WRITE_WIDTH == 23  # pairs in flight: the contract's derived baker_write_width
     stores = _SiblingStores()
     persistence, _ = _persistence(stores)
 
@@ -460,7 +460,7 @@ def test_stage_writes_at_most_the_contract_width_and_custody_never_precedes_its_
         _sibling_request(30), remaining_ms=lambda: 600_000, tail_seconds=30.0
     )
 
-    assert stores.max_active == 21
+    assert stores.max_active == 23
     _require_occupancy_within(stores.max_active, BAKE_WRITE_WIDTH)
     for index in range(30):
         name = f"order{index:02d}"
@@ -475,12 +475,12 @@ def test_stage_writes_at_most_the_contract_width_and_custody_never_precedes_its_
 
 def test_control_a_writer_one_wider_than_the_contract_is_refused_by_the_occupancy_helper() -> None:
     stores = _SiblingStores()
-    persistence, _ = _persistence(stores, width=22)
+    persistence, _ = _persistence(stores, width=24)
 
     persistence.stage(_sibling_request(30), remaining_ms=lambda: 600_000, tail_seconds=30.0)
 
-    assert stores.max_active == 22
-    with pytest.raises(AssertionError, match="exceed the width 21"):
+    assert stores.max_active == 24
+    with pytest.raises(AssertionError, match="exceed the width 23"):
         _require_occupancy_within(stores.max_active, BAKE_WRITE_WIDTH)
 
 

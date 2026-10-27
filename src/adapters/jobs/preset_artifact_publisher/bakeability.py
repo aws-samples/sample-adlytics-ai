@@ -19,7 +19,6 @@ import pathlib
 import sys
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
-from fractions import Fraction
 from typing import TYPE_CHECKING, Any, TypedDict, cast
 
 from adapters.campaign_measurement import (
@@ -142,6 +141,11 @@ from domain.operations.bake_scheduling import (
     two_lane_partition,
 )
 from domain.operations.generated_execution_graphs import BAKE_TASKS
+from domain.presentation.audiences import (
+    AUDIENCES_INDEX_SHARD_ENTRIES,
+    AUDIENCES_PAGE_ROWS,
+    DELIVERY_PATHS,
+)
 from domain.presentation.campaign_portfolio import (
     CAMPAIGN_PORTFOLIO_MAX_ROWS,
     CampaignPortfolioSortField,
@@ -187,7 +191,7 @@ from ports.outbound.rosters import (
 from ports.outbound.served_periods import ServedPeriods, ServedPeriodsRequest
 
 if TYPE_CHECKING:  # pragma: no cover
-    from collections.abc import Callable, Mapping
+    from collections.abc import Callable, Iterable, Mapping
 
     from domain.data_contracts.contract import DataContract
     from domain.measurement.planning import QueryPlan
@@ -209,6 +213,7 @@ __all__ = [
     "RosterTaskCertificate",
     "WriteWidth",
     "artifact_served_pages",
+    "audiences_bake_object_count",
     "audiences_phases",
     "campaign_bake_object_count",
     "certify_roster_tasks",
@@ -285,6 +290,24 @@ def campaign_bake_object_count(filter_populations: tuple[int, ...]) -> int:
             for count in filter_populations
         )
     )
+
+
+def audiences_bake_object_count(listed: int, campaign_pages: int, path_items: Iterable[int]) -> int:
+    """Count the immutable objects one Audiences bake writes (its sibling stream, ADR-145).
+
+    The parent pair carries the campaign index's first shard of `AUDIENCES_INDEX_SHARD_ENTRIES`
+    and each profile path's first page of `AUDIENCES_PAGE_ROWS` items. Every later index shard,
+    every later profile page and every campaign page is a sibling pair, and the stage indexes
+    them in shards of `SIBLING_INDEX_SHARD_ENTRIES`. One fresh dev bake of 30 one-page campaigns
+    whose paths fit the parent wrote this count's 63 (2026-10-27).
+    """
+    siblings = (
+        max(1, math.ceil(listed / AUDIENCES_INDEX_SHARD_ENTRIES))
+        - 1
+        + sum(max(1, math.ceil(items / AUDIENCES_PAGE_ROWS)) - 1 for items in path_items)
+        + campaign_pages
+    )
+    return _with_index(2 + 2 * siblings)
 
 
 RETAIL_HEALTH_BAKE_BODY_COUNT = _with_index(2 + 2 * RETAIL_HEALTH_MAX_ROWS + 2)
@@ -579,7 +602,7 @@ def memory_binding_row(
 # Budget for one sequential immutable write (an S3 PutObject of at most one capped body) from
 # the baker. A budget, not a measurement: the deployed bake's duration is its live check. On dev
 # one chain's measured equivalent is inside it: 8 in flight at 9.07-11.62 ms per fresh Campaigns
-# object (four bakes, 2026-10-25) and 12.36 ms per fresh Audiences object (trace 10a33158,
+# object (four bakes, 2026-10-25) and 12.36 ms per fresh Audiences object (one fresh dev bake,
 # 2026-10-27) is 72.6-98.9 ms per object per chain [derived].
 PER_OBJECT_WRITE_MS = 100
 
@@ -613,12 +636,6 @@ def write_term_object_count(page: str) -> int:
 
 # --- ADR-145: the write width, derived from the memory model and the write budget -----------
 
-AUDIENCES_OBJECTS_PER_CAMPAIGN = Fraction(63, 30)
-"""[measured on dev] objects one fresh Audiences bake wrote per DSP campaign: 63 PutObject (30
-campaign pages, one index shard, the parent body and custody) for 30 campaigns (trace
-10a33158, 2026-10-27). Each campaign there had one 50-row page; a campaign with more segments
-writes more pages, so the stage's runtime write deadline stays the page's one write limit."""
-
 WRITE_WIDTH_MEASURED_MAX = 64
 """[measured] the widest width the write-throughput probe ran against the dev bucket, from one
 operator host (2026-10-27, validation/RESULTS.md): sibling throughput still rose from 32 to 64
@@ -634,12 +651,17 @@ def ceiling_objects(page: str, ceiling: int) -> int:
     """Count the objects a growing page writes at `ceiling` campaigns.
 
     Campaigns: `campaign_bake_object_count` with All channels, Sponsored ads and one channel each
-    holding every campaign, its at-most count. Audiences: the measured objects per DSP campaign.
+    holding every campaign, its at-most count. Audiences: `audiences_bake_object_count` with
+    `ceiling` listed campaigns (the count pass refuses one more), one page each (the one shape
+    assumption: a campaign of at most 50 segments), and every profile path at its at-most
+    `2 x ceiling` items: its returned segments (its reads held to the ceiling) and its roster's
+    absent ones (the roster held to the ceiling).
     """
     if page == "campaigns":
         return campaign_bake_object_count((ceiling, ceiling, ceiling))
     if page == "audiences":
-        return math.ceil(ceiling * AUDIENCES_OBJECTS_PER_CAMPAIGN)
+        paths = sum(len(items) for items in DELIVERY_PATHS.values())
+        return audiences_bake_object_count(ceiling, ceiling, (2 * ceiling,) * paths)
     raise ValueError(f"{page} writes a fixed set of objects, not one that grows.")
 
 
