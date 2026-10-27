@@ -16,6 +16,20 @@ added there).
 > past which the page is `population_over_ceiling`, alarmed. The sharded roster, streamed writes
 > and 2,048 MB Baker stand. The Baker's memory is now the contract's `bake_tasks.baker_memory_mib`.
 
+> **Amendment, 2026-10-27 (UTC).** Decision 4's fixed "at most 8 in flight" is replaced by a
+> derived width, `bake_tasks.baker_write_width`, its one home beside `baker_memory_mib`. Why: on
+> dev, Campaigns' PUTs at 8 chains filled only 68–75% of its write phase, and a probe of the
+> real stage writing synthetic pairs to the dev bucket (2026-10-27, from one operator host, not
+> the Lambda) found sibling throughput still rising from 32 to 64 pairs in flight with no 503
+> SlowDown: Audiences-sized pairs at 74, 148, 266 and 403 objects/s at 8, 16, 32 and 64
+> [measured, means of 5 runs; validation/RESULTS.md]. So the width is the smallest one whose memory ceiling's
+> objects, its own write buffer counted, fit the 450 s write allowance at the 100 ms per-object
+> budget, capped at 64, the widest width measured still rising; `make check-bakeability` refuses
+> any other value. Both stores share one S3 client whose pool holds that many connections. A
+> width past 64 is unmeasured; past it the lever is splitting a page's writes across invocations,
+> not a wider pool. The current widths and write ceilings are the
+> [scale envelope](../ui/preset-artifact-publisher.md#scale-envelope)'s.
+
 ## Context
 ADR-071 made every campaign reachable through baked ordered segments and a name roster in the
 parent body. The estate is bounded at 1,000 campaigns, ADR-071's falsification population for the
@@ -51,7 +65,8 @@ Large sellers have 2,000–4,500 campaigns, a projection. Lifting the bound expo
    - The browser fetches the shards when the filter first gets focus, never on page load, and
      filters them as today. A shard from another revision reloads the parent once.
 4. **Streamed writes and a sharded digest index**, the one mechanism for every source's siblings:
-   - Sources stream sibling pairs, and the stage writes at most 8 in flight.
+   - Sources stream sibling pairs, and the stage writes at most 8 in flight (a derived width
+     since the 2026-10-27 amendment).
    - The stage records each pair's digests, writes them as custody-namespace index shards of 800,
      and builds the parent custody from the source's header plus the index shards' digests.
    - The pointer is completed from the staged custody digest.
@@ -74,7 +89,8 @@ Campaigns page was empty, and raising the bound alone would have turned that int
 stale.
 
 ## Will be enforced by
-- `tests/unit/test_preset_artifact_publisher.py`: at most 8 pairs in flight; the first failure
+- `tests/unit/test_preset_artifact_publisher.py`: at most the contract's write width in flight,
+  over one S3 client pooled at that width; the first failure
   stops submission; index shards cut and sorted; a tampered shard refused at serve; the runtime
   write deadline stopping submission without writing a parent, and through the legacy publish
   without moving its pointer.
