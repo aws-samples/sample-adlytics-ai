@@ -20,7 +20,8 @@ Three units share one Baker invocation's composition (`BakeRuntime`):
   failure (an invariant, the D18 body ceiling) or an exhausted retry settles the task FAILED with
   its `BAKE_RECOVERY#` obligation; a dependency failure with receives left retries.
 - **The finalizer** (`bake_finalize`): armed once every task is terminal. A FAILED task, or its
-  own deterministic error on its final receive, settles it FAILED with the cohort withheld
+  own deterministic error on its final receive, or a final transaction refused only on existing
+  identical history revisions, on its final receive, settles it FAILED with the cohort withheld
   (`_abandon_finalize`, ADR-140). Once every task succeeded and the precompute contribution
   is stored, it records the bake contribution from the joined effects and commits the winner's
   one final transaction: every effect and the contribution conditioned, page pointers for written
@@ -228,12 +229,14 @@ from ports.outbound.execution_graph_dispatch import (
     RunRecord,
 )
 from ports.outbound.execution_graph_release import (
+    POINTER_REVISION_EXISTS,
     BakeFanOutRequest,
     BakeFinalizeOutcome,
     BakeFinalizeRequest,
     BakeSourcePinRequest,
     BakeTaskFailure,
     PinnedBakeSources,
+    PointerRevisionExistsError,
     PrecomputeReadinessRequest,
     ServingDomainHead,
 )
@@ -1791,7 +1794,9 @@ class _Abandon:
     """The finalizer settles the cohort withheld instead of committing (ADR-140, B4/F5)."""
 
     cause: str
-    """`bake_task_failed` (a task settled FAILED) or `finalize_error` (its own final receive)."""
+    """`bake_task_failed` (a task settled FAILED), `finalize_error` (its own final receive) or
+    `pointer_revision_exists` (its final transaction refused only on existing identical history
+    revisions, on its final receive)."""
     code: str
     """The finalizer node's `failure_code`."""
 
@@ -2012,6 +2017,14 @@ def _consume_finalize(  # noqa: PLR0911, PLR0912, PLR0913, PLR0917 -- one ordere
                 _shorten_armed_redelivery(ports, delivery, runtime)
             return built
         outcome = store.finalize_bake(built)
+    except PointerRevisionExistsError as exists:
+        _log_revision_exists(runtime, delivery, (inputs, exists))
+        if not delivery.final:
+            release_claim_lease(store, claim, ports.now())
+            return ConsumeResult(False, "graph_bake_finalize_conflict", NodeState.CLAIMED)
+        # ADR-140 amendment 2026-10-28: an existing identical revision repeats on every receive.
+        abandon = _Abandon(POINTER_REVISION_EXISTS, POINTER_REVISION_EXISTS)
+        return _abandon_finalize(ports, delivery, runtime, (inputs, abandon))
     except GraphGuardError:
         release_claim_lease(store, claim, ports.now())
         return ConsumeResult(False, "graph_bake_finalize_conflict", NodeState.CLAIMED)
@@ -2041,6 +2054,37 @@ def _consume_finalize(  # noqa: PLR0911, PLR0912, PLR0913, PLR0917 -- one ordere
         fresh_commit=outcome is BakeFinalizeOutcome.FINALIZED,
     )
     return ConsumeResult(True, f"graph_bake_{outcome.value}", NodeState.SUCCEEDED)
+
+
+def _log_revision_exists(
+    runtime: BakeRuntime,
+    delivery: BakeDelivery,
+    logged: tuple[_FinalizeInputs, PointerRevisionExistsError],
+) -> None:
+    """Log WARNING `finalize pointer_revision_exists` on every receive that raised it.
+
+    Page, variant and revision ids only (no digest, token or grant id); `disposition` is
+    `abandon` exactly on the final receive, else `retry`.
+    """
+    inputs, exists = logged
+    runtime.log(
+        "finalize",
+        POINTER_REVISION_EXISTS,
+        LogSeverity.WARNING,
+        run_id=inputs.run.run_id,
+        task_id=inputs.node.node_id,
+        receive_count=delivery.receive_count,
+        disposition="abandon" if delivery.final else "retry",
+        existing_count=len(exists.existing),
+        existing=[
+            {
+                "page": pointer.page.value,
+                "variant": pointer.variant.value,
+                "revision": pointer.revision.value,
+            }
+            for pointer in exists.existing
+        ],
+    )
 
 
 def _abandon_finalize(  # noqa: PLR0913, PLR0917 -- the ports, delivery, runtime and the abandon

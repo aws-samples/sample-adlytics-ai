@@ -4,6 +4,8 @@ Status: Accepted (2026-10-17). Option 1 was chosen on 2026-10-17 (UTC) with the 
 the owner approved its alarm-only `infra/` change and its dev deploy the same day.
 
 > **Proposed amendment, 2026-10-18.** [ADR-142](adr-142-isolate-a-bake-refusal-to-its-own-scope-and-alarm-on-defects.md) (Proposed) would extend decision 6: a typed isolated refusal (a scale limit, a data-history gap, any other source refusal, or a dependency still failing after its retries) is a designed absence at the smallest scope its read feeds. A bake-policy statement deadline timeout, on any receive, and any other dependency error on a task's final receive are the page's designed absence, not `FAILED`; a dependency error in the pin pass pins that row as refused after a bounded retry instead of failing the cohort. Every isolated refusal is reported once per settled outcome, by the page execution both bake entries share, with one failed span, one bounded line and one metric datapoint; a settlement whose response was lost replays its stored refusals once. Implemented 2026-10-26 by the scale-limits change (PR #20) and live-validated on dev: where it differs from this decision, the amendment describes the code. ADR-142's acceptance is the owner's review.
+>
+> **Amended 2026-10-28.** Decision 6's deterministic errors include a finalize refused only on existing identical history revisions; see [Amendment (2026-10-28)](#amendment-2026-10-28).
 
 ## Context
 Only the V3 finalizer arms precompute. A bake fan-out that ends without a finalizer therefore left
@@ -90,7 +92,13 @@ every page from rebuilding, and the fix fails loud on any shape it does not sett
   refused pin's replay, H2; the finalizer's abandon and its refusal under an authorizing binding,
   H5), `tests/unit/test_graph_precompute.py` (H4), `tests/unit/test_execution_graph_release.py`
   (U3 and `bind_once`, H6), `tests/unit/test_execution_graph_release_store.py` (H7) and
-  `tests/unit/test_execution_graph_dispatch.py` (the arm rule, H9).
+  `tests/unit/test_execution_graph_dispatch.py` (the arm rule, H9); for the 2026-10-28 amendment,
+  `tests/unit/test_graph_bake.py` (BSORT-DEV-1: the abandon and its refused controls),
+  `tests/unit/test_graph_whole_chain.py` (BSORT-DEV-1: the Release completes the abandoned run and
+  the domain is released), `tests/unit/test_preset_artifact_store.py` (the identity rule),
+  `tests/unit/test_execution_graph_release_store.py` (the whole-set refinement and the transaction
+  request's bound) and `tests/integration/test_preset_artifact_pointers.py` (per-item reasons, the
+  old image, and a stale writer's two failures on real DynamoDB).
 
 ## Consequences
 - During one deploy-all the new Release runs before the new Baker (`IngestionStack` deploys before
@@ -117,3 +125,32 @@ every page from rebuilding, and the fix fails loud on any shape it does not sett
 
 ## Review trigger
 A second release domain, or a bake shape that settles without a finalizer and names a revision.
+
+## Amendment (2026-10-28)
+A finalize whose final transaction is refused only because written pages' history revisions already
+exist with the same bytes is a deterministic error under decision 6, not a race. Found on dev on
+2026-10-28 (BSORT-DEV-1): a build that renders Retail health at an older render format re-derived
+three revisions the pointer history already held. Each receive was refused on the history put's
+`attribute_not_exists`, and the finalize message dead-lettered while its run held the serving
+domain.
+- Each history put returns its old image on a failed condition. The store raises
+  `PointerRevisionExistsError` only when every failed condition is a history put whose stored record
+  parses and names the same page, variant, revision, body digest and custody digest under another
+  grant. These keep the guard: any other failed member (a moved `CURRENT`, a moved head, a missing
+  predecessor, any graph condition), other bytes, a record without custody, an unreadable image, or
+  the request's own grant. They are retried and never abandoned, as before.
+- The finalizer logs WARNING `finalize pointer_revision_exists` on every such receive. Earlier
+  receives retry. The final receive abandons as decision 6 does, with `cause` and `failure_code`
+  `pointer_revision_exists`. The stored bake member is kept, the cohort binds `stale`,
+  `GraphServingWithheld` pages, and the Release completes the run, so later cohorts proceed. The
+  refusal under an authorizing binding is unchanged.
+- An existing revision is never an idempotent no-op. Its record keeps another write's token and
+  predecessor, plus a retention expiry, so `CURRENT` would name history set to expire. Serving an
+  older render after a rollback is a deploy decision.
+- Consequence: while a deployed build re-derives a page's older revision, every cohort with that
+  page is withheld on its final receive and pages stay on last-good. This lasts while the page's
+  publications are unchanged and the superseded history is retained. A new publication for the page,
+  or the retention expiry, ends it. After the expiry, the older build's write commits as an ordinary
+  advance (unchanged by this amendment). Roll forward to a build that renders the current format.
+- The completed run's `serving_outcome` copies the stale binding's (`complete`); serving truth is
+  the binding's `stale` flag and `GraphServingWithheld`.

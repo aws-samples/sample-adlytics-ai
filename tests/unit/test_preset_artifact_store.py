@@ -22,6 +22,7 @@ from adapters.outbound.dynamodb.preset_artifacts import (
     DynamoPresetArtifactPointerStore,
     _pointer_from_item,
     _pointer_item,
+    existing_history_revision,
     pointer_transaction_items,
 )
 from domain.operations.execution_graph_release import serving_generation
@@ -220,3 +221,68 @@ def test_agg3_6_a_grant_bearing_write_carries_no_mode_check() -> None:
         in pointer_transaction_items("fictional-pointers", _first_legacy(), "fictional-graph")[-1]
     )
     assert len(pointer_transaction_items("fictional-pointers", _first_legacy())) == 2
+
+
+# --- ADR-140 amendment 2026-10-28 (BSORT-DEV-1): an identical existing history revision -------
+
+_OTHER_GRANT = "d" * 64
+
+
+def _rollback_items() -> tuple[Any, ...]:
+    """Return a superseding grant-bearing write's history put, CURRENT put and expiry."""
+    from datetime import UTC, datetime  # noqa: PLC0415
+
+    request = PresetArtifactPointerAdvanceRequest(_granted(), datetime(2026, 11, 1, tzinfo=UTC))
+    return pointer_transaction_items("fictional-pointers", request)
+
+
+def _older_record(**changes: Any) -> dict[str, Any]:
+    """Return an earlier grant's retained history record of `_granted()`'s revision."""
+    from datetime import date  # noqa: PLC0415
+
+    from domain.shared_kernel.values import DateRange  # noqa: PLC0415
+
+    older = replace(
+        _granted(),
+        forward_token=1,
+        supersedes=None,
+        grant_id=_OTHER_GRANT,
+        serving_generation=serving_generation(_OTHER_GRANT),
+        written_at="2026-01-01T00:00:00Z",
+        resolved_window=DateRange(date(2026, 9, 8), date(2026, 9, 14)),
+        comparison_window=DateRange(date(2026, 9, 1), date(2026, 9, 7)),
+    )
+    item: dict[str, Any] = dict(_pointer_item(replace(older, **changes), current=False))
+    item["expires_at"] = {"N": "1800000000"}
+    return item
+
+
+@pytest.mark.covers("ADR-140")
+@pytest.mark.parametrize(
+    ("member", "old", "identical"),
+    [
+        pytest.param(0, _older_record(), True, id="identical"),
+        pytest.param(0, _older_record(body_digest="e" * 64), False, id="body_digest"),
+        pytest.param(0, _older_record(custody_digest="e" * 64), False, id="custody_digest"),
+        pytest.param(0, _older_record(custody_digest=None), False, id="custody_absent"),
+        pytest.param(
+            0,
+            _older_record(grant_id=GRANT, serving_generation=serving_generation(GRANT)),
+            False,
+            id="same_grant",
+        ),
+        pytest.param(0, {**_older_record(), "extra": {"S": "fictional"}}, False, id="malformed"),
+        pytest.param(0, None, False, id="absent"),
+        pytest.param(1, _older_record(), False, id="current_item"),
+        pytest.param(2, _older_record(), False, id="expiry_update"),
+    ],
+)
+def test_an_existing_history_revision_is_identical_only_when_its_bytes_match_under_another_grant(
+    member: int, old: dict[str, Any] | None, identical: bool
+) -> None:
+    """A false "identical" abandons a finalize; a false "different" leaves today's retry."""
+    items = _rollback_items()
+
+    found = existing_history_revision(items[member], old)
+
+    assert found == (_granted() if identical else None)

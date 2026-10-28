@@ -31,6 +31,8 @@ from ports.outbound.preset_artifacts import (
 )
 
 if TYPE_CHECKING:  # pragma: no cover
+    from collections.abc import Mapping
+
     from types_boto3_dynamodb.client import DynamoDBClient
     from types_boto3_dynamodb.type_defs import (
         AttributeValueTypeDef,
@@ -40,6 +42,7 @@ if TYPE_CHECKING:  # pragma: no cover
 
 __all__ = [
     "DynamoPresetArtifactPointerStore",
+    "existing_history_revision",
     "pointer_candidate_item",
     "pointer_from_candidate_item",
     "pointer_transaction_items",
@@ -89,6 +92,10 @@ def pointer_transaction_items(
 ) -> tuple[TransactWriteItemTypeDef, ...]:
     """Build the history/current transaction whose conditions enforce monotonicity.
 
+    The history put is always first and returns its old image on a failed condition, so a
+    cancelled graph finalize can tell an existing identical revision from a race
+    (`existing_history_revision`); the legacy `advance` reads only the reason codes.
+
     S6 §2.9 (AGG3-6): where the graph authority is provisioned, every grant-less (legacy)
     pointer write also ConditionChecks the graph mode item `mode <> GRAPH`, as its last member,
     so a legacy bake that read the mode before the `GRAPH` CAS cannot write after it. A
@@ -126,6 +133,7 @@ def pointer_transaction_items(
                 "ConditionExpression": (
                     f"attribute_not_exists({PARTITION_KEY}) AND attribute_not_exists({RECORD_KEY})"
                 ),
+                "ReturnValuesOnConditionCheckFailure": "ALL_OLD",
             }
         },
         current_write,
@@ -402,6 +410,42 @@ def _is_conditional_transaction(error: ClientError) -> bool:
         reason.get("Code") == CONDITIONAL
         for reason in error.response.get("CancellationReasons", [])
     )
+
+
+def existing_history_revision(
+    history_put: TransactWriteItemTypeDef, old: Mapping[str, AttributeValueTypeDef] | None
+) -> PresetArtifactPointer | None:
+    """Return the desired history pointer when its failed put met an identical earlier record.
+
+    Identical (ADR-140 amendment 2026-10-28): `history_put` is a history put (its `Item` has
+    the page/variant key and a `REVISION#` record key) and `old` parses as an exact history
+    record naming the same page, variant, revision, body digest and custody digest, written
+    under another grant. A write's own token, predecessor, generation, instant, expiry and
+    windows are not content, so they are not compared. Anything else is None: another item
+    kind, an absent or malformed image, other bytes, a record without custody, or the same
+    grant. It catches only the parse errors `roster` catches, so an invariant propagates.
+    """
+    put = history_put.get("Put")
+    if old is None or put is None:
+        return None
+    try:
+        item = cast("dict[str, AttributeValueTypeDef]", dict(put["Item"]))
+        if PARTITION_KEY not in item or not read_text(item, RECORD_KEY).startswith(REVISION_PREFIX):
+            return None
+        desired = _pointer_from_item(item, current=False)
+        stored = _pointer_from_item(dict(old), current=False)
+    except ItemError, KeyError, TypeError, ValueError:
+        return None
+    identical = (
+        stored.page == desired.page
+        and stored.variant == desired.variant
+        and stored.revision == desired.revision
+        and stored.body_digest == desired.body_digest
+        and stored.custody_digest is not None
+        and stored.custody_digest == desired.custody_digest
+        and stored.grant_id != desired.grant_id
+    )
+    return desired if identical else None
 
 
 def pointer_candidate_item(pointer: PresetArtifactPointer) -> dict[str, AttributeValueTypeDef]:

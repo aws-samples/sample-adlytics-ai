@@ -13,9 +13,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
-from typing import Protocol
+from typing import Final, Protocol
 
 from domain.operations.execution_graph_dispatch import (
+    GraphGuardError,
     NodeState,
     ServingAuthorityIdentity,
     ServingCandidate,
@@ -38,6 +39,7 @@ from domain.operations.execution_graph_release import (
     ServingOutcome,
 )
 from domain.operations.status import canonical_authority_digest
+from domain.presentation.preset_artifacts import PresetArtifactPointer
 from ports.outbound.execution_graph_dispatch import (
     ClaimRecord,
     DueItem,
@@ -47,6 +49,7 @@ from ports.outbound.execution_graph_dispatch import (
 )
 
 __all__ = [
+    "POINTER_REVISION_EXISTS",
     "ActivateServingWinnerRequest",
     "ApplyCommit",
     "BakeFanOutRequest",
@@ -64,6 +67,7 @@ __all__ = [
     "GraphReleaseStore",
     "LegacyHeadReader",
     "PinnedBakeSources",
+    "PointerRevisionExistsError",
     "PostGrantFailure",
     "PrecomputeReadinessOutcome",
     "PrecomputeReadinessRequest",
@@ -735,6 +739,28 @@ class BakeFinalizeOutcome(StrEnum):
     """The exact post-image was already stored: a replay or a lost response."""
 
 
+POINTER_REVISION_EXISTS: Final = "pointer_revision_exists"
+"""The guard signal, abandon cause, node `failure_code` and log outcome of a final transaction
+refused only on existing identical history revisions (ADR-140 amendment 2026-10-28)."""
+
+
+class PointerRevisionExistsError(GraphGuardError):
+    """The final transaction was refused only because written pages' revisions already exist.
+
+    Every failed condition was a history put whose stored record names the same page, variant,
+    revision, body digest and custody digest under another grant. The one guard a caller may
+    treat as deterministic: the finalizer abandons on its final receive (ADR-140 amendment
+    2026-10-28). Any caller without that branch handles it as the base guard.
+    """
+
+    def __init__(self, existing: tuple[PresetArtifactPointer, ...]) -> None:
+        if not existing:
+            raise ValueError("a pointer revision refusal names at least one existing revision.")
+        super().__init__(POINTER_REVISION_EXISTS)
+        self.existing = existing
+        """The desired pointers whose revision already exists, in transaction order."""
+
+
 class PrecomputeReadinessOutcome(StrEnum):
     """How the exact bake-effect readiness transaction ended."""
 
@@ -852,7 +878,11 @@ class BakeGraphStore(Protocol):
         ...
 
     def finalize_bake(self, request: BakeFinalizeRequest) -> BakeFinalizeOutcome:
-        """Commit the winner's one final transaction."""
+        """Commit the winner's one final transaction.
+
+        Raises `PointerRevisionExistsError` when every failed condition is an identical existing
+        history revision, and the base `GraphGuardError` for any other refusal.
+        """
         ...
 
     def release_finalize_runtime(self, node: NodeRecord) -> None:

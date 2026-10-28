@@ -8,6 +8,7 @@ from dataclasses import replace
 from typing import Any, cast
 
 import pytest
+from botocore.exceptions import ClientError
 from execution_graph_dispatch_support import NOW, TABLE, UNIT, write_int, write_text
 from execution_graph_release_support import (
     context,
@@ -33,7 +34,12 @@ from adapters.jobs.execution_graph.release import (
 )
 from adapters.outbound.dynamodb.execution_graph import due_shard
 from adapters.outbound.dynamodb.execution_graph_release import DynamoGraphReleaseStore
-from adapters.outbound.dynamodb.graph_transactions import Member
+from adapters.outbound.dynamodb.graph_transactions import (
+    FailedMember,
+    Member,
+    TransactRequest,
+    transact,
+)
 from domain.operations.execution_graph_dispatch import (
     GraphGuardError,
     NodeState,
@@ -715,3 +721,97 @@ def test_h7_control_an_all_succeeded_completion_has_no_recovery_member() -> None
     members = _completion_members(fake, run, failed_tasks=0)
 
     assert _recovery_deletes(members) == []
+
+
+# --- ADR-140 amendment 2026-10-28: the transaction-level refinement and the request's bound --
+
+
+def _refine_members(fake: FakeDynamo) -> list[Member]:
+    """Three create-once puts: members 0 and 2 meet stored items; only member 2 asks ALL_OLD."""
+    for name in ("zero", "two"):
+        fake.items[(f"REFINE#{name}", "ITEM")] = {
+            "pk": {"S": f"REFINE#{name}"},
+            "sk": {"S": "ITEM"},
+            "stored": {"N": "1"},
+        }
+
+    def create(name: str, *, old_image: bool) -> Member:
+        body: dict[str, Any] = {
+            "TableName": TABLE,
+            "Item": {"pk": {"S": f"REFINE#{name}"}, "sk": {"S": "ITEM"}, "stored": {"N": "2"}},
+            "ConditionExpression": "attribute_not_exists(pk)",
+        }
+        if old_image:
+            body["ReturnValuesOnConditionCheckFailure"] = "ALL_OLD"
+        return Member(cast("Any", {"Put": body}), f"SIGNAL_{name.upper()}")
+
+    return [
+        create("zero", old_image=False),
+        create("one", old_image=False),
+        create("two", old_image=True),
+    ]
+
+
+def test_refine_sees_every_failed_member_with_its_old_image_and_none_keeps_the_first_signal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake = FakeDynamo()
+    members = _refine_members(fake)
+    seen: list[list[tuple[int, Any, Any]]] = []
+    refined = GraphGuardError("refined")
+
+    def recording(failed: tuple[FailedMember, ...]) -> GraphGuardError | None:
+        seen.append([(member.index, member.item, member.old) for member in failed])
+        return refined
+
+    with pytest.raises(GraphGuardError) as raised:
+        transact(cast("Any", fake), TransactRequest(members, 3, refine=recording))
+
+    assert raised.value is refined
+    assert seen == [
+        [
+            (0, members[0].item, None),
+            (
+                2,
+                members[2].item,
+                {"pk": {"S": "REFINE#two"}, "sk": {"S": "ITEM"}, "stored": {"N": "1"}},
+            ),
+        ]
+    ]
+    assert fake.transactions == []
+    # Control: a refinement that returns None keeps the first failed member's signal.
+    with pytest.raises(GraphGuardError) as kept:
+        transact(cast("Any", fake), TransactRequest(members, 3, refine=lambda _failed: None))
+    assert (type(kept.value), kept.value.signal) == (GraphGuardError, "SIGNAL_ZERO")
+    # Control: a TransactionConflict is never refined.
+    seen.clear()
+    fake.conflicts_next = 1
+    with pytest.raises(GraphTransactionConflictError):
+        transact(cast("Any", fake), TransactRequest(members, 3, refine=recording))
+    # Control: a reason list shorter than the members is never refined.
+    short: Any = {
+        "Error": {"Code": "TransactionCanceledException", "Message": "cancelled"},
+        "CancellationReasons": [{"Code": "ConditionalCheckFailed"}],
+    }
+
+    def truncated(**_request: Any) -> dict[str, Any]:
+        raise ClientError(short, "TransactWriteItems")
+
+    monkeypatch.setattr(fake, "transact_write_items", truncated)
+    with pytest.raises(GraphGuardError) as unrefined:
+        transact(cast("Any", fake), TransactRequest(members, 3, refine=recording))
+    assert (type(unrefined.value), unrefined.value.signal) == (GraphGuardError, "SIGNAL_ZERO")
+    assert seen == []
+
+
+@pytest.mark.parametrize("count", [pytest.param(0, id="empty"), pytest.param(4, id="over_bound")])
+def test_a_transact_request_refuses_an_empty_or_over_bound_transaction_before_any_write(
+    count: int,
+) -> None:
+    fake = FakeDynamo()
+    members = (_refine_members(fake) * 2)[:count]
+
+    with pytest.raises(GraphStoreUnavailableError, match="empty or exceeds its bound"):
+        transact(cast("Any", fake), TransactRequest(members, 3))
+
+    assert fake.transactions == []

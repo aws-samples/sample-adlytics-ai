@@ -17,7 +17,9 @@ Same table and keys as the S1 admission adapter. Items this slice adds:
 - the automatic-admission hold, as attributes of the mode item, which only the operator writes.
 
 Every write is one transaction of typed members (`graph_transactions`), so a lost race raises
-its exact guard signal. Reads are strongly consistent `GetItem` and `Query` on the base table.
+its exact guard signal: a member's `resolve` refines its one signal, and a request's `refine`
+classifies the whole failed set; no transaction here sets `refine`. Reads are strongly
+consistent `GetItem` and `Query` on the base table.
 """
 
 from __future__ import annotations
@@ -48,6 +50,7 @@ from adapters.outbound.dynamodb.graph_transaction_bytes import (
 from adapters.outbound.dynamodb.graph_transactions import (
     Member,
     MemberSpec,
+    TransactRequest,
     check,
     delete,
     put,
@@ -1145,7 +1148,7 @@ class DynamoGraphDispatchStore:
                 return items
 
     def _commit(self, members: list[Member]) -> None:
-        transact(self._client, [self._bind(member) for member in members], _BOUND)
+        transact(self._client, TransactRequest([self._bind(member) for member in members], _BOUND))
 
     def _bind(self, member: Member) -> Member:
         ((kind, body),) = cast("dict[str, dict[str, Any]]", member.item).items()

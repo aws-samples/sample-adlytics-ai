@@ -7,6 +7,7 @@ control that the same fixture one step away is accepted. Every identity is ficti
 
 from __future__ import annotations
 
+import copy
 import json
 from dataclasses import dataclass, field, replace
 from typing import Any, cast
@@ -16,7 +17,13 @@ from execution_graph_dispatch_support import NOW
 from execution_graph_release_support import (
     release_store,
 )
-from graph_bake_v3_support import Bake, current_identity, final_transaction, roster
+from graph_bake_v3_support import (
+    Bake,
+    SeedHistoryRequest,
+    current_identity,
+    final_transaction,
+    roster,
+)
 from graph_consumer_support import expire_claim, precompute_contributed, sqs_record
 from refusal_telemetry_support import LOGGER, Telemetry, capture
 
@@ -1748,6 +1755,188 @@ def test_h5d_an_authorizing_binding_is_never_abandoned_and_the_receive_retries(o
     assert bake.run_item(run)["state"]["S"] == "GRANTED"
     (line,) = signals.lines("abandon_refused")
     assert (line["cause"], line["reason"]) == ("finalize_error", "authorizing_binding")
+
+
+# --- BSORT-DEV-1: a revision the pointer history already holds (ADR-140 amendment) -----------
+
+
+def _finalize_refusals(
+    monkeypatch: pytest.MonkeyPatch, *, race: dict[str, Any] | None = None
+) -> list[tuple[type[GraphGuardError], str]]:
+    """Record every guard the store raises; with `race`, move the live head inside each call.
+
+    The head moves after this receive's reads (its own head check passed) and is restored, so
+    every receive reads the original snapshot and loses it again in its one transaction.
+    """
+    original = release_adapter.DynamoGraphReleaseStore.finalize_bake
+    frozen = dict(race["elected_candidate_digest"]) if race is not None else None
+    refusals: list[tuple[type[GraphGuardError], str]] = []
+
+    def wrapped(self: Any, request: Any) -> BakeFinalizeOutcome:
+        if race is not None:
+            race["elected_candidate_digest"] = {"S": "f" * 64}
+        try:
+            return original(self, request)
+        except GraphGuardError as refused:
+            refusals.append((type(refused), refused.signal))
+            raise
+        finally:
+            if race is not None:
+                race["elected_candidate_digest"] = frozen
+
+    monkeypatch.setattr(release_adapter.DynamoGraphReleaseStore, "finalize_bake", wrapped)
+    return refusals
+
+
+def _candidate(bake: Bake, run: str, key: str) -> dict[str, Any]:
+    """Return a task's stored CURRENT-envelope pointer candidate item."""
+    candidate = cast("dict[str, Any]", _stored(bake, run, key)["pointer"])["item"]
+    assert "custody_digest" in candidate  # no case can pass on a custody-less record
+    return cast("dict[str, Any]", candidate)
+
+
+@pytest.mark.covers("ADR-140")
+def test_bsort_dev_1_an_identical_existing_revision_abandons_on_the_final_receive_withheld() -> (
+    None
+):
+    """Retrying a revision the history already holds never succeeds.
+
+    Without the abandon the message dead-letters while its run holds the serving domain.
+    """
+    from domain.operations.execution_graph_release import serving_withheld  # noqa: PLC0415
+
+    bake = Bake(roster=roster(3))
+    signals = _Signals(bake)
+    run = _armed_with(bake, None)
+    revision = bake.tables.seed_history(SeedHistoryRequest(_candidate(bake, run, "campaigns#1d")))
+    history_key = ("PTR|campaigns#1d", f"REVISION#{revision}")
+    seeded = copy.deepcopy(bake.tables.items[history_key])
+    pointers = _current_pointers(bake)
+    finalizer = bake.node(run, "bake_finalize").node_id
+
+    retried = bake.deliver(run, "bake_finalize", 2)
+    assert (retried.acknowledge, retried.outcome, retried.node_state) == (
+        False,
+        "graph_bake_finalize_conflict",
+        NodeState.CLAIMED,
+    )
+    _expire_claim(bake, run)
+    since = len(bake.tables.transactions)
+
+    abandoned = bake.deliver(run, "bake_finalize", _FINAL)
+
+    assert (abandoned.acknowledge, abandoned.outcome, abandoned.node_state) == (
+        True,
+        "graph_bake_finalize_abandoned",
+        NodeState.FAILED,
+    )
+    lines = signals.lines("pointer_revision_exists")
+    assert [line["disposition"] for line in lines] == ["retry", "abandon"]
+    assert [line["receive_count"] for line in lines] == [2, 3]
+    for line in lines:
+        assert (line["run_id"], line["task_id"], line["existing_count"]) == (run, finalizer, 1)
+        assert line["existing"] == [{"page": "campaigns", "variant": "1d", "revision": revision}]
+    (line,) = signals.lines("abandoned")
+    assert (line["cause"], line["failure_code"], line["bake_outcome"], line["bound"]) == (
+        "pointer_revision_exists",
+        "pointer_revision_exists",
+        "succeeded",
+        True,
+    )
+    assert bake.node(run, "bake_finalize").failure_code == "pointer_revision_exists"
+    binding = _binding_of(bake, run)
+    assert binding is not None and binding.stale
+    assert not binding_authorizes_serving(binding) and serving_withheld(binding)
+    assert signals.values == [1]
+    assert bake.tables.pointer_writes(since) == []
+    assert _current_pointers(bake) == pointers  # every page stays on last-good
+    assert bake.tables.items[history_key] == seeded
+
+
+def _genuine_conflict(bake: Bake, run: str, case: str) -> dict[str, Any] | None:
+    """Seed one genuine conflict; return the live head item when the case races it."""
+    candidate = _candidate(bake, run, "campaigns#1d")
+    seeds = {
+        "different_content": SeedHistoryRequest(candidate, body_digest="c" * 64),
+        "own_grant": SeedHistoryRequest(candidate, grant=bake.run_item(run)["grant_id"]["S"]),
+        "custody_absent": SeedHistoryRequest(candidate, drop_custody=True),
+    }
+    bake.tables.seed_history(seeds.get(case, SeedHistoryRequest(candidate)))
+    if case == "current_moved":  # another writer advanced CURRENT, so this CURRENT fails too
+        bake.tables.items[("PTR|campaigns#1d", "CURRENT")]["forward_token"] = {"N": "99"}
+    if case == "one_page_different":
+        other = _candidate(bake, run, "campaigns#2d")
+        bake.tables.seed_history(SeedHistoryRequest(other, body_digest="c" * 64))
+    if case == "head_moved":
+        # Moving the head before a receive trips the finalizer's own head check (an invariant
+        # F5 abandons), so it moves inside the store call instead.
+        return bake.tables.items[(f"SERVING_DOMAIN#{_active_head(bake, run).domain}", "HEAD")]
+    return None
+
+
+@pytest.mark.covers("ADR-140")
+@pytest.mark.parametrize(
+    ("case", "signal"),
+    [
+        ("different_content", "NODE_STATE_CHANGED"),
+        ("current_moved", "NODE_STATE_CHANGED"),
+        ("head_moved", "SERVING_HEAD_CHANGED"),
+        ("one_page_different", "NODE_STATE_CHANGED"),
+        ("own_grant", "NODE_STATE_CHANGED"),
+        ("custody_absent", "NODE_STATE_CHANGED"),
+    ],
+)
+def test_bsort_dev_1_control_a_genuine_pointer_conflict_is_refused_retried_and_never_abandoned(
+    case: str, signal: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bake = Bake(roster=roster(3))
+    signals = _Signals(bake)
+    run = _armed_with(bake, None)
+    refusals = _finalize_refusals(monkeypatch, race=_genuine_conflict(bake, run, case))
+    pointers = _current_pointers(bake)
+
+    first = bake.deliver(run, "bake_finalize", 2)
+    _expire_claim(bake, run)
+    since = len(bake.tables.transactions)
+    final = bake.deliver(run, "bake_finalize", _FINAL)
+
+    assert refusals == [(GraphGuardError, signal)] * 2  # the base guard, never the subclass
+    for refused in (first, final):
+        assert (refused.acknowledge, refused.outcome, refused.node_state) == (
+            False,
+            "graph_bake_finalize_conflict",
+            NodeState.CLAIMED,
+        )
+    assert bake.node(run, "bake_finalize").state not in {NodeState.FAILED, NodeState.SUCCEEDED}
+    assert bake.run_item(run)["state"]["S"] == "GRANTED"
+    assert _binding_of(bake, run) is None
+    assert bake.tables.pointer_writes(since) == []
+    assert _current_pointers(bake) == pointers
+    assert signals.lines("pointer_revision_exists") == []
+    assert signals.lines("abandoned") == []
+    assert signals.values == []
+    if case != "different_content":
+        return
+    # Paired positive control: without the seeded record the same final receive commits.
+    revision = str(_candidate(bake, run, "campaigns#1d")["revision"]["S"])
+    del bake.tables.items[("PTR|campaigns#1d", f"REVISION#{revision}")]
+    _expire_claim(bake, run)
+    since = len(bake.tables.transactions)
+
+    committed = bake.deliver(run, "bake_finalize", _FINAL)
+
+    assert (committed.acknowledge, committed.outcome, committed.node_state) == (
+        True,
+        "graph_bake_finalized",
+        NodeState.SUCCEEDED,
+    )
+    assert any(
+        "Put" in member
+        and member["Put"]["Item"]["page_variant_key"] == {"S": "campaigns#1d"}
+        and member["Put"]["Item"]["record_key"] == {"S": f"REVISION#{revision}"}
+        for member in bake.tables.pointer_writes(since)
+    )
+    assert bake.run_item(run)["state"]["S"] == "SUCCEEDED"
 
 
 # --- isolation on the graph entry (ADR-142, design 02 §3.3, §9) ----------------------------

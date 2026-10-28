@@ -53,8 +53,10 @@ from adapters.outbound.dynamodb.graph_transaction_bytes import (
     transaction_bytes,
 )
 from adapters.outbound.dynamodb.graph_transactions import (
+    FailedMember,
     Member,
     MemberSpec,
+    TransactRequest,
     check,
     delete,
     put,
@@ -62,6 +64,7 @@ from adapters.outbound.dynamodb.graph_transactions import (
     update,
 )
 from adapters.outbound.dynamodb.items import write_bool, write_int, write_text
+from adapters.outbound.dynamodb.preset_artifacts import existing_history_revision
 from domain.operations.execution_graph_dispatch import (
     CLAIM_LEASE_STALE,
     DOMAIN_LOCK_HELD,
@@ -138,6 +141,7 @@ from ports.outbound.execution_graph_release import (
     GrantCommit,
     GrantRecord,
     PinnedBakeSources,
+    PointerRevisionExistsError,
     PostGrantFailure,
     PrecomputeReadinessOutcome,
     PrecomputeReadinessRequest,
@@ -167,6 +171,8 @@ if TYPE_CHECKING:
         AttributeValueTypeDef,
         TransactWriteItemTypeDef,
     )
+
+    from domain.presentation.preset_artifacts import PresetArtifactPointer
 
 
 _BAKE_FAN_OUT_FAILED: Final = ErrorCode("GRAPH_BAKE_V3", 10)
@@ -3248,7 +3254,12 @@ class DynamoGraphReleaseStore(DynamoGraphDispatchStore):
             )
         for _ in range(2):
             try:
-                transact(self._client, members, int(BOUNDS["max_transaction_items"]))
+                transact(
+                    self._client,
+                    TransactRequest(
+                        members, int(BOUNDS["max_transaction_items"]), refine=_revision_exists
+                    ),
+                )
             except GraphStoreUnavailableError:
                 image = self._final_image(request)
                 if image == "post":
@@ -3269,6 +3280,18 @@ class DynamoGraphReleaseStore(DynamoGraphDispatchStore):
             self._commit(release_members(node))
         except GraphGuardError:
             return
+
+
+def _revision_exists(failed: tuple[FailedMember, ...]) -> PointerRevisionExistsError | None:
+    """Refuse deterministically only when every failed member is an identical history revision.
+
+    ADR-140 amendment 2026-10-28: any other failed member (a moved `CURRENT`, the head, a
+    missing predecessor, any graph condition) returns None, so the base guard is raised.
+    """
+    existing = tuple(existing_history_revision(member.item, member.old) for member in failed)
+    if not failed or any(pointer is None for pointer in existing):
+        return None
+    return PointerRevisionExistsError(cast("tuple[PresetArtifactPointer, ...]", existing))
 
 
 def refuse_generation_members(members: list[Member]) -> None:
