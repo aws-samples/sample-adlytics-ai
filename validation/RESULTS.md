@@ -4,6 +4,23 @@ Publication-safe conclusions from live source probes and deployed development ac
 account, entity, instance, user, resource, execution, workflow, and invalidation identifiers remain
 in ignored `RESULTS.local.md` and `findings/`; neither is publication content. A conclusion appears
 here only after its exact local evidence was read and folded into the owning contract or design doc.
+## Products and ads part (Retail health render format 12) on dev — 2026-10-27
+Times are UTC. Synthetic data only. The Products and ads branch, merged with main and one other open
+change, was deployed to dev after an identity check, then re-baked by re-landing deliveries. Each
+pass is 9 paced loads of the Products and ads tab with the scale-limits harness, timed from
+navigation start to the end of the last presentation response.
+
+| Check | Verdict | What it showed |
+|---|---|---|
+| Before, format 11, 21:53–22:04 | **MEASURED** | 8 presentation requests per load (the parent and 7 product details), 256,407 bytes; browser p50 1,739 ms against 703 ms for the parent request [measured on dev]. The 2026-10-26 readout measured 1,763 ms against 754 ms. |
+| Upgrade window, 22:53–22:54 | **PASS** | Deployed, Retail health publications still format 11: Products and ads HTTP 200 with the ABS-RH-1 absence and the served preset marked unavailable; Retail health served the same preset's 7 rows; no HTTP error. |
+| After, format 12, 23:20–23:31 | **PASS** | 1 presentation request per load, 85,005 bytes, no product-detail request; browser p50 824 ms, equal to the parent request's end, p95 993.2 ms; 0 HTTP, console or CSP errors [measured on dev]. Retail health's own page served the same 73,661-byte body as before. |
+
+**Not exercised live:** choosing a second format-11 preset in the upgrade window, and comparing each
+row's ad figures value for value between formats (the format-11 state ended with the re-bake; unit
+tests prove the part copies each row's product detail). The 754 ms the performance review projected as the
+format-12 time was the format-11 parent's end; the measured 824 ms includes the part's reads. The
+[Products and ads design doc](../docs/ui/products-and-ads/README.md#2-sources) carries the figures.
 ## Contract parsing, prompt-registry paging and API compression on dev — 2026-10-27
 Times are UTC. Synthetic data only. This change (`feat/perf-hygiene`), merged with public main and one
 unrelated MCP-tooling branch, was deployed to dev with one locked `deploy-all` after an identity check

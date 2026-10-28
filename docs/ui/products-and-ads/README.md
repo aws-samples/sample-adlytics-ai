@@ -27,12 +27,21 @@ refuses a part whose window or rows aren't the parent's, so the tab never shows 
 beside another product. A body with no rows serves `product_ads: null`.
 
 Before render format 12 the tab requested each row's product detail, four at a time, after the
-parent: on dev's 7 products the last detail ended at 1,763 ms median against 754 ms for the parent,
-and at 50 rows a load would make 51 requests [measured on dev, 2026-10-26 paced pass; 51 is a
-projection from `RETAIL_HEALTH_MAX_ROWS`]. The part removes those requests. It adds three
-sequential S3 reads to the parent request (the index shard, then the part and its custody), about
-81–125 ms at the 27.0–41.8 ms per read dev measured on the Retail health and product-detail
-serve paths [projection, derived from that pass's spans, perf review F7]; the tab's p50 after the change is to be measured on dev.
+parent, so a load made one request per served row plus the parent (51 at 50 rows, a projection
+from `RETAIL_HEALTH_MAX_ROWS`). At format 12 a load is one request at any row count. Dev paced
+passes of 9 loads of dev's 7 products, timed from navigation start to the end of the last
+presentation response [measured on dev, 2026-10-27,
+[results](../../../validation/RESULTS.md#products-and-ads-part-retail-health-render-format-12-on-dev--2026-10-27)]:
+
+| Render format | Requests per load | Browser p50 | Browser p95 | Parent request end p50 | Bytes per load |
+|---|---|---|---|---|---|
+| 11, one detail per row | 8 | 1,739 ms | 5,405.6 ms | 703 ms | 256,407 |
+| 12, after the new revisions | 1 | 824 ms | 993.2 ms | 824 ms | 85,005 |
+
+At format 12 the tab ends with its one request. That request's serve time, which now includes the
+part's three reads (the index shard, then the part and its custody), was 315 ms p50 against 196 ms
+for the format-11 parent request; Retail health's own request served at 311 ms p50 before and 289 ms
+after, with its body unchanged.
 
 | Column | Slot | Served field |
 |---|---|---|
@@ -53,10 +62,8 @@ carries the part's served `basis` when any row credits a channel. No halo-sales 
 {prior window}." from the served `total_count` and the first served row, which the server orders by
 shipped revenue. A withheld or absent change drops the last clause. An empty or insufficient body
 shows Retail health's ABS-RH-3 or ABS-RH-4 copy; a page-level absence shows ABS-RH-1 or ABS-RH-2
-([Page absence copy](../page-absence-copy.md)). A preset whose publication was baked before render
-format 12 has no part, so the tab serves it as that preset's `window_unavailable` with the preset
-marked unavailable until Retail health's next bake; Retail health itself still serves the preset
-([preset artifact publisher](../preset-artifact-publisher.md), "First bake and recovery").
+([Page absence copy](../page-absence-copy.md)). A publication baked before render format 12 is a
+page-level absence on this tab ([upgrade behaviour](../preset-artifact-publisher.md#first-bake-and-recovery)).
 
 ## 4. Copy
 Browser-owned (`PRODUCTS_AND_ADS_COPY`, `PRODUCTS_AND_ADS_LINES`): "Two systems side by side. They never
