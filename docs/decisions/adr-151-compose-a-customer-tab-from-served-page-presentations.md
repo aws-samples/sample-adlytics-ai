@@ -4,6 +4,11 @@ Status: Proposed (2026-10-22). Implemented on `feat/ui-refresh` for the Overview
 (UI refresh slice 2.1, readout OD-UX-3). Not deployed yet. Amends
 [ADR-115](adr-115-organise-the-app-into-customer-question-hubs-from-one-navigation-file.md): the
 navigation file gains a third tab kind beside v2 page tabs and operator static routes.
+
+> **Refined 2026-10-27 (perf follow-up A2).** The 2026-10-22 amendment's Products and ads mechanism
+> changed: the tab no longer requests one product detail per row; it reads Retail health's page with
+> the Products and ads part baked beside it, in one request. The
+> [Products and ads](../ui/products-and-ads/README.md) design doc owns the current behaviour.
 ## Context
 The readout's Growth check (new-views rank 1, Appendix A.1) answers "is my advertising growing my
 business?" on one screen, from figures four pages already serve: the 7-day Scorecard, Retail health,
@@ -28,7 +33,6 @@ recovery"), so a new artifact would not reach dev before the customer demo on 20
    root, so no v2 page entry may carry `/` in `compatibility_routes` (the pins in `page_schemas.py`,
    `bindings.py` and `frontend/lib/page-bindings.ts`).
 ## Amendment, 2026-10-22 (UI refresh 3.7)
-
 A second composed tab, Retail health › Products and ads at `/products-and-ads/` (sources
 `[retail-health]`), reads the served Retail health parent and, for each row, its baked product detail
 (ADR-125) over the row's own capability, at most four in flight. It keeps Retail health's window

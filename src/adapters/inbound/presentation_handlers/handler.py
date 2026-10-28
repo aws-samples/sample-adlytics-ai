@@ -440,6 +440,7 @@ from domain.presentation.preset_artifacts import (
     PresetArtifactPointer,
     PresetArtifactPointerRosterRequest,
     PresetArtifactPointerRosterResult,
+    PresetArtifactProductAdsIdentity,
     PresetArtifactProductChildIdentity,
     PresetArtifactSiblingBody,
     PresetArtifactSiblingCustody,
@@ -475,6 +476,7 @@ from domain.presentation.retail_health_custody import (
     RetailHealthCustodyManifest,
     product_ref_for,
     retail_health_custody_manifest_from_payload,
+    retail_product_ads_custody_from_payload,
     retail_product_child_custody_from_payload,
 )
 from domain.presentation.retail_product_detail import (
@@ -483,6 +485,7 @@ from domain.presentation.retail_product_detail import (
     RetailProductDetailArtifact,
     RetailProductDetailOutcome,
     SafeProductDisplaySignature,
+    retail_product_ads_from_payload,
     retail_product_detail_from_payload,
     retail_product_detail_payload,
 )
@@ -747,6 +750,8 @@ class _V2ParentPresentationInput:
     """Campaigns' channel filter (ADR-127 decision 6); omitted means All channels."""
     campaign_roster_shard: int | None = None
     """One shard of the filter's baked name roster (ADR-145), instead of a page."""
+    retail_product_ads: bool = False
+    """Products and ads asks for Retail health's baked part beside the page (render format 12)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -3916,6 +3921,22 @@ def _v2_retail_health_preset_parent_response(
     except TypeError, ValueError, json.JSONDecodeError:
         raise _malformed_artifact() from None
     temporal = _retail_health_preset_temporal(request, artifact, roster)
+    custody = _retail_health_custody(input_request.runtime, pointer, body, artifact)
+    product_ads: dict[str, object] | None = None
+    if request.retail_product_ads and custody is not None:
+        product_ads = _retail_product_ads_part(input_request.runtime, pointer, custody[1], artifact)
+        if product_ads is None:
+            # Baked before render format 12, so no part: Products and ads serves this preset's
+            # not-yet-published absence, as a missing pointer is, until the page's next bake
+            # (never a fallback to one detail per row, never a 500). Retail health is unchanged.
+            unserved = PresetArtifactPointerRosterResult(
+                roster.request,
+                tuple(
+                    None if candidate is not None and candidate.variant == variant else candidate
+                    for candidate in roster.pointers
+                ),
+            )
+            return _retail_health_preset_unavailable(request, input_request.runtime, unserved)
     page = _serve_retail_health_preset_page(
         _RetailHealthPresetServeRequest(
             request=request,
@@ -3924,19 +3945,53 @@ def _v2_retail_health_preset_parent_response(
             temporal=temporal,
             artifact=artifact,
             pointer=pointer,
-            custody=_retail_health_custody(input_request.runtime, pointer, body, artifact),
+            custody=None if custody is None else custody[0],
         )
     )
+    page = _with_generation(page, generation)
+    if request.retail_product_ads:
+        # A body with no rows bakes no part; the tab then shows the body's own empty state.
+        page = {**page, "product_ads": product_ads}
     return _json(
         200,
         _presentation_result_json(
-            PresentationPageResult(
-                session_id=request.session_id,
-                temporal=temporal,
-                page=_with_generation(page, generation),
-            )
+            PresentationPageResult(session_id=request.session_id, temporal=temporal, page=page)
         ),
     )
+
+
+def _retail_product_ads_part(  # noqa: PLR0913, PLR0917 -- one pointer- and index-bound read
+    runtime: PresentationRuntime,
+    pointer: PresetArtifactPointer,
+    index: tuple[PresetArtifactSiblingIndexEntry, ...],
+    artifact: RetailHealthArtifact,
+) -> dict[str, object] | None:
+    """Read the Products and ads part a format-12 bake writes beside the children, or None.
+
+    The stage writes it with the children as one closed set checked before any write (ADR-125,
+    ADR-145), so an attested index that doesn't list it is a publication baked before render
+    format 12. A listed part whose bytes, window or rows disagree with the parent body is the
+    malformed-artifact refusal.
+    """
+    identity = PresetArtifactProductAdsIdentity()
+    descriptor = _indexed_descriptor(runtime, pointer, index, identity)
+    if descriptor is None:
+        return None
+    sibling = _read_indexed(runtime, pointer, identity, descriptor)
+    try:
+        payload = json.loads(sibling.body.payload_json)
+        ads = retail_product_ads_from_payload(payload)
+        custody = retail_product_ads_custody_from_payload(json.loads(sibling.custody.payload_json))
+    except TypeError, ValueError, json.JSONDecodeError:
+        raise _malformed_artifact() from None
+    if (
+        custody.body_digest != sibling.body.digest
+        or (ads.period, ads.prior_period) != (artifact.period, artifact.prior_period)
+        or tuple(row.child_asin for row in ads.rows)
+        != tuple(row.child_asin for row in artifact.rows)
+    ):
+        raise _malformed_artifact()
+    return cast("dict[str, object]", payload)
 
 
 def _retail_health_preset_unavailable(
@@ -5223,8 +5278,8 @@ def _retail_health_custody(  # noqa: PLR0913, PLR0917 -- one pointer-bound read
     pointer: PresetArtifactPointer,
     body: PresetArtifactBody,
     artifact: RetailHealthArtifact,
-) -> RetailHealthCustodyManifest | None:
-    """Read the parent custody a format-8 bake writes (ADR-125).
+) -> tuple[RetailHealthCustodyManifest, tuple[PresetArtifactSiblingIndexEntry, ...]] | None:
+    """Read the parent custody a format-8 bake writes (ADR-125), with its sibling index.
 
     A body with no rows has no custody and serves no product-detail capability. A body with
     rows always bakes custody, so one without it is malformed and refuses (ADR-125 decision 3):
@@ -5240,14 +5295,14 @@ def _retail_health_custody(  # noqa: PLR0913, PLR0917 -- one pointer-bound read
         raise _malformed_artifact()
     manifest_object = store.read(pointer)
     _attest_campaign_preset_custody(pointer, manifest_object)
-    header, _ = _parent_index(manifest_object)
+    header, index = _parent_index(manifest_object)
     try:
         manifest = retail_health_custody_manifest_from_payload(header)
     except TypeError, ValueError:
         raise _malformed_artifact() from None
     if manifest.body_digest != body.digest or len(manifest.products) != len(artifact.rows):
         raise _malformed_artifact()
-    return manifest
+    return manifest, index
 
 
 RETAIL_PRODUCT_STEP_REASON = "It changed shipped revenue more than any other product."
@@ -6236,6 +6291,8 @@ def _v2_parent_request(
     allowed = {"session_id", "temporal_selection"}
     if operation in {CAMPAIGN_LIST_PATH, RETAIL_HEALTH_PATH}:
         allowed.add("sort")
+    if operation == RETAIL_HEALTH_PATH:
+        allowed.add("product_ads")
     if operation == CAMPAIGN_LIST_PATH:
         allowed.update({"segment", "filter_id", "roster_shard"})
     if operation == AUDIENCES_PATH:
@@ -6249,6 +6306,10 @@ def _v2_parent_request(
     # A roster shard is a part of the served body, never a page: it names no sort or segment.
     if "roster_shard" in fields and fields & {"sort", "segment"}:
         raise ValidationError(PRESENTATION_REFUSED, "The campaign roster shard is invalid.")
+    # Products and ads names its part with exactly `true`; any other value is refused, and so is
+    # a sort, because the part's rows are in the baked order the tab shows.
+    if "product_ads" in fields and (payload["product_ads"] is not True or "sort" in fields):
+        raise ValidationError(PRESENTATION_REFUSED, "The products and ads request is invalid.")
     session_id = _text(payload["session_id"], "session_id")
     if len(session_id) > MAX_SESSION_ID_LENGTH:
         raise ValidationError(PRESENTATION_REFUSED, "session_id is too long.")
@@ -6276,6 +6337,7 @@ def _v2_parent_request(
         campaign_roster_shard=(
             _campaign_roster_shard(payload["roster_shard"]) if "roster_shard" in fields else None
         ),
+        retail_product_ads="product_ads" in fields,
     )
 
 

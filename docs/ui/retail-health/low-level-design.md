@@ -6,7 +6,7 @@
 
 | Route | Method/auth | Accepted body | Explicitly forbidden |
 |---|---|---|---|
-| `/api/presentation/retail-health` | `POST`, custom request authorizer | `{session_id}`, optionally `temporal_selection: TemporalSelection.v1` restricted to `omitted` or a declared preset, and `sort: {field, direction}` over the artifact-declared sortable columns. | owner, canonical product selectors, raw ASINs as filters, selection reference, caller comparator, raw `visible_window`, custom temporal selection ([ADR-070](../../decisions/adr-070-serve-declared-preset-windows-from-publish-time-artifacts.md)), undeclared sort fields, unknown fields. |
+| `/api/presentation/retail-health` | `POST`, custom request authorizer | `{session_id}`, optionally `temporal_selection: TemporalSelection.v1` restricted to `omitted` or a declared preset, `sort: {field, direction}` over the artifact-declared sortable columns, and `product_ads: true` (exactly `true`, never with `sort`, because the part keeps the baked row order; [Products and ads](../products-and-ads/README.md) sends it). | owner, canonical product selectors, raw ASINs as filters, selection reference, caller comparator, raw `visible_window`, custom temporal selection ([ADR-070](../../decisions/adr-070-serve-declared-preset-windows-from-publish-time-artifacts.md)), undeclared sort fields, unknown fields. |
 | `/api/presentation/retail-metric-focus` (added 2026-09-17, [shared metric-focus contract](../metric-focus-contract.md)) | `POST`, same authorizer | `{session_id, metric, temporal_selection}` where `metric` is one of the page's declared focusable metrics and the selection is restricted to `omitted` or a declared preset. The server derives the focus payload — definition line, facts, per-product contribution drivers, and the `retail-metric-focus` prompted slot — from the same baked artifact the page was served from; no live measurement. | any window or grain field beyond the preset selection, product selectors, custody references, unknown fields. |
 
 The page follows the shared [temporal-control contract](../temporal-control-contract.md):
@@ -85,6 +85,19 @@ encoder and browser decoder always land in one deploy.
 > doesn't list is the malformed-artifact refusal. The three new tiles change the compared-metric roster,
 > so Campaigns moves to render format 10 with the same body bytes. The request-time
 > `retail-product` path, its route and the `retail-detail` entries retire in this release.
+> **Amended 2026-10-27 (perf follow-up A2).** Render format 12 writes one `RetailProductAds` v1
+> part (`pages/retail-health/{variant}/{revision}/product-ads.json`, with a private custody that
+> binds its bytes) in the same closed child set as the product-detail children, so the stage
+> refuses a publication without it before any write. For each served row, in row order, it
+> carries the row's child ASIN, its conversion, and its ad channels (current purchases, current
+> revenue and the revenue's change) or the ad section's typed absence, each copied from that row's
+> child (`retail_product_ads`). A request with `product_ads: true` gets the same page plus
+> `page.product_ads`: the part, read through the parent custody's index and checked against the
+> body's window and rows; `null` when the body has no rows. A listed part whose bytes, window or
+> rows disagree is the malformed-artifact refusal. A format-11 publication has no part: such a
+> request is served as that preset's `window_unavailable`, the preset marked unavailable, until the
+> page's next bake. A request without the field is served exactly as before. The body bytes are
+> format 11's.
 
 | Section | Content | Rendering responsibility |
 |---|---|---|

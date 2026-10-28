@@ -344,6 +344,21 @@ every preset. Deploy it shortly before a Campaigns delivery lands, and check the
 A browser tab loaded before the deploy holds the format-13 decoder and refuses the new body until it
 reloads.
 
+**Updating to Retail health render format 12 (Products and ads part, 2026-10-27).** Each Retail
+health publication also writes one Products and ads part beside its product-detail children
+([Retail health LLD](retail-health/low-level-design.md)). Retail health and product detail read
+format-11 publications unchanged. Products and ads reads only the part: from the deploy until Retail
+health's next bake, each preset still on a format-11 pointer shows the Products and ads window
+absence (ABS-RH-1/2) with that preset marked unavailable, and raises no alarm. Its title reads
+"Retail health isn't published for this period" although Retail health still serves that period.
+The period control marks only the preset being served, so it can still offer another preset whose
+publication is format 11; choosing it shows the same absence
+([dev acceptance](../../validation/RESULTS.md#products-and-ads-part-retail-health-render-format-12-on-dev--2026-10-27)).
+The update changes only code, so the backfill above doesn't fire: the next Retail health
+publication bake writes every preset's part. Deploy it shortly before a Vendor Central delivery
+lands, and check Products and ads after that bake. A browser tab loaded before the deploy keeps requesting one detail per row, which
+the server still serves, until it reloads.
+
 ## Page isolation
 
 A bake limit or failure is one of two things ([ADR-142](../decisions/adr-142-isolate-a-bake-refusal-to-its-own-scope-and-alarm-on-defects.md);

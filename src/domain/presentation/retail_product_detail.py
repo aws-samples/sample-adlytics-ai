@@ -6,6 +6,10 @@ One child body per served Retail health row is baked with its parent, in the sam
 every product page shows the parent's window and its additive figures add up to the parent's
 tiles. The safe display signature, the typed reasons, the daily points and the boundary text
 moved here from the retired request-time Product Evidence module.
+
+From render format 12 the same bake also writes one ``RetailProductAds`` v1 part: each served
+row's ad credit and conversion, projected from that row's child, so Products and ads reads one
+object instead of one child per row.
 """
 
 from __future__ import annotations
@@ -63,10 +67,13 @@ from domain.presentation.retail_health import (
     retail_health_expected_totals,
     retail_point_from_payload,
     retail_point_payload,
+    retail_value_from_payload,
+    retail_value_payload,
 )
 from domain.shared_kernel.values import DateRange, Grain
 
 __all__ = [
+    "RETAIL_PRODUCT_ADS_KIND",
     "RETAIL_PRODUCT_AD_METRICS",
     "RETAIL_PRODUCT_BOUNDARIES",
     "RETAIL_PRODUCT_DETAIL_ARTIFACT_TYPE",
@@ -77,6 +84,9 @@ __all__ = [
     "RetailAdComparison",
     "RetailAdValue",
     "RetailDetailReason",
+    "RetailProductAdCell",
+    "RetailProductAdsArtifact",
+    "RetailProductAdsRow",
     "RetailProductDetailArtifact",
     "RetailProductDetailOutcome",
     "RetailProductIdentity",
@@ -85,6 +95,9 @@ __all__ = [
     "RetailSalesPoint",
     "RetailTrafficPoint",
     "SafeProductDisplaySignature",
+    "retail_product_ads",
+    "retail_product_ads_from_payload",
+    "retail_product_ads_payload",
     "retail_product_detail_from_payload",
     "retail_product_detail_payload",
 ]
@@ -724,3 +737,213 @@ def ad_values_by_channel(
         for channel, label in labels.items()
         if channel in rows
     )
+
+
+# Products and ads (render format 12) ------------------------------------------------------------
+
+RETAIL_PRODUCT_ADS_KIND = "retail_product_ads"
+_CONVERSION = "conversion_rate_retail"
+
+
+@dataclass(frozen=True, slots=True)
+class RetailProductAdCell:
+    """One channel's ad credit for one product, as Products and ads shows it.
+
+    The current purchases and revenue and the revenue's change, copied from the product's baked
+    detail. The prior figures stay in the detail: the tab renders none of them.
+    """
+
+    channel: str
+    label: str
+    purchases: RetailAdValue
+    revenue: RetailAdValue
+    revenue_change: Change
+
+    def __post_init__(self) -> None:
+        if not self.channel.strip() or not self.label.strip():
+            raise ValueError("a product ad cell names its channel.")
+        if (
+            self.purchases.units.kind is not UnitKind.COUNT
+            or self.revenue.units.kind is not UnitKind.CURRENCY
+            or self.purchases.period != self.revenue.period
+        ):
+            raise ValueError("a product ad cell carries purchases and revenue for one window.")
+
+
+@dataclass(frozen=True, slots=True)
+class RetailProductAdsRow:
+    """One served row's ad cells and conversion, or its ad section's typed absence."""
+
+    child_asin: str
+    conversion: RetailMetricValue | None
+    """The product's units per glance view, absent where its detail serves no such tile."""
+    cells: tuple[RetailProductAdCell, ...]
+    reason_code: RetailDetailReason | None = None
+    reason: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.child_asin.strip():
+            raise ValueError("a product ads row names its product.")
+        absent = self.reason_code is not None
+        if absent != (self.reason is not None) or (absent and self.cells):
+            raise ValueError("a product ads absence has a reason and no cells.")
+        if self.reason is not None and not self.reason.strip():
+            raise ValueError("a product ads absence reason is nonblank.")
+        if not absent and not self.cells:
+            raise ValueError("a product ads row with no absence credits at least one channel.")
+        channels = tuple(cell.channel for cell in self.cells)
+        if len(set(channels)) != len(channels):
+            raise ValueError("product ads channels are unique.")
+
+
+@dataclass(frozen=True, slots=True)
+class RetailProductAdsArtifact:
+    """Every served row's ad credit for the parent's exact window, in row order."""
+
+    period: DateRange
+    prior_period: DateRange
+    rows: tuple[RetailProductAdsRow, ...]
+
+    def __post_init__(self) -> None:
+        if self.prior_period != DateRange(
+            self.period.start - timedelta(days=self.period.days),
+            self.period.start - timedelta(days=1),
+        ):
+            raise ValueError("product ads compare the equal preceding window.")
+        if not self.rows:
+            raise ValueError("a product ads part serves at least one row.")
+        asins = tuple(row.child_asin for row in self.rows)
+        if len(set(asins)) != len(asins):
+            raise ValueError("product ads rows are unique per product.")
+        for row in self.rows:
+            if row.conversion is not None and (
+                row.conversion.period != self.period
+                or row.conversion.grain != RETAIL_HEALTH_ROW_GRAIN
+            ):
+                raise ValueError("product ads conversion is the product's for the window.")
+            if any(cell.revenue.period != self.period for cell in row.cells):
+                raise ValueError("product ads use the page's window.")
+
+
+def retail_product_ads(
+    details: tuple[RetailProductDetailArtifact, ...],
+) -> RetailProductAdsArtifact:
+    """Project each served row's baked detail onto what Products and ads shows, in row order.
+
+    Every figure is the detail's own: nothing is added, divided, ranked or re-derived here.
+    """
+    if not details:
+        raise ValueError("a product ads part projects at least one served row.")
+    first = details[0]
+    rows: list[RetailProductAdsRow] = []
+    for detail in details:
+        ads = detail.ad_attributed
+        if (
+            detail.outcome is not RetailProductDetailOutcome.SELECTED
+            or ads is None
+            or (detail.period, detail.prior_period) != (first.period, first.prior_period)
+        ):
+            raise ValueError("product ads project selected details of one window.")
+        conversion = next(
+            (total.current for total in detail.totals if total.metric == _CONVERSION), None
+        )
+        rows.append(
+            RetailProductAdsRow(
+                detail.product.child_asin,
+                conversion,
+                tuple(
+                    RetailProductAdCell(
+                        row.channel,
+                        row.label,
+                        row.purchases.current,
+                        row.revenue.current,
+                        row.revenue.change,
+                    )
+                    for row in ads.rows
+                ),
+                ads.reason_code,
+                ads.reason,
+            )
+        )
+    return RetailProductAdsArtifact(first.period, first.prior_period, tuple(rows))
+
+
+def retail_product_ads_payload(artifact: RetailProductAdsArtifact) -> dict[str, object]:
+    """Encode the Products and ads part; it names products only by their served child ASIN."""
+    return {
+        "kind": RETAIL_PRODUCT_ADS_KIND,
+        "period": _period_payload(artifact.period),
+        "prior_period": _period_payload(artifact.prior_period),
+        "basis": RETAIL_PRODUCT_AD_BASIS,
+        "rows": [
+            {
+                "child_asin": row.child_asin,
+                "conversion": None
+                if row.conversion is None
+                else retail_value_payload(row.conversion),
+                "channels": [
+                    {
+                        "channel": cell.channel,
+                        "label": cell.label,
+                        "purchases": _ad_value_payload(cell.purchases),
+                        "revenue": _ad_value_payload(cell.revenue),
+                        "revenue_change": change_payload(cell.revenue_change),
+                    }
+                    for cell in row.cells
+                ],
+                "reason_code": None if row.reason_code is None else row.reason_code.value,
+                "reason": row.reason,
+            }
+            for row in artifact.rows
+        ],
+    }
+
+
+def _ads_cell(value: object) -> RetailProductAdCell:
+    item = _object(
+        value,
+        frozenset({"channel", "label", "purchases", "revenue", "revenue_change"}),
+        "product ad cell",
+    )
+    return RetailProductAdCell(
+        _text(item["channel"], "product ad channel"),
+        _text(item["label"], "product ad channel label"),
+        _ad_value(item["purchases"], "product ad purchases"),
+        _ad_value(item["revenue"], "product ad revenue"),
+        # Copied from the detail's own comparison at bake, so decoded structurally: the prior
+        # side it was built from stays in the detail.
+        _stat_change(item["revenue_change"]),
+    )
+
+
+def _ads_row(value: object) -> RetailProductAdsRow:
+    item = _object(
+        value,
+        frozenset({"child_asin", "conversion", "channels", "reason_code", "reason"}),
+        "product ads row",
+    )
+    conversion, code, reason = item["conversion"], item["reason_code"], item["reason"]
+    return RetailProductAdsRow(
+        _text(item["child_asin"], "product ads child ASIN"),
+        None if conversion is None else retail_value_from_payload(conversion, "product conversion"),
+        tuple(_ads_cell(raw) for raw in _list(item["channels"], "product ad cells")),
+        None if code is None else RetailDetailReason(_text(code, "product ads reason code")),
+        None if reason is None else _text(reason, "product ads reason"),
+    )
+
+
+def retail_product_ads_from_payload(value: object) -> RetailProductAdsArtifact:
+    """Strictly decode the Products and ads part and re-attest that it re-encodes exactly."""
+    item = _object(
+        value, frozenset({"kind", "period", "prior_period", "basis", "rows"}), "product ads"
+    )
+    if item["kind"] != RETAIL_PRODUCT_ADS_KIND or item["basis"] != RETAIL_PRODUCT_AD_BASIS:
+        raise ValueError("product ads kind or basis is not the server's.")
+    artifact = RetailProductAdsArtifact(
+        _period(item["period"], "product ads period"),
+        _period(item["prior_period"], "product ads prior period"),
+        tuple(_ads_row(raw) for raw in _list(item["rows"], "product ads rows")),
+    )
+    if retail_product_ads_payload(artifact) != value:
+        raise ValueError("product ads are not canonical.")
+    return artifact

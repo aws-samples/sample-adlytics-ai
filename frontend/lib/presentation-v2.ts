@@ -49,7 +49,7 @@ import { parseNewCustomersArtifact, type NewCustomersArtifact } from './new-cust
 import { parseReachAndFunnelArtifact, type ReachAndFunnelArtifact } from './reach';
 import { parseAudienceProfileArtifact, parseAudiencesPart, type AudienceProfileArtifact, type AudiencesPart, type AudiencesPartRequest } from './audiences';
 import { parseRetentionCohortArtifact, type RetentionCohortArtifact } from './retention';
-import { parseRetailProductDetail, type RetailProductDetailArtifact } from './retail-health-product';
+import { parseRetailProductAds, parseRetailProductDetail, type RetailProductAdsArtifact, type RetailProductDetailArtifact } from './retail-health-product';
 import {
   PresentationRequestError,
   PresentationResponseError,
@@ -194,6 +194,8 @@ export interface PresentationPageV2 {
   readonly route: CanonicalRoute;
   /** Campaigns' served `open_page` step to the Scorecard (ADR-127), or null; absent elsewhere. */
   readonly scorecard_step?: InsightNextStep | null;
+  /** Retail health's Products and ads part, only when Products and ads asks for it; undecoded here. */
+  readonly product_ads?: unknown;
 }
 
 /** The served generation's build time (S6 §2.9): exactly one RFC 3339 whole-second instant. */
@@ -513,7 +515,7 @@ function parsePage(value: unknown, route: RouteName): PresentationPageV2 {
   const item = optionalRecord(
     value,
     ['actions', 'artifact', 'artifact_id', 'artifact_revision', 'artifact_type', 'artifact_version', 'kind', 'page_id', 'route', ...PAGE_CONTEXT_KEYS],
-    ['generation', 'parent_revision', 'scorecard_step'],
+    ['generation', 'parent_revision', 'product_ads', 'scorecard_step'],
   );
   const binding = bindingByRoute[route];
   const page_id = enumValue(item.page_id, [binding.page_id] as const);
@@ -538,6 +540,7 @@ function parsePage(value: unknown, route: RouteName): PresentationPageV2 {
   if (parent_revision !== undefined && !REF.test(parent_revision)) return fail();
   const generation = item.generation === undefined ? undefined : parseGeneration(item.generation);
   if ('scorecard_step' in item && route !== 'campaigns') return fail();
+  if ('product_ads' in item && route !== 'retail-health') return fail();
   let scorecard_step: InsightNextStep | null | undefined;
   try {
     scorecard_step = item.scorecard_step === undefined || item.scorecard_step === null
@@ -562,6 +565,7 @@ function parsePage(value: unknown, route: RouteName): PresentationPageV2 {
     page_context: pageContext(item),
     page_id,
     ...(parent_revision === undefined ? {} : { parent_revision }),
+    ...('product_ads' in item ? { product_ads: item.product_ads } : {}),
     route: pageRoute,
     ...(scorecard_step === undefined ? {} : { scorecard_step }),
   };
@@ -1133,7 +1137,7 @@ export function retailHealthPresentationV2(result: PresentationResultV2): Retail
   if (
     page.page_id !== 'retail-health' || page.route !== '/retail-health/' || page.actions.length !== 0 ||
     page.parent_revision !== undefined || page.kind !== 'retail_health' || page.artifact_id !== 'retail_health' ||
-    page.artifact_type !== 'RetailHealthArtifact' || page.artifact_version !== 2
+    page.artifact_type !== 'RetailHealthArtifact' || page.artifact_version !== 2 || 'product_ads' in page
   ) return fail();
   let artifact: RetailHealthArtifact;
   try { artifact = parseRetailHealthArtifact(page.artifact); } catch { return fail(); }
@@ -1168,6 +1172,38 @@ export function retailProductPresentationV2(result: PresentationResultV2): Retai
     parent_revision: page.parent_revision,
     temporal,
   };
+}
+
+/** Retail health's served page with its Products and ads part (render format 12), for that tab. */
+export type ProductsAndAdsPresentation =
+  | (Extract<RetailHealthPresentation, { readonly kind: 'parent' }> & { readonly product_ads: RetailProductAdsArtifact | null })
+  | Extract<RetailHealthPresentation, { readonly kind: 'window_unavailable' }>;
+
+/** Decode the page and its part; a body with no rows serves no part, every other body one. */
+export function productsAndAdsPresentationV2(result: PresentationResultV2): ProductsAndAdsPresentation {
+  if (result.kind === 'window_unavailable') return { kind: 'window_unavailable', temporal: result.temporal };
+  const { product_ads: raw, ...page } = result.page;
+  if (raw === undefined) return fail();
+  const parent = retailHealthPresentationV2({ ...result, page });
+  if (parent.kind !== 'parent') return fail();
+  if (raw === null) return parent.artifact.rows.length === 0 ? { ...parent, product_ads: null } : fail();
+  let product_ads: RetailProductAdsArtifact;
+  try { product_ads = parseRetailProductAds(raw, parent.artifact); } catch { return fail(); }
+  return { ...parent, product_ads };
+}
+
+/** Products and ads: one request for Retail health's page and the part every row reads. */
+export async function fetchProductsAndAdsPresentationV2(
+  session: string,
+  selection?: TemporalSelectionV1,
+  signal?: AbortSignal,
+): Promise<ProductsAndAdsPresentation> {
+  if (selection?.kind === 'custom') return fail();
+  const body = { ...(requestBody(session, selection) as Record<string, JsonValue>), product_ads: true };
+  const response = await callApi(RETAIL_HEALTH_PATH, 'POST', body, signal, { accept: PRESENTATION_V2_MEDIA_TYPE });
+  const result = parsePresentationResultV2(await responseJson(response), 'retail-health');
+  if (result.session_id !== session) return fail();
+  return productsAndAdsPresentationV2(result);
 }
 
 export async function fetchRetailHealthPresentationV2(

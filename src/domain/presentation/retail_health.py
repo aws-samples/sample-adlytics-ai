@@ -1026,5 +1026,7 @@ def _row(value: object) -> RetailProductRow:
 # Shared with the product detail child (ADR-125 decision 4): one value and comparison codec.
 retail_comparison_payload = _comparison_payload
 retail_comparison_from_payload = _comparison
+retail_value_payload = _value_payload
+retail_value_from_payload = _comparison_value
 retail_point_payload = _point_payload
 retail_point_from_payload = _point_value

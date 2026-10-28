@@ -116,7 +116,8 @@ function nullableText(value: unknown): string | null {
   return value === null ? null : text(value);
 }
 
-function adValue(value: unknown, period: DateWindow): RetailAdValue {
+/** Decode one ad-attributed value served for `period`; shared with the Products and ads part. */
+export function adValue(value: unknown, period: DateWindow): RetailAdValue {
   const item = record(value, ['basis', 'display_value', 'period', 'units', 'value']);
   if (item.basis !== 'ad_attributed') return fail();
   const units = record(item.units, ['kind', 'currency_code']);
@@ -246,4 +247,65 @@ export function parseRetailProductDetail(raw: unknown): RetailProductDetailArtif
     totals,
     traffic_daily: daily(item.traffic_daily, period, prior_period),
   };
+}
+
+/** One channel's ad credit for one product, as Products and ads shows it (render format 12). */
+export interface RetailProductAdCell {
+  readonly channel: string;
+  readonly label: string;
+  readonly purchases: RetailAdValue;
+  readonly revenue: RetailAdValue;
+  readonly revenue_change: Change;
+}
+
+/** One served row's ad cells and conversion, or its ad section's served absence. */
+export interface RetailProductAdsRow {
+  readonly child_asin: string;
+  /** Units per glance view from the product's detail; null where it serves no such tile. */
+  readonly conversion: RetailComparison['current'] | null;
+  readonly channels: readonly RetailProductAdCell[];
+  readonly reason_code: string | null;
+  readonly reason: string | null;
+}
+
+/** `RetailProductAds` v1: every served row's ad credit, baked with the parent's revision. */
+export interface RetailProductAdsArtifact {
+  readonly kind: 'retail_product_ads';
+  readonly period: DateWindow;
+  readonly prior_period: DateWindow;
+  readonly basis: string;
+  readonly rows: readonly RetailProductAdsRow[];
+}
+
+/**
+ * Strictly decode the Products and ads part served beside `parent`: its window is the parent's
+ * and its rows are the parent's rows in their baked order, by child ASIN. Nothing is totalled.
+ */
+export function parseRetailProductAds(raw: unknown, parent: { readonly period: DateWindow; readonly prior_period: DateWindow; readonly rows: readonly { readonly child_asin: string }[] }): RetailProductAdsArtifact {
+  const item = record(raw, ['kind', 'period', 'prior_period', 'basis', 'rows']);
+  if (item.kind !== 'retail_product_ads') return fail();
+  const period = RETAIL_COMPARISON_DECODER.window(item.period);
+  const prior_period = RETAIL_COMPARISON_DECODER.window(item.prior_period);
+  if (!RETAIL_COMPARISON_DECODER.sameWindow(period, parent.period) || !RETAIL_COMPARISON_DECODER.sameWindow(prior_period, parent.prior_period)) return fail();
+  const rows = array(item.rows).map((entry): RetailProductAdsRow => {
+    const row = record(entry, ['child_asin', 'conversion', 'channels', 'reason_code', 'reason']);
+    const conversion = row.conversion === null ? null : RETAIL_COMPARISON_DECODER.comparisonValue(row.conversion, false);
+    if (conversion !== null && (conversion.units.kind !== 'ratio' || !RETAIL_COMPARISON_DECODER.sameWindow(conversion.period, period))) return fail();
+    const channels = array(row.channels).map((cell) => {
+      const value = record(cell, ['channel', 'label', 'purchases', 'revenue', 'revenue_change']);
+      const change = parseChange(value.revenue_change);
+      if (change === undefined || change === null) return fail();
+      const purchases = adValue(value.purchases, period);
+      const revenue = adValue(value.revenue, period);
+      if (purchases.units.kind !== 'count' || revenue.units.kind !== 'currency') return fail();
+      return { channel: text(value.channel), label: text(value.label), purchases, revenue, revenue_change: change };
+    });
+    const reason_code = nullableText(row.reason_code);
+    const reason = nullableText(row.reason);
+    if ((reason_code === null) !== (reason === null) || (reason !== null && channels.length > 0) || (reason === null && channels.length === 0)) return fail();
+    if (new Set(channels.map((cell) => cell.channel)).size !== channels.length) return fail();
+    return { channels, child_asin: text(row.child_asin), conversion, reason, reason_code };
+  });
+  if (rows.map((row) => row.child_asin).join('\u0000') !== parent.rows.map((row) => row.child_asin).join('\u0000')) return fail();
+  return { basis: text(item.basis), kind: 'retail_product_ads', period, prior_period, rows };
 }

@@ -280,8 +280,9 @@ def campaign_bake_object_count(filter_populations: tuple[int, ...]) -> int:
     )
 
 
-RETAIL_HEALTH_BAKE_BODY_COUNT = _with_index(2 + 2 * RETAIL_HEALTH_MAX_ROWS)
-"""The parent pair, one child pair per served row, and the index shard binding the children."""
+RETAIL_HEALTH_BAKE_BODY_COUNT = _with_index(2 + 2 * RETAIL_HEALTH_MAX_ROWS + 2)
+"""The parent pair, one child pair per served row, the Products and ads pair (render format
+12), and the index shard binding them."""
 
 # --- ADR-143, ADR-152: the memory model (the gate counts everything a row holds) -------------
 # Its constants live in `domain.operations.bake_memory`, where `BAKE_MAX_ROWS` is derived.
@@ -864,7 +865,8 @@ def main() -> int:
             MAX_PRESET_ARTIFACT_BYTES,
             write_term_object_count("campaigns") * MAX_PRESET_ARTIFACT_BYTES,
         ),
-        # The parent body and custody, one child body and custody per displayed row, the index.
+        # The parent body and custody, one child body and custody per displayed row, the
+        # Products and ads part and its custody, the index.
         "retail-health": BakeStorageEstimate(
             RETAIL_HEALTH_BAKE_BODY_COUNT,
             MAX_PRESET_ARTIFACT_BYTES,
