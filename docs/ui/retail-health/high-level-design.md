@@ -15,7 +15,7 @@ this document records only what is specific to this page.
 
 | Operation | Route | Browser intent | Server responsibility |
 |---|---|---|---|
-| Retail health | `POST /api/presentation/retail-health` | Session, optional preset `TemporalSelection.v1`, optional declared sort. | Resolve the shared control (preset-only), serve the revision-current baked artifact for the resolved variant, order product rows, respond. No capabilities are minted: the page has no child redemption. |
+| Retail health | `POST /api/presentation/retail-health` | Session, optional preset `TemporalSelection.v1`, optional declared sort, or `product_ads: true` for [Products and ads](../products-and-ads/README.md) (exact contract in the [LLD](low-level-design.md)). | Resolve the shared control (preset-only), serve the revision-current baked artifact for the resolved variant, order product rows, respond. No capabilities are minted: the page has no child redemption. |
 
 ### Composition (top to bottom, per the mockup)
 
