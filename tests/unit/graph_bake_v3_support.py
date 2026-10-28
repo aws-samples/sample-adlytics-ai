@@ -14,6 +14,7 @@ from __future__ import annotations
 
 # The publication fixture spec is a shared test seam.
 # pyright: reportPrivateUsage=false
+import copy
 import random
 import threading
 from collections.abc import Callable
@@ -91,6 +92,20 @@ from ports.outbound.semantic_state import ScopeHorizon
 POINTER_TABLE = "fictional-pointers"
 
 
+@dataclass(frozen=True, slots=True)
+class SeedHistoryRequest:
+    """An older writer's superseded history for a task's candidate, with pinned perturbations."""
+
+    candidate: dict[str, Any]
+    """A task's stored CURRENT-envelope pointer candidate item."""
+    body_digest: str | None = None
+    """A 64-hex literal replacing the candidate's body digest (other bytes), when given."""
+    drop_custody: bool = False
+    """Remove `custody_digest` (an unattested record)."""
+    grant: str = "a" * 64
+    """The older writer's grant."""
+
+
 class PointerKeys(FakeDynamo):
     """A transactional fake that also holds the preset pointer table's keys.
 
@@ -127,6 +142,31 @@ class PointerKeys(FakeDynamo):
         request = _publication(BakeIntent(page, variant), identity, None)
         items = pointer_transaction_items(POINTER_TABLE, staged_advance(request))
         self.transact_write_items(TransactItems=list(items))
+
+    def seed_history(self, seed: SeedHistoryRequest) -> str:
+        """Store an earlier write's history record of the candidate's revision; return it.
+
+        BSORT-DEV-1's shape: a build re-derived a revision the pointer history already holds,
+        written by another grant at another token and retained with an expiry. Every value is
+        fictional.
+        """
+        revision = str(seed.candidate["revision"]["S"])
+        record = copy.deepcopy(seed.candidate)
+        record["record_key"] = {"S": f"REVISION#{revision}"}
+        record["forward_token"] = {"N": "1"}
+        record.pop("supersedes", None)
+        record["grant_id"] = {"S": seed.grant}
+        record["serving_generation"] = {"S": "b" * 64}
+        record["written_at"] = {"S": "2026-01-01T00:00:00Z"}
+        record["expires_at"] = {"N": "1800000000"}
+        if seed.body_digest is not None:
+            record["body_digest"] = {"S": seed.body_digest}
+        if seed.drop_custody:
+            record.pop("custody_digest", None)
+        self.items[(f"PTR|{seed.candidate['page_variant_key']['S']}", f"REVISION#{revision}")] = (
+            record
+        )
+        return revision
 
 
 class BakeTables(PointerKeys):
@@ -520,6 +560,7 @@ __all__ = [
     "LakeCurrent",
     "LakeSources",
     "PointerKeys",
+    "SeedHistoryRequest",
     "Stage",
     "current_identity",
     "final_transaction",

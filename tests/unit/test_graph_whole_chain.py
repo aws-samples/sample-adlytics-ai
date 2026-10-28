@@ -56,7 +56,7 @@ from execution_graph_dispatch_support import (
     write_text,
 )
 from execution_graph_release_support import WINDOW, context, release_store
-from graph_bake_v3_support import Bake, PointerKeys, current_identity
+from graph_bake_v3_support import Bake, PointerKeys, SeedHistoryRequest, current_identity
 from graph_consumer_support import (
     CAMPAIGNS_7D,
     CAMPAIGNS_30D,
@@ -1727,4 +1727,54 @@ def test_h5c_an_armed_precompute_and_an_abandoning_finalizer_bind_once_and_compl
     assert _binding(chain, run) == binding
     assert _head(chain)["state"]["S"] != "ACTIVE"
     assert _pointer_items(chain) == before
+    assert 1 in signals and 0 not in signals
+
+
+@pytest.mark.covers("ADR-140")
+def test_bsort_dev_1_the_release_completes_an_abandoned_finalize_and_releases_the_domain(
+    make_chain: Callable[..., Chain],
+) -> None:
+    """BSORT-DEV-1: the finalize dead-lettered and its run held the serving domain.
+
+    A finalize refused on a revision the history already holds blocked every later cohort.
+    """
+    chain = make_chain()
+    signals: list[int] = []
+    run, before = _armed_unbound(chain, "bs", signals)
+    precomputed = _precompute_over(chain, run, release_store(chain.tables))
+    assert (precomputed.acknowledge, precomputed.node_state) == (True, NodeState.SUCCEEDED)
+    assert _binding(chain, run) is None  # no bake member yet, so precompute bound nothing
+    _effect, extra = read_task_effect(chain.node(run, task_node_name("campaigns#7d")))
+    candidate = cast("dict[str, Any]", extra["pointer"])["item"]
+    assert "custody_digest" in candidate
+    chain.tables.seed_history(SeedHistoryRequest(cast("dict[str, Any]", candidate)))
+
+    retried = chain.finalize(run, 2)
+    assert (retried.acknowledge, retried.outcome, retried.node_state) == (
+        False,
+        "graph_bake_finalize_conflict",
+        NodeState.CLAIMED,
+    )
+    expire_claim(chain.tables, chain.node(run, "bake_finalize"))
+    since = len(chain.tables.transactions)
+
+    abandoned = chain.finalize(run, BAKE_FINAL_RECEIVE)
+
+    assert (abandoned.acknowledge, abandoned.outcome, abandoned.node_state) == (
+        True,
+        "graph_bake_finalize_abandoned",
+        NodeState.FAILED,
+    )
+    binding = _binding(chain, run)
+    assert binding is not None and binding.stale
+    assert serving_withheld(binding) and not binding_authorizes_serving(binding)
+    assert chain.tables.pointer_writes(since) == []
+
+    counts = _release_pass(chain, signals)
+
+    assert (counts.unarmed_settled, counts.completed, counts.failed) == (0, 1, 0)
+    assert chain.run_item(run)["state"]["S"] == "SUCCEEDED"
+    assert not any(sk == f"COMPLETE#{run}" for _pk, sk in chain.tables.items)
+    assert _head(chain)["state"]["S"] != "ACTIVE"  # the serving domain is released
+    assert _pointer_items(chain) == before  # every page stays on last-good
     assert 1 in signals and 0 not in signals

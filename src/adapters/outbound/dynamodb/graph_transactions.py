@@ -6,7 +6,10 @@ transaction only for condition failures, the first failed member's signal is rai
 `GraphGuardError`, so a race surfaces as its exact typed guard rather than a generic
 "state changed" (S1A-10). A member may also ask for the item's old image on failure and
 resolve the signal from it: a `RUN#` update that failed because the run carries a `grant_id`
-is `RUN_GRANT_PENDING_APPLY`, not a stale revision. A `TransactionConflict` (a concurrent
+is `RUN_GRANT_PENDING_APPLY`, not a stale revision. Two hooks refine a condition cancellation:
+a member's `resolve` refines its one signal, and a `TransactRequest`'s `refine` classifies the
+whole failed set (every failed member with its request item and old image), which `_guard`
+cannot, since it stops at the first failed member. A `TransactionConflict` (a concurrent
 transaction on one of the items) is raised as `GraphTransactionConflictError`, which the claim
 path retries within its bound and counts (R2-7). Anything else is `GraphStoreUnavailableError`.
 """
@@ -30,8 +33,10 @@ if TYPE_CHECKING:
     from types_boto3_dynamodb.type_defs import AttributeValueTypeDef, TransactWriteItemTypeDef
 
 __all__ = [
+    "FailedMember",
     "Member",
     "MemberSpec",
+    "TransactRequest",
     "check",
     "delete",
     "put",
@@ -76,6 +81,31 @@ class MemberSpec:
     condition: str | None = None
     values: Values | None = None
     resolve: Callable[[Item | None], str] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class FailedMember:
+    """One member whose condition failed in a cancelled transaction."""
+
+    index: int
+    item: TransactWriteItemTypeDef
+    """`members[index].item`, exactly as sent."""
+    old: Item | None
+    """The item's old image (`CancellationReason.Item`), when the member asked for it."""
+
+
+@dataclass(frozen=True, slots=True)
+class TransactRequest:
+    """One atomic graph transaction: its members, their bound, and an opt-in refinement."""
+
+    members: list[Member]
+    bound: int
+    refine: Callable[[tuple[FailedMember, ...]], GraphGuardError | None] | None = None
+    """Classify the whole failed set of an all-condition cancellation; None keeps `_guard`."""
+
+    def __post_init__(self) -> None:
+        if not self.members or len(self.members) > self.bound:
+            raise GraphStoreUnavailableError("a graph transaction is empty or exceeds its bound.")
 
 
 def _body(spec: MemberSpec, text: str | None) -> dict[str, Any]:
@@ -137,10 +167,31 @@ def _guard(members: list[Member], reasons: list[dict[str, Any]]) -> GraphGuardEr
     return GraphGuardError(members[0].signal)
 
 
-def transact(client: DynamoDBClient, members: list[Member], bound: int) -> None:
+def _refused(request: TransactRequest, reasons: list[dict[str, Any]]) -> GraphGuardError:
+    """Return an all-condition cancellation's guard: the request's refinement when it has one.
+
+    The refinement sees every failed member only when DynamoDB returned one reason per member;
+    otherwise, or when it returns None, the first failed member's signal is raised as before.
+    """
+    if request.refine is not None and len(reasons) == len(request.members):
+        failed = tuple(
+            FailedMember(
+                index,
+                request.members[index].item,
+                None if reason.get("Item") is None else dict(reason["Item"]),
+            )
+            for index, reason in enumerate(reasons)
+            if str(reason.get("Code", "None")) == _CONDITION
+        )
+        refined = request.refine(failed)
+        if refined is not None:
+            return refined
+    return _guard(request.members, reasons)
+
+
+def transact(client: DynamoDBClient, request: TransactRequest) -> None:
     """Commit the members atomically, or raise the typed guard, conflict or failure."""
-    if not members or len(members) > bound:
-        raise GraphStoreUnavailableError("a graph transaction is empty or exceeds its bound.")
+    members = request.members
     try:
         client.transact_write_items(TransactItems=[member.item for member in members])
     except ClientError as error:
@@ -151,7 +202,7 @@ def transact(client: DynamoDBClient, members: list[Member], bound: int) -> None:
             if _CONFLICT in codes:
                 raise GraphTransactionConflictError(_CONFLICT) from None
             if codes == {_CONDITION}:
-                raise _guard(members, reasons) from None
+                raise _refused(request, reasons) from None
         raise GraphStoreUnavailableError(
             f"a graph transaction failed: {response.get('Error', {}).get('Code')}"
         ) from None

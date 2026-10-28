@@ -117,6 +117,19 @@ uv run python -m adapters.jobs.execution_graph.operator <COMMON INPUTS> --store-
   progress with `dlq-status`.
 - Inspect a dead letter before you redrive it. A message that fails for a lasting reason fails
   again and returns to the dead-letter queue after the route's receive bound.
+- A finalize that dead-lettered because of an existing pointer revision, on a Baker build from
+  before 2026-10-28, shows `graph_bake_finalize_conflict` on every receive and the
+  finalizer-blocked alarm in `ALARM`. Release it by deploying the fix and running
+  `redrive --queue bake --expected-count <N>`. The Baker then logs `finalize
+  pointer_revision_exists`, with `disposition` `retry` on any non-final receive and `abandon` on
+  the final one, then `finalize abandoned` (`cause` `pointer_revision_exists`). A missing `retry`
+  line is not a failure. `GraphServingWithheld` goes to `ALARM`. The Release completes the run, so
+  `GraphBakeFinalizerBlocked` returns to `OK`, the DLQ reads 0, and later cohorts bake. Pages stay
+  on last-good; see [Serving alarms](#serving-alarms-graphservingwithheld-and-presentationservingrefused)
+  for the cause. `BakeDeadLettered` returns to `OK` once the DLQ is empty. Don't re-bake for this
+  cause, whatever that alarm's description says. If the Baker logs `finalize abandon_refused`
+  instead, the cohort holds an authorizing binding (ADR-140 Consequences): stop and explain the
+  run before any further redrive.
 
 ## Probe-input producer: `land_fixtures`
 
@@ -343,6 +356,14 @@ exhaustion or a POST_GRANT invariant), so its pages kept their previous, last-go
   means the store read succeeded but held no binding for the succeeded, granted finalizer; the
   final transaction writes both together, so treat it as a store defect and explain the run
   before any redrive.
+- If the run's `finalize abandoned` line has `cause` `pointer_revision_exists`, the deployed build
+  renders a revision the pointer history already holds (an older render format deployed over newer
+  state). Its `finalize pointer_revision_exists` line names the pages. `GraphBakeFinalizerBlocked`
+  may enter `ALARM` until the final receive abandons, and returns to `OK` when the Release
+  completes the run; don't intervene for that. Re-baking repeats the refusal while the page's
+  publications are unchanged. Roll forward to a build that renders the current format. The pages
+  stay on last-good until then. The run's `serving_outcome` reads `complete`; the binding's `stale`
+  flag is the serving truth ([ADR-140 amendment](../../decisions/adr-140-a-bake-that-skips-the-finalizer-settles-its-cohort.md#amendment-2026-10-28)).
 
 **`adlytics-<ENV>-presentation-serving-refused`.** A page refused a grant-bearing generation more
 than the settle bound (270 s) after its bind. The finalizer moves `CURRENT` only under a binding

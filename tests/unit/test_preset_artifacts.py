@@ -154,6 +154,14 @@ def test_forward_pointer_transaction_conditions_exact_predecessor_and_retires_hi
     items = pointer_transaction_items("preset-artifact-table", request)
 
     assert [next(iter(item)) for item in items] == ["Put", "Put", "Update"]
+    # ADR-140 amendment 2026-10-28: only the history put returns its old image on failure.
+    history_write = cast("dict[str, object]", items[0].get("Put"))
+    assert history_write.get("ReturnValuesOnConditionCheckFailure") == "ALL_OLD"
+    assert all(
+        "ReturnValuesOnConditionCheckFailure" not in cast("dict[str, object]", body)
+        for item in items[1:]
+        for body in item.values()
+    )
     current_write = cast("dict[str, object]", items[1].get("Put"))
     assert current_write.get("ConditionExpression") == (
         "revision = :supersedes AND forward_token < :token"
