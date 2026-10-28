@@ -71,6 +71,7 @@ from domain.presentation.campaign_portfolio import (
     campaign_portfolio_artifact_payload,
     campaign_portfolio_segment,
     campaign_portfolio_segment_payload,
+    campaign_portfolio_segments,
     campaign_roster_shard_count,
     campaign_roster_shard_identity,
     campaign_roster_shard_payload,
@@ -264,16 +265,15 @@ class _CampaignSiblingPairs:
         for sort_field in CampaignPortfolioSortField:
             for direction in ("asc", "desc"):
                 sort = CampaignPortfolioSort(sort_field, direction)
-                for segment_index in range(population.pagination.segment_count):
+                for segment_index, artifact in enumerate(
+                    campaign_portfolio_segments(population, sort)
+                ):
                     if (
                         sort_field is CampaignPortfolioSortField.SPEND
                         and direction == "desc"
                         and segment_index == 0
                     ):
                         continue
-                    artifact = campaign_portfolio_segment(population, sort, segment_index)
-                    if artifact is None:
-                        raise ValueError("declared campaign segment is unavailable.")
                     rows = _custody_rows(artifact, self.by_signature)
                     if rows is None:
                         raise ValueError("campaign segment custody is unavailable.")

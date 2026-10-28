@@ -7,7 +7,7 @@ from __future__ import annotations
 import heapq
 import re
 from collections import Counter
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
@@ -777,13 +777,47 @@ def campaign_portfolio_segment(
     if not 0 <= segment_index < pagination.segment_count:
         return None
     ordered = order_campaign_portfolio_rows(artifact.rows, sort)
-    start = segment_index * pagination.segment_size
+    return _ordered_segment(artifact, sort, ordered, pagination=pagination, index=segment_index)
+
+
+def campaign_portfolio_segments(
+    artifact: CampaignPortfolioArtifact,
+    sort: CampaignPortfolioSort,
+) -> Iterator[CampaignPortfolioArtifact]:
+    """Yield every segment of one baked ordering in index order, ordering the population once.
+
+    Each segment is the one `campaign_portfolio_segment` selects at its index; the bake draws
+    them lazily (ADR-145), so one ordering's sorted population is held at a time.
+    """
+    if artifact.outcome is not CampaignPortfolioOutcome.COMPLETE:
+        yield replace(artifact, sort=sort)
+        return
+    pagination = artifact.pagination
+    if pagination is None:
+        raise ValueError("a complete campaign portfolio requires its pagination record.")
+    if len(artifact.rows) != artifact.total_count:
+        raise ValueError("campaign portfolio segments require the complete retained population.")
+    ordered = order_campaign_portfolio_rows(artifact.rows, sort)
+    for segment_index in range(pagination.segment_count):
+        yield _ordered_segment(artifact, sort, ordered, pagination=pagination, index=segment_index)
+
+
+def _ordered_segment(
+    artifact: CampaignPortfolioArtifact,
+    sort: CampaignPortfolioSort,
+    ordered: tuple[CampaignPortfolioRow, ...],
+    *,
+    pagination: CampaignPortfolioPagination,
+    index: int,
+) -> CampaignPortfolioArtifact:
+    """Slice one in-range segment out of the population already ordered by `sort`."""
+    start = index * pagination.segment_size
     return replace(
         artifact,
         sort=sort,
         rows=ordered[start : start + pagination.segment_size],
         pagination=CampaignPortfolioPagination(
-            segment_index,
+            index,
             pagination.segment_size,
             pagination.segment_count,
             pagination.total_count,
