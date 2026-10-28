@@ -135,6 +135,10 @@ DEEP_INPUT_REVISIONS: Final[tuple[tuple[str, str], ...]] = (
     # part beside the product-detail children, and the parent serves it on request. Named past
     # stream C's unmerged 2026-10-27.1 to .7.
     ("2026-10-27.8", "7e9baa89570ad38f291021a7ef0fbc9d7e78fae200a405e9ca4e97c1ce2fab6e"),
+    # feat/perf-products-ads-summary rebased onto public main ef80b3df: A2's 2026-10-27.8 over
+    # perf hygiene F4's 2026-10-27.7. Named .28.2 because 2026-10-27.1 to .9 and 2026-10-28.1
+    # name closures on other branches and dev integration trees.
+    ("2026-10-28.2", "69f23a462faf86586a669466d5a5cea370a06f47fe5dc6de209e1fbe4f07b1ee"),
 )
 DEEP_INPUT_REVISION: Final[str] = DEEP_INPUT_REVISIONS[-1][0]
 """The revision every deep cache key carries (``#DEEPINPUT#<revision>``)."""

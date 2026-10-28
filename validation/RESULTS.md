@@ -21,6 +21,7 @@ row's ad figures value for value between formats (the format-11 state ended with
 tests prove the part copies each row's product detail). The 754 ms the performance review projected as the
 format-12 time was the format-11 parent's end; the measured 824 ms includes the part's reads. The
 [Products and ads design doc](../docs/ui/products-and-ads/README.md#2-sources) carries the figures.
+
 ## Contract parsing, prompt-registry paging and API compression on dev — 2026-10-27
 Times are UTC. Synthetic data only. This change (`feat/perf-hygiene`), merged with public main and one
 unrelated MCP-tooling branch, was deployed to dev with one locked `deploy-all` after an identity check
