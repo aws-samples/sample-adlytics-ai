@@ -1329,9 +1329,9 @@ for a new maintainer or environment.
 
 **One. Mint and store a refresh token.** A human must approve a consent screen while signed in as
 an authorized user. The script resolves the explicit AWS profile first, displays the caller
-identity and destination secret, and requires the operator to type `create`. It refuses an existing
-secret, then sends the token and prompted client secret directly to Secrets Manager without printing
-or writing either credential locally.
+identity, and requires the operator to type the destination secret name, which it does not echo.
+It refuses an existing secret, then sends the token and prompted client secret directly to Secrets
+Manager without printing or writing either credential locally.
 
 ```
 uv run python -m validation.mint_token \

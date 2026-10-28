@@ -8,6 +8,7 @@ import ssl
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -61,6 +62,24 @@ def test_a_refusal_is_either_the_absent_identity_or_the_authorizer_denial(
         "observed",
         "passed",
     }
+
+
+def test_a_fact_whose_verdict_is_not_the_literal_true_is_recorded_as_failed_and_never_printed() -> (
+    None
+):
+    """O-CODEQL-006: a truthy non-bool verdict once both reached the report and passed."""
+    matrix = probe._Matrix(checks=[])  # pyright: ignore[reportPrivateUsage]
+    matrix.fact("fictional_fact", passed=cast("bool", "Fictional verdict object"))
+    assert matrix.checks == [{"check": "fictional_fact", "passed": False}]
+    assert matrix.passed is False
+
+
+@pytest.mark.parametrize("verdict", [True, False])
+def test_a_fact_with_a_bool_verdict_is_recorded_as_given_with_its_counts(verdict: bool) -> None:
+    matrix = probe._Matrix(checks=[])  # pyright: ignore[reportPrivateUsage]
+    matrix.fact("fictional_fact", passed=verdict, rows=2)
+    assert matrix.checks == [{"check": "fictional_fact", "passed": verdict, "rows": 2}]
+    assert matrix.passed is verdict
 
 
 def test_main_refuses_a_non_dev_target_before_any_aws_call(

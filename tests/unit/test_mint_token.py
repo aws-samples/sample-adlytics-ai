@@ -86,7 +86,7 @@ def test_minted_credentials_go_directly_to_the_confirmed_secret_without_output(
         return {"refresh_token": refresh_credential}
 
     monkeypatch.setattr(mint_token.boto3, "Session", session_factory)
-    answers = iter(("create", "fictional-code"))
+    answers = iter(("example/validation/amc", "fictional-code"))
     monkeypatch.setattr("builtins.input", answer)
     monkeypatch.setenv("AMC_CLIENT_SECRET", client_credential)
     monkeypatch.setattr(mint_token, "exchange_code", exchange)
@@ -95,6 +95,7 @@ def test_minted_credentials_go_directly_to_the_confirmed_secret_without_output(
     assert mint_token.main() == 0
 
     assert len(secrets.created) == 1
+    assert secrets.created[0]["Name"] == "example/validation/amc"
     stored = json.loads(secrets.created[0]["SecretString"])
     assert stored["client_secret"] == client_credential
     assert stored["refresh_token"] == refresh_credential
@@ -102,6 +103,36 @@ def test_minted_credentials_go_directly_to_the_confirmed_secret_without_output(
     rendered = output.out + output.err
     assert client_credential not in rendered
     assert refresh_credential not in rendered
+    assert "example/validation/amc" not in rendered
+
+
+def test_typing_anything_but_the_destination_name_creates_nothing_and_requests_no_code(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """O-CODEQL-005: the confirmation is the typed name, so the script never echoes it."""
+    secrets = _Secrets()
+    answers = iter(("create",))
+
+    def session_factory(**_kwargs: object) -> _Session:
+        return _Session(secrets)
+
+    def answer(_prompt: str) -> str:
+        reply = next(answers, None)
+        if reply is None:
+            pytest.fail("must not request an authorization code")
+        return reply
+
+    monkeypatch.setattr(mint_token.boto3, "Session", session_factory)
+    monkeypatch.setattr("builtins.input", answer)
+    monkeypatch.setattr(sys, "argv", _arguments())
+
+    assert mint_token.main() == 1
+
+    assert secrets.created == []
+    output = capsys.readouterr()
+    assert output.err == "Secret creation cancelled; no authorization code was requested.\n"
+    assert "example/validation/amc" not in output.out
 
 
 def test_existing_secret_is_refused_before_requesting_authorization(
@@ -147,7 +178,7 @@ def test_unexpected_token_response_reports_only_field_names(
         }
 
     monkeypatch.setattr(mint_token.boto3, "Session", session_factory)
-    answers = iter(("create", "fictional-code"))
+    answers = iter(("example/validation/amc", "fictional-code"))
     monkeypatch.setattr("builtins.input", answer)
     monkeypatch.setenv("AMC_CLIENT_SECRET", client_credential)
     monkeypatch.setattr(mint_token, "exchange_code", exchange)
