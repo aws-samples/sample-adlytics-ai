@@ -85,6 +85,7 @@ from domain.presentation.retail_health import (
     RETAIL_HEALTH_TOTAL_METRICS,
     RetailDistributorView,
     RetailHealthArtifact,
+    RetailHealthOutcome,
     RetailMetricValue,
     retail_comparison,
     retail_health_artifact_payload,
@@ -1042,6 +1043,57 @@ def test_a_publication_baked_before_render_format_12_is_the_tabs_window_absence_
     assert pages.artifact_records == []
     # Paired: the same publication serves Retail health as before.
     assert _serve_parent(presentation_module, pages, publication)["kind"] == "page"
+
+
+@pytest.mark.covers("ADR-125", "ADR-151")
+def test_a_body_with_no_rows_serves_a_null_part_beside_its_own_empty_state(
+    presentation_module: _PresentationModule,  # noqa: F811
+) -> None:
+    """A rowless body bakes no custody and no part; the tab must still get the key, as null.
+
+    Without the key the browser refuses the page, so an empty window would show the failed
+    state instead of Retail health's empty-body copy.
+    """
+    parent = replace(
+        _retail_health_artifact(),
+        outcome=RetailHealthOutcome.EMPTY,
+        totals=(),
+        absences=(),
+        trend=(),
+        rows=(),
+        total_count=0,
+        truncation=None,
+        reconciliation=None,
+        evidence_status=None,
+    )
+    revision = PresetArtifactRevision.from_publication_identities(("publication-empty",))
+    body = PresetArtifactBody(
+        PAGE,
+        VARIANT,
+        revision,
+        canonical_preset_artifact_json(retail_health_artifact_payload(parent)),
+    )
+    pointer = PresetArtifactPointer(PAGE, VARIANT, revision, body.digest, 1, None, None)
+    # No custody exists for a rowless body; the handler never reads it.
+    publication = _Publication(pointer, body, cast("PresetArtifactCustodyManifest", None), {}, {})
+    pages = _ProductPages(tokens=_TOKENS)
+    response = presentation_module.handle(
+        _products_and_ads_event(), _runtime(presentation_module, pages, publication)
+    )
+    assert response["statusCode"] == 200
+    served = _served(response)
+    assert served["kind"] == "page"
+    assert served["page"]["artifact"]["outcome"] == "empty"
+    assert served["page"]["artifact"]["rows"] == []
+    assert "product_ads" in served["page"]
+    assert served["page"]["product_ads"] is None
+    # Paired: Retail health's own request for the same body carries no part key at all.
+    assert (
+        "product_ads"
+        not in _serve_parent(presentation_module, _ProductPages(tokens=_TOKENS), publication)[
+            "page"
+        ]
+    )
 
 
 @pytest.mark.covers("ADR-125", "ADR-145")

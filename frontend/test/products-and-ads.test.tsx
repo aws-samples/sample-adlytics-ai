@@ -52,7 +52,17 @@ test('the part is decoded only beside its own parent: same window, same rows in 
   totalled.page.product_ads.rows[0]!.total = totalled.page.product_ads.rows[0]!.channels;
   const missing = clone(tabResponse) as { page: Record<string, unknown> };
   delete missing.page.product_ads;
-  for (const raw of [reordered, totalled, missing]) assert.throws(() => tab(raw));
+  // A null part stands only for a body with no rows; beside served rows it would blank every ad column.
+  const nulled = clone(tabResponse) as { page: Record<string, unknown> };
+  nulled.page.product_ads = null;
+  for (const raw of [reordered, totalled, missing, nulled]) assert.throws(() => tab(raw));
+  // Paired: an empty body with a null part decodes, so the tab shows the body's own empty state.
+  const empty = clone(tabResponse) as { page: { artifact: Record<string, unknown>; product_ads: unknown } };
+  Object.assign(empty.page.artifact, { outcome: 'empty', totals: [], absences: [], trend: [], rows: [], total_count: 0, truncation: null, reconciliation: null, evidence_status: null });
+  empty.page.product_ads = null;
+  const emptied = tab(empty);
+  assert.equal(emptied.artifact.outcome, 'empty');
+  assert.equal(emptied.product_ads, null);
   // Retail health's own decoder never accepts the part, so its page never carries one.
   assert.throws(() => retailHealthPresentationV2(parsePresentationResultV2(clone(tabResponse), 'retail-health')));
   assert.equal(retailHealthPresentationV2(parsePresentationResultV2(clone(parentResponse), 'retail-health')).kind, 'parent');
