@@ -12,8 +12,7 @@ at width 8 (23:03–23:18 on 2026-10-28), then the same tree with the derived wr
 at width 23 (01:02–01:18 on 2026-10-29). Each tree was re-baked, then measured on four fresh
 Campaigns bakes of 131 objects and two fresh scale Audiences bakes of 13,475 objects. A bake counts
 only when fresh: no PUT answered 412, no object was re-read under the write, and its trace was
-complete. Sealed local evidence: `.agents/tasks/perf-b-followup/evidence/20261028T225251Z-w23-rerun-tree-a`
-(width 8) and `.agents/tasks/perf-b-followup/evidence/20261029T005337Z-w23-rerun-tree-b` (width 23).
+complete. Evidence: one sealed bundle per width, in local custody.
 
 | Check | Verdict | What it showed |
 |---|---|---|
