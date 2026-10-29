@@ -12,7 +12,8 @@ at width 8 (23:03–23:18 on 2026-10-28), then the same tree with the derived wr
 at width 23 (01:02–01:18 on 2026-10-29). Each tree was re-baked, then measured on four fresh
 Campaigns bakes of 131 objects and two fresh scale Audiences bakes of 13,475 objects. A bake counts
 only when fresh: no PUT answered 412, no object was re-read under the write, and its trace was
-complete. Evidence: one sealed bundle per width, in local custody.
+complete. Evidence: one sealed bundle per width, in local custody. The Audiences scale-test fixture
+is not in this repository, so the Audiences runs can't be reproduced from it.
 
 | Check | Verdict | What it showed |
 |---|---|---|
