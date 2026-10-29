@@ -63,8 +63,8 @@ measurement targets, not request cutoffs:
     measurable render time;
   - a traced peak of 75.4 MB against the model's 82.9 MB.
 
-  The local run timed no S3 write. The write ceiling projected from dev's write timings
-  (2026-10-25) is in the publisher's [scale envelope](../preset-artifact-publisher.md#scale-envelope).
+  The local run timed no S3 write. The write ceiling, and its basis, is in the publisher's
+  [scale envelope](../preset-artifact-publisher.md#scale-envelope).
 
   Producer cost per written pair (laptop, macOS arm64, 2026-10-27; before is main at `a96eab71`,
   after is the sort-once change; the 30d sibling stream drawn
@@ -81,7 +81,7 @@ measurement targets, not request cutoffs:
   The Baker Lambda's write rate (objects per second) after the change was measured on dev
   (2026-10-28 to 2026-10-29) at 8 and 23 pairs in flight. The publisher's
   [scale envelope](../preset-artifact-publisher.md#scale-envelope) carries it beside the write
-  ceilings, which stay projections from the earlier dev write timings.
+  ceilings and the basis of each.
 - **Observed local bulk acceptance (2026-09-18):** the governed 1,000-campaign workflow
   completed in 31,827 ms, proved a bounded 26-plan grouped measurement batch at 1,000
   selections (the five daily series split into two window chunks under the 10,000-row query
