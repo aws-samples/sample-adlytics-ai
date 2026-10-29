@@ -348,7 +348,7 @@ class StageClients:
 
 
 def percentile(values: list[float], fraction: float) -> float:
-    """Linear-interpolated percentile, as `perf/v3/it3/writes.py` computes the Lambda spans'."""
+    """Linear-interpolated percentile: rank (n - 1) x fraction over the sorted values."""
     ordered = sorted(values)
     position = (len(ordered) - 1) * fraction
     low = int(position)
