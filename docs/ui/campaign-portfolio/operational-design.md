@@ -66,7 +66,8 @@ measurement targets, not request cutoffs:
   The local run timed no S3 write. The write ceiling projected from dev's write timings
   (2026-10-25) is in the publisher's [scale envelope](../preset-artifact-publisher.md#scale-envelope).
 
-  Producer cost per written pair (laptop, macOS arm64, 2026-10-27; the 30d sibling stream drawn
+  Producer cost per written pair (laptop, macOS arm64, 2026-10-27; before is main at `a96eab71`,
+  after is the sort-once change; the 30d sibling stream drawn
   on one thread with no writer, 3 runs each; producer thread CPU, not the Baker Lambda)
   [measured offline]. Until 2026-10-27 the bake re-sorted the whole
   population for every segment; it now sorts each ordering once and slices it (§2), and every
@@ -77,11 +78,10 @@ measurement targets, not request cutoffs:
   | 400 | 256 | 2.86–2.90 ms → 2.75–2.76 ms | 0.73–0.74 s → 0.70–0.71 s |
   | 10,000 | 5,655 | 11.93–12.94 ms → 4.50 ms | 67.5–73.2 s → 25.4–25.5 s |
 
-  The Baker Lambda's write rate (objects per second) after the change is pending: no Lambda
-  figure has been measured for it, and it is re-run on dev once dev's blocked bake is redriven.
-  Until then the write ceilings in the publisher's
-  [scale envelope](../preset-artifact-publisher.md#scale-envelope) stay projections from the
-  2026-10-25 dev write timings, taken before the change.
+  The Baker Lambda's write rate (objects per second) after the change was measured on dev
+  (2026-10-28 to 2026-10-29) at 8 and 23 pairs in flight. The publisher's
+  [scale envelope](../preset-artifact-publisher.md#scale-envelope) carries it beside the write
+  ceilings, which stay projections from the earlier dev write timings.
 - **Observed local bulk acceptance (2026-09-18):** the governed 1,000-campaign workflow
   completed in 31,827 ms, proved a bounded 26-plan grouped measurement batch at 1,000
   selections (the five daily series split into two window chunks under the 10,000-row query

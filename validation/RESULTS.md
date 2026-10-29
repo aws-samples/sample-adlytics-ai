@@ -4,6 +4,28 @@ Publication-safe conclusions from live source probes and deployed development ac
 account, entity, instance, user, resource, execution, workflow, and invalidation identifiers remain
 in ignored `RESULTS.local.md` and `findings/`; neither is publication content. A conclusion appears
 here only after its exact local evidence was read and folded into the owning contract or design doc.
+## Baker Lambda write rate at width 8 and 23 on dev — 2026-10-28 to 2026-10-29
+Times are UTC. Synthetic data only. After an identity check, two trees were deployed to dev in
+turn: main (`b21521b7`) merged with the Audiences scale-test fixture and one unrelated open change,
+at width 8 (23:03–23:18 on 2026-10-28), then the same tree with the derived write width
+([ADR-145](../docs/decisions/adr-145-serve-ten-thousand-campaigns-with-a-sharded-roster-and-streamed-writes.md)),
+at width 23 (01:02–01:18 on 2026-10-29). Each tree was re-baked, then measured on four fresh
+Campaigns bakes of 131 objects and two fresh scale Audiences bakes of 13,475 objects. A bake counts
+only when fresh: no PUT answered 412, no object was re-read under the write, and its trace was
+complete. Sealed local evidence: `.agents/tasks/perf-b-followup/evidence/20261028T225251Z-w23-rerun-tree-a`
+(width 8) and `.agents/tasks/perf-b-followup/evidence/20261029T005337Z-w23-rerun-tree-b` (width 23).
+
+| Check | Verdict | What it showed |
+|---|---|---|
+| Width 8 | **MEASURED** | Write-phase objects/s: Audiences 182.63 and 188.60, median 185.615; Campaigns 80.01–103.33, median 85.07; 8 in flight at peak; no 503 [measured on dev] |
+| Width 23 | **MEASURED** | Audiences 275.75 and 276.56, median 276.155; Campaigns 132.43–147.06, median 141.69; 22–23 in flight at peak; no 503 [measured on dev] |
+| Width matters: width 23's median at least 1.20 times width 8's, ranges disjoint | **PASS** | Audiences 1.4878, Campaigns 1.6656, and neither page's ranges overlap [arithmetic on the measured rates] |
+| Bake health | **PASS** | Bake dead-letter queue 0 and the finalizer-blocked alarm OK at every read; no Baker error, timeout or out-of-memory row |
+
+**Not exercised live:** a replayed (redelivered) bake at width 23, and any memory other than
+2,048 MiB. The [scale envelope](../docs/ui/preset-artifact-publisher.md#scale-envelope) carries
+the figures.
+
 ## Products and ads part (Retail health render format 12) on dev — 2026-10-27
 Times are UTC. Synthetic data only. The Products and ads branch, merged with main and one other open
 change, was deployed to dev after an identity check, then re-baked by re-landing deliveries. Each
