@@ -600,10 +600,9 @@ def memory_binding_row(
 
 
 # Budget for one sequential immutable write (an S3 PutObject of at most one capped body) from
-# the baker. A budget, not a measurement: the deployed bake's duration is its live check. On dev
-# one chain's measured equivalent is inside it: 8 in flight at 9.07-11.62 ms per fresh Campaigns
-# object (four bakes, 2026-10-25) and 12.36 ms per fresh Audiences object (one fresh dev bake,
-# 2026-10-27) is 72.6-98.9 ms per object per chain [derived].
+# the baker. A budget, not a measurement: the deployed bake's duration is its live check. The
+# measured per-chain costs it is compared with are the publisher's scale envelope's
+# (docs/ui/preset-artifact-publisher.md#scale-envelope).
 PER_OBJECT_WRITE_MS = 100
 
 
