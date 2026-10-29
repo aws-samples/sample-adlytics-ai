@@ -508,7 +508,7 @@ def test_a_failed_pair_stops_submission_observes_in_flight_and_writes_no_parent(
     """The first ``wait`` returns only once the whole first wave is done; later calls pass through.
 
     Submission stops once the fault is observed: ``stopped()`` turns true only when the stream
-    loop handles the failed future and sets ``first_error`` (preset_artifacts.py:256-259, :390).
+    loop handles the failed future and sets ``first_error`` (preset_artifacts.py:256-260, :390).
     With the first wave of W in one batch, the W-1 successes handled before the fault can refill
     at most W-1 pairs, and nothing is submitted after it, so at most 2W-1 bodies run. Without the
     stop, every one of the 3W requested pairs would be written.
