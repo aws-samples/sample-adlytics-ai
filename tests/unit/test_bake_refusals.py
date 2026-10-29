@@ -276,3 +276,19 @@ def test_every_limit_reason_names_its_operator_action_and_no_other_reason_does()
     assert all(
         OPERATOR_ACTIONS[reason].startswith("raise the Baker memory") for reason in MEMORY_SIZED
     )
+    # ADR-145: the memory lever names the derived width and the intercept, and the write
+    # limit names the derived width with its cap and measured width.
+    assert OPERATOR_ACTIONS[R.ROWS_OVER_CEILING] == (
+        "raise the Baker memory: set bake_tasks.baker_memory_mib and the "
+        "bake_tasks.baker_write_width make check-bakeability derives for it, run make "
+        "generate-execution-graph-protocol, set BAKE_FIXED_BYTES to the intercept make "
+        "check-bakeability prints, then make deploy-all; the ceiling grows with it "
+        "(README: Sizing for large catalogs)"
+    )
+    assert OPERATOR_ACTIONS[R.POPULATION_OVER_CEILING] == OPERATOR_ACTIONS[R.ROWS_OVER_CEILING]
+    assert OPERATOR_ACTIONS[R.BODIES_OVER_INVOCATION] == (
+        "report the page and variant: its writes outran the invocation. They wait on S3 at "
+        "bake_tasks.baker_write_width pairs in flight, which the Baker memory derives up to 64; "
+        "23 is measured on the Lambda, wider widths are unmeasured, so raising the memory isn't "
+        "shown to cure it"
+    )

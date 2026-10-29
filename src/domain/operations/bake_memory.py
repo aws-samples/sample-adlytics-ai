@@ -4,7 +4,8 @@
 `BAKE_MAX_ROWS` is not chosen. It is `bake_max_rows(BAKER_MEMORY_BYTES)`: the largest ceiling V
 at which the binding roster row's resident bytes still fit `BAKE_RESIDENT_SHARE` of the baker.
 Every row's resident bytes are affine in V (`bakeability.resident`), so the binding row's
-intercept `BAKE_FIXED_BYTES` and slope `BAKE_BYTES_PER_ROW` give V for any memory size. The
+intercept `BAKE_FIXED_BYTES` and slope `BAKE_BYTES_PER_ROW` give V for any memory size at the
+contract's write width; the intercept holds W, which grows with the width (ADR-145). The
 bakeability gate recomputes both from the real batches and fails on any difference, so these
 two figures can't drift from the code they model. Raising the Baker's memory raises V; that is
 the operator's lever, never a lower limit on what a page shows.
@@ -26,10 +27,12 @@ __all__ = [
     "BAKE_FIXED_BYTES",
     "BAKE_MEMORY_TERMS",
     "BAKE_RESIDENT_SHARE",
+    "BAKE_WRITE_WIDTH",
     "MIB",
     "WRITES_IN_FLIGHT_BYTES",
     "BakeMemoryTerms",
     "bake_max_rows",
+    "write_buffer_bytes",
 ]
 
 MIB: Final = 1024 * 1024
@@ -80,12 +83,24 @@ BAKE_MEMORY_TERMS: Final = BakeMemoryTerms(
 )
 """The measured per-row terms; ADR-143's Decision cites them by date."""
 
-WRITES_IN_FLIGHT_BYTES: Final = (
-    2 * int(BAKE_TASKS["s3_chains_per_baker"]) * MAX_PRESET_ARTIFACT_BYTES
-)
-"""W: two bodies per S3 chain in flight, the most a bake's writes hold at once (bodies stream)."""
+BAKE_WRITE_WIDTH: Final = int(BAKE_TASKS["baker_write_width"])
+"""The sibling body->custody pairs one Baker writes at once, and its shared S3 client's pool:
+the contract's `bake_tasks.baker_write_width`, its one home. `make check-bakeability` derives it
+from this memory model and refuses any other value (ADR-145)."""
 
-BAKE_FIXED_BYTES: Final = 4_099_720
+
+def write_buffer_bytes(width: int) -> int:
+    """W at `width` pairs in flight: each pair holds its body and custody, each at the cap."""
+    if width < 1:
+        raise ValueError("a write width is at least one pair.")
+    return 2 * width * MAX_PRESET_ARTIFACT_BYTES
+
+
+WRITES_IN_FLIGHT_BYTES: Final = write_buffer_bytes(BAKE_WRITE_WIDTH)
+"""W: the write buffer at the contract's width, the most a bake's writes hold at once (bodies
+stream)."""
+
+BAKE_FIXED_BYTES: Final = 11_779_720
 """The binding row's resident bytes at V = 0 (`audiences#last_complete_month`): W plus its
 fixed-width slots. Recomputed and held equal by `make check-bakeability`."""
 
@@ -95,9 +110,12 @@ Recomputed and held equal by `make check-bakeability`."""
 
 
 def bake_max_rows(memory_bytes: int) -> int:
-    """Return the held-row ceiling V a Baker of `memory_bytes` certifies.
+    """Return the held-row ceiling V a Baker of `memory_bytes` certifies at the contract's width.
 
     V = floor((BAKE_RESIDENT_SHARE x memory - BAKE_FIXED_BYTES) / BAKE_BYTES_PER_ROW)
+
+    Another memory size derives its own width, and so its own W: `make check-bakeability` prints
+    the ceiling each size certifies at the width it derives.
     """
     limit = int(BAKE_RESIDENT_SHARE * memory_bytes)
     if limit <= BAKE_FIXED_BYTES:

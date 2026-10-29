@@ -4,6 +4,28 @@ Publication-safe conclusions from live source probes and deployed development ac
 account, entity, instance, user, resource, execution, workflow, and invalidation identifiers remain
 in ignored `RESULTS.local.md` and `findings/`; neither is publication content. A conclusion appears
 here only after its exact local evidence was read and folded into the owning contract or design doc.
+## Baker Lambda write rate at width 8 and 23 on dev — 2026-10-28 to 2026-10-29
+Times are UTC. Synthetic data only. After an identity check, two trees were deployed to dev in
+turn: main (`b21521b7`) merged with the Audiences scale-test fixture and one unrelated open change,
+at width 8 (23:03–23:18 on 2026-10-28), then the same tree with the derived write width
+([ADR-145](../docs/decisions/adr-145-serve-ten-thousand-campaigns-with-a-sharded-roster-and-streamed-writes.md)),
+at width 23 (01:02–01:18 on 2026-10-29). Each tree was re-baked, then measured on four fresh
+Campaigns bakes of 131 objects and two fresh scale Audiences bakes of 13,475 objects. A bake counts
+only when fresh: no PUT answered 412, no object was re-read under the write, and its trace was
+complete. Evidence: one sealed bundle per width, in local custody. The Audiences scale-test fixture
+is not in this repository, so the Audiences runs can't be reproduced from it.
+
+| Check | Verdict | What it showed |
+|---|---|---|
+| Width 8 | **MEASURED** | Write-phase objects/s: Audiences 182.63 and 188.60, median 185.615; Campaigns 80.01–103.33, median 85.07; 8 in flight at peak; no 503 [measured on dev] |
+| Width 23 | **MEASURED** | Audiences 275.75 and 276.56, median 276.155; Campaigns 132.43–147.06, median 141.69; 22–23 in flight at peak; no 503 [measured on dev] |
+| Width matters: width 23's median at least 1.20 times width 8's, ranges disjoint | **PASS** | Audiences 1.4878, Campaigns 1.6656, and neither page's ranges overlap [arithmetic on the measured rates] |
+| Bake health | **PASS** | Bake dead-letter queue 0 and the finalizer-blocked alarm OK at every read; no Baker error, timeout or out-of-memory row |
+
+**Not exercised live:** a replayed (redelivered) bake at width 23, and any memory other than
+2,048 MiB. The [scale envelope](../docs/ui/preset-artifact-publisher.md#scale-envelope) carries
+the figures.
+
 ## Products and ads part (Retail health render format 12) on dev — 2026-10-27
 Times are UTC. Synthetic data only. The Products and ads branch, merged with main and one other open
 change, was deployed to dev after an identity check, then re-baked by re-landing deliveries. Each
@@ -50,6 +72,16 @@ figures. One of the 18 serve calls in the 12:39 pass left no insight slot record
 outcome was not observed. The [Campaigns operational design](../docs/ui/campaign-portfolio/operational-design.md#1-latency-and-capacity)
 carries the figures.
 
+## Bake write throughput by width (ADR-145) on dev — 2026-10-27
+
+Times are UTC. Synthetic pairs only, after an identity check, under a probe-only prefix of the dev
+artifact bucket that was listed empty after every run.
+
+| Check | Verdict | What it showed |
+|---|---|---|
+| Write-throughput probe, 2026-10-27 | **PASS** | `probe_bake_write_throughput.py` ran the real stage from one operator host, not the Lambda. Sibling objects/s (Audiences-sized pairs: 2,003 B body, 120 B custody) at 8, 16, 32 and 64 in flight: 75, 136, 247 and 449 with one client pooled at the width, the Baker's client and the one arm the committed probe runs (means of 3 runs); 74, 148, 266 and 403 with two clients of botocore's default pool, an arm since retired from the probe (means of 5 runs). Campaigns-sized pairs (83,004 B, 9,831 B), 3 runs: 68, 128, 202 and 272. Every step rose by more than its run-to-run spread, so no knee was reached at or below 64; no 503 SlowDown in any run [measured]. Control: re-writing one written sibling returned one 412 then one read in every run. The derived width is capped at 64 ([ADR-145](../docs/decisions/adr-145-serve-ten-thousand-campaigns-with-a-sharded-roster-and-streamed-writes.md)) |
+| Fresh Audiences bake, 2026-10-27 | **PASS** | All 63 PutObject answered 200 with no re-read, so no object pre-existed. At 8 in flight the write phase took 778.8 ms, 12.36 ms per object; PUT p50 44.7 ms and p95 156.0 ms; Max Memory Used 278 of 2,048 MB [measured on dev]. The [scale envelope](../docs/ui/preset-artifact-publisher.md#scale-envelope) folds in the per-chain rate; the 63 objects are the structural Audiences count's for 30 one-page campaigns whose profile paths fit the parent |
+
 ## Staged table writes (ADR-149) on dev — 2026-10-22 to 2026-10-26
 Times are UTC. Synthetic data only, after an identity check before every write.
 
@@ -66,6 +98,7 @@ chunks (ADR-149 decision 8, deferred).
 
 
 ## Scale limits on dev: every page at every size, and bake write time — 2026-10-26
+Superseded on 2026-10-29 for the bake write time row: its width-8 projections are no longer in [Sizing for large catalogs](../README.md#sizing-for-large-catalogs) or the [scale envelope](../docs/ui/preset-artifact-publisher.md#scale-envelope), which now carry the thresholds re-derived for the derived write width. The measured rates at width 8 and 23 are in [Baker Lambda write rate at width 8 and 23](#baker-lambda-write-rate-at-width-8-and-23-on-dev--2026-10-28-to-2026-10-29).
 Times are UTC. Synthetic data only (7 products, 60 campaigns). The scale-limits branch, merged with the
 ingestion branch, was deployed to dev with one locked `deploy-all` after an identity check, then re-baked
 by re-landing 10 deliveries (2026-10-25 23:53 to 2026-10-26 01:40).
@@ -76,7 +109,7 @@ by re-landing 10 deliveries (2026-10-25 23:53 to 2026-10-26 01:40).
 | Chat | **PASS** | 10 live turns, all complete; `top_n` ranked products and campaigns across the population. |
 | Exact-read bound (1,000 partitions) | **PASS** | No selection refused as too large; in-Region exact reads p95 86.1 ms, under the 95.0 ms the bound was derived at ([ADR-070](../docs/decisions/adr-070-serve-declared-preset-windows-from-publish-time-artifacts.md)) [measured on dev]. |
 | Retail health bake | **PASS** | 14-day computing time outside Athena 3.7–3.9 s, from 7.9 s before the fix, at 2,048 MB [measured on dev]. No bake used more than 294 MB. |
-| Bake write time | **MEASURED** | Campaigns wrote 9.07–11.62 ms per S3 object with 8 writes in flight; a redelivered Audiences bake 26.84 ms [measured on dev, 2026-10-25 23:04–23:06]. Scaled linearly, Campaigns' writes pass the 900 s run at about 62,000–85,000 campaigns and Audiences' at about 35,700–45,700 DSP campaigns in a month, about 15,400 redelivered [projection]. [Sizing for large catalogs](../README.md#sizing-for-large-catalogs) and the [scale envelope](../docs/ui/preset-artifact-publisher.md#scale-envelope) carry them. |
+| Bake write time | **MEASURED** | Campaigns wrote 9.07–11.62 ms per S3 object with 8 writes in flight; a redelivered Audiences bake 26.84 ms [measured on dev, 2026-10-25 23:04–23:06]. Scaled linearly, Campaigns' writes pass the 900 s run at about 62,000–85,000 campaigns and Audiences' at about 35,700–45,700 DSP campaigns in a month, about 15,400 redelivered [projection]. [Sizing for large catalogs](../README.md#sizing-for-large-catalogs) and the [scale envelope](../docs/ui/preset-artifact-publisher.md#scale-envelope) carried them until 2026-10-29. |
 
 **Not exercised live:** sizes above dev's 60 campaigns. The 10,000- and 100,000-row figures in the
 sizing guidance come from local runs and `make check-bakeability`, not from a deployment.

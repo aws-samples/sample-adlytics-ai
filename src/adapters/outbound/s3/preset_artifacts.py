@@ -6,6 +6,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, cast
 
 import boto3
+from botocore.config import Config
 from botocore.exceptions import ClientError
 
 from domain.presentation.preset_artifacts import (
@@ -31,7 +32,12 @@ if TYPE_CHECKING:  # pragma: no cover
 
     from domain.presentation.preset_artifacts import PresetArtifactChildIdentity
 
-__all__ = ["S3PresetArtifactBodyStore", "S3PresetArtifactCustodyStore"]
+__all__ = [
+    "S3PresetArtifactBodyStore",
+    "S3PresetArtifactCustodyStore",
+    "preset_artifact_write_client",
+    "preset_artifact_write_config",
+]
 
 PRESET_ARTIFACT_BODY_UNREADABLE = ErrorCode("PRESET_ARTIFACT_BODY", 1)
 PRESET_ARTIFACT_BODY_UNWRITABLE = ErrorCode("PRESET_ARTIFACT_BODY", 2)
@@ -59,6 +65,24 @@ def _listed_object_missing(key: str) -> InvariantError:
         "An object the parent custody lists is missing.",
         context={"key": key},
     )
+
+
+def preset_artifact_write_config(width: int) -> Config:
+    """Configure the write client: a pool of `width` connections, botocore's other defaults.
+
+    The stage keeps at most `width` body->custody chains in flight, each one request at a time, so
+    one client shared by both stores needs exactly `width` pooled connections. botocore's default
+    pool is 10, and urllib3 discards a connection returned past its pool's size rather than
+    blocking, so a wider stage on the default pool reopens a TLS connection per extra request.
+    """
+    if width < 1:
+        raise ValueError("a preset artifact write client needs at least one connection.")
+    return Config(max_pool_connections=width)
+
+
+def preset_artifact_write_client(width: int) -> S3Client:
+    """Build the one S3 client a Baker's body and custody stores share at `width` (ADR-145)."""
+    return boto3.client("s3", config=preset_artifact_write_config(width))
 
 
 class S3PresetArtifactBodyStore(PresetArtifactBodyStorePort):

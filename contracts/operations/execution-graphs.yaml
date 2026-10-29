@@ -222,12 +222,16 @@ bake_tasks:
   visibility_seconds: 960
   lanes: 2
   lane_groups: [preset-bake-lane-0, preset-bake-lane-1]
-  s3_chains_per_baker: 8
-  s3_chains_aggregate: 16
   # The Baker Lambda's memory, its one home (ADR-152): the stack sizes the function from it and
   # the memory model derives BAKE_MAX_ROWS from it. Raising it is the operator action for a
   # memory-sized refusal; `make check-bakeability` prints the ceiling per size.
   baker_memory_mib: 2048
+  # The sibling body->custody pairs one Baker writes at once, and its one shared S3 client's
+  # pool (ADR-145). Derived, never chosen: the smallest width whose memory ceiling's objects
+  # (BAKE_MAX_ROWS at this memory, its write buffer counted) fit the write allowance at the
+  # per-object write budget, capped by the widest measured width. `make check-bakeability`
+  # refuses any other value and prints the derivation; change it with baker_memory_mib.
+  baker_write_width: 23
   max_tasks: 21
   # The precompute readiness timeline (DB26, TD-279), the one home of the armed finalizer's
   # redelivery and of the detector's precompute- and finalizer-blocked thresholds: the graph

@@ -64,13 +64,14 @@ from adapters.jobs.preset_artifact_publisher.transport import (
     DeclaredBakeIntents,
 )
 from adapters.outbound.bake_sources import BakeQueryCapture
-from adapters.outbound.preset_artifacts import S3_CHAINS_PER_BAKER, PresetArtifactPersistence
+from adapters.outbound.preset_artifacts import PresetArtifactPersistence
 from adapters.outbound.telemetry import tracing
 from adapters.outbound.telemetry.reporting import OperationLog
 from adapters.outbound.telemetry.tracing import (
     PRESET_ARTIFACT_BACKFILL,
     PRESET_ARTIFACT_ENQUEUE_DELIVERY,
 )
+from domain.operations.bake_memory import BAKE_WRITE_WIDTH
 from domain.operations.bake_refusals import (
     IsolatedRefusal,
     IsolatedRefusalReason,
@@ -1140,6 +1141,14 @@ _COMPOSED_SETTINGS = PresetArtifactBakeSettings(
 )
 
 
+@dataclass(frozen=True, slots=True)
+class _RecordingStore:
+    """A composed S3 store, keeping the bucket and client the Baker handed it."""
+
+    bucket: str
+    client: Any
+
+
 def _compose_baker(
     monkeypatch: pytest.MonkeyPatch, settings: PresetArtifactBakeSettings, queries: object
 ) -> tuple[baker_module.PresetArtifactBakeApplication, list[tuple[str, object]]]:
@@ -1160,8 +1169,10 @@ def _compose_baker(
         lambda: SimpleNamespace(execution_graph_table=""),
     )
     monkeypatch.setattr(module, "DynamoPresetArtifactPointerStore", lambda *_a, **_k: object())
-    monkeypatch.setattr(module, "S3PresetArtifactBodyStore", lambda _bucket: object())
-    monkeypatch.setattr(module, "S3PresetArtifactCustodyStore", lambda _bucket: object())
+    # The real write client is built offline; its region is the only input it needs.
+    monkeypatch.setenv("AWS_DEFAULT_REGION", "us-east-1")
+    monkeypatch.setattr(module, "S3PresetArtifactBodyStore", _RecordingStore)
+    monkeypatch.setattr(module, "S3PresetArtifactCustodyStore", _RecordingStore)
     monkeypatch.setattr(module, "AthenaQueryAdapter", lambda _target: queries)
     monkeypatch.setattr(module, "DynamoCurrentPublications", lambda _table: object())
     monkeypatch.setattr(module, "retained_campaign_preset_artifact_source", factory("campaign"))
@@ -1200,6 +1211,21 @@ def test_baker_composition_feeds_q_10_into_the_one_admission_every_source_shares
     # A 12-query fixture never exceeds the configured capacity of 10.
     assert _occupancy(admission, 12) == 10
     assert queries.calls == 12
+
+
+@pytest.mark.covers("ADR-145")
+def test_the_baker_composes_one_s3_client_for_both_stores_pooled_at_the_write_width(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A pool narrower than the width reopens a TLS connection for every request past it."""
+    composed, _ = _compose_baker(monkeypatch, _COMPOSED_SETTINGS, _GatedQueries(release_at=1))
+    baker = cast("Any", composed.persistence)
+    bodies, custody = baker._bodies, baker._custody
+    assert isinstance(bodies, _RecordingStore) and isinstance(custody, _RecordingStore)
+    assert bodies.client is custody.client
+    # 23 pooled connections for the contract's 23 pairs in flight, not botocore's default 10.
+    assert bodies.client.meta.config.max_pool_connections == 23
+    assert baker._width == 23
 
 
 def test_control_a_cap_of_3_observes_exactly_3_in_flight(
@@ -1389,7 +1415,7 @@ def _stage(
 
 
 @pytest.mark.covers("ADR-145")
-def test_the_stage_draws_the_stream_lazily_holding_at_most_eight_pairs_in_flight() -> None:
+def test_the_stage_draws_the_stream_lazily_holding_at_most_the_write_width_in_flight() -> None:
     """Memory is bounded by the pairs in flight: a pair is drawn only as another completes."""
     parent = _stream_parent()
     drawn: list[int] = []
@@ -1405,10 +1431,10 @@ def test_the_stage_draws_the_stream_lazily_holding_at_most_eight_pairs_in_flight
 
     staged = _stage(stores, _stream_request(parent, PresetArtifactSiblingStream(pairs, 40)))
 
-    assert max(drawn) <= S3_CHAINS_PER_BAKER
+    assert max(drawn) <= BAKE_WRITE_WIDTH
     assert staged.pairs == 40 + 1 + 1  # every sibling pair, the one shard and the parent
     # Paired: a stage that held every pair before writing would have drawn all 40 first.
-    assert drawn[S3_CHAINS_PER_BAKER:] != list(range(S3_CHAINS_PER_BAKER, 40))
+    assert drawn[BAKE_WRITE_WIDTH:] != list(range(BAKE_WRITE_WIDTH, 40))
 
 
 @pytest.mark.covers("ADR-145")
