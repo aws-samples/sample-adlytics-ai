@@ -66,8 +66,8 @@ Large sellers have 2,000–4,500 campaigns, a projection. Lifting the bound expo
    - The browser fetches the shards when the filter first gets focus, never on page load, and
      filters them as today. A shard from another revision reloads the parent once.
 4. **Streamed writes and a sharded digest index**, the one mechanism for every source's siblings:
-   - Sources stream sibling pairs, and the stage writes at most 8 in flight (a derived width
-     since the 2026-10-27 amendment).
+   - Sources stream sibling pairs, and the stage writes at most 8 in flight until the
+     2026-10-27 amendment, now the derived width.
    - The stage records each pair's digests, writes them as custody-namespace index shards of 800,
      and builds the parent custody from the source's header plus the index shards' digests.
    - The pointer is completed from the staged custody digest.
