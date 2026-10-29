@@ -6,6 +6,7 @@ from __future__ import annotations
 import threading
 import time
 from collections.abc import Generator
+from concurrent.futures import ALL_COMPLETED, wait
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, cast
@@ -501,17 +502,39 @@ def test_publish_stages_every_object_before_the_pointer_advances() -> None:
     assert result.pointer.outcome is PresetArtifactPointerAdvanceOutcome.ADVANCED
 
 
-def test_a_failed_pair_stops_submission_observes_in_flight_and_writes_no_parent() -> None:
+def test_a_failed_pair_stops_submission_observes_in_flight_and_writes_no_parent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The first ``wait`` returns only once the whole first wave is done; later calls pass through.
+
+    Submission stops once the fault is observed: ``stopped()`` turns true only when the stream
+    loop handles the failed future and sets ``first_error`` (preset_artifacts.py:256-259, :390).
+    With the first wave of W in one batch, the W-1 successes handled before the fault can refill
+    at most W-1 pairs, and nothing is submitted after it, so at most 2W-1 bodies run. Without the
+    stop, every one of the 3W requested pairs would be written.
+    """
+    first_call = [True]
+
+    def whole_first_wave(*args: Any, **kwargs: Any) -> Any:
+        if first_call[0]:
+            first_call[0] = False
+            kwargs["return_when"] = ALL_COMPLETED
+        return wait(*args, **kwargs)
+
+    monkeypatch.setattr("adapters.outbound.preset_artifacts.wait", whole_first_wave)
+    assert BAKE_WRITE_WIDTH == 23  # pairs in flight: the contract's derived baker_write_width
     stores = _SiblingStores(fail_body="order02")
     persistence, _ = _persistence(stores)
 
     with pytest.raises(DependencyError) as failed:
-        persistence.publish(_sibling_request(40), remaining_ms=lambda: 600_000, tail_seconds=30.0)
+        persistence.publish(
+            _sibling_request(3 * BAKE_WRITE_WIDTH), remaining_ms=lambda: 600_000, tail_seconds=30.0
+        )
 
     assert failed.value.code == ErrorCode("FICTIONAL", 1)
     bodies = [event for event in stores.events if event.startswith("body:")]
-    # At most the first wave and one refill per completed pair ran; no new pair after the fault.
-    assert len(bodies) < 40
+    # The first wave and at most W-1 refills ran; no new pair after the fault was observed.
+    assert len(bodies) <= 2 * BAKE_WRITE_WIDTH - 1
     assert stores.active == 0
     assert "parent-body" not in stores.events
     assert "pointer" not in stores.events
