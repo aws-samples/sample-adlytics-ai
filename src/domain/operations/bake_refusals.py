@@ -112,18 +112,21 @@ REFUSAL_CLASSES: Final[Mapping[IsolatedRefusalReason, RefusalClass]] = {
 """The one class table: limit and dependency alarm; data is counted, not alarmed."""
 
 _RAISE_MEMORY: Final = (
-    "raise the Baker memory: set bake_tasks.baker_memory_mib, run make "
-    "generate-execution-graph-protocol and make deploy-all; the ceiling grows with it "
-    "(make check-bakeability prints it per size)"
+    "raise the Baker memory: set bake_tasks.baker_memory_mib and the "
+    "bake_tasks.baker_write_width make check-bakeability derives for it, run make "
+    "generate-execution-graph-protocol, set BAKE_FIXED_BYTES to the intercept make "
+    "check-bakeability prints, then make deploy-all; the ceiling grows with it "
+    "(README: Sizing for large catalogs)"
 )
 OPERATOR_ACTIONS: Final[Mapping[IsolatedRefusalReason, str]] = {
     _R.ROWS_OVER_CEILING: _RAISE_MEMORY,
     _R.POPULATION_OVER_CEILING: _RAISE_MEMORY,
     _R.BODY_OVER_CAP: "report the page and variant: a body over the cap needs a source change",
     _R.BODIES_OVER_INVOCATION: (
-        "report the page and variant: its writes outran the invocation. They wait on S3 at the "
-        "stage's fixed concurrency, so raising the Baker memory (more CPU and network share) "
-        "isn't shown to cure it"
+        "report the page and variant: its writes outran the invocation. They wait on S3 at "
+        "bake_tasks.baker_write_width pairs in flight, which the Baker memory derives up to 64; "
+        "23 is measured on the Lambda, wider widths are unmeasured, so raising the memory isn't "
+        "shown to cure it"
     ),
     _R.PARTITIONS_OVER_BOUND: (
         "shrink the declared preset: the line states its partitions and the exact-read bound"
