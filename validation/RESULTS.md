@@ -98,6 +98,7 @@ chunks (ADR-149 decision 8, deferred).
 
 
 ## Scale limits on dev: every page at every size, and bake write time — 2026-10-26
+Superseded on 2026-10-29 for the bake write time row: its width-8 projections are no longer in [Sizing for large catalogs](../README.md#sizing-for-large-catalogs) or the [scale envelope](../docs/ui/preset-artifact-publisher.md#scale-envelope), which now carry the thresholds re-derived for the derived write width. The measured rates at width 8 and 23 are in [Baker Lambda write rate at width 8 and 23](#baker-lambda-write-rate-at-width-8-and-23-on-dev--2026-10-28-to-2026-10-29).
 Times are UTC. Synthetic data only (7 products, 60 campaigns). The scale-limits branch, merged with the
 ingestion branch, was deployed to dev with one locked `deploy-all` after an identity check, then re-baked
 by re-landing 10 deliveries (2026-10-25 23:53 to 2026-10-26 01:40).
@@ -108,7 +109,7 @@ by re-landing 10 deliveries (2026-10-25 23:53 to 2026-10-26 01:40).
 | Chat | **PASS** | 10 live turns, all complete; `top_n` ranked products and campaigns across the population. |
 | Exact-read bound (1,000 partitions) | **PASS** | No selection refused as too large; in-Region exact reads p95 86.1 ms, under the 95.0 ms the bound was derived at ([ADR-070](../docs/decisions/adr-070-serve-declared-preset-windows-from-publish-time-artifacts.md)) [measured on dev]. |
 | Retail health bake | **PASS** | 14-day computing time outside Athena 3.7–3.9 s, from 7.9 s before the fix, at 2,048 MB [measured on dev]. No bake used more than 294 MB. |
-| Bake write time | **MEASURED** | Campaigns wrote 9.07–11.62 ms per S3 object with 8 writes in flight; a redelivered Audiences bake 26.84 ms [measured on dev, 2026-10-25 23:04–23:06]. Scaled linearly, Campaigns' writes pass the 900 s run at about 62,000–85,000 campaigns and Audiences' at about 35,700–45,700 DSP campaigns in a month, about 15,400 redelivered [projection]. [Sizing for large catalogs](../README.md#sizing-for-large-catalogs) and the [scale envelope](../docs/ui/preset-artifact-publisher.md#scale-envelope) carry them. |
+| Bake write time | **MEASURED** | Campaigns wrote 9.07–11.62 ms per S3 object with 8 writes in flight; a redelivered Audiences bake 26.84 ms [measured on dev, 2026-10-25 23:04–23:06]. Scaled linearly, Campaigns' writes pass the 900 s run at about 62,000–85,000 campaigns and Audiences' at about 35,700–45,700 DSP campaigns in a month, about 15,400 redelivered [projection]. [Sizing for large catalogs](../README.md#sizing-for-large-catalogs) and the [scale envelope](../docs/ui/preset-artifact-publisher.md#scale-envelope) carried them until 2026-10-29. |
 
 **Not exercised live:** sizes above dev's 60 campaigns. The 10,000- and 100,000-row figures in the
 sizing guidance come from local runs and `make check-bakeability`, not from a deployment.
