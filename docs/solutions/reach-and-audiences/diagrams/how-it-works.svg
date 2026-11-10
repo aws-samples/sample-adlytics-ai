@@ -61,16 +61,16 @@
       <text x="1340" y="432">segments and</text>
       <text x="1340" y="452">DSP campaigns</text>
     </g>
-    <g font-size="14">
-      <text x="224" y="190">query</text>
+    <g font-size="16">
+      <text x="224" y="188">query</text>
       <text x="224" y="207">results</text>
-      <text x="472" y="190">new</text>
+      <text x="472" y="188">new</text>
       <text x="472" y="207">version</text>
-      <text x="720" y="190">one page</text>
+      <text x="720" y="188">one page</text>
       <text x="720" y="207">per period</text>
-      <text x="968" y="190">current</text>
+      <text x="968" y="188">current</text>
       <text x="968" y="207">page</text>
-      <text x="1216" y="190">served</text>
+      <text x="1216" y="188">served</text>
       <text x="1216" y="207">page</text>
       <text x="110" y="322" text-anchor="start">aggregated</text>
       <text x="110" y="340" text-anchor="start">rows only</text>
@@ -78,7 +78,7 @@
     </g>
     <text x="20" y="525" font-size="15" fill="#536275" text-anchor="start">Customer deployments refresh one page at a time after each new data version. Only the dev environment refreshes every affected page as one set.</text>
   </g>
-  <g font-family="Arial, sans-serif" font-size="14" fill="#172033" stroke-width="2">
+  <g font-family="Arial, sans-serif" font-size="16" fill="#172033" stroke-width="2">
     <text x="20" y="576" font-weight="bold">Key:</text>
     <rect x="70" y="563" width="26" height="16" rx="3" fill="#ffffff" stroke="#9aa8bb"/>
     <text x="104" y="576">outside system or a page</text>

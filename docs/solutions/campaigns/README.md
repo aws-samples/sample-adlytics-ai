@@ -33,7 +33,7 @@ The screenshots come from a development deployment with synthetic data, in the l
 
 ![Metric focus dialog for ad spend: the window total and change against the aligned prior, a daily chart, peak day, trough day, largest day move and window total, the largest per-campaign drivers, an interpretation, and a deep analysis with what stands out, three candidate readings and what would tell them apart](../../images/metric-focus-dialog.png)
 
-**Opening a tile explains the change.** The drivers are the largest changes among the 50 campaigns with the most ad spend, of 60, with what the rest contributed. The deep analysis offers three readings and names the evidence that would tell them apart. See [metric focus](../../ui/metric-focus-contract.md#2-composition).
+**Opening a tile explains the change.** The drivers are the largest changes among the 50 campaigns with the most ad spend, of 60, with what the rest contributed. The deep analysis offers three readings and names the evidence that would tell them apart. Code computes the drivers; the model writes the interpretation and deep analysis from them, under the `metric-focus` prompt. See [metric focus](../../ui/metric-focus-contract.md#2-composition).
 
 ![Insight focus dialog for the portfolio's Contribution insight, marked Reading: a narration naming the campaigns with the largest spend gains and declines, then a deep analysis with what stands out, three candidate readings and what would tell them apart](../../images/insight-dialog.png)
 
