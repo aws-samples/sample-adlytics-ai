@@ -13,9 +13,9 @@
     <path d="M764 164 V276 A80 14 0 0 0 924 276 V164" fill="#f2f8fe" stroke="#2f6fb2"/>
     <ellipse cx="844" cy="164" rx="80" ry="14" fill="#f2f8fe" stroke="#2f6fb2"/>
     <rect x="1012" y="150" width="160" height="140" rx="10" fill="#fff7f2" stroke="#b54545"/>
-    <rect x="1260" y="150" width="160" height="140" rx="10" fill="#ffffff" stroke="#9aa8bb" stroke-width="3"/>
+    <rect x="1260" y="150" width="160" height="140" rx="10" fill="#eef1f5" stroke="#536275" stroke-width="3"/>
     <rect x="20" y="360" width="160" height="120" rx="10" fill="#ffffff" stroke="#9aa8bb" stroke-dasharray="5 4"/>
-    <rect x="1260" y="360" width="160" height="120" rx="10" fill="#ffffff" stroke="#9aa8bb" stroke-width="3"/>
+    <rect x="1260" y="360" width="160" height="120" rx="10" fill="#eef1f5" stroke="#536275" stroke-width="3"/>
   </g>
   <g fill="none" stroke="#536275" stroke-width="2" marker-end="url(#perf-flow-arrow)">
     <line x1="180" y1="220" x2="266" y2="220"/>
@@ -91,7 +91,7 @@
     <text x="781" y="576">sign-in and access control</text>
     <rect x="1011" y="563" width="26" height="16" rx="3" fill="#ffffff" stroke="#9aa8bb" stroke-dasharray="5 4"/>
     <text x="1045" y="576">not built yet</text>
-    <rect x="1175" y="563" width="26" height="16" rx="3" fill="#ffffff" stroke="#9aa8bb" stroke-width="3"/>
+    <rect x="1175" y="563" width="26" height="16" rx="3" fill="#eef1f5" stroke="#536275" stroke-width="3"/>
     <text x="1209" y="576">this solution's pages</text>
   </g>
 </svg>

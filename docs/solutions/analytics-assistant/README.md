@@ -77,7 +77,7 @@ These two images are from 2026-10-19, so their sidebar predates the Overview ite
 
 ![Prompt administration page listing each insight prompt slot with its active version and other versions, one marked calibration needs changes and others calibration passed](../../images/prompt-administration.png)
 
-An administrator sees every prompt that writes insight text on one screen: its active version, and whether each newer version passed calibration. A slot that reads "No versions yet" has no prompt version in this deployment. See [prompt administration](../../ui/prompt-administration/README.md).
+An administrator sees every insight slot on one screen: its active prompt version, and whether each newer version passed calibration. A slot that reads "No versions yet", such as Largest changes, is a fixed-rule card that never takes a prompt. See [prompt administration](../../ui/prompt-administration/README.md).
 
 ![Two prompt versions: version 25 marked Active and created before authorship was recorded, and version 27 marked Needs changes, created by operator@example.com, failing 1 of 7 calibration cases](../../images/prompt-version-calibration.png)
 
