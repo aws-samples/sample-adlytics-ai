@@ -1,0 +1,123 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1300 720" role="img" focusable="false" aria-labelledby="ncr-title ncr-desc">
+  <title id="ncr-title">Call-flow diagram: how the New customers and Retention pages get their figures, in a customer deployment</title>
+  <desc id="ncr-desc">Your extraction pipeline, in a second AWS account, runs the declared Amazon Marketing Cloud queries for new-to-brand purchases, new buyers and acquisition cohorts, and lands each result in the S3 landing bucket, where it is checked against its data contract and published to the governed data lake as an immutable version. With a Paid Features subscription, the cohorts also count any repeat purchase. A new published version starts the page bake, which computes each figure with tested code on AWS Lambda and Amazon Athena and writes the built page, with figures or a designed absence, to the page store. The Presentation API serves each page's latest good version to the signed-in user, and Amazon Bedrock insight narration, attached to the page, explains only the figures it shows. Customer deployments bake one page at a time; building all affected pages as one set runs in the dev environment only.</desc>
+  <defs>
+    <marker id="ncr-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#536275"/></marker>
+  </defs>
+  <rect x="0" y="0" width="1300" height="720" fill="#ffffff"/>
+  <g stroke-width="2">
+    <rect x="30" y="60" width="210" height="110" rx="10" fill="#ffffff" stroke="#9aa8bb"/>
+    <rect x="373" y="60" width="210" height="110" rx="10" fill="#ffffff" stroke="#9aa8bb"/>
+    <rect x="717" y="60" width="210" height="110" rx="10" fill="#f2f8fe" stroke="#2f6fb2"/>
+    <path d="M1060 74 V156 A105 14 0 0 0 1270 156 V74" fill="#f2f8fe" stroke="#2f6fb2"/>
+    <ellipse cx="1165" cy="74" rx="105" ry="14" fill="#f2f8fe" stroke="#2f6fb2"/>
+    <rect x="30" y="300" width="210" height="110" rx="10" fill="#f3fbf6" stroke="#2e7d4f"/>
+    <path d="M373 314 V396 A105 14 0 0 0 583 396 V314" fill="#f2f8fe" stroke="#2f6fb2"/>
+    <ellipse cx="478" cy="314" rx="105" ry="14" fill="#f2f8fe" stroke="#2f6fb2"/>
+    <rect x="717" y="300" width="210" height="110" rx="10" fill="#ffffff" stroke="#9aa8bb"/>
+    <rect x="1060" y="300" width="210" height="110" rx="10" fill="#ffffff" stroke="#9aa8bb" stroke-width="3"/>
+    <rect x="373" y="470" width="210" height="100" rx="10" fill="#f8f5ff" stroke="#6b4fbb"/>
+  </g>
+  <g fill="none" stroke="#536275" stroke-width="2" marker-end="url(#ncr-arrow)">
+    <line x1="240" y1="130" x2="371" y2="130"/>
+    <line x1="583" y1="130" x2="715" y2="130"/>
+    <line x1="927" y1="130" x2="1058" y2="130"/>
+    <path d="M1165 170 V235 H135 V298"/>
+    <line x1="240" y1="370" x2="371" y2="370"/>
+    <line x1="583" y1="370" x2="715" y2="370"/>
+    <line x1="927" y1="370" x2="1058" y2="370"/>
+  </g>
+  <g fill="none" stroke="#536275" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#ncr-arrow)">
+    <line x1="478" y1="468" x2="478" y2="413"/>
+  </g>
+  <g font-family="Arial, sans-serif" fill="#172033" text-anchor="middle">
+    <g font-size="16" font-weight="bold">
+      <text x="135" y="88">Amazon Marketing</text>
+      <text x="135" y="106">Cloud</text>
+      <text x="478" y="88">Your extraction</text>
+      <text x="478" y="106">pipeline</text>
+      <text x="822" y="88">Landing and</text>
+      <text x="822" y="106">validation</text>
+      <text x="1165" y="108">Governed data lake</text>
+      <text x="135" y="334">Page bake</text>
+      <text x="478" y="346">Page store</text>
+      <text x="822" y="334">Presentation API</text>
+      <text x="1165" y="328">New customers and</text>
+      <text x="1165" y="346">Retention pages</text>
+      <text x="478" y="500">Insight narration</text>
+    </g>
+    <g font-size="13" fill="#536275">
+      <text x="135" y="128">Your AMC instance; Paid</text>
+      <text x="135" y="143">Features add cohorts that</text>
+      <text x="135" y="158">count any repeat purchase</text>
+      <text x="478" y="128">Your code, in a second</text>
+      <text x="478" y="143">AWS account; runs the</text>
+      <text x="478" y="158">declared SQL</text>
+      <text x="822" y="128">Amazon S3 landing bucket;</text>
+      <text x="822" y="143">each result is checked</text>
+      <text x="822" y="158">against its data contract</text>
+      <text x="1165" y="130">Amazon S3, AWS Glue,</text>
+      <text x="1165" y="145">Amazon Athena tables</text>
+      <text x="135" y="356">AWS Lambda, Amazon Athena;</text>
+      <text x="135" y="371">computes each figure</text>
+      <text x="135" y="386">with tested code</text>
+      <text x="478" y="368">Amazon S3 page bodies,</text>
+      <text x="478" y="383">Amazon DynamoDB pointers</text>
+      <text x="822" y="356">AWS Lambda; serves each</text>
+      <text x="822" y="371">page's latest good build</text>
+      <text x="1165" y="368">In the signed-in</text>
+      <text x="1165" y="384">user's browser</text>
+      <text x="478" y="522">Amazon Bedrock; explains</text>
+      <text x="478" y="537">only the figures the</text>
+      <text x="478" y="552">page already shows</text>
+    </g>
+    <g font-size="13">
+      <text x="306" y="86">query results:</text>
+      <text x="306" y="101">new-to-brand,</text>
+      <text x="306" y="116">buyers, cohorts</text>
+      <text x="650" y="101">lands each result,</text>
+      <text x="650" y="116">then registers it</text>
+      <text x="993" y="86">publishes a</text>
+      <text x="993" y="101">validated,</text>
+      <text x="993" y="116">immutable version</text>
+      <text x="650" y="226">a new published version starts the bake</text>
+      <text x="306" y="326">the built page:</text>
+      <text x="306" y="341">figures or a</text>
+      <text x="306" y="356">designed absence</text>
+      <text x="650" y="326">latest good</text>
+      <text x="650" y="341">version of</text>
+      <text x="650" y="356">each page</text>
+      <text x="993" y="341">page served to</text>
+      <text x="993" y="356">the signed-in user</text>
+      <text x="490" y="445" text-anchor="start">attached to the page</text>
+    </g>
+    <g font-size="13" text-anchor="start">
+      <text x="717" y="492" font-size="15" font-weight="bold">How pages refresh</text>
+      <text x="717" y="514">Customer deployments bake one page at a time;</text>
+      <text x="717" y="532">a page that fails keeps its last good version.</text>
+      <text x="717" y="550">Dev environment only: all affected pages are built</text>
+      <text x="717" y="568">as one set and switch to new data together.</text>
+    </g>
+  </g>
+  <g font-family="Arial, sans-serif" font-size="13" fill="#172033">
+    <line x1="30" y1="600" x2="1270" y2="600" stroke="#9aa8bb" stroke-width="1"/>
+    <text x="30" y="626" font-size="14" font-weight="bold">Legend</text>
+    <rect x="30" y="640" width="26" height="16" rx="3" fill="#ffffff" stroke="#9aa8bb" stroke-width="2"/>
+    <text x="64" y="653">Amazon, you, or a serving step</text>
+    <rect x="340" y="640" width="26" height="16" rx="3" fill="#f2f8fe" stroke="#2f6fb2" stroke-width="2"/>
+    <text x="374" y="653">Data and the pipeline that fills it</text>
+    <rect x="680" y="640" width="26" height="16" rx="3" fill="#f3fbf6" stroke="#2e7d4f" stroke-width="2"/>
+    <text x="714" y="653">Tested computation, no AI</text>
+    <rect x="960" y="640" width="26" height="16" rx="3" fill="#f8f5ff" stroke="#6b4fbb" stroke-width="2"/>
+    <text x="994" y="653">AI-written words, never figures</text>
+    <rect x="30" y="675" width="26" height="16" rx="3" fill="#ffffff" stroke="#9aa8bb" stroke-width="3"/>
+    <text x="64" y="688">The pages this solution adds</text>
+    <path d="M340 679 V691 A13 4 0 0 0 366 691 V679" fill="#f2f8fe" stroke="#2f6fb2" stroke-width="2"/>
+    <ellipse cx="353" cy="679" rx="13" ry="4" fill="#f2f8fe" stroke="#2f6fb2" stroke-width="2"/>
+    <text x="374" y="688">Data store</text>
+    <line x1="680" y1="683" x2="714" y2="683" stroke="#536275" stroke-width="2" marker-end="url(#ncr-arrow)"/>
+    <text x="724" y="688">Data or request, labelled</text>
+    <line x1="960" y1="683" x2="994" y2="683" stroke="#536275" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#ncr-arrow)"/>
+    <text x="1004" y="688">Asynchronous step</text>
+  </g>
+</svg>
