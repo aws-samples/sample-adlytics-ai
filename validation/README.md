@@ -1594,7 +1594,8 @@ It prints one sanitized acceptance line and never page values; record the dated 
 
 ## Regenerating README screenshots
 
-`capture_screenshots.mjs` rewrites the images in `docs/images/` that the root README embeds. It
+`capture_screenshots.mjs` rewrites the images in `docs/images/` that the solution READMEs under
+[`docs/solutions/`](../docs/solutions/) embed. It
 takes the same inputs and frontend prerequisites as
 [the authenticated browser acceptance](#running-the-authenticated-browser-acceptance). Point
 `ADL_BASE_URL` only at a deployment holding synthetic data, because the images are committed.

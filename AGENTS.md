@@ -1,8 +1,9 @@
 # Instructions for AI coding assistants
 
 Adlytics AI is sample code for retail-media analytics on AWS. Start with [README.md](README.md),
-then [docs/README.md](docs/README.md) for the design index. Kiro users get the full rule set from
-`.kiro/steering/`; [docs/kiro.md](docs/kiro.md) explains it and lists starter prompts.
+then [docs/README.md](docs/README.md) for the design index. Each solution has its own README
+under [docs/solutions/](docs/solutions/); [repo structure](docs/repo-structure.md) lists them.
+Kiro users get the full rule set from `.kiro/steering/`; [docs/kiro.md](docs/kiro.md) explains it and lists starter prompts.
 
 The essentials, for any assistant:
 

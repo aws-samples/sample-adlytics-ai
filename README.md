@@ -4,6 +4,20 @@
 
 Adlytics AI is retail-media analytics for brands that sell to Amazon as a first-party (1P) vendor. It runs in your own AWS account, reads your Amazon Marketing Cloud (AMC) advertising data, and lets your team explore it through answer-first pages and a chat assistant. Every figure comes from tested code over your published data; the assistant explains and compares those figures, or says plainly when a question can't be answered. Vendor Central retail data can't be loaded into a customer deployment yet ([Known limits](#known-limits)).
 
+## Solutions
+
+Each solution is one view of the product, with its own README: who it's for, what it shows, the data it uses and how to adapt it. All of them deploy together with one command ([Quickstart](#quickstart)).
+
+| Solution | What it gives you | For |
+|---|---|---|
+| [Performance: Growth check and Channel scorecard](docs/solutions/performance/README.md) | Whether your advertising is growing the business, and which ad channel earns its budget | Brand or category manager; finance or CMO |
+| [Campaigns](docs/solutions/campaigns/README.md) | The campaigns to scale, hold or cut, with the reasons behind each change | Media buyer |
+| [Reach and audiences](docs/solutions/reach-and-audiences/README.md) | Whether Amazon DSP reaches shoppers your sponsored ads miss, where more ads stop paying, and which audiences your buyers belong to | Media buyer |
+| [New customers and retention](docs/solutions/new-customers-and-retention/README.md) | Which ad channels win first-time buyers, at what cost, and whether those customers come back | Brand or category manager; finance or CMO |
+| [Retail health](docs/solutions/retail-health/README.md) | Whether your products sell, where sales leak, and which products your ads lean on. A customer deployment can't load its Vendor Central data yet | Brand or category manager |
+| [Governed analytics assistant](docs/solutions/analytics-assistant/README.md) | Answers to "why did it move?" in which every number comes from tested code, with an audit record per turn, sampled evaluation, quality review and versioned prompts | Everyone on the team; analysts; administrators |
+| [Platform](docs/solutions/platform/README.md) | The foundation the others run on: data landing, a governed data lake, the metric layer, page refresh, a signed-in website and `make deploy-all` | The builder who deploys it; an engineer reusing one block |
+
 ## The problem it solves
 
 Amazon gives a 1P vendor two reporting systems that disagree by design:
@@ -58,115 +72,18 @@ Pages are computed when data is published, so they load fast and every viewer se
 | Designed absence | The message a page shows, instead of a blank or a guess, when its data can't be shown yet. |
 | Calibration | An automated test run a prompt or guardrail must pass before it is activated. |
 
-Architecture in depth: [architecture overview](docs/architecture.md), [conversational runtime](docs/capabilities/conversational-runtime/README.md), and the [documentation index](docs/README.md). Design decisions are recorded as ADRs in [`docs/decisions/`](docs/decisions/).
+Architecture in depth: the [Platform](docs/solutions/platform/README.md) README, block by block; the [architecture overview](docs/architecture.md), [conversational runtime](docs/capabilities/conversational-runtime/README.md), and the [documentation index](docs/README.md). Design decisions are recorded as ADRs in [`docs/decisions/`](docs/decisions/).
 
-## The application
+## What each solution shows
 
-These screenshots come from a development deployment with synthetic data, in the light theme, captured in October 2026. Campaigns, products and figures are fictional; audience segment names follow their providers' own naming. The synthetic data spends more on ads than it ships, so ad spend as a share of shipped sales reads above 100% and a product's ad-credited sales can exceed its shipped sales. The assistant examples replay a scripted answer, not a recorded conversation. To regenerate them, see [`validation/capture_screenshots.mjs`](validation/README.md#regenerating-readme-screenshots).
+Each page answers one question and leads to one decision. It opens with one answer sentence filled from the figures shown below it. [Who each view is for](docs/business-context.md#who-it-is-for) lists every view with its reader, question and decision. Each solution's README shows its pages in screenshots from a development deployment with synthetic data.
 
-Each view answers one question and leads to one decision. Brand managers are the primary readers. Media buyers, at an agency or in-house, use Campaigns, Reach and Audiences to scale, cut or retarget spend. Finance or a CMO reads the Growth check. Each customer page leads with one answer sentence that fills a fixed template from the figures shown below it. [Who each view is for](docs/business-context.md#who-it-is-for) lists every view with its reader, question and decision.
-
-### Growth check
-
-![Overview page for Sep 30 to Oct 6, 2026 compared with Sep 23 to 29: the Growth check tab and its question Is your advertising growing your business?, an answer sentence giving Amazon Ads' return for every 1 USD spent and the change in shipped retail sales and ad spend with the return's basis under it, tiles for ad spend, return on ad spend with each sale counted once, shipped revenue and ad spend as a share of shipped sales, and the top of two daily charts, with the assistant docked on the right](docs/images/growth-check.png)
-
-The Growth check at `/` answers the question brand managers and CMOs ask first, "is my advertising growing my business?", on one screen: what the ads cost, what came back, and whether retail sales moved with them. From there they decide whether to act this week, and which page to open next. Every figure on it is the figure served on the Scorecard, Retail health, New customers or Campaigns page, every chart starts at zero, and the assistant uses the Scorecard's page context. See [Overview › Growth check](docs/ui/overview/README.md) and its [answer template](docs/ui/overview/README.md#3-answer-template).
-
-### Scorecard
-
-![Scorecard under the Performance hub, with its question Is my ad spend paying back?, for the Amazon US marketplace in USD with 7 days, 30 days, Latest measured week and Latest measured month windows: an answer sentence giving the return for every 1 USD spent with each sale counted once, against the prior week, its basis, a How credit is shared disclosure, tiles for ad spend and for ad spend as a share of shipped sales with an Open Retail health link, a Spend across networks card reading Networks loaded: Amazon, and the top of the What each channel does for you cards, with the assistant docked on the right](docs/images/scorecard.png)
-
-The Scorecard answers the brand manager's question "is my ad spend paying back, by channel?" with each sale counted once, and shows whether the ranking depends on the attribution model, so a budget split doesn't rest on one model's view. See [scorecard](docs/ui/scorecard/README.md).
-
-![What each channel does for you: one card each for Amazon DSP, Sponsored Products and Sponsored Brands with ad spend and its change, the channel's share of Amazon spend, return on ad spend, return including other products of the brand, the share of sales from first-time buyers and the ad cost per first-time-buyer purchase, and links to that channel's campaigns and to New customers, followed by notes on why channel figures aren't added together, a Show the channel table disclosure and a pointer to New customers](docs/images/scorecard-by-channel.png)
-
-The channel cards put each channel's return beside what it costs to win a first-time buyer, so a brand manager and a media buyer can agree a budget split from one screen. The first-time-buyer figures are New customers' own served figures for the same window, matched to each channel through the governed channel mapping, and the channel table stays one click away. See [channel cards](docs/ui/scorecard/low-level-design.md#channel-cards-ui-refresh-23-readout-a3-od-ux-4).
-
-### Campaigns
-
-![Campaigns page under the Performance hub, with its question Which campaigns should get more or less?, for all channels with 1 day, 7 days, 14 days and 30 days windows and a note that the data runs through Oct 6, 2026, an answer sentence saying 60 campaigns spent 240,337.56 USD, up 5.6%, ad spend and impressions tiles with prior values and changes, a line asking to pick a channel to see sales and return, three insight cards and the top of the daily ad spend chart, with the assistant docked on the right](docs/images/campaign-portfolio.png)
-
-Campaigns is the media buyer's view of every campaign in one window, for deciding what to scale, hold or cut in Amazon Ads. Under All channels it shows only what can be totalled, spend and impressions, and asks for a channel before it shows purchases and return, because one purchase can be credited to more than one channel. Only published windows can be chosen, and the note names the days and how recent the data is ([temporal control](docs/ui/temporal-control-contract.md)). See [campaign portfolio](docs/ui/campaign-portfolio/README.md).
-
-![Daily ad spend chart for Sep 30 to Oct 6, 2026, with axis values from 0 USD, a note to choose a channel to see purchases and ROAS over time, and a Show exact values disclosure](docs/images/portfolio-trend-chart.png)
-
-The trend chart plots the served daily values from zero, and the exact numbers are one click away for anyone who needs to cite them. See [campaign portfolio](docs/ui/campaign-portfolio/README.md).
-
-![Metric focus dialog for ad spend: the window total and change against the aligned prior, a daily chart, peak day, trough day, largest day move and window total, the largest per-campaign drivers, an interpretation, and a deep analysis with what stands out, three candidate readings and what would tell them apart](docs/images/metric-focus-dialog.png)
-
-Opening a tile explains the change: which campaigns drove it, how much the rest of the portfolio contributed, and a deep analysis that offers candidate readings and names the evidence that would separate them. See [metric focus composition](docs/ui/metric-focus-contract.md#2-composition).
-
-![Insight focus dialog for the portfolio's Contribution insight, marked Reading: a narration naming the campaigns with the largest spend gains and declines, then a deep analysis with what stands out, three candidate readings and what would tell them apart](docs/images/insight-dialog.png)
-
-Opening an insight card shows the full reading behind it, so a team can check the reasoning before it acts on it. The deep analysis offers more than one explanation and says which evidence would settle it. The narration reads only the figures the page already shows, and says so: every number in it is one of those figures or worked from them, such as a difference or a share. See [insight focus dialog](docs/ui/insight-presentation-contract.md#3-clickable-cards-and-the-insight-focus-dialog) and [visual narration](docs/ui/workspace-assistant.md#5-page-owned-visual-narration).
-
-![Campaigns table sorted by ad spend: a Late data note that states how days are bucketed and then repeats the same staleness sentence once for each source load, a campaign search box, and the first three campaigns with ad spend, attributed ROAS, attributed purchases and click-through rate as a percentage, each with its change](docs/images/portfolio-campaigns-table.png)
-
-The campaigns table ranks every campaign by the column you choose, so a media buyer can sort by return to find the campaigns to fix. The Late data note above it warns when a source's latest load is older than its staleness threshold, so a team knows recent days may be incomplete before it compares campaigns. In this image the note repeats that warning once for each stale source load; see [Known limits](#known-limits). See [campaign portfolio](docs/ui/campaign-portfolio/README.md).
-
-![Campaign detail for a Sponsored Products campaign: its channel, marketplace and window, four insight cards (Trend shape and Next check with a reading, Efficiency drift and Delivery and outcome reading Nothing noteworthy), and tiles for attributed purchases, ROAS, ad spend, impressions, clicks, click-through rate, cost per click and cost per thousand impressions with prior values and changes, with the assistant docked on the right](docs/images/campaign-detail.png)
-
-Opening a campaign shows that campaign alone for the same window, so a team can move from what changed in the portfolio to the campaign that drove it. The assistant's "Using this page" line follows it there. The same detail serves every channel. Delivery tiles show cost per click and per thousand impressions against the prior window, so a media buyer can tell a campaign that got more expensive from one that stopped converting. A card with nothing worth saying reads "Nothing noteworthy" ([insight card states](docs/ui/insight-presentation-contract.md#2-the-five-designed-card-states)). See [campaign portfolio](docs/ui/campaign-portfolio/README.md).
-
-### Reach and audiences
-
-![Reach and funnel page for September 2026 with week, month and quarter windows, the quarter reading Not available yet, an answer sentence saying Amazon DSP reached 438,444 shoppers the sponsored ads didn't, three overlap cards with their August 2026 values, one reading Not available, a proportion bar with each group's shopper count, a Show shopper counts disclosure, and the start of What they did next with its association-not-cause notice, with the assistant docked on the right](docs/images/reach.png)
-
-Reach and funnel answers the media buyer's question "does DSP reach shoppers my sponsored ads miss?", which decides the role DSP plays in the plan. Cells with too few shoppers read "Not available" rather than a number AMC withheld. A window whose data hasn't fully landed reads "Not available yet": in the picture that's the quarter, because the synthetic dataset has no spend for 1–15 July. See [reach and funnel](docs/ui/reach-and-funnel/README.md).
-
-![When more ads stop paying: the line Sales per ad dollar, all Amazon ads: 11.25× at 1 ad, 2.13× at 10 or more, a one-line association-not-cause notice with a Why this is association, not cause disclosure, the share who bought by number of ads seen from 1 ad to 10 or more drawn as bars from 0%, the return at each step under the bars, a Show values disclosure, and a per-channel return list reading Not available per channel](docs/images/reach-frequency.png)
-
-Frequency shows how the purchaser rate and the return change with the number of ads a shopper saw, so a media buyer can see where more ads stop paying before setting a frequency cap. Each association visual says in one line that it shows association, not cause, and keeps the reasons one click away. See [reach and funnel](docs/ui/reach-and-funnel/README.md).
-
-![Audiences page for September 2026: an answer sentence saying shoppers in a synthetic in-market running-shoes segment are 35.0% of buyers but 20.0% of shoppers reached, 1.75× as common among buyers, profile and buyer selectors, and an in-market table comparing each segment's share of buyers with its share of reached shoppers and an index, a note that some breakdowns had too few shoppers to show, with the assistant docked on the right](docs/images/audiences.png)
-
-Audiences answers "who buys, compared with who we reach?", so a media buyer can see which audiences over-index before building one in Amazon DSP. See [audiences](docs/ui/audiences/README.md).
-
-![The Where this campaign's sales came from disclosure opened to the DSP campaigns by segment card: a campaign selector with one synthetic DSP campaign chosen, and impressions, CPM and ROAS per segment for that campaign](docs/images/audiences-campaigns.png)
-
-Per campaign, behind a disclosure under the segment profile, it shows how each segment performed, for every DSP campaign with delivery in the month; choosing a campaign fetches its page. See [audiences](docs/ui/audiences/README.md).
-
-### New customers and retention
-
-![New customers page on Latest measured week, Sep 28 to Oct 4: a note that calendar periods have no comparison, an answer sentence saying the week's figures didn't arrive and giving first-time purchases per channel, a table of new-to-brand purchases, revenue, revenue share and cost per new-to-brand purchase for Amazon DSP, Sponsored Products and Sponsored Brands, a New buyers card saying the week's figures didn't arrive with a See why link, and the start of Gateway products, with the assistant docked on the right](docs/images/new-customers.png)
-
-New customers answers "are my ads winning first-time buyers, and at what cost?", so a brand manager can fund the ad type that wins them. When a feed is missing, the answer says so rather than guess: here the week's new-buyer figures didn't arrive in the synthetic data, and the page still shows the new-to-brand purchases it has. When a section's data isn't complete, the page says so and why ([page absence copy](docs/ui/page-absence-copy.md)). See [new customers](docs/ui/new-customers/README.md).
-
-![Retention page with cohorts through September 2026: an answer sentence comparing the share of customers won by DSP only, by sponsored ads only and by both who bought again by quarter 3, a note that cohorts are grouped by quarter, a chart of the share who had bought again by quarters 1 to 3 for each group, a Show values disclosure, and the By cohort section with its purchase path and acquisition channel selectors and the top of the cohort table, with the assistant docked on the right](docs/images/retention.png)
-
-Retention answers "do the customers my ads win come back?", by the channel that won them, so a brand manager can decide which acquisition to defend. See [retention](docs/ui/retention/README.md).
-
-### Retail health
-
-![Retail health page for Sep 30 to Oct 6, 2026: 7 products matching Vendor Central totals, 1 day, 7 days and 14 days windows with 30 days Not available yet, an answer sentence saying Amazon shipped 151,582.76 USD, up 4.0%, Where sales leak tiles for fulfilment rate, units per 1,000 product page views and return rate, the Ads beside retail strip with Open Scorecard and Each product beside its ad credit links, and the top of the shipped revenue chart, with the assistant docked on the right](docs/images/retail-health.png)
-
-Retail health answers "are my products selling, and where do sales leak?" from Vendor Central, reconciled to the vendor's reported totals, so a brand manager knows which shipping or returns problem to raise with Amazon. Its [Ads beside retail](docs/ui/retail-health/low-level-design.md#ads-beside-retail-ui-refresh-25-od-ux-13-added-2026-10-22) strip puts ad spend beside the same window's retail figures, and shows no return, because Vendor Central has no campaign dimension. In a customer deployment this page waits on Vendor Central loading; see [Known limits](#known-limits). See [retail health](docs/ui/retail-health/README.md).
-
-![Product detail page for one fictional product with the same window control, Back to Retail health, 1 of 7 products with Previous and Next, and the product's own demand and conversion, sales and fulfilment, and traffic value and margin tiles](docs/images/retail-product-detail.png)
-
-Selecting a product opens its own page with the same measures, so a retail team can find which product moved a Retail health figure, and Previous and Next step through the rest without going back to the list. See [retail health](docs/ui/retail-health/README.md).
-
-![Products and ads tab under Retail health for Sep 30 to Oct 6, 2026: the same window control, an answer sentence saying 7 products shipped and Northstar Home Product 4 shipped most, 31,165.40 USD, up 4.8%, Amazon DSP, Sponsored Products and Sponsored Brands channel buttons, a note that the two systems never add up or divide into each other, and a table of each product's shipped sales and change, product page views, units per 1,000 page views, Amazon DSP ad-credited sales and purchases, and First-time purchases reading Not measured yet, with the assistant docked on the right](docs/images/products-and-ads.png)
-
-Products and ads puts each product's Vendor Central sales beside the sales one ad channel credits to it, so a brand manager can see which products the ads lean on. The two figures sit side by side and are never added or divided, because they come from two systems with different bases; there is no per-product return. See [Products and ads](docs/ui/products-and-ads/README.md).
-
-### Analytics assistant
-
-| ![Assistant panel on the Campaigns page mid-answer: two bullets about campaigns that moved ROAS, a collapsed How this was answered, and a progress list with completed tool calls and one in progress](docs/images/chat-streamed-answer.png) | ![A finished assistant answer with three bullets and a note on ad-attributed purchases, How this was answered opened to three numbered steps, each a plain description with its governed tool name, and a Copy reference button](docs/images/chat-answer-trace.png) | ![Assistant panel with the finished answer, its collapsed How this was answered and Copy reference, then a declined question with the refusal message and its own Copy reference](docs/images/chat-refusal.png) |
-|---|---|---|
-| Illustrative: an answer streams in while the assistant shows each tool it calls. | Illustrative: "How this was answered" lists the governed tools the answer used. | Illustrative: a question screened out before it runs is declined, with a suggestion and a Copy reference button for support. |
-
-The assistant answers "why did it move?" for everyone on the team, so they know what to look at first. It is told which page and window you're on, shown as its "Using this page" line, and each answer names the window it covers. An analyst can open "How this was answered" to see which governed tools it called, and "Copy reference" copies the turn's support reference without printing it. See [workspace assistant](docs/ui/workspace-assistant.md) and [conversational runtime](docs/capabilities/conversational-runtime/README.md).
-
-### Prompt administration
-
-![Prompt administration page listing each insight prompt slot with its active version and other versions, one marked calibration needs changes and others calibration passed](docs/images/prompt-administration.png)
-
-For administrators: every prompt that writes insight text, with its active version and calibration status. The first slot's versions in these images are a fictional fixture, so no real author appears. These two images were captured on 2026-10-19, because the synthetic capture user isn't a prompt administrator, so their sidebar predates the Overview item. See [prompt administration](docs/ui/prompt-administration/README.md).
-
-![Two prompt versions: version 25 marked Active and created before authorship was recorded, and version 27 marked Needs changes, created by operator@example.com, failing 1 of 7 calibration cases](docs/images/prompt-version-calibration.png)
-
-A version can be activated only after its calibration passes. A version created since authorship recording began records who created it; an older one, such as version 25 here, says that its author wasn't recorded. See [prompt administration](docs/ui/prompt-administration/README.md).
+- **[Performance](docs/solutions/performance/README.md).** The Growth check at `/` puts ad cost, return and shipped retail sales on one screen. The Scorecard ranks channels with each sale counted once, and shows whether the ranking depends on the attribution model.
+- **[Campaigns](docs/solutions/campaigns/README.md).** Every campaign in one window, ranked by the column you choose. Under All channels it shows only what can be totalled, spend and impressions. Each tile and insight card opens to the campaigns that drove the change and the readings that would explain it.
+- **[Reach and audiences](docs/solutions/reach-and-audiences/README.md).** How many distinct shoppers Amazon DSP reaches that sponsored ads don't, how the purchase rate changes with the number of ads seen (association, not cause), and which audience segments are more common among buyers than among shoppers reached. Audiences needs an AMC Paid Features subscription.
+- **[New customers and retention](docs/solutions/new-customers-and-retention/README.md).** New-to-brand purchases and their cost per channel, and the share of customers each channel won who bought again, by quarter.
+- **[Retail health](docs/solutions/retail-health/README.md).** Vendor Central sales, fulfilment, conversion and returns, reconciled to Vendor Central's own totals, with a page per product, and each product's sales beside one channel's ad credit. It stays empty in a customer deployment until Vendor Central reports can be loaded ([Known limits](#known-limits)).
+- **[Governed analytics assistant](docs/solutions/analytics-assistant/README.md).** Chat beside every page, told which page and window you're on. "How this was answered" lists the governed tools behind each figure. [How it stays trustworthy](docs/solutions/analytics-assistant/README.md#how-it-stays-trustworthy) covers the audit record, sampled online evaluation, quality review and prompt administration.
 
 ## Prerequisites
 
@@ -174,7 +91,7 @@ A version can be activated only after its calibration passes. A version created 
 |---|---|
 | AWS account and Region | One account you control that runs no other workloads; deployment into a shared account is unsupported ([O-RESULT-SHARED-ACCOUNT-001](docs/security-dispositions.md)). The sample synthesizes only in us-east-1, us-east-2, us-west-2, eu-central-1 and eu-west-1, the Regions it declares a [guardrail profile](https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-cross-region-support.html) for ([`route-guardrail.ts`](infra/lib/constructs/agent/route-guardrail.ts)). It has been deployed and accepted only in us-east-1. |
 | AWS credentials | A named, non-default AWS CLI profile with administrator-level permissions in that account and a Region set. The deployment creates IAM roles and policies. |
-| Amazon Bedrock model access | Enable access in your Region to the three models `.env.example` names, including the one-time use-case form Anthropic models need ([Request access to models](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html), read 2026-10-19). They are US cross-Region inference profiles; in eu-central-1 or eu-west-1, replace each with the ID that `aws bedrock list-inference-profiles --profile <your-profile> --region <region> --type-equals SYSTEM_DEFINED` lists. The memory model has no fallback ([ADR-147](docs/decisions/adr-147-treat-long-term-memory-as-context-never-evidence.md)). |
+| Amazon Bedrock model access | Enable access in your Region to the three models `.env.example` names, a quick chat model, a deep-dive chat model and a memory model, including the one-time use-case form Anthropic models need ([Request access to models](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html), read 2026-10-19). They are US cross-Region inference profiles; in eu-central-1 or eu-west-1, replace each with the ID that `aws bedrock list-inference-profiles --profile <your-profile> --region <region> --type-equals SYSTEM_DEFINED` lists. The memory model has no fallback ([ADR-147](docs/decisions/adr-147-treat-long-term-memory-as-context-never-evidence.md)). |
 | Athena concurrent queries | Page refreshes and chat share Athena's "Active DML queries" quota ([query path](docs/capabilities/query-path/architecture.md)). Read the applied value in your Region with `aws service-quotas get-service-quota --service-code athena --quota-code L-FC5F6546 --profile <your-profile>` ([Athena quotas](https://docs.aws.amazon.com/athena/latest/ug/service-limits.html), read 2026-10-25), and request an increase in Service Quotas if it is below `batch_athena_budget` + `chat_reserve_active_dml` in [`contracts/operations/execution-graphs.yaml`](contracts/operations/execution-graphs.yaml) (61 at this release). |
 | Lambda concurrency | One environment reserves 35 concurrent executions for its functions once producer onboarding is on (33 before), and Lambda always keeps 100 of the account's concurrency unreserved. The applied "Concurrent executions" quota in your Region must therefore be at least 135. Read it with `aws lambda get-account-settings --profile <your-profile>` (`AccountLimit.ConcurrentExecutions`) and request an increase in Service Quotas if it is below 135; otherwise the first stack that reserves concurrency fails to deploy. |
 | Edge rate limit | The website's AWS WAF rule limits requests per source IP per five minutes (`ADLYTICS_EDGE_WAF_RATE_LIMIT_PER_FIVE_MINUTES` in [`.env.example`](.env.example), with a separate limit for sign-in). A team behind one corporate IP shares that one budget, and each page view makes several requests. Size it for your team's combined traffic before you invite users. |
@@ -247,7 +164,7 @@ All are off by default and are set in `.env`.
 |---|---|---|
 | Producer onboarding: a cross-account role your extraction pipeline assumes to land data | `ADLYTICS_PRODUCER_ONBOARDING_ENABLED` with the role ARN and external ID | [Source acquisition](docs/capabilities/source-acquisition/README.md) |
 | Searchable traces (CloudWatch Transaction Search). An account-wide setting with its own charges. The agent runtime's span diagnostics need it | `ADLYTICS_TRANSACTION_SEARCH` | [Observability](docs/concepts/observability.md) |
-| Online answer evaluation | `ADLYTICS_EVALUATION_INPUT_PROVISIONED` and related settings; parts are accepted only for an environment named `dev` | [Agent quality loop](docs/capabilities/agent-quality-loop/README.md) |
+| Online answer evaluation: scores a sample of complete answers, 10% by default; answers outside the sample are not checked | `ADLYTICS_EVALUATION_INPUT_PROVISIONED`, `ADLYTICS_ONLINE_EVALUATION_PROVISIONED` and related settings. Synth refuses online evaluation for any environment not named `dev` | [Agent quality loop](docs/capabilities/agent-quality-loop/README.md) |
 
 ## Load your data
 

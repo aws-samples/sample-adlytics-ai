@@ -6,6 +6,7 @@ This is the entry point for the current design. It contains navigation only: eac
 
 | Reader | Read |
 |---|---|
+| Evaluating one solution | [README › Solutions](../README.md#solutions) → the solution's README under [`solutions/`](solutions/), for example [Platform](solutions/platform/README.md) |
 | Evaluating it, or new to it | [Business Context](business-context.md) → [Understanding the Data Model](understanding-the-data-model.md) → [Architecture](architecture.md) → [Answerable Questions](answerable-questions.md) |
 | Extending or contributing | [README › Extend it](../README.md#extend-it) → [Repo Structure](repo-structure.md) → [CONTRIBUTING › Run the gates](../CONTRIBUTING.md#run-the-gates) |
 | Building data capabilities | [Source Acquisition](capabilities/source-acquisition/README.md) → [Data Layer](capabilities/data-layer/README.md) → [Load Path](capabilities/load-path/README.md) → [Publication State](capabilities/publication-state/README.md) → [Query Path](capabilities/query-path/README.md) |
