@@ -92,7 +92,7 @@ These [Known limits](../../../README.md#known-limits) rows concern the platform:
 
 ## Reuse it
 
-Each block can be lifted on its own, with the blocks to its left in the diagram. The [Extend it](../../../README.md#extend-it) table says which file to edit and which generator to run for each change.
+Each block can be lifted on its own, with the blocks its "It needs" column names. The [Extend it](../../../README.md#extend-it) table says which file to edit and which generator to run for each change.
 
 | To reuse | Take | It needs |
 |---|---|---|
@@ -106,7 +106,7 @@ Each block can be lifted on its own, with the blocks to its left in the diagram.
 
 ## Design highlights
 
-- **Figures come from code, never from a model.** Every figure on a page or in chat starts in the metric layer; the model chooses tools and writes the words, and never fabricates a number ([solution strategy](../../architecture.md#5-solution-strategy)).
+- **Figures come from code.** Every figure on a page or in chat starts in the metric layer; the model chooses tools and explains their results under the [no invented figures](../analytics-assistant/README.md#how-it-stays-trustworthy) rule ([solution strategy](../../architecture.md#5-solution-strategy)).
 - **Publish, then point.** Data versions and page artifacts are both immutable, and each pointer moves only after its new version validates or builds, so a failure leaves the last good version serving ([publication state](../../capabilities/publication-state/README.md), [page isolation](../../ui/preset-artifact-publisher.md#page-isolation)).
 - **Extraction outside the boundary.** Your pipeline lands data through a cross-account role and a registration handshake, so the deployment never holds Amazon credentials ([ADR-050](../../decisions/adr-050-finalize-registered-cross-account-landings-into-governed-manifests.md)).
 

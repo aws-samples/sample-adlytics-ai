@@ -33,7 +33,7 @@ The screenshots come from a development deployment with synthetic data, in the l
 
 ![The Where this campaign's sales came from disclosure opened to the DSP campaigns by segment card: a campaign selector with one synthetic DSP campaign chosen, and impressions, CPM and ROAS per segment for that campaign](../../images/audiences-campaigns.png)
 
-**DSP campaigns by segment.** For one DSP campaign, impressions, CPM and return per segment, each labelled Amazon or Third party. The synthetic data is flat here: CPM is 87.59 USD on every segment and return is 4.67× to 4.68×.
+**DSP campaigns by segment.** For one DSP campaign, impressions, CPM and return per segment, with its provider where it has one. The synthetic data is flat here: CPM is 87.59 USD on every segment and return is 4.67× to 4.68×.
 
 ## What it answers, and what it won't
 

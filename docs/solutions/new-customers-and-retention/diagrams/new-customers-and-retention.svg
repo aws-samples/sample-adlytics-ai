@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1300 720" role="img" focusable="false" aria-labelledby="ncr-title ncr-desc">
   <title id="ncr-title">Call-flow diagram: how the New customers and Retention pages get their figures, in a customer deployment</title>
-  <desc id="ncr-desc">Your extraction pipeline, in a second AWS account, runs the declared Amazon Marketing Cloud queries for new-to-brand purchases, new buyers and acquisition cohorts, and lands each result in the S3 landing bucket, where it is checked against its data contract and published to the governed data lake as an immutable version. With a Paid Features subscription, the cohorts also count any repeat purchase. A new published version starts the page bake, which computes each figure with tested code on AWS Lambda and Amazon Athena and writes the built page, with figures or a designed absence, to the page store. The Presentation API serves each page's latest good version to the signed-in user, and Amazon Bedrock insight narration, attached to the page, explains only the figures it shows. Customer deployments bake one page at a time; building all affected pages as one set runs in the dev environment only.</desc>
+  <desc id="ncr-desc">Your extraction pipeline, in a second AWS account, runs the declared Amazon Marketing Cloud queries for new-to-brand purchases, new buyers and acquisition cohorts, and lands each result in the S3 landing bucket, where it is checked against its data contract and published to the governed data lake as an immutable version. With a Paid Features subscription, the cohorts also count any repeat purchase. A new published version starts the page bake, which computes each figure with tested code on AWS Lambda and Amazon Athena and writes the built page, with figures or a designed absence, to the page store. The Presentation API serves each page's latest good version to the signed-in user, and Amazon Bedrock insight narration, attached to the page, explains the figures it shows and values worked from them. Customer deployments bake one page at a time; building all affected pages as one set runs in the dev environment only.</desc>
   <defs>
     <marker id="ncr-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#536275"/></marker>
   </defs>
@@ -68,8 +68,8 @@
       <text x="1165" y="368">In the signed-in</text>
       <text x="1165" y="384">user's browser</text>
       <text x="478" y="522">Amazon Bedrock; explains</text>
-      <text x="478" y="537">only the figures the</text>
-      <text x="478" y="552">page already shows</text>
+      <text x="478" y="537">the page's figures and</text>
+      <text x="478" y="552">values worked from them</text>
     </g>
     <g font-size="13">
       <text x="306" y="86">query results:</text>
@@ -109,7 +109,7 @@
     <rect x="680" y="640" width="26" height="16" rx="3" fill="#f3fbf6" stroke="#2e7d4f" stroke-width="2"/>
     <text x="714" y="653">Tested computation, no AI</text>
     <rect x="960" y="640" width="26" height="16" rx="3" fill="#f8f5ff" stroke="#6b4fbb" stroke-width="2"/>
-    <text x="994" y="653">AI-written words, never figures</text>
+    <text x="994" y="653">AI text from governed figures</text>
     <rect x="30" y="675" width="26" height="16" rx="3" fill="#ffffff" stroke="#9aa8bb" stroke-width="3"/>
     <text x="64" y="688">The pages this solution adds</text>
     <path d="M340 679 V691 A13 4 0 0 0 366 691 V679" fill="#f2f8fe" stroke="#2f6fb2" stroke-width="2"/>

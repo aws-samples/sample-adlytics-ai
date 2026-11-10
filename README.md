@@ -15,7 +15,7 @@ Each solution is one view of the product, with its own README: who it's for, wha
 | [Reach and audiences](docs/solutions/reach-and-audiences/README.md) | Whether Amazon DSP reaches shoppers your sponsored ads miss, where more ads stop paying, and which audiences your buyers belong to | Media buyer |
 | [New customers and retention](docs/solutions/new-customers-and-retention/README.md) | Which ad channels win first-time buyers, at what cost, and whether those customers come back | Brand or category manager; finance or CMO |
 | [Retail health](docs/solutions/retail-health/README.md) | Whether your products sell, where sales leak, and which products your ads lean on. A customer deployment can't load its Vendor Central data yet | Brand or category manager |
-| [Governed analytics assistant](docs/solutions/analytics-assistant/README.md) | Answers to "why did it move?" in which every number comes from tested code, with an audit record per turn, sampled evaluation, quality review and versioned prompts | Everyone on the team; analysts; administrators |
+| [Governed analytics assistant](docs/solutions/analytics-assistant/README.md) | Answers to "why did it move?" in which every number comes from tested code, with an audit record per turn, optional sampled evaluation (dev environment only today), quality review and versioned insight prompts | Everyone on the team; analysts; administrators |
 | [Platform](docs/solutions/platform/README.md) | The foundation the others run on: data landing, a governed data lake, the metric layer, page refresh, a signed-in website and `make deploy-all` | The builder who deploys it; an engineer reusing one block |
 
 ## The problem it solves

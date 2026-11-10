@@ -1,12 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1300 730" role="img" focusable="false" aria-labelledby="rh-title rh-desc">
   <title id="rh-title">Call-flow diagram: how Retail health and Products and ads get their figures, in a customer deployment</title>
-  <desc id="rh-desc">Your extraction pipeline, in a second AWS account, fetches Vendor Central sales, traffic, product and reported-total reports and runs the declared Amazon Marketing Cloud queries, then lands each delivery in the S3 landing bucket, where it is checked against its data contract and published to the governed data lake as an immutable version. A customer deployment can't land Vendor Central reports yet; the dev environment holds synthetic ones. A new published version starts the page bake on AWS Lambda and Amazon Athena, which compares the product rows with Vendor Central's reported totals and writes Retail health, a page per product and each product's ad credit to the page store, with figures or a designed absence. The Presentation API serves each page's latest good version to the signed-in user, and Amazon Bedrock insight narration, attached to the page, explains only the figures it shows. Customer deployments bake one page at a time; building all affected pages as one set runs in the dev environment only.</desc>
+  <desc id="rh-desc">Your extraction pipeline, in a second AWS account, fetches Vendor Central sales, traffic, product and reported-total reports and runs the declared Amazon Marketing Cloud queries, then lands each delivery in the S3 landing bucket, where it is checked against its data contract and published to the governed data lake as an immutable version. A dotted box and arrow mark the Vendor Central path, which isn't built yet: a customer deployment can't land Vendor Central reports, and the dev environment holds synthetic ones. A new published version starts the page bake on AWS Lambda and Amazon Athena, which compares the product rows with Vendor Central's reported totals and writes Retail health, a page per product and each product's ad credit to the page store, with figures or a designed absence. The Presentation API serves each page's latest good version to the signed-in user, and Amazon Bedrock insight narration, attached to the page, explains the figures it shows and values worked from them. Customer deployments bake one page at a time; building all affected pages as one set runs in the dev environment only.</desc>
   <defs>
     <marker id="rh-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#536275"/></marker>
   </defs>
   <rect x="0" y="0" width="1300" height="730" fill="#ffffff"/>
   <g stroke-width="2">
-    <rect x="30" y="30" width="210" height="105" rx="10" fill="#ffffff" stroke="#9aa8bb"/>
+    <rect x="30" y="30" width="210" height="105" rx="10" fill="#ffffff" stroke="#9aa8bb" stroke-dasharray="2 4"/>
     <rect x="30" y="150" width="210" height="90" rx="10" fill="#ffffff" stroke="#9aa8bb"/>
     <rect x="373" y="80" width="210" height="120" rx="10" fill="#ffffff" stroke="#9aa8bb"/>
     <rect x="717" y="80" width="210" height="120" rx="10" fill="#f2f8fe" stroke="#2f6fb2"/>
@@ -20,7 +20,6 @@
     <rect x="373" y="480" width="210" height="100" rx="10" fill="#f8f5ff" stroke="#6b4fbb"/>
   </g>
   <g fill="none" stroke="#536275" stroke-width="2" marker-end="url(#rh-arrow)">
-    <line x1="240" y1="82" x2="371" y2="118"/>
     <line x1="240" y1="195" x2="371" y2="165"/>
     <line x1="583" y1="145" x2="715" y2="145"/>
     <line x1="927" y1="145" x2="1058" y2="145"/>
@@ -28,6 +27,9 @@
     <line x1="240" y1="380" x2="371" y2="380"/>
     <line x1="583" y1="380" x2="715" y2="380"/>
     <line x1="927" y1="380" x2="1058" y2="380"/>
+  </g>
+  <g fill="none" stroke="#536275" stroke-width="2" stroke-dasharray="2 4" marker-end="url(#rh-arrow)">
+    <line x1="240" y1="82" x2="371" y2="118"/>
   </g>
   <g fill="none" stroke="#536275" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#rh-arrow)">
     <line x1="478" y1="478" x2="478" y2="423"/>
@@ -73,11 +75,12 @@
       <text x="1165" y="378">Plus a page per product, in</text>
       <text x="1165" y="394">the signed-in browser</text>
       <text x="478" y="532">Amazon Bedrock; explains</text>
-      <text x="478" y="547">only the figures the</text>
-      <text x="478" y="562">page already shows</text>
+      <text x="478" y="547">the page's figures and</text>
+      <text x="478" y="562">values worked from them</text>
     </g>
     <g font-size="13">
-      <text x="300" y="80">reports</text>
+      <text x="300" y="62">reports,</text>
+      <text x="300" y="77">not built yet</text>
       <text x="310" y="212">query results</text>
       <text x="650" y="101">lands each</text>
       <text x="650" y="116">delivery, then</text>
@@ -114,12 +117,14 @@
     <rect x="680" y="650" width="26" height="16" rx="3" fill="#f3fbf6" stroke="#2e7d4f" stroke-width="2"/>
     <text x="714" y="663">Tested computation, no AI</text>
     <rect x="960" y="650" width="26" height="16" rx="3" fill="#f8f5ff" stroke="#6b4fbb" stroke-width="2"/>
-    <text x="994" y="663">AI-written words, never figures</text>
+    <text x="994" y="663">AI text from governed figures</text>
     <rect x="30" y="685" width="26" height="16" rx="3" fill="#ffffff" stroke="#9aa8bb" stroke-width="3"/>
     <text x="64" y="698">The pages this solution adds</text>
     <path d="M340 689 V701 A13 4 0 0 0 366 701 V689" fill="#f2f8fe" stroke="#2f6fb2" stroke-width="2"/>
     <ellipse cx="353" cy="689" rx="13" ry="4" fill="#f2f8fe" stroke="#2f6fb2" stroke-width="2"/>
     <text x="374" y="698">Data store</text>
+    <rect x="500" y="685" width="26" height="16" rx="3" fill="#ffffff" stroke="#9aa8bb" stroke-width="2" stroke-dasharray="2 3"/>
+    <text x="534" y="698">Not built yet</text>
     <line x1="680" y1="693" x2="714" y2="693" stroke="#536275" stroke-width="2" marker-end="url(#rh-arrow)"/>
     <text x="724" y="698">Data or request, labelled</text>
     <line x1="960" y1="693" x2="994" y2="693" stroke="#536275" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#rh-arrow)"/>
