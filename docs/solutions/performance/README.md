@@ -82,7 +82,7 @@ Window rules are in the [temporal control contract](../../ui/temporal-control-co
 | The Scorecard's sections, windows or tiles | Page `scorecard` in [`presentation/pages/v2/pages.yaml`](../../../presentation/pages/v2/pages.yaml) | The "page or preset view" row of [Extend it](../../../README.md#extend-it) |
 | The Growth check's sources or question | The `/` entry under `composed_routes` in [`presentation/navigation.yaml`](../../../presentation/navigation.yaml) | The same row |
 | A metric, such as another return basis | [`contracts/shared/metric-dictionary.yaml`](../../../contracts/shared/metric-dictionary.yaml) | The "metric" row |
-| Insight card text | [`contracts/insights/`](../../../contracts/insights/), [`contracts/prompts/insights/`](../../../contracts/prompts/insights/) | The "insight narration" row |
+| The Scorecard's insight card, a fixed rule with no prompt | [`contracts/insights/network-scorecard.yaml`](../../../contracts/insights/network-scorecard.yaml) | The "insight narration" row |
 
 ## Learn more
 
