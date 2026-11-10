@@ -2,7 +2,7 @@
 
 See which ad channels win first-time buyers for your brand, what each one costs, and whether those customers come back, so you fund the acquisition that lasts.
 
-Part of [Adlytics AI](../../../README.md). It deploys with the full solution and runs on the shared [platform](../platform/README.md).
+One of the [Adlytics AI solutions](../../../README.md#solutions). It deploys with the full sample, which is sample code and not production-ready: read [Cost](../../../README.md#cost) and [Security considerations](../../../README.md#security-considerations) first. It runs on the shared [platform](../platform/README.md).
 
 ## Who it's for
 

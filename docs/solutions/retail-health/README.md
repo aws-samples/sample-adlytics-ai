@@ -2,7 +2,7 @@
 
 See whether your products are selling on Amazon, where sales leak between page view, order, shipment and return, and which products your ads lean on, from Vendor Central figures reconciled to Vendor Central's own totals.
 
-Part of [Adlytics AI](../../../README.md). It deploys with the full solution and runs on the shared [platform](../platform/README.md). It covers two tabs: Retail health, with a page per product, and Products and ads.
+One of the [Adlytics AI solutions](../../../README.md#solutions). It deploys with the full sample, which is sample code and not production-ready: read [Cost](../../../README.md#cost) and [Security considerations](../../../README.md#security-considerations) first. It runs on the shared [platform](../platform/README.md) and covers two tabs: Retail health, with a page per product, and Products and ads.
 
 > **A customer deployment can't load Vendor Central reports yet.** Producer onboarding accepts only the AMC query packs, so outside the dev environment these pages stay on their designed empty state. See **Load Vendor Central reports** in the hub's [Known limits](../../../README.md#known-limits).
 

@@ -2,6 +2,8 @@
 
 **Land your Amazon Marketing Cloud (AMC) results in your own AWS account and serve them as governed figures, fast pages and a signed-in website, with one deploy command.**
 
+One of the [Adlytics AI solutions](../../../README.md#solutions). It deploys with the full sample, which is sample code and not production-ready: read [Cost](../../../README.md#cost) and [Security considerations](../../../README.md#security-considerations) first.
+
 This is the foundation every other solution runs on. It is for the builder who deploys and runs the sample, and for an engineer who wants to lift one block into another project. An analyst uses it to trace where a figure came from. [Who it is for](../../business-context.md#who-it-is-for) describes every reader.
 
 ## What it gives you
@@ -78,7 +80,7 @@ The platform deploys with the full solution; there is no separate install. Start
 
 | Step | Where |
 |---|---|
-| Check the account, the three Amazon Bedrock models (chat, insight, memory) and the Athena and Lambda quotas | [Prerequisites](../../../README.md#prerequisites) |
+| Check the account, access to the three Amazon Bedrock models, and the Athena and Lambda quotas | [Prerequisites](../../../README.md#prerequisites) |
 | Deploy with `make deploy-all` | [Quickstart](../../../README.md#quickstart), [Deploy](../../../README.md#deploy) |
 | Sign in, then subscribe to the alarm topic, which has no subscriber until you add one | [Check the deployment](../../../README.md#check-the-deployment) |
 | Turn on producer onboarding and land your first AMC results; pages stay on their designed empty states until then | [Load your data](../../../README.md#load-your-data) |

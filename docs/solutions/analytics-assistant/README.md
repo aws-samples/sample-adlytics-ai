@@ -2,7 +2,7 @@
 
 **Ask why a figure moved, in a sentence, and get an answer in which every number came from tested code, with a record of how it was answered.**
 
-One of the solutions in [Adlytics AI](../../../README.md). It deploys with the full solution and runs beside every page. It covers the chat assistant, the governed tools it calls, the per-turn audit record, optional online evaluation, quality review and prompt administration.
+One of the [Adlytics AI solutions](../../../README.md#solutions). It deploys with the full sample, which is sample code and not production-ready: read [Cost](../../../README.md#cost) and [Security considerations](../../../README.md#security-considerations) first. The assistant runs beside every page. This solution covers the chat assistant, the governed tools it calls, the per-turn audit record, optional online evaluation, quality review and prompt administration.
 
 ## Who it's for
 
@@ -65,7 +65,7 @@ The runtime design is in [conversational runtime](../../capabilities/conversatio
 
 | Control | What it does | Owning doc |
 |---|---|---|
-| **No invented figures** | Every number comes from a governed tool. The agent states those figures and ones validly derived from them, such as a difference or a share, and never fabricates one. | [Business context](../../business-context.md#who-it-is-for), [ADR-082](../../decisions/adr-082-govern-the-agent-by-evaluation-and-audit-not-text-heuristics.md) |
+| **No invented figures** | Every number comes from a governed tool. The agent states those figures and ones validly derived from them, such as a difference or a share, and never fabricates one. | [Business context](../../business-context.md#5-why-the-trust-posture-is-the-differentiator), [ADR-082](../../decisions/adr-082-govern-the-agent-by-evaluation-and-audit-not-text-heuristics.md) |
 | **Audit record per turn** | Every turn, answered or refused, writes one record of the tools it used and its outcome, with no question or answer text. It is written before the answer ends, and kept for the days you set in `ADLYTICS_RECEIPT_RETENTION_DAYS`. | [Agent quality loop](../../capabilities/agent-quality-loop/README.md), [ADR-081](../../decisions/adr-081-make-every-turn-traceable-and-attributable.md) |
 | **Online evaluation of a sample** | Optional and off by default. When it is on, it scores a sample of complete turns, 10% by default (`ADLYTICS_ONLINE_EVALUATION_SAMPLE_PERCENT`, read in [`infra/lib/config/index.ts`](../../../infra/lib/config/index.ts)), for grounded correctness, internal consistency and helpfulness. An aggregate alarm per evaluator fires when the share of poor verdicts rises; it shows a trend and never blocks a release. Answers outside the sample are not checked. Today only an environment named `dev` can turn it on. | Hub [Optional features](../../../README.md#optional-features), [ADR-079](../../decisions/adr-079-enable-online-evaluation-only-through-a-verifying-gate.md) |
 | **Quality review** | A protected API returns one turn's records, or a page of turns, to signed-in users who hold the review entitlement. It never returns question, answer or prompt text. A command-line client isn't built yet. | [Protected quality review API](../../capabilities/protected-quality-review-api/README.md), [ADR-060](../../decisions/adr-060-protect-quality-review-retrieval-with-an-explicit-operator-authorization-boundary.md) |
@@ -73,7 +73,7 @@ The runtime design is in [conversational runtime](../../capabilities/conversatio
 
 ### Prompt administration
 
-These two images were captured on 2026-10-19, because the synthetic capture user isn't a prompt administrator, so their sidebar predates the Overview item. The first slot's versions are a fictional fixture, so no real author appears.
+These two images are from 2026-10-19, so their sidebar predates the Overview item. They can't be regenerated with the capture script, because its synthetic user isn't a prompt administrator. The first slot's versions are a fictional fixture, so no real author appears.
 
 ![Prompt administration page listing each insight prompt slot with its active version and other versions, one marked calibration needs changes and others calibration passed](../../images/prompt-administration.png)
 
@@ -99,7 +99,7 @@ Version 27 fails 1 of 7 calibration cases, so it reads "Needs changes" and can't
 ## Deploy it
 
 - It deploys with the full solution through `make deploy-all`; follow the hub's [Quickstart](../../../README.md#quickstart). There is no separate assistant deploy.
-- Amazon Bedrock needs access to three models in your Region: a quick chat model, a deep-dive chat model and a memory model, named in `.env.example`. Page insight narration uses the two chat models unless you set its own. See [Prerequisites](../../../README.md#prerequisites).
+- Enable Amazon Bedrock access to the three models the hub's [Prerequisites](../../../README.md#prerequisites) lists.
 - Before data lands, chat can answer "What metrics can I ask about?" but has no figures to give. [Load your data](../../../README.md#load-your-data) says how data arrives.
 - Online evaluation is optional; read [Optional features](../../../README.md#optional-features) first.
 
