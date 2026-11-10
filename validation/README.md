@@ -60,7 +60,7 @@ requires an explicit target environment.
 | Ingestion drain observation | `probe_ingestion_drain.py` | Read-only exact-stack queue/lifecycle/performance observer with fail-closed error and DLQ detection; raw samples and aggregate output stay under ignored `evidence/` |
 | Isolated ingestion latency diagnostic | `probe_ingestion_end_to_end_latency.py` | Dev-only single-delivery measurement from empty ingestion queue through exact semantic `CURRENT`, followed by explicitly non-authoritative bake-queue observation; raw cutover output stays under ignored `evidence/` |
 | Deployed acceptance | `probe_ingestion_cutover.py` | V2-only synthetic ingestion acceptance: immutable landing, exact attempt success, exact `CURRENT` advancement, and unchanged DLQ depth |
-| README screenshots | `capture_screenshots.mjs` | Drives a deployment loaded with synthetic data as a logged-in user in the light theme and writes the README gallery to `docs/images/`. Every chat image is a scripted fixture served in the browser, so no question reaches the deployed agent. Never mutates the deployment; fails on a missing surface or past the 6 MiB image budget; prints image names and sizes only |
+| README screenshots | `capture_screenshots.mjs` | Drives a deployment loaded with synthetic data as a logged-in user in the light theme and writes the images the solution READMEs under `docs/solutions/` embed to `docs/images/`. Every chat image is a scripted fixture served in the browser, so no question reaches the deployed agent. Never mutates the deployment; fails on a missing surface or past the 6 MiB image budget; prints image names and sizes only |
 
 As of 2026-10-19, two strings in the validation tooling cite operator-local files that aren't
 published: the `source` field of `fixtures/graph-hold-clear-migration-v1.json` (an `acceptance.md`)
@@ -1594,7 +1594,8 @@ It prints one sanitized acceptance line and never page values; record the dated 
 
 ## Regenerating README screenshots
 
-`capture_screenshots.mjs` rewrites the images in `docs/images/` that the root README embeds. It
+`capture_screenshots.mjs` rewrites the images in `docs/images/` that the solution READMEs under
+[`docs/solutions/`](../docs/solutions/) embed. It
 takes the same inputs and frontend prerequisites as
 [the authenticated browser acceptance](#running-the-authenticated-browser-acceptance). Point
 `ADL_BASE_URL` only at a deployment holding synthetic data, because the images are committed.
@@ -1620,7 +1621,7 @@ signed-in user is not in the prompt-admin group. Each is reported as `SKIPPED` a
 so a stale image is never mistaken for a fresh one. A detail whose delivery reads "Not enough data
 for this window" fails the run.
 
-**Last capture, 2026-10-23.** The images the root README embeds were captured from 02:50 to 02:53
+**Last capture, 2026-10-23.** The images the solution READMEs under `docs/solutions/` embed were captured from 02:50 to 02:53
 UTC with `node validation/capture_screenshots.mjs`, signed in through `ADL_SESSION` as the
 synthetic dev persona `probe-a`, with `ADL_CAPTURE_SKIP=prompt-administration`. The target was the
 dev deployment's website origin, holding synthetic data and serving the UI refresh that `main`

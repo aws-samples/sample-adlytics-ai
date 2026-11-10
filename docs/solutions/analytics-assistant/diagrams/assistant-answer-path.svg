@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1300 720" role="img" focusable="false" aria-labelledby="assistant-answer-path-title assistant-answer-path-desc">
+  <title id="assistant-answer-path-title">Call-flow diagram: how the assistant answers a question, and how its answers are checked</title>
+  <desc id="assistant-answer-path-desc">A signed-in user asks a question in the browser. The Conversation API checks the sign-in, screens the question with Amazon Bedrock Guardrails and invokes the agent on Amazon Bedrock AgentCore as that user. The agent chooses governed tools and calls them through AgentCore Gateway; the tools compute every figure with Athena from the published data, or say why they cannot answer, and the answer streams back to the browser as it is written. The Conversation API writes one audit record per turn, with no question or answer text, before the answer ends. When the optional evaluation input is on, in any environment, it also writes each complete turn's exact question and released answer to the evaluation outbox. Optional online evaluation, dev only today, scores a sample of those turns, 10% by default, keeps the scores in protected result log groups and raises an alarm when poor scores rise. Entitled operators read redacted turn records and scores through the protected quality review API.</desc>
+  <defs>
+    <marker id="assistant-answer-path-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#536275"/></marker>
+  </defs>
+  <rect x="0" y="0" width="1300" height="720" fill="#ffffff"/>
+  <g stroke-width="2">
+    <rect x="30" y="60" width="210" height="110" rx="10" fill="#ffffff" stroke="#9aa8bb"/>
+    <rect x="373" y="60" width="210" height="110" rx="10" fill="#fff7f2" stroke="#b54545"/>
+    <rect x="717" y="60" width="210" height="110" rx="10" fill="#f8f5ff" stroke="#6b4fbb"/>
+    <rect x="1060" y="60" width="210" height="110" rx="10" fill="#f3fbf6" stroke="#2e7d4f"/>
+    <path d="M1060 314 V396 A105 14 0 0 0 1270 396 V314" fill="#f2f8fe" stroke="#2f6fb2"/>
+    <ellipse cx="1165" cy="314" rx="105" ry="14" fill="#f2f8fe" stroke="#2f6fb2"/>
+    <rect x="280" y="300" width="200" height="110" rx="10" fill="#fff4e0" stroke="#c77700"/>
+    <rect x="520" y="300" width="200" height="110" rx="10" fill="#fff4e0" stroke="#c77700"/>
+    <rect x="520" y="500" width="200" height="110" rx="10" fill="#fff4e0" stroke="#c77700"/>
+    <rect x="800" y="500" width="210" height="110" rx="10" fill="#fff7f2" stroke="#b54545"/>
+  </g>
+  <g fill="none" stroke="#536275" stroke-width="2" marker-end="url(#assistant-answer-path-arrow)">
+    <line x1="240" y1="100" x2="371" y2="100"/>
+    <line x1="373" y1="140" x2="242" y2="140"/>
+    <line x1="583" y1="100" x2="715" y2="100"/>
+    <line x1="717" y1="140" x2="585" y2="140"/>
+    <line x1="927" y1="100" x2="1058" y2="100"/>
+    <line x1="1060" y1="140" x2="929" y2="140"/>
+    <line x1="1140" y1="170" x2="1140" y2="298"/>
+    <line x1="1190" y1="300" x2="1190" y2="172"/>
+    <line x1="420" y1="170" x2="420" y2="298"/>
+    <line x1="540" y1="170" x2="540" y2="298"/>
+    <line x1="620" y1="410" x2="620" y2="498" stroke-dasharray="3 4"/>
+    <line x1="720" y1="555" x2="798" y2="555"/>
+    <path d="M380 410 V660 H905 V612"/>
+  </g>
+  <g font-family="Arial, sans-serif" fill="#172033" text-anchor="middle">
+    <g font-size="16" font-weight="bold">
+      <text x="135" y="94">Browser</text>
+      <text x="478" y="90">Conversation API</text>
+      <text x="822" y="94">Agent</text>
+      <text x="1165" y="94">Governed tools</text>
+      <text x="1165" y="350">Published data</text>
+      <text x="380" y="332">Audit record</text>
+      <text x="620" y="332">Evaluation outbox</text>
+      <text x="620" y="532">Online evaluation</text>
+      <text x="905" y="534">Quality review</text>
+    </g>
+    <g font-size="14" fill="#536275">
+      <text x="135" y="118">You ask on any page</text>
+      <text x="135" y="136">Cognito sign-in</text>
+      <text x="478" y="112">Lambda</text>
+      <text x="478" y="130">checks sign-in, screens</text>
+      <text x="478" y="148">with Bedrock Guardrails</text>
+      <text x="822" y="118">Amazon Bedrock AgentCore</text>
+      <text x="822" y="136">chooses tools, explains</text>
+      <text x="1165" y="118">Lambda + Athena</text>
+      <text x="1165" y="136">compute every figure</text>
+      <text x="1165" y="372">S3 data lake</text>
+      <text x="1165" y="390">immutable versions</text>
+      <text x="380" y="354">DynamoDB</text>
+      <text x="380" y="372">one per turn, with no</text>
+      <text x="380" y="390">question or answer text</text>
+      <text x="620" y="354">DynamoDB; optional, any env</text>
+      <text x="620" y="372">exact question and</text>
+      <text x="620" y="390">released answer text</text>
+      <text x="620" y="554">optional; dev only today</text>
+      <text x="620" y="572">scores 10% by default</text>
+      <text x="620" y="590">alarm on poor scores</text>
+      <text x="905" y="556">protected API</text>
+      <text x="905" y="574">entitled operators only</text>
+      <text x="905" y="592">redacted records</text>
+    </g>
+    <g font-size="14">
+      <text x="306" y="90">question</text>
+      <text x="306" y="160">answer streams in</text>
+      <text x="650" y="74">invokes as the</text>
+      <text x="650" y="90">signed-in user</text>
+      <text x="650" y="160">answer as it</text>
+      <text x="650" y="176">is written</text>
+      <text x="993" y="58">calls through</text>
+      <text x="993" y="74">AgentCore</text>
+      <text x="993" y="90">Gateway</text>
+      <text x="993" y="160">figures, or why</text>
+      <text x="993" y="176">it can't answer</text>
+      <text x="1130" y="214" text-anchor="end">queries with Athena;</text>
+      <text x="1130" y="231" text-anchor="end">rows come back from</text>
+      <text x="1130" y="248" text-anchor="end">the published version</text>
+      <text x="410" y="214" text-anchor="end">one record per turn,</text>
+      <text x="410" y="231" text-anchor="end">before the answer ends</text>
+      <text x="550" y="214" text-anchor="start">each complete turn,</text>
+      <text x="550" y="231" text-anchor="start">when evaluation input is on</text>
+      <text x="630" y="450" text-anchor="start">a sample of</text>
+      <text x="630" y="467" text-anchor="start">complete turns</text>
+      <text x="759" y="547">scores</text>
+      <text x="642" y="652">turn records, read on request</text>
+    </g>
+  </g>
+  <g font-family="Arial, sans-serif" font-size="14" fill="#172033">
+    <text x="30" y="456" font-size="15" font-weight="bold">Legend</text>
+    <rect x="30" y="470" width="24" height="16" rx="3" fill="#ffffff" stroke="#9aa8bb" stroke-width="2"/>
+    <text x="64" y="483">You and your browser</text>
+    <rect x="30" y="498" width="24" height="16" rx="3" fill="#fff7f2" stroke="#b54545" stroke-width="2"/>
+    <text x="64" y="511">Sign-in and access checks</text>
+    <rect x="30" y="526" width="24" height="16" rx="3" fill="#f8f5ff" stroke="#6b4fbb" stroke-width="2"/>
+    <text x="64" y="539">Agent: the model's choices</text>
+    <rect x="30" y="554" width="24" height="16" rx="3" fill="#f3fbf6" stroke="#2e7d4f" stroke-width="2"/>
+    <text x="64" y="567">Tools: tested code, figures</text>
+    <rect x="30" y="582" width="24" height="16" rx="3" fill="#f2f8fe" stroke="#2f6fb2" stroke-width="2"/>
+    <text x="64" y="595">Your published data</text>
+    <rect x="30" y="610" width="24" height="16" rx="3" fill="#fff4e0" stroke="#c77700" stroke-width="2"/>
+    <text x="64" y="623">Quality records and checks</text>
+    <line x1="30" y1="646" x2="54" y2="646" stroke="#536275" stroke-width="2"/>
+    <text x="64" y="651">Request, reply or write</text>
+    <line x1="30" y1="674" x2="54" y2="674" stroke="#536275" stroke-width="2" stroke-dasharray="3 4"/>
+    <text x="64" y="679">Asynchronous, sampled</text>
+  </g>
+</svg>

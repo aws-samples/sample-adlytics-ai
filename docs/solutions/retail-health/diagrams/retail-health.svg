@@ -1,0 +1,133 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1300 730" role="img" focusable="false" aria-labelledby="rh-title rh-desc">
+  <title id="rh-title">Call-flow diagram: how Retail health and Products and ads get their figures, in a customer deployment</title>
+  <desc id="rh-desc">Your extraction pipeline, in a second AWS account, fetches Vendor Central sales, traffic, product and reported-total reports and runs the declared Amazon Marketing Cloud queries, then lands each delivery in the S3 landing bucket, where it is checked against its data contract and published to the governed data lake as an immutable version. A dotted box and arrow mark the Vendor Central path, which isn't built yet: a customer deployment can't land Vendor Central reports, and the dev environment holds synthetic ones. A new published version starts the page bake on AWS Lambda and Amazon Athena, which compares the product rows with Vendor Central's reported totals and writes Retail health, a page per product and each product's ad credit to the page store, with figures or a designed absence. The Presentation API serves each page's latest good version to the signed-in user. Amazon Bedrock insight narration, held in the insight cache and attached to the served page by its revision, explains the figures on the Demand, Returns pressure and Ordered vs shipped cards; the Largest movers card is a fixed rule baked with the page, with no model. Customer deployments bake one page at a time; building all affected pages as one set runs in the dev environment only.</desc>
+  <defs>
+    <marker id="rh-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#536275"/></marker>
+  </defs>
+  <rect x="0" y="0" width="1300" height="730" fill="#ffffff"/>
+  <g stroke-width="2">
+    <rect x="30" y="30" width="210" height="105" rx="10" fill="#ffffff" stroke="#9aa8bb" stroke-dasharray="2 4"/>
+    <rect x="30" y="150" width="210" height="90" rx="10" fill="#ffffff" stroke="#9aa8bb"/>
+    <rect x="373" y="80" width="210" height="120" rx="10" fill="#ffffff" stroke="#9aa8bb"/>
+    <rect x="717" y="80" width="210" height="120" rx="10" fill="#f2f8fe" stroke="#2f6fb2"/>
+    <path d="M1060 94 V186 A105 14 0 0 0 1270 186 V94" fill="#f2f8fe" stroke="#2f6fb2"/>
+    <ellipse cx="1165" cy="94" rx="105" ry="14" fill="#f2f8fe" stroke="#2f6fb2"/>
+    <rect x="30" y="310" width="210" height="110" rx="10" fill="#f3fbf6" stroke="#2e7d4f"/>
+    <path d="M373 324 V406 A105 14 0 0 0 583 406 V324" fill="#f2f8fe" stroke="#2f6fb2"/>
+    <ellipse cx="478" cy="324" rx="105" ry="14" fill="#f2f8fe" stroke="#2f6fb2"/>
+    <rect x="717" y="310" width="210" height="110" rx="10" fill="#ffffff" stroke="#9aa8bb"/>
+    <rect x="1060" y="310" width="210" height="110" rx="10" fill="#ffffff" stroke="#9aa8bb" stroke-width="3"/>
+    <rect x="373" y="480" width="210" height="100" rx="10" fill="#f8f5ff" stroke="#6b4fbb"/>
+  </g>
+  <g fill="none" stroke="#536275" stroke-width="2" marker-end="url(#rh-arrow)">
+    <line x1="240" y1="195" x2="371" y2="165"/>
+    <line x1="583" y1="145" x2="715" y2="145"/>
+    <line x1="927" y1="145" x2="1058" y2="145"/>
+    <path d="M1165 200 V255 H135 V308"/>
+    <line x1="240" y1="380" x2="371" y2="380"/>
+    <line x1="583" y1="380" x2="715" y2="380"/>
+    <line x1="927" y1="380" x2="1058" y2="380"/>
+  </g>
+  <g fill="none" stroke="#536275" stroke-width="2" stroke-dasharray="2 4" marker-end="url(#rh-arrow)">
+    <line x1="240" y1="82" x2="371" y2="118"/>
+  </g>
+  <g fill="none" stroke="#536275" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#rh-arrow)">
+    <path d="M520 478 V448 H822 V422"/>
+  </g>
+  <g font-family="Arial, sans-serif" fill="#172033" text-anchor="middle">
+    <g font-size="16" font-weight="bold">
+      <text x="135" y="56">Vendor Central</text>
+      <text x="135" y="174">Amazon Marketing</text>
+      <text x="135" y="192">Cloud</text>
+      <text x="478" y="110">Your extraction</text>
+      <text x="478" y="128">pipeline</text>
+      <text x="822" y="110">Landing and</text>
+      <text x="822" y="128">validation</text>
+      <text x="1165" y="132">Governed data lake</text>
+      <text x="135" y="344">Page bake</text>
+      <text x="478" y="356">Page store</text>
+      <text x="822" y="344">Presentation API</text>
+      <text x="1165" y="338">Retail health and</text>
+      <text x="1165" y="356">Products and ads</text>
+      <text x="478" y="510">Insight narration</text>
+    </g>
+    <g font-size="14" fill="#536275">
+      <text x="135" y="77">Sales, traffic, products and</text>
+      <text x="135" y="92">reported totals; can't be</text>
+      <text x="135" y="107">landed in a customer</text>
+      <text x="135" y="122">deployment yet</text>
+      <text x="135" y="212">Your AMC instance: ad</text>
+      <text x="135" y="227">credit per product</text>
+      <text x="478" y="150">Your code, in a second</text>
+      <text x="478" y="165">AWS account</text>
+      <text x="822" y="150">Amazon S3 landing bucket;</text>
+      <text x="822" y="165">each delivery is checked</text>
+      <text x="822" y="180">against its data contract</text>
+      <text x="1165" y="154">Amazon S3, AWS Glue,</text>
+      <text x="1165" y="169">Amazon Athena tables</text>
+      <text x="135" y="366">AWS Lambda, Amazon Athena;</text>
+      <text x="135" y="381">compares product rows with</text>
+      <text x="135" y="396">Vendor Central's totals</text>
+      <text x="478" y="378">Amazon S3 page bodies,</text>
+      <text x="478" y="393">Amazon DynamoDB pointers</text>
+      <text x="822" y="366">AWS Lambda; serves each</text>
+      <text x="822" y="381">page's latest good build</text>
+      <text x="1165" y="378">Plus a page per product, in</text>
+      <text x="1165" y="394">the signed-in browser</text>
+      <text x="478" y="532">Amazon Bedrock; held in</text>
+      <text x="478" y="547">the insight cache. Largest</text>
+      <text x="478" y="562">movers: fixed rule, no AI</text>
+    </g>
+    <g font-size="14">
+      <text x="300" y="62">reports,</text>
+      <text x="300" y="77">not built yet</text>
+      <text x="310" y="212">query results</text>
+      <text x="650" y="101">lands each</text>
+      <text x="650" y="116">delivery, then</text>
+      <text x="650" y="131">registers it</text>
+      <text x="993" y="101">publishes a</text>
+      <text x="993" y="116">validated,</text>
+      <text x="993" y="131">immutable version</text>
+      <text x="650" y="246">a new published version starts the bake</text>
+      <text x="306" y="336">the built page:</text>
+      <text x="306" y="351">figures or a</text>
+      <text x="306" y="366">designed absence</text>
+      <text x="650" y="336">latest good</text>
+      <text x="650" y="351">version of</text>
+      <text x="650" y="366">each page</text>
+      <text x="993" y="351">page served to</text>
+      <text x="993" y="366">the signed-in user</text>
+      <text x="590" y="440" text-anchor="start">attached by page revision</text>
+    </g>
+    <g font-size="14" text-anchor="start">
+      <text x="717" y="502" font-size="15" font-weight="bold">How pages refresh</text>
+      <text x="717" y="524">Customer deployments bake one page at a time;</text>
+      <text x="717" y="542">a page that fails keeps its last good version.</text>
+      <text x="717" y="560">Dev environment only: all affected pages are built</text>
+      <text x="717" y="578">as one set and switch to new data together.</text>
+    </g>
+  </g>
+  <g font-family="Arial, sans-serif" font-size="14" fill="#172033">
+    <line x1="30" y1="610" x2="1270" y2="610" stroke="#9aa8bb" stroke-width="1"/>
+    <text x="30" y="636" font-size="14" font-weight="bold">Legend</text>
+    <rect x="30" y="650" width="26" height="16" rx="3" fill="#ffffff" stroke="#9aa8bb" stroke-width="2"/>
+    <text x="64" y="663">Amazon, you, or a serving step</text>
+    <rect x="340" y="650" width="26" height="16" rx="3" fill="#f2f8fe" stroke="#2f6fb2" stroke-width="2"/>
+    <text x="374" y="663">Data and the pipeline that fills it</text>
+    <rect x="680" y="650" width="26" height="16" rx="3" fill="#f3fbf6" stroke="#2e7d4f" stroke-width="2"/>
+    <text x="714" y="663">Tested computation, no AI</text>
+    <rect x="960" y="650" width="26" height="16" rx="3" fill="#f8f5ff" stroke="#6b4fbb" stroke-width="2"/>
+    <text x="994" y="663">AI text from governed figures</text>
+    <rect x="30" y="685" width="26" height="16" rx="3" fill="#ffffff" stroke="#9aa8bb" stroke-width="3"/>
+    <text x="64" y="698">The pages this solution adds</text>
+    <path d="M340 689 V701 A13 4 0 0 0 366 701 V689" fill="#f2f8fe" stroke="#2f6fb2" stroke-width="2"/>
+    <ellipse cx="353" cy="689" rx="13" ry="4" fill="#f2f8fe" stroke="#2f6fb2" stroke-width="2"/>
+    <text x="374" y="698">Data store</text>
+    <rect x="500" y="685" width="26" height="16" rx="3" fill="#ffffff" stroke="#9aa8bb" stroke-width="2" stroke-dasharray="2 3"/>
+    <text x="534" y="698">Not built yet</text>
+    <line x1="680" y1="693" x2="714" y2="693" stroke="#536275" stroke-width="2" marker-end="url(#rh-arrow)"/>
+    <text x="724" y="698">Data or request, labelled</text>
+    <line x1="960" y1="693" x2="994" y2="693" stroke="#536275" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#rh-arrow)"/>
+    <text x="1004" y="698">Asynchronous step</text>
+  </g>
+</svg>

@@ -13,7 +13,7 @@ adlytics-ai/
 ├── .githooks/              # tracked commit and push hooks; make install-hooks activates them
 ├── .kiro/                  # reusable agent tooling; machine/session state is excluded
 ├── contracts/              # governed source, semantic, table, and tool declarations
-├── docs/                   # current design docs and ADRs
+├── docs/                   # current design docs and ADRs; solutions/ holds one README per solution
 ├── presentation/           # versioned analytical page declarations
 ├── infra/                  # CDK v2, TypeScript
 ├── src/                    # Python backend, hexagonal
@@ -23,6 +23,8 @@ adlytics-ai/
 ├── validation/             # reusable probes and sanitized conclusions; raw evidence excluded
 └── scripts/                # development and operational scripts
 ```
+
+`docs/solutions/<solution>/README.md` is the README for one solution: `performance`, `campaigns`, `reach-and-audiences`, `new-customers-and-retention`, `retail-health`, `analytics-assistant` and `platform`. Each keeps its diagrams in a `diagrams/` folder beside it and embeds screenshots from `docs/images/`. The root README's [Solutions](../README.md#solutions) table lists them.
 
 `src/` and `infra/` do not import from each other. Governed declarations under `contracts/` and deployed resource names are their integration boundary.
 
