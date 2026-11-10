@@ -1,4 +1,4 @@
-# Performance: Growth check and Channel scorecard
+# Performance: Growth check and Scorecard
 
 See on one screen whether your Amazon advertising is growing the business, and which ad channel earns its budget.
 

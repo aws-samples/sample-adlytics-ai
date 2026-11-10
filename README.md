@@ -10,7 +10,7 @@ Each solution is one view of the product, with its own README: who it's for, wha
 
 | Solution | What it gives you | For |
 |---|---|---|
-| [Performance: Growth check and Channel scorecard](docs/solutions/performance/README.md) | Whether your advertising is growing the business, and which ad channel earns its budget | Brand or category manager; finance or CMO |
+| [Performance: Growth check and Scorecard](docs/solutions/performance/README.md) | Whether your advertising is growing the business, and which ad channel earns its budget | Brand or category manager; finance or CMO |
 | [Campaigns](docs/solutions/campaigns/README.md) | The campaigns to scale, hold or cut, with the reasons behind each change | Media buyer |
 | [Reach and audiences](docs/solutions/reach-and-audiences/README.md) | Whether Amazon DSP reaches shoppers your sponsored ads miss, where more ads stop paying, and which audiences your buyers belong to | Media buyer |
 | [New customers and retention](docs/solutions/new-customers-and-retention/README.md) | Which ad channels win first-time buyers, at what cost, and whether those customers come back | Brand or category manager; finance or CMO |
