@@ -41,7 +41,7 @@
       <text x="1165" y="328">New customers and</text>
       <text x="1165" y="346">Retention pages</text>
     </g>
-    <g font-size="13" fill="#536275">
+    <g font-size="14" fill="#536275">
       <text x="135" y="128">Your AMC instance; Paid</text>
       <text x="135" y="143">Features add cohorts that</text>
       <text x="135" y="158">count any repeat purchase</text>
@@ -63,7 +63,7 @@
       <text x="1165" y="368">In the signed-in</text>
       <text x="1165" y="384">user's browser</text>
     </g>
-    <g font-size="13">
+    <g font-size="14">
       <text x="306" y="86">query results:</text>
       <text x="306" y="101">new-to-brand,</text>
       <text x="306" y="116">buyers, cohorts</text>
@@ -82,7 +82,7 @@
       <text x="993" y="341">page served to</text>
       <text x="993" y="356">the signed-in user</text>
     </g>
-    <g font-size="13" text-anchor="start">
+    <g font-size="14" text-anchor="start">
       <text x="30" y="492" font-size="15" font-weight="bold">Insight cards</text>
       <text x="30" y="514">Each card is a fixed-rule statement computed</text>
       <text x="30" y="532">from the page's figures by tested code.</text>
@@ -94,7 +94,7 @@
       <text x="717" y="568">as one set and switch to new data together.</text>
     </g>
   </g>
-  <g font-family="Arial, sans-serif" font-size="13" fill="#172033">
+  <g font-family="Arial, sans-serif" font-size="14" fill="#172033">
     <line x1="30" y1="600" x2="1270" y2="600" stroke="#9aa8bb" stroke-width="1"/>
     <text x="30" y="626" font-size="14" font-weight="bold">Legend</text>
     <rect x="30" y="640" width="26" height="16" rx="3" fill="#ffffff" stroke="#9aa8bb" stroke-width="2"/>

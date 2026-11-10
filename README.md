@@ -164,7 +164,7 @@ All are off by default and are set in `.env`.
 |---|---|---|
 | Producer onboarding: a cross-account role your extraction pipeline assumes to land data | `ADLYTICS_PRODUCER_ONBOARDING_ENABLED` with the role ARN and external ID | [Source acquisition](docs/capabilities/source-acquisition/README.md) |
 | Searchable traces (CloudWatch Transaction Search). An account-wide setting with its own charges. The agent runtime's span diagnostics need it | `ADLYTICS_TRANSACTION_SEARCH` | [Observability](docs/concepts/observability.md) |
-| Online answer evaluation: scores a sample of complete answers, 10% by default; answers outside the sample are not checked | `ADLYTICS_EVALUATION_INPUT_PROVISIONED`, `ADLYTICS_ONLINE_EVALUATION_PROVISIONED` and related settings. Synth refuses online evaluation for any environment not named `dev` | [Agent quality loop](docs/capabilities/agent-quality-loop/README.md) |
+| Online answer evaluation: scores a sample of complete answers, 10% by default; answers outside the sample are not checked | `ADLYTICS_EVALUATION_INPUT_PROVISIONED` adds the evaluation outbox, which keeps each complete turn's exact question and released answer; synth accepts it in any environment. Scoring, `ADLYTICS_ONLINE_EVALUATION_PROVISIONED` and related settings, needs the outbox, and synth refuses it for any environment not named `dev` | [Agent quality loop](docs/capabilities/agent-quality-loop/README.md) |
 
 ## Load your data
 

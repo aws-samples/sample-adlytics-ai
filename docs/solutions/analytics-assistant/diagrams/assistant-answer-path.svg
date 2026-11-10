@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1300 720" role="img" focusable="false" aria-labelledby="assistant-answer-path-title assistant-answer-path-desc">
   <title id="assistant-answer-path-title">Call-flow diagram: how the assistant answers a question, and how its answers are checked</title>
-  <desc id="assistant-answer-path-desc">A signed-in user asks a question in the browser. The Conversation API checks the sign-in, screens the question with Amazon Bedrock Guardrails and invokes the agent on Amazon Bedrock AgentCore as that user. The agent chooses governed tools and calls them through AgentCore Gateway; the tools compute every figure with Athena from the published data, or say why they cannot answer, and the answer streams back to the browser as it is written. The Conversation API writes one audit record per turn, with no question or answer text, before the answer ends. When optional online evaluation is on, dev only today, it also writes each complete turn's exact question and released answer to the evaluation outbox. Online evaluation scores a sample of those turns, 10% by default, keeps the scores in protected result log groups and raises an alarm when poor scores rise. Entitled operators read redacted turn records and scores through the protected quality review API.</desc>
+  <desc id="assistant-answer-path-desc">A signed-in user asks a question in the browser. The Conversation API checks the sign-in, screens the question with Amazon Bedrock Guardrails and invokes the agent on Amazon Bedrock AgentCore as that user. The agent chooses governed tools and calls them through AgentCore Gateway; the tools compute every figure with Athena from the published data, or say why they cannot answer, and the answer streams back to the browser as it is written. The Conversation API writes one audit record per turn, with no question or answer text, before the answer ends. When the optional evaluation input is on, in any environment, it also writes each complete turn's exact question and released answer to the evaluation outbox. Optional online evaluation, dev only today, scores a sample of those turns, 10% by default, keeps the scores in protected result log groups and raises an alarm when poor scores rise. Entitled operators read redacted turn records and scores through the protected quality review API.</desc>
   <defs>
     <marker id="assistant-answer-path-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#536275"/></marker>
   </defs>
@@ -59,7 +59,7 @@
       <text x="380" y="354">DynamoDB</text>
       <text x="380" y="372">one per turn, with no</text>
       <text x="380" y="390">question or answer text</text>
-      <text x="620" y="354">DynamoDB</text>
+      <text x="620" y="354">DynamoDB; optional, any env</text>
       <text x="620" y="372">exact question and</text>
       <text x="620" y="390">released answer text</text>
       <text x="620" y="554">optional; dev only today</text>
@@ -87,7 +87,7 @@
       <text x="410" y="214" text-anchor="end">one record per turn,</text>
       <text x="410" y="231" text-anchor="end">before the answer ends</text>
       <text x="550" y="214" text-anchor="start">each complete turn,</text>
-      <text x="550" y="231" text-anchor="start">when evaluation is on</text>
+      <text x="550" y="231" text-anchor="start">when evaluation input is on</text>
       <text x="630" y="450" text-anchor="start">a sample of</text>
       <text x="630" y="467" text-anchor="start">complete turns</text>
       <text x="759" y="547">scores</text>
