@@ -112,9 +112,17 @@ def expected_vendor(catalog: SyntheticEntityCatalog) -> VendorExpectations:
             Decimal(str(row["customerReturns"])),
             views.get(key),
         )
+    span = catalog_span(catalog)
     return VendorExpectations(
-        span=catalog_span(catalog),
-        asins=tuple(product.asin for product in catalog.products),
+        span=span,
+        # A forecasting shape that declares days with no row (K-4: intermittent, launch,
+        # delisted) has no every-day denominator, so only the products with a row on every
+        # span day are held to it.
+        asins=tuple(
+            product.asin
+            for product in catalog.products
+            if all(catalog.values.vendor_present(product.asin, day) for day in _span_days(span))
+        ),
         retail=catalog.shape.retail,
         final=final,
     )

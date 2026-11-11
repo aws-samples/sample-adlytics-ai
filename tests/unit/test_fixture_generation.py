@@ -1786,6 +1786,8 @@ def test_4_returns_follow_the_declared_lag_profile_and_never_exceed_shipments() 
     values = catalog.values
     for product in catalog.products:
         for day in _span_list()[::17]:
+            if not values.vendor_present(product.asin, day):
+                continue  # a forecasting shape's day with no row (K-4)
             item = values.product_day(product.asin, product.scenario, day)
             lagged = sum(
                 lag.share
@@ -1832,6 +1834,8 @@ def test_6_net_and_served_revenue_per_unit_stay_in_their_bands() -> None:
     days = _span_list()
     for product in catalog.products:
         for day in days:
+            if not values.vendor_present(product.asin, day):
+                continue  # a forecasting shape's day with no row (K-4)
             item = values.product_day(product.asin, product.scenario, day)
             net = item.revenue_per_unit / values.price(product.asin, day)
             assert retail.revenue_per_unit.low * Decimal("0.99") <= net
@@ -1901,7 +1905,13 @@ def test_7a_ctr_viewable_rate_frequency_and_retail_conversion_vary() -> None:
         assert len({Decimal(item.viewable) / item.measurable for item in live}) > 1
         assert len({Decimal(item.traffic) / item.reach for item in live}) > 1
     for product in catalog.products:
-        rows = [values.product_day(product.asin, product.scenario, day) for day in days]
+        rows = [
+            values.product_day(product.asin, product.scenario, day)
+            for day in days
+            if values.vendor_present(product.asin, day)
+        ]
+        if not rows:
+            continue  # a delisted product has no row in the last 20 weeks (K-4)
         assert len({Decimal(item.units_ordered) / item.glance_views for item in rows}) > 1
 
 
@@ -2307,3 +2317,98 @@ def test_10_hash_inputs_are_injective_and_campaign_constants_are_independent(
             a, b = ranks(left), ranks(right)
             rho = 1 - 6 * sum((x - y) ** 2 for x, y in zip(a, b, strict=True)) / (n * (n * n - 1))
             assert abs(rho) <= 0.5, (left, right, rho)
+
+
+# --- Demand-forecast Vendor shapes (approval K-4) ---------------------------------------------
+
+
+@functools.cache
+def _sales_rows_by_asin() -> dict[str, dict[date, dict[str, Any]]]:
+    document = json.loads((ROOT / "tests/fixtures/generated/vendor-sales-by-asin.json").read_text())
+    found: dict[str, dict[date, dict[str, Any]]] = {}
+    for row in document["salesByAsin"]:
+        found.setdefault(row["asin"], {})[date.fromisoformat(row["startDate"])] = row
+    return found
+
+
+def _shape_asins(name: str) -> list[str]:
+    return [item.asin for item in _catalog().products if item.forecast_shape == name]
+
+
+@pytest.mark.parametrize(
+    "name", ["regular", "trend_seasonal", "low_volume", "stockout", "launch", "delisted"]
+)
+def test_a_forecasting_shape_has_a_vendor_row_exactly_on_its_declared_days(name: str) -> None:
+    """A shape's absence is declared (launch before, delisted after), never random."""
+    forecast = _catalog().shape.forecast
+    span = _span_list()
+    for asin in _shape_asins(name):
+        rows = _sales_rows_by_asin()[asin]
+        expected = {
+            day
+            for day in span
+            if (name != "launch" or day >= forecast.launch_first_day)
+            and (name != "delisted" or day <= forecast.delisted_last_day)
+        }
+        assert set(rows) == expected, asin
+
+
+def test_an_intermittent_product_has_whole_weeks_with_no_row_while_it_sells_nearby() -> None:
+    """The precondition of an `inferred_zero` week: covered days, no row, active product."""
+    span = _span_list()
+    mondays = [day for day in span if day.weekday() == 0 and day + timedelta(days=6) <= span[-1]]
+    for asin in _shape_asins("intermittent"):
+        rows = _sales_rows_by_asin()[asin]
+        assert 0 < len(rows) < len(span), asin
+        empty = [
+            monday
+            for monday in mondays
+            if not any(monday + timedelta(days=offset) in rows for offset in range(7))
+            and any(monday - timedelta(days=offset) in rows for offset in range(1, 91))
+        ]
+        assert empty, asin
+
+
+def test_a_stockout_product_ships_below_its_orders_only_inside_the_declared_window() -> None:
+    forecast = _catalog().shape.forecast
+    for asin in _shape_asins("stockout"):
+        for day, row in _sales_rows_by_asin()[asin].items():
+            ratio = Decimal(row["shippedUnits"]) / Decimal(row["orderedUnits"])
+            if forecast.stockout_first <= day <= forecast.stockout_last:
+                assert ratio < Decimal("0.5"), (asin, day)
+            else:
+                assert ratio > Decimal("0.85"), (asin, day)
+
+
+def test_a_low_volume_product_sells_a_small_fraction_of_any_regular_product() -> None:
+    def mean_units(asin: str) -> Decimal:
+        rows = _sales_rows_by_asin()[asin].values()
+        return Decimal(sum(row["shippedUnits"] for row in rows)) / len(rows)
+
+    smallest_regular = min(mean_units(asin) for asin in _shape_asins("regular"))
+    assert all(mean_units(asin) * 5 < smallest_regular for asin in _shape_asins("low_volume"))
+
+
+def test_amc_fixtures_name_only_the_products_with_an_amc_role() -> None:
+    """The forecasting products carry `roles: []`, so every AMC fixture keeps its bytes."""
+    catalog = _catalog()
+    assert len(catalog.products) == 60
+    assert {item.asin for item in catalog.amc_products} == {f"B0FIXTUR0{n}" for n in range(7)}
+
+
+def test_the_vendor_history_start_must_be_266_days_before_the_first_day(
+    tmp_path: pathlib.Path,
+) -> None:
+    text = (ROOT / CATALOG_PATH).read_text()
+    assert load_synthetic_entity_catalog(ROOT).shape.forecast.vendor_history_start == date(
+        2024, 10, 8
+    )
+    drifted = tmp_path / CATALOG_PATH
+    drifted.parent.mkdir(parents=True)
+    drifted.write_text(
+        text.replace('vendor_history_start: "2024-10-08"', 'vendor_history_start: "2024-10-09"')
+    )
+    with pytest.raises(
+        SyntheticCatalogError, match=r"vendor_history_start: must be fixture_span\.first_day - 266"
+    ):
+        load_synthetic_entity_catalog(tmp_path)

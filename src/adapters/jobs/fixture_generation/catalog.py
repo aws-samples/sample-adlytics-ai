@@ -45,6 +45,11 @@ BULK_CAMPAIGN_SCENARIOS = frozenset(
 CAMPAIGN_SCENARIOS = BULK_CAMPAIGN_SCENARIOS | {"stable_growth"}
 """Visible campaigns may also carry `stable_growth`, the R-5 reassignment target."""
 PRODUCT_SCENARIOS = frozenset({"returns_pressure", "stable_growth"})
+FORECAST_SHAPES = frozenset(
+    {"regular", "trend_seasonal", "low_volume", "intermittent", "stockout", "launch", "delisted"}
+)
+"""The demand-forecast Vendor shapes (approval K-4); `regular` keeps the product's values as they
+were before the shapes existed."""
 SHAPED_CAMPAIGN_SCENARIOS = CAMPAIGN_SCENARIOS - {"zero_conversion"}
 """Campaign scenarios that carry a declared conversion shape (design §3.1 `conversion_shape`)."""
 BULK_CAMPAIGN_COUNT = 1_000
@@ -81,6 +86,9 @@ type CampaignScenario = Literal[
     "stable_growth",
 ]
 type ProductScenario = Literal["returns_pressure", "stable_growth"]
+type ForecastShapeName = Literal[
+    "regular", "trend_seasonal", "low_volume", "intermittent", "stockout", "launch", "delisted"
+]
 type Scenario = CampaignScenario | ProductScenario
 
 
@@ -248,6 +256,7 @@ class SyntheticProduct:
     title: str
     roles: tuple[str, ...]
     scenario: ProductScenario
+    forecast_shape: ForecastShapeName
 
 
 @dataclass(frozen=True, slots=True)
@@ -276,7 +285,11 @@ class SyntheticEntityCatalog:
         object.__setattr__(
             self,
             "values",
-            ShapeValues(self.shape, frozenset(item.key for item in self.campaigns)),
+            ShapeValues(
+                self.shape,
+                frozenset(item.key for item in self.campaigns),
+                {item.asin: item.forecast_shape for item in self.products},
+            ),
         )
         keys = tuple(item.key for item in self.campaigns)
         if len(set(keys)) != len(keys):
@@ -357,6 +370,14 @@ class SyntheticEntityCatalog:
     def asins(self) -> frozenset[str]:
         """Every exact fictional child ASIN governed by the catalog."""
         return frozenset(item.asin for item in self.products)
+
+    @property
+    def amc_products(self) -> tuple[SyntheticProduct, ...]:
+        """The products AMC fixtures name: those with an AMC role.
+
+        The forecasting products (K-4) carry `roles: []`, so every AMC fixture keeps its bytes.
+        """
+        return tuple(item for item in self.products if item.roles)
 
 
 @dataclass(frozen=True, slots=True)
@@ -461,8 +482,17 @@ class GovernedValueProvider:
 
     def product(self, row: int) -> SyntheticProduct:
         """Return the product selected deterministically for this physical row."""
-        index = self.campaign_index(row) if self.campaign_bearing else self.product_index(row)
-        return self.catalog.products[index % len(self.catalog.products)]
+        pool = (
+            self.catalog.amc_products
+            if self.contract.source_system == "amc"
+            else self.catalog.products
+        )
+        index = self.campaign_index(row) if self.campaign_bearing else row % len(pool)
+        return pool[index % len(pool)]
+
+    def include_product_row(self, row: int) -> bool:
+        """Whether a Vendor ASIN-grain row exists: a forecasting shape may leave a day absent."""
+        return self.values.vendor_present(self.product(row).asin, self.day(row))
 
     def string_value(self, delivered_name: str, target_column: str, row: int) -> str | None:
         """Return a governed string where the catalog owns that source field."""
@@ -794,6 +824,10 @@ def _products(raw: RawMapping) -> tuple[SyntheticProduct, ...]:
             scenario=cast(
                 "ProductScenario",
                 _scenario(value.get("scenario"), PRODUCT_SCENARIOS, "product scenario"),
+            ),
+            forecast_shape=cast(
+                "ForecastShapeName",
+                _scenario(value.get("forecast_shape"), FORECAST_SHAPES, "product forecast shape"),
             ),
         )
         for value in (

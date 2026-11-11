@@ -117,7 +117,32 @@ The catalog's `shape` section declares the rest (ADR-086 owns the reasons):
   in 4–25 % and attributed ROAS in 1.00–9.00;
 - Vendor revenue net of returns, returns lagging shipments by 3, 7, 14 and 21 days, and served
   revenue per unit shipped inside 12.00–42.50;
-- a price shift on one product, which moves its revenue per unit while units hold.
+- a price shift on one product, which moves its revenue per unit while units hold;
+- a demand-forecast shape per Vendor product (`forecast_shape`, added 2026-11-11 for the demand
+  forecast). It is declared in `shape.forecast`:
+
+  | Shape | Products | What it declares |
+  |---|---|---|
+  | `regular` | 27 | The values the product had before the shapes existed; the seven AMC-role products are all `regular`, so no AMC fixture changed |
+  | `trend_seasonal` | 12 | A steeper trend and a stronger monthly seasonality |
+  | `low_volume` | 6 | A small fraction of the regular level |
+  | `intermittent` | 6 | A row only on days whose seeded draw is below `presence`, so some whole weeks have no row |
+  | `stockout` | 4 | Inside a declared window, shipped units fall to a share of demand while ordered units keep it |
+  | `launch` | 3 | No row before its first Vendor day, 40 weeks before `shape_anchor` |
+  | `delisted` | 2 | No row in the last 20 weeks |
+
+  A day with no row is declared by the shape, never random. The 53 products after `B0FIXTUR06`
+  carry `roles: []`, and AMC fixtures name only products with a role.
+
+**Vendor-only history (STAGED only).** `shape.forecast.vendor_history_start` is
+`fixture_span.first_day` − 266 days, giving 104 weeks of Vendor history to `last_day`. The
+`vendor_day_unlanded` day sits 14 days before `first_day`. Both feed only the STAGED demand-forecast
+input, built from the same value functions. They never reach a landed fixture, for two reasons.
+The fixture landing refuses Vendor deliveries older than `last_day` − 56
+(`FULL_HISTORY_NOT_ENABLED`). And a corrected delivery at an unchanged span would reuse a key dev
+already holds. So the committed 60-product catalogue is **not landed in dev** (2026-11-11): dev keeps
+its 7-product Vendor data until an owner-approved fresh dev seed, or a designed historical
+admission.
 
 Shape invariants, each falsifiable against the lake. The three the 2026-10-04 UX review found
 broken on the earlier generation (returns above shipped units, an implausibly small day, one CTR

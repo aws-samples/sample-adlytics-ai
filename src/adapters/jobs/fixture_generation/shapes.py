@@ -569,6 +569,8 @@ def build(
             else rows
         )
         document = _build_document(in_document, physical_rows, provider)
+        if provider is not None and provider.product_bearing:
+            _drop_absent_rows(document, physical_rows, provider)
         return Fixture(
             contract_id=contract.contract_id,
             source_format=contract.source_format,
@@ -594,6 +596,21 @@ def build(
         manifest=_declaration(contract, selected),
         rows=_result_rows(contract, rows_out, selected),
     )
+
+
+def _drop_absent_rows(document: dict[str, Any], rows: int, provider: GovernedValueProvider) -> None:
+    """Remove the product-days a declared forecasting shape leaves without a row (K-4).
+
+    A real Vendor report has no row for an ASIN with nothing to report that day; the shape
+    declares which days those are, so absence is declared, never random.
+    """
+    keep = [row for row in range(rows) if provider.include_product_row(row)]
+    if len(keep) == rows:
+        return
+    for name, value in tuple(document.items()):
+        if isinstance(value, list) and len(cast("list[Any]", value)) == rows:
+            items = cast("list[Any]", value)
+            document[name] = [items[row] for row in keep]
 
 
 def declaration_for(contract: DataContract, options: FixtureBuildOptions) -> dict[str, Any]:

@@ -42,7 +42,11 @@ from adapters.jobs.curation.manifests import (
 )
 from adapters.jobs.fixture_generation import shape as shape_module
 from adapters.jobs.fixture_generation.catalog import load_synthetic_entity_catalog
-from adapters.jobs.fixture_generation.shape import AttributionMaturity, CampaignDay
+from adapters.jobs.fixture_generation.shape import (
+    VENDOR_HISTORY_EXTENSION_DAYS,
+    AttributionMaturity,
+    CampaignDay,
+)
 from adapters.jobs.fixture_generation.shapes import WINDOW_COLUMNS
 from adapters.jobs.ingest_delivery import semantic_sidecar
 from adapters.jobs.land_fixtures import __main__ as land_cli
@@ -1738,7 +1742,12 @@ def _horizon_root(tmp_path: pathlib.Path, first_day: date) -> pathlib.Path:
     catalog = root / "contracts/shared/synthetic-entity-catalog.yaml"
     text = catalog.read_text()
     assert 'first_day: "2025-07-01"' in text
-    catalog.write_text(text.replace('first_day: "2025-07-01"', f'first_day: "{first_day}"'))
+    history_start = first_day - timedelta(days=VENDOR_HISTORY_EXTENSION_DAYS)
+    catalog.write_text(
+        text.replace('first_day: "2025-07-01"', f'first_day: "{first_day}"').replace(
+            'vendor_history_start: "2024-10-08"', f'vendor_history_start: "{history_start}"'
+        )
+    )
     return root
 
 

@@ -520,6 +520,33 @@ type ShapeEvent = (
 )
 
 
+VENDOR_HISTORY_EXTENSION_DAYS = 266
+"""`forecast.vendor_history_start` is `fixture_span.first_day` minus this: 104 weeks of Vendor
+history to today's `last_day` (demand-forecast design, approval K-4)."""
+
+
+@dataclass(frozen=True, slots=True)
+class ForecastShape:
+    """The demand-forecast Vendor shapes (K-4), resolved to dates.
+
+    The landed span is unchanged: the history from `vendor_history_start` and the unlanded day
+    feed only the STAGED forecast input; the per-product shapes apply on every Vendor day.
+    """
+
+    vendor_history_start: date
+    vendor_day_unlanded: date
+    low_volume_units_scale: Decimal
+    intermittent_units_scale: Decimal
+    intermittent_presence: Decimal
+    trend_seasonal_growth_pct: Decimal
+    trend_seasonal_month_gain: Decimal
+    stockout_first: date
+    stockout_last: date
+    stockout_shipped_share: Decimal
+    launch_first_day: date
+    delisted_last_day: date
+
+
 @dataclass(frozen=True, slots=True)
 class CatalogShape:
     """The loaded, validated and date-resolved `shape` section."""
@@ -557,6 +584,7 @@ class CatalogShape:
     deduplicated_retrieval_generation: int
     """The deduplicated-attribution feed's own retrieval generation, 0..3 (dev-seeding §1): a
     corrected corpus at an unchanged span lands at fresh keys one generation up."""
+    forecast: ForecastShape
 
 
 @dataclass(frozen=True, slots=True)
@@ -702,6 +730,7 @@ _TOP_KEYS = frozenset(
         "events",
         "seal_generation",
         "deduplicated_retrieval_generation",
+        "forecast",
     }
 )
 _MAX_RETRIEVAL_GENERATION = 3
@@ -1156,7 +1185,82 @@ def load_catalog_shape(value: object, context: ShapeContext) -> CatalogShape:
         deduplicated_retrieval_generation=_retrieval_generation(
             raw["deduplicated_retrieval_generation"]
         ),
+        forecast=_forecast(raw["forecast"], (span, shape_anchor)),
     )
+
+
+_FORECAST_KEYS = frozenset(
+    {
+        "vendor_history_start",
+        "vendor_day_unlanded",
+        "low_volume",
+        "intermittent",
+        "trend_seasonal",
+        "stockout",
+        "launch",
+        "delisted",
+    }
+)
+
+
+def _forecast(value: object, scope: tuple[FixtureSpan, date]) -> ForecastShape:
+    """Narrow `forecast`: offsets from `shape_anchor`, except the unlanded day (`first_day`)."""
+    span, anchor = scope
+    raw = _mapping(value, "forecast", _FORECAST_KEYS)
+    start = _day(raw["vendor_history_start"], "forecast.vendor_history_start")
+    if start != span.first_day - timedelta(days=VENDOR_HISTORY_EXTENSION_DAYS):
+        raise _fail(
+            "forecast.vendor_history_start",
+            f"must be fixture_span.first_day - {VENDOR_HISTORY_EXTENSION_DAYS} days.",
+        )
+
+    def section(name: str, keys: frozenset[str]) -> RawMapping:
+        return _mapping(raw[name], f"forecast.{name}", keys)
+
+    def offset(entry: RawMapping, name: str, path: str) -> date:
+        return anchor + timedelta(days=_integer(entry[name], f"forecast.{path}.{name}"))
+
+    def share(entry: RawMapping, name: str, path: str) -> Decimal:
+        return _share(_decimal(entry[name], f"forecast.{path}.{name}"), f"forecast.{path}.{name}")
+
+    unlanded_raw = section("vendor_day_unlanded", frozenset({"first_day_offset"}))
+    unlanded = span.first_day + timedelta(
+        days=_integer(unlanded_raw["first_day_offset"], "forecast.vendor_day_unlanded")
+    )
+    if not start <= unlanded < span.first_day:
+        raise _fail("forecast.vendor_day_unlanded", "must fall in the Vendor-only extension.")
+    low = section("low_volume", frozenset({"units_scale"}))
+    intermittent = section("intermittent", frozenset({"units_scale", "presence"}))
+    seasonal = section("trend_seasonal", frozenset({"annual_growth_pct", "month_gain"}))
+    stockout = section("stockout", frozenset({"first_offset", "last_offset", "shipped_share"}))
+    launch = section("launch", frozenset({"first_offset"}))
+    delisted = section("delisted", frozenset({"last_offset"}))
+    shape = ForecastShape(
+        vendor_history_start=start,
+        vendor_day_unlanded=unlanded,
+        low_volume_units_scale=share(low, "units_scale", "low_volume"),
+        intermittent_units_scale=share(intermittent, "units_scale", "intermittent"),
+        intermittent_presence=share(intermittent, "presence", "intermittent"),
+        trend_seasonal_growth_pct=_decimal(
+            seasonal["annual_growth_pct"], "forecast.trend_seasonal.annual_growth_pct"
+        ),
+        trend_seasonal_month_gain=_decimal(
+            seasonal["month_gain"], "forecast.trend_seasonal.month_gain"
+        ),
+        stockout_first=offset(stockout, "first_offset", "stockout"),
+        stockout_last=offset(stockout, "last_offset", "stockout"),
+        stockout_shipped_share=share(stockout, "shipped_share", "stockout"),
+        launch_first_day=offset(launch, "first_offset", "launch"),
+        delisted_last_day=offset(delisted, "last_offset", "delisted"),
+    )
+    if shape.stockout_first > shape.stockout_last:
+        raise _fail("forecast.stockout", "first offset must not be after the last offset.")
+    for name, day in (("launch", shape.launch_first_day), ("delisted", shape.delisted_last_day)):
+        if not start < day < span.last_day:
+            raise _fail(
+                f"forecast.{name}", "must fall after vendor_history_start, before last_day."
+            )
+    return shape
 
 
 def _retrieval_generation(value: object) -> int:
