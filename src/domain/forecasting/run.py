@@ -6,9 +6,11 @@ replaced by the boundary records (design §4e), and comparators and the gate arr
 
 Per target, in order:
 
-1. Eligibility from each series' context (design §3d): a money series whose currency codes mix
+1. Eligibility from each series' context (design §3d): an ASIN with no observed day in the
+   activity window ending `input_end` is `ASIN_INACTIVE`; a money series whose currency codes mix
    is `CURRENCY_MIXED`; fewer than `min_context_weeks + holdout_weeks` known weeks, or fewer than
-   `min_context_weeks` known weeks before the holdout, is `INSUFFICIENT_CONTEXT`; fewer than
+   `min_context_weeks` known weeks before the holdout, is `TARGET_VALUE_MISSING` when the
+   target's history holds a declared-null value and `INSUFFICIENT_CONTEXT` otherwise; fewer than
    `min_scored_holdout_weeks` known holdout actuals is `HOLDOUT_UNKNOWN`.
 2. Backtest: Chronos-2 forecasts the holdout from the weeks before it, in the declared batches
    (design §4c). A bad shape or a non-finite value, an unordered scored week or an all-zero
@@ -19,9 +21,11 @@ Per target, in order:
 4. Candidate (slice 1 rule): `chronos2` when valid and publishable, else withheld with
    Chronos-2's own reason; `seasonal_naive` and `ets` are recorded `MODEL_NOT_RUN`.
 
-A target whose every series is withheld fails the shard with `FORECAST_TARGET_EMPTY`, so nothing
-partial is written. The model is reached through `BatchForecaster`, which the job binds to its
-model adapter; domain code never imports a port or a model library.
+A target whose every series in this shard is withheld still gives a candidate: one shard can't
+decide coverage, so the commit step checks that every target has a shown series across all shards
+(design §6c, `held_quality(target_empty)`, slice 2). The model is reached through
+`BatchForecaster`, which the job binds to its model adapter; domain code never imports a port or
+a model library.
 """
 
 from __future__ import annotations
@@ -240,6 +244,8 @@ def _eligibility(
 ) -> _Eligible | SkipReason:
     eligibility = request.policy.eligibility
     holdout = eligibility.holdout_weeks
+    if not item.active_at_end:
+        return SkipReason.ASIN_INACTIVE
     if weeks.target in MONEY_TARGETS and weeks.currency_mixed:
         return SkipReason.CURRENCY_MIXED
     cells = weeks.weeks[weeks.context_start :]
@@ -248,6 +254,8 @@ def _eligibility(
         sum(1 for cell in cells[:-holdout] if cell.state in _KNOWN) if len(cells) > holdout else 0
     )
     if known < eligibility.min_context_weeks + holdout or before < eligibility.min_context_weeks:
+        if weeks.value_missing_weeks:
+            return SkipReason.TARGET_VALUE_MISSING
         return SkipReason.INSUFFICIENT_CONTEXT
     values = _values(cells)
     covariate = item.covariate[weeks.context_start :]
@@ -403,19 +411,11 @@ def run_forecast(request: ForecastRunRequest) -> ForecastRunResult:
     per_target = {target: run.outcome for target, run in runs.items()}
     reasons: Counter[str] = Counter()
     for target, outcome in per_target.items():
-        shown = 0
         for chronos in outcome.values():
             if chronos.bands is not None:
-                shown += 1
                 reasons[f"{target}.chosen.{ModelName.CHRONOS2.value}"] += 1
             elif chronos.reason is not None:
                 reasons[f"{target}.withheld.{chronos.reason.value}"] += 1
-        if shown == 0:
-            raise ForecastRunError(
-                "FORECAST_TARGET_EMPTY",
-                f"{target}: no series to show; "
-                + ", ".join(f"{key} {value}" for key, value in sorted(reasons.items())),
-            )
     candidates: list[CandidateSeriesV1] = []
     totals: Counter[WeekState] = Counter()
     inferred_days = 0

@@ -26,6 +26,10 @@ class ModelName(StrEnum):
 class SkipReason(StrEnum):
     """Why a model or a series produced no publishable forecast (design §3, §5)."""
 
+    ASIN_INACTIVE = "ASIN_INACTIVE"
+    """No observed day for any target in the `activity_window_weeks` weeks ending `input_end`."""
+    TARGET_VALUE_MISSING = "TARGET_VALUE_MISSING"
+    """Too little known context, and the target's history holds a declared-null value."""
     INSUFFICIENT_CONTEXT = "INSUFFICIENT_CONTEXT"
     HOLDOUT_UNKNOWN = "HOLDOUT_UNKNOWN"
     HOLDOUT_ALL_ZERO = "HOLDOUT_ALL_ZERO"

@@ -158,10 +158,53 @@ def test_a_negative_origin_forecast_is_withheld_not_publishable_with_its_backtes
     assert chronos.backtest_score is not None
 
 
-def test_a_target_with_no_series_to_show_fails_the_shard_forecast_target_empty() -> None:
-    with pytest.raises(ForecastRunError) as refused:
-        _run(series(_steady(1, range(90, 104))), FakeModel())
-    assert refused.value.code == "FORECAST_TARGET_EMPTY"
+def test_a_shard_with_no_series_to_show_still_gives_every_candidate_withheld() -> None:
+    model = FakeModel()
+    result = _run(series(_steady(1, range(90, 104))), model)
+    (candidate,) = result.candidates
+    assert {t.withheld_reason for t in candidate.targets.values()} == {
+        SkipReason.INSUFFICIENT_CONTEXT
+    }
+    assert result.counts_by_reason == {f"{t}.withheld.INSUFFICIENT_CONTEXT": 1 for t in TARGETS}
+    assert model.calls == []
+
+
+def test_one_shard_empty_for_a_target_leaves_coverage_to_the_run_level_check() -> None:
+    # Two shards of one run: shard 1 holds only a launch product, so no target shows a series
+    # there; both shards still give candidates, and shard 0 shows its forecasts (design §6c).
+    shards = (series(_steady(1)), series(_steady(2, range(90, 104))))
+    results = [
+        run_forecast(
+            ForecastRunRequest(
+                shard_index=index,
+                forecast_set=SET,
+                series=shard,
+                policy=policy(),
+                forecaster=FakeModel(),
+            )
+        )
+        for index, shard in enumerate(shards)
+    ]
+    assert results[0].counts_by_reason["units_ordered.chosen.chronos2"] == 1
+    assert results[1].counts_by_reason["units_ordered.withheld.INSUFFICIENT_CONTEXT"] == 1
+    assert [c.shard_index for r in results for c in r.candidates] == [0, 1]
+
+
+def test_a_product_with_no_row_in_the_last_activity_window_is_asin_inactive() -> None:
+    result = _run(series([*_steady(1), *_steady(2, range(80))]), FakeModel())
+    gone = result.candidates[1]
+    assert {t.withheld_reason for t in gone.targets.values()} == {SkipReason.ASIN_INACTIVE}
+    assert result.counts_by_reason["units_ordered.withheld.ASIN_INACTIVE"] == 1
+
+
+def test_a_declared_null_run_that_leaves_too_little_context_is_target_value_missing() -> None:
+    rows = [
+        r for r in _steady(1) if not (r.target == "revenue_shipped" and r.week_start >= STARTS[50])
+    ]
+    rows += [target_row(asin(1), w, "revenue_shipped", value=None, nulls=7) for w in range(50, 104)]
+    (candidate,) = _run(series(rows), FakeModel()).candidates
+    assert candidate.targets["revenue_shipped"].withheld_reason is SkipReason.TARGET_VALUE_MISSING
+    assert candidate.targets["units_ordered"].chosen_model is ModelName.CHRONOS2
 
 
 def test_batches_follow_the_policy_batch_size() -> None:

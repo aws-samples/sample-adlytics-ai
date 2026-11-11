@@ -356,7 +356,7 @@ export class DemandForecastStack extends cdk.Stack {
         RoleArn: processingRole.roleArn,
         AppSpecification: {
           ImageUri: image.imageUri,
-          ContainerArguments: `{% ['forecast', '--run-id', $states.input.run_id, '--shard', $string($states.input.shard), '--attempt-id', ${attempt}, '--input-attempt-id', $states.input.build_attempt_id, '--input', '/opt/ml/processing/input', '--model', '/opt/ml/processing/model', '--output', '/opt/ml/processing/output'] %}`,
+          ContainerArguments: `{% ['forecast', '--run-id', $states.input.run_id, '--shard', $string($states.input.shard), '--attempt-id', ${attempt}, '--input-attempt-id', $states.input.build_attempt_id, '--processor-code-identity', '${image.assetHash}', '--input', '/opt/ml/processing/input', '--model', '/opt/ml/processing/model', '--output', '/opt/ml/processing/output'] %}`,
         },
         ProcessingResources: {
           ClusterConfig: {

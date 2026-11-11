@@ -173,13 +173,15 @@ demand-forecast-artifact-digest: ## Print the configured Chronos-2 artifact's di
 	test -n "$${ADLYTICS_DEMAND_FORECAST_MODEL_ARTIFACT_URI:-}" || { echo "ADLYTICS_DEMAND_FORECAST_MODEL_ARTIFACT_URI is required (.env or shell)"; exit 1; }; \
 	uv run python -m adapters.jobs.demand_forecast_artifact_digest --profile "$(PROFILE)" \
 		$(if $(REGION),--region "$(REGION)") --uri "$$ADLYTICS_DEMAND_FORECAST_MODEL_ARTIFACT_URI"
-demand-forecast-scale-probe: ## Dev only: stage N fictional ASINs and start a ProbeStart run: PROFILE=... ENV=dev ASINS=... [REGION=...]
+demand-forecast-scale-probe: ## Dev only: stage N fictional ASINs and start a ProbeStart run: PROFILE=... ENV=dev ACCOUNT=... ASINS=... [REGION=...]
 	$(require_profile)
 	$(require_env)
 	@test "$(ENV)" = dev || { echo "demand-forecast-scale-probe runs only with ENV=dev"; exit 1; }
+	@test -n "$(ACCOUNT)" || { echo "ACCOUNT is required: the dev account the profile must resolve to"; exit 1; }
 	@test -n "$(ASINS)" || { echo "ASINS is required, for example ASINS=2000"; exit 1; }
 	@set -eu; $(load_deploy_env); \
 	uv run python -m adapters.jobs.demand_forecast_scale_fixture --profile "$(PROFILE)" --env "$(ENV)" \
+		--expected-account "$(ACCOUNT)" \
 		$(if $(REGION),--region "$(REGION)") --asins "$(ASINS)" \
 		--marketplace-key "$$ADLYTICS_DEMAND_FORECAST_MARKETPLACE_KEY" \
 		--model-artifact-digest "$$ADLYTICS_DEMAND_FORECAST_MODEL_ARTIFACT_DIGEST" \

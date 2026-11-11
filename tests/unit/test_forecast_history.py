@@ -71,6 +71,7 @@ def _staged() -> StagedInput:
         model_artifact_digest="a" * 64,
         instance_type="ml.m5.xlarge",
         max_runtime_seconds=3600,
+        processor_code_identity="b" * 64,
     )
     return stage_catalogue(request, _history())
 
@@ -136,7 +137,8 @@ def test_an_input_end_that_is_not_a_saturday_is_refused() -> None:
 def test_the_catalogue_source_takes_no_asin_count(capsys: pytest.CaptureFixture[str]) -> None:
     code = main(
         [
-            "--profile", "unused", "--env", "dev", "--source", "catalogue", "--asins", "5",
+            "--profile", "unused", "--env", "dev", "--expected-account", "1" * 12,
+            "--source", "catalogue", "--asins", "5",
             "--marketplace-key", "amazon_us", "--model-artifact-digest", "a" * 64,
             "--instance-type", "ml.m5.xlarge", "--max-runtime-seconds", "3600",
         ]

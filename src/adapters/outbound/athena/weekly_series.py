@@ -370,3 +370,93 @@ def parquet_row_count(footer: bytes) -> int:
     if rows is None:
         raise ValueError("the Parquet footer has no num_rows")
     return rows
+
+
+# ---- Zero-row traffic object (Thrift compact protocol, FileMetaData with no row group) ----
+
+# Parquet physical and converted types (parquet.thrift).
+_INT32, _INT64, _BYTE_ARRAY = 1, 2, 6
+_UTF8, _DATE, _INT_8 = 0, 6, 15
+_OPTIONAL = 1
+TRAFFIC_COLUMNS: Final = (
+    ("schema_version", _INT32, _INT_8),
+    ("canonical_asin", _BYTE_ARRAY, _UTF8),
+    ("week_start", _INT32, _DATE),
+    ("glance_views_sum", _INT64, None),
+    ("days_with_traffic_row", _INT32, _INT_8),
+)
+"""`WeeklyTrafficAggregateRowV1`'s columns as the traffic `UNLOAD` writes them, in order."""
+
+
+def _varint(value: int) -> bytes:
+    out = bytearray()
+    while True:
+        octet = value & 0x7F
+        value >>= 7
+        if value:
+            out.append(octet | 0x80)
+        else:
+            out.append(octet)
+            return bytes(out)
+
+
+def _zigzag(value: int) -> bytes:
+    return _varint((value << 1) ^ (value >> 63))
+
+
+class _Struct:
+    """One Thrift compact struct, fields written in ascending ID order."""
+
+    def __init__(self) -> None:
+        self._out = bytearray()
+        self._last = 0
+
+    def _header(self, field: int, kind: int) -> None:
+        self._out.append(((field - self._last) << 4) | kind)
+        self._last = field
+
+    def i32(self, field: int, value: int) -> _Struct:
+        self._header(field, _I32)
+        self._out += _zigzag(value)
+        return self
+
+    def i64(self, field: int, value: int) -> _Struct:
+        self._header(field, _I64)
+        self._out += _zigzag(value)
+        return self
+
+    def text(self, field: int, value: str) -> _Struct:
+        encoded = value.encode("utf-8")
+        self._header(field, _BINARY)
+        self._out += _varint(len(encoded)) + encoded
+        return self
+
+    def structs(self, field: int, items: list[bytes]) -> _Struct:
+        self._header(field, _LIST)
+        if len(items) < 15:  # noqa: PLR2004 - the compact protocol's short-size limit
+            self._out.append((len(items) << 4) | _STRUCT)
+        else:
+            self._out += bytes([0xF0 | _STRUCT]) + _varint(len(items))
+        for item in items:
+            self._out += item
+        return self
+
+    def end(self) -> bytes:
+        return bytes(self._out) + bytes([_STOP])
+
+
+def empty_traffic_parquet() -> bytes:
+    """Return a valid Parquet object with the traffic columns and no rows (and no row group).
+
+    The traffic `UNLOAD` writes no `shard=<k>/` object for a shard with no traffic rows, so the
+    builder writes this one: the job then reads zero rows (unknown or zero covariates, design §3d)
+    instead of a missing input.
+    """
+    schema = [_Struct().text(4, "schema").i32(5, len(TRAFFIC_COLUMNS)).end()]
+    for name, physical, converted in TRAFFIC_COLUMNS:
+        element = _Struct().i32(1, physical).i32(3, _OPTIONAL).text(4, name)
+        if converted is not None:
+            element.i32(6, converted)
+        schema.append(element.end())
+    metadata = _Struct().i32(1, 1).structs(2, schema).i64(3, 0).structs(4, []).end()
+    return b"PAR1" + metadata + len(metadata).to_bytes(4, "little") + b"PAR1"

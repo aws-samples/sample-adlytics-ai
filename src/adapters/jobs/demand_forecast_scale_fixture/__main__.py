@@ -5,9 +5,12 @@ Writes, under `runs/<run_id>/input/r0a0/` of the dev processing bucket, both `UN
 Parquet kinds partitioned by shard (`target/shard=<k>/`, `traffic/shard=<k>/`), an
 `InputManifestV1` with the newest complete Saturday as `input_end` and `expected_fence` 0, and a
 `TitleMapV1`; then starts the deployed state machine with the `ProbeStart` input, so the run
-enters at `Forecast` (design §10, "Scale fixtures"). Refuses every environment but `dev`, and an
-existing run prefix. Products come from `fixture_generation.scale`, so nothing here is a
-customer value. Prints the run ID, the shard count and the execution ARN's name only.
+enters at `Forecast` (design §10, "Scale fixtures"). Refuses every environment but `dev`, a
+profile whose account isn't `--expected-account` (checked before any other AWS call) and an
+existing run prefix. The manifest's processor-code identity is the deployed input builder's, so
+the job's run-identity check holds the staged input to the image that runs it. Products come
+from `fixture_generation.scale`, so nothing here is a customer value. Prints the run ID, the
+shard count and the execution ARN's name only.
 
 `--source catalogue` stages the synthetic catalogue's 104-week Vendor history instead
 (`fixture_generation.forecast_history`), in the same format, under a `staged-catalogue-` run ID:
@@ -23,6 +26,7 @@ import argparse
 import hashlib
 import io
 import json
+import re
 import sys
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
@@ -156,6 +160,8 @@ class ScaleStageRequest:
     model_artifact_digest: str
     instance_type: str
     max_runtime_seconds: int
+    processor_code_identity: str
+    """The deployed image asset hash (the input builder's `PROCESSOR_CODE_IDENTITY`)."""
 
 
 @dataclass(frozen=True)
@@ -177,7 +183,6 @@ class _Assembly:
     titles: Callable[[int, str], str]
     coverage: tuple[tuple[date, date], ...]
     fixture_identity: dict[str, object]
-    processor_code_identity: str
 
 
 def _week_starts(input_end: date, weeks: int) -> tuple[date, ...]:
@@ -208,7 +213,6 @@ def stage(request: ScaleStageRequest) -> StagedInput:
                 "asins": len(asins),
                 "input_end": str(request.input_end),
             },
-            processor_code_identity=f"scale-probe:{request.fixture.seed}",
         )
     )
 
@@ -263,7 +267,6 @@ def stage_catalogue(request: ScaleStageRequest, history: CatalogueHistory) -> St
                 "asins": len(history.canonical_asins),
                 "input_end": str(request.input_end),
             },
-            processor_code_identity="staged-catalogue:synthetic-entity-catalog",
         )
     )
 
@@ -316,7 +319,7 @@ def _assemble(assembly: _Assembly) -> StagedInput:
     identity = RunIdentity(
         input_fingerprint=input_fingerprint,
         policy_sha256=loaded.sha256,
-        processor_code_identity=assembly.processor_code_identity,
+        processor_code_identity=request.processor_code_identity,
         lock_digest=hashlib.sha256(LOCK.read_bytes()).hexdigest(),
         model_id=CHRONOS2_MODEL_ID,
         model_artifact_digest=request.model_artifact_digest,
@@ -386,11 +389,23 @@ def _prefix_empty(client: S3Client, bucket: str, prefix: str) -> bool:
     return client.list_objects_v2(Bucket=bucket, Prefix=prefix, MaxKeys=1).get("KeyCount", 0) == 0
 
 
+def check_target(env: str, expected_account: str, caller_account: Callable[[], str]) -> str | None:
+    """Return why the target is refused, or None; the account is read only for ENV=dev."""
+    if env != "dev":
+        return "refused: the scale probe runs only against ENV=dev"
+    if re.fullmatch(r"[0-9]{12}", expected_account) is None:
+        return "refused: --expected-account must be a 12-digit account ID"
+    if caller_account() != expected_account:
+        return "refused: the profile resolves to another account than --expected-account"
+    return None
+
+
 def main(argv: list[str]) -> int:
     """Stage the input and start the probe execution; return the exit code."""
     parser = argparse.ArgumentParser(prog="demand-forecast-scale-probe")
     parser.add_argument("--profile", required=True)
     parser.add_argument("--env", required=True)
+    parser.add_argument("--expected-account", required=True)
     parser.add_argument("--region", default=None)
     parser.add_argument("--source", choices=("scale", "catalogue"), default="scale")
     parser.add_argument("--asins", type=int, default=None)
@@ -400,14 +415,29 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--instance-type", required=True)
     parser.add_argument("--max-runtime-seconds", type=int, required=True)
     args = parser.parse_args(argv)
-    if args.env != "dev":
-        print("refused: the scale probe runs only against ENV=dev", file=sys.stderr)
-        return 2
     if (args.source == "scale") != (args.asins is not None):
         print("refused: --asins is required with --source scale and only then", file=sys.stderr)
         return 2
-    session = boto3.Session(profile_name=args.profile, region_name=args.region)
-    account = session.client("sts").get_caller_identity()["Account"]
+    sessions: list[boto3.Session] = []
+
+    def caller_account() -> str:
+        sessions.append(boto3.Session(profile_name=args.profile, region_name=args.region))
+        return str(sessions[0].client("sts").get_caller_identity()["Account"])
+
+    account = str(args.expected_account)
+    refused = check_target(args.env, account, caller_account)
+    if refused is not None:
+        print(refused, file=sys.stderr)
+        return 2
+    session = sessions[0]
+    function = session.client("lambda").get_function_configuration(
+        FunctionName=f"adlytics-{args.env}-DemandForecastInput"
+    )
+    identity = function.get("Environment", {}).get("Variables", {})
+    processor = identity.get("ADL_DEMAND_FORECAST_PROCESSOR_CODE_IDENTITY", "")
+    if not processor:
+        print("refused: the deployed input builder names no processor identity", file=sys.stderr)
+        return 2
     bucket = f"adlytics-{args.env}-demand-forecast-{account}"
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     catalog = load_synthetic_entity_catalog(ROOT) if args.source == "catalogue" else None
@@ -429,6 +459,7 @@ def main(argv: list[str]) -> int:
         model_artifact_digest=args.model_artifact_digest,
         instance_type=args.instance_type,
         max_runtime_seconds=args.max_runtime_seconds,
+        processor_code_identity=processor,
     )
     staged = (
         stage(request)

@@ -20,6 +20,7 @@ import pytest
 from adapters.jobs.demand_forecast.parquet_input import arrow_schema
 from adapters.jobs.demand_forecast_scale_fixture.__main__ import (
     ScaleStageRequest,
+    check_target,
     main,
     newest_complete_saturday,
     stage,
@@ -86,6 +87,7 @@ def test_a_staged_input_carries_a_valid_manifest_and_the_jobs_exact_parquet_sche
             model_artifact_digest="a" * 64,
             instance_type="ml.m5.xlarge",
             max_runtime_seconds=3600,
+            processor_code_identity="b" * 64,
         )
     )
     base = "runs/scale-3-test/input/r0a0"
@@ -112,6 +114,7 @@ def test_any_env_but_dev_is_refused_before_any_aws_client(
         [
             "--profile=p",
             "--env=prod",
+            "--expected-account=" + "1" * 12,
             "--asins=10",
             "--marketplace-key=amazon_us",
             "--model-artifact-digest=x",
@@ -121,3 +124,27 @@ def test_any_env_but_dev_is_refused_before_any_aws_client(
     )
     assert code == 2
     assert "only against ENV=dev" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("env", "expected", "caller", "refusal"),
+    [
+        ("dev", "1" * 12, "1" * 12, None),
+        ("dev", "1" * 12, "2" * 12, "another account than --expected-account"),
+        ("dev", "1" * 11, "1" * 11, "must be a 12-digit account ID"),
+        ("prod", "1" * 12, "1" * 12, "only against ENV=dev"),
+    ],
+)
+def test_the_probe_runs_only_in_dev_and_only_in_the_expected_account(  # noqa: PLR0913, PLR0917
+    env: str, expected: str, caller: str, refusal: str | None
+) -> None:
+    reads: list[str] = []
+
+    def account() -> str:
+        reads.append(caller)
+        return caller
+
+    refused = check_target(env, expected, account)
+    assert refused is None if refusal is None else refusal in str(refused)
+    # The account is read (one STS call) only once the environment and the ID format pass.
+    assert reads == ([caller] if env == "dev" and len(expected) == 12 else [])

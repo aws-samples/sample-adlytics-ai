@@ -140,33 +140,42 @@ class FakeWeekly:
     shards: tuple[int, ...] = (0, 0)
     fail: str | None = None
     plans: list[WeeklySeriesPlan] = field(default_factory=list[WeeklySeriesPlan])
+    traffic_shards: tuple[int, ...] = (0,)
+    asins: tuple[str, ...] = ROSTER
 
     def roster(self, plan: WeeklySeriesPlan) -> RosterResult:
         self.plans.append(plan)
-        return RosterResult(ROSTER, self.shards, StatementStat("roster", "q1", 10, 1, 2))
+        return RosterResult(self.asins, self.shards, StatementStat("roster", "q1", 10, 1, 2))
 
     def unload(self, plan: WeeklySeriesPlan) -> UnloadResult:
         if self.fail:
             raise WeeklySeriesError(self.fail, "q2")
         bucket = f"s3://{SETTINGS.processing_bucket}/"
-        for destination, rows in ((plan.target_destination, 8), (plan.traffic_destination, 2)):
-            key = destination.removeprefix(bucket) + "shard=0/part-0.parquet"
+        written = [(plan.target_destination, 8, shard) for shard in sorted(set(self.shards))]
+        written += [(plan.traffic_destination, 2, shard) for shard in self.traffic_shards]
+        for destination, rows, shard in written:
+            key = destination.removeprefix(bucket) + f"shard={shard}/part-0.parquet"
             self.objects.put(key, _parquet(rows))
         return UnloadResult(
             (StatementStat("target", "q2", 100, 3, 4), StatementStat("traffic", "q3", 50, 3, 4))
         )
 
 
-def _builder(
+def _builder(  # noqa: PLR0913, PLR0917 -- four optional overrides of one fixture
     titles: RetailProductHierarchyResult | None = None,
     weekly: FakeWeekly | None = None,
     marketplace: str = "amazon_us",
+    shard_max_asins: int | None = None,
 ) -> tuple[InputBuilder, FakeObjects]:
     objects = weekly.objects if weekly else FakeObjects()
     fake = weekly or FakeWeekly(objects)
+    loaded = load_policy(ROOT / "contracts/forecasting/demand-forecast.yaml")
+    if shard_max_asins is not None:
+        engine = replace(loaded.policy.engine, shard_max_asins=shard_max_asins)
+        loaded = replace(loaded, policy=replace(loaded.policy, engine=engine))
     builder = InputBuilder(
         settings=replace(SETTINGS, marketplace_key=marketplace),
-        policy=load_policy(ROOT / "contracts/forecasting/demand-forecast.yaml"),
+        policy=loaded,
         bridge=load_commerce_identity_bridge(ROOT),
         selection=FakeSelection(SELECTED),
         titles=FakeTitles(titles),
@@ -218,6 +227,26 @@ def test_build_writes_a_valid_manifest_and_titles_under_the_attempt_prefix() -> 
         ("B0FIXTUR01", "Product 1"),
         ("B0FIXTUR02", None),
     ]
+
+
+def test_no_traffic_rows_give_each_shard_a_zero_row_traffic_object() -> None:
+    builder, objects = _builder(weekly=FakeWeekly(FakeObjects(), traffic_shards=()))
+    result = build_input(builder, _request(builder), lambda: 900.0)
+    manifest = InputManifestV1.model_validate_json(objects.bodies[str(result["manifest_key"])])
+    assert [(o.kind, o.rows, o.shard, o.key) for o in manifest.parquet_objects] == [
+        ("target", 8, 0, "runs/df-s1-unit/input/r0a0/target/shard=0/part-0.parquet"),
+        ("traffic", 0, 0, "runs/df-s1-unit/input/r0a0/traffic/shard=0/no-traffic-rows.parquet"),
+    ]
+
+
+def test_only_the_shard_without_traffic_rows_gets_the_zero_row_object() -> None:
+    asins = tuple(f"amazon_asin:b0tst{n:05d}" for n in range(501))
+    weekly = FakeWeekly(FakeObjects(), shards=(0,) * 500 + (1,), asins=asins)
+    builder, objects = _builder(weekly=weekly, shard_max_asins=500)
+    result = build_input(builder, _request(builder), lambda: 900.0)
+    manifest = InputManifestV1.model_validate_json(objects.bodies[str(result["manifest_key"])])
+    traffic = [(o.shard, o.rows, o.key.rsplit("/", 1)[-1]) for o in manifest.parquet_objects]
+    assert traffic[2:] == [(0, 2, "part-0.parquet"), (1, 0, "no-traffic-rows.parquet")]
 
 
 def test_no_hierarchy_gives_all_null_titles_and_no_failure() -> None:

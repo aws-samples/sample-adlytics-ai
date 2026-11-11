@@ -12,7 +12,8 @@ One Lambda (`ForecastInputFunction`) serves both Step Functions states.
   `ROSTER_TOO_LARGE`); reads the forecast marketplace's product titles (`SELECTION_MOVED` when
   the hierarchy's publications differ from the product pins; all-null titles when there is no
   hierarchy); runs the two partitioned UNLOADs into the attempt's fresh prefix
-  `runs/<run_id>/input/r<RedriveCount>a<RetryCount>/`; and writes `titles.json` (`TitleMapV1`) and
+  `runs/<run_id>/input/r<RedriveCount>a<RetryCount>/`; gives every shard the traffic `UNLOAD`
+  wrote nothing for a zero-row traffic object; and writes `titles.json` (`TitleMapV1`) and
   `manifest.json` (`InputManifestV1`, `expected_fence` 0), both validated before they are written.
 
 A refusal raises `InputBuildFailedError` whose message is the failure category, so the state machine
@@ -47,6 +48,7 @@ from adapters.jobs.preset_artifact_publisher.retail_source import (
 from adapters.outbound.athena.weekly_series import (
     AthenaWeeklySeriesSource,
     AthenaWeeklySeriesTarget,
+    empty_traffic_parquet,
     parquet_row_count,
 )
 from adapters.outbound.commerce_identity import load_commerce_identity_bridge
@@ -104,6 +106,7 @@ _ATTEMPT: Final = re.compile(r"^r[0-9]{1,4}a[0-9]{1,4}$")
 _SHARD_PATH: Final = re.compile(r"/shard=([0-9]{1,3})/")
 _TAIL_BYTES: Final = 64 * 1024
 _CHUNK: Final = 1024 * 1024
+EMPTY_TRAFFIC_OBJECT: Final = "no-traffic-rows.parquet"
 
 
 class InputBuildFailedError(Exception):
@@ -309,6 +312,24 @@ def _objects(builder: InputBuilder, prefix: str, kind: str) -> list[dict[str, ob
     return found
 
 
+def _write_empty_traffic(builder: InputBuilder, base: str, shards: tuple[int, ...]) -> None:
+    """Give every shard the traffic `UNLOAD` wrote nothing for a zero-row traffic object.
+
+    Traffic is an optional covariate (design §3d): a shard with no glance-view rows still
+    forecasts, and the job and its mount always find one traffic object per shard.
+    """
+    written: set[int] = set()
+    for key, size in builder.objects.list_sizes(f"{base}/traffic/").items():
+        match = _SHARD_PATH.search(key)
+        if match is not None and size > 0:
+            written.add(int(match.group(1)))
+    for shard in shards:
+        if shard not in written:
+            builder.objects.put(
+                f"{base}/traffic/shard={shard}/{EMPTY_TRAFFIC_OBJECT}", empty_traffic_parquet()
+            )
+
+
 def _pin_json(
     history: PinnedContractHistory, keep: set[str] | None = None
 ) -> list[dict[str, object]]:
@@ -363,6 +384,7 @@ def build_input(
     shards = plan_shards(
         ShardPlanRequest(roster.canonical_asins, policy.engine.shard_max_asins)
     ).shards
+    _write_empty_traffic(builder, base, tuple(shard.index for shard in shards))
     titles_body = (titles.model_dump_json(indent=None) + "\n").encode("utf-8")
     titles_key = f"{base}/titles.json"
     builder.objects.put(titles_key, titles_body)
@@ -498,9 +520,8 @@ class _S3Objects:
         return response["Body"].read()
 
     def put(self, key: str, body: bytes) -> None:
-        self._client.put_object(
-            Bucket=self._bucket, Key=key, Body=body, ContentType="application/json"
-        )
+        kind = "application/octet-stream" if key.endswith(".parquet") else "application/json"
+        self._client.put_object(Bucket=self._bucket, Key=key, Body=body, ContentType=kind)
 
 
 @lru_cache(maxsize=1)

@@ -176,6 +176,8 @@ class TargetWeeks:
     context_start: int
     currency_code: str | None
     currency_mixed: bool
+    value_missing_weeks: int
+    """Weeks holding a row day whose target value is a declared null."""
 
 
 @dataclass(frozen=True)
@@ -185,6 +187,8 @@ class SeriesWeeks:
     canonical_asin: str
     targets: dict[str, TargetWeeks]
     covariate: tuple[float | None, ...]
+    active_at_end: bool
+    """Whether the ASIN is active in the grid's last week (the activity window ending input_end)."""
 
 
 @dataclass(frozen=True)
@@ -265,6 +269,7 @@ def _target_weeks(  # noqa: PLR0913 -- one ASIN's rows and the shared grid
         context_start=model_context(states, gaps, policy.max_unknown_run_weeks),
         currency_code=next(iter(currencies)) if len(currencies) == 1 else None,
         currency_mixed=len(currencies) > 1,
+        value_missing_weeks=sum(1 for row in rows.values() if row.days_with_null > 0),
     )
 
 
@@ -313,7 +318,7 @@ def build_weekly_series(request: WeeklySeriesRequest) -> WeeklySeriesResult:
             for target in TARGETS
         }
         covariate = _covariate(traffic.get(asin, {}), traffic_covered, active)
-        series.append(SeriesWeeks(asin, targets, covariate))
+        series.append(SeriesWeeks(asin, targets, covariate, active_at_end=active[-1]))
     return WeeklySeriesResult(starts, set_gaps, tuple(series))
 
 

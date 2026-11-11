@@ -28,6 +28,7 @@ src/domain/forecasting/artifact_roster.py
 src/domain/forecasting/batching.py
 src/domain/forecasting/boundary.py
 src/domain/forecasting/checks.py
+src/domain/forecasting/fingerprint.py
 src/domain/forecasting/identity.py
 src/domain/forecasting/models.py
 src/domain/forecasting/numeric.py

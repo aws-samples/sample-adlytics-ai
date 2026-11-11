@@ -6,8 +6,10 @@ Adapted from the source engine's inference entry. Two modes:
 - `self-check` (design §4b, OQ-2): load Chronos-2 from the mount and check two passes;
 - `forecast` (design §4b): one shard attempt. In order: the manifest and every Parquet file are
   validated (`INPUT_MANIFEST_INVALID`, `INPUT_SCHEMA_MISMATCH`, `INPUT_SHARD_MISMATCH`); the
-  manifest's run and build attempt must be the arguments' (`INPUT_ATTEMPT_MISMATCH`); the mounted
-  artifact's digest must equal the run identity's before the model loads
+  manifest's run and build attempt must be the arguments' (`INPUT_ATTEMPT_MISMATCH`); every run
+  identity component the job can know must equal the manifest's, and the manifest's run
+  fingerprint must recompute from them (`RUN_IDENTITY_MISMATCH`, see `check_run_identity`); the
+  mounted artifact's digest must equal the run identity's before the model loads
   (`MODEL_ARTIFACT_MISMATCH`); then the weekly series, the run and the candidate, series first and
   the run report last.
 
@@ -35,9 +37,10 @@ from adapters.jobs.demand_forecast.job_log import JobLog, structured_error
 from adapters.jobs.demand_forecast.json_output import JsonCandidateOutput
 from adapters.jobs.demand_forecast.parquet_input import ParquetForecastInput
 from adapters.jobs.demand_forecast.self_check import SelfCheckRequest, run_self_check
-from adapters.outbound.demand_forecast_policy import load_policy
+from adapters.outbound.demand_forecast_policy import LoadedPolicy, load_policy
 from domain.forecasting.artifact_roster import roster_digest
-from domain.forecasting.boundary import RunReportV1, boundary_schema_digests
+from domain.forecasting.boundary import InputManifestV1, RunReportV1, boundary_schema_digests
+from domain.forecasting.fingerprint import RunIdentity, run_fingerprint
 from domain.forecasting.models import (
     CHRONOS2_MODEL_ID,
     ForecastBatchRequest,
@@ -74,6 +77,7 @@ def _parser() -> argparse.ArgumentParser:
     forecast.add_argument("--shard", type=int, required=True)
     forecast.add_argument("--attempt-id", required=True)
     forecast.add_argument("--input-attempt-id", required=True)
+    forecast.add_argument("--processor-code-identity", required=True)
     forecast.add_argument("--input", type=Path, required=True)
     forecast.add_argument("--model", type=Path, required=True)
     forecast.add_argument("--output", type=Path, required=True)
@@ -101,6 +105,8 @@ class ForecastModeRequest:
     shard: int
     attempt_id: str
     input_attempt_id: str
+    processor_code_identity: str
+    """The image asset hash the execution launched, passed by the state machine."""
     input_dir: Path
     model_dir: Path
     output_dir: Path
@@ -119,6 +125,50 @@ class _TimedModel:
             return self._call(request)
         finally:
             self.elapsed_ms += _elapsed_ms(started)
+
+
+def check_run_identity(
+    manifest: InputManifestV1, processor_code_identity: str, loaded: LoadedPolicy
+) -> None:
+    """Refuse a manifest whose run identity names other code, policy, lock or schemas.
+
+    Compared with what this job runs: the processor-code identity (the state machine passes the
+    image asset hash it launched; the image can't hold its own hash, which is computed over the
+    image's inputs), the policy file's SHA-256 and section versions, the lock digest, the model ID
+    and the boundary schema digests. Then the manifest's run fingerprint must recompute from its
+    run identity, so the fingerprint a report carries names exactly what computed it. The artifact
+    digest is checked separately, against the mount (`MODEL_ARTIFACT_MISMATCH`).
+    """
+    identity = manifest.run_identity
+    schemas = boundary_schema_digests()
+    expected = {
+        "processor_code_identity": processor_code_identity,
+        "policy_sha256": loaded.sha256,
+        "policy_section_versions": loaded.section_versions,
+        "lock_digest": hashlib.sha256(LOCK_PATH.read_bytes()).hexdigest(),
+        "model_id": CHRONOS2_MODEL_ID,
+        "boundary_schema_digests": schemas,
+    }
+    differ = [name for name, value in expected.items() if getattr(identity, name) != value]
+    if manifest.boundary_schema_digests != schemas:
+        differ.append("manifest.boundary_schema_digests")
+    recomputed = run_fingerprint(
+        RunIdentity(
+            input_fingerprint=identity.input_fingerprint,
+            policy_sha256=identity.policy_sha256,
+            processor_code_identity=identity.processor_code_identity,
+            lock_digest=identity.lock_digest,
+            model_id=identity.model_id,
+            model_artifact_digest=identity.model_artifact_digest,
+            boundary_schema_digests=identity.boundary_schema_digests,
+            instance_type=identity.instance_type,
+            max_runtime_seconds=identity.max_runtime_seconds,
+        )
+    )
+    if recomputed != manifest.run_fingerprint:
+        differ.append("run_fingerprint")
+    if differ:
+        raise ForecastJobError("RUN_IDENTITY_MISMATCH", ", ".join(differ))
 
 
 def run_forecast_mode(request: ForecastModeRequest, log: JobLog) -> RunReportV1:
@@ -148,6 +198,9 @@ def run_forecast_mode(request: ForecastModeRequest, log: JobLog) -> RunReportV1:
         traffic_rows=len(shard.traffic),
         duration_ms=durations["input"],
     )
+    loaded = load_policy(POLICY_PATH)
+    check_run_identity(manifest, request.processor_code_identity, loaded)
+    policy = loaded.policy
     started = time.monotonic()
     entries = local_roster_entries(request.model_dir)
     digest = roster_digest(entries)
@@ -157,8 +210,6 @@ def run_forecast_mode(request: ForecastModeRequest, log: JobLog) -> RunReportV1:
         raise ForecastJobError(
             "MODEL_ARTIFACT_MISMATCH", "the mounted artifact differs from the run identity"
         )
-    loaded = load_policy(POLICY_PATH)
-    policy = loaded.policy
     started = time.monotonic()
     series = build_weekly_series(
         WeeklySeriesRequest(
@@ -206,7 +257,7 @@ def run_forecast_mode(request: ForecastModeRequest, log: JobLog) -> RunReportV1:
         durations_ms=durations,
         policy_section_versions=loaded.section_versions,
         policy_sha256=loaded.sha256,
-        image_identity=manifest.run_identity.processor_code_identity,
+        image_identity=request.processor_code_identity,
         lock_digest=hashlib.sha256(LOCK_PATH.read_bytes()).hexdigest(),
         model_id=model.model_id,
         model_artifact_digest=digest,
@@ -260,6 +311,7 @@ def main(argv: list[str] | None = None) -> int:
                 shard=int(arguments.shard),
                 attempt_id=str(arguments.attempt_id),
                 input_attempt_id=str(arguments.input_attempt_id),
+                processor_code_identity=str(arguments.processor_code_identity),
                 input_dir=arguments.input,
                 model_dir=arguments.model,
                 output_dir=arguments.output,

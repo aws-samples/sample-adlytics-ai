@@ -123,6 +123,20 @@ describe('DemandForecastStack', () => {
     expect(definition(template).TimeoutSeconds).toBe(86_400);
   });
 
+  test('every job is told the processor-code identity the input builder writes into manifests', () => {
+    const states = definition(template).States as Record<string, Record<string, unknown>>;
+    const run = ((states.Forecast as Record<string, unknown>).ItemProcessor as {
+      States: Record<string, Record<string, unknown>>;
+    }).States.RunShard as Record<string, unknown>;
+    const app = (run.Arguments as Record<string, unknown>).AppSpecification as Record<string, unknown>;
+    const passed = /'--processor-code-identity', '([0-9a-f]{64})'/.exec(String(app.ContainerArguments));
+    const functions = template.findResources('AWS::Lambda::Function', {
+      Properties: { FunctionName: 'adlytics-dev-DemandForecastInput' },
+    });
+    const env = Object.values(functions)[0]?.Properties.Environment.Variables;
+    expect(passed?.[1]).toBe(env.ADL_DEMAND_FORECAST_PROCESSOR_CODE_IDENTITY);
+  });
+
   test('ProbeStart exists in dev and nowhere else', () => {
     expect(definition(template).StartAt).toBe('ProbeStart');
     const staging = definition(synth('staging'));

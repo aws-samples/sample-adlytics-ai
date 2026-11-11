@@ -28,7 +28,10 @@ and give the same forecast for the same input and policy whatever order rows arr
    installed with `pip --require-hashes --no-deps` on one pinned `python:3.14-slim` amd64 manifest
    digest (approval D-2). `make check-forecast-lock` refuses any other package set. The image holds
    only the paths `src/adapters/jobs/demand_forecast/image-paths.txt` lists, so its CDK asset hash
-   is the processor-code identity in the run fingerprint.
+   is the processor-code identity in the run fingerprint. The state machine passes that hash to
+   every job, and the job fails `RUN_IDENTITY_MISMATCH` before the model loads when the manifest
+   names another processor, policy, lock, model or schema set, or a run fingerprint that doesn't
+   recompute from its parts.
 4. **Batching and numbers are policy.** `contracts/forecasting/demand-forecast.yaml` declares
    cross-learning, the batch size of 256, the sort key and the shard size (`engine`), and the
    four-place half-even storage with its check order (`numeric`). Each section is versioned and the
