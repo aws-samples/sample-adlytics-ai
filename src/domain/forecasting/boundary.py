@@ -17,7 +17,7 @@ from typing import Annotated, Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
-from domain.forecasting.models import ModelName, SkipReason, WeekState
+from domain.forecasting.models import AccuracyGap, ModelName, SkipReason, WeekState
 from domain.forecasting.policy import MAX_SHARDS, TARGETS
 
 Hex64 = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
@@ -206,7 +206,7 @@ class BacktestScoreV1(_Boundary):
 
     wql: DecimalString
     mase: DecimalString | None
-    mase_gap: DecimalString | None
+    mase_gap: AccuracyGap | None
     weeks_in_range: Annotated[int, Field(ge=0)]
     weeks_scored: Annotated[int, Field(ge=0)]
 

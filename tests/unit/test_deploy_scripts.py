@@ -1463,7 +1463,7 @@ echo "{name} $*" >> "$STUB_STATE/calls.log"
 
 
 class CustomerWorld:
-    """Stubbed aws, npx, node, npm, uv, make and file for deploy-all.sh and create-user.sh."""
+    """Stubbed aws, npx, node, npm, uv, make, file and docker for deploy-all and create-user."""
 
     def __init__(self, root: Path) -> None:
         self.bin = root / "customer-bin"
@@ -1474,7 +1474,7 @@ class CustomerWorld:
         (self.bin / "npx").write_text(_CUSTOMER_NPX_STUB)
         node_major = (REPO_ROOT / ".nvmrc").read_text().strip()
         (self.bin / "node").write_text(f'#!/bin/bash\necho "v{node_major}.0.0"\n')
-        for name in ("npm", "uv", "make", "file"):
+        for name in ("npm", "uv", "make", "file", "docker"):
             (self.bin / name).write_text(_CUSTOMER_TOOL_STUB.format(name=name))
         for path in self.bin.iterdir():
             path.chmod(0o755)

@@ -28,7 +28,8 @@ class SkipReason(StrEnum):
 
     INSUFFICIENT_CONTEXT = "INSUFFICIENT_CONTEXT"
     HOLDOUT_UNKNOWN = "HOLDOUT_UNKNOWN"
-    MASE_SCALE_UNKNOWN = "MASE_SCALE_UNKNOWN"
+    HOLDOUT_ALL_ZERO = "HOLDOUT_ALL_ZERO"
+    BACKTEST_BAND_UNORDERED = "BACKTEST_BAND_UNORDERED"
     SEASONAL_LAG_UNKNOWN = "SEASONAL_LAG_UNKNOWN"
     SEASONAL_RESIDUALS_TOO_FEW = "SEASONAL_RESIDUALS_TOO_FEW"
     ETS_INSUFFICIENT_KNOWN = "ETS_INSUFFICIENT_KNOWN"
@@ -41,6 +42,13 @@ class SkipReason(StrEnum):
     CURRENCY_MIXED = "CURRENCY_MIXED"
     MODEL_NOT_RUN = "MODEL_NOT_RUN"
     """Slice 1 only: the comparators are not run until slice 2's gate; retired with it."""
+
+
+class AccuracyGap(StrEnum):
+    """Why a valid backtest has no MASE (design §5b); MASE is reported, never gated on."""
+
+    HISTORY_UNCHANGING = "HISTORY_UNCHANGING"
+    MASE_SCALE_UNKNOWN = "MASE_SCALE_UNKNOWN"
 
 
 class WeekState(StrEnum):
