@@ -203,7 +203,7 @@ class AthenaWeeklySeriesSource:
             reuse_minutes=0,
         )
         try:
-            return start(self._client, request).execution_id
+            return start(self._client, request)
         except DependencyError as error:
             raise WeeklySeriesError(f"athena_start:{error.context.get('aws_code', '')}") from None
 
