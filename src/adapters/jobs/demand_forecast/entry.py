@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import os
+import resource
 import sys
 import time
 from collections.abc import Callable
@@ -221,6 +222,8 @@ def run_forecast_mode(request: ForecastModeRequest, log: JobLog) -> RunReportV1:
         model_calls=result.model_calls,
         durations_ms=durations,
         series_sha256=written.series_sha256,
+        # P1-1's peak memory, recorded by the job itself; Linux reports ru_maxrss in KiB.
+        peak_rss_bytes=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024,
     )
     return report
 

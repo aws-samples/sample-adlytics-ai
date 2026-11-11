@@ -65,7 +65,8 @@
         "counts_by_reason": "integer_map",
         "model_calls": "integer",
         "durations_ms": "integer_map",
-        "series_sha256": "string"
+        "series_sha256": "string",
+        "peak_rss_bytes": "integer"
       }
     },
     {
