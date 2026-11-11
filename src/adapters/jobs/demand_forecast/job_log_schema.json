@@ -37,6 +37,38 @@
       }
     },
     {
+      "operation": "forecast.start",
+      "level": "INFO",
+      "fields": {
+        "uid": "integer",
+        "model_id": "string",
+        "shard": "integer",
+        "attempt_id": "string",
+        "input_attempt_id": "string"
+      }
+    },
+    {
+      "operation": "forecast.input",
+      "level": "INFO",
+      "fields": {"target_rows": "integer", "traffic_rows": "integer", "duration_ms": "integer"}
+    },
+    {
+      "operation": "forecast.artifact",
+      "level": "INFO",
+      "fields": {"artifact_digest": "string", "artifact_files": "integer"}
+    },
+    {
+      "operation": "forecast.result",
+      "level": "INFO",
+      "fields": {
+        "asin_count": "integer",
+        "counts_by_reason": "integer_map",
+        "model_calls": "integer",
+        "durations_ms": "integer_map",
+        "series_sha256": "string"
+      }
+    },
+    {
       "operation": "job",
       "level": "ERROR",
       "fields": {"mode": "string", "duration_ms": "integer", "error": "error"}

@@ -16,6 +16,8 @@ src/adapters/jobs/demand_forecast/entry.py
 src/adapters/jobs/demand_forecast/entrypoint.sh
 src/adapters/jobs/demand_forecast/job_log.py
 src/adapters/jobs/demand_forecast/job_log_schema.json
+src/adapters/jobs/demand_forecast/json_output.py
+src/adapters/jobs/demand_forecast/parquet_input.py
 src/adapters/jobs/demand_forecast/requirements.lock
 src/adapters/jobs/demand_forecast/self_check.py
 src/adapters/outbound/__init__.py
@@ -23,9 +25,18 @@ src/adapters/outbound/demand_forecast_policy.py
 src/domain/__init__.py
 src/domain/forecasting/__init__.py
 src/domain/forecasting/artifact_roster.py
+src/domain/forecasting/batching.py
+src/domain/forecasting/boundary.py
 src/domain/forecasting/checks.py
+src/domain/forecasting/identity.py
 src/domain/forecasting/models.py
+src/domain/forecasting/numeric.py
 src/domain/forecasting/policy.py
+src/domain/forecasting/run.py
+src/domain/forecasting/scoring.py
+src/domain/forecasting/weekly_series.py
 src/ports/__init__.py
 src/ports/outbound/__init__.py
+src/ports/outbound/forecast_input.py
 src/ports/outbound/forecast_model.py
+src/ports/outbound/forecast_output.py
