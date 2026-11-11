@@ -4,6 +4,31 @@ Publication-safe conclusions from live source probes and deployed development ac
 account, entity, instance, user, resource, execution, workflow, and invalidation identifiers remain
 in ignored `RESULTS.local.md` and `findings/`; neither is publication content. A conclusion appears
 here only after its exact local evidence was read and folded into the owning contract or design doc.
+## Demand forecast slice 1: engine and weekly input on dev — 2026-11-11
+Times are UTC. Synthetic data only. Dev ran main plus one open change merged with the slice 1
+branch (two new stacks, `DemandForecastData` and `DemandForecast`), redeployed diff-first after
+each code change; the bake dead-letter queue read 0 and the finalizer-blocked alarm OK after every
+deploy. Every job ran on one `ml.m5.xlarge` with network isolation on, read back from the job.
+Acceptance 3, 5, 6 and 8 ran on a STAGED input built from the synthetic catalogue (60 products,
+104 weeks), because the fixture landing refuses Vendor history older than 56 days by design; the
+lake path is proven on dev's landed span (acceptance 1).
+| Check | Verdict | What it showed |
+|---|---|---|
+| 1. Partitioned `UNLOAD` on the batch workgroup (OQ-17) | **PASS** | Roster `SELECT` and both `UNLOAD`s `SUCCEEDED` from the input builder's own role; `shard=0/` and `shard=1/` objects for dev's 3,012 fictional ASINs; manifest and title map validate; 120 bound publication IDs, 44 characters long |
+| 2. Isolated self-check (OQ-2) | **PASS** | Exit 0 as uid 10001 on Python 3.14.10, chronos-forecasting 2.3.2, torch 2.14.1; weights loaded; 3 series × 13 weeks × 3 quantiles, finite and ordered with NaN context weeks; two passes identical; mounted-copy digest equal to the digest command's |
+| 3. One execution to `Forecast` map success | **PASS** | `SUCCEEDED`; one shard of 60; all 60 candidate records validate with 13 recent weeks; 58 of 60 series forecast by Chronos-2 per target, 2 withheld `INSUFFICIENT_CONTEXT`; the run report's seven schema digests equal the generated file's; byte-identical candidate on a second image |
+| 4. Stop during `BuildInput`, then redrive (R2-14) | **PARTIAL** | Stopped while `BuildInput` ran, after its target `UNLOAD` wrote `r0a0`; the redriven build wrote `r1a0` and `r0a0` stayed; both jobs ran with input attempt `r1a0` and then ended `FORECAST_TARGET_EMPTY`, because dev's landed span holds about 8 weeks and a series needs 26, so no run report exists to read |
+| 5. Renamed Parquet column (R2-12) | **PASS** | Job-only run ended `failed`; exit message `INPUT_SCHEMA_MISMATCH`, on two images |
+| 6. Week states match the catalogue's declarations | **PASS** | The unlanded day's week is `unknown` for all 55 products whose history covers it, and they still get a Chronos-2 forecast; the run report counts 11,264 inferred-zero days, 11,240 of them on the 6 intermittent products (local recomputation from the staged input, which reproduces every product's live counts); each delisted product's tail goes unknown once the 13-week activity window lapses, and the series is withheld; all 4 stock-out products have 13 flagged weeks; all 60 titles equal the US hierarchy's |
+| 7. IAM simulation | **PASS** | State-machine role denied `CreateProcessingJob` with isolation false, isolation absent and another instance type, allowed with both conditions met; Processing role denied `PutObject` outside `candidate/`, allowed inside |
+| 8. P1-1 | **MEASURED** | 2,000 ASINs, one shard: 450 s and 479 s from `CreateProcessingJob` to job end (Chronos-2 325 s and 335 s), peak RSS 2.57 GiB. 60 ASINs: 122 s and 134 s, peak 1.08 GiB. `shard_max_asins` stays 2,000 (≤ 1,800 s). Dev catalogue statements: 2.6 s, 3.1 s and 4.0 s; 16.6 bytes scanned per daily sales row |
+| 9. Processing quota | **PASS** | Applied quota 16, at least 8, so no increase was requested; no run was refused for quota, so the error name stays [unverified] |
+| 10. Catalogue extension in Retail health | **PENDING** | Not landed: delivery keys collide with dev's existing deliveries and history older than 56 days is refused; screenshots unchanged |
+**Observed, not a criterion:** the stock-out flag (shipped below ordered) is set on all 13 recent
+weeks for every regular product too, because the synthetic catalogue ships slightly less than is
+ordered every week. On the 2,000-ASIN scale fixture, 239 series per target are withheld
+`FORECAST_NEGATIVE`. Dev's CloudWatch held no SageMaker Processing job metric, so the job records
+its own peak RSS.
 ## Baker Lambda write rate at width 8 and 23 on dev — 2026-10-28 to 2026-10-29
 Times are UTC. Synthetic data only. After an identity check, two trees were deployed to dev in
 turn: main (`b21521b7`) merged with the Audiences scale-test fixture and one unrelated open change,
