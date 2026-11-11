@@ -105,6 +105,7 @@ _STATIC_FUNCTIONS: Final = {
     "inline_ingestion": ("Ingestion", "IngestionFunction"),
     "provider_attempt_reconciler": ("Ingestion", "Stage1ProviderAttemptReconciler"),
     "insight_precompute": ("InsightPrecompute", ""),
+    "demand_forecast_input": ("DemandForecast", "ForecastInputFunction"),
 }
 """Static row -> (stack, function logical-ID prefix): reserved concurrency x start cap."""
 _OPERATOR_ROWS: Final = ("ingest_operator", "reprocess_operator")
@@ -972,7 +973,7 @@ def general_values(templates: Mapping[str, Mapping[str, Any]]) -> dict[str, obje
 def static_rows(
     templates: Mapping[str, Mapping[str, Any]], operator_processes: int
 ) -> dict[str, object]:
-    """The seven caller rows: reserved concurrency x start cap, from the same templates."""
+    """The eight caller rows: reserved concurrency x start cap, from the same templates."""
     rows: dict[str, object] = dict.fromkeys(_OPERATOR_ROWS, operator_processes)
     by_kind = {_stack_kind(stack): template for stack, template in templates.items()}
     for row, (kind, prefix) in _STATIC_FUNCTIONS.items():

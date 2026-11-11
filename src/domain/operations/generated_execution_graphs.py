@@ -4,7 +4,7 @@
 from typing import Any, Final
 
 CONTRACT_REVISION: Final = 3
-CONTRACT_DIGEST: Final = '8a589c8f0e134977eab39d81e51062e56ecc892e0591fb2e999b1ad3a8b36469'
+CONTRACT_DIGEST: Final = 'b6eab8b0511a7a9f6f42227fa9d9a56e927bf6366e92954d9a8855e00d09aa44'
 PROTOCOL_VERSION: Final = 'v1'
 AUTHORITY_EPOCHS: Final[Any] = (
 {'shadow': 0, 'graph': 1}
@@ -197,7 +197,7 @@ BAKE_UNAVAILABLE_REASONS: Final[Any] = (
  'audiences': 'audiences_materialization_unavailable'}
 )
 ATHENA_START_BUDGET: Final[Any] = (
-{'active_dml_quota': 200, 'batch_athena_budget': 41, 'chat_reserve_active_dml': 20}
+{'active_dml_quota': 200, 'batch_athena_budget': 42, 'chat_reserve_active_dml': 20}
 )
 CALLER_REASONS: Final[Any] = (
 {'schedule': ('scheduled_cadence',),

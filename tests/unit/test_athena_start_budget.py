@@ -124,7 +124,7 @@ def test_the_table_carries_the_required_cases_and_every_closed_reason() -> None:
 
 def test_control_the_pairing_check_counts_two_scalars_apart_as_two() -> None:
     base = BY_ID["defaults-active"]
-    two_apart = {**base, "batch_athena_budget": 40, "chat_reserve_active_dml": 19}
+    two_apart = {**base, "batch_athena_budget": 41, "chat_reserve_active_dml": 19}
     assert len(_scalar_differences(base, two_apart)) == 2
     assert _scalar_differences(base, base) == []
 
@@ -133,9 +133,9 @@ def test_refusals_report_the_violated_term_with_observed_and_limit() -> None:
     def verdict(case_id: str) -> BudgetAccepted | BudgetRefused:
         return validate_athena_start_budget(_request(BY_ID[case_id]))
 
-    assert verdict("baker-drift-3") == BudgetRefused(BudgetRefusalReason.SUM_OVER_BUDGET, 51, 41)
+    assert verdict("baker-drift-3") == BudgetRefused(BudgetRefusalReason.SUM_OVER_BUDGET, 52, 42)
     assert verdict("operator-row-two-processes") == BudgetRefused(
-        BudgetRefusalReason.SUM_OVER_BUDGET, 42, 41
+        BudgetRefusalReason.SUM_OVER_BUDGET, 43, 42
     )
     assert verdict("budget-over-headroom") == BudgetRefused(
         BudgetRefusalReason.BUDGET_OVER_CHAT_HEADROOM, 181, 180
@@ -144,7 +144,7 @@ def test_refusals_report_the_violated_term_with_observed_and_limit() -> None:
         BudgetRefusalReason.UNRESERVED, "inline_ingestion", None
     )
     # Paired positive control: the defaults themselves are accepted at exactly the budget.
-    assert verdict("defaults-active") == BudgetAccepted(41)
+    assert verdict("defaults-active") == BudgetAccepted(42)
 
 
 def test_the_row_ids_and_refusal_order_equal_the_typescript_rule() -> None:

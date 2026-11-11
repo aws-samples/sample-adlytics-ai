@@ -5616,6 +5616,7 @@ ATHENA_STATIC_CALLER_ROWS: Final = {
     "ingest_operator": 1,
     "reprocess_operator": 1,
     "insight_precompute": 8,
+    "demand_forecast_input": 1,
 }
 ATHENA_ACTIVE_DML_QUOTA: Final = 200
 ATHENA_CHAT_RESERVE: Final = 20

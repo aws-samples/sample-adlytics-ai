@@ -302,7 +302,7 @@ describe('what this repository ships', () => {
       });
       expect(ATHENA_START_BUDGET).toStrictEqual({
         active_dml_quota: 200,
-        batch_athena_budget: 41,
+        batch_athena_budget: 42,
         chat_reserve_active_dml: 20,
       });
       // The CHAT fan-out width is a separate knob that no batch budget reads, and it has no
@@ -318,7 +318,7 @@ describe('what this repository ships', () => {
       expect(config.athenaStartBudget).toStrictEqual({
         bakerStartCap: 10,
         insightStartCap: 4,
-        batchAthenaBudget: 41,
+        batchAthenaBudget: 42,
         chatReserveActiveDml: 20,
       });
     });

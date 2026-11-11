@@ -16,6 +16,7 @@ import {
   semanticV2AthenaWorkgroupName,
   semanticV2DatabaseName,
 } from '../config';
+import { DEMAND_FORECAST_INPUT_RESERVED_CONCURRENCY } from '../config/athena-start-budget';
 import { staffedAlarmAction } from '../constructs/observability/async-failure';
 import { applyFunctionErrorAlarms } from '../mixins/function-error-alarms';
 import { dataBucketName } from '../mixins/storage';
@@ -207,6 +208,8 @@ export class DemandForecastStack extends cdk.Stack {
       layers: [dependencies],
       memorySize: INPUT_MEMORY_MIB,
       timeout: cdk.Duration.seconds(INPUT_TIMEOUT_SECONDS),
+      // The Athena start budget's 'demand_forecast_input' row: one invocation, sequential starts.
+      reservedConcurrentExecutions: DEMAND_FORECAST_INPUT_RESERVED_CONCURRENCY,
       role: inputRole,
       logGroup: inputLogs,
       environment: {

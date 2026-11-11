@@ -221,7 +221,7 @@ def test_every_budgeted_lambda_names_its_own_workgroup_and_a_batch_env_fails() -
     assert "adlytics-dev-PresetArtifactBaker: names batch" in probe.lambda_env_findings(stale, ENV)
 
 
-_PASSING_BUDGET = probe.BudgetReadback(probe.BudgetAccepted(41), 2)
+_PASSING_BUDGET = probe.BudgetReadback(probe.BudgetAccepted(42), 2)
 
 
 def test_the_removal_trigger_needs_a_clean_env_and_a_complete_zero_in_one_run() -> None:
@@ -239,7 +239,7 @@ def test_the_removal_trigger_needs_a_clean_env_and_a_complete_zero_in_one_run() 
 
 # --- explicit target -------------------------------------------------------------------------
 
-_LIMITS = ["--batch-athena-budget", "41", "--chat-reserve-active-dml", "20"]
+_LIMITS = ["--batch-athena-budget", "42", "--chat-reserve-active-dml", "20"]
 _FULL = ["--profile", "fictional", "--env", ENV, "--region", "us-east-1", "--account", "1"]
 
 
@@ -287,6 +287,7 @@ _ACTIVE = {
     "IngestionFunction": 2,
     "ProviderAttemptReconciler": 1,
     "InsightPrecompute": 2,
+    "DemandForecastInput": 1,
 }
 _CAPS: dict[str, Mapping[str, str] | None] = {
     f"adlytics-{ENV}-PresetArtifactBaker": {"ADL_ATHENA_QUERY_BATCH_MAX_CONCURRENCY": "10"},
@@ -294,7 +295,7 @@ _CAPS: dict[str, Mapping[str, str] | None] = {
 }
 
 
-def _budget_request(budget: int = 41, reserve: int = 20) -> probe.ProbeRequest:
+def _budget_request(budget: int = 42, reserve: int = 20) -> probe.ProbeRequest:
     return probe.ProbeRequest("fictional", ENV, "us-east-1", "1", budget, reserve)
 
 
@@ -305,25 +306,25 @@ def _readback(
     return probe.read_budget(functions, request or _budget_request(), _CAPS), functions
 
 
-def test_active_defaults_are_accepted_at_41_with_the_operator_rows_asserted_by_runbook() -> None:
+def test_active_defaults_are_accepted_at_42_with_the_operator_rows_asserted_by_runbook() -> None:
     readback, functions = _readback(_ACTIVE)
-    assert readback.verdict == probe.BudgetAccepted(41)
+    assert readback.verdict == probe.BudgetAccepted(42)
     assert readback.load_reserved_concurrency == 2
     assert readback.evidence()["asserted"] == {
         "ingest_operator": "runbook",
         "reprocess_operator": "runbook",
     }
-    assert len(functions.calls) == 5
+    assert len(functions.calls) == 6
     # Paired control: the same deployment with the Baker drifted to 3 is over budget.
     drifted, _ = _readback({**_ACTIVE, "PresetArtifactBaker": 3})
     assert isinstance(drifted.verdict, probe.BudgetRefused)
-    assert (drifted.verdict.reason.value, drifted.verdict.observed) == ("SUM_OVER_BUDGET", 51)
+    assert (drifted.verdict.reason.value, drifted.verdict.observed) == ("SUM_OVER_BUDGET", 52)
     assert drifted.passed is False
 
 
-def test_a_quiesced_load_reading_0_is_accepted_at_39_and_an_unreserved_one_is_refused() -> None:
+def test_a_quiesced_load_reading_0_is_accepted_at_40_and_an_unreserved_one_is_refused() -> None:
     quiesced, _ = _readback({**_ACTIVE, "IngestionFunction": 0})
-    assert quiesced.verdict == probe.BudgetAccepted(39)
+    assert quiesced.verdict == probe.BudgetAccepted(40)
     assert quiesced.load_reserved_concurrency == 0
     assert quiesced.evidence()["asserted"] == {
         "ingest_operator": "runbook",
@@ -339,8 +340,8 @@ def test_a_quiesced_load_reading_0_is_accepted_at_39_and_an_unreserved_one_is_re
 @pytest.mark.parametrize(
     ("budget", "reserve", "field", "supplied", "contract"),
     [
-        (42, 20, "batch_athena_budget", 42, 41),
-        (41, 19, "chat_reserve_active_dml", 19, 20),
+        (43, 20, "batch_athena_budget", 43, 42),
+        (42, 19, "chat_reserve_active_dml", 19, 20),
     ],
 )
 def test_a_supplied_limit_off_the_contract_is_refused_before_any_concurrency_read(  # noqa: PLR0913, PLR0917 -- parametrized
@@ -355,13 +356,13 @@ def test_a_supplied_limit_off_the_contract_is_refused_before_any_concurrency_rea
     # Paired control: the contract values over the same deployment are read and accepted.
     accepted, control = _readback(_ACTIVE)
     assert accepted.passed is True
-    assert len(control.calls) == 5
+    assert len(control.calls) == 6
 
 
 def test_a_refused_budget_fails_the_report_and_is_printed_as_evidence() -> None:
     zero = probe.CensusCount(0, 1, 0)
     refused = probe.BudgetReadback(
-        probe.BudgetInputRefused("supplied_limit_mismatch", "batch_athena_budget", 42, 41), None
+        probe.BudgetInputRefused("supplied_limit_mismatch", "batch_athena_budget", 43, 42), None
     )
     report = probe.MigrationReport((), (), zero, refused)
     assert report.failed is True

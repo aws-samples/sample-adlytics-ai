@@ -195,11 +195,12 @@ describe('README Lambda concurrency prerequisite', () => {
       InsightContinuationStack: 2,
       InsightPromptCalibrationStack: 2,
       InsightPrecomputeStack: 2,
+      DemandForecastStack: 1,
     });
     // Producer onboarding adds only ProducerFinalizer's reservation of 2.
     expect(beforeOnboarding).toEqual({ ...withOnboarding, IngestionStack: 14 });
     const reserved = sum(withOnboarding);
-    expect([reserved, sum(beforeOnboarding)]).toEqual([35, 33]);
+    expect([reserved, sum(beforeOnboarding)]).toEqual([36, 34]);
     const readme = fs.readFileSync(path.join(REPOSITORY, 'README.md'), 'utf8');
     const quota = reserved + UNRESERVED_FLOOR;
     expect(readme).toContain(

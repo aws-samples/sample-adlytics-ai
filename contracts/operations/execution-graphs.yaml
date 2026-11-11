@@ -264,7 +264,7 @@ bake_v3:
 # quota changes it here. `chat_reserve_active_dml` is design-proposed headroom for CHAT.
 athena_start_budget:
   active_dml_quota: 200
-  batch_athena_budget: 41
+  batch_athena_budget: 42
   chat_reserve_active_dml: 20
 
 caller_kinds:

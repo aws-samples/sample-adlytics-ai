@@ -130,15 +130,15 @@ describe('validateAthenaStartBudgetRequest over the shared case table', () => {
 
   it('control: the pairing check fails a control that differs in two scalars', () => {
     const base = BY_ID.get('defaults-active') as BudgetCase;
-    const twoApart: BudgetCase = { ...base, batch_athena_budget: 40, chat_reserve_active_dml: 19 };
+    const twoApart: BudgetCase = { ...base, batch_athena_budget: 41, chat_reserve_active_dml: 19 };
     expect(scalarDifferences(base, twoApart)).toHaveLength(2);
     expect(scalarDifferences(base, base)).toHaveLength(0);
   });
 
   it('reports the defaults refusal values, an operator row beside a reprocess run, and the headroom term', () => {
     const verdict = (id: string) => validateAthenaStartBudgetRequest(request(BY_ID.get(id) as BudgetCase));
-    expect(verdict('baker-drift-3')).toEqual({ verdict: 'refused', reason: 'SUM_OVER_BUDGET', observed: 51, limit: 41 });
-    expect(verdict('operator-row-two-processes')).toEqual({ verdict: 'refused', reason: 'SUM_OVER_BUDGET', observed: 42, limit: 41 });
+    expect(verdict('baker-drift-3')).toEqual({ verdict: 'refused', reason: 'SUM_OVER_BUDGET', observed: 52, limit: 42 });
+    expect(verdict('operator-row-two-processes')).toEqual({ verdict: 'refused', reason: 'SUM_OVER_BUDGET', observed: 43, limit: 42 });
     expect(verdict('budget-over-headroom')).toEqual({ verdict: 'refused', reason: 'BUDGET_OVER_CHAT_HEADROOM', observed: 181, limit: 180 });
     expect(verdict('load-unreserved')).toEqual({ verdict: 'refused', reason: 'UNRESERVED', observed: 'inline_ingestion', limit: null });
   });
@@ -172,8 +172,8 @@ function synthPublisher(config: AppConfig): Template {
 }
 
 describe('validateAthenaStartBudget at synth', () => {
-  it('accepts the default config at 41 <= 41 <= 180, with the limits read from the contract', () => {
-    expect(validateAthenaStartBudget(TEST_CONFIG)).toBe(41);
+  it('accepts the default config at 42 <= 42 <= 180, with the limits read from the contract', () => {
+    expect(validateAthenaStartBudget(TEST_CONFIG)).toBe(42);
     expect(TEST_CONFIG.athenaStartBudget).toEqual({
       bakerStartCap: 10,
       insightStartCap: 4,
@@ -188,11 +188,11 @@ describe('validateAthenaStartBudget at synth', () => {
   });
 
   it.each([
-    ['bakerStartCap 11', { bakerStartCap: 11 }, /SUM_OVER_BUDGET \(observed 43, limit 41\)/],
+    ['bakerStartCap 11', { bakerStartCap: 11 }, /SUM_OVER_BUDGET \(observed 44, limit 42\)/],
     ['bakerStartCap 9', { bakerStartCap: 9 }, /BELOW_CERTIFIED_QUERY_CAP \(observed 9, limit 10\)/],
     ['insightStartCap 0', { insightStartCap: 0 }, /NON_POSITIVE_CAP/],
     ['a fractional cap 10.5', { bakerStartCap: 10.5 }, /NON_INTEGER/],
-    ['batchAthenaBudget 42', { batchAthenaBudget: 42 }, /athenaStartBudget\.batchAthenaBudget is 42.*batch_athena_budget is 41/],
+    ['batchAthenaBudget 43', { batchAthenaBudget: 43 }, /athenaStartBudget\.batchAthenaBudget is 43.*batch_athena_budget is 42/],
     ['chatReserveActiveDml 19', { chatReserveActiveDml: 19 }, /athenaStartBudget\.chatReserveActiveDml is 19.*chat_reserve_active_dml is 20/],
   ] as const)('control: %s throws at the insight precompute stack naming the term', (_, overrides, message) => {
     expect(() => synthInsight(budgetConfig(overrides))).toThrow(message);
@@ -220,7 +220,7 @@ describe('validateAthenaStartBudget at synth', () => {
     );
     expect(load?.ReservedConcurrentExecutions).toBe(0);
     // The wrapper evaluates the configured maximum (2), so the quiesced deployment synthesizes.
-    expect(validateAthenaStartBudget(quiesced)).toBe(41);
+    expect(validateAthenaStartBudget(quiesced)).toBe(42);
     expect(() => synthInsight(quiesced)).not.toThrow();
   });
 });

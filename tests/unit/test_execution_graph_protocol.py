@@ -421,12 +421,12 @@ def test_the_bake_roster_and_start_budget_are_generated_with_exact_values() -> N
     assert 10 + 4 * BAKE_TASKS["max_tasks"] <= BOUNDS["max_transaction_items"]
     assert ATHENA_START_BUDGET == {
         "active_dml_quota": 200,
-        "batch_athena_budget": 41,
+        "batch_athena_budget": 42,
         "chat_reserve_active_dml": 20,
     }
     typescript = (ROOT / generator.TYPESCRIPT_PATH).read_text()
     assert '"max_tasks": 21' in typescript
-    assert '"batch_athena_budget": 41' in typescript
+    assert '"batch_athena_budget": 42' in typescript
 
 
 _ROSTER_ROW = "    - {page: retail-health, variant: 14d}\n"
@@ -471,7 +471,7 @@ _BUDGET_ROW = '    "retail-health#14d": 240\n'
         ),
         (
             "ATHENA_START_BUDGET_INVALID",
-            "  batch_athena_budget: 41\n",
+            "  batch_athena_budget: 42\n",
             "  batch_athena_budget: 0\n",
         ),
     ],

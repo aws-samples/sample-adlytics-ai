@@ -2,7 +2,7 @@
 """The static Athena start budget rule (plan S1, F2), the Python twin of the TypeScript one.
 
 Each batch caller's maximum concurrent Athena executions is reserved concurrency x in-process
-start cap. `validate_athena_start_budget` checks the seven closed rows and the two limits in the
+start cap. `validate_athena_start_budget` checks the eight closed rows and the two limits in the
 closed refusal order, the first failure winning:
 
     UNKNOWN_ROW, MISSING_ROW, DUPLICATE_ROW, NON_INTEGER, NEGATIVE_RESERVED_CONCURRENCY,
@@ -40,6 +40,7 @@ ATHENA_START_BUDGET_ROW_IDS: Final = (
     "ingest_operator",
     "reprocess_operator",
     "insight_precompute",
+    "demand_forecast_input",
 )
 
 
