@@ -1002,6 +1002,28 @@ export interface AppConfig {
    * evaluation review route receives it as `ADL_EVALUATION_RESULT_DEADLINE_SECONDS`.
    */
   readonly evaluationResultDeadlineSeconds: number;
+  /** The weekly Vendor demand forecast's one set, model artifact and job plan (design §3a, §4b). */
+  readonly demandForecast: DemandForecastConfig;
+}
+
+/**
+ * The demand forecast's typed configuration (approval I-2). Every value is required with no
+ * fallback: the run fingerprint and the IAM conditions read them, so a default would forecast
+ * against a set, an artifact or a job plan nobody chose. Absent, synth refuses naming each.
+ */
+export interface DemandForecastConfig {
+  /** The canonical marketplace of the one forecast set, for example `amazon_us`. */
+  readonly marketplaceKey: string;
+  /** The JumpStart `pytorch-forecasting-chronos-2` artifact prefix (an `s3://` URI ending `/`). */
+  readonly modelArtifactUri: string;
+  /** The prefix's roster digest, printed by `make demand-forecast-artifact-digest`. */
+  readonly modelArtifactDigest: string;
+  /** The Processing instance type; the state machine role may create jobs of this type only. */
+  readonly instanceType: string;
+  /** Each job's `MaxRuntimeInSeconds`; the role refuses a larger value. */
+  readonly maxRuntimeSeconds: number;
+  /** The `Forecast` map's `MaxConcurrency`; needs an applied Processing quota at least this large. */
+  readonly maxParallelJobs: number;
 }
 
 /**
@@ -1393,6 +1415,18 @@ export function defaultConfig(envName: string): AppConfig {
     harnessRuntimeLogRetentionDays: logs.RetentionDays.THREE_MONTHS,
     // Thirty minutes. A deployment whose verdicts routinely arrive later raises it deliberately.
     evaluationResultDeadlineSeconds: 1800,
+    demandForecast: {
+      marketplaceKey: process.env.ADLYTICS_DEMAND_FORECAST_MARKETPLACE_KEY ?? UNSET,
+      modelArtifactUri: process.env.ADLYTICS_DEMAND_FORECAST_MODEL_ARTIFACT_URI ?? UNSET,
+      modelArtifactDigest: process.env.ADLYTICS_DEMAND_FORECAST_MODEL_ARTIFACT_DIGEST ?? UNSET,
+      instanceType: process.env.ADLYTICS_DEMAND_FORECAST_INSTANCE_TYPE ?? UNSET,
+      maxRuntimeSeconds: envRequiredWholeNumberInRange(
+        'ADLYTICS_DEMAND_FORECAST_MAX_RUNTIME_SECONDS',
+        60,
+        432_000,
+      ),
+      maxParallelJobs: envRequiredWholeNumberInRange('ADLYTICS_DEMAND_FORECAST_MAX_PARALLEL_JOBS', 1, 100),
+    },
   };
 }
 
@@ -2700,6 +2734,8 @@ export const DEPLOY_ORDER = [
   'ControlPlaneAuthorityStoreStack',
   // Retained preset artifacts and pointers are independent of their disposable bake transport.
   'PublisherArtifactStoreStack',
+  // The retained demand-forecast processing bucket, before DemandForecastStack writes to it.
+  'DemandForecastDataStack',
   // The updated writer follows its retained target before any canonical reader. For an existing
   // deployment, retained evidence must be reprocessed and its publications validated manually
   // after this stack and before AgentStack or ApiStack; this stack-only list cannot enforce that
@@ -2759,6 +2795,7 @@ export const DEPLOY_ORDER = [
   // Moved after InsightContinuationStack 2026-09-22 for exactly that read; nothing between the
   // old and new positions consumes a PublisherStack-produced parameter.
   'PublisherStack',
+  'DemandForecastStack',
   'ApiStack',
   'InsightPrecomputeStack',
   // The evaluation gate. It binds its family's owned group and asserts the ingress filter above.
@@ -2828,6 +2865,20 @@ const UNSET_HINTS: Readonly<Record<string, string>> = {
   'auth.wafRateLimitPerFiveMinutes':
     'comes from ADLYTICS_USER_POOL_WAF_RATE_LIMIT_PER_FIVE_MINUTES; per-source-IP requests per ' +
     'five minutes the user pool web ACL admits (ADR-078), with no default',
+  'demandForecast.marketplaceKey':
+    'comes from ADLYTICS_DEMAND_FORECAST_MARKETPLACE_KEY; the one forecast set, e.g. amazon_us',
+  'demandForecast.modelArtifactUri':
+    'comes from ADLYTICS_DEMAND_FORECAST_MODEL_ARTIFACT_URI; the JumpStart Chronos-2 artifact prefix',
+  'demandForecast.modelArtifactDigest':
+    'comes from ADLYTICS_DEMAND_FORECAST_MODEL_ARTIFACT_DIGEST; print it with ' +
+    'make demand-forecast-artifact-digest PROFILE=<profile> ENV=<env>',
+  'demandForecast.instanceType':
+    'comes from ADLYTICS_DEMAND_FORECAST_INSTANCE_TYPE; the Processing instance type, e.g. ml.m5.xlarge',
+  'demandForecast.maxRuntimeSeconds':
+    'comes from ADLYTICS_DEMAND_FORECAST_MAX_RUNTIME_SECONDS; each job\'s runtime limit, with no default',
+  'demandForecast.maxParallelJobs':
+    'comes from ADLYTICS_DEMAND_FORECAST_MAX_PARALLEL_JOBS; jobs at a time, at most the applied ' +
+    'Processing quota, with no default',
   account: 'comes from CDK_DEFAULT_ACCOUNT, i.e. the profile passed to the CLI',
   region: 'comes from CDK_DEFAULT_REGION, i.e. the profile passed to the CLI',
 };

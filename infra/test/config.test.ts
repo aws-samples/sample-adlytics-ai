@@ -107,6 +107,12 @@ const DEPLOYMENT_ENV = [
   'ADLYTICS_QUALITY_REVIEW_VALIDATION_PASSWORD_AUTH',
   'ADLYTICS_SPAN_INDEXING_PERCENT',
   'ADLYTICS_TRACE_SAMPLE_RATIO',
+  'ADLYTICS_DEMAND_FORECAST_MARKETPLACE_KEY',
+  'ADLYTICS_DEMAND_FORECAST_MODEL_ARTIFACT_URI',
+  'ADLYTICS_DEMAND_FORECAST_MODEL_ARTIFACT_DIGEST',
+  'ADLYTICS_DEMAND_FORECAST_INSTANCE_TYPE',
+  'ADLYTICS_DEMAND_FORECAST_MAX_RUNTIME_SECONDS',
+  'ADLYTICS_DEMAND_FORECAST_MAX_PARALLEL_JOBS',
 ] as const;
 
 /**
@@ -150,6 +156,12 @@ const CORE_ENVIRONMENT_SUPPLIED: Readonly<Record<string, string>> = {
   ADLYTICS_ATHENA_QUERY_BATCH_MAX_CONCURRENCY: '8',
   ADLYTICS_EDGE_WAF_RATE_LIMIT_PER_FIVE_MINUTES: '2000',
   ADLYTICS_USER_POOL_WAF_RATE_LIMIT_PER_FIVE_MINUTES: '300',
+  ADLYTICS_DEMAND_FORECAST_MARKETPLACE_KEY: 'amazon_us',
+  ADLYTICS_DEMAND_FORECAST_MODEL_ARTIFACT_URI: 's3://example-artifacts/chronos-2/',
+  ADLYTICS_DEMAND_FORECAST_MODEL_ARTIFACT_DIGEST: 'a'.repeat(64),
+  ADLYTICS_DEMAND_FORECAST_INSTANCE_TYPE: 'ml.m5.xlarge',
+  ADLYTICS_DEMAND_FORECAST_MAX_RUNTIME_SECONDS: '3600',
+  ADLYTICS_DEMAND_FORECAST_MAX_PARALLEL_JOBS: '8',
 };
 
 function withDeploymentEnv<T>(values: Readonly<Record<string, string>>, body: () => T): T {
@@ -419,6 +431,23 @@ describe('what this repository ships', () => {
         expect(error.format()).toContain('ADLYTICS_RECEIPT_RETENTION_DAYS');
       });
     }
+  });
+
+  it.each([
+    ['ADLYTICS_DEMAND_FORECAST_MARKETPLACE_KEY', 'demandForecast.marketplaceKey'],
+    ['ADLYTICS_DEMAND_FORECAST_MODEL_ARTIFACT_URI', 'demandForecast.modelArtifactUri'],
+    ['ADLYTICS_DEMAND_FORECAST_MODEL_ARTIFACT_DIGEST', 'demandForecast.modelArtifactDigest'],
+    ['ADLYTICS_DEMAND_FORECAST_INSTANCE_TYPE', 'demandForecast.instanceType'],
+    ['ADLYTICS_DEMAND_FORECAST_MAX_RUNTIME_SECONDS', 'demandForecast.maxRuntimeSeconds'],
+    ['ADLYTICS_DEMAND_FORECAST_MAX_PARALLEL_JOBS', 'demandForecast.maxParallelJobs'],
+  ])('refuses to synthesise without %s (approval I-2: no fallback)', (variable, configPath) => {
+    const values: Record<string, string> = { ...CORE_ENVIRONMENT_SUPPLIED };
+    delete values[variable];
+    withDeploymentEnv(values, () => {
+      const error = captureIncomplete('dev');
+      expect(error.problems).toEqual([{ path: configPath, kind: 'unset' }]);
+      expect(error.format()).toContain(variable);
+    });
   });
 
   it('refuses a receipt retention that is not a positive whole number of days', () => {

@@ -26,6 +26,8 @@ import { ApiStack } from '../lib/stacks/api-stack';
 import { ControlPlaneAuthorityStoreStack } from '../lib/stacks/control-plane-authority-store-stack';
 import { AuthStack } from '../lib/stacks/auth-stack';
 import { DataV2Stack } from '../lib/stacks/data-v2-stack';
+import { DemandForecastDataStack } from '../lib/stacks/demand-forecast-data-stack';
+import { DemandForecastStack } from '../lib/stacks/demand-forecast-stack';
 import { DependenciesStack } from '../lib/stacks/dependencies-stack';
 import { EdgeSecurityStack } from '../lib/stacks/edge-security-stack';
 import { EvaluationEvidenceStack } from '../lib/stacks/evaluation-evidence-stack';
@@ -211,12 +213,20 @@ new PublisherArtifactStoreStack(app, `Adlytics-PublisherArtifactStore-${envName}
   config,
   env,
 });
+// The retained demand-forecast processing bucket, before the engine that writes to it.
+new DemandForecastDataStack(app, `Adlytics-DemandForecastData-${envName}`, { config, env });
 
 new PublisherStack(app, `Adlytics-Publisher-${envName}`, {
   config,
   env,
   sourceAssetPath: stagedSourcePath,
   publisherInputPath: stagedPublisherInputPath,
+});
+// The weekly demand-forecast engine (slice 1): job image, input builder and state machine.
+new DemandForecastStack(app, `Adlytics-DemandForecast-${envName}`, {
+  config,
+  env,
+  sourceAssetPath: stagedSourcePath,
 });
 
 // Ingestion follows retained DataV2 and precedes every canonical reader, as DEPLOY_ORDER declares.

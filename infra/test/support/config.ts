@@ -180,6 +180,14 @@ export const TEST_CONFIG: AppConfig = {
   evaluationResultRetentionDays: logs.RetentionDays.TWO_WEEKS,
   harnessRuntimeLogRetentionDays: logs.RetentionDays.THREE_MONTHS,
   evaluationResultDeadlineSeconds: 1800,
+  demandForecast: {
+    marketplaceKey: 'amazon_us',
+    modelArtifactUri: 's3://jumpstart-cache-prod-eu-west-1/pytorch-forecasting/pytorch-forecasting-chronos-2/artifacts/inference-prepack/v1.2.0/',
+    modelArtifactDigest: 'a'.repeat(64),
+    instanceType: 'ml.m5.xlarge',
+    maxRuntimeSeconds: 3600,
+    maxParallelJobs: 8,
+  },
 };
 
 /** Top-level overrides. Nested areas are replaced wholesale, never merged. */

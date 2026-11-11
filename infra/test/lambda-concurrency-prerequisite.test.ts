@@ -36,6 +36,8 @@ import { InsightPromptRegistryStack } from '../lib/stacks/insight-prompt-registr
 import { MemoryStack } from '../lib/stacks/memory-stack';
 import { PublisherArtifactStoreStack } from '../lib/stacks/publisher-artifact-store-stack';
 import { PublisherStack } from '../lib/stacks/publisher-stack';
+import { DemandForecastDataStack } from '../lib/stacks/demand-forecast-data-stack';
+import { DemandForecastStack } from '../lib/stacks/demand-forecast-stack';
 import { RecordIntegrityStack } from '../lib/stacks/record-integrity-stack';
 import { TokenServiceStack } from '../lib/stacks/token-service-stack';
 import { TEST_CONFIG, configWith } from './support/config';
@@ -99,6 +101,12 @@ function composedStacks(config: AppConfig): Record<string, cdk.Stack> {
       env,
       sourceAssetPath: ASSET,
       publisherInputPath: path.join(REPOSITORY, 'presentation', 'pages', 'v2', 'pages.yaml'),
+    }),
+    DemandForecastDataStack: new DemandForecastDataStack(app, 'DemandForecastData', { config, env }),
+    DemandForecastStack: new DemandForecastStack(app, 'DemandForecast', {
+      config,
+      env,
+      sourceAssetPath: ASSET,
     }),
     IngestionStack: new IngestionStack(app, 'Ingestion', { config, env, sourceAssetPath: ASSET }),
     EdgeSecurityStack: new EdgeSecurityStack(app, 'EdgeSecurity', {

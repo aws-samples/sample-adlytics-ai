@@ -654,6 +654,10 @@ _REVIEWED_EXCLUSIONS = {
     "ADLYTICS_LANDING_EXTERNAL_ID": "a string input, never printed",
     "ADLYTICS_ORIGIN_VERIFY_SECRET_VERSION_ID": "a string input, never printed",
     "ADLYTICS_STAFFED_ALARM_TOPIC_ARN": "a string input, never printed",
+    "ADLYTICS_DEMAND_FORECAST_MARKETPLACE_KEY": "a string input, never printed",
+    "ADLYTICS_DEMAND_FORECAST_MODEL_ARTIFACT_URI": "a string input, never printed",
+    "ADLYTICS_DEMAND_FORECAST_MODEL_ARTIFACT_DIGEST": "a string input, never printed",
+    "ADLYTICS_DEMAND_FORECAST_INSTANCE_TYPE": "a string input, never printed",
 }
 
 

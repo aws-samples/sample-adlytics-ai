@@ -627,10 +627,11 @@ describe('T2 alarm coverage (ADR-133 clause 4)', () => {
         String(alarm.AlarmName).endsWith('-function-errors'),
       ),
     );
-    // Not vacuous: 57 functions, 6 exempt, 51 alarmed (feat-3-verify.md lists them).
-    expect(functions).toHaveLength(57);
+    // Not vacuous: 58 functions, 6 exempt, 52 alarmed (feat-3-verify.md lists the first 57; the
+    // 58th is DemandForecastStack's input builder).
+    expect(functions).toHaveLength(58);
     expect(alarmed).toHaveLength(functions.length - coverage.flatMap((item) => item.exempted).length);
-    expect(alarmed).toHaveLength(51);
+    expect(alarmed).toHaveLength(52);
   });
 
   it('names the functions RCA R7 and the brief require', () => {

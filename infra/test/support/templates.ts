@@ -25,6 +25,8 @@ import { ApiStack } from '../../lib/stacks/api-stack';
 import { ControlPlaneAuthorityStoreStack } from '../../lib/stacks/control-plane-authority-store-stack';
 import { AuthStack } from '../../lib/stacks/auth-stack';
 import { DataV2Stack } from '../../lib/stacks/data-v2-stack';
+import { DemandForecastDataStack } from '../../lib/stacks/demand-forecast-data-stack';
+import { DemandForecastStack } from '../../lib/stacks/demand-forecast-stack';
 import { DependenciesStack } from '../../lib/stacks/dependencies-stack';
 import { EvaluationEvidenceStack } from '../../lib/stacks/evaluation-evidence-stack';
 import { EvaluationInputStack } from '../../lib/stacks/evaluation-input-stack';
@@ -163,6 +165,12 @@ export function everyStack(): Record<string, cdk.Stack> {
       env,
       sourceAssetPath: ASSET,
       publisherInputPath: PUBLISHER_INPUT,
+    }),
+    DemandForecastDataStack: new DemandForecastDataStack(app, 'DemandForecastData', { config, env }),
+    DemandForecastStack: new DemandForecastStack(app, 'DemandForecast', {
+      config,
+      env,
+      sourceAssetPath: ASSET,
     }),
     EdgeSecurityStack: new EdgeSecurityStack(app, 'EdgeSecurity', {
       config,
