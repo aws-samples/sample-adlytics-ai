@@ -23,7 +23,7 @@ lake path is proven on dev's landed span (acceptance 1).
 | 5. Renamed Parquet column (R2-12) | **PASS** | Job-only run ended `failed`; exit message `INPUT_SCHEMA_MISMATCH`, on two images |
 | 6. Week states match the catalogue's declarations | **PASS** | The unlanded day's week is `unknown` for all 55 products whose history covers it, and they still get a Chronos-2 forecast; the run report counts 11,264 inferred-zero days, 11,240 of them on the 6 intermittent products (local recomputation from the staged input, which reproduces every product's live counts); each delisted product's tail goes unknown once the 13-week activity window lapses, and the series is withheld `ASIN_INACTIVE`; all 4 stock-out products have 13 flagged weeks; all 60 titles equal the US hierarchy's |
 | 7. IAM simulation | **PASS** | State-machine role denied `CreateProcessingJob` with isolation false, isolation absent and another instance type, allowed with both conditions met; Processing role denied `PutObject` outside `candidate/`, allowed inside |
-| 8. P1-1 | **MEASURED** | 2,000 ASINs, one shard: 450 s, 479 s and 454 s from `CreateProcessingJob` to job end (Chronos-2 325 s, 335 s and 324 s), peak RSS up to 2.57 GiB. 60 ASINs: 122 s to 138 s, peak 1.08 GiB. `shard_max_asins` stays 2,000 (≤ 1,800 s). Dev catalogue: shards of 2,000 and 1,012 ASINs took 121 s and 114 s with peak RSS 0.62 and 0.74 GiB, but no series had enough history to reach Chronos-2; statements 2.6 s, 3.1 s and 4.0 s; 16.6 bytes scanned per daily sales row |
+| 8. P1-1 | **PASS** (amended criterion: dev-catalogue time and memory, Chronos-2 time from the staged runs) | 2,000 ASINs, one shard: 450 s, 479 s and 454 s from `CreateProcessingJob` to job end (Chronos-2 325 s, 335 s and 324 s), peak RSS up to 2.57 GiB. 60 ASINs: 122 s to 138 s, peak 1.08 GiB. `shard_max_asins` stays 2,000 (≤ 1,800 s). Dev catalogue: shards of 2,000 and 1,012 ASINs took 121 s and 114 s with peak RSS 0.62 and 0.74 GiB, but no series had enough history to reach Chronos-2; statements 2.6 s, 3.1 s and 4.0 s; 16.6 bytes scanned per daily sales row |
 | 9. Processing quota | **PASS** | Applied quota 16, at least 8, so no increase was requested; no run was refused for quota, so the error name stays [unverified] |
 | 10. Catalogue extension in Retail health | **PENDING** | Not landed: delivery keys collide with dev's existing deliveries and history older than 56 days is refused; screenshots unchanged |
 **Observed, not a criterion:** the stock-out flag (shipped below ordered) is set on all 13 recent
@@ -31,7 +31,8 @@ weeks for every regular product too, because the synthetic catalogue ships sligh
 ordered every week. On the 2,000-ASIN scale fixture, 239 series per target are withheld
 `FORECAST_NEGATIVE` and 82 `ASIN_INACTIVE`. The STAGED input equals the lake `UNLOAD` exactly on
 units and glance views over the 7 overlapping weeks; 70 of 98 money cells differ because dev holds
-the first, unrestated report CURRENT on some days. Dev's CloudWatch held no SageMaker Processing job metric, so the job records
+the first, unrestated report CURRENT on some days. Each money cell equals the lake's when it takes
+each day's CURRENT report (245 of 245 cells), which is the equivalence rule the check uses. Dev's CloudWatch held no SageMaker Processing job metric, so the job records
 its own peak RSS.
 ## Baker Lambda write rate at width 8 and 23 on dev — 2026-10-28 to 2026-10-29
 Times are UTC. Synthetic data only. After an identity check, two trees were deployed to dev in

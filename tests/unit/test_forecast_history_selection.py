@@ -79,6 +79,30 @@ def test_a_restated_day_yields_the_new_publication_and_its_digest(known: Declara
     assert len(pins) == 3
 
 
+@pytest.mark.parametrize(
+    "other",
+    [{"distributor_view": "SOURCING"}, {"selling_program": "BUSINESS"}],
+)
+def test_another_views_publications_are_never_pinned_so_never_reach_the_roster(
+    known: Declarations, other: dict[str, str]
+) -> None:
+    # The roster reads only the pinned sales publications (compose_unload binds their IDs), and
+    # the view and program are in each publication's lens. So an ASIN sold only in another view
+    # can't enter the roster, which is why REQ-4.7 drops NOT_IN_VIEW (2026-11-11).
+    current = MemoryCurrent()
+    view = known.scope("vendor-sales-by-asin", SALES_FILTERS)
+    elsewhere = known.scope("vendor-sales-by-asin", {**SALES_FILTERS, **other})
+    current.load_days(view, date(2026, 1, 1), date(2026, 1, 3))
+    current.load_days(elsewhere, date(2026, 1, 1), date(2026, 1, 5))
+    pins = _selector(known, current).select(_request()).sales.pins
+    pinned = {pin.publication_id for pin in pins}
+    assert len(pins) == 3
+    assert pinned == {
+        publication(view, date(2026, 1, 1) + timedelta(days=n)).publication_id.value
+        for n in range(3)
+    }
+
+
 def test_the_marketplace_filter_excludes_another_population(known: Declarations) -> None:
     current = MemoryCurrent()
     with pytest.raises(ValueError, match="outside"):
