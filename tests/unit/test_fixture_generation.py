@@ -2375,7 +2375,7 @@ def test_a_stockout_product_ships_below_its_orders_only_inside_the_declared_wind
         for day, row in _sales_rows_by_asin()[asin].items():
             ratio = Decimal(row["shippedUnits"]) / Decimal(row["orderedUnits"])
             if forecast.stockout_first <= day <= forecast.stockout_last:
-                assert ratio < Decimal("0.5"), (asin, day)
+                assert ratio < Decimal("0.7"), (asin, day)
             else:
                 assert ratio > Decimal("0.85"), (asin, day)
 

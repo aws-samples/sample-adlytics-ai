@@ -213,10 +213,10 @@ products:
   - {asin: B0FIXTUR24, parent_asin: B0PARENT06, brand: brand:northstar-home, title: Northstar Home Product 24, roles: [], scenario: stable_growth, forecast_shape: regular}
   - {asin: B0FIXTUR25, parent_asin: B0PARENT06, brand: brand:northstar-home, title: Northstar Home Product 25, roles: [], scenario: stable_growth, forecast_shape: regular}
   - {asin: B0FIXTUR26, parent_asin: B0PARENT06, brand: brand:northstar-home, title: Northstar Home Product 26, roles: [], scenario: stable_growth, forecast_shape: regular}
-  - {asin: B0FIXTUR27, parent_asin: B0PARENT07, brand: brand:northstar-home, title: Northstar Home Product 27, roles: [], scenario: stable_growth, forecast_shape: trend_seasonal}
-  - {asin: B0FIXTUR28, parent_asin: B0PARENT07, brand: brand:northstar-home, title: Northstar Home Product 28, roles: [], scenario: stable_growth, forecast_shape: trend_seasonal}
-  - {asin: B0FIXTUR29, parent_asin: B0PARENT07, brand: brand:northstar-home, title: Northstar Home Product 29, roles: [], scenario: stable_growth, forecast_shape: trend_seasonal}
-  - {asin: B0FIXTUR30, parent_asin: B0PARENT07, brand: brand:northstar-home, title: Northstar Home Product 30, roles: [], scenario: stable_growth, forecast_shape: trend_seasonal}
+  - {asin: B0FIXTUR27, parent_asin: B0PARENT07, brand: brand:northstar-home, title: Northstar Home Product 27, roles: [], scenario: returns_pressure, forecast_shape: trend_seasonal}
+  - {asin: B0FIXTUR28, parent_asin: B0PARENT07, brand: brand:northstar-home, title: Northstar Home Product 28, roles: [], scenario: returns_pressure, forecast_shape: trend_seasonal}
+  - {asin: B0FIXTUR29, parent_asin: B0PARENT07, brand: brand:northstar-home, title: Northstar Home Product 29, roles: [], scenario: returns_pressure, forecast_shape: trend_seasonal}
+  - {asin: B0FIXTUR30, parent_asin: B0PARENT07, brand: brand:northstar-home, title: Northstar Home Product 30, roles: [], scenario: returns_pressure, forecast_shape: trend_seasonal}
   - {asin: B0FIXTUR31, parent_asin: B0PARENT07, brand: brand:northstar-home, title: Northstar Home Product 31, roles: [], scenario: stable_growth, forecast_shape: trend_seasonal}
   - {asin: B0FIXTUR32, parent_asin: B0PARENT08, brand: brand:northstar-home, title: Northstar Home Product 32, roles: [], scenario: stable_growth, forecast_shape: trend_seasonal}
   - {asin: B0FIXTUR33, parent_asin: B0PARENT08, brand: brand:northstar-home, title: Northstar Home Product 33, roles: [], scenario: stable_growth, forecast_shape: trend_seasonal}
@@ -464,6 +464,6 @@ shape:
     low_volume: {units_scale: "0.05"}
     intermittent: {units_scale: "0.20", presence: "0.35"}   # a row only on days whose draw is below presence
     trend_seasonal: {annual_growth_pct: "30", month_gain: "2.5"}   # month factor deviation x gain
-    stockout: {first_offset: -49, last_offset: -29, shipped_share: "0.35"}   # shipped = share x demand; ordered keeps demand
+    stockout: {first_offset: -49, last_offset: -29, shipped_share: "0.62"}   # shipped = share x demand; ordered keeps demand (0.62 keeps the Gate-1 band, test_gate1_admission_band.py)
     launch: {first_offset: -280}         # first Vendor day, 40 weeks before shape_anchor
     delisted: {last_offset: -141}        # last Vendor day: no rows in the last 20 weeks
