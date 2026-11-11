@@ -110,6 +110,8 @@ src/
 
 `adapters/jobs/` contains infrastructure orchestration. Reusable arithmetic remains in `domain/`, so jobs and request-time tools share deterministic rules without sharing AWS code.
 
+The weekly demand forecast follows the same split. `domain/forecasting/` holds the weekly series, scoring, numeric and batching rules and the boundary schemas; `adapters/jobs/demand_forecast/` is the SageMaker Processing job (its own `Dockerfile`, hashed `requirements.lock` and the closed `image-paths.txt` it is built from); `adapters/jobs/demand_forecast_input/` is the input builder Lambda; `contracts/forecasting/demand-forecast.yaml` is the versioned policy, and `contracts/generated/demand-forecast-boundaries.json` the generated boundary schemas.
+
 ## 3. `infra/` — CDK v2, TypeScript
 
 ```
@@ -140,6 +142,8 @@ infra/
 | `OperationalStatusProcessorStack` | attempts-stream projector writing the retained operational read model; composed only when `operationalStatus.provisioned` is true (off by default) | DESTROY |
 | `PublisherArtifactStoreStack` | retained baked preset artifacts (S3) and artifact pointers (DynamoDB) | RETAIN |
 | `PublisherStack` | preset artifact baker reading Semantic V2 publication updates and writing the retained artifact store | DESTROY |
+| `DemandForecastDataStack` | retained demand-forecast processing bucket (staged weekly inputs and shard candidates under `runs/`, each expiring after 90 days) | RETAIN |
+| `DemandForecastStack` | demand-forecast job image, Processing role, input builder Lambda and the Step Functions state machine that runs one network-isolated SageMaker Processing job per shard ([ADR-160](decisions/adr-160-mount-the-jumpstart-chronos-2-artifact-and-enforce-isolation-in-iam.md)) | DESTROY |
 | `InsightPromptRegistryStack` | retained immutable insight prompt versions, calibration outcomes, and per-slot/tier activation pointers | RETAIN |
 | `InsightPromptRegistrySeedStack` | contract-digest-triggered seed installing initial prompt versions from `contracts/insights/` | DESTROY |
 | `InsightCacheStack` | retained per-identity insight narration and deep-analysis cache | RETAIN |

@@ -94,8 +94,9 @@ Each page answers one question and leads to one decision. It opens with one answ
 | Amazon Bedrock model access | Enable access in your Region to the three models `.env.example` names, a quick chat model, a deep-dive chat model and a memory model, including the one-time use-case form Anthropic models need ([Request access to models](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html), read 2026-10-19). They are US cross-Region inference profiles; in eu-central-1 or eu-west-1, replace each with the ID that `aws bedrock list-inference-profiles --profile <your-profile> --region <region> --type-equals SYSTEM_DEFINED` lists. The memory model has no fallback ([ADR-147](docs/decisions/adr-147-treat-long-term-memory-as-context-never-evidence.md)). Checked by `make deploy-all`. |
 | Athena concurrent queries | Page refreshes and chat share Athena's "Active DML queries" quota ([query path](docs/capabilities/query-path/architecture.md)). Read the applied value in your Region with `aws service-quotas get-service-quota --service-code athena --quota-code L-FC5F6546 --profile <your-profile>` ([Athena quotas](https://docs.aws.amazon.com/athena/latest/ug/service-limits.html), read 2026-10-25), and request an increase in Service Quotas if it is below `batch_athena_budget` + `chat_reserve_active_dml` in [`contracts/operations/execution-graphs.yaml`](contracts/operations/execution-graphs.yaml) (62 at this release). Checked by `make deploy-all`. |
 | Lambda concurrency | One environment reserves 36 concurrent executions for its functions once producer onboarding is on (34 before), and Lambda always keeps 100 of the account's concurrency unreserved. The applied "Concurrent executions" quota in your Region must therefore be at least 136. Read it with `aws lambda get-account-settings --profile <your-profile>` (`AccountLimit.ConcurrentExecutions`) and request an increase in Service Quotas if it is below 136; otherwise the first stack that reserves concurrency fails to deploy. Checked by `make deploy-all`. |
+| SageMaker Processing quota | The demand-forecast job runs on SageMaker Processing. The applied "ml.m5.xlarge for processing job usage" quota must be at least `ADLYTICS_DEMAND_FORECAST_MAX_PARALLEL_JOBS` (8); the documented default is 0 ([SageMaker quotas](https://docs.aws.amazon.com/general/latest/gr/sagemaker.html), read 2026-11-11). Read it with `aws service-quotas list-service-quotas --service-code sagemaker --profile <your-profile> --query "Quotas[?QuotaName=='ml.m5.xlarge for processing job usage'].Value"` and request an increase if it is lower; a lower quota fails a forecast run rather than slowing it. |
 | Edge rate limit | The website's AWS WAF rule limits requests per source IP per five minutes (`ADLYTICS_EDGE_WAF_RATE_LIMIT_PER_FIVE_MINUTES` in [`.env.example`](.env.example), with a separate limit for sign-in). A team behind one corporate IP shares that one budget, and each page view makes several requests. Size it for your team's combined traffic before you invite users. |
-| Local tools | Node.js 24 (`.nvmrc`), Python 3.14 through [uv](https://docs.astral.sh/uv/), AWS CLI v2, `make`, `bash` and the `file` utility. Developed and deployed from macOS. Docker is not needed. |
+| Local tools | Node.js 24 (`.nvmrc`), Python 3.14 through [uv](https://docs.astral.sh/uv/), AWS CLI v2, `make`, `bash`, the `file` utility, and Docker or [Finch](https://github.com/runfinch/finch) to build the demand-forecast job image (for Finch, set `CDK_DOCKER=finch`). Developed and deployed from macOS. |
 | Amazon data (needed to see figures) | A deployment shows only designed empty pages until your own pipeline, run from a second AWS account, lands AMC query-pack results ([Load your data](#load-your-data)). Vendor Central reports can't be landed yet ([Known limits](#known-limits)). |
 
 ## Quickstart
@@ -118,7 +119,7 @@ make destroy-all PROFILE=<your-profile> ENV=<env> CONFIRM=<env>
 
 ## Deploy
 
-1. **Configure.** Copy `.env.example` to `.env` and fill in the blanks. Every value is explained in the file.
+1. **Configure.** Copy `.env.example` to `.env` and fill in the blanks. Every value is explained in the file. The demand-forecast values include the Chronos-2 artifact digest: run `make demand-forecast-artifact-digest PROFILE=<your-profile> ENV=<env>` (read-only; it prints the digest and writes no file) and set `ADLYTICS_DEMAND_FORECAST_MODEL_ARTIFACT_DIGEST`. Synth refuses a missing value.
 2. **Deploy everything.** Run `make deploy-all` without `APPROVE` first: it deploys nothing and shows the target account, Region and the changes. Then run it with `APPROVE=1 EMAIL=<address>` to deploy and invite the first user. What the target decides for you, such as CDK bootstrapping and the frontend's second pass on a first deployment, is listed in the header of [`scripts/deploy-all.sh`](scripts/deploy-all.sh). If a step fails, fix the cause and run the same command again: stacks with no changes are skipped, and a user who is already invited is not sent a second invite. If CloudFormation then reports that a name already exists, a failed first create left a retained resource behind: delete it (see [Clean up](#clean-up)) or use a new `ENV`.
 3. **Sign in.** Open the printed URL and set a new password at first sign-in. To invite more users: `make create-user PROFILE=<your-profile> ENV=<env> EMAIL=<address>`.
 
@@ -241,6 +242,7 @@ Pages bake every product and campaign. Loading has its own row ceiling for one d
 
 These are designed or in progress, not built, and carry no dates. Every figure they add will come from new governed metrics, under the same rule as every figure today.
 
+- **Weekly retail demand forecast:** 13 weeks of ordered and shipped units, shipped revenue and COGS per product from Vendor Central data, with p10 to p90 ranges. The engine and its weekly input are built and run in dev on synthetic data; the page and assistant tools are not built yet. [ADR-160](docs/decisions/adr-160-mount-the-jumpstart-chronos-2-artifact-and-enforce-isolation-in-iam.md)
 - **Forecasting:** a baseline forecast of ad-attributed purchases and revenue if nothing changes, with its uncertainty. [Forecasting](docs/capabilities/forecasting/README.md)
 - **Budget simulation:** try a budget move against each campaign's response curve before making it in Amazon Ads; it changes nothing in Amazon. [Response curves and budget simulation](docs/concepts/response-curves-and-budget-simulation.md)
 - **Amazon DSP's own forecasts as a second opinion:** shown beside the sample's curve, labelled as Amazon's and kept out of totals. [ADR-091](docs/decisions/adr-091-show-amazon-dsp-forecasts-side-by-side-and-gate-amazon-estimates-on-a-terms-record.md)
@@ -253,17 +255,17 @@ You are responsible for the cost of the AWS services you use while running this 
 
 ### While idle
 
-Charged whether or not anyone uses the deployment. Counts are from the default configuration (22 stacks; the alarm count was re-read from a synthesized template on 2026-10-19); prices are from the AWS Price List API on 2026-10-01, and alarm billing per metric from the [CloudWatch pricing](https://aws.amazon.com/cloudwatch/pricing/) page on 2026-10-19.
+Charged whether or not anyone uses the deployment. Counts are from the default configuration (24 stacks; the alarm count was re-read from a synthesized template on 2026-10-19, plus the one alarm the two demand-forecast stacks add, read from their synthesized templates on 2026-11-11); prices are from the AWS Price List API on 2026-10-01, and alarm billing per metric from the [CloudWatch pricing](https://aws.amazon.com/cloudwatch/pricing/) page on 2026-10-19.
 
 | Service | What is deployed | Monthly |
 |---|---|---:|
 | AWS WAF | 3 web ACLs ($5 each) with 8 rules in total ($1 each) | $23.00 |
-| CloudWatch alarms | 76 standard-resolution alarms, billed $0.10 per metric each alarm reads: 64 alarms on 73 metrics, plus 12 Metrics Insights query alarms billed per metric their query analyses (at least one each) | from $8.50 |
+| CloudWatch alarms | 77 standard-resolution alarms, billed $0.10 per metric each alarm reads: 65 alarms on 74 metrics, plus 12 Metrics Insights query alarms billed per metric their query analyses (at least one each) | from $8.60 |
 | AWS Secrets Manager | 3 secrets ($0.40 each) | $1.20 |
 | AWS KMS | 1 customer-managed signing key | $1.00 |
-| **Subtotal** | | **from $33.70** |
+| **Subtotal** | | **from $33.80** |
 
-Add small charges for scheduled Lambda jobs, DynamoDB point-in-time recovery, S3 and CloudWatch Logs storage, and AgentCore Memory, all of which grow with use. [AWS WAF](https://aws.amazon.com/waf/pricing/), [CloudWatch](https://aws.amazon.com/cloudwatch/pricing/), [Secrets Manager](https://aws.amazon.com/secrets-manager/pricing/), and [KMS](https://aws.amazon.com/kms/pricing/) pricing pages have current rates.
+Add small charges for scheduled Lambda jobs, DynamoDB point-in-time recovery, S3 and CloudWatch Logs storage, the demand-forecast job image in Amazon ECR (about 0.5 GB), and AgentCore Memory, all of which grow with use. [AWS WAF](https://aws.amazon.com/waf/pricing/), [CloudWatch](https://aws.amazon.com/cloudwatch/pricing/), [Secrets Manager](https://aws.amazon.com/secrets-manager/pricing/), and [KMS](https://aws.amazon.com/kms/pricing/) pricing pages have current rates.
 
 ### With use
 
