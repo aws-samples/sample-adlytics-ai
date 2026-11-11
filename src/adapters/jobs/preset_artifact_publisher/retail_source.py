@@ -1936,6 +1936,9 @@ class CanonicalRetailProductHierarchy:
     packs: tuple[SourcePack, ...]
     contracts: tuple[DataContract, ...]
     bridge: CommerceIdentityBridge
+    marketplace_key: str | None = None
+    """When set, only that marketplace's hierarchy rows are read (the demand forecast's one set);
+    Retail health leaves it unset and reads every marketplace scope."""
 
     def hierarchy(self, window: DateRange) -> RetailProductHierarchyResult | None:
         """Return the latest effective product identities, or none without evidence."""
@@ -1947,7 +1950,14 @@ class CanonicalRetailProductHierarchy:
         publications: set[str] = set()
         try:
             for scope in publication_scopes_for(
-                PublicationScopeRequest(pack, contract, self.bridge, {})
+                PublicationScopeRequest(
+                    pack,
+                    contract,
+                    self.bridge,
+                    {}
+                    if self.marketplace_key is None
+                    else {"marketplace_key": self.marketplace_key},
+                )
             ):
                 candidates = self.current.current_for_scope(scope, horizon=LATEST_ONLY)
                 if not candidates:

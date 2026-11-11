@@ -4671,8 +4671,12 @@ RETIREMENT_MANDATORY_FILES: Final = (
     RETIREMENT_CALL_INVENTORY,
     *RETIREMENT_AUXILIARY_ROOTS,
 )
-_RETIREMENT_LISTED_SUFFIXES: Final = frozenset({".md", ".sh"})
-"""Tracked non-code files under a scanned root: listed in the receipt, never parsed."""
+_RETIREMENT_LISTED_SUFFIXES: Final = frozenset({".md", ".sh", ".json", ".txt", ".lock"})
+"""Tracked non-code files under a scanned root: listed in the receipt, never parsed.
+
+The JSON, text and lock suffixes and the `Dockerfile` name are the demand-forecast job image's data
+files (src/adapters/jobs/demand_forecast/): a schema, path and package lists, a hashed lock."""
+_RETIREMENT_LISTED_NAMES: Final = frozenset({".gitkeep", "Dockerfile"})
 _TS_TOKEN: Final = re.compile(
     r"//[^\n]*|/\*.*?\*/|'(?:\\.|[^'\\\n])*'|\"(?:\\.|[^\"\\\n])*\"|`(?:\\.|[^`\\])*`"
     r"|[A-Za-z_$][\w$]*",
@@ -4933,7 +4937,9 @@ def _retirement_files(root: Path) -> tuple[list[str], list[str], list[str]]:
             relative = path.relative_to(root).as_posix()
             if path.suffix == suffix and not path.is_symlink():
                 scanned.append(relative)
-            elif path.name == ".gitkeep" or path.suffix in _RETIREMENT_LISTED_SUFFIXES:
+            elif (
+                path.name in _RETIREMENT_LISTED_NAMES or path.suffix in _RETIREMENT_LISTED_SUFFIXES
+            ):
                 listed.append(relative)
             else:
                 unknown.append(relative)

@@ -149,6 +149,10 @@ DEEP_INPUT_REVISIONS: Final[tuple[tuple[str, str], ...]] = (
     # feat/perf-campaigns-sort-once rebased onto public main ea39cf4a: its 2026-10-28.3 over
     # A2's 2026-10-28.2. Named .28.4 because 2026-10-28.1 to .3 name other closures.
     ("2026-10-28.4", "addda0e7bcdbbf79cfadcafa1f8b445037c969e11bea2f5e3d6e3ace78b06c64"),
+    # Demand forecast slice 1: publication_selection gains ForecastHistorySelector and the
+    # product hierarchy reader an optional marketplace filter; existing reads are unchanged.
+    # Named .11.6 because 2026-11-11.1 to .5 may name closures on other dev integration trees.
+    ("2026-11-11.6", "b701d473c7822bc2af1631f3ae0a96006495f1321c1fd187c92bbb48ed15c9eb"),
 )
 DEEP_INPUT_REVISION: Final[str] = DEEP_INPUT_REVISIONS[-1][0]
 """The revision every deep cache key carries (``#DEEPINPUT#<revision>``)."""
