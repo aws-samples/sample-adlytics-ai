@@ -1,0 +1,45 @@
+{
+  "$comment": "Every JSON line the demand-forecast job writes (job_log.py). A line must match one entry exactly: the common fields plus that entry's fields and no others, each of its shape. No shape can hold a series value or an ASIN. Shapes: string, string_or_null, integer, boolean, integer_map, string_list (names only), error (an object of exactly code and cause).",
+  "schema_version": "1",
+  "common": {
+    "timestamp": "string",
+    "level": "string",
+    "service": "string",
+    "operation": "string",
+    "correlation_id": "string"
+  },
+  "lines": [
+    {
+      "operation": "self_check.start",
+      "level": "INFO",
+      "fields": {"uid": "integer", "model_id": "string"}
+    },
+    {
+      "operation": "self_check.artifact",
+      "level": "INFO",
+      "fields": {"artifact_digest": "string", "artifact_files": "integer"}
+    },
+    {
+      "operation": "self_check.model_loaded",
+      "level": "INFO",
+      "fields": {"duration_ms": "integer"}
+    },
+    {
+      "operation": "self_check.result",
+      "level": "INFO",
+      "fields": {
+        "is_passed": "boolean",
+        "series_count": "integer",
+        "passes_identical": "boolean",
+        "failure_codes": "string_list",
+        "watched_called": "string_list",
+        "durations_ms": "integer_map"
+      }
+    },
+    {
+      "operation": "job",
+      "level": "ERROR",
+      "fields": {"mode": "string", "duration_ms": "integer", "error": "error"}
+    }
+  ]
+}

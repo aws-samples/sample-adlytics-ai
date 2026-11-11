@@ -164,6 +164,15 @@ generate-forecast-schemas: ## Generate the demand-forecast boundary schemas and 
 	@uv run python -m adapters.jobs.forecast_schema_generation
 check-forecast-schemas: ## Fail if the generated demand-forecast boundary schemas are stale
 	@uv run python -m adapters.jobs.forecast_schema_generation --check
+# Bootstrap before the first synth (design §4b): read-only, writes no file. Put the printed digest in
+# .env as ADLYTICS_DEMAND_FORECAST_MODEL_ARTIFACT_DIGEST; synth refuses a missing value.
+demand-forecast-artifact-digest: ## Print the configured Chronos-2 artifact's digest: PROFILE=... ENV=... [REGION=...]
+	$(require_profile)
+	$(require_env)
+	@set -eu; $(load_deploy_env); \
+	test -n "$${ADLYTICS_DEMAND_FORECAST_MODEL_ARTIFACT_URI:-}" || { echo "ADLYTICS_DEMAND_FORECAST_MODEL_ARTIFACT_URI is required (.env or shell)"; exit 1; }; \
+	uv run python -m adapters.jobs.demand_forecast_artifact_digest --profile "$(PROFILE)" \
+		$(if $(REGION),--region "$(REGION)") --uri "$$ADLYTICS_DEMAND_FORECAST_MODEL_ARTIFACT_URI"
 # Static business spans are declared once with a typed source marker, parent policy, and closed
 # metadata projection. The checker also enforces direct lifecycle-log and OTel import boundaries.
 generate-trace-contract: ## Generate static span constants from the observability contract
