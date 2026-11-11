@@ -327,6 +327,7 @@ convention = "pep257"
 # operator's artifact digest command (make demand-forecast-artifact-digest): stdout is the interface.
 "src/adapters/jobs/forecast_schema_generation/__main__.py" = ["T201"]
 "src/adapters/jobs/demand_forecast_artifact_digest/__main__.py" = ["T201"]
+"src/adapters/jobs/demand_forecast_scale_fixture/__main__.py" = ["T201"]
 # Local producer conformance and its generated registry are command-line interfaces.
 "src/adapters/jobs/producer/__main__.py" = ["T201"]
 "src/adapters/jobs/producer_pack_generation/__main__.py" = ["T201"]
