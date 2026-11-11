@@ -118,6 +118,8 @@ def contracts() -> list[tuple[pathlib.Path, dict[str, object]]]:
             # The governed alert rules read insight findings and write no table; their own
             # loader and validator check them against the insight contracts.
             or path.is_relative_to(CONTRACTS / "alerts")
+            # The demand-forecast policy writes no table; its own validator checks it.
+            or path.is_relative_to(CONTRACTS / "forecasting")
         ):
             continue
         parsed = yaml.safe_load(path.read_text())

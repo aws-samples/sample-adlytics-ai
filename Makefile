@@ -23,7 +23,7 @@ endef
         install lint format typecheck lint-boundaries validate-contracts validate-page-schemas test test-integration \
         check-lambda-layer-reproducibility verify verify-clean verify-clean-run gate-status publication-gate release-gate install-hooks uninstall-hooks publish pr merge-pr accept-ingestion-v2 accept-campaign-estate-local accept-evaluation-link print-deploy-flags accept-evaluation-custody regress-agent mutate mutate-next mutation-status mutation-verdict dead-code dead-code-allowlist build-lambdas build-frontend \
         generate-design-manifest generate-schemas check-schemas generate-fixtures check-fixtures \
-        generate-tool-schemas check-tool-schemas generate-trace-contract check-trace-contract generate-data-flow-registry check-data-flow-coverage generate-execution-graph-protocol check-execution-graph-protocol check-execution-graph-deployable generate-alarm-destinations check-alarm-destinations generate-producer-packs check-producer-packs \
+        generate-tool-schemas check-tool-schemas generate-forecast-lock check-forecast-lock check-forecasting generate-forecast-schemas check-forecast-schemas demand-forecast-artifact-digest generate-trace-contract check-trace-contract generate-data-flow-registry check-data-flow-coverage generate-execution-graph-protocol check-execution-graph-protocol check-execution-graph-deployable generate-alarm-destinations check-alarm-destinations generate-producer-packs check-producer-packs \
         generate-parameter-contract check-parameter-contract \
         frontend-typecheck frontend-test create-user provision-quality-review-users accept-quality-review backfill-record-expiry supersede-orphan-units migrate-review-groups rotate-origin-verify accept-edge accept-guardrail accept-managed-harness accept-reprocess-telemetry infra-typecheck infra-test check-alarm-coverage check-probe-resource-names synth diff deploy deploy-all destroy-all \
         dev-state check-alarm-window check-serving-refusals check-staged-tree diff-then-deploy deploy-all-locked check-source-key deploy-lock-force-release
@@ -36,7 +36,7 @@ help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
 		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
 
-check: check-links check-diagrams check-design-manifest check-insight-matrix check-model check-lineage check-schemas check-fixtures check-tool-schemas check-trace-contract check-data-flow-coverage check-execution-graph-protocol check-alarm-destinations check-producer-packs check-parameter-contract validate-page-schemas check-bakeability check-steering check-coverage-matrix check-config-access check-prompt-text check-conformed-columns check-construct-levels check-observability-bans check-exception-handling check-aws-pagination check-publication-boundary check-license-headers check-debt-markers check-run-record-coverage check-format ## Run every documentation check
+check: check-links check-diagrams check-design-manifest check-insight-matrix check-model check-lineage check-schemas check-fixtures check-tool-schemas check-forecast-lock check-forecast-schemas check-trace-contract check-data-flow-coverage check-execution-graph-protocol check-alarm-destinations check-producer-packs check-parameter-contract validate-page-schemas check-bakeability check-steering check-coverage-matrix check-config-access check-prompt-text check-conformed-columns check-construct-levels check-observability-bans check-exception-handling check-aws-pagination check-publication-boundary check-license-headers check-debt-markers check-run-record-coverage check-format ## Run every documentation check
 
 check-links: ## Validate internal links and heading anchors in every tracked markdown file (plus local working documents when present)
 	@uv run python scripts/check-links.py
@@ -146,6 +146,24 @@ generate-tool-schemas: ## Generate the Gateway tool definitions from the tool co
 	@uv run python -m adapters.jobs.tool_schema_generation
 check-tool-schemas: ## Fail if the generated tool definitions are stale against the contracts
 	@uv run python -m adapters.jobs.tool_schema_generation --check
+# The demand-forecast job image installs exactly this exported closure (approval D-1), never
+# T's base or dev set; check-forecast-lock refuses drift, a missing hash or any other package set.
+generate-forecast-lock: ## Export the forecasting dependency group to the job image's hashed lock
+	@uv export --frozen --only-group forecasting --no-emit-project --format requirements-txt -o src/adapters/jobs/demand_forecast/requirements.lock >/dev/null
+check-forecast-lock: ## Fail if the job image lock drifts from uv.lock or from the approved package set
+	@uv run python scripts/check_forecast_lock.py
+# The job adapter and its slow tests need torch and chronos, so they run in their own environment
+# (.venv-forecasting); the shared .venv stays exactly as make install locks it. Tests that need the
+# Chronos-2 artifact read FORECAST_MODEL_DIR (a local copy) and skip, naming it, when it is unset.
+check-forecasting: ## Type-check and run the forecasting job's slow tests in the forecasting group
+	@UV_PROJECT_ENVIRONMENT=.venv-forecasting uv sync --frozen --group forecasting --dev
+	@UV_PROJECT_ENVIRONMENT=.venv-forecasting uv run --frozen --group forecasting pyright -p src/adapters/jobs/demand_forecast/pyrightconfig.json
+	@UV_PROJECT_ENVIRONMENT=.venv-forecasting uv run --frozen --group forecasting python scripts/run_record.py run --kind pytest-forecasting
+# The boundary models between the input builder, the job and the publisher (design §4e).
+generate-forecast-schemas: ## Generate the demand-forecast boundary schemas and digests
+	@uv run python -m adapters.jobs.forecast_schema_generation
+check-forecast-schemas: ## Fail if the generated demand-forecast boundary schemas are stale
+	@uv run python -m adapters.jobs.forecast_schema_generation --check
 # Static business spans are declared once with a typed source marker, parent policy, and closed
 # metadata projection. The checker also enforces direct lifecycle-log and OTel import boundaries.
 generate-trace-contract: ## Generate static span constants from the observability contract

@@ -1,0 +1,10 @@
+{
+  "$comment": "make check-forecasting: the job adapter and its slow tests, strict, in .venv-forecasting (the forecasting group). The root pyright run excludes both.",
+  "include": ["../../../../src/adapters/jobs/demand_forecast", "../../../../tests/forecasting"],
+  "extraPaths": ["../../../../src"],
+  "pythonVersion": "3.14",
+  "typeCheckingMode": "strict",
+  "reportMissingTypeStubs": false,
+  "venvPath": "../../../..",
+  "venv": ".venv-forecasting"
+}

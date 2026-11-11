@@ -111,6 +111,33 @@ dev = [
     # scripts/run_record.py (CANONICAL). Pinned exactly; docs/test-run-records.md owns the cap.
     "pytest-xdist==3.8.0",
 ]
+# The demand-forecast job image's closure (approval D-1), never installed by `make install` and
+# never in the Lambda layer. `make generate-forecast-lock` exports it alone; `make
+# check-forecast-lock` refuses any package set other than
+# src/adapters/jobs/demand_forecast/approved-packages.txt. Every pin is exact.
+forecasting = [
+    "pydantic==2.13.4",
+    "pyyaml==6.0.3",
+    "chronos-forecasting==2.3.2",
+    "torch==2.14.1",
+    "statsmodels==0.15.0",
+    "pyarrow==25.0.1",
+    "transformers==5.17.0",
+    "safetensors==0.8.0",
+    "accelerate==1.10.1",
+    "einops==0.7.0",
+    "huggingface_hub==1.32.0",
+]
+
+# CPU-only torch wheels for the forecasting image (Linux). Explicit, so no other package resolves
+# from this index.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
 
 # ---------------------------------------------------------------------------
 # Dead-code detection. `make dead-code` reports; it never gates a merge.
@@ -187,6 +214,14 @@ name = "Runtime never imports a producer or an ad-platform client"
 type = "forbidden"
 source_modules = ["domain", "ports", "adapters"]
 forbidden_modules = ["producers"]
+
+[[tool.importlinter.contracts]]
+# The forecasting domain stays pure: model libraries, dataframes and SDKs live only in the job
+# adapter (src/adapters/jobs/demand_forecast/), which the forecasting dependency group serves.
+name = "Forecasting domain never imports a model library"
+type = "forbidden"
+source_modules = ["domain.forecasting"]
+forbidden_modules = ["torch", "chronos", "statsmodels", "numpy", "pandas", "pyarrow", "transformers", "boto3", "botocore", "sagemaker"]
 
 [tool.ruff]
 src = ["src", "tests"]
@@ -288,6 +323,10 @@ convention = "pep257"
 # And for the tool-schema generator, run by `make generate-tool-schemas`. Its output is read by
 # AgentStack, so the file it writes is the interface and its stdout is the operator's.
 "src/adapters/jobs/tool_schema_generation/__main__.py" = ["T201"]
+# The demand-forecast boundary-schema generator (make generate-forecast-schemas) and the
+# operator's artifact digest command (make demand-forecast-artifact-digest): stdout is the interface.
+"src/adapters/jobs/forecast_schema_generation/__main__.py" = ["T201"]
+"src/adapters/jobs/demand_forecast_artifact_digest/__main__.py" = ["T201"]
 # Local producer conformance and its generated registry are command-line interfaces.
 "src/adapters/jobs/producer/__main__.py" = ["T201"]
 "src/adapters/jobs/producer_pack_generation/__main__.py" = ["T201"]
@@ -305,6 +344,9 @@ ban-relative-imports = "all"
 
 [tool.pyright]
 include = ["src", "tests"]
+# The forecasting job and its slow tests import the forecasting group, which `make install` does
+# not sync; `make check-forecasting` type-checks them in their own environment.
+exclude = ["src/adapters/jobs/demand_forecast", "tests/forecasting", "**/node_modules", "**/__pycache__", "**/.*"]
 pythonVersion = "3.14"
 typeCheckingMode = "strict"
 reportMissingTypeStubs = false
@@ -325,6 +367,7 @@ markers = [
     # `make check-coverage-matrix` reports which decisions have no test.
     "covers(*decision_ids): links a test to the decisions it verifies",
     "requires_git_history(revision): skip, naming the revision, when it is not in this checkout's git history",
+    "forecasting: slow tests that need the forecasting dependency group",
 ]
 
 [tool.coverage.run]
