@@ -63,7 +63,7 @@ Exact source identity, immutable publication, `CURRENT` selection, governed comp
 | Operational Data-Flow Status | Registered authority-backed movement lifecycle and baseline visibility for entitled operators; incomplete surfaces remain explicit. | [Operational Data-Flow Status](capabilities/operational-data-flow-status/README.md) |
 | Presentation Publication | Publication-time baked preset artifacts and pointer-selected page serving. | [Preset Artifact Publisher](ui/preset-artifact-publisher.md) |
 | Insight Narration | Card and deep-dive narration over declared page slots; prompts ship through the calibration-gated registry ([ADR-076](decisions/adr-076-tier-insight-narration-across-card-and-deep-dive-models.md)). | [Insight Presentation Contract](ui/insight-presentation-contract.md) |
-| Forecasting | Proposed offline baseline forecast artifacts. | [Forecasting](capabilities/forecasting/README.md) |
+| Forecasting | Proposed offline baseline forecast artifacts; the weekly Vendor demand engine is built in dev, not served. | [Forecasting](capabilities/forecasting/README.md) |
 | Saturation | Proposed offline response-curve artifacts. | [Saturation](capabilities/saturation/README.md) |
 
 Authentication and observability are reusable [concepts](concepts/), not capability contracts.

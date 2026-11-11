@@ -11,7 +11,7 @@ Each package is one composite L2 capability document: `README.md` owns sections 
 | [Query Path](query-path/README.md) | Exact selection, governed computation, and typed figures/refusals. | Current deterministic computation contract. |
 | [Conversational Runtime](conversational-runtime/README.md) | Verified turns, managed Harness invocation, the streamed agent answer, and memory. | Current repository path; `ConversationRequest.v3` and `ConversationStream.v4` own its public wire. |
 | [Analytics Discovery](analytics-discovery/README.md) | Declared navigation from business questions to existing analytical pages. | Proposed. |
-| [Forecasting](forecasting/README.md) | Offline baseline forecast artifacts. | Proposed; review is required before implementation. |
+| [Forecasting](forecasting/README.md) | Offline baseline forecast artifacts. | Proposed; review is required before implementation. The weekly Vendor demand engine is built and run in dev on synthetic data, not served (2026-11-11, [ADR-160](../decisions/adr-160-mount-the-jumpstart-chronos-2-artifact-and-enforce-isolation-in-iam.md)). |
 | [Saturation](saturation/README.md) | Offline response-curve fitting and bounded saturation artifacts. | Proposed; no implementation or acceptance evidence. |
 | [Agent Quality Loop](agent-quality-loop/README.md) | Content-minimized audit, structural findings, and protected linkage. | Current repository quality boundary; dated acceptance scope is owned by validation results. |
 | [Protected Quality Review API](protected-quality-review-api/README.md) | Entitled review of one turn and a bounded turn listing, for cookie and bearer callers. | Implemented and dev accepted (2026-09-28). |

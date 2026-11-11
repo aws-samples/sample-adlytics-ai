@@ -60,7 +60,7 @@ finite, ordered forecasts with unknown context weeks, two identical passes, and 
 digest equal to the operator command's. No fallback image was needed. A 2,000-ASIN shard (staged
 scale fixture, Chronos-2 and backtest) took 450 s and 479 s from `CreateProcessingJob` to job end,
 with a peak RSS of 2.57 GiB, inside the 1,800 s bound, so `shard_max_asins` stays 2,000 (P-18;
-[validation results](../../validation/RESULTS.md)).
+[validation results](../../validation/RESULTS.md#demand-forecast-slice-1-engine-and-weekly-input-on-dev--2026-11-11)).
 
 ## Alternatives
 

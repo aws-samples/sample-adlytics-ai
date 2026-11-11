@@ -315,6 +315,7 @@ make destroy-all PROFILE=<your-profile> ENV=<env> CONFIRM=<env>
 | Resource | Where | Before deleting |
 |---|---|---|
 | S3 buckets: raw deliveries, data lake, Athena results, published page artifacts | `Adlytics-DataV2-<env>`, `Adlytics-PublisherArtifactStore-<env>` | Empty them, including old object versions. |
+| S3 bucket: demand-forecast processing (staged weekly inputs and shard candidates) | `Adlytics-DemandForecastData-<env>` | Empty it, including old object versions; its `runs/` objects also expire after 90 days. |
 | DynamoDB tables: publication state, insight cache, prompt registry, artifact pointers, audit records | DataV2, InsightCache, InsightPromptRegistry, PublisherArtifactStore, AgentQuality | None, except the two audit tables `adlytics-<env>-agent-quality-audit` and `adlytics-<env>-agent-quality-findings`: they are tamper-protected by design ([ADR-080](docs/decisions/adr-080-confine-each-audit-and-evaluation-record-family-to-one-writer.md)) and are kept. See [Remove the audit tables](#remove-the-audit-tables-optional). |
 | Glue databases `adlytics_<env>_v2_source_aligned`, `adlytics_<env>_v2_candidate` and `adlytics_<env>_v2_current`, with their tables (`<env>` with each `-` written as `_`) | `Adlytics-DataV2-<env>`; untagged, so `destroy-all` lists them by name | None: `aws glue delete-database --profile <your-profile> --name <database>` deletes a database and its tables. |
 | Cognito user pool, its client secret, and the review-token function and its log group | `Adlytics-Auth-<env>` | None. |
