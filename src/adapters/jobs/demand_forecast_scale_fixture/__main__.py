@@ -8,6 +8,11 @@ Parquet kinds partitioned by shard (`target/shard=<k>/`, `traffic/shard=<k>/`), 
 enters at `Forecast` (design §10, "Scale fixtures"). Refuses every environment but `dev`, and an
 existing run prefix. Products come from `fixture_generation.scale`, so nothing here is a
 customer value. Prints the run ID, the shard count and the execution ARN's name only.
+
+`--source catalogue` stages the synthetic catalogue's 104-week Vendor history instead
+(`fixture_generation.forecast_history`), in the same format, under a `staged-catalogue-` run ID:
+the STAGED input for slice 1's acceptance 3 to 6 (slices.md amendment, 2026-11-11), because the
+fixture landing refuses Vendor history older than 56 days.
 """
 
 # pyright: reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false
@@ -19,7 +24,7 @@ import hashlib
 import io
 import json
 import sys
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -29,6 +34,13 @@ import boto3
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from adapters.jobs.fixture_generation.catalog import load_synthetic_entity_catalog
+from adapters.jobs.fixture_generation.forecast_history import (
+    CatalogueHistory,
+    CatalogueHistoryRequest,
+    CatalogueWeek,
+    catalogue_history,
+)
 from adapters.jobs.fixture_generation.scale import (
     ScaleFixtureRequest,
     ScaleProduct,
@@ -154,26 +166,125 @@ class StagedInput:
     probe: dict[str, object]
 
 
+@dataclass(frozen=True)
+class _Assembly:
+    """One staged input's rows per shard, titles, coverage and identity, before assembly."""
+
+    request: ScaleStageRequest
+    asins: tuple[str, ...]
+    rows: Callable[[str], tuple[list[dict[str, Any]], list[dict[str, Any]]]]
+    """Target and traffic rows of one canonical ASIN."""
+    titles: Callable[[int, str], str]
+    coverage: tuple[tuple[date, date], ...]
+    fixture_identity: dict[str, object]
+    processor_code_identity: str
+
+
+def _week_starts(input_end: date, weeks: int) -> tuple[date, ...]:
+    last = input_end - timedelta(days=6)
+    return tuple(last - timedelta(weeks=weeks - 1 - week) for week in range(weeks))
+
+
 def stage(request: ScaleStageRequest) -> StagedInput:
-    """Build every object of the staged input in memory, shard by shard."""
+    """Build every object of the staged scale input in memory, shard by shard."""
+    starts = _week_starts(request.input_end, request.fixture.weeks)
+    asins = tuple(scale_asin(index) for index in range(request.fixture.asin_count))
+    products = scale_products(request.fixture)
+
+    def rows(_asin: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        product = next(products)
+        return list(target_rows(product, starts)), list(traffic_rows(product, starts))
+
+    window = (starts[0], request.input_end)
+    return _assemble(
+        _Assembly(
+            request=request,
+            asins=asins,
+            rows=rows,
+            titles=lambda index, _asin: f"Scale product {index}",
+            coverage=(window,),
+            fixture_identity={
+                "seed": request.fixture.seed,
+                "asins": len(asins),
+                "input_end": str(request.input_end),
+            },
+            processor_code_identity=f"scale-probe:{request.fixture.seed}",
+        )
+    )
+
+
+def catalogue_target_rows(week: CatalogueWeek) -> Iterator[dict[str, Any]]:
+    """Yield one catalogue product-week's four target aggregates, as the `UNLOAD` writes them."""
+    for target in TARGETS:
+        money = target in MONEY_TARGETS
+        yield {
+            "schema_version": 1,
+            "canonical_asin": week.canonical_asin,
+            "week_start": week.week_start,
+            "target": target,
+            "value_sum": getattr(week, target),
+            "days_with_row": week.days_with_row,
+            "days_with_null": 0,
+            "min_currency": "USD" if money else None,
+            "max_currency": "USD" if money else None,
+        }
+
+
+def catalogue_traffic_row(week: CatalogueWeek) -> dict[str, Any]:
+    """Return one catalogue product-week's glance views, as the `UNLOAD` writes them."""
+    return {
+        "schema_version": 1,
+        "canonical_asin": week.canonical_asin,
+        "week_start": week.week_start,
+        "glance_views_sum": week.glance_views,
+        "days_with_traffic_row": week.days_with_row,
+    }
+
+
+def stage_catalogue(request: ScaleStageRequest, history: CatalogueHistory) -> StagedInput:
+    """Build the STAGED input from the synthetic catalogue's weekly history (K-4)."""
+
+    def rows(asin: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        weeks = history.weeks[asin]
+        return (
+            [row for week in weeks for row in catalogue_target_rows(week)],
+            [catalogue_traffic_row(week) for week in weeks],
+        )
+
+    return _assemble(
+        _Assembly(
+            request=request,
+            asins=history.canonical_asins,
+            rows=rows,
+            titles=lambda _index, asin: history.titles[asin],
+            coverage=history.coverage,
+            fixture_identity={
+                "source": "staged-catalogue",
+                "asins": len(history.canonical_asins),
+                "input_end": str(request.input_end),
+            },
+            processor_code_identity="staged-catalogue:synthetic-entity-catalog",
+        )
+    )
+
+
+def _assemble(assembly: _Assembly) -> StagedInput:
+    request = assembly.request
     loaded = load_policy(POLICY)
     policy = loaded.policy
-    weeks = request.fixture.weeks
-    last = request.input_end - timedelta(days=6)
-    starts = tuple(last - timedelta(weeks=weeks - 1 - week) for week in range(weeks))
     base = f"runs/{request.run_id}/input/r0a0"
-    asins = tuple(scale_asin(index) for index in range(request.fixture.asin_count))
+    asins = assembly.asins
     shards = plan_shards(ShardPlanRequest(asins, policy.engine.shard_max_asins)).shards
     objects: dict[str, bytes] = {}
     parquet: list[dict[str, object]] = []
-    products = scale_products(request.fixture)
+    cursor = iter(asins)
     for shard in shards:
         targets: list[dict[str, Any]] = []
         traffic: list[dict[str, Any]] = []
         for _ in range(shard.asin_count):
-            product = next(products)
-            targets.extend(target_rows(product, starts))
-            traffic.extend(traffic_rows(product, starts))
+            target, views = assembly.rows(next(cursor))
+            targets.extend(target)
+            traffic.extend(views)
         for kind, rows, schema in (
             ("target", targets, TARGET_SCHEMA),
             ("traffic", traffic, TRAFFIC_SCHEMA),
@@ -193,21 +304,19 @@ def stage(request: ScaleStageRequest) -> StagedInput:
     titles = TitleMapV1(
         schema_version=1,
         entries=tuple(
-            {"canonical_asin": a, "display_asin": display_asin(a), "title": f"Scale product {i}"}  # pyright: ignore[reportArgumentType]
+            {"canonical_asin": a, "display_asin": display_asin(a), "title": assembly.titles(i, a)}  # pyright: ignore[reportArgumentType]
             for i, a in enumerate(asins)
         ),
     )
     titles_body = (titles.model_dump_json() + "\n").encode("utf-8")
     objects[f"{base}/titles.json"] = titles_body
-    fixture_identity = json.dumps(
-        {"seed": request.fixture.seed, "asins": len(asins), "input_end": str(request.input_end)},
-        sort_keys=True,
-    )
-    input_fingerprint = hashlib.sha256(fixture_identity.encode("utf-8")).hexdigest()
+    input_fingerprint = hashlib.sha256(
+        json.dumps(assembly.fixture_identity, sort_keys=True).encode("utf-8")
+    ).hexdigest()
     identity = RunIdentity(
         input_fingerprint=input_fingerprint,
         policy_sha256=loaded.sha256,
-        processor_code_identity=f"scale-probe:{request.fixture.seed}",
+        processor_code_identity=assembly.processor_code_identity,
         lock_digest=hashlib.sha256(LOCK.read_bytes()).hexdigest(),
         model_id=CHRONOS2_MODEL_ID,
         model_artifact_digest=request.model_artifact_digest,
@@ -215,7 +324,9 @@ def stage(request: ScaleStageRequest) -> StagedInput:
         instance_type=request.instance_type,
         max_runtime_seconds=request.max_runtime_seconds,
     )
-    window = {"start": starts[0].isoformat(), "end": request.input_end.isoformat()}
+    coverage = [
+        {"start": low.isoformat(), "end": high.isoformat()} for low, high in assembly.coverage
+    ]
     manifest = InputManifestV1.model_validate(
         {
             "schema_version": 1,
@@ -249,7 +360,7 @@ def stage(request: ScaleStageRequest) -> StagedInput:
             "parquet_objects": parquet,
             "titles_key": f"{base}/titles.json",
             "titles_sha256": hashlib.sha256(titles_body).hexdigest(),
-            "coverage": {"sales": [window], "traffic": [window]},
+            "coverage": {"sales": coverage, "traffic": coverage},
             "newest_publication_published_at": datetime(
                 request.input_end.year, request.input_end.month, request.input_end.day, tzinfo=UTC
             ).isoformat(),
@@ -281,7 +392,8 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--profile", required=True)
     parser.add_argument("--env", required=True)
     parser.add_argument("--region", default=None)
-    parser.add_argument("--asins", type=int, required=True)
+    parser.add_argument("--source", choices=("scale", "catalogue"), default="scale")
+    parser.add_argument("--asins", type=int, default=None)
     parser.add_argument("--seed", default="adlytics-demand-forecast-scale-r1")
     parser.add_argument("--marketplace-key", required=True)
     parser.add_argument("--model-artifact-digest", required=True)
@@ -291,21 +403,38 @@ def main(argv: list[str]) -> int:
     if args.env != "dev":
         print("refused: the scale probe runs only against ENV=dev", file=sys.stderr)
         return 2
+    if (args.source == "scale") != (args.asins is not None):
+        print("refused: --asins is required with --source scale and only then", file=sys.stderr)
+        return 2
     session = boto3.Session(profile_name=args.profile, region_name=args.region)
     account = session.client("sts").get_caller_identity()["Account"]
     bucket = f"adlytics-{args.env}-demand-forecast-{account}"
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    run_id = f"scale-{args.asins}-{stamp}"
-    staged = stage(
-        ScaleStageRequest(
-            run_id=run_id,
-            bucket=bucket,
-            fixture=ScaleFixtureRequest(asin_count=args.asins, seed=args.seed),
-            input_end=newest_complete_saturday(datetime.now(UTC).date()),
-            marketplace_key=args.marketplace_key,
-            model_artifact_digest=args.model_artifact_digest,
-            instance_type=args.instance_type,
-            max_runtime_seconds=args.max_runtime_seconds,
+    catalog = load_synthetic_entity_catalog(ROOT) if args.source == "catalogue" else None
+    if catalog is None:
+        run_id = f"scale-{args.asins}-{stamp}"
+        input_end = newest_complete_saturday(datetime.now(UTC).date())
+    else:
+        run_id = f"staged-catalogue-{stamp}"
+        # The catalogue's newest complete week: its span ends at fixture_span.last_day.
+        input_end = newest_complete_saturday(
+            catalog.shape.fixture_span.last_day + timedelta(days=1)
+        )
+    request = ScaleStageRequest(
+        run_id=run_id,
+        bucket=bucket,
+        fixture=ScaleFixtureRequest(asin_count=args.asins or 1, seed=args.seed),
+        input_end=input_end,
+        marketplace_key=args.marketplace_key,
+        model_artifact_digest=args.model_artifact_digest,
+        instance_type=args.instance_type,
+        max_runtime_seconds=args.max_runtime_seconds,
+    )
+    staged = (
+        stage(request)
+        if catalog is None
+        else stage_catalogue(
+            request, catalogue_history(CatalogueHistoryRequest(catalog, input_end))
         )
     )
     s3 = session.client("s3")
