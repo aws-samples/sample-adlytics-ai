@@ -7,7 +7,7 @@
 | **Owns** | Governed producer packs, cross-account registration, manifest finalization, and landing status. |
 | **Conventions** | [Documentation conventions](../../conventions.md) |
 
-> **Revision proposed, 2026-10-07.** [ADR-089](../../decisions/adr-089-onboard-api-sources-through-governed-operation-packs-and-resolve-campaigns-at-read-time.md), [ADR-097](../../decisions/adr-097-ship-one-first-party-connector-per-source-as-its-own-stack.md) and [ADR-098](../../decisions/adr-098-allow-same-account-connectors-with-one-landing-role-per-producer.md) (all Proposed) would add governed API operation packs beside query packs, ship first-party connectors in this repository, and allow same-account connectors with one landing role each. See [Response curves and budget simulation](../../concepts/response-curves-and-budget-simulation.md). This package changes when they are accepted and built.
+> **Revision proposed, 2026-10-07.** [ADR-089](../../decisions/adr-089-onboard-api-sources-through-governed-operation-packs-and-resolve-campaigns-at-read-time.md) and [ADR-097](../../decisions/adr-097-ship-one-first-party-connector-per-source-as-its-own-stack.md) (Proposed) would add governed API operation packs beside query packs and ship first-party connectors in this repository. [ADR-098](../../decisions/adr-098-allow-same-account-connectors-with-one-landing-role-per-producer.md) is Accepted for repo-shipped connectors (owner D6, 2026-11-12) and not yet built: slice 4 adds same-account connectors with one landing role each, and bring-your-own producers keep the cross-account rule. See [Response curves and budget simulation](../../concepts/response-curves-and-budget-simulation.md). This package changes when they are accepted and built.
 
 ## 1. Purpose and scope
 

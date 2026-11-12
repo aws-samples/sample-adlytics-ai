@@ -7,6 +7,10 @@
  * exactly the generated set, and nothing on the live table; no other role in any stack names a
  * probe table, and only the run-request admission role writes the live table.
  */
+import * as cdk from 'aws-cdk-lib';
+import { Template } from 'aws-cdk-lib/assertions';
+import { ControlPlaneAuthorityStoreStack } from '../lib/stacks/control-plane-authority-store-stack';
+import { configWith } from './support/config';
 import { everyTemplate, resourcesOfType } from './support/templates';
 import {
   OPERATOR_ONLY_DENIED_ACTIONS,
@@ -53,6 +57,29 @@ function statementsReferencing(template: unknown, needle: string): Resource[] {
 }
 
 describe('the retained execution-graph store', () => {
+  it('D4: outside dev the plane renders the live table and no probe table or probe role', () => {
+    const config = configWith({
+      envName: 'demo',
+      operationalStatus: {
+        provisioned: true,
+        stage1LifecycleReconcileBatchSize: 10,
+        stage1OutboxMaxConsecutiveFailedDeliveryAttempts: 3,
+      },
+    });
+    const demo = Template.fromStack(
+      new ControlPlaneAuthorityStoreStack(new cdk.App(), 'Adlytics-ControlPlaneAuthorityStore-demo', {
+        config,
+        env: { account: config.account, region: config.region },
+      }),
+    ).toJSON();
+    const ofType = (type: string): Resource[] =>
+      Object.values(resources(demo)).filter((item) => item.Type === type);
+    const names = ofType('AWS::DynamoDB::Table').map((item) => (item.Properties as Resource).TableName);
+    expect(names).toEqual(['adlytics-demo-execution-graph']);
+    expect(ofType('AWS::IAM::Role')).toEqual([]);
+    expect(ofType('AWS::IAM::Policy')).toEqual([]);
+  });
+
   it('creates the live table and the probe pair, all retained, encrypted and recoverable', () => {
     const all = tables();
     const names = Object.values(all).map((item) => (item.Properties as Resource).TableName).sort();

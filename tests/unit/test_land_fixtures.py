@@ -69,7 +69,12 @@ from adapters.jobs.land_fixtures.bundle import (
 from domain.curation.landing import MANIFEST_NAME, LandingError
 from domain.data_contracts.contract import DataContract
 from domain.operations.generated_execution_graphs import ROUTES
-from domain.operations.run_request import HistoricalPolicy, is_historical, probe_slot_instants
+from domain.operations.run_request import (
+    HistoricalPolicy,
+    ManifestFacts,
+    is_historical,
+    probe_slot_instants,
+)
 from domain.producer.models import PERIOD_GRAIN_OPTION
 from domain.semantics.calendar_periods import vintage_ending
 from domain.semantics.canonical_compiler import CanonicalRow
@@ -269,7 +274,6 @@ def test_fixture_delivery_span_carries_exact_operator_lineage_and_progress(
             plan_digest="sha256:reviewed",
             progress=progress.append,
             cancelled=lambda: False,
-            historical_policy=_with_backfill()[1],
         )
     )
 
@@ -324,7 +328,6 @@ def test_fixture_delivery_cancellation_does_not_advance_before_marker_is_durable
                 plan_digest="sha256:reviewed",
                 progress=progress.append,
                 cancelled=lambda: cancelled,
-                historical_policy=_with_backfill()[1],
             )
         )
 
@@ -2511,7 +2514,6 @@ def _guarded_landing(
             plan_digest="sha256:unit",
             progress=_ignore,
             cancelled=lambda: False,
-            historical_policy=_with_backfill()[1],
             seal_guard=land_job.SealSequenceGuard(
                 read_current=pipeline.read_current,
                 report=waits.append,
@@ -2597,7 +2599,6 @@ def test_11d_a_timeout_stops_the_landing_with_no_further_put() -> None:
                 plan_digest="sha256:unit",
                 progress=_ignore,
                 cancelled=lambda: False,
-                historical_policy=_with_backfill()[1],
                 seal_guard=land_job.SealSequenceGuard(
                     read_current=pipeline.read_current,
                     report=_ignore,
@@ -2665,7 +2666,6 @@ def test_apply_refuses_seal_deliveries_without_the_guard_before_any_put() -> Non
                 plan_digest="sha256:unit",
                 progress=_ignore,
                 cancelled=lambda: False,
-                historical_policy=_with_backfill()[1],
             )
         )
     assert s3.puts == []
@@ -3110,7 +3110,7 @@ def test_v24_one_phase_a_delivery_gives_one_newer_key_in_the_same_window() -> No
     assert second.probe.manifest.retrieved_at == probe.manifest.retrieved_at + timedelta(seconds=1)
 
 
-def test_v24_a_historical_or_non_cadence_name_is_refused_before_any_key() -> None:
+def test_v24_an_old_or_non_cadence_name_is_refused_before_any_probe_key() -> None:
     planned, policy = _with_backfill()
     historical = next(
         item.fixture
@@ -3123,7 +3123,7 @@ def test_v24_a_historical_or_non_cadence_name_is_refused_before_any_key() -> Non
     seal = next(item.fixture for item in planned if item.delivery_class is DeliveryClass.SEAL)
     backfill = next(item.fixture for item in planned if "#backfill#" in item.fixture)
     for name, message in (
-        (historical, "FULL_HISTORY_NOT_ENABLED"),
+        (historical, "copies only a phase-A cadence delivery"),
         (seal, "cadence delivery"),
         (backfill, "cadence delivery"),
         ("generated/no-such-fixture.csv", "exactly one is required"),
@@ -3300,48 +3300,48 @@ def test_v24_probe_of_a_historical_delivery_makes_zero_puts(
         and item.run_day is not None
         and item.run_day <= policy.cut
     )
-    with pytest.raises(SystemExit, match="FULL_HISTORY_NOT_ENABLED"):
+    with pytest.raises(SystemExit, match="copies only a phase-A cadence delivery"):
         _probe_run(monkeypatch, "--probe-retrieval", historical)
 
 
+@pytest.mark.covers("ADR-161")
 def test_named_delivery_lands_exactly_one_planned_key(monkeypatch: pytest.MonkeyPatch) -> None:
     result, puts, errors, _ = _probe_run(monkeypatch, "--delivery", _PROBE_NAME)
     assert (result, errors) == (0, [])
     assert puts == [(_planned_delivery(_PROBE_NAME).manifest.manifest_key,)]
     planned, policy = _with_backfill()
     historical = next(
-        item.fixture
+        item
         for item in planned
         if item.delivery_class is DeliveryClass.CADENCE
         and item.run_day is not None
         and item.run_day <= policy.cut
     )
-    with pytest.raises(SystemExit, match="FULL_HISTORY_NOT_ENABLED"):
-        _probe_run(monkeypatch, "--delivery", historical)
+    assert is_historical(bundle_module.manifest_facts(historical.manifest), policy)
+    result, puts, errors, _ = _probe_run(monkeypatch, "--delivery", historical.fixture)
+    assert (result, errors) == (0, [])
+    assert puts == [(historical.manifest.manifest_key,)]
 
 
-# --- The S2 hard deny at the fixture-landing producer (BF "S2 hard deny" (c), S1) ------------
+# --- Phase B lands through the fixture-landing producer (ADR-161, FD-2) ----------------------
 
 
-def test_hard_deny_a_selection_holding_a_historical_delivery_is_refused_before_output(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+@pytest.mark.covers("ADR-161")
+def test_a_phase_b_dry_run_plans_every_backfill_delivery_and_exits_0(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(land_cli, "validate_fixture_provenance", _ignore)
-
-    def with_backfill(_root: object) -> object:
-        return _with_backfill()
-
-    monkeypatch.setattr(land_cli, "plan_with_backfill", with_backfill)
-    _, policy = _with_backfill()
-    with pytest.raises(SystemExit, match="FULL_HISTORY_NOT_ENABLED"):
-        land_cli.main(
-            _cli_arguments(
-                "--classes", "cadence", "--run-days-to", policy.cut.isoformat(), "--dry-run"
-            )
-        )
-    assert "LAND FIXTURES" not in capsys.readouterr().out
-    with pytest.raises(SystemExit, match="FULL_HISTORY_NOT_ENABLED"):
-        land_cli.main(_cli_arguments("--classes", "backfill", "--dry-run"))
+    planned, policy = _with_backfill()
+    selection = PlanSelection(frozenset({DeliveryClass.BACKFILL}), run_days_to=policy.cut)
+    expected = [item for item in planned if selection.selects(item)]
+    # Phase B holds historical deliveries (and the two phase-A restatements it re-lands at their
+    # own keys, test_historical_predicate); before ADR-161 the first of them refused the run.
+    assert any(is_historical(bundle_module.manifest_facts(i.manifest), policy) for i in expected)
+    result, puts, errors, output = _probe_run(
+        monkeypatch, "--classes", "backfill", "--run-days-to", policy.cut.isoformat(), "--dry-run"
+    )
+    assert (result, puts, errors) == (0, [], [])
+    assert f"across {len(expected)} deliveries" in output
+    assert all(item.manifest.manifest_key in output for item in expected)
 
 
 def test_hard_deny_positive_control_a_phase_a_selection_plans_normally() -> None:
@@ -3356,27 +3356,121 @@ def test_hard_deny_positive_control_a_phase_a_selection_plans_normally() -> None
     )
 
 
-def test_hard_deny_the_job_refuses_a_historical_delivery_with_zero_puts() -> None:
+@pytest.mark.covers("ADR-161")
+def test_the_job_puts_a_historical_delivery_once(monkeypatch: pytest.MonkeyPatch) -> None:
     planned, policy = _with_backfill()
     historical = next(item for item in planned if "#backfill#" in item.fixture)
-    puts: list[object] = []
-    client = SimpleNamespace(put_object=lambda **kwargs: puts.append(kwargs))  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
-    with pytest.raises(LandingError, match="FULL_HISTORY_NOT_ENABLED"):
-        land_job.apply_immutable(
-            land_job.ApplyLandFixturesRequest(
-                client=cast("Any", client),
-                bucket="explicit-versioned-raw",
-                deliveries=(historical,),
-                operation_id="land-unit",
-                execution_id="exec",
-                predecessor_execution_id=None,
-                plan_digest="sha256:x",
-                progress=_ignore,
-                cancelled=lambda: False,
-                historical_policy=policy,
-            )
+    assert is_historical(bundle_module.manifest_facts(historical.manifest), policy)
+    puts: list[str] = []
+
+    def immutable_write(_client: object, _bucket: str, item: PlannedObject) -> tuple[str, bool]:
+        puts.append(item.key)
+        return "version-001", True
+
+    monkeypatch.setattr(land_job, "_put_immutable", immutable_write)
+    client = SimpleNamespace()
+    created = land_job.apply_immutable(
+        land_job.ApplyLandFixturesRequest(
+            client=cast("Any", client),
+            bucket="explicit-versioned-raw",
+            deliveries=(historical,),
+            operation_id="land-unit",
+            execution_id="exec",
+            predecessor_execution_id=None,
+            plan_digest="sha256:x",
+            progress=_ignore,
+            cancelled=lambda: False,
         )
-    assert puts == []
+    )
+    # Data objects first, then the exact-version manifest marker: each key put exactly once.
+    assert puts == [item.key for item in historical.ordered]
+    assert created == len(historical.ordered)
+    assert puts[-1] == historical.manifest.manifest_key
+
+
+_PRE_SPAN_DAYS = 14
+
+
+def _vendor_runs(
+    document: dict[str, Any], origin: date | None
+) -> tuple[tuple[str, str, dict[str, object], date | None], ...]:
+    path = ROOT / "tests" / "fixtures" / _TRAFFIC
+    declaration = bundle_module._declaration(path.with_suffix("").with_suffix(".manifest.json"))  # pyright: ignore[reportPrivateUsage]
+    shape = load_synthetic_entity_catalog(ROOT).shape
+    request = bundle_module._SourceRunsRequest(  # pyright: ignore[reportPrivateUsage]
+        _TRAFFIC, json.dumps(document), declaration, None, shape, paired_origin=origin
+    )
+    return bundle_module._vendor_source_runs(request)  # pyright: ignore[reportPrivateUsage]
+
+
+def _traffic_with_pre_span_days() -> tuple[dict[str, Any], dict[str, Any], date]:
+    """Return the traffic corpus, and a copy whose first day's rows repeat on 14 earlier days."""
+    today: dict[str, Any] = json.loads((ROOT / "tests" / "fixtures" / _TRAFFIC).read_text())
+    first = load_synthetic_entity_catalog(ROOT).shape.fixture_span.first_day
+    extended = dict(today)
+    for array in ("trafficByAsin", "trafficAggregate"):
+        rows = cast("list[dict[str, Any]]", today[array])
+        seed = [row for row in rows if row["startDate"] == first.isoformat()]
+        earlier = [
+            {**row, "startDate": day.isoformat(), "endDate": day.isoformat()}
+            for back in range(_PRE_SPAN_DAYS, 0, -1)
+            for day in (first - timedelta(days=back),)
+            for row in seed
+        ]
+        extended[array] = earlier + rows
+    return today, extended, first
+
+
+def _retrieved(run: tuple[str, str, dict[str, object], date | None]) -> datetime:
+    return datetime.fromisoformat(str(run[2]["retrieved_at"]).replace("Z", "+00:00"))
+
+
+def _facts(run: tuple[str, str, dict[str, object], date | None]) -> ManifestFacts:
+    declaration = run[2]
+    return ManifestFacts(
+        str(declaration["source_system"]),
+        str(declaration["source_dataset"]),
+        date.fromisoformat(str(declaration["period_end"])),
+        _retrieved(run),
+    )
+
+
+@pytest.mark.covers("ADR-161")
+def test_vendor_days_before_first_day_plan_and_decode_to_their_own_run_days() -> None:
+    today, extended, first = _traffic_with_pre_span_days()
+    origin = first - timedelta(days=_PRE_SPAN_DAYS)
+    _, band = _with_backfill()
+    policy = replace(band, paired_first_day=origin)
+    current = _vendor_runs(today, None)
+    runs = _vendor_runs(extended, origin)
+    pre_span, in_span = runs[:_PRE_SPAN_DAYS], runs[_PRE_SPAN_DAYS:]
+    assert [run[3] for run in pre_span] == [
+        origin + timedelta(days=index) for index in range(_PRE_SPAN_DAYS)
+    ]
+    # Every pre-span day is a phase-B day (run day on or before the cut) and decodes historical.
+    assert all(run[3] is not None and run[3] <= policy.cut for run in pre_span)
+    assert all(is_historical(_facts(run), policy) for run in pre_span)
+    # Every in-span day keeps its name, bytes and classification; its offset moves by 2 x 14 s.
+    assert [(run[0], run[1], run[3]) for run in in_span] == [
+        (run[0], run[1], run[3]) for run in current
+    ]
+    assert [is_historical(_facts(run), policy) for run in in_span] == [
+        is_historical(_facts(run), band) for run in current
+    ]
+    assert {
+        _retrieved(new) - _retrieved(old) for new, old in zip(in_span, current, strict=True)
+    } == {timedelta(seconds=28)}
+    # Without the earlier origin, the same corpus is refused rather than mis-keyed.
+    with pytest.raises(LandingError, match="precedes the paired origin"):
+        _vendor_runs(extended, None)
+
+
+def test_a_paired_vendor_span_reaching_the_seal_slots_is_refused() -> None:
+    today, _, first = _traffic_with_pre_span_days()
+    # 463 span days x 64 s puts the seal slots at offset 29,632; a 14,816-day origin reaches it.
+    with pytest.raises(LandingError, match="reaches the seal retrieval slots"):
+        _vendor_runs(today, first - timedelta(days=14_816))
+    assert _vendor_runs(today, first - timedelta(days=14_000))
 
 
 # --- S6: the probe retrieval's on_demand twin (V-19) ---------------------------------------------
@@ -3599,7 +3693,6 @@ def test_d7_a_reservation_landed_by_apply_immutable_verifies_for_its_launch() ->
             plan_digest="sha256:x",
             progress=lambda _snapshot: None,
             cancelled=lambda: False,
-            historical_policy=_with_backfill()[1],
             seal_guard=None,
         )
     )

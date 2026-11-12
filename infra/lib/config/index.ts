@@ -453,8 +453,9 @@ export interface GatewayGuardrailConfig {
 /** Shared provisioning and sampling settings for the online-evaluation control plane. */
 export interface OnlineEvaluationConfig {
   /**
-   * Whether the result link and the current evaluation family (V4) exist. Dev-only: V4 was never
-   * promoted beyond dev, and the V3 family it superseded was retired 2026-09-27 (ADR-079).
+   * Whether the result link and the current evaluation family (V4) exist. Off by default and
+   * accepted in any environment (owner decision D4, 2026-11-12); live-accepted only in dev. The V3
+   * family V4 superseded was retired 2026-09-27 (ADR-079).
    */
   readonly provisioned: boolean;
 
@@ -493,7 +494,7 @@ export interface EvaluationQualityConfig {
 export interface OnlineEvaluationV4Config {
   /**
    * Whether the V4 evaluation gate is asked to enable execution (ADR-079). A request, not a
-   * state: the gate enables only after every readback and calibration holds. Dev-only.
+   * state: the gate enables only after every readback and calibration holds. Off by default.
    */
   readonly executionRequested: boolean;
 }
@@ -507,7 +508,7 @@ export interface EvaluationInputConfig {
   readonly provisioned: boolean;
 }
 
-/** Development-only operational data-flow observation infrastructure. */
+/** Opt-in operational data-flow observation infrastructure, off by default. */
 /**
  * Traceability FR-10: the exact-one-of staffed destination. The email arm uses the existing
  * in-account ingestion alarm topic; its endpoint is a live input to the destination verifier,
@@ -867,7 +868,7 @@ export interface AppConfig {
   /** ADR-075 Stage-1 projection limits and sole deployment handoff input. */
   readonly ingestion: IngestionConfig;
 
-  /** Development-only authority-backed operational status observation slice. */
+  /** Opt-in authority-backed operational status observation slice, off by default. */
   readonly operationalStatus: OperationalStatusConfig;
 
   /**
@@ -1133,11 +1134,12 @@ function optionalVersionId(key: string): { originVerifySecretVersionId?: string 
   }
   return { originVerifySecretVersionId: raw };
 }
-function onlineEvaluationConfig(envName: string): OnlineEvaluationConfig {
+// Owner decision D4 (2026-11-12): online evaluation and the operational status plane are
+// off-by-default settings accepted in any environment; their live acceptance runs only in dev.
+// Password auth for quality review (assertQualityReviewValidationAuth) and the authority store's
+// probe tables and probe role stay dev-only.
+function onlineEvaluationConfig(): OnlineEvaluationConfig {
   const provisioned = envFlag('ADLYTICS_ONLINE_EVALUATION_PROVISIONED');
-  if (provisioned && envName !== 'dev') {
-    throw new Error('Online evaluation may be provisioned only for ENV=dev.');
-  }
   return {
     provisioned,
     samplingPercentage: envPercentage('ADLYTICS_ONLINE_EVALUATION_SAMPLE_PERCENT', 10),
@@ -1145,19 +1147,12 @@ function onlineEvaluationConfig(envName: string): OnlineEvaluationConfig {
   };
 }
 
-function onlineEvaluationV4Config(envName: string): OnlineEvaluationV4Config {
-  const executionRequested = envFlag('ADLYTICS_ONLINE_EVALUATION_V4_REQUESTED');
-  if (executionRequested && envName !== 'dev') {
-    throw new Error('Online evaluation V4 execution may be requested only for ENV=dev.');
-  }
-  return { executionRequested };
+function onlineEvaluationV4Config(): OnlineEvaluationV4Config {
+  return { executionRequested: envFlag('ADLYTICS_ONLINE_EVALUATION_V4_REQUESTED') };
 }
 
-function operationalStatusConfig(envName: string): OperationalStatusConfig {
+function operationalStatusConfig(): OperationalStatusConfig {
   const provisioned = envFlag('ADLYTICS_OPERATIONAL_STATUS_PROVISIONED');
-  if (provisioned && envName !== 'dev') {
-    throw new Error('Operational status may be provisioned only for ENV=dev.');
-  }
   return {
     provisioned,
     stage1LifecycleReconcileBatchSize: 10,
@@ -1334,14 +1329,14 @@ export function defaultConfig(envName: string): AppConfig {
       enforcement: 'LOG_ONLY',
     },
 
-    onlineEvaluation: onlineEvaluationConfig(envName),
+    onlineEvaluation: onlineEvaluationConfig(),
     // One worst label in five verdicts over six hours is a trend worth a look, not a gate
     // (agent-evaluation-validity steering: a soft score never gates a release).
     evaluationQuality: {
       worstLabel: { periodHours: 6, minimumVerdicts: 5, shareThreshold: 0.2 },
       noDispatch: { periodMinutes: 30, periods: 3 },
     },
-    onlineEvaluationV4: onlineEvaluationV4Config(envName),
+    onlineEvaluationV4: onlineEvaluationV4Config(),
 
     evaluationInput: {
       provisioned: envFlag('ADLYTICS_EVALUATION_INPUT_PROVISIONED'),
@@ -1352,7 +1347,7 @@ export function defaultConfig(envName: string): AppConfig {
       legacyPlanIntentReconcileEnabled: legacyPlanIntentReconcileEnabled(envName),
     }),
 
-    operationalStatus: operationalStatusConfig(envName),
+    operationalStatus: operationalStatusConfig(),
     staffedAlarmDestination: staffedAlarmDestinationConfig(envName),
     // The same for every environment: the bound is a failure-class property, not a size.
     asyncFailureBounds: ASYNC_FAILURE_BOUNDS,
@@ -2697,7 +2692,7 @@ export const DEPLOY_ORDER = [
   'DependenciesStack',
   // Permanent retained Semantic V2 storage and state.
   'DataV2Stack',
-  // Development-only retained operational read model precedes its disposable projector and API reader.
+  // Opt-in retained operational read model precedes its disposable projector and API reader.
   'OperationalStatusStoreStack',
   // Reads the attempts stream and writes only the retained operational projection above.
   'OperationalStatusProcessorStack',

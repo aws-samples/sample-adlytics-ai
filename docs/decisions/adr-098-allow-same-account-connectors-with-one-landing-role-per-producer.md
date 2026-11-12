@@ -1,6 +1,6 @@
 # ADR-098: Allow same-account connectors with one landing role per producer
 Date: 2026-10-07
-Status: Proposed. Not accepted or implemented. The owner decided it on 2026-10-06. The rest of the design was approved on the owner's behalf on 2026-10-07, under authority the owner delegated; the owner hasn't reviewed the final design yet. It would amend [ADR-050](adr-050-finalize-registered-cross-account-landings-into-governed-manifests.md) points 1, 2 and 8, which stay in force, unchanged, until this is accepted.
+Status: Accepted for repo-shipped connectors (owner decision D6, 2026-11-12). Not yet implemented: slice 4 builds it. Bring-your-own producers keep [ADR-050](adr-050-finalize-registered-cross-account-landings-into-governed-manifests.md)'s cross-account rule. It amends ADR-050 points 1, 2 and 8 for repo-shipped connectors once slice 4 ships; until then synth still refuses a landing role in the deployment's own account. The owner decided the design on 2026-10-06; the rest was approved on the owner's behalf on 2026-10-07, under delegated authority.
 ## Context
 [ADR-097](adr-097-ship-one-first-party-connector-per-source-as-its-own-stack.md) ships connectors with the application. The owner wants them in the same AWS account as Adlytics, each as its own stack. One account is simpler to deploy, operate and pay for.
 ADR-050 was written for one external producer:
@@ -20,7 +20,7 @@ With several connectors, one shared role would let a compromised Ads connector w
    - each connector's credentials and external ID sit in a secret that only that connector's execution role can read;
    - a CDK assertion covers each control, and the Finalizer's prefix check is unit-tested.
 5. **Residual risk, stated plainly.** A compromised connector shares the account. Its blast radius is limited by IAM policies, the permission boundary and resource policies, not by an account boundary. A later mistake in any of them could expose data that a separate account would have kept out of reach. Anyone with administrative rights in the account can change connectors and application alike. The CDK assertions catch drift only in what the repository synthesises.
-6. **Separate-account producers remain possible** under the unchanged external-principal rule.
+6. **Bring-your-own producers keep the cross-account rule** (owner D6, 2026-11-12): a producer this repository does not ship lands only through a role in another account, under the unchanged external-principal rule.
 ## Consequences
 - `IngestionStack` creates one landing role per entry in a registered-producer list, in place of one role trusting the pipeline role. Today's role becomes the AMC entry, so an existing deployment keeps its AMC trust. This is on the owner-approved `infra/` list.
 - A second external ID per producer to issue and rotate, handled as the pipeline role's is today.

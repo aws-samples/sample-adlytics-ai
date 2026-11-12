@@ -221,6 +221,7 @@ def receipt_item(receipt: ReceiptRecord, sk: str = "RECEIPT") -> Item:
                 "root_clock_started_at": receipt.root_clock_started_at,
                 "manifest_key": receipt.manifest_key,
                 "version_id": receipt.version_id,
+                "admission_class": receipt.admission_class,
             }
         ),
     }
@@ -258,6 +259,7 @@ def read_receipt_item(item: Item) -> ReceiptRecord:
         root_clock_started_at=_text(item, "root_clock_started_at"),
         manifest_key=_text(item, "manifest_key"),
         version_id=_text(item, "version_id"),
+        admission_class=_text(item, "admission_class"),
     )
 
 

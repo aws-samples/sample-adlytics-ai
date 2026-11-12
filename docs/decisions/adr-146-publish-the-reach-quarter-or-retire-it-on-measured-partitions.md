@@ -67,7 +67,7 @@ never fills is a broken promise on the page.
   window-edge gaps; `test_publication_selection.py`'s
   184-partition selection paired with the 1,001 refusal; the probe recording a bound quarter.
 - Any branch: the quarter run through both bake entries, the graph task and the legacy entry
-  every deployment outside dev runs.
+  every deployment not cut over to `GRAPH` mode runs.
 - Branch (b): the page-schema validation and the roster contract tests, with no quarter preset
   declared.
 - The probe's unit test on fictional publications: per-pack counts, the raising call, chat's

@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any, Final, cast
 
 from adapters.outbound import repository_yaml
+from domain.operations.run_request import RETIRED_ROWS
 
 CONTRACT_PATH: Final = Path("contracts/operations/execution-graphs.yaml")
 PYTHON_PATH: Final = Path("src/domain/operations/generated_execution_graphs.py")
@@ -34,7 +35,8 @@ _DEPLOYABLE: Final = "--deployable"
 _ARGUMENTS: Final = frozenset({_CHECK, _DEPLOYABLE})
 BATCHING_INVALID: Final = "WRITE_UNIT_BATCHING_INVALID"
 PENDING_PROBE: Final = "WRITE_UNIT_BATCHING_PENDING_PROBE"
-_ROWS_WITH_RETRY: Final = tuple(range(1, 21))
+# Row numbers are stable: a retired row (RETIRED_ROWS, ADR-161) is never reused.
+_ROWS_WITH_RETRY: Final = tuple(row for row in range(1, 21) if row not in RETIRED_ROWS)
 _RETRY_ROW: Final = 11
 PINNED_BOUNDS: Final = {
     # pragma: allowlist nextline secret (A-ENTROPY-IDENTIFIER-001)
@@ -483,7 +485,6 @@ def render_python(contract: dict[str, Any], digest: str) -> str:
         ("REQUESTER_GROUP", contract["requester_group"]),
         ("API_ROUTES", tuple(contract["api_routes"])),
         ("ADMISSION_CLASSES", tuple(contract["admission_classes"])),
-        ("CALLER_LABELS_REFUSED", tuple(contract["caller_labels_refused"])),
         ("RUN_REQUEST_SCHEMA", contract["run_request_schema"]),
         ("REFUSAL_CLASSES", {k: tuple(v) for k, v in contract["refusal_classes"].items()}),
         ("RETRY_ROW_APPROVED", bool(contract["retry_row_approved"])),
@@ -556,6 +557,7 @@ def _planner_findings(root: Path, contract: dict[str, Any]) -> list[str]:
     computed = {
         "replay_base": policy.replay_base.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "first_day": policy.first_day.isoformat(),
+        "paired_first_day": policy.paired_origin.isoformat(),
         "cut": policy.cut.isoformat(),
         "stride_seconds": policy.stride_seconds,
         "seal_slot_base": policy.seal_slot_base,

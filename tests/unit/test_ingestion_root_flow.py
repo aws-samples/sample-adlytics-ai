@@ -100,8 +100,9 @@ def test_n1_the_fingerprint_keys_on_the_contract_revision_not_the_contract_bytes
 
     version = ManifestVersion(key("20261006T081257Z"), "v1")
     pinned = manifest_fingerprint(version, service.INGESTION_TEMPLATE, generated.CONTRACT_REVISION)
-    # Pinned value at contract_revision 2 (S6 part 2, design §2.1): a change here re-keys every
-    # live input. Revision 1 pinned 3aee3ed6...; no epoch-1 record exists, so nothing re-keys.
+    # Pinned value at contract_revision 3 (ADR-161): a change here re-keys every live input.
+    # Revision 1 pinned 3aee3ed6... and revision 2 pinned 7f0a20a5...; a re-delivered revision-2
+    # input is therefore decided afresh, never JOINED at row 9 (ADR-161, Consequences).
     # pragma: allowlist nextline secret (A-ENTROPY-IDENTIFIER-001)
-    assert pinned == "7f0a20a599bcb85d5ea491aed46f1e9b3dc085e86385088206e26691aa75f786"
+    assert pinned == "89e3a71d3f72041214254f9f5215548132362ddb92b55f5dccf5637ded64f032"
     assert "CONTRACT_DIGEST" not in service.__dict__

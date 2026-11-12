@@ -136,8 +136,8 @@ infra/
 |---|---|---|
 | `DependenciesStack` | shared Python Lambda layer | DESTROY |
 | `DataV2Stack` | retained Semantic V2 raw, publication/result storage, Glue catalogs, Athena workgroups, and attempts/leases/publications state | RETAIN |
-| `OperationalStatusStoreStack` | retained operational data-flow read model; composed only when `operationalStatus.provisioned` is true (dev-only — any other environment fails synth) | RETAIN |
-| `OperationalStatusProcessorStack` | attempts-stream projector writing the retained operational read model; composed only when `operationalStatus.provisioned` is true (dev-only) | DESTROY |
+| `OperationalStatusStoreStack` | retained operational data-flow read model; composed only when `operationalStatus.provisioned` is true (off by default; any environment accepts it) | RETAIN |
+| `OperationalStatusProcessorStack` | attempts-stream projector writing the retained operational read model; composed only when `operationalStatus.provisioned` is true (off by default) | DESTROY |
 | `PublisherArtifactStoreStack` | retained baked preset artifacts (S3) and artifact pointers (DynamoDB) | RETAIN |
 | `PublisherStack` | preset artifact baker reading Semantic V2 publication updates and writing the retained artifact store | DESTROY |
 | `InsightPromptRegistryStack` | retained immutable insight prompt versions, calibration outcomes, and per-slot/tier activation pointers | RETAIN |

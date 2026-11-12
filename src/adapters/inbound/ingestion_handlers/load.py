@@ -322,7 +322,8 @@ class _V2Runtime:
     ingress: DeliveryIngress
     """S6 (V-19): the per-message mode read and the `delivery_event` requester."""
     materialization: GovernedMaterializationPort
-    """S6 (hard deny (d)): the one governed raw fetch; refuses a historical manifest first."""
+    """S6: the one governed raw fetch; reads the exact manifest and records a historical class
+    (ADR-161) before any data-object read."""
 
     def __post_init__(self) -> None:
         if (self.inline is None) != (self.composition is ProjectionComposition.QUEUED):
@@ -1153,8 +1154,9 @@ def _fetch(
         completed=0,
         total=1,
     ) as fetch_span:
-        # S6 (hard deny (d)): the governed port refuses a historical manifest before any
-        # data-object read, in every mode; a GRAPH caller's claim is re-attested there too.
+        # S6: the governed port reads the exact manifest version and records a historical
+        # class (ADR-161) before any data-object read, in every mode; a GRAPH caller's claim
+        # is re-attested there too.
         delivery = (
             RUNTIME.materialization.fetch(message.manifest)
             if claim is None

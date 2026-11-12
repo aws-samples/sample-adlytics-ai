@@ -338,6 +338,24 @@ ignored, untracked or only present locally cannot make them pass. Its run record
 tree; the publication gate requires them, and the release gate reuses the verify-clean record
 ([test run records](../docs/test-run-records.md#which-records-the-publication-gate-accepts)).
 
+## deploy_preflight.py
+
+`scripts/deploy-all.sh` runs it in both modes, after `cdk synth` and before any diff or deploy. It
+derives what the app needs from the cloud assembly and the execution-graph contract, then reads
+the account, read-only:
+
+| Check | Minimum |
+|---|---|
+| Lambda `AccountLimit.ConcurrentExecutions`, per Region the app deploys to | the Region's reserved concurrency in the templates + 100 unreserved |
+| Athena "Active DML queries" (`L-FC5F6546`) | `batch_athena_budget + chat_reserve_active_dml` |
+| A quota a template declares under `Adlytics::ServiceQuotaRequirements` (such as SageMaker Processing) | the declared `minimum`; "not required by this deployment" when none is declared |
+| Bedrock model access for each configured model ID (an inference profile resolves to its foundation models) | `AUTHORIZED` and `AVAILABLE` |
+
+It prints one line per check with the value read and the minimum, and each refusal's fix (the
+Service Quotas increase command, or the model-access page). A read error refuses too. The
+availability API can report access for a model that still cannot be invoked, so a pass says
+"access granted per the availability API".
+
 ## publication_gate.py
 
 `make publication-gate [BASE=<rev>]` runs it before every push to the public remote; BASE defaults
@@ -353,6 +371,16 @@ tier) and the email allowlist
 (`git config --add publication.allowedEmail <email>`, falling back to `user.email`). The denylist
 also matches patch headers, so listing an internal tool's name there refuses a commit that adds
 its output directory on any clone; a tracked ignore rule would publish the name.
+
+The audit check runs only for a changed lockfile and audits it twice: at HEAD and at `BASE` (from
+`git show`; a lockfile absent at `BASE` has no advisories). pip-audit reports every advisory
+outside `PIP_AUDIT_REVIEWED`; npm audit counts only HIGH and CRITICAL. An advisory is its ID plus
+aliases, and it refuses with `AUDIT_FINDING` only when none of them is among `BASE`'s. A
+pre-existing one prints `publication-gate: audit WARN ...` with the first register row that names
+it, looked up in `security-findings.md` beside the checkout, then beside the main checkout's
+`.git` (for a worktree), then `docs/security-dispositions.md`; "no register row" when none does.
+A warning never changes the exit code and is kept in the run record's `steps.json`. A scanner
+that cannot run on either side refuses.
 
 The gate reads no remote and scans only `BASE..HEAD`. It proves BASE is an ancestor of HEAD, not
 that BASE is the current public main, so run `git fetch public` first (`make publish` fetches and

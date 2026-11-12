@@ -15,12 +15,6 @@ from adapters.jobs.curation.manifests import write_manifest
 from adapters.jobs.land_fixtures.bundle import DeliveryClass, PlannedObject
 from adapters.outbound.telemetry.tracing import LAND_FIXTURES_DELIVERY, span, trace_boundary
 from domain.curation.landing import LandingError
-from domain.operations.run_request import (
-    FULL_HISTORY_NOT_ENABLED,
-    HistoricalPolicy,
-    ManifestFacts,
-    is_historical,
-)
 from domain.shared_kernel.errors import DependencyError
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -224,8 +218,6 @@ class ApplyLandFixturesRequest:
     plan_digest: str
     progress: Callable[[LandFixturesProgress], None]
     cancelled: Callable[[], bool]
-    historical_policy: HistoricalPolicy
-    """The V-8 replay band: a historical delivery is refused before any put."""
     seal_guard: SealSequenceGuard | None = None
 
 
@@ -273,23 +265,6 @@ def apply_immutable(request: ApplyLandFixturesRequest) -> int:
     put and awaited after it, so the next delivery is never put before this one is CURRENT.
     Every other delivery is put as before.
     """
-    historical = [
-        delivery
-        for delivery in request.deliveries
-        if is_historical(
-            ManifestFacts(
-                delivery.manifest.source_system,
-                delivery.manifest.source_dataset,
-                delivery.manifest.period_end,
-                delivery.manifest.retrieved_at,
-            ),
-            request.historical_policy,
-        )
-    ]
-    if historical:
-        raise LandingError(
-            f"{FULL_HISTORY_NOT_ENABLED}: {len(historical)} historical deliveries refused."
-        )
     created = 0
     total = len(request.deliveries)
     guard = request.seal_guard

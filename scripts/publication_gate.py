@@ -30,14 +30,18 @@ The gate runs on the checkout before every push and refuses with a named code:
                              denylist line, never the literal
       IDENTITY_NOT_ALLOWED   an author or committer email outside publication.allowedEmail
                              (git config; falls back to user.email; refuses when both are unset)
-      AUDIT_FINDING          npm audit or pip-audit refuses a changed lockfile, or cannot run;
+      AUDIT_FINDING          npm audit (HIGH and above) or pip-audit finds, in a changed
+                             lockfile, an advisory whose ID and aliases are all new versus
+                             BASE's lockfile, or cannot run on either side; a pre-existing
+                             advisory prints a WARN line naming its register row instead.
                              pip-audit skips only the reviewed IDs in PIP_AUDIT_REVIEWED
       RUN_RECORD_MISSING     no passing, canonical, clean, verified run record of pytest-unit,
                              frontend-test and infra-test for HEAD's tree (docs/test-run-records.md)
       EXPORT_GATE_FAILED     scripts/check-publication.sh (the export stage) failed
 
 Each check prints `publication-gate: <check> ok` or one `REFUSED <CODE> <detail>` line per finding,
-and the gate writes a `publication-gate` run record of every result. Exit 0 only when nothing is
+then one `WARN <detail>` line per warning, and the gate writes a `publication-gate` run record of
+every result. A warning never changes the exit code. Exit 0 only when nothing is
 refused. There is no flag that skips a check. Touches no AWS.
 """
 
@@ -74,7 +78,8 @@ NPM_LOCKFILES = (
 DENYLIST = "local-denylist.txt"
 # The closed set of pip-audit advisories the owner reviewed, each with the docs/security-
 # dispositions.md row that owns it. pip-audit matches the ID and its aliases; every other finding
-# still refuses. Add an entry only with an owner-approved row; remove it when its trigger fires.
+# is compared with BASE (check_audit). Add an entry only with an owner-approved row; remove it
+# when its trigger fires.
 PIP_AUDIT_REVIEWED = (
     # O-OTEL-TRACESTATE-001 (CVE-2026-114603): NOT AFFECTED, owner 2026-10-23.
     ("GHSA-xcq7-p3pf-p88h", "O-OTEL-TRACESTATE-001"),
@@ -87,6 +92,14 @@ LEAK_EXIT = 99
 # The RFC 4648 base32 alphabet, derived rather than spelled out.
 BASE32 = string.ascii_uppercase + "234567"
 GITLEAKS_ENV = ("GITLEAKS_CONFIG", "GITLEAKS_CONFIG_TOML")
+# npm audit --audit-level=high refuses at these severities; lower ones are not compared.
+NPM_REFUSED_SEVERITIES = frozenset({"high", "critical"})
+# Where a pre-existing advisory's register row is looked up, in order: the local register beside
+# the checkout, the local register of the main checkout when the gate runs in a worktree, then the
+# tracked dispositions.
+LOCAL_REGISTER = "security-findings.md"
+TRACKED_REGISTER = Path("docs") / "security-dispositions.md"
+GHSA = re.compile(r"GHSA(?:-[0-9a-z]{4}){3}")
 WITHHELD = "[withheld]"
 EXIT_REFUSED = 1
 
@@ -134,6 +147,8 @@ class Context:
     work: Path
     denylist: list[tuple[int, str]] = field(default_factory=list[tuple[int, str]])
     attachments: dict[str, bytes] = field(default_factory=dict[str, bytes])
+    # What a check reports without refusing; evaluate moves each check's entries to its Result.
+    warnings: list[str] = field(default_factory=list[str])
 
     @property
     def gitleaks_config(self) -> Path | None:
@@ -157,12 +172,13 @@ class Check:
 
 @dataclass(frozen=True)
 class Result:
-    """What one check found and how long it took."""
+    """What one check found, what it warned about, and how long it took."""
 
     name: str
     code: str
     refusals: list[Refusal]
     duration_s: float
+    warnings: list[str] = field(default_factory=list[str])
 
 
 # --------------------------------------------------------------------------------------------
@@ -486,64 +502,241 @@ def check_identity(ctx: Context) -> list[Refusal]:
     return refusals
 
 
-def check_audit(ctx: Context) -> list[Refusal]:
-    """Audit every changed lockfile; a scanner that cannot reach its advisory source refuses."""
-    changed = set(_nul_paths(git_bytes(ctx.root, "diff", "--name-only", "-z", ctx.base, ctx.head)))
+@dataclass(frozen=True)
+class Advisory:
+    """One advisory a scanner reported: its ID, its aliases and the package it names."""
+
+    id: str
+    aliases: tuple[str, ...]
+    package: str
+
+    @property
+    def ids(self) -> frozenset[str]:
+        """Return the ID and every alias; two advisories are the same when these intersect."""
+        return frozenset({self.id, *self.aliases})
+
+    @property
+    def label(self) -> str:
+        """Return the ID with its aliases, for a refusal or warning line."""
+        return " / ".join([self.id, *sorted(set(self.aliases) - {self.id})])
+
+
+def _json_object(data: bytes, what: str) -> dict[str, Any]:
+    try:
+        parsed: object = json.loads(data.decode("utf-8"))
+    except (UnicodeError, ValueError) as error:
+        raise GateError(f"{what} wrote no readable JSON: {error}") from error
+    if not isinstance(parsed, dict):
+        raise GateError(f"{what} JSON is not an object")
+    return cast("dict[str, Any]", parsed)
+
+
+def _base_files(ctx: Context, paths: Sequence[str], directory: Path) -> bool:
+    """Write BASE's copy of each path that exists there into `directory`; False when none does."""
+    listed = set(_nul_paths(git_bytes(ctx.root, "ls-tree", "-z", "--name-only", ctx.base, *paths)))
+    directory.mkdir(parents=True, exist_ok=True)
+    for path in paths:
+        if path in listed:
+            content = git_bytes(ctx.root, "show", f"{ctx.base}:{path}")
+            (directory / Path(path).name).write_bytes(content)
+    return bool(listed)
+
+
+def npm_advisories(directory: Path, what: str) -> list[Advisory]:
+    """Return every HIGH or CRITICAL advisory npm audit reports for the lockfile in `directory`."""
+    result = _run(
+        ["npm", "audit", "--audit-level=high", "--package-lock-only", "--json"], directory
+    )
+    if result.returncode not in {0, 1}:
+        raise GateError(f"{what} exited {result.returncode}: {_last_line(result.stderr)}")
+    report = _json_object(result.stdout, what)
+    if "error" in report:
+        raise GateError(f"{what} reported an error: {str(report['error'])[:200]}")
+    vulnerabilities = report.get("vulnerabilities")
+    if not isinstance(vulnerabilities, dict):
+        raise GateError(f"{what} JSON has no vulnerabilities object")
+    found: dict[tuple[str, str], Advisory] = {}
+    for entry in cast("dict[str, object]", vulnerabilities).values():
+        if not isinstance(entry, dict):
+            continue
+        for via in cast("list[object]", cast("dict[str, Any]", entry).get("via", [])):
+            # A string `via` names the dependency that carries the advisory; only objects are one.
+            if not isinstance(via, dict):
+                continue
+            item = cast("dict[str, Any]", via)
+            if str(item.get("severity")) not in NPM_REFUSED_SEVERITIES:
+                continue
+            ghsa = GHSA.search(str(item.get("url", "")))
+            source = str(item.get("source", "?"))
+            primary = ghsa.group(0) if ghsa else f"npm-advisory-{source}"
+            package = str(item.get("name", "?"))
+            found[(primary, package)] = Advisory(primary, (f"npm-advisory-{source}",), package)
+    if result.returncode == 1 and not found:
+        raise GateError(f"{what} exited 1 but listed no HIGH or CRITICAL advisory")
+    return list(found.values())
+
+
+def pip_advisories(ctx: Context, project: Path | None, what: str) -> list[Advisory]:
+    """Return every advisory pip-audit reports for the uv.lock of `project` (HEAD when None)."""
+    side = "head" if project is None else "base"
+    requirements = ctx.work / f"requirements-{side}.txt"
+    report = ctx.work / f"pip-audit-{side}.json"
+    directory = [] if project is None else ["--directory", str(project)]
+    export = _run(
+        [
+            "uv",
+            "export",
+            *directory,
+            "--frozen",
+            "--all-extras",
+            "--all-groups",
+            "--no-emit-project",
+            "--format",
+            "requirements-txt",
+            "-o",
+            str(requirements),
+        ],
+        ctx.root,
+    )
+    if export.returncode != 0:
+        raise GateError(f"uv export exited {export.returncode}: {_last_line(export.stderr)}")
+    audit = _run(
+        [
+            "uv",
+            "run",
+            "--frozen",
+            "pip-audit",
+            "--strict",
+            "--disable-pip",
+            *(arg for vuln, _ in PIP_AUDIT_REVIEWED for arg in ("--ignore-vuln", vuln)),
+            "-r",
+            str(requirements),
+            "--format",
+            "json",
+            "--output",
+            str(report),
+        ],
+        ctx.root,
+    )
+    if audit.returncode not in {0, 1}:
+        raise GateError(
+            f"{what} exited {audit.returncode}: {_last_line(audit.stdout + audit.stderr)}"
+        )
+    try:
+        data = report.read_bytes()
+    except OSError as error:
+        raise GateError(f"{what} wrote no report: {error}") from error
+    dependencies = _json_object(data, what).get("dependencies")
+    if not isinstance(dependencies, list):
+        raise GateError(f"{what} JSON has no dependencies list")
+    found = [
+        Advisory(str(vuln["id"]), tuple(str(a) for a in vuln.get("aliases", [])), str(dep["name"]))
+        for dep in cast("list[dict[str, Any]]", dependencies)
+        for vuln in cast("list[dict[str, Any]]", dep.get("vulns", []))
+    ]
+    if audit.returncode == 1 and not found:
+        raise GateError(
+            f"{what} exited 1 but listed no advisory: {_last_line(audit.stdout + audit.stderr)}"
+        )
+    return found
+
+
+def register_files(root: Path) -> list[Path]:
+    """Return the registers a pre-existing advisory's row is looked up in, in order."""
+    common = Path(git_text(root, "rev-parse", "--path-format=absolute", "--git-common-dir"))
+    candidates = [root / LOCAL_REGISTER, common.parent / LOCAL_REGISTER, root / TRACKED_REGISTER]
+    unique: list[Path] = []
+    for path in candidates:
+        if path not in unique:
+            unique.append(path)
+    return unique
+
+
+def register_row(registers: Sequence[Path], advisory: Advisory) -> str | None:
+    """Return the ID of the first register row that names any of the advisory's identifiers."""
+    # A bare numeric npm source would match unrelated text; only named identifiers are looked up.
+    names = [i for i in advisory.ids if not i.startswith("npm-advisory-")]
+    patterns = [re.compile(rf"(?<![\w-]){re.escape(name)}(?![\w-])") for name in names]
+    for register in registers:
+        try:
+            text = register.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        for line in text.splitlines():
+            cells = line.split("|")
+            if not line.startswith("| ") or len(cells) < 3:  # noqa: PLR2004 - "| id | ..."
+                continue
+            if any(p.search(line) for p in patterns):
+                return cells[1].strip()
+    return None
+
+
+def compare_advisories(
+    ctx: Context, what: str, sides: tuple[Sequence[Advisory], Sequence[Advisory]]
+) -> list[Refusal]:
+    """Refuse each HEAD advisory none of whose identifiers BASE reports; warn on the rest.
+
+    `sides` is (HEAD's advisories, BASE's). Each warning goes to `ctx.warnings`.
+    """
+    head, base = sides
+    known = frozenset(i for advisory in base for i in advisory.ids)
     refusals: list[Refusal] = []
-    for lockfile in NPM_LOCKFILES:
-        if lockfile in changed:
-            directory = ctx.root / Path(lockfile).parent
-            result = _run(["npm", "audit", "--audit-level=high", "--package-lock-only"], directory)
-            if result.returncode != 0:
-                refusals.append(
-                    Refusal(
-                        "AUDIT_FINDING",
-                        f"npm audit {lockfile} exited {result.returncode}: "
-                        f"{_last_line(result.stdout + result.stderr)}",
-                    )
-                )
+    registers: list[Path] | None = None
+    for advisory in head:
+        if not advisory.ids & known:
+            detail = f"{what} {advisory.label} in {advisory.package} is new versus BASE"
+            refusals.append(Refusal("AUDIT_FINDING", detail))
+            continue
+        registers = register_files(ctx.root) if registers is None else registers
+        row = register_row(registers, advisory)
+        where = f"register row {row}" if row else "no register row"
+        ctx.warnings.append(
+            f"{what} {advisory.label} in {advisory.package} is pre-existing versus BASE ({where})"
+        )
+    return refusals
+
+
+def _npm_sides(ctx: Context, lockfile: str) -> tuple[list[Advisory], list[Advisory]]:
+    parent = Path(lockfile).parent
+    what = f"npm audit {lockfile}"
+    head = npm_advisories(ctx.root / parent, what)
+    base_dir = ctx.work / "base" / parent
+    _base_files(ctx, [f"{parent}/package.json", f"{parent}/.npmrc", lockfile], base_dir)
+    has_lock = (base_dir / "package-lock.json").is_file()
+    return head, npm_advisories(base_dir, f"{what} (BASE)") if has_lock else []
+
+
+def _uv_sides(ctx: Context) -> tuple[list[Advisory], list[Advisory]]:
+    what = "pip-audit uv.lock"
+    head = pip_advisories(ctx, None, what)
+    base_dir = ctx.work / "base" / "python"
+    _base_files(ctx, ["pyproject.toml", "uv.lock"], base_dir)
+    has_lock = (base_dir / "uv.lock").is_file() and (base_dir / "pyproject.toml").is_file()
+    return head, pip_advisories(ctx, base_dir, f"{what} (BASE)") if has_lock else []
+
+
+def check_audit(ctx: Context) -> list[Refusal]:
+    """Audit every changed lockfile against BASE's: refuse only advisories new in HEAD.
+
+    An advisory is its ID plus aliases; it is pre-existing when any of them is among BASE's. A
+    pre-existing one warns with the register row that owns it ("no register row" when none does)
+    and never refuses. A scanner that cannot run, on either side, refuses.
+    """
+    changed = set(_nul_paths(git_bytes(ctx.root, "diff", "--name-only", "-z", ctx.base, ctx.head)))
+    audited = [lock for lock in NPM_LOCKFILES if lock in changed]
     if "uv.lock" in changed:
-        requirements = ctx.work / "requirements.txt"
-        export = _run(
-            [
-                "uv",
-                "export",
-                "--frozen",
-                "--all-extras",
-                "--all-groups",
-                "--no-emit-project",
-                "--format",
-                "requirements-txt",
-                "-o",
-                str(requirements),
-            ],
-            ctx.root,
-        )
-        if export.returncode != 0:
-            detail = f"uv export exited {export.returncode}: {_last_line(export.stderr)}"
-            return [*refusals, Refusal("AUDIT_FINDING", detail)]
-        audit = _run(
-            [
-                "uv",
-                "run",
-                "--frozen",
-                "pip-audit",
-                "--strict",
-                "--disable-pip",
-                *(arg for vuln, _ in PIP_AUDIT_REVIEWED for arg in ("--ignore-vuln", vuln)),
-                "-r",
-                str(requirements),
-            ],
-            ctx.root,
-        )
-        if audit.returncode != 0:
-            refusals.append(
-                Refusal(
-                    "AUDIT_FINDING",
-                    f"pip-audit uv.lock exited {audit.returncode}: "
-                    f"{_last_line(audit.stdout + audit.stderr)}",
-                )
-            )
+        audited.append("uv.lock")
+    if not audited:
+        return []
+    refusals: list[Refusal] = []
+    for lockfile in audited:
+        what = "pip-audit uv.lock" if lockfile == "uv.lock" else f"npm audit {lockfile}"
+        try:
+            sides = _uv_sides(ctx) if lockfile == "uv.lock" else _npm_sides(ctx, lockfile)
+        except GateError as error:
+            refusals.append(Refusal("AUDIT_FINDING", f"{what} could not run: {error}"))
+            continue
+        refusals += compare_advisories(ctx, what, sides)
     return refusals
 
 
@@ -595,11 +788,15 @@ def evaluate(
         if on_start is not None:
             on_start(check.name)
         start = time.monotonic()
+        mark = len(ctx.warnings)
         try:
             refusals = check.run(ctx)
         except (GateError, OSError, ValueError, UnicodeError) as error:
             refusals = [Refusal(check.code, f"the check could not run: {error}")]
-        results.append(Result(check.name, check.code, refusals, round(time.monotonic() - start, 6)))
+        warnings = ctx.warnings[mark:]
+        results.append(
+            Result(check.name, check.code, refusals, round(time.monotonic() - start, 6), warnings)
+        )
     return results
 
 
@@ -654,11 +851,12 @@ def redact(text: str, denylist: Sequence[tuple[int, str]]) -> str:
 
 def _lines(stage: str, result: Result, denylist: Sequence[tuple[int, str]]) -> list[str]:
     label = f"{stage}{result.name}"
-    if not result.refusals:
-        return [f"publication-gate: {label} ok"]
-    return [
+    lines = [
         f"publication-gate: {label} REFUSED {r.code} {redact(r.detail, denylist)}"
         for r in result.refusals
+    ] or [f"publication-gate: {label} ok"]
+    return lines + [
+        f"publication-gate: {label} WARN {redact(warning, denylist)}" for warning in result.warnings
     ]
 
 
@@ -676,6 +874,7 @@ def _steps(results: Sequence[Result], denylist: Sequence[tuple[int, str]]) -> li
             "refusals": [
                 {"code": f.code, "detail": redact(f.detail, denylist)} for f in r.refusals
             ],
+            "warnings": [redact(w, denylist) for w in r.warnings],
             "child_records": [],
         }
         for r in results

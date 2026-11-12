@@ -175,6 +175,9 @@ make merge-pr PR=<n> CONFIRM=yes  # after the owner's go: squash-merges, then fa
   Run `make publication-gate` alone to check without pushing; `BASE` defaults to `public/main`, so
   run `git fetch public` first. The gate requires the test records verify-clean writes
   ([which records](docs/test-run-records.md#which-records-the-publication-gate-accepts)).
+- Dependency advisories: the push tier refuses only an advisory new versus `BASE` (its ID and
+  aliases are all absent from `BASE`'s lockfile). A pre-existing one prints a `WARN` line naming
+  its register row. The merge tier's ASH scan still refuses every open CRITICAL or HIGH.
 - Merge tier: `make release-gate` reuses a recorded verify-clean of the same tree instead of
   re-running it ([which record](docs/test-run-records.md#which-verify-clean-record-the-release-gate-reuses)).
   A new commit on the branch changes the tree, so the push and merge tiers run again for it.

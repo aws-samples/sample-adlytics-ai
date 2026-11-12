@@ -56,7 +56,89 @@ command wrote (or returned on an exact replay).
   `COMMAND_ID_CONFLICT` and writes nothing. An exact replay returns the first receipt.
 - `pause` and `cancel` are refused with `RUN_GRANT_PENDING_APPLY` while a run's release grant has
   committed and not yet applied; retry once the run reads `GRANTED`.
-- The hold commands are accepted only when the mode reads `GRAPH`.
+- The hold commands are accepted only when the mode reads `GRAPH`
+  ([Cut over to GRAPH mode](#cut-over-to-graph-mode)).
+- `admit` admits a historical input (one whose period ends on or before the replay band's cut)
+  like any other. The receipt records `admission_class`, and the materialization port logs
+  `historical_admitted` with the dataset and period
+  ([ADR-161](../../decisions/adr-161-admit-historical-deliveries-and-record-their-admission-class.md)).
+  A `--label` is bound into the request digest and never refused.
+
+### Cut over to GRAPH mode
+
+**Purpose.** The operational plane deploys in `LEGACY` mode, so pages still refresh one at a time.
+The store ships with no mode item, and an absent item reads `LEGACY`. Set-at-once page refresh
+and the hold commands start only in `GRAPH`. Only `enter-graph` enters it; `set-mode --to GRAPH`
+is refused.
+
+**Accepted in dev only.** Dev is the only environment that runs in `GRAPH`
+([D2 live acceptance](../../../validation/RESULTS.md#d2-pages-and-graph-control-plane-live-acceptance-on-dev--2026-10-18)).
+The commands are unit-tested (`tests/unit/test_execution_graph_cutover.py`); no other environment
+has been cut over.
+
+**Prerequisites.**
+
+- The plane is deployed (`ADLYTICS_OPERATIONAL_STATUS_PROVISIONED=true`), and your profile is the
+  bound human operator identity.
+- The legacy coordinator (publications) table and the stack that owns it. The zero proof reads
+  `DRAIN_SEQ` and the open legacy write plans there, and the CLI refuses a stack that doesn't own
+  the table.
+- A quiet window. While the mode reads `LEGACY_DRAINING`, a new delivery makes no admission call
+  and waits in its queue, and fixture landing is refused with `RUN_ADMISSION_NOT_ACTIVE`.
+
+**Steps.** `<OPERATOR>` is `uv run python -m adapters.jobs.execution_graph.operator <COMMON INPUTS>
+--store-stack <STORE_STACK>`; `<COORDINATOR>` is `--coordinator-table <COORDINATOR_TABLE>
+--coordinator-stack <COORDINATOR_STACK>`.
+
+```bash
+<OPERATOR> show-mode                      # expect LEGACY or SHADOW; note the revision
+<OPERATOR> drain-status <COORDINATOR>     # prints deadline_bounds_if_drained_now
+<OPERATOR> set-mode --command-id <DRAIN_COMMAND_ID> --to LEGACY_DRAINING \
+  --expected-revision <REVISION> --drain-deadline <D> <COORDINATOR>
+<OPERATOR> enumerate <COORDINATOR>        # repeat until zero: true and stable: true
+<OPERATOR> show-mode                      # the revision after the drain CAS
+<OPERATOR> enter-graph --command-id <ENTER_COMMAND_ID> --expected-revision <REVISION> <COORDINATOR>
+```
+
+- Every write command (`set-mode`, `enter-graph`, `clear-hold`) takes its own new `--command-id`.
+  `set-mode` and `enter-graph` refuse a reused id with `MODE_REVISION_CHANGED`, even though the
+  revision is current, and write nothing, so `enter-graph` with the drain's id leaves the mode in
+  `LEGACY_DRAINING`. `clear-hold` refuses a reused id that names a different command with
+  `COMMAND_ID_CONFLICT`.
+- `set-mode --to SHADOW` first is optional; both `LEGACY` and `SHADOW` can drain.
+- A drain deadline `D` outside the printed bounds is refused with `DRAIN_DEADLINE_OUT_OF_BOUND`.
+- `enumerate` is refused with `DRAIN_FENCE_NOT_ELAPSED` until the drain CAS plus `T_max` plus the
+  margin has passed. It counts the four open legacy families F1-F4.
+- `enter-graph` repeats the zero proof. It is refused with `DRAIN_NOT_ZERO` while a family is
+  open, and with `DRAIN_SEQ_CHANGED` when legacy work moved during the proof; run it again.
+
+**Verify.**
+
+- Exit 0 prints `mode: GRAPH`, `graph_entered_at` and `post_cas_zero: true`.
+- Exit 1 means the `GRAPH` CAS committed but the read after it failed (`post_cas_unread` or
+  `mode_unread`). Re-read with `enumerate <COORDINATOR>`, which in `GRAPH` exits 3 on an open
+  family.
+- Exit 3 means a family was open after the CAS. Stop and investigate; the hold stays set.
+- `enter-graph` leaves the automatic-admission hold set, so scheduled and delivery runs wait. Once
+  the read after the CAS is zero, release them:
+
+  ```bash
+  <OPERATOR> clear-hold --command-id <CLEAR_HOLD_COMMAND_ID>
+  ```
+
+**Roll back.**
+
+- Before `enter-graph`, abort the drain with a new id; read the revision with `show-mode` first:
+
+  ```bash
+  <OPERATOR> set-mode --command-id <ABORT_COMMAND_ID> --to LEGACY \
+    --expected-revision <REVISION> <COORDINATOR>
+  ```
+
+  The same command, with a new id, leaves `SHADOW`. Pages keep refreshing one at a time.
+- After `enter-graph`: no command leaves `GRAPH`. The mode table has no transition out of it, and
+  the abort is refused with `CUTOVER_ABORT_NOT_PERMITTED` once `graph_entered_at` exists. Treat the
+  cutover as one-way.
 
 ### Dead letters: `dlq-status` and `redrive`
 
@@ -154,8 +236,10 @@ a real put, the keys written.
 
 **Safety notes.**
 
-- A historical (phase-B) delivery, a class or day selection with `--probe-retrieval`, or two names
-  are refused with zero puts (`FULL_HISTORY_NOT_ENABLED` for historical input).
+- A class or day selection with `--probe-retrieval`, or two names, are refused with zero puts.
+  `--delivery` may name any one planned cadence delivery, historical ones included (ADR-161).
+  `--probe-retrieval` copies only a phase-A cadence delivery (run day after the backfill cut),
+  because a probe copy of an older day would sit above phase B's final rows.
 - `--no-twin` is accepted only with `--probe-retrieval`: the key is put and no `on_demand` twin
   request is sent.
 - `--fixtures <FIXTURE>[,...]` narrows a `--classes` selection to the named enumerated fixtures,

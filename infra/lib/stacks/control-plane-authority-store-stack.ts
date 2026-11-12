@@ -29,18 +29,22 @@ export interface ControlPlaneAuthorityStoreStackProps extends cdk.StackProps {
  * The probe pair is built by the same construct from the same generated schema. Store-level live
  * tests write only there, through the probe role, which holds exactly the generated action set on
  * the probe tables and nothing on the live table. No worker role is granted anything on them
- * (V-15). Composed with the development-only operational plane, like the status store.
+ * (V-15). Composed with the opt-in operational plane, like the status store.
  *
  * The probe role trusts this account's root, so any principal here that may assume roles can use
  * it; that is acceptable for the development probe tables and is why it reaches no live table.
+ * The probe pair and its role exist only in ENV=dev: the plane is accepted in any environment
+ * (owner decision D4, 2026-11-12), and probes run only against dev.
  *
  * S2: the live table's stream (new images) carries committed graph items to the status v2
  * projector, which holds stream-read actions only. The probe tables have no stream.
  */
 export class ControlPlaneAuthorityStoreStack extends cdk.Stack {
   public readonly liveTable: dynamodb.Table;
+  /** The probe pair; empty outside ENV=dev. */
   public readonly probeTables: dynamodb.Table[];
-  public readonly probeRole: iam.Role;
+  /** The probe role; absent outside ENV=dev. */
+  public readonly probeRole?: iam.Role;
 
   constructor(scope: Construct, id: string, props: ControlPlaneAuthorityStoreStackProps) {
     super(scope, id, props);
@@ -49,39 +53,12 @@ export class ControlPlaneAuthorityStoreStack extends cdk.Stack {
       throw new Error('The execution-graph store requires the operational plane.');
     }
     this.liveTable = this.graphTable('ExecutionGraph', LIVE_TABLE_SUFFIX, config, true);
-    this.probeTables = PROBE_TABLE_SUFFIXES.map((suffix, index) =>
-      this.graphTable(index === 0 ? 'ExecutionGraphProbe' : 'ExecutionGraphProbeLegacy', suffix, config),
-    );
-    this.probeRole = new iam.Role(this, 'ExecutionGraphProbeRole', {
-      roleName: `adlytics-${config.envName}-execution-graph-probe`,
-      assumedBy: new iam.AccountRootPrincipal(),
-      description: 'Store-level traceability probes: the probe tables only, never the live table.',
-      maxSessionDuration: cdk.Duration.hours(1),
-    });
-    this.probeRole.addToPolicy(
-      new iam.PolicyStatement({
-        actions: [...PROBE_ROLE_ACTIONS],
-        resources: this.probeTables.map((table) => table.tableArn),
-      }),
-    );
-    // S5 (P5): the probe's stuck-flow and measurement controls publish `AuthorityScope=probe`
-    // gauges and read them back. Neither action has resource-level scoping; the namespace
-    // condition keeps the put inside `Adlytics`, and neither touches any table.
-    this.probeRole.addToPolicy(
-      new iam.PolicyStatement({
-        sid: 'ProbeScopeGauges',
-        actions: ['cloudwatch:PutMetricData'],
-        resources: ['*'],
-        conditions: { StringEquals: { 'cloudwatch:namespace': 'Adlytics' } },
-      }),
-    );
-    this.probeRole.addToPolicy(
-      new iam.PolicyStatement({
-        sid: 'ProbeScopeGaugeReadback',
-        actions: ['cloudwatch:GetMetricData'],
-        resources: ['*'],
-      }),
-    );
+    this.probeTables = [];
+    if (config.envName === 'dev') {
+      const probe = this.probeAccess(config);
+      this.probeTables = probe.tables;
+      this.probeRole = probe.role;
+    }
     for (const [logicalId, key, value, description] of [
       [
         'ExecutionGraphTableNameParameter',
@@ -110,6 +87,44 @@ export class ControlPlaneAuthorityStoreStack extends cdk.Stack {
     }
     applyRemovalPolicy(this, cdk.RemovalPolicy.RETAIN);
     applyStandardTags(this, config);
+  }
+
+  /** The dev probe pair and the role that alone may write it (V-15). */
+  private probeAccess(config: AppConfig): { tables: dynamodb.Table[]; role: iam.Role } {
+    const tables = PROBE_TABLE_SUFFIXES.map((suffix, index) =>
+      this.graphTable(index === 0 ? 'ExecutionGraphProbe' : 'ExecutionGraphProbeLegacy', suffix, config),
+    );
+    const role = new iam.Role(this, 'ExecutionGraphProbeRole', {
+      roleName: `adlytics-${config.envName}-execution-graph-probe`,
+      assumedBy: new iam.AccountRootPrincipal(),
+      description: 'Store-level traceability probes: the probe tables only, never the live table.',
+      maxSessionDuration: cdk.Duration.hours(1),
+    });
+    role.addToPolicy(
+      new iam.PolicyStatement({
+        actions: [...PROBE_ROLE_ACTIONS],
+        resources: tables.map((table) => table.tableArn),
+      }),
+    );
+    // S5 (P5): the probe's stuck-flow and measurement controls publish `AuthorityScope=probe`
+    // gauges and read them back. Neither action has resource-level scoping; the namespace
+    // condition keeps the put inside `Adlytics`, and neither touches any table.
+    role.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'ProbeScopeGauges',
+        actions: ['cloudwatch:PutMetricData'],
+        resources: ['*'],
+        conditions: { StringEquals: { 'cloudwatch:namespace': 'Adlytics' } },
+      }),
+    );
+    role.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'ProbeScopeGaugeReadback',
+        actions: ['cloudwatch:GetMetricData'],
+        resources: ['*'],
+      }),
+    );
+    return { tables, role };
   }
 
   private graphTable(

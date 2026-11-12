@@ -551,7 +551,7 @@ describe('what this repository ships', () => {
     });
   });
 
-  it('provisions operational status only for dev with the exact boolean flag', () => {
+  it('provisions operational status in any environment with the exact boolean flag (D4)', () => {
     withDeploymentEnv(
       { ...CORE_ENVIRONMENT_SUPPLIED, ADLYTICS_OPERATIONAL_STATUS_PROVISIONED: 'true' },
       () => expect(getConfig('dev').operationalStatus).toEqual({
@@ -562,7 +562,7 @@ describe('what this repository ships', () => {
     );
     withDeploymentEnv(
       { ...CORE_ENVIRONMENT_SUPPLIED, ADLYTICS_OPERATIONAL_STATUS_PROVISIONED: 'true' },
-      () => expect(() => defaultConfig('staging')).toThrow(/only for ENV=dev/),
+      () => expect(defaultConfig('staging').operationalStatus.provisioned).toBe(true),
     );
     withDeploymentEnv(
       { ...CORE_ENVIRONMENT_SUPPLIED, ADLYTICS_OPERATIONAL_STATUS_PROVISIONED: 'yes' },
@@ -570,7 +570,7 @@ describe('what this repository ships', () => {
     );
   });
 
-  it('provisions online evaluation only in dev and takes V4 execution from one dev-only flag (ADR-079)', () => {
+  it('provisions online evaluation in any environment and takes V4 execution from one flag (ADR-079, D4)', () => {
     const provisioned = {
       ...CORE_ENVIRONMENT_SUPPLIED,
       ADLYTICS_TRANSACTION_SEARCH: 'true',
@@ -586,17 +586,39 @@ describe('what this repository ships', () => {
     });
     withDeploymentEnv(
       provisioned,
-      () => expect(() => defaultConfig('staging')).toThrow(/Online evaluation may be provisioned only for ENV=dev/),
+      () => expect(defaultConfig('staging').onlineEvaluation.provisioned).toBe(true),
     );
     withDeploymentEnv(
-      { ...CORE_ENVIRONMENT_SUPPLIED, ADLYTICS_ONLINE_EVALUATION_V4_REQUESTED: 'true' },
-      () => expect(() => defaultConfig('staging')).toThrow(/V4 execution may be requested only for ENV=dev/),
+      { ...provisioned, ADLYTICS_ONLINE_EVALUATION_V4_REQUESTED: 'true' },
+      () => expect(defaultConfig('staging').onlineEvaluationV4).toEqual({ executionRequested: true }),
     );
     withDeploymentEnv(
       { ...CORE_ENVIRONMENT_SUPPLIED, ADLYTICS_ONLINE_EVALUATION_V4_REQUESTED: 'true' },
       () => expect(() => getConfig('dev')).toThrow(/V4 execution requires ADLYTICS_ONLINE_EVALUATION_PROVISIONED/),
     );
   });
+  it('keeps every D4 setting off when its flag is absent, in dev and elsewhere', () => {
+    withDeploymentEnv(CORE_ENVIRONMENT_SUPPLIED, () => {
+      for (const envName of ['dev', 'demo']) {
+        const config = defaultConfig(envName);
+        expect(config.onlineEvaluation.provisioned).toBe(false);
+        expect(config.onlineEvaluationV4.executionRequested).toBe(false);
+        expect(config.operationalStatus.provisioned).toBe(false);
+      }
+    });
+  });
+
+  it('still accepts quality-review password auth only in dev (D4 positive control)', () => {
+    // pragma: allowlist nextline secret (A-TEST-LITERALS-001)
+    const enabled = { ...CORE_ENVIRONMENT_SUPPLIED, ADLYTICS_QUALITY_REVIEW_VALIDATION_PASSWORD_AUTH: 'true' };
+    withDeploymentEnv(enabled, () => {
+      expect(() => getConfig('demo')).toThrow(
+        /ADLYTICS_QUALITY_REVIEW_VALIDATION_PASSWORD_AUTH may be enabled only for ENV=dev/,
+      );
+      expect(getConfig('dev').auth.qualityReviewValidationPasswordAuthEnabled).toBe(true);
+    });
+  });
+
   it('ignores the retired enablement, retention-confirmation, capture, and V3 flags (ADR-079)', () => {
     withDeploymentEnv(
       {

@@ -3,8 +3,8 @@
 
 from typing import Any, Final
 
-CONTRACT_REVISION: Final = 2
-CONTRACT_DIGEST: Final = 'c48db4ac97dcae5ea5fca35e429c78b88fd66f2572000f0beb3ce39988ea7e8e'
+CONTRACT_REVISION: Final = 3
+CONTRACT_DIGEST: Final = '8a589c8f0e134977eab39d81e51062e56ecc892e0591fb2e999b1ad3a8b36469'
 PROTOCOL_VERSION: Final = 'v1'
 AUTHORITY_EPOCHS: Final[Any] = (
 {'shadow': 0, 'graph': 1}
@@ -214,9 +214,6 @@ API_ROUTES: Final[Any] = (
 ADMISSION_CLASSES: Final[Any] = (
 ('cadence', 'bounded_validation', 'historical')
 )
-CALLER_LABELS_REFUSED: Final[Any] = (
-('full_history',)
-)
 RUN_REQUEST_SCHEMA: Final[Any] = (
 {'RunRequest.v1': {'required': ('request_id',
                                 'protocol_version',
@@ -247,13 +244,13 @@ RUN_REQUEST_SCHEMA: Final[Any] = (
                                      'protocol_version',
                                      'contract_revision',
                                      'manifest_key',
-                                     'version_id')}}
+                                     'version_id',
+                                     'admission_class')}}
 )
 REFUSAL_CLASSES: Final[Any] = (
 {'pre_domain': ('SCHEMA_INVALID',
                 'MANIFEST_KEY_BODY_MISMATCH',
                 'PROTOCOL_MIGRATION_UNSUPPORTED',
-                'FULL_HISTORY_NOT_ENABLED',
                 'RUN_REQUEST_REASON_NOT_PERMITTED',
                 'AGENT_MUTATION_NOT_ENABLED',
                 'LEGACY_ADOPTION_UNSUPPORTED',
@@ -264,7 +261,6 @@ REFUSAL_CLASSES: Final[Any] = (
                   'SLOT_REVISION_CHANGED'),
  'domain_decision_reasons': ('request_id_conflict',
                              'RUN_ADMISSION_NOT_ACTIVE',
-                             'FULL_HISTORY_NOT_ENABLED',
                              'manifest_key_rewritten',
                              'conflict_unit_blocked',
                              'conflict_unit_history_over_bound',
@@ -287,10 +283,6 @@ DECISION_TABLE: Final[Any] = (
   'when': 'mode_not_admitting',
   'decision': 'REFUSED',
   'reason': 'RUN_ADMISSION_NOT_ACTIVE'},
- {'row': 4,
-  'when': 'class_historical',
-  'decision': 'REFUSED',
-  'reason': 'FULL_HISTORY_NOT_ENABLED'},
  {'row': 5,
   'when': 'key_rewritten',
   'decision': 'REFUSED',
@@ -378,6 +370,7 @@ ROOT_VOCABULARY: Final[Any] = (
 HISTORICAL_POLICY: Final[Any] = (
 {'replay_base': '2026-10-06T00:00:00Z',
  'first_day': '2025-07-01',
+ 'paired_first_day': '2025-07-01',
  'cut': '2026-08-11',
  'stride_seconds': 64,
  'seal_slot_base': 463,

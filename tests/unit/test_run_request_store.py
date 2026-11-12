@@ -141,7 +141,7 @@ def test_bf10_row_2_commits_its_own_receipt_once_and_a_replay_returns_it() -> No
 
 
 def test_the_receipt_fingerprint_is_keyed_on_the_contract_revision() -> None:
-    """S1A-4: `F` carries contract_revision 2, not the contract file's bytes."""
+    """S1A-4: `F` carries contract_revision 3 (ADR-161), not the contract file's bytes."""
     from adapters.inbound.run_requests.service import INGESTION_TEMPLATE  # noqa: PLC0415
     from domain.operations.ingestion_root import (  # noqa: PLC0415
         ManifestVersion,
@@ -150,9 +150,9 @@ def test_the_receipt_fingerprint_is_keyed_on_the_contract_revision() -> None:
 
     _, store = _store()
     receipt = admit_run_request(request(), deps(store))
-    expected = manifest_fingerprint(ManifestVersion(PROBE_KEY, "version-1"), INGESTION_TEMPLATE, 2)
+    expected = manifest_fingerprint(ManifestVersion(PROBE_KEY, "version-1"), INGESTION_TEMPLATE, 3)
     assert receipt.fingerprint == expected
-    assert receipt.contract_revision == 2
+    assert receipt.contract_revision == 3
 
 
 def test_bf10_negative_an_injected_store_failure_commits_nothing() -> None:
@@ -170,7 +170,6 @@ def test_bf10_negative_an_injected_store_failure_commits_nothing() -> None:
     [
         (AuthorityMode.LEGACY, PROBE_KEY, {}, "RUN_ADMISSION_NOT_ACTIVE"),
         (AuthorityMode.LEGACY_DRAINING, PROBE_KEY, {}, "RUN_ADMISSION_NOT_ACTIVE"),
-        (AuthorityMode.SHADOW, HISTORICAL_KEY, {}, "FULL_HISTORY_NOT_ENABLED"),
         (AuthorityMode.SHADOW, PROBE_KEY, {"exact_versions": 2}, "manifest_key_rewritten"),
         (
             AuthorityMode.SHADOW,
@@ -192,6 +191,29 @@ def test_bf10_each_domain_state_refusal_writes_exactly_one_receipt_and_nothing_e
     assert len(client.transactions[0]) == 1
 
 
+@pytest.mark.covers("ADR-161")
+def test_a_historical_manifest_is_admitted_with_one_receipt_that_records_its_class() -> None:
+    client, store = _store(AuthorityMode.SHADOW)
+    receipt = admit_run_request(request(key=HISTORICAL_KEY), deps(store, HISTORICAL_KEY))
+    assert (receipt.decision, receipt.row, receipt.admission_class) == (
+        "ADMITTED",
+        20,
+        "historical",
+    )
+    receipts = [k for k in client.items if k[0].startswith("RECEIPT#")]
+    assert receipts == [(f"RECEIPT#{receipt.request_id}", "RECEIPT")]
+    item = client.items[receipts[0]]
+    assert item["admission_class"] == {"S": "historical"}
+    assert store.read_receipt(receipt.request_id) == receipt
+
+
+def test_a_refusal_before_the_manifest_read_records_no_admission_class() -> None:
+    client, store = _store(AuthorityMode.LEGACY)
+    receipt = admit_run_request(request(key=HISTORICAL_KEY), deps(store, HISTORICAL_KEY))
+    assert (receipt.reason, receipt.admission_class) == ("RUN_ADMISSION_NOT_ACTIVE", None)
+    assert "admission_class" not in client.items[(f"RECEIPT#{receipt.request_id}", "RECEIPT")]
+
+
 def test_an_absent_mode_item_reads_legacy_and_refuses_with_a_receipt() -> None:
     client, store = _store(None)
     assert store.read_mode() == ModeState(AuthorityMode.LEGACY, 0)
@@ -204,7 +226,6 @@ def test_an_absent_mode_item_reads_legacy_and_refuses_with_a_receipt() -> None:
     ("overrides", "signal"),
     [
         ({"protocol_version": "v2"}, "PROTOCOL_MIGRATION_UNSUPPORTED"),
-        ({"label": "full_history"}, "FULL_HISTORY_NOT_ENABLED"),
         ({"reason": "data_correction"}, "RUN_REQUEST_REASON_NOT_PERMITTED"),
         (
             {"caller_kind": "schedule", "reason": "data_correction"},

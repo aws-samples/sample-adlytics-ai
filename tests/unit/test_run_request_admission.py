@@ -4,8 +4,10 @@
 Covers V-1 to V-8, V-21, V-22, V-27, the decision half of V-29, BF-6, BF-7, BF-9, and the S2
 hard deny (a) and (b).
 
-Each of the 20 rows has one named test through the generated table (V-6), then the epoch-1
-effects are driven through the real service and adapter against the transactional fake.
+Each of the 19 rows (row 4 retired, ADR-161) has one named test through the generated table
+(V-6), then the epoch-1 effects are driven through the real service and adapter against the
+transactional fake. A failure here admits a rewritten, corrected or older input, or loses the
+recorded admission class.
 """
 
 from __future__ import annotations
@@ -23,6 +25,7 @@ from adapters.inbound.run_requests.service import (
 )
 from adapters.jobs.execution_graph.instantiate import require_receipt, shadow_graph_for
 from adapters.outbound.dynamodb.execution_graph import DynamoExecutionGraphStore, due_shard
+from domain.operations import run_request as run_request_module
 from domain.operations.execution_graph import (
     AuthorityMode,
     GraphCommandRefusedError,
@@ -96,7 +99,6 @@ ROWS: list[tuple[int, str, DecisionInputs, str | None]] = [
     (1, "RETURN_RECEIPT", inputs(receipt_digest="digest"), None),
     (2, "REFUSED", inputs(receipt_digest="other"), "request_id_conflict"),
     (3, "REFUSED", inputs(admitting=False, epoch=0), "RUN_ADMISSION_NOT_ACTIVE"),
-    (4, "REFUSED", inputs(admission_class=AdmissionClass.HISTORICAL), "FULL_HISTORY_NOT_ENABLED"),
     (5, "REFUSED", inputs(version_count=2), "manifest_key_rewritten"),
     (6, "REFUSED", inputs(blocked=True), "conflict_unit_blocked"),
     (7, "JOINED", inputs(active=active(fingerprint=F, r=R)), None),
@@ -184,6 +186,14 @@ def test_v6_the_generated_table_is_total_and_every_gap_fails_generation() -> Non
     )
     with pytest.raises(DecisionTableError, match="epoch-1 only"):
         check_decision_table(misplaced, retry_approved=True)
+    # ADR-161: row 4 is retired; a table that restores it is not the closed row set.
+    restored = (
+        *DECISION_TABLE[:3],
+        {"row": 4, "when": "class_historical", "decision": "REFUSED", "reason": "x"},
+        *DECISION_TABLE[3:],
+    )
+    with pytest.raises(DecisionTableError, match="DECISION_TABLE_NOT_TOTAL: rows"):
+        check_decision_table(restored, retry_approved=True)
     deciding_retry = tuple(
         {k: v for k, v in row.items() if k != "continue_to"} if row["row"] == 11 else row
         for row in DECISION_TABLE
@@ -483,8 +493,11 @@ def test_a_guard_race_re_reads_and_re_decides() -> None:
     assert client.items[(f"RUN#{first.run_id}", "RUN")]["state"] == {"S": "OPEN"}
 
 
-def test_hard_deny_a_full_history_label_and_a_derived_historical_class() -> None:
-    client, store = graph_store(AuthorityMode.SHADOW)
+@pytest.mark.covers("ADR-161")
+def test_a_full_history_label_and_a_historical_manifest_are_admitted_with_the_class_recorded() -> (
+    None
+):
+    _, store = graph_store(AuthorityMode.SHADOW)
     request = RunRequest(
         request_id="request-0001",
         protocol_version="v1",
@@ -496,21 +509,38 @@ def test_hard_deny_a_full_history_label_and_a_derived_historical_class() -> None
         requester_is_iam=True,
         label="full_history",
     )
-    with pytest.raises(GraphCommandRefusedError) as raised:
-        admit_run_request(
-            request,
-            AdmissionDependencies(store, FakeManifests(retrieved_at=R), fixed_now),
+    manifests = FakeManifests(retrieved_at=window_identity(request.manifest_key).retrieved_at)
+    labelled = admit_run_request(request, AdmissionDependencies(store, manifests, fixed_now))
+    assert (labelled.decision, labelled.admission_class) == ("ADMITTED", "bounded_validation")
+    # 09:23:00 is a phase-B backfill slot of the replay band: the derived class is historical.
+    historical = admit(store, "request-0002", key("20261006T092300Z"))
+    assert (historical.decision, historical.row, historical.reason) == ("ADMITTED", 20, None)
+    assert historical.admission_class == "historical"
+    assert store.read_receipt("request-0002") == historical
+    # Positive control: a cadence delivery in a phase-A probe slot records `cadence`.
+    cadence = admit(store, "request-0003", key("20261006T092521Z"))
+    assert (cadence.decision, cadence.admission_class) == ("ADMITTED", "cadence")
+
+
+@pytest.mark.covers("ADR-161")
+def test_the_admission_class_never_decides_so_rows_5_10_and_13_to_15_refuse_history_alike() -> None:
+    """Prove that retiring row 4 keeps integrity.
+
+    Over the closed input domain, a historical input gets exactly the decision a cadence one
+    gets, so every rewritten, uncorrected or older input is refused whatever its class.
+    """
+    domain = run_request_module._inputs(True)  # pyright: ignore[reportPrivateUsage]
+    historical = [i for i in domain if i.admission_class is AdmissionClass.HISTORICAL]
+    assert len(historical) == len(domain) // 3
+    refused_rows: set[int] = set()
+    for given in historical:
+        found = decide(DECISION_TABLE, given)
+        assert found == decide(
+            DECISION_TABLE, replace(given, admission_class=AdmissionClass.CADENCE)
         )
-    assert raised.value.signal == "FULL_HISTORY_NOT_ENABLED"
-    assert client.kinds() == ["MODE/MODE"]
-    refused = admit(store, "request-0002", key("20261006T092300Z"))
-    assert (refused.decision, refused.reason) == ("REFUSED", "FULL_HISTORY_NOT_ENABLED")
-    assert client.kinds() == ["MODE/MODE", "RECEIPT/RECEIPT"]
-    # Positive control: a bounded validation of a phase-A probe slot is admitted.
-    assert (
-        admit(store, "request-0003", key("20261006T092520Z"), reason="bounded_validation").decision
-        == "ADMITTED"
-    )
+        if found.decision == "REFUSED":
+            refused_rows.add(found.row)
+    assert {5, 10, 13, 14, 15} <= refused_rows
 
 
 def test_v2_data_correction_only_from_an_api_requester_in_the_group() -> None:

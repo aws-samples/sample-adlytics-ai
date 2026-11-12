@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: MIT-0
 """V-8: the derived `historical` class is total over the planner's own output.
 
+The class is recorded on the receipt and logged, never refused (ADR-161), so a wrong class is a
+wrong record, not a lost delivery.
+
 Every phase-B delivery (and every old daily run phase B replaces) classifies historical, and
 every phase-0 and phase-A delivery, and every reserved probe slot, classifies non-historical.
 The declared period alone cannot decide: phase-A runs restate days before the cut, and phase-0
@@ -210,3 +213,21 @@ def test_v8_a_naive_instant_or_inverted_policy_is_refused() -> None:
     facts = ManifestFacts("amc", "dsp_impressions", date(2026, 8, 12), datetime(2026, 10, 6))  # noqa: DTZ001
     with pytest.raises(ValueError, match="timezone-aware"):
         is_historical(facts, _policy())
+
+
+def test_a_paired_origin_after_the_first_span_day_is_refused() -> None:
+    with pytest.raises(ValueError, match="paired origin follows the first span day"):
+        replace(_policy(), paired_first_day=date(2025, 7, 2))
+
+
+def test_a_paired_offset_decodes_its_run_day_from_the_paired_origin() -> None:
+    vendor = ("vendor_central", "GET_VENDOR_SALES_REPORT")
+    base = replace(_policy(), encodings={vendor: RetrievalEncoding.PAIRED})
+    earlier = replace(base, paired_first_day=date(2025, 6, 17))
+    # Offset 2 x 418 + 0: day 418 after the origin. From 2025-07-01 that is 2026-08-23, after
+    # the cut; from 2025-06-17 it is 2026-08-09, on or before the cut.
+    facts = ManifestFacts(*vendor, date(2026, 8, 9), base.replay_base + timedelta(seconds=836))
+    assert earlier.paired_origin == date(2025, 6, 17)
+    assert base.paired_origin == date(2025, 7, 1)
+    assert not is_historical(facts, base)
+    assert is_historical(facts, earlier)

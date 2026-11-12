@@ -65,7 +65,6 @@ from adapters.jobs.ingest_delivery.semantic_sidecar import SIDECAR_BUSY
 from adapters.outbound.dynamodb.execution_graph_dispatch import graph_envelope
 from adapters.outbound.governed_materialization import (
     MANIFEST_INVALID,
-    FullHistoryRefusedError,
     MaterializationClaim,
     MaterializationClaimLostError,
     graph_materialization_claim,
@@ -198,7 +197,6 @@ GRAPH_RUN_FAILED: Final = "GRAPH_RUN_FAILED"
 GRAPH_ENVELOPE_NOT_MATERIALIZE: Final = "GRAPH_ENVELOPE_NOT_MATERIALIZE"
 """A graph envelope on the delivery route whose owner body is not `materialize_raw`."""
 ADMITTING_RECEIPT_MISSING: Final = "admitting_receipt_missing"
-_FULL_HISTORY: Final = "full_history_not_enabled"
 _DEPENDENCY_EXHAUSTED: Final = "dependency_exhausted"
 _UNCLASSIFIED: Final = "unclassified_error"
 _ENVELOPE_OVERSIZE: Final = "unit_envelope_oversize"
@@ -465,8 +463,6 @@ class _Current:
 
 
 def _failure_reason(error: AdlyticsError) -> str:
-    if isinstance(error, FullHistoryRefusedError):
-        return _FULL_HISTORY
     if isinstance(error, AdmittingReceiptMissingError):
         return ADMITTING_RECEIPT_MISSING
     if error.code == FEASIBILITY_REFUSED:
