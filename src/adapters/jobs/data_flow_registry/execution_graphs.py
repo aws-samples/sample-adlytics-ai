@@ -557,6 +557,7 @@ def _planner_findings(root: Path, contract: dict[str, Any]) -> list[str]:
     computed = {
         "replay_base": policy.replay_base.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "first_day": policy.first_day.isoformat(),
+        "paired_first_day": policy.paired_origin.isoformat(),
         "cut": policy.cut.isoformat(),
         "stride_seconds": policy.stride_seconds,
         "seal_slot_base": policy.seal_slot_base,

@@ -46,7 +46,6 @@ from domain.operations.run_request import (
     HistoricalPolicy,
     ManifestFacts,
     RetrievalEncoding,
-    is_historical,
     probe_slot_instants,
 )
 from domain.producer.models import (
@@ -763,6 +762,8 @@ class _PlanContext:
     contracts: dict[str, DataContract]
     encoded: frozenset[tuple[str, str]] = frozenset()
     """Every (source system, dataset) the replay band gives a retrieval encoding (`_encodings`)."""
+    paired_origin: date | None = None
+    """The paired encoding's day 0 (`paired_origin`); None means `first_day`."""
 
 
 def _plan_context(root: pathlib.Path, shape: CatalogShape) -> _PlanContext:
@@ -773,7 +774,34 @@ def _plan_context(root: pathlib.Path, shape: CatalogShape) -> _PlanContext:
         query_packs={pack.pack_id: pack for pack in load_query_packs(root)},
         contracts={contract.contract_id: contract for _, contract in load_contracts(root)},
         encoded=frozenset(_encodings(fixtures)),
+        paired_origin=paired_origin(fixtures, shape),
     )
+
+
+def paired_origin(fixtures: pathlib.Path, shape: CatalogShape) -> date:
+    """Return the paired encoding's day 0: `first_day`, or the earliest Vendor day before it.
+
+    A Vendor history may start before the AMC span. Its days before `first_day` then take
+    offsets from this earlier origin, so each still decodes to its own run day.
+    """
+    earliest = shape.fixture_span.first_day
+    for fixture, arrays in _VENDOR_DAILY_ARRAYS.items():
+        path = fixtures / fixture
+        if not path.exists():
+            continue
+        parsed: object = json.loads(path.read_text())
+        if not isinstance(parsed, dict):
+            raise LandingError(f"{fixture}: Vendor report must be an object.")
+        document = cast("dict[str, object]", parsed)
+        for array in arrays:
+            rows = document.get(array)
+            for row in cast("list[object]", rows) if isinstance(rows, list) else []:
+                if not isinstance(row, dict):
+                    continue
+                start = cast("dict[str, object]", row).get("startDate")
+                if isinstance(start, str):
+                    earliest = min(earliest, date.fromisoformat(start))
+    return earliest
 
 
 def _plan_fixture(context: _PlanContext, fixture: str) -> list[LandedDelivery]:
@@ -817,6 +845,7 @@ def _plan_fixture(context: _PlanContext, fixture: str) -> list[LandedDelivery]:
                     ),
                     None,
                 ),
+                paired_origin=context.paired_origin,
                 phase_a_only=fixture in AMC_PERIODIC_FIXTURES
                 and (str(declaration["source_system"]), str(declaration["source_dataset"]))
                 not in context.encoded,
@@ -1100,10 +1129,12 @@ class _SourceRunsRequest:
     shape: CatalogShape
     cadence_lag_days: int | None = None
     """The governed pack's `cadenceLagDays`, for a periodic corpus (ADR-110)."""
+    paired_origin: date | None = None
+    """The paired encoding's day 0 for a Vendor corpus (`paired_origin`); None means `first_day`."""
     phase_a_only: bool = False
     """Plan only periods landing after the backfill cut: the corpus's dataset has no retrieval
-    encoding in the pinned replay band, so an older delivery would be admitted as non-historical,
-    against the phase rule (V-8). Its older periods wait for an encoding in that band."""
+    encoding in the pinned replay band, so an older delivery would be recorded as non-historical,
+    against the phase rule (V-8, ADR-161). Its older periods wait for an encoding in that band."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -1497,7 +1528,9 @@ def _vendor_source_runs(
     runs: list[tuple[str, str, dict[str, object], date | None]] = []
     is_sales = fixture == "generated/vendor-sales-by-asin.json"
     adjustments = reported_units_adjustments(shape)
-    for day_index, run_day in enumerate(days):
+    origin = _paired_span_origin(request, days)
+    for run_day in days:
+        day_index = (run_day - origin).days
         final = _vendor_daily_document(
             _VendorDailyDocumentRequest(document, array_rows, arrays, run_day, adjustments)
         )
@@ -1544,6 +1577,23 @@ def _vendor_source_runs(
                 )
             )
     return tuple(runs)
+
+
+def _paired_span_origin(request: _SourceRunsRequest, days: tuple[date, ...]) -> date:
+    """Return the paired origin for a Vendor corpus, refusing a span the encoding cannot hold.
+
+    The paired offsets must stay below the seal and backfill slots, as the AMC stride guard keeps
+    a run's chunks inside its stride: an overlap would decode as another delivery's run day.
+    """
+    span = request.shape.fixture_span
+    origin = span.first_day if request.paired_origin is None else request.paired_origin
+    if days and days[0] < origin:
+        raise LandingError(f"{request.fixture}: a Vendor day precedes the paired origin {origin}.")
+    if days and (days[-1] - origin).days * 2 + 1 >= span.span_days * _RUN_RETRIEVAL_STRIDE_SECONDS:
+        raise LandingError(
+            f"{request.fixture}: the paired Vendor span reaches the seal retrieval slots."
+        )
+    return origin
 
 
 def _vendor_daily_document(
@@ -1739,6 +1789,7 @@ def historical_policy_for(
         probe_slot_base=probe_base,
         probe_slot_count=PROBE_SLOT_COUNT,
         encodings=_encodings(fixtures),
+        paired_first_day=paired_origin(fixtures, shape),
     )
     if any(offset(item) >= policy.probe_first_offset for item in planned):
         raise LandingError("a planned retrieval reaches the reserved probe slots.")
@@ -1812,13 +1863,11 @@ class ProbeRetrieval:
     window: str
 
 
-def named_cadence_delivery(
-    planned: tuple[LandedDelivery, ...], policy: HistoricalPolicy, name: str
-) -> LandedDelivery:
-    """Return exactly one named, non-historical `cadence` delivery, or refuse.
+def named_cadence_delivery(planned: tuple[LandedDelivery, ...], name: str) -> LandedDelivery:
+    """Return exactly one named `cadence` delivery, or refuse.
 
-    Refuses a name that is not exactly one planned key, a delivery that is not `cadence`, and
-    one the historical predicate classifies historical (`FULL_HISTORY_NOT_ENABLED`).
+    Refuses a name that is not exactly one planned key and a delivery that is not `cadence`. A
+    historical delivery is named like any other (ADR-161).
     """
     named = [item for item in planned if item.fixture == name]
     keys = {item.manifest.manifest_key for item in named}
@@ -1831,8 +1880,6 @@ def named_cadence_delivery(
     if len(cadence) != 1:
         raise LandingError("a named delivery must be a cadence delivery.")
     (delivery,) = cadence
-    if is_historical(manifest_facts(delivery.manifest), policy):
-        raise LandingError("FULL_HISTORY_NOT_ENABLED: the named delivery is historical.")
     return delivery
 
 
@@ -1844,11 +1891,16 @@ def plan_probe_retrieval(
     """Copy one named phase-A cadence delivery to a newer retrieval of the same window.
 
     Refuses, before any key is produced, a name that is not exactly one planned delivery, a
-    delivery that is not `cadence`, and one the historical predicate classifies historical
-    (`FULL_HISTORY_NOT_ENABLED`). The data bytes are unchanged; only `retrieved_at` moves, to the
+    delivery that is not `cadence`, and one whose run day is on or before the backfill cut. A
+    probe copy of an old day would sit above phase B's final rows (`restating_deliveries`), so
+    only a phase-A run is copied. The data bytes are unchanged; only `retrieved_at` moves, to the
     first free reserved probe instant, so the result is a new key, never a rewrite.
     """
-    original = named_cadence_delivery(planned, policy, request.name)
+    original = named_cadence_delivery(planned, request.name)
+    if original.run_day is None or original.run_day <= policy.cut:
+        raise LandingError(
+            "a probe retrieval copies only a phase-A cadence delivery (run day after the cut)."
+        )
     window = window_prefix(original.manifest)
     free = [instant for instant in probe_slot_instants(policy) if instant not in request.taken]
     if not free:
@@ -1856,8 +1908,6 @@ def plan_probe_retrieval(
     manifest = replace(original.manifest, retrieved_at=free[0])
     if window_prefix(manifest) != window or manifest.retrieved_at <= original.manifest.retrieved_at:
         raise LandingError("a probe retrieval must be a newer retrieval of the same window.")
-    if is_historical(manifest_facts(manifest), policy):
-        raise LandingError("FULL_HISTORY_NOT_ENABLED: a probe slot classified historical.")
     if manifest.prefix in {item.manifest.prefix for item in planned}:
         raise LandingError("the probe retrieval would land at a planned prefix.")
     (data,) = original.data

@@ -116,7 +116,7 @@ class _Arguments:
     no_twin: bool = False
     """Put only; send no `on_demand` twin request (accepted only with `probe_retrieval`)."""
     delivery: str | None = None
-    """Land exactly one named non-historical cadence delivery, at its planned key."""
+    """Land exactly one named cadence delivery, at its planned key."""
     graph_store_stack: str | None = None
     """S6 (V-19): the store stack owning the graph table the probe twin is decided in."""
     reserved_probe_key: str | None = None
@@ -249,7 +249,7 @@ def _parse_args(argv: tuple[str, ...]) -> _Arguments:
         "--delivery",
         action="append",
         type=_non_blank,
-        help="land exactly one named non-historical cadence delivery at its planned key",
+        help="land exactly one named cadence delivery at its planned key",
     )
     parsed = parser.parse_args(argv)
     if parsed.predecessor_execution_id is not None and parsed.dry_run:
@@ -634,19 +634,11 @@ def main(  # noqa: PLR0912, PLR0915
         deliveries: tuple[LandedDelivery, ...] = (probe.probe,)
     elif arguments.delivery is not None:
         try:
-            deliveries = (named_cadence_delivery(planned_all, policy, arguments.delivery),)
+            deliveries = (named_cadence_delivery(planned_all, arguments.delivery),)
         except LandingError as error:
             raise SystemExit(f"named delivery refused: {error}") from None
     else:
         deliveries = plan_landings(ROOT, arguments.selection)
-    historical = sum(
-        1 for delivery in deliveries if is_historical(manifest_facts(delivery.manifest), policy)
-    )
-    if historical:
-        # V-8 hard deny (S2): refused before any planning output or put.
-        raise SystemExit(
-            f"FULL_HISTORY_NOT_ENABLED: the selection holds {historical} historical deliveries"
-        )
     if not deliveries:
         raise SystemExit(
             "the plan selection is empty: no delivery matches --classes and the bounds"
@@ -830,7 +822,6 @@ def main(  # noqa: PLR0912, PLR0915
                         plan_digest=plan_digest,
                         progress=report_progress,
                         cancelled=cancelled.is_set,
-                        historical_policy=policy,
                         seal_guard=seal_guard,
                     )
                 )

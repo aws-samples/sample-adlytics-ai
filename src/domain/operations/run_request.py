@@ -23,7 +23,9 @@ span day. Two encodings exist:
   the run index, so the run day is `first_day + slot`. Seal slots follow, then backfill slots,
   then the reserved probe slots, which are never historical.
 - *paired* (Vendor day reports): offset `day_index x 2 + variant`, where variant 1 is the
-  restating report that falls due two days after its day.
+  restating report that falls due two days after its day. `day_index` counts from the paired
+  origin (`paired_first_day`, else `first_day`), which may precede `first_day` when a Vendor
+  history starts earlier than the AMC span.
 
 An instant before the base is a hand-built delivery that is not part of the replay, and an
 instant above the probe slots is outside the band, where the declared period decides. The
@@ -44,7 +46,6 @@ __all__ = [
     "ACTIVE_COMPUTE_NOT_REPLACEABLE",
     "ACTIVE_RUN_GRANTED",
     "DECISION_TABLE_NOT_TOTAL",
-    "FULL_HISTORY_NOT_ENABLED",
     "RUN_REQUEST_WAIT_SLOT_CONFLICT",
     "SLOT_REVISION_CHANGED",
     "ActiveRun",
@@ -70,9 +71,6 @@ __all__ = [
     "require_replaceable",
     "require_sole_waiter",
 ]
-
-FULL_HISTORY_NOT_ENABLED: Final = "FULL_HISTORY_NOT_ENABLED"
-"""Retired from admission (ADR-161); only the dev fixture lander still refuses with it."""
 
 _PAIRED_STRIDE_SECONDS: Final = 2
 _RESTATING_LAG_DAYS: Final = 2
@@ -102,6 +100,8 @@ class HistoricalPolicy:
         default_factory=dict[tuple[str, str], RetrievalEncoding]
     )
     """Keyed by `(source_system, source_dataset)`; a dataset absent here is never decoded."""
+    paired_first_day: date | None = None
+    """The day the paired encoding's `day_index` 0 names; None means `first_day`."""
 
     def __post_init__(self) -> None:
         if self.replay_base.tzinfo is None:
@@ -112,6 +112,13 @@ class HistoricalPolicy:
             raise ValueError("seal, backfill and probe slot bases must strictly increase.")
         if self.cut < self.first_day:
             raise ValueError("the backfill cut precedes the first span day.")
+        if self.paired_first_day is not None and self.paired_first_day > self.first_day:
+            raise ValueError("the paired origin follows the first span day.")
+
+    @property
+    def paired_origin(self) -> date:
+        """The run day the paired encoding's offset 0 decodes to."""
+        return self.first_day if self.paired_first_day is None else self.paired_first_day
 
     @property
     def probe_first_offset(self) -> int:
@@ -168,7 +175,7 @@ def _strided_historical(offset: int, policy: HistoricalPolicy) -> bool:
 
 def _paired_historical(offset: int, policy: HistoricalPolicy) -> bool:
     day_index, variant = divmod(offset, _PAIRED_STRIDE_SECONDS)
-    run_day = policy.first_day + timedelta(days=day_index + _RESTATING_LAG_DAYS * variant)
+    run_day = policy.paired_origin + timedelta(days=day_index + _RESTATING_LAG_DAYS * variant)
     return run_day <= policy.cut
 
 

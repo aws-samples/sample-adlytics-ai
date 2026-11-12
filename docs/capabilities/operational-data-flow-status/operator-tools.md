@@ -159,8 +159,10 @@ a real put, the keys written.
 
 **Safety notes.**
 
-- A historical (phase-B) delivery, a class or day selection with `--probe-retrieval`, or two names
-  are refused with zero puts (`FULL_HISTORY_NOT_ENABLED` for historical input).
+- A class or day selection with `--probe-retrieval`, or two names, are refused with zero puts.
+  `--delivery` may name any one planned cadence delivery, historical ones included (ADR-161).
+  `--probe-retrieval` copies only a phase-A cadence delivery (run day after the backfill cut),
+  because a probe copy of an older day would sit above phase B's final rows.
 - `--no-twin` is accepted only with `--probe-retrieval`: the key is put and no `on_demand` twin
   request is sent.
 - `--fixtures <FIXTURE>[,...]` narrows a `--classes` selection to the named enumerated fixtures,

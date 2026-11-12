@@ -4,7 +4,7 @@
 from typing import Any, Final
 
 CONTRACT_REVISION: Final = 3
-CONTRACT_DIGEST: Final = 'bcfcdc1e329d9f71a92273b1f8102b5a9dcaff99173da3fa3fcba78ea5d1a21f'
+CONTRACT_DIGEST: Final = '8a589c8f0e134977eab39d81e51062e56ecc892e0591fb2e999b1ad3a8b36469'
 PROTOCOL_VERSION: Final = 'v1'
 AUTHORITY_EPOCHS: Final[Any] = (
 {'shadow': 0, 'graph': 1}
@@ -370,6 +370,7 @@ ROOT_VOCABULARY: Final[Any] = (
 HISTORICAL_POLICY: Final[Any] = (
 {'replay_base': '2026-10-06T00:00:00Z',
  'first_day': '2025-07-01',
+ 'paired_first_day': '2025-07-01',
  'cut': '2026-08-11',
  'stride_seconds': 64,
  'seal_slot_base': 463,

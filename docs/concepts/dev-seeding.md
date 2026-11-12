@@ -65,10 +65,12 @@ attribution re-arrives through the restatement window with unchanged values.
    semantic-write queue's redeliveries, ADR-086 §14).
 2. **Phase A**: `--classes cadence --run-days-from <last_day − 55>`.
 3. **Phase B**: `--classes backfill --run-days-to <last_day − 56>`, in batches by run day, each
-   older day once at its final values. Admission and the load path admit these deliveries and
-   record them `historical`
-   ([ADR-161](../decisions/adr-161-admit-historical-deliveries-and-record-their-admission-class.md));
-   `land_fixtures` itself still refuses them before any put (`FULL_HISTORY_NOT_ENABLED`).
+   older day once at its final values. `land_fixtures`, admission and the load path admit these
+   deliveries and record them `historical`
+   ([ADR-161](../decisions/adr-161-admit-historical-deliveries-and-record-their-admission-class.md)).
+   A Vendor corpus whose days start before `first_day` plans those days into phase B too: the
+   paired retrieval encoding counts from the earliest Vendor day (`paired_first_day` in the
+   execution-graph contract), so each decodes to its own run day.
 
 A **daily increment** selects `--classes cadence,whole --run-days-from <run day>`; it never
 selects a trap or a seal, and every later daily run folds the campaign dimension from a sealed
@@ -94,8 +96,8 @@ except on the retired-floor days (ADR-086 §15), where every run ties. This feed
 between runs, so either way each day ends on the corrected rows. The first selected run re-emits
 its trailing restatement window, so the reload covers every day from `last_day − 55 −
 (restatement_window_days − 1)` (2026-07-14 at the 2026-10-06 span and the contract's 30 days).
-Only days before that keep generation 0's rows, because a phase-B delivery is refused
-(`FULL_HISTORY_NOT_ENABLED`); dev holds no dedup day before 2026-07-14 (read 2026-10-22).
+Days before that keep generation 0's rows until phase B lands them; as of 2026-10-22 dev held no
+dedup day before 2026-07-14, because phase B was refused until ADR-161.
 
 ## 2. Declared per-entity scenario shapes
 

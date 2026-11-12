@@ -398,6 +398,9 @@ root_vocabulary:
 historical_policy:
   replay_base: "2026-10-06T00:00:00Z"
   first_day: "2025-07-01"
+  # The paired encoding's day 0: first_day, or the earliest Vendor day when a Vendor history
+  # starts before the AMC span (FD-2). Each Vendor day then decodes to its own run day.
+  paired_first_day: "2025-07-01"
   cut: "2026-08-11"
   stride_seconds: 64
   seal_slot_base: 463

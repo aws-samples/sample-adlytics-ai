@@ -165,6 +165,7 @@ def contract_policy() -> HistoricalPolicy:
     return HistoricalPolicy(
         replay_base=datetime.fromisoformat(str(pinned["replay_base"]).replace("Z", "+00:00")),
         first_day=date.fromisoformat(str(pinned["first_day"])),
+        paired_first_day=date.fromisoformat(str(pinned["paired_first_day"])),
         cut=date.fromisoformat(str(pinned["cut"])),
         stride_seconds=int(pinned["stride_seconds"]),
         seal_slot_base=int(pinned["seal_slot_base"]),
