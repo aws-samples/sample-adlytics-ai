@@ -100,9 +100,11 @@ has been cut over.
 <OPERATOR> enter-graph --command-id <ENTER_COMMAND_ID> --expected-revision <REVISION> <COORDINATOR>
 ```
 
-- Every command takes its own new `--command-id`. A reused id that names a different command is
-  refused with `COMMAND_ID_CONFLICT` and writes nothing, so `enter-graph` with the drain's id
-  leaves the mode in `LEGACY_DRAINING`.
+- Every write command (`set-mode`, `enter-graph`, `clear-hold`) takes its own new `--command-id`.
+  `set-mode` and `enter-graph` refuse a reused id with `MODE_REVISION_CHANGED`, even though the
+  revision is current, and write nothing, so `enter-graph` with the drain's id leaves the mode in
+  `LEGACY_DRAINING`. `clear-hold` refuses a reused id that names a different command with
+  `COMMAND_ID_CONFLICT`.
 - `set-mode --to SHADOW` first is optional; both `LEGACY` and `SHADOW` can drain.
 - A drain deadline `D` outside the printed bounds is refused with `DRAIN_DEADLINE_OUT_OF_BOUND`.
 - `enumerate` is refused with `DRAIN_FENCE_NOT_ELAPSED` until the drain CAS plus `T_max` plus the
