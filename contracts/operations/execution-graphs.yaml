@@ -396,16 +396,16 @@ root_vocabulary:
 # output and pinned here so admission reads it from the contract. A unit test proves equality.
 # The class it derives is recorded on the receipt and logged, never refused (ADR-161).
 historical_policy:
-  replay_base: "2026-10-06T00:00:00Z"
+  replay_base: "2026-11-12T00:00:00Z"
   first_day: "2025-07-01"
   # The paired encoding's day 0: first_day, or the earliest Vendor day when a Vendor history
   # starts before the AMC span (FD-2). Each Vendor day then decodes to its own run day.
-  paired_first_day: "2025-07-01"
-  cut: "2026-08-11"
+  paired_first_day: "2024-10-08"
+  cut: "2026-09-17"
   stride_seconds: 64
-  seal_slot_base: 463
-  backfill_slot_base: 527
-  probe_slot_base: 530
+  seal_slot_base: 500
+  backfill_slot_base: 564
+  probe_slot_base: 567
   probe_slot_count: 64
   encodings:
     - {source_system: amc, source_dataset: dsp_impressions, encoding: strided}

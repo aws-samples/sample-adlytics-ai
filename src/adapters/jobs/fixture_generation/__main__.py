@@ -257,7 +257,10 @@ def build_fixtures(root: pathlib.Path) -> tuple[Fixture, ...]:
                 contract,
                 registry,
                 replace(
-                    options,
+                    # Vendor reports start at the declared Vendor history, before the AMC span.
+                    options.for_vendor_history()
+                    if contract.source_system == "vendor_central"
+                    else options,
                     result=result_shape(packs[contract.contract_id], suppression_output)
                     if contract.contract_id in packs
                     else None,

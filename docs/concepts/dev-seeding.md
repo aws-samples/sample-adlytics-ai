@@ -134,15 +134,11 @@ The catalog's `shape` section declares the rest (ADR-086 owns the reasons):
   A day with no row is declared by the shape, never random. The 53 products after `B0FIXTUR06`
   carry `roles: []`, and AMC fixtures name only products with a role.
 
-**Vendor-only history (STAGED only).** `shape.forecast.vendor_history_start` is
-`fixture_span.first_day` − 266 days, giving 104 weeks of Vendor history to `last_day`. The
-`vendor_day_unlanded` day sits 14 days before `first_day`. Both feed only the STAGED demand-forecast
-input, built from the same value functions. They don't reach a landed fixture: the generated
-Vendor fixtures start at `first_day`. The landing has admitted older Vendor days since
-[ADR-161](../decisions/adr-161-admit-historical-deliveries-and-record-their-admission-class.md),
-but a corrected delivery at an unchanged span would reuse a key dev already holds. So the
-committed 60-product catalogue is **not landed in dev** (2026-11-11): dev keeps its 7-product
-Vendor data until the owner-approved fresh dev seed (2026-11-12).
+**Vendor-only history.** `shape.forecast.vendor_history_start` is `fixture_span.first_day` − 266
+days (2024-10-08), so the Vendor fixtures hold at least 104 weeks of history to `last_day`. The
+`vendor_day_unlanded` day, 14 days before `first_day`, has no Vendor report at all: a declared gap
+for every ASIN. The planner plans the Vendor days before `first_day` into phase B (§1, ADR-161).
+The 2026-11-12 span is the first to land the 60-product catalogue in dev (owner decision D2).
 
 Shape invariants, each falsifiable against the lake. The three the 2026-10-04 UX review found
 broken on the earlier generation (returns above shipped units, an implausibly small day, one CTR

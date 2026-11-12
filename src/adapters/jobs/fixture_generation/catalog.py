@@ -387,6 +387,8 @@ class GovernedValueProvider:
     contract: DataContract
     catalog: SyntheticEntityCatalog
     population: CampaignFixturePopulation = CampaignFixturePopulation.VISIBLE
+    first_day: date | None = None
+    """The day of row 0; None means `fixture_span.first_day` (a Vendor history starts earlier)."""
 
     @property
     def values(self) -> ShapeValues:
@@ -494,6 +496,12 @@ class GovernedValueProvider:
         """Whether a Vendor ASIN-grain row exists: a forecasting shape may leave a day absent."""
         return self.values.vendor_present(self.product(row).asin, self.day(row))
 
+    def include_vendor_row(self, row: int) -> bool:
+        """Whether a Vendor row exists: an ASIN row per its shape, a day row unless unlanded."""
+        if self.product_bearing:
+            return self.include_product_row(row)
+        return self.values.vendor_day_landed(self.day(row))
+
     def string_value(self, delivered_name: str, target_column: str, row: int) -> str | None:
         """Return a governed string where the catalog owns that source field."""
         delivered = delivered_name.lower()
@@ -559,7 +567,8 @@ class GovernedValueProvider:
 
     def day(self, row: int) -> date:
         """Return the calendar day of a physical row."""
-        return self.catalog.shape.fixture_span.first_day + timedelta(days=self.day_index(row))
+        first_day = self.first_day or self.catalog.shape.fixture_span.first_day
+        return first_day + timedelta(days=self.day_index(row))
 
     def zero_delivery(self, row: int) -> bool:
         """Whether this campaign row is a launch-before or pause day (every measure 0)."""

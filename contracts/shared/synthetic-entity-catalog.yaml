@@ -258,9 +258,9 @@ evidence:
 # Campaign names are valid from 2025-01-01 so every named campaign has a name on first_day.
 shape:
   seed: adlytics-dev-shape-2026-10-04-r1   # r1: the -10-04 seed breached window_roas_band at +7 days (evidence/proj_r9_seed_search.out); never widen a band
-  fixture_span: {first_day: "2025-07-01", last_day: "2026-10-06"}   # about 15 months (owner: at least 13); last_day is a literal per landing commit
-  shape_anchor: "2026-10-06"           # long-run trend, story, slope, conversion shape, spike, launch; never moved after the first landing
-  event_anchor: "2026-10-06"           # the ten short events below; the only date that moves
+  fixture_span: {first_day: "2025-07-01", last_day: "2026-11-12"}   # about 16 months (owner: at least 13); last_day is a literal per landing commit
+  shape_anchor: "2026-11-12"           # long-run trend, story, slope, conversion shape, spike, launch; never moved after the first landing
+  event_anchor: "2026-11-12"           # the ten short events below; the only date that moves
   event_anchor_slack_days: 2           # shape_anchor <= event_anchor <= last_day <= event_anchor + 2
   story_days: 56
   launch: {campaign: campaign:northstar-dsp-29, first_delivery_offset: -10}
@@ -455,11 +455,10 @@ shape:
   seal_generation: 2                   # 1: tail seal lost to the missing ReportBatchItemFailures (O-SEMANTIC-WRITE-ACK-001); 2: 600 s guard stopped before a 960 s redelivery (both 2026-10-06); the dimension seal's offset generation; a re-land after a diagnosed failure uses + 1
   # Demand forecast (approval K-4). Each product's `forecast_shape` reads these. Offsets are from
   # shape_anchor, except the unlanded day, which is from fixture_span.first_day so it never moves.
-  # The landed span is unchanged: the history from vendor_history_start and the unlanded day reach
-  # only the STAGED forecast input (slices.md slice 1 amendment, 2026-11-11): the generated Vendor
-  # fixtures start at fixture_span.first_day. The landing admits older days since ADR-161.
+  # The generated Vendor fixtures start at vendor_history_start, before the AMC span, and have no
+  # report on the unlanded day; the landing admits those older days as historical (ADR-161).
   forecast:
-    vendor_history_start: "2024-10-08"   # = fixture_span.first_day - 266 days: 104 weeks to last_day
+    vendor_history_start: "2024-10-08"   # = fixture_span.first_day - 266 days: at least 104 weeks to last_day
     vendor_day_unlanded: {first_day_offset: -14}   # no Vendor delivery that day: a set gap for every ASIN
     low_volume: {units_scale: "0.05"}
     intermittent: {units_scale: "0.20", presence: "0.35"}   # a row only on days whose draw is below presence

@@ -529,8 +529,8 @@ history to today's `last_day` (demand-forecast design, approval K-4)."""
 class ForecastShape:
     """The demand-forecast Vendor shapes (K-4), resolved to dates.
 
-    The landed span is unchanged: the history from `vendor_history_start` and the unlanded day
-    feed only the STAGED forecast input; the per-product shapes apply on every Vendor day.
+    The generated Vendor reports start at `vendor_history_start` and have none on the unlanded
+    day; the per-product shapes apply on every Vendor day.
     """
 
     vendor_history_start: date

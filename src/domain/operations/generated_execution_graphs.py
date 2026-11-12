@@ -4,7 +4,7 @@
 from typing import Any, Final
 
 CONTRACT_REVISION: Final = 3
-CONTRACT_DIGEST: Final = 'b6eab8b0511a7a9f6f42227fa9d9a56e927bf6366e92954d9a8855e00d09aa44'
+CONTRACT_DIGEST: Final = 'bfab34fdb33a782dbe3eb8ee0b037ed08db29035331f63cde1ae5873e7c63c9c'
 PROTOCOL_VERSION: Final = 'v1'
 AUTHORITY_EPOCHS: Final[Any] = (
 {'shadow': 0, 'graph': 1}
@@ -368,14 +368,14 @@ ROOT_VOCABULARY: Final[Any] = (
  'root_clock_source': 'raw manifest version LastModified'}
 )
 HISTORICAL_POLICY: Final[Any] = (
-{'replay_base': '2026-10-06T00:00:00Z',
+{'replay_base': '2026-11-12T00:00:00Z',
  'first_day': '2025-07-01',
- 'paired_first_day': '2025-07-01',
- 'cut': '2026-08-11',
+ 'paired_first_day': '2024-10-08',
+ 'cut': '2026-09-17',
  'stride_seconds': 64,
- 'seal_slot_base': 463,
- 'backfill_slot_base': 527,
- 'probe_slot_base': 530,
+ 'seal_slot_base': 500,
+ 'backfill_slot_base': 564,
+ 'probe_slot_base': 567,
  'probe_slot_count': 64,
  'encodings': ({'source_system': 'amc',
                 'source_dataset': 'dsp_impressions',

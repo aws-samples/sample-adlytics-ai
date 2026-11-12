@@ -389,9 +389,15 @@ class ShapeValues:
         pair = getattr(self.shape.retail, name)
         return self._band((pair.low, pair.high), product, f"retail.{name}")
 
+    def vendor_day_landed(self, on: date) -> bool:
+        """Whether Vendor delivers a report on `on`: no report on the declared unlanded day."""
+        return on != self.shape.forecast.vendor_day_unlanded
+
     def vendor_present(self, product: str, on: date) -> bool:
         """Whether the product has a Vendor row on `on`; its forecasting shape may say no (K-4)."""
         forecast = self.shape.forecast
+        if not self.vendor_day_landed(on):
+            return False
         kind = self.forecast_shapes.get(product, "regular")
         if kind == "launch":
             return on >= forecast.launch_first_day
