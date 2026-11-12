@@ -15,7 +15,7 @@ shard count and the execution ARN's name only.
 `--source catalogue` stages the synthetic catalogue's 104-week Vendor history instead
 (`fixture_generation.forecast_history`), in the same format, under a `staged-catalogue-` run ID:
 the STAGED input for slice 1's acceptance 3 to 6 (slices.md amendment, 2026-11-11), because the
-fixture landing refuses Vendor history older than 56 days.
+generated Vendor fixtures start at `fixture_span.first_day`.
 """
 
 # pyright: reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false

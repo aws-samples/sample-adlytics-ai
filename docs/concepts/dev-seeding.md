@@ -137,12 +137,12 @@ The catalog's `shape` section declares the rest (ADR-086 owns the reasons):
 **Vendor-only history (STAGED only).** `shape.forecast.vendor_history_start` is
 `fixture_span.first_day` − 266 days, giving 104 weeks of Vendor history to `last_day`. The
 `vendor_day_unlanded` day sits 14 days before `first_day`. Both feed only the STAGED demand-forecast
-input, built from the same value functions. They never reach a landed fixture, for two reasons.
-The fixture landing refuses Vendor deliveries older than `last_day` − 56
-(`FULL_HISTORY_NOT_ENABLED`). And a corrected delivery at an unchanged span would reuse a key dev
-already holds. So the committed 60-product catalogue is **not landed in dev** (2026-11-11): dev keeps
-its 7-product Vendor data until an owner-approved fresh dev seed, or a designed historical
-admission.
+input, built from the same value functions. They don't reach a landed fixture: the generated
+Vendor fixtures start at `first_day`. The landing has admitted older Vendor days since
+[ADR-161](../decisions/adr-161-admit-historical-deliveries-and-record-their-admission-class.md),
+but a corrected delivery at an unchanged span would reuse a key dev already holds. So the
+committed 60-product catalogue is **not landed in dev** (2026-11-11): dev keeps its 7-product
+Vendor data until the owner-approved fresh dev seed (2026-11-12).
 
 Shape invariants, each falsifiable against the lake. The three the 2026-10-04 UX review found
 broken on the earlier generation (returns above shipped units, an implausibly small day, one CTR

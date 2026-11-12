@@ -456,8 +456,8 @@ shape:
   # Demand forecast (approval K-4). Each product's `forecast_shape` reads these. Offsets are from
   # shape_anchor, except the unlanded day, which is from fixture_span.first_day so it never moves.
   # The landed span is unchanged: the history from vendor_history_start and the unlanded day reach
-  # only the STAGED forecast input (slices.md slice 1 amendment, 2026-11-11), because the fixture
-  # landing refuses Vendor history older than last_day - 56 (FULL_HISTORY_NOT_ENABLED).
+  # only the STAGED forecast input (slices.md slice 1 amendment, 2026-11-11): the generated Vendor
+  # fixtures start at fixture_span.first_day. The landing admits older days since ADR-161.
   forecast:
     vendor_history_start: "2024-10-08"   # = fixture_span.first_day - 266 days: 104 weeks to last_day
     vendor_day_unlanded: {first_day_offset: -14}   # no Vendor delivery that day: a set gap for every ASIN

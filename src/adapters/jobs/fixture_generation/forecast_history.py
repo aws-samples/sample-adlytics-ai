@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: MIT-0
 """The synthetic catalogue's weekly Vendor history for the STAGED demand-forecast input (K-4).
 
-The fixture landing refuses Vendor deliveries older than `last_day` - 56 days
-(`FULL_HISTORY_NOT_ENABLED`), so dev can't hold the catalogue's 104 weeks. This module rolls the
-same day values the landed fixtures carry (`ShapeValues.product_day`, final reports) up to the
-input builder's weekly aggregate grain, from `shape.forecast.vendor_history_start` to the input
-end. It leaves out the declared `vendor_day_unlanded` day (uncovered for every ASIN) and every
-product-day a forecasting shape declares absent. Nothing here is a customer value.
+The generated Vendor fixtures start at `fixture_span.first_day`, so the landed span holds fewer
+than the catalogue's 104 weeks (the landing itself admits older days since ADR-161). This module
+rolls the same day values the landed fixtures carry (`ShapeValues.product_day`, final reports)
+up to the input builder's weekly aggregate grain, from `shape.forecast.vendor_history_start` to
+the input end. It leaves out the declared `vendor_day_unlanded` day (uncovered for every ASIN)
+and every product-day a forecasting shape declares absent. Nothing here is a customer value.
 """
 
 from __future__ import annotations
