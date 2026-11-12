@@ -7,9 +7,10 @@ node. Before the first data-object read it reads the exact manifest version and 
 admission class, in every mode. A historical manifest is admitted and recorded: the port emits
 one `historical_admitted` operation log naming the dataset and period, then fetches (ADR-161).
 There is no historical refusal; EXEC_GRAPH-41, its former invariant code, is retired and
-reserved. Integrity rests on the immutable raw keys (ADR-030) and on the decision table's rows
-5, 10 and 13-15, which refuse a rewritten key, a correction without new input and input older
-than current, waiting or active, whatever the class.
+reserved. Integrity rests on the immutable raw keys (ADR-030) on every path. On the legacy path a
+revision strictly older than its partition's CURRENT never publishes (ADR-047). Under the
+execution-graph authority, decision-table rows 5, 10 and 13-15 refuse a rewritten key, a
+correction without new input and input older than current, waiting or active, whatever the class.
 
 A graph-path caller passes the materialization claim it holds (`MaterializationClaim`); the port
 re-attests it strongly before the fetch, so a taken-over or superseded claim cannot materialize.
