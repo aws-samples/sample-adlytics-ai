@@ -168,9 +168,11 @@ page someone.
 - Outside dev, pages keep publishing one at a time after a landing, as they do today. Publishing
   them together everywhere would need the graph authority to be deployable everywhere, which is a
   separate decision. *Amended 2026-11-12 (owner decision D4):* the graph authority comes with the
-  operational status plane, an off-by-default setting any environment now accepts. A deployment
-  without it keeps publishing one page at a time, and the legacy entry stays until the plane is
-  the default.
+  operational status plane, an off-by-default setting any environment now accepts. The plane
+  deploys in `LEGACY` mode, and pages publish together only after the operator's one-way cutover
+  to `GRAPH` mode ([Cut over to GRAPH mode](../capabilities/operational-data-flow-status/operator-tools.md#cut-over-to-graph-mode)). A deployment without the plane, or
+  not yet cut over, keeps publishing one page at a time, and the legacy entry stays until the
+  plane is the default.
 
 ## Alternatives considered
 - **Finalize per page** on the graph entry (each page binds and advances on its own). Deferred: the

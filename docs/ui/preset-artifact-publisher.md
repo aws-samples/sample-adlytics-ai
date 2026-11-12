@@ -20,17 +20,25 @@ owns that policy's rationale.
 
 ## The pipeline
 
-**Two bake entries.** Where the operational plane is provisioned
-(`ADLYTICS_OPERATIONAL_STATUS_PROVISIONED`, off by default; synth accepts it in any environment since
-2026-11-12, and it is live-accepted only on dev),
-the execution-graph authority runs in `GRAPH` mode: a dependency cohort is baked once as one graph
-run, all roster page rows together, and pages advance only under that cohort's serving binding
-([GRAPH serving authority](#the-serve-path)). This path was live-accepted on dev on 2026-10-18
+**Two bake entries.** The `GRAPH` entry needs two things:
+
+- The operational plane is provisioned (`ADLYTICS_OPERATIONAL_STATUS_PROVISIONED`, off by default;
+  synth accepts it in any environment since 2026-11-12).
+- The operator has cut the execution-graph authority over to `GRAPH` mode
+  ([Cut over to GRAPH mode](../capabilities/operational-data-flow-status/operator-tools.md#cut-over-to-graph-mode)).
+  The plane deploys in `LEGACY` mode, because its store ships with no mode item and an absent
+  item reads `LEGACY`. The cutover is one-way and accepted in dev only.
+
+In `GRAPH` mode a dependency cohort is baked once as one graph run, all roster page rows together,
+and pages advance only under that cohort's serving binding
+([GRAPH serving authority](#the-serve-path)). Operator holds also need `GRAPH`. This path was
+live-accepted on dev on 2026-10-18
 ([D2 live acceptance](../../validation/RESULTS.md#d2-pages-and-graph-control-plane-live-acceptance-on-dev--2026-10-18)).
-Everywhere else the authority is absent, which reads as `LEGACY` (`src/adapters/graph_authority.py`),
-and pages bake through the legacy entry described below: one page/variant per bake message, each
-advancing its own pointer. A deployment without the plane keeps the legacy entry, so pages
-refresh one at a time there (a [known limit](../../README.md#known-limits)). Retiring the legacy
+Everywhere else, pages bake through the legacy entry described below: one page/variant per bake
+message, each advancing its own pointer. Without the plane the authority is absent, which reads as
+`LEGACY` (`src/adapters/graph_authority.py`); with the plane on and not yet cut over, the mode
+item reads `LEGACY`. Either way pages refresh one at a time (a
+[known limit](../../README.md#known-limits)). Retiring the legacy
 entry is the next planned change. The 2026-10-18 live acceptance covers the `GRAPH` entry on dev only. The legacy entry is
 unit- and integration-proven, not live-validated, for the 2026-10-19 publication: its
 fresh-environment deploy loads no data, so nothing is baked
@@ -40,7 +48,7 @@ Three decoupled parts follow the publications stream, so semantic publication, s
 fail and retry independently. The mandated target under
 [ADR-075](../decisions/adr-075-generate-page-artifacts-once-per-dependency-cohort.md) is stated in
 [Target pipeline](#target-pipeline); the paragraphs below describe the legacy entry, the one every
-deployment without the operational plane runs (the default).
+deployment runs until it is cut over to `GRAPH` (the default).
 
 **Stream consumer.** The enqueue Lambda accepts `CURRENT` stream records, re-attests the exact current
 publication, and sends the complete V2 page/preset declaration to the bake queue for every retained
@@ -170,8 +178,8 @@ settlement follows the shared completion/SLO concept and never gates determinist
 ## Target pipeline
 
 Mandated by [ADR-075](../decisions/adr-075-generate-page-artifacts-once-per-dependency-cohort.md).
-The `GRAPH` cohort bake on dev (above) is the deployed step toward it; a deployment without the
-operational plane still runs the legacy entry, and ADR-075's status line owns which stages are accepted. Each component below is built only against its accepted low-level design in
+The `GRAPH` cohort bake on dev (above) is the deployed step toward it; a deployment not cut over
+to `GRAPH` mode still runs the legacy entry, and ADR-075's status line owns which stages are accepted. Each component below is built only against its accepted low-level design in
 [Generation coordination](generation-coordination.md) and
 [Generation materialization](generation-materialization.md). It replaces the stream consumer and bake
 unit above in one change, never alongside them.

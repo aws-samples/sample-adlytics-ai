@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1460 590" role="img" focusable="false" aria-labelledby="page-refresh-title page-refresh-desc">
   <title id="page-refresh-title">Call-flow diagram: how a page refreshes after new data is published, by default</title>
-  <desc id="page-refresh-desc">A new published version in the data lake starts one bake per page and window, which computes that page from the version with the measurement layer. When that page builds, with data or a designed absence, its own pointer advances to the new immutable artifact and the Presentation API serves it to the browser; when it fails, that page keeps serving its last good version, and a bake that keeps failing raises a CloudWatch alarm. Insight narration from Amazon Bedrock is attached to a page by its revision. A box labelled opt-in operational status plane notes that a deployment with that plane on instead builds every affected page as one set, whose pointers advance together or not at all; the plane is live-accepted only in the dev environment.</desc>
+  <desc id="page-refresh-desc">A new published version in the data lake starts one bake per page and window, which computes that page from the version with the measurement layer. When that page builds, with data or a designed absence, its own pointer advances to the new immutable artifact and the Presentation API serves it to the browser; when it fails, that page keeps serving its last good version, and a bake that keeps failing raises a CloudWatch alarm. Insight narration from Amazon Bedrock is attached to a page by its revision. A box labelled opt-in operational status plane notes that a deployment with that plane on and cut over to GRAPH mode instead builds every affected page as one set, whose pointers advance together or not at all; the plane is live-accepted only in the dev environment.</desc>
   <defs>
     <marker id="page-refresh-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#536275"/></marker>
   </defs>
@@ -52,7 +52,7 @@
       <text x="1310" y="384">Lambda; serves the page</text>
       <text x="1310" y="400">to the signed-in browser</text>
       <text x="510" y="384">Amazon Bedrock models</text>
-      <text x="730" y="558">With the plane on, a deployment instead builds every affected page as one set: their pointers advance together, or none advance and an alarm is raised.</text>
+      <text x="730" y="558">With the plane on and cut over to GRAPH mode, a deployment instead builds every affected page as one set: their pointers advance together, or none advance and an alarm is raised.</text>
     </g>
     <g font-size="13">
       <text x="314" y="80">new published</text>
