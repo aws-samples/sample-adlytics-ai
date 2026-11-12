@@ -52,7 +52,7 @@ This is the foundation every other solution runs on. It is for the builder who d
 
 - **Problem.** Computing a page each time someone opens it is slow, and two viewers could see different figures.
 - **How it works.** A new published version starts one bake per page and window. The bake computes that page with the metric layer and writes it as an immutable page artifact. The page's pointer moves only when the page builds, with data or a designed absence that says what is missing. A failed bake leaves the page on its last good version, and a bake that keeps failing raises an alarm.
-- **Customer deployments versus dev.** A customer deployment refreshes pages one at a time, so for a short while two pages can show different publications. The set-at-once refresh, where every affected page moves together or none does, runs only in the dev environment ([Known limits](../../../README.md#known-limits)).
+- **Default versus the operational plane.** By default a deployment refreshes pages one at a time, so for a short while two pages can show different publications. The set-at-once refresh, where every affected page moves together or none does, comes with the opt-in operational status plane, live-accepted only in the dev environment ([Known limits](../../../README.md#known-limits)).
 - **Read more.** [Preset artifact publisher](../../ui/preset-artifact-publisher.md#the-pipeline), [first bake and recovery](../../ui/preset-artifact-publisher.md#first-bake-and-recovery), [Sizing for large catalogs](../../../README.md#sizing-for-large-catalogs), [ADR-070](../../decisions/adr-070-serve-declared-preset-windows-from-publish-time-artifacts.md).
 
 ### Secure edge

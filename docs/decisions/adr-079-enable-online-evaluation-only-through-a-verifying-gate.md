@@ -89,6 +89,9 @@ custody, by [observability](../concepts/observability.md). Dated validation is o
 > - **One provisioning flag.** `onlineEvaluation.provisioned` composes the result link and the V4
 >   family, and, as V4 provisioning already was, may be set only for dev. The separate V4
 >   provisioning flag is retired. The V4 request flag stays, still dev-only.
+>   *Amended 2026-11-12 (owner decision D4):* both flags are off-by-default settings that synth
+>   accepts in any environment; live acceptance stays in dev. Quality-review password auth stays
+>   dev-only.
 > - **Stored records stay readable until they expire.** Delivery receipts and verdicts written
 >   while V3 ran name it. The family enumeration keeps the V3 value for decoding those records
 >   only. No gate specification, release record, release parameter, or deploy-time family list
@@ -243,7 +246,8 @@ outbox dispatcher reads on every run to decide what reaches evaluation.**
   configuration, then deletes both.
 - If the service refuses the owned group or its key *(superseded 2026-09-27: there is no key)*,
   evaluation stays disabled and the gap is recorded. There is no fallback to the service-created group.
-- Execution is requested by one typed, dev-only configuration value per evaluation family. It
+- Execution is requested by one typed, dev-only configuration value per evaluation family
+  *(amended 2026-11-12, owner D4: accepted in any environment, off by default)*. It
   replaces the per-family enabled flags, the retention-confirmation flags, and the capture flag.
 
 ### 3. One release parameter per family

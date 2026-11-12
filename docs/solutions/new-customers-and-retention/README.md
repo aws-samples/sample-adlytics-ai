@@ -69,7 +69,7 @@ Pages change only when your pipeline lands a new delivery. AMC keeps 13 months o
 - **Landing.** A delivery that fails its data contract is refused, not partly loaded. Landing, the data lake and the secure edge are shared with every solution and described in the [platform](../platform/README.md).
 - **Cohorts.** A cohort is the shoppers whose first new-to-brand purchase, by Amazon's own flag, fell in one month, or one quarter when months have too few shoppers, and was credited to ads ([ADR-104](../../decisions/adr-104-define-acquisition-cohorts-by-amazons-new-to-brand-flag.md)).
 - **Designed absence.** A section without the data it needs says what is missing and why, rather than showing a zero or a guess ([ADR-139](../../decisions/adr-139-serve-designed-absence-and-advance-pages-only-with-a-grantable-cohort.md)).
-- **Refresh.** Customer deployments bake one page at a time, and a page that fails keeps its last good version; building every affected page as one set runs only in the dev environment ([preset artifact publisher](../../ui/preset-artifact-publisher.md#the-pipeline)).
+- **Refresh.** By default a deployment bakes one page at a time, and a page that fails keeps its last good version; building every affected page as one set comes with the opt-in operational status plane, live-accepted only in the dev environment ([preset artifact publisher](../../ui/preset-artifact-publisher.md#the-pipeline)).
 
 ## Deploy it
 

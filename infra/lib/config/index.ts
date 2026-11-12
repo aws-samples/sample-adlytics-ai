@@ -1133,11 +1133,12 @@ function optionalVersionId(key: string): { originVerifySecretVersionId?: string 
   }
   return { originVerifySecretVersionId: raw };
 }
-function onlineEvaluationConfig(envName: string): OnlineEvaluationConfig {
+// Owner decision D4 (2026-11-12): online evaluation and the operational status plane are
+// off-by-default settings accepted in any environment; their live acceptance runs only in dev.
+// Password auth for quality review (assertQualityReviewValidationAuth) and the authority store's
+// probe tables and probe role stay dev-only.
+function onlineEvaluationConfig(): OnlineEvaluationConfig {
   const provisioned = envFlag('ADLYTICS_ONLINE_EVALUATION_PROVISIONED');
-  if (provisioned && envName !== 'dev') {
-    throw new Error('Online evaluation may be provisioned only for ENV=dev.');
-  }
   return {
     provisioned,
     samplingPercentage: envPercentage('ADLYTICS_ONLINE_EVALUATION_SAMPLE_PERCENT', 10),
@@ -1145,19 +1146,12 @@ function onlineEvaluationConfig(envName: string): OnlineEvaluationConfig {
   };
 }
 
-function onlineEvaluationV4Config(envName: string): OnlineEvaluationV4Config {
-  const executionRequested = envFlag('ADLYTICS_ONLINE_EVALUATION_V4_REQUESTED');
-  if (executionRequested && envName !== 'dev') {
-    throw new Error('Online evaluation V4 execution may be requested only for ENV=dev.');
-  }
-  return { executionRequested };
+function onlineEvaluationV4Config(): OnlineEvaluationV4Config {
+  return { executionRequested: envFlag('ADLYTICS_ONLINE_EVALUATION_V4_REQUESTED') };
 }
 
-function operationalStatusConfig(envName: string): OperationalStatusConfig {
+function operationalStatusConfig(): OperationalStatusConfig {
   const provisioned = envFlag('ADLYTICS_OPERATIONAL_STATUS_PROVISIONED');
-  if (provisioned && envName !== 'dev') {
-    throw new Error('Operational status may be provisioned only for ENV=dev.');
-  }
   return {
     provisioned,
     stage1LifecycleReconcileBatchSize: 10,
@@ -1334,14 +1328,14 @@ export function defaultConfig(envName: string): AppConfig {
       enforcement: 'LOG_ONLY',
     },
 
-    onlineEvaluation: onlineEvaluationConfig(envName),
+    onlineEvaluation: onlineEvaluationConfig(),
     // One worst label in five verdicts over six hours is a trend worth a look, not a gate
     // (agent-evaluation-validity steering: a soft score never gates a release).
     evaluationQuality: {
       worstLabel: { periodHours: 6, minimumVerdicts: 5, shareThreshold: 0.2 },
       noDispatch: { periodMinutes: 30, periods: 3 },
     },
-    onlineEvaluationV4: onlineEvaluationV4Config(envName),
+    onlineEvaluationV4: onlineEvaluationV4Config(),
 
     evaluationInput: {
       provisioned: envFlag('ADLYTICS_EVALUATION_INPUT_PROVISIONED'),
@@ -1352,7 +1346,7 @@ export function defaultConfig(envName: string): AppConfig {
       legacyPlanIntentReconcileEnabled: legacyPlanIntentReconcileEnabled(envName),
     }),
 
-    operationalStatus: operationalStatusConfig(envName),
+    operationalStatus: operationalStatusConfig(),
     staffedAlarmDestination: staffedAlarmDestinationConfig(envName),
     // The same for every environment: the bound is a failure-class property, not a size.
     asyncFailureBounds: ASYNC_FAILURE_BOUNDS,

@@ -20,18 +20,18 @@ owns that policy's rationale.
 
 ## The pipeline
 
-**Two bake entries.** Where the development operational plane is provisioned
-(`ADLYTICS_OPERATIONAL_STATUS_PROVISIONED`, which synth accepts only for an environment named `dev`),
+**Two bake entries.** Where the operational plane is provisioned
+(`ADLYTICS_OPERATIONAL_STATUS_PROVISIONED`, off by default; synth accepts it in any environment since
+2026-11-12, and it is live-accepted only on dev),
 the execution-graph authority runs in `GRAPH` mode: a dependency cohort is baked once as one graph
 run, all roster page rows together, and pages advance only under that cohort's serving binding
 ([GRAPH serving authority](#the-serve-path)). This path was live-accepted on dev on 2026-10-18
 ([D2 live acceptance](../../validation/RESULTS.md#d2-pages-and-graph-control-plane-live-acceptance-on-dev--2026-10-18)).
 Everywhere else the authority is absent, which reads as `LEGACY` (`src/adapters/graph_authority.py`),
 and pages bake through the legacy entry described below: one page/variant per bake message, each
-advancing its own pointer. Publication keeps the legacy entry for every non-dev deployment, so pages
-refresh one at a time there (decided 2026-10-18; a [known limit](../../README.md#known-limits)).
-Making `GRAPH` deployable in every environment and retiring the legacy entry is the next planned
-change. The 2026-10-18 live acceptance covers the `GRAPH` entry on dev only. The legacy entry is
+advancing its own pointer. A deployment without the plane keeps the legacy entry, so pages
+refresh one at a time there (a [known limit](../../README.md#known-limits)). Retiring the legacy
+entry is the next planned change. The 2026-10-18 live acceptance covers the `GRAPH` entry on dev only. The legacy entry is
 unit- and integration-proven, not live-validated, for the 2026-10-19 publication: its
 fresh-environment deploy loads no data, so nothing is baked
 ([validation results](../../validation/RESULTS.md#d2-pages-and-graph-control-plane-live-acceptance-on-dev--2026-10-18)).

@@ -72,7 +72,7 @@ The Vendor Central contracts are in [`contracts/vendor-central/`](../../../contr
 - **Model-written text.** When you open a tile, its Interpretation and deep analysis are written by the model from the drivers the server computed, under the `retail-metric-focus` prompt ([metric focus](../../ui/metric-focus-contract.md#2-composition)). The drivers themselves are computed by code.
 - **One bake, three views.** The same bake writes Retail health, a page per product and each product's ad credit, so Products and ads loads with one request and never computes at serve time ([ADR-125](../../decisions/adr-125-serve-retail-product-detail-as-a-baked-child-of-retail-health.md), [ADR-151](../../decisions/adr-151-compose-a-customer-tab-from-served-page-presentations.md)).
 - **Landing.** Landing, the data lake and the secure edge are shared with every solution and described in the [platform](../platform/README.md). In the dev environment, synthetic Vendor Central deliveries fill these pages ([development seeding](../../concepts/dev-seeding.md)).
-- **Refresh.** Customer deployments bake one page at a time, and a page that fails keeps its last good version; building every affected page as one set runs only in the dev environment ([preset artifact publisher](../../ui/preset-artifact-publisher.md#the-pipeline)).
+- **Refresh.** By default a deployment bakes one page at a time, and a page that fails keeps its last good version; building every affected page as one set comes with the opt-in operational status plane, live-accepted only in the dev environment ([preset artifact publisher](../../ui/preset-artifact-publisher.md#the-pipeline)).
 
 ## Deploy it
 
