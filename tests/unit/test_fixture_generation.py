@@ -1663,9 +1663,9 @@ def test_2_events_move_their_campaigns_and_products_on_their_dates() -> None:
         if isinstance(event, Promotion):
             for key in event.campaigns:
                 for day in (event.first, event.last):
-                    neighbours = [
-                        traffic(key, day + timedelta(days=d)) for d in (-6, -5, -4, 4, 5, 6)
-                    ]
+                    # Same-weekday baselines, so the weekday factor cancels (owner ruling P1,
+                    # 2026-11-12): a promotion day beats both of its two prior weeks' same day.
+                    neighbours = [traffic(key, day + timedelta(days=d)) for d in (-14, -7)]
                     assert traffic(key, day) > max(neighbours), (key, day)
         elif isinstance(event, BudgetShift):
             before = event.on - timedelta(days=7)
