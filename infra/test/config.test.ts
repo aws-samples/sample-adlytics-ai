@@ -609,6 +609,7 @@ describe('what this repository ships', () => {
   });
 
   it('still accepts quality-review password auth only in dev (D4 positive control)', () => {
+    // pragma: allowlist nextline secret (A-TEST-LITERALS-001)
     const enabled = { ...CORE_ENVIRONMENT_SUPPLIED, ADLYTICS_QUALITY_REVIEW_VALIDATION_PASSWORD_AUTH: 'true' };
     withDeploymentEnv(enabled, () => {
       expect(() => getConfig('demo')).toThrow(
