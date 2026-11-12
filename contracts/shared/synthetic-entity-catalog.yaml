@@ -462,7 +462,7 @@ shape:
     vendor_day_unlanded: {first_day_offset: -14}   # no Vendor delivery that day: a set gap for every ASIN
     low_volume: {units_scale: "0.05"}
     intermittent: {units_scale: "0.20", presence: "0.35"}   # a row only on days whose draw is below presence
-    trend_seasonal: {annual_growth_pct: "30", month_gain: "2.5"}   # month factor deviation x gain
+    trend_seasonal: {annual_growth_pct: "30", month_gain: "1.0"}   # month factor deviation x gain
     stockout: {first_offset: -49, last_offset: -29, shipped_share: "0.62"}   # shipped = share x demand; ordered keeps demand (0.62 keeps the Gate-1 band, test_gate1_admission_band.py)
     launch: {first_offset: -280}         # first Vendor day, 40 weeks before shape_anchor
     delisted: {last_offset: -141}        # last Vendor day: no rows in the last 20 weeks
