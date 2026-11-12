@@ -93,13 +93,16 @@ has been cut over.
 ```bash
 <OPERATOR> show-mode                      # expect LEGACY or SHADOW; note the revision
 <OPERATOR> drain-status <COORDINATOR>     # prints deadline_bounds_if_drained_now
-<OPERATOR> set-mode --command-id <COMMAND_ID> --to LEGACY_DRAINING \
+<OPERATOR> set-mode --command-id <DRAIN_COMMAND_ID> --to LEGACY_DRAINING \
   --expected-revision <REVISION> --drain-deadline <D> <COORDINATOR>
 <OPERATOR> enumerate <COORDINATOR>        # repeat until zero: true and stable: true
 <OPERATOR> show-mode                      # the revision after the drain CAS
-<OPERATOR> enter-graph --command-id <COMMAND_ID> --expected-revision <REVISION> <COORDINATOR>
+<OPERATOR> enter-graph --command-id <ENTER_COMMAND_ID> --expected-revision <REVISION> <COORDINATOR>
 ```
 
+- Every command takes its own new `--command-id`. A reused id that names a different command is
+  refused with `COMMAND_ID_CONFLICT` and writes nothing, so `enter-graph` with the drain's id
+  leaves the mode in `LEGACY_DRAINING`.
 - `set-mode --to SHADOW` first is optional; both `LEGACY` and `SHADOW` can drain.
 - A drain deadline `D` outside the printed bounds is refused with `DRAIN_DEADLINE_OUT_OF_BOUND`.
 - `enumerate` is refused with `DRAIN_FENCE_NOT_ELAPSED` until the drain CAS plus `T_max` plus the
@@ -115,12 +118,22 @@ has been cut over.
   family.
 - Exit 3 means a family was open after the CAS. Stop and investigate; the hold stays set.
 - `enter-graph` leaves the automatic-admission hold set, so scheduled and delivery runs wait. Once
-  the read after the CAS is zero, run `clear-hold` to let them run.
+  the read after the CAS is zero, release them:
+
+  ```bash
+  <OPERATOR> clear-hold --command-id <CLEAR_HOLD_COMMAND_ID>
+  ```
 
 **Roll back.**
 
-- Before `enter-graph`: `set-mode --to LEGACY --expected-revision <REVISION> <COORDINATOR>` aborts
-  the drain, and `set-mode --to LEGACY` leaves `SHADOW`. Pages keep refreshing one at a time.
+- Before `enter-graph`, abort the drain with a new id; read the revision with `show-mode` first:
+
+  ```bash
+  <OPERATOR> set-mode --command-id <ABORT_COMMAND_ID> --to LEGACY \
+    --expected-revision <REVISION> <COORDINATOR>
+  ```
+
+  The same command, with a new id, leaves `SHADOW`. Pages keep refreshing one at a time.
 - After `enter-graph`: no command leaves `GRAPH`. The mode table has no transition out of it, and
   the abort is refused with `CUTOVER_ABORT_NOT_PERMITTED` once `graph_entered_at` exists. Treat the
   cutover as one-way.
