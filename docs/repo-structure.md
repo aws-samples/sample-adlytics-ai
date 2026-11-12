@@ -110,7 +110,7 @@ src/
 
 `adapters/jobs/` contains infrastructure orchestration. Reusable arithmetic remains in `domain/`, so jobs and request-time tools share deterministic rules without sharing AWS code.
 
-The weekly demand forecast follows the same split. `domain/forecasting/` holds the weekly series, scoring, numeric and batching rules and the boundary schemas; `adapters/jobs/demand_forecast/` is the SageMaker Processing job (its own `Dockerfile`, hashed `requirements.lock` and the closed `image-paths.txt` it is built from); `adapters/jobs/demand_forecast_input/` is the input builder Lambda; `contracts/forecasting/demand-forecast.yaml` is the versioned policy, and `contracts/generated/demand-forecast-boundaries.json` the generated boundary schemas.
+The weekly demand forecast follows the same split. `domain/forecasting/` holds the weekly series, scoring, numeric and batching rules and the boundary schemas; `adapters/jobs/demand_forecast/` is the SageMaker Processing job (its own `Dockerfile`, hashed `requirements.lock` and the closed `image-paths.txt` it is built from); `adapters/jobs/demand_forecast_input/` is the input builder Lambda; `contracts/forecasting/demand-forecast.yaml` is the versioned policy, `contracts/forecasting/model-artifacts.json` the reviewed Chronos-2 artifact and digest per Region, and `contracts/generated/demand-forecast-boundaries.json` the generated boundary schemas.
 
 ## 3. `infra/` — CDK v2, TypeScript
 

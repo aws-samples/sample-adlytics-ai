@@ -164,15 +164,15 @@ generate-forecast-schemas: ## Generate the demand-forecast boundary schemas and 
 	@uv run python -m adapters.jobs.forecast_schema_generation
 check-forecast-schemas: ## Fail if the generated demand-forecast boundary schemas are stale
 	@uv run python -m adapters.jobs.forecast_schema_generation --check
-# Bootstrap before the first synth (design §4b): read-only, writes no file. Put the printed digest in
-# .env as ADLYTICS_DEMAND_FORECAST_MODEL_ARTIFACT_DIGEST; synth refuses a missing value.
-demand-forecast-artifact-digest: ## Print the configured Chronos-2 artifact's digest: PROFILE=... ENV=... [REGION=...]
+# Review tool, not a deploy step (design §4b, D7): synth reads the committed pin from
+# contracts/forecasting/model-artifacts.json. Read-only, writes no file; exits 1 when the Region's
+# prefix no longer matches its committed digest. URI= reads a prefix the contract doesn't hold yet.
+demand-forecast-artifact-digest: ## Re-read a Region's Chronos-2 artifact digest against the committed pin: PROFILE=... ENV=... REGION=... [URI=...]
 	$(require_profile)
 	$(require_env)
-	@set -eu; $(load_deploy_env); \
-	test -n "$${ADLYTICS_DEMAND_FORECAST_MODEL_ARTIFACT_URI:-}" || { echo "ADLYTICS_DEMAND_FORECAST_MODEL_ARTIFACT_URI is required (.env or shell)"; exit 1; }; \
-	uv run python -m adapters.jobs.demand_forecast_artifact_digest --profile "$(PROFILE)" \
-		$(if $(REGION),--region "$(REGION)") --uri "$$ADLYTICS_DEMAND_FORECAST_MODEL_ARTIFACT_URI"
+	@test -n "$(REGION)" || { echo "REGION is required: the Region whose artifact to read"; exit 1; }
+	@uv run python -m adapters.jobs.demand_forecast_artifact_digest --profile "$(PROFILE)" \
+		--region "$(REGION)" $(if $(URI),--uri "$(URI)")
 demand-forecast-scale-probe: ## Dev only: stage N fictional ASINs and start a ProbeStart run: PROFILE=... ENV=dev ACCOUNT=... ASINS=... [REGION=...]
 	$(require_profile)
 	$(require_env)
@@ -184,7 +184,6 @@ demand-forecast-scale-probe: ## Dev only: stage N fictional ASINs and start a Pr
 		--expected-account "$(ACCOUNT)" \
 		$(if $(REGION),--region "$(REGION)") --asins "$(ASINS)" \
 		--marketplace-key "$$ADLYTICS_DEMAND_FORECAST_MARKETPLACE_KEY" \
-		--model-artifact-digest "$$ADLYTICS_DEMAND_FORECAST_MODEL_ARTIFACT_DIGEST" \
 		--instance-type "$$ADLYTICS_DEMAND_FORECAST_INSTANCE_TYPE" \
 		--max-runtime-seconds "$$ADLYTICS_DEMAND_FORECAST_MAX_RUNTIME_SECONDS"
 # Static business spans are declared once with a typed source marker, parent policy, and closed

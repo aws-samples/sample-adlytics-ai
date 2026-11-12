@@ -17,12 +17,16 @@ and give the same forecast for the same input and policy whatever order rows arr
 ## Decision
 
 1. **Weights come from the JumpStart artifact, mounted read-only.** The job mounts the configured
-   SageMaker JumpStart prefix of `pytorch-forecasting-chronos-2` (`demandForecast.modelArtifactUri`)
+   SageMaker JumpStart prefix of `pytorch-forecasting-chronos-2` for the deployment Region
+   (`demandForecast.modelArtifactUri`)
    at `/opt/ml/processing/model`. No weights are in the image.
 2. **The artifact's digest is checked before the model loads.** `artifact_roster.roster_digest()`
-   hashes every file's path, size and SHA-256. The operator prints it once with
-   `make demand-forecast-artifact-digest PROFILE= ENV=` and sets `demandForecast.modelArtifactDigest`;
-   synth refuses a missing value, and the job fails `MODEL_ARTIFACT_MISMATCH` on any other digest.
+   hashes every file's path, size and SHA-256. The reviewed prefix and digest per Region are
+   committed in `contracts/forecasting/model-artifacts.json` (owner decision D7, 2026-11-12), so
+   no deploy needs an operator step; synth sets `demandForecast.modelArtifactDigest` from the
+   deployment Region's entry and refuses a Region without one. The job fails
+   `MODEL_ARTIFACT_MISMATCH` on any other digest. `make demand-forecast-artifact-digest PROFILE=
+   ENV= REGION=` re-reads a Region's prefix against its pin, read-only.
 3. **The runtime is one exact lock on Python 3.14.** The `forecasting` dependency group is pinned
    to the approved package set (approval D-1), exported alone to a hashed `requirements.lock` and
    installed with `pip --require-hashes --no-deps` on one pinned `python:3.14-slim` amd64 manifest

@@ -14,6 +14,8 @@
  * committed literals were whichever values the last bring-up happened to leave.
  */
 
+import { readFileSync } from 'node:fs';
+import * as path from 'node:path';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import { SELECTED_ARMS } from '../generated/alarm-destinations';
 import { ATHENA_START_BUDGET, BAKE_TASKS } from '../generated/execution-graph-protocol';
@@ -1014,9 +1016,9 @@ export interface AppConfig {
 export interface DemandForecastConfig {
   /** The canonical marketplace of the one forecast set, for example `amazon_us`. */
   readonly marketplaceKey: string;
-  /** The JumpStart `pytorch-forecasting-chronos-2` artifact prefix (an `s3://` URI ending `/`). */
+  /** The Region's reviewed JumpStart `pytorch-forecasting-chronos-2` prefix (`MODEL_ARTIFACTS_CONTRACT`). */
   readonly modelArtifactUri: string;
-  /** The prefix's roster digest, printed by `make demand-forecast-artifact-digest`. */
+  /** That prefix's reviewed roster digest (`MODEL_ARTIFACTS_CONTRACT`). */
   readonly modelArtifactDigest: string;
   /** The Processing instance type; the state machine role may create jobs of this type only. */
   readonly instanceType: string;
@@ -1024,6 +1026,55 @@ export interface DemandForecastConfig {
   readonly maxRuntimeSeconds: number;
   /** The `Forecast` map's `MaxConcurrency`; needs an applied Processing quota at least this large. */
   readonly maxParallelJobs: number;
+}
+
+/**
+ * The committed, reviewed Chronos-2 artifact per Region (owner decision D7, ADR-160). A committed
+ * pin replaces the operator's digest step, and it stays a pin: the accelerate NOT AFFECTED
+ * disposition (O-ACCELERATE-CHECKPOINT-001) rests on the job loading only this digest.
+ */
+export const MODEL_ARTIFACTS_CONTRACT = path.join(
+  __dirname, '..', '..', '..', 'contracts', 'forecasting', 'model-artifacts.json',
+);
+
+/** One Region's reviewed artifact prefix and roster digest. */
+export interface ReviewedModelArtifact {
+  readonly uri: string;
+  readonly digest: string;
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * The reviewed artifact for `region`, or undefined when the contract holds no entry for it, which
+ * leaves both values UNSET so synth refuses naming them. A malformed contract throws: a pin that
+ * doesn't parse is not a pin.
+ */
+export function reviewedModelArtifact(
+  region: string,
+  file: string = MODEL_ARTIFACTS_CONTRACT,
+): ReviewedModelArtifact | undefined {
+  const parsed: unknown = JSON.parse(readFileSync(file, 'utf-8'));
+  if (!isPlainRecord(parsed) || parsed.schema_version !== 1 || !isPlainRecord(parsed.regions)) {
+    throw new Error(`${file} needs schema_version 1 and a regions object`);
+  }
+  if (!Object.prototype.hasOwnProperty.call(parsed.regions, region)) return undefined;
+  const entry = parsed.regions[region];
+  if (
+    !isPlainRecord(entry) ||
+    typeof entry.uri !== 'string' ||
+    !/^s3:\/\/[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]\/.+\/$/.test(entry.uri) ||
+    typeof entry.digest !== 'string' ||
+    !/^[0-9a-f]{64}$/.test(entry.digest)
+  ) {
+    throw new Error(
+      `${file}: the ${region} entry needs an s3:// prefix ending in / and a 64-character ` +
+        'lowercase hexadecimal digest',
+    );
+  }
+  return { uri: entry.uri, digest: entry.digest };
 }
 
 /**
@@ -1184,6 +1235,7 @@ function operationalStatusConfig(): OperationalStatusConfig {
 
 export function defaultConfig(envName: string): AppConfig {
   assertValidEnvName(envName);
+  const modelArtifact = reviewedModelArtifact(process.env.CDK_DEFAULT_REGION ?? UNSET);
 
   return {
     envName,
@@ -1417,8 +1469,9 @@ export function defaultConfig(envName: string): AppConfig {
     evaluationResultDeadlineSeconds: 1800,
     demandForecast: {
       marketplaceKey: process.env.ADLYTICS_DEMAND_FORECAST_MARKETPLACE_KEY ?? UNSET,
-      modelArtifactUri: process.env.ADLYTICS_DEMAND_FORECAST_MODEL_ARTIFACT_URI ?? UNSET,
-      modelArtifactDigest: process.env.ADLYTICS_DEMAND_FORECAST_MODEL_ARTIFACT_DIGEST ?? UNSET,
+      // The deployment Region's committed pin (D7); no operator step and no environment override.
+      modelArtifactUri: modelArtifact?.uri ?? UNSET,
+      modelArtifactDigest: modelArtifact?.digest ?? UNSET,
       instanceType: process.env.ADLYTICS_DEMAND_FORECAST_INSTANCE_TYPE ?? UNSET,
       maxRuntimeSeconds: envRequiredWholeNumberInRange(
         'ADLYTICS_DEMAND_FORECAST_MAX_RUNTIME_SECONDS',
@@ -2868,10 +2921,11 @@ const UNSET_HINTS: Readonly<Record<string, string>> = {
   'demandForecast.marketplaceKey':
     'comes from ADLYTICS_DEMAND_FORECAST_MARKETPLACE_KEY; the one forecast set, e.g. amazon_us',
   'demandForecast.modelArtifactUri':
-    'comes from ADLYTICS_DEMAND_FORECAST_MODEL_ARTIFACT_URI; the JumpStart Chronos-2 artifact prefix',
+    'comes from contracts/forecasting/model-artifacts.json for the deployment Region, which has ' +
+    'no reviewed Chronos-2 entry there',
   'demandForecast.modelArtifactDigest':
-    'comes from ADLYTICS_DEMAND_FORECAST_MODEL_ARTIFACT_DIGEST; print it with ' +
-    'make demand-forecast-artifact-digest PROFILE=<profile> ENV=<env>',
+    'comes from contracts/forecasting/model-artifacts.json for the deployment Region; review a new ' +
+    'entry with make demand-forecast-artifact-digest PROFILE=<profile> ENV=<env> REGION=<region> URI=<prefix>',
   'demandForecast.instanceType':
     'comes from ADLYTICS_DEMAND_FORECAST_INSTANCE_TYPE; the Processing instance type, e.g. ml.m5.xlarge',
   'demandForecast.maxRuntimeSeconds':

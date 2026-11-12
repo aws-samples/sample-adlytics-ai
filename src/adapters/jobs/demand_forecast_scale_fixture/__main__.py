@@ -411,7 +411,8 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--asins", type=int, default=None)
     parser.add_argument("--seed", default="adlytics-demand-forecast-scale-r1")
     parser.add_argument("--marketplace-key", required=True)
-    parser.add_argument("--model-artifact-digest", required=True)
+    # Default: the deployed input builder's digest, which the stack takes from the committed pin.
+    parser.add_argument("--model-artifact-digest", default=None)
     parser.add_argument("--instance-type", required=True)
     parser.add_argument("--max-runtime-seconds", type=int, required=True)
     args = parser.parse_args(argv)
@@ -430,13 +431,22 @@ def main(argv: list[str]) -> int:
         print(refused, file=sys.stderr)
         return 2
     session = sessions[0]
-    function = session.client("lambda").get_function_configuration(
-        FunctionName=f"adlytics-{args.env}-DemandForecastInput"
+    identity = (
+        session.client("lambda")
+        .get_function_configuration(FunctionName=f"adlytics-{args.env}-DemandForecastInput")
+        .get("Environment", {})
+        .get("Variables", {})
     )
-    identity = function.get("Environment", {}).get("Variables", {})
     processor = identity.get("ADL_DEMAND_FORECAST_PROCESSOR_CODE_IDENTITY", "")
-    if not processor:
-        print("refused: the deployed input builder names no processor identity", file=sys.stderr)
+    # Default: the digest the deployed builder took from the committed pin (D7).
+    artifact_digest = args.model_artifact_digest or identity.get(
+        "ADL_DEMAND_FORECAST_MODEL_ARTIFACT_DIGEST", ""
+    )
+    if not processor or not artifact_digest:
+        print(
+            "refused: the deployed input builder names no processor identity or artifact digest",
+            file=sys.stderr,
+        )
         return 2
     bucket = f"adlytics-{args.env}-demand-forecast-{account}"
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
@@ -456,7 +466,7 @@ def main(argv: list[str]) -> int:
         fixture=ScaleFixtureRequest(asin_count=args.asins or 1, seed=args.seed),
         input_end=input_end,
         marketplace_key=args.marketplace_key,
-        model_artifact_digest=args.model_artifact_digest,
+        model_artifact_digest=artifact_digest,
         instance_type=args.instance_type,
         max_runtime_seconds=args.max_runtime_seconds,
         processor_code_identity=processor,

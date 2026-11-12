@@ -119,7 +119,7 @@ make destroy-all PROFILE=<your-profile> ENV=<env> CONFIRM=<env>
 
 ## Deploy
 
-1. **Configure.** Copy `.env.example` to `.env` and fill in the blanks. Every value is explained in the file. The demand-forecast values include the Chronos-2 artifact digest: run `make demand-forecast-artifact-digest PROFILE=<your-profile> ENV=<env>` (read-only; it prints the digest and writes no file) and set `ADLYTICS_DEMAND_FORECAST_MODEL_ARTIFACT_DIGEST`. Synth refuses a missing value.
+1. **Configure.** Copy `.env.example` to `.env` and fill in the blanks. Every value is explained in the file. The Chronos-2 artifact and its digest are not among them: synth reads your Region's reviewed pin from [`contracts/forecasting/model-artifacts.json`](contracts/forecasting/model-artifacts.json).
 2. **Deploy everything.** Run `make deploy-all` without `APPROVE` first: it deploys nothing and shows the target account, Region and the changes. Then run it with `APPROVE=1 EMAIL=<address>` to deploy and invite the first user. What the target decides for you, such as CDK bootstrapping and the frontend's second pass on a first deployment, is listed in the header of [`scripts/deploy-all.sh`](scripts/deploy-all.sh). If a step fails, fix the cause and run the same command again: stacks with no changes are skipped, and a user who is already invited is not sent a second invite. If CloudFormation then reports that a name already exists, a failed first create left a retained resource behind: delete it (see [Clean up](#clean-up)) or use a new `ENV`.
 3. **Sign in.** Open the printed URL and set a new password at first sign-in. To invite more users: `make create-user PROFILE=<your-profile> ENV=<env> EMAIL=<address>`.
 

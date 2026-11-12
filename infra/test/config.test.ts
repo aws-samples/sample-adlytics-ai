@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT-0
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as nodePath from 'node:path';
 
 import * as logs from 'aws-cdk-lib/aws-logs';
@@ -54,6 +55,7 @@ import {
   paramPath,
   qualityReviewFunctionName,
   qualityReviewFunctionRoleName,
+  reviewedModelArtifact,
   semanticV2AthenaWorkgroupName,
   semanticV2StateTableName,
 } from '../lib/config';
@@ -108,8 +110,6 @@ const DEPLOYMENT_ENV = [
   'ADLYTICS_SPAN_INDEXING_PERCENT',
   'ADLYTICS_TRACE_SAMPLE_RATIO',
   'ADLYTICS_DEMAND_FORECAST_MARKETPLACE_KEY',
-  'ADLYTICS_DEMAND_FORECAST_MODEL_ARTIFACT_URI',
-  'ADLYTICS_DEMAND_FORECAST_MODEL_ARTIFACT_DIGEST',
   'ADLYTICS_DEMAND_FORECAST_INSTANCE_TYPE',
   'ADLYTICS_DEMAND_FORECAST_MAX_RUNTIME_SECONDS',
   'ADLYTICS_DEMAND_FORECAST_MAX_PARALLEL_JOBS',
@@ -157,8 +157,6 @@ const CORE_ENVIRONMENT_SUPPLIED: Readonly<Record<string, string>> = {
   ADLYTICS_EDGE_WAF_RATE_LIMIT_PER_FIVE_MINUTES: '2000',
   ADLYTICS_USER_POOL_WAF_RATE_LIMIT_PER_FIVE_MINUTES: '300',
   ADLYTICS_DEMAND_FORECAST_MARKETPLACE_KEY: 'amazon_us',
-  ADLYTICS_DEMAND_FORECAST_MODEL_ARTIFACT_URI: 's3://example-artifacts/chronos-2/',
-  ADLYTICS_DEMAND_FORECAST_MODEL_ARTIFACT_DIGEST: 'a'.repeat(64),
   ADLYTICS_DEMAND_FORECAST_INSTANCE_TYPE: 'ml.m5.xlarge',
   ADLYTICS_DEMAND_FORECAST_MAX_RUNTIME_SECONDS: '3600',
   ADLYTICS_DEMAND_FORECAST_MAX_PARALLEL_JOBS: '8',
@@ -435,8 +433,6 @@ describe('what this repository ships', () => {
 
   it.each([
     ['ADLYTICS_DEMAND_FORECAST_MARKETPLACE_KEY', 'demandForecast.marketplaceKey'],
-    ['ADLYTICS_DEMAND_FORECAST_MODEL_ARTIFACT_URI', 'demandForecast.modelArtifactUri'],
-    ['ADLYTICS_DEMAND_FORECAST_MODEL_ARTIFACT_DIGEST', 'demandForecast.modelArtifactDigest'],
     ['ADLYTICS_DEMAND_FORECAST_INSTANCE_TYPE', 'demandForecast.instanceType'],
     ['ADLYTICS_DEMAND_FORECAST_MAX_RUNTIME_SECONDS', 'demandForecast.maxRuntimeSeconds'],
     ['ADLYTICS_DEMAND_FORECAST_MAX_PARALLEL_JOBS', 'demandForecast.maxParallelJobs'],
@@ -448,6 +444,64 @@ describe('what this repository ships', () => {
       expect(error.problems).toEqual([{ path: configPath, kind: 'unset' }]);
       expect(error.format()).toContain(variable);
     });
+  });
+
+  it.each(['us-east-1', 'us-east-2', 'us-west-2', 'eu-central-1', 'eu-west-1'])(
+    'takes the Chronos-2 artifact and digest for %s from the committed contract (D7)',
+    (region) => {
+      withDeploymentEnv({ ...CORE_ENVIRONMENT_SUPPLIED, CDK_DEFAULT_REGION: region }, () => {
+        const forecast = getConfig('dev').demandForecast;
+        expect(forecast.modelArtifactUri).toBe(
+          `s3://jumpstart-cache-prod-${region}/pytorch-forecasting/pytorch-forecasting-chronos-2/artifacts/inference-prepack/v1.2.0/`,
+        );
+        expect(forecast.modelArtifactDigest).toBe(
+          '07e105dbb16a7a6247b9ea9f5b6043b49959406cf28176a25c59076fdd50c939',
+        );
+      });
+    },
+  );
+
+  it('refuses a Region the artifact contract has no reviewed entry for, naming the contract', () => {
+    withDeploymentEnv({ ...CORE_ENVIRONMENT_SUPPLIED, CDK_DEFAULT_REGION: 'ap-south-1' }, () => {
+      const error = captureIncomplete('dev');
+      expect(error.problems).toEqual([
+        { path: 'demandForecast.modelArtifactUri', kind: 'unset' },
+        { path: 'demandForecast.modelArtifactDigest', kind: 'unset' },
+      ]);
+      expect(error.format()).toContain('contracts/forecasting/model-artifacts.json');
+    });
+  });
+
+  it('ignores the retired artifact variables, so a stale .env cannot override the pin', () => {
+    withDeploymentEnv(
+      {
+        ...CORE_ENVIRONMENT_SUPPLIED,
+        ADLYTICS_DEMAND_FORECAST_MODEL_ARTIFACT_URI: 's3://example-artifacts/chronos-2/',
+        ADLYTICS_DEMAND_FORECAST_MODEL_ARTIFACT_DIGEST: 'b'.repeat(64),
+      },
+      () => {
+        expect(getConfig('dev').demandForecast.modelArtifactDigest).toBe(
+          '07e105dbb16a7a6247b9ea9f5b6043b49959406cf28176a25c59076fdd50c939',
+        );
+      },
+    );
+  });
+
+  it('refuses a malformed artifact contract entry instead of deploying an unchecked pin', () => {
+    const dir = fs.mkdtempSync(nodePath.join(os.tmpdir(), 'model-artifacts-'));
+    const file = nodePath.join(dir, 'model-artifacts.json');
+    try {
+      fs.writeFileSync(
+        file,
+        JSON.stringify({ schema_version: 1, regions: { 'eu-west-1': { uri: 's3://b/p/', digest: 'ABC' } } }),
+      );
+      expect(() => reviewedModelArtifact('eu-west-1', file)).toThrow(/64-character/);
+      expect(reviewedModelArtifact('constructor', file)).toBeUndefined();
+      fs.writeFileSync(file, JSON.stringify({ schema_version: 2, regions: {} }));
+      expect(() => reviewedModelArtifact('eu-west-1', file)).toThrow(/schema_version 1/);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('refuses a receipt retention that is not a positive whole number of days', () => {
