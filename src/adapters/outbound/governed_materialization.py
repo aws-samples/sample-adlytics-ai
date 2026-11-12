@@ -1,13 +1,15 @@
 # SPDX-License-Identifier: MIT-0
-"""`GovernedMaterializationPort`: the lowest raw-fetch boundary (S6; hard deny (d), FR-5).
+"""`GovernedMaterializationPort`: the lowest raw-fetch boundary (S6, FR-5; ADR-161).
 
 Every materializing path fetches the exact delivery through this one port: the SQS handler's
 legacy path, the direct operator (`ingest_delivery`) and, in `GRAPH`, the graph materialization
-node. Before the first data-object read it reads the exact manifest version and applies the
-historical predicate again, in every mode. A historical manifest is refused with
-`FULL_HISTORY_NOT_ENABLED`: no data object is read, nothing is materialized and no product is
-written. v1 has no legitimate historical producer, so the refusal is an invariant error that
-pages, and a `delivery_event` refused this way stays unacknowledged for an I3-style disposition.
+node. Before the first data-object read it reads the exact manifest version and derives its
+admission class, in every mode. A historical manifest is admitted and recorded: the port emits
+one `historical_admitted` operation log naming the dataset and period, then fetches (ADR-161).
+There is no historical refusal; EXEC_GRAPH-41, its former invariant code, is retired and
+reserved. Integrity rests on the immutable raw keys (ADR-030) and on the decision table's rows
+5, 10 and 13-15, which refuse a rewritten key, a correction without new input and input older
+than current, waiting or active, whatever the class.
 
 A graph-path caller passes the materialization claim it holds (`MaterializationClaim`); the port
 re-attests it strongly before the fetch, so a taken-over or superseded claim cannot materialize.
@@ -20,8 +22,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import date
 from typing import TYPE_CHECKING, Final, Protocol
 
+from aws_lambda_powertools import Logger
 from botocore.exceptions import BotoCoreError, ClientError
 
 from adapters.inbound.run_requests.service import contract_policy
@@ -31,6 +35,7 @@ from adapters.jobs.ingest_delivery.landing import (
     ManifestInput,
     fetch_v2_delivery,
 )
+from adapters.outbound.telemetry.reporting import LogSeverity, OperationLog, report_operation
 from domain.curation.landing import LandingError
 from domain.operations.execution_graph_dispatch import GraphGuardError
 from domain.operations.run_request import (
@@ -46,10 +51,9 @@ if TYPE_CHECKING:
     from ports.outbound.execution_graph_dispatch import ClaimRecord
 
 __all__ = [
-    "FULL_HISTORY_NOT_ENABLED",
+    "HISTORICAL_ADMITTED",
     "MANIFEST_INVALID",
     "MATERIALIZATION_CLAIM_LOST",
-    "FullHistoryRefusedError",
     "GovernedMaterializationPort",
     "MaterializationClaim",
     "MaterializationClaimLostError",
@@ -57,23 +61,23 @@ __all__ = [
     "graph_materialization_claim",
 ]
 
-FULL_HISTORY_NOT_ENABLED: Final = "FULL_HISTORY_NOT_ENABLED"
 MATERIALIZATION_CLAIM_LOST: Final = "MATERIALIZATION_CLAIM_LOST"
+HISTORICAL_ADMITTED: Final = "historical_admitted"
+"""The operation-log outcome for a historical manifest the port admits (ADR-161)."""
+# EXEC_GRAPH-41 was the historical refusal (FullHistoryRefusedError), retired by ADR-161 and
+# reserved permanently: no other error takes the code.
 MANIFEST_INVALID: Final = ErrorCode("EXEC_GRAPH", 44)
 """The exact manifest version is not a valid manifest (an invariant, never retried)."""
 _MAX_MANIFEST_BYTES: Final = 262_144
+_LOGGER = Logger(service="adlytics-governed-materialization")
 
 
-class FullHistoryRefusedError(InvariantError):
-    """A historical manifest reached the materialization port: zero materialization."""
+@dataclass(frozen=True, slots=True)
+class _ManifestRead:
+    """What the port read from the exact manifest version: the class facts and the period."""
 
-    def __init__(self, key: str) -> None:
-        super().__init__(
-            ErrorCode("EXEC_GRAPH", 41),
-            "a historical manifest reached the governed materialization port.",
-            context={"signal": FULL_HISTORY_NOT_ENABLED, "manifest_key": key},
-        )
-        self.signal = FULL_HISTORY_NOT_ENABLED
+    facts: ManifestFacts
+    period_start: date
 
 
 class MaterializationClaimLostError(InvariantError):
@@ -147,7 +151,7 @@ class GovernedMaterializationPort:
         self._client = client
         self._fetch = fetch
 
-    def _facts(self, manifest: ManifestInput) -> ManifestFacts:
+    def _facts(self, manifest: ManifestInput) -> _ManifestRead:
         try:
             body = self._client.get_object(
                 Bucket=self._bucket, Key=manifest.key, VersionId=manifest.version_id
@@ -156,7 +160,7 @@ class GovernedMaterializationPort:
         except (BotoCoreError, ClientError) as error:
             raise DependencyError(
                 ErrorCode("EXEC_GRAPH", 43),
-                "the manifest version could not be read for the historical check.",
+                "the manifest version could not be read for the admission class.",
                 context={"cause": type(error).__name__},
             ) from None
         try:
@@ -165,21 +169,35 @@ class GovernedMaterializationPort:
             raise InvariantError(
                 MANIFEST_INVALID, "the manifest version is not a valid manifest."
             ) from None
-        return ManifestFacts(
+        facts = ManifestFacts(
             parsed.source_system, parsed.source_dataset, parsed.period_end, parsed.retrieved_at
         )
-
-    def require_not_historical(self, manifest: ManifestInput, reason: str = "") -> None:
-        """Apply the historical predicate to the exact manifest version (every mode)."""
-        facts = self._facts(manifest)
-        if derive_admission_class(facts, contract_policy(), reason) is AdmissionClass.HISTORICAL:
-            raise FullHistoryRefusedError(manifest.key)
+        return _ManifestRead(facts, parsed.period_start)
 
     def fetch(
         self, manifest: ManifestInput, claim: MaterializationClaim | None = None
     ) -> LoadedDelivery:
-        """Refuse a historical manifest, re-attest a graph claim, then fetch the delivery."""
-        self.require_not_historical(manifest)
+        """Read the exact manifest, re-attest a graph claim, record a historical class, fetch."""
+        read = self._facts(manifest)
         if claim is not None and not claim.reattest(claim.node_id, claim.lease_version):
             raise MaterializationClaimLostError
+        facts = read.facts
+        if derive_admission_class(facts, contract_policy(), "") is AdmissionClass.HISTORICAL:
+            report_operation(
+                OperationLog(
+                    operation="governed_materialization",
+                    component="governed_materialization",
+                    phase="admission",
+                    outcome=HISTORICAL_ADMITTED,
+                    severity=LogSeverity.INFO,
+                    details={
+                        "source_system": facts.source_system,
+                        "source_dataset": facts.source_dataset,
+                        "period_start": read.period_start.isoformat(),
+                        "period_end": facts.period_end.isoformat(),
+                        "admission_class": AdmissionClass.HISTORICAL.value,
+                    },
+                ),
+                _LOGGER,
+            )
         return self._fetch(self._client, self._bucket, manifest)

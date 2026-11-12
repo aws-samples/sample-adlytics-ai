@@ -65,7 +65,10 @@ attribution re-arrives through the restatement window with unchanged values.
    semantic-write queue's redeliveries, ADR-086 §14).
 2. **Phase A**: `--classes cadence --run-days-from <last_day − 55>`.
 3. **Phase B**: `--classes backfill --run-days-to <last_day − 56>`, in batches by run day, each
-   older day once at its final values.
+   older day once at its final values. Admission and the load path admit these deliveries and
+   record them `historical`
+   ([ADR-161](../decisions/adr-161-admit-historical-deliveries-and-record-their-admission-class.md));
+   `land_fixtures` itself still refuses them before any put (`FULL_HISTORY_NOT_ENABLED`).
 
 A **daily increment** selects `--classes cadence,whole --run-days-from <run day>`; it never
 selects a trap or a seal, and every later daily run folds the campaign dimension from a sealed

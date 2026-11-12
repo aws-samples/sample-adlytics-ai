@@ -57,6 +57,11 @@ command wrote (or returned on an exact replay).
 - `pause` and `cancel` are refused with `RUN_GRANT_PENDING_APPLY` while a run's release grant has
   committed and not yet applied; retry once the run reads `GRANTED`.
 - The hold commands are accepted only when the mode reads `GRAPH`.
+- `admit` admits a historical input (one whose period ends on or before the replay band's cut)
+  like any other. The receipt records `admission_class`, and the materialization port logs
+  `historical_admitted` with the dataset and period
+  ([ADR-161](../../decisions/adr-161-admit-historical-deliveries-and-record-their-admission-class.md)).
+  A `--label` is bound into the request digest and never refused.
 
 ### Dead letters: `dlq-status` and `redrive`
 

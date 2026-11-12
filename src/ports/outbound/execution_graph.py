@@ -97,6 +97,9 @@ class ReceiptRecord:
     version_id: str | None = None
     """S6 §2.4: the admitted manifest version (`RunRequest.v1` requires both), recorded on every
     epoch-1 receipt so the `materialize_raw` node reads its inputs from the admitting receipt."""
+    admission_class: str | None = None
+    """Revision 3 (ADR-161): the derived class (`cadence`, `bounded_validation` or `historical`),
+    recorded whenever admission read the manifest. A record only: no row decides on it."""
 
 
 def conflict_receipt_sk(request_digest: str) -> str:

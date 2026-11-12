@@ -752,8 +752,8 @@ def main(argv: tuple[str, ...] | None = None) -> int:  # noqa: PLR0912, PLR0915
                 for manifest in manifests:
                     _checkpoint(cancelled)
                     try:
-                        # S6 (hard deny (d)): the governed port refuses a historical
-                        # manifest before any data-object read.
+                        # S6: the governed port reads the exact manifest version and
+                        # records a historical class (ADR-161) before any data-object read.
                         delivery = governed.fetch(manifest)
                     except LandingError as error:
                         failures += 1

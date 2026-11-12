@@ -1,15 +1,17 @@
 # SPDX-License-Identifier: MIT-0
 """Run-request admission: the derived class, the conflict unit and the decision table.
 
-Two parts. The first derives the `historical` admission class (V-8, FULL_HISTORY_NOT_ENABLED).
-The second is the 20-row decision table (19 rows if the owner declines row 11), its guards
-(BF-7, BF-9, V-29), the input-revision ordering (V-7) and its totality proof (V-6).
+Two parts. The first derives the `historical` admission class (V-8). The second is the 19-row
+decision table (rows 1-3 and 5-20; row 4 retired in contract revision 3, ADR-161; 18 rows if the
+owner declines row 11), its guards (BF-7, BF-9, V-29), the input-revision ordering (V-7) and its
+totality proof (V-6).
 
 Historical class.
 
 The admission class is derived from manifest authority, never taken from a caller's label. A
 manifest is historical when it is part of the phase-B backfill of days before the replayed
-window, or one of the old daily runs that backfill replaces. v1 refuses every such manifest.
+window, or one of the old daily runs that backfill replaces. The class is recorded on the receipt
+and logged, never refused (ADR-161): no decision-table row reads it.
 
 The rule is decided over the replay band: the retrieval instants the dev fixture planner
 assigns, measured in seconds from one replay base instant. Inside that band the instant encodes
@@ -70,7 +72,7 @@ __all__ = [
 ]
 
 FULL_HISTORY_NOT_ENABLED: Final = "FULL_HISTORY_NOT_ENABLED"
-"""The v1 hard-deny signal for every historical manifest and every `full_history` label."""
+"""Retired from admission (ADR-161); only the dev fixture lander still refuses with it."""
 
 _PAIRED_STRIDE_SECONDS: Final = 2
 _RESTATING_LAG_DAYS: Final = 2
@@ -171,7 +173,7 @@ def _paired_historical(offset: int, policy: HistoricalPolicy) -> bool:
 
 
 def is_historical(facts: ManifestFacts, policy: HistoricalPolicy) -> bool:
-    """Classify one manifest: True means admission class `historical` (refused in v1)."""
+    """Classify one manifest: True means admission class `historical` (recorded, ADR-161)."""
     offset = _offset_seconds(facts, policy)
     if offset < 0 or policy.probe_first_offset <= offset < policy.probe_end_offset:
         return False
@@ -342,6 +344,8 @@ class Decision:
 
 
 RETRY_ROW: Final = 11
+RETIRED_ROWS: Final = frozenset({4})
+"""Row 4 (`class_historical`) retired in contract revision 3 (ADR-161); row numbers are stable."""
 RETRY_RESUMES_AT: Final = 13
 _DATA_CORRECTION: Final = "data_correction"
 _OPERATOR_RERUN: Final = "operator_rerun"
@@ -379,7 +383,6 @@ CONDITIONS: Final[Mapping[str, Callable[[DecisionInputs], bool]]] = {
         i.receipt_digest is not None and i.receipt_digest != i.request_digest
     ),
     "mode_not_admitting": lambda i: not i.admitting,
-    "class_historical": lambda i: i.admission_class is AdmissionClass.HISTORICAL,
     "key_rewritten": lambda i: i.version_count > 1,
     "unit_blocked": lambda i: i.blocked,
     "fingerprint_is_active": lambda i: (
@@ -595,12 +598,15 @@ def _inputs(retry_approved: bool) -> list[DecisionInputs]:
 def check_decision_table(rows: tuple[Mapping[str, object], ...], *, retry_approved: bool) -> None:
     """Prove the table total (V-6): fails with `DECISION_TABLE_NOT_TOTAL` on any gap.
 
-    The rows must be exactly the closed row set, each condition known, row 20 last and always
-    true, every row reachable as a first match, rows 16-19 never matching in epoch 0, row 11
-    present only when approved, deciding nothing and always continuing to row 13.
+    The rows must be exactly the closed row set (rows 1-20 without the retired rows), each
+    condition known, row 20 last and always true, every row reachable as a first match, rows
+    16-19 never matching in epoch 0, row 11 present only when approved, deciding nothing and
+    always continuing to row 13.
     """
     numbers = [cast_int(row["row"]) for row in rows]
-    expected = [n for n in range(1, 21) if retry_approved or n != RETRY_ROW]
+    expected = [
+        n for n in range(1, 21) if n not in RETIRED_ROWS and (retry_approved or n != RETRY_ROW)
+    ]
     if numbers != expected:
         raise DecisionTableError(f"{DECISION_TABLE_NOT_TOTAL}: rows {numbers} != {expected}.")
     for row in rows:

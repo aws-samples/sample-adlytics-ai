@@ -96,7 +96,6 @@ from adapters.outbound.dynamodb.semantic_state import (
 )
 from adapters.outbound.governed_materialization import (
     MANIFEST_INVALID,
-    FullHistoryRefusedError,
     MaterializationClaim,
     MaterializationClaimLostError,
 )
@@ -824,7 +823,7 @@ def test_row_4_control_a_refused_reattestation_on_a_live_run_includes_the_fence(
 
 
 @pytest.mark.parametrize("live", (True, False))
-def test_row_5_a_historical_manifest_settles_failed_and_fences_only_while_live(
+def test_row_5_an_invalid_manifest_settles_failed_and_fences_only_while_live(
     monkeypatch: pytest.MonkeyPatch, live: bool
 ) -> None:
     world = _world(monkeypatch)
@@ -833,11 +832,11 @@ def test_row_5_a_historical_manifest_settles_failed_and_fences_only_while_live(
         del request  # the governed port refuses before the re-attestation and any data read
         if not live:
             world.cancel()
-        raise FullHistoryRefusedError(MANIFEST)
+        raise InvariantError(MANIFEST_INVALID, "the manifest version is not a valid manifest.")
 
     assert materialize_graph_envelope(world.runtime(refused), world.delivery(1)) is True
     node = world.materialize_node()
-    assert (node.state, node.failure_reason) == (NodeState.FAILED, "full_history_not_enabled")
+    assert (node.state, node.failure_reason) == (NodeState.FAILED, "invalid_manifest")
     assert _fence_members(world) == (FENCE if live else [])
     (reported,) = world.reports
     assert reported.context["fenced"] is live
@@ -1069,10 +1068,6 @@ def test_the_settlement_rule_classifies_once_by_error_class() -> None:
     assert classify_failure(_feasibility("units_exceed_cap"), final=False) == (
         False,
         "units_exceed_cap",
-    )
-    assert classify_failure(FullHistoryRefusedError(MANIFEST), final=False) == (
-        False,
-        "full_history_not_enabled",
     )
 
 

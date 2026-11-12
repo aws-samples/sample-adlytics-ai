@@ -163,7 +163,8 @@ def test_the_pinned_replay_band_equals_the_planner_band() -> None:
 
 def test_revision_2_generates_the_routes_and_each_node_route_to_both_projections() -> None:
     """Design §2.1 (D4): `route` per node and the `routes` block, in Python and TypeScript."""
-    assert CONTRACT_REVISION == 2
+    # Revision 2 added the routes; revision 3 (ADR-161, row 4 retired) keeps them unchanged.
+    assert CONTRACT_REVISION == 3
     assert ROUTES == {
         "delivery": {"max_receive_count": 3},
         "semantic_write": {"max_receive_count": 3},

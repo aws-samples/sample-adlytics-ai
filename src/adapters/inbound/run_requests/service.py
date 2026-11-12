@@ -3,13 +3,14 @@
 
 Order of work, which is the order of the three refusal classes:
 
-1. *Pre-domain* (no receipt, zero graph writes): schema, protocol version (BF-3), a
-   `full_history` label (`FULL_HISTORY_NOT_ENABLED`), the caller/reason pairing (V-2), an agent
-   principal (V-3), a legacy source (V-4), the key's `retrieved=` segment, and a manifest body
+1. *Pre-domain* (no receipt, zero graph writes): schema, protocol version (BF-3), the
+   caller/reason pairing (V-2), an agent principal (V-3), a legacy source (V-4), the key's
+   `retrieved=` segment, and a manifest body
    that disagrees with its key (V-7c). A failed manifest read or listing is a recoverable
    dependency failure and writes no receipt either (V-7d).
 2. *Domain decision*: the generated decision table over strongly read state. Exactly one receipt
-   commits atomically with its effect (BF-10).
+   commits atomically with its effect (BF-10). The derived admission class is recorded on the
+   receipt and never decides (ADR-161).
 3. *Domain guards*: a transaction whose read-time conditions moved is re-read and re-decided,
    up to the generated bound. A guard never reaches the caller.
 """
@@ -38,7 +39,6 @@ from domain.operations.execution_graph_release import published_head
 from domain.operations.generated_execution_graphs import (
     API_ONLY_REASONS,
     BOUNDS,
-    CALLER_LABELS_REFUSED,
     CALLER_REASONS,
     CONTRACT_REVISION,
     DECISION_TABLE,
@@ -55,7 +55,6 @@ from domain.operations.ingestion_root import (
     window_identity,
 )
 from domain.operations.run_request import (
-    FULL_HISTORY_NOT_ENABLED,
     AdmissionClass,
     AdmissionGuardError,
     CallerKind,
@@ -226,10 +225,6 @@ def _pre_domain(request: RunRequest) -> CallerKind:
     ):
         raise RootRefusedError(SCHEMA_INVALID, "a run request field is missing or malformed.")
     require_protocol_v1(request.protocol_version)
-    if request.label in CALLER_LABELS_REFUSED:
-        raise GraphCommandRefusedError(
-            FULL_HISTORY_NOT_ENABLED, "full-history requests are not enabled."
-        )
     try:
         caller = CallerKind(request.caller_kind)
     except ValueError:
@@ -262,6 +257,9 @@ class _Read:
     over_bound: bool
     root_clock: str | None = None
     """S5: the manifest version's `LastModified`, when admission read the manifest (FR-2)."""
+    admission_class: AdmissionClass | None = None
+    """ADR-161: the derived class, set only when admission read the manifest. None otherwise,
+    because no manifest was read and recording `cadence` would be a false claim."""
 
 
 def _read(
@@ -281,6 +279,7 @@ def _read(
     hold = mode_state.hold and mode is AuthorityMode.GRAPH
     admitting = mode in {AuthorityMode.SHADOW, AuthorityMode.GRAPH}
     cls, versions, over_bound = AdmissionClass.CADENCE, 1, False
+    recorded: AdmissionClass | None = None
     unit: UnitState | None = None
     match: FingerprintMatch | None = None
     root_clock: str | None = None
@@ -301,6 +300,7 @@ def _read(
             contract_policy(),
             request.reason,
         )
+        recorded = cls
         versions = manifest.exact_versions
         over_bound = manifest.window_retrievals > int(BOUNDS["max_window_retrievals"])
         match = store.read_match(fingerprint, epoch)
@@ -334,7 +334,7 @@ def _read(
         match=match,
         head=None if unit is None else unit.head,
     )
-    return _Read(request, inputs, mode, unit, over_bound, root_clock), existing
+    return _Read(request, inputs, mode, unit, over_bound, root_clock, recorded), existing
 
 
 def _receipt(
@@ -365,6 +365,7 @@ def _receipt(
         requester=canonical_authority_digest(["requester/v1", request.requester]),
         retried_run_id=retried,
         root_clock_started_at=read.root_clock,
+        admission_class=None if read.admission_class is None else read.admission_class.value,
         # S6 §2.4: an epoch-1 (GRAPH) receipt names the admitted manifest version, which the
         # run's `materialize_raw` node reads as its inputs. SHADOW receipts are unchanged.
         manifest_key=request.manifest_key if read.inputs.epoch == 1 else None,

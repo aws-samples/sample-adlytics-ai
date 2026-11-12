@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: MIT-0
 """S6 ingress by mode (V-19), the hard deny (d) and the workload-requester rule (S1A-7).
 
-- `GovernedMaterializationPort` refuses a historical manifest before any data-object read, in
-  every mode; a graph caller's claim is re-attested first. The raw fetch has exactly the
-  inventoried callers (fail on unknown).
+- `GovernedMaterializationPort` reads the exact manifest version before any data-object read,
+  in every mode, re-attests a graph caller's claim, and records a historical class in an
+  operation log instead of refusing it (ADR-161). The raw fetch has exactly the inventoried
+  callers (fail on unknown).
 - The SQS handler, the registration finalizer, the direct operator and fixture landing follow
   the ingress-by-mode table.
 - A workload role may submit only its own automatic caller kind.
@@ -13,9 +14,8 @@ from __future__ import annotations
 
 import ast
 import io
-import json
 from collections.abc import Callable
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -43,6 +43,7 @@ from adapters.inbound.run_requests.service import (
     admit_run_request,
     require_workload_requester,
 )
+from adapters.jobs.curation.manifests import write_manifest
 from adapters.jobs.ingest_delivery.authority_gate import (
     GatePath,
     OperatorGate,
@@ -52,16 +53,19 @@ from adapters.jobs.ingest_delivery.authority_gate import (
 from adapters.jobs.ingest_delivery.landing import ManifestInput
 from adapters.outbound.dynamodb.execution_graph import DynamoExecutionGraphStore
 from adapters.outbound.governed_materialization import (
-    FullHistoryRefusedError,
+    MANIFEST_INVALID,
     GovernedMaterializationPort,
     MaterializationClaim,
     MaterializationClaimLostError,
 )
 from adapters.outbound.s3 import run_request_manifests
-from adapters.outbound.telemetry.reporting import Report
+from adapters.outbound.telemetry.reporting import LogSeverity, OperationLog, Report
+from domain.curation.landing import LandedObject, Manifest
+from domain.curation.mapping import options_hash
 from domain.operations.execution_graph import AuthorityMode, GraphCommandRefusedError, ModeState
-from domain.operations.run_request import AdmissionClass, CallerKind
-from domain.shared_kernel.errors import DependencyError
+from domain.operations.run_request import CallerKind
+from domain.semantics.identity import SourceIdentifier
+from domain.shared_kernel.errors import DependencyError, InvariantError
 from ports.outbound.execution_graph import ReceiptRecord, RunRequestNotRecordedError
 
 pytestmark = [pytest.mark.unit, pytest.mark.covers("ADR-074")]
@@ -133,17 +137,6 @@ def _capture(reported: list[str]) -> Callable[[BaseException, Report], None]:
 
 def _ignore(*_args: object) -> None:
     return None
-
-
-def _class(name: str) -> Callable[..., AdmissionClass]:
-    def derive(*_args: object) -> AdmissionClass:
-        return AdmissionClass(name)
-
-    return derive
-
-
-def _no_facts(_manifest: ManifestInput) -> object:
-    return object()
 
 
 def _ref(receive_count: int = 1) -> DeliveryRef:
@@ -406,29 +399,47 @@ def test_s5v5_admission_refuses_an_unclocked_manifest_without_a_receipt() -> Non
     assert [key for key in client.items if key[0].startswith("RECEIPT#")] == []
 
 
-# --- Hard deny (d): GovernedMaterializationPort --------------------------------------------------
+# --- GovernedMaterializationPort: the class is recorded, never refused (ADR-161) -------------
+
+_SALES_OPTIONS: dict[str, object] = {
+    "reportPeriod": "DAY",
+    "distributorView": "MANUFACTURING",
+    "sellingProgram": "RETAIL",
+}
 
 
-def _manifest(period_end: str, retrieved: str) -> bytes:
-    return json.dumps(
-        {
-            "manifest_version": 1,
-            "source_system": "amc",
-            "source_dataset": "dsp_impressions",
-            "period_start": period_end,
-            "period_end": period_end,
-            "retrieved_at": retrieved,
-        }
+def _manifest(period_end: date) -> bytes:
+    """Return a valid Vendor sales manifest retrieved after the replay band (its period decides)."""
+    return write_manifest(
+        Manifest(
+            source_system="vendor_central",
+            source_dataset="GET_VENDOR_SALES_REPORT",
+            source_scope=SourceIdentifier("vendor_central.vendor_group", "fictional-vendor-group"),
+            option_set=_SALES_OPTIONS,
+            option_set_hash=options_hash(_SALES_OPTIONS),
+            marketplace="ATVPDKIKX0DER",
+            period_start=period_end,
+            period_end=period_end,
+            source_watermark=None,
+            retrieved_at=datetime(2026, 10, 7, 9, 0, tzinfo=UTC),
+            declared_columns=("asin", "orderedUnits"),
+            objects=(LandedObject("data-0001.json", 2048, "sha256:abc123"),),
+        )
     ).encode()
+
+
+# 2026-07-01 ends before the cut (2026-08-11): historical. 2026-10-01 is after it: cadence.
+HISTORICAL_PERIOD = date(2026, 7, 1)
+CADENCE_PERIOD = date(2026, 10, 1)
 
 
 class _S3:
     def __init__(self, body: bytes) -> None:
         self.body = body
-        self.reads: list[str] = []
+        self.reads: list[tuple[str, str]] = []
 
     def get_object(self, **kwargs: Any) -> dict[str, Any]:
-        self.reads.append(str(kwargs["Key"]))
+        self.reads.append((str(kwargs["Key"]), str(kwargs["VersionId"])))
         return {"Body": io.BytesIO(self.body)}
 
 
@@ -443,56 +454,72 @@ def _port(body: bytes) -> tuple[GovernedMaterializationPort, _S3, list[ManifestI
     return GovernedMaterializationPort("raw", client, fetch=fetch), client, fetched  # type: ignore[arg-type]
 
 
-def test_hard_deny_d_a_historical_manifest_is_refused_before_any_data_read(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    port, client, fetched = _port(b"{}")
-    monkeypatch.setattr(port, "_facts", _no_facts)
-    monkeypatch.setattr(
-        "adapters.outbound.governed_materialization.derive_admission_class",
-        _class("historical"),
-    )
-    with pytest.raises(FullHistoryRefusedError) as raised:
-        port.fetch(ManifestInput(KEY, "v1"))
-    assert raised.value.signal == "FULL_HISTORY_NOT_ENABLED"
-    assert fetched == []
-    assert client.reads == []
+def _operation_logs(monkeypatch: pytest.MonkeyPatch) -> list[OperationLog]:
+    events: list[OperationLog] = []
+
+    def record(event: OperationLog, _logger: object) -> None:
+        events.append(event)
+
+    monkeypatch.setattr("adapters.outbound.governed_materialization.report_operation", record)
+    return events
 
 
-def test_hard_deny_d_positive_a_cadence_manifest_is_fetched_exactly_once(
+@pytest.mark.covers("ADR-161")
+def test_a_historical_manifest_is_fetched_once_and_logged_with_its_dataset_and_period(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    port, _client, fetched = _port(b"{}")
-    monkeypatch.setattr(port, "_facts", _no_facts)
-    monkeypatch.setattr(
-        "adapters.outbound.governed_materialization.derive_admission_class",
-        _class("cadence"),
-    )
+    events = _operation_logs(monkeypatch)
+    port, client, fetched = _port(_manifest(HISTORICAL_PERIOD))
+    port.fetch(ManifestInput(KEY, "v7"))
+    assert client.reads == [(KEY, "v7")]
+    assert fetched == [ManifestInput(KEY, "v7")]
+    assert [(e.outcome, e.severity, dict(e.details)) for e in events] == [
+        (
+            "historical_admitted",
+            LogSeverity.INFO,
+            {
+                "source_system": "vendor_central",
+                "source_dataset": "GET_VENDOR_SALES_REPORT",
+                "period_start": "2026-07-01",
+                "period_end": "2026-07-01",
+                "admission_class": "historical",
+            },
+        )
+    ]
+
+
+def test_a_cadence_manifest_is_fetched_once_with_no_historical_log(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events = _operation_logs(monkeypatch)
+    port, client, fetched = _port(_manifest(CADENCE_PERIOD))
     port.fetch(ManifestInput(KEY, "v1"))
+    assert client.reads == [(KEY, "v1")]
     assert fetched == [ManifestInput(KEY, "v1")]
+    assert events == []
 
 
-def test_hard_deny_d_a_lost_graph_claim_refuses_the_fetch(monkeypatch: pytest.MonkeyPatch) -> None:
-    port, _client, fetched = _port(b"{}")
-    monkeypatch.setattr(port, "require_not_historical", _ignore)
+def test_a_lost_graph_claim_refuses_the_fetch_and_logs_no_admission(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events = _operation_logs(monkeypatch)
+    port, _client, fetched = _port(_manifest(HISTORICAL_PERIOD))
     claim = MaterializationClaim("node-1", 3, lambda _node, version: version == 4)
     with pytest.raises(MaterializationClaimLostError):
         port.fetch(ManifestInput(KEY, "v1"), claim)
-    assert fetched == []
+    assert (fetched, events) == ([], [])
     port.fetch(ManifestInput(KEY, "v1"), MaterializationClaim("node-1", 4, lambda _n, v: v == 4))
     assert len(fetched) == 1
+    assert [e.outcome for e in events] == ["historical_admitted"]
 
 
-def test_hard_deny_d_the_real_predicate_reads_the_exact_manifest_version() -> None:
-    """The port classifies from the exact version's own body, never a caller label."""
-    port, client, _fetched = _port(_manifest("2026-10-01", "2026-10-07T09:00:00Z"))
-    try:
-        port.require_not_historical(ManifestInput(KEY, "v1"))
-    except FullHistoryRefusedError:
-        pytest.fail("a phase-A cadence manifest is not historical")
-    except Exception:  # noqa: BLE001, S110 -- a fixture manifest shape the parser refuses
-        pass
-    assert client.reads == [KEY]
+def test_an_invalid_manifest_version_is_refused_before_any_data_read() -> None:
+    port, client, fetched = _port(b"{}")
+    with pytest.raises(InvariantError) as raised:
+        port.fetch(ManifestInput(KEY, "v1"))
+    assert raised.value.code == MANIFEST_INVALID
+    assert client.reads == [(KEY, "v1")]
+    assert fetched == []
 
 
 _RAW_FETCH_CALLERS = {

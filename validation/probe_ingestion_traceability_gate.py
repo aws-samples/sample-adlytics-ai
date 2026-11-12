@@ -1854,10 +1854,8 @@ def _probe_p1(target: Target, arguments: argparse.Namespace) -> int:
         )
         before = _table_census(session, table)
         refusals: dict[str, object] = {}
-        for name, extra in (
-            ("full_history", ("--label", "full_history")),
-            ("non_v1", ("--protocol-version", "v2")),
-        ):
+        # ADR-161 retired the `full_history` label refusal; the non-v1 refusal is the control.
+        for name, extra in (("non_v1", ("--protocol-version", "v2")),):
             code, result = _operator(
                 target,
                 arguments,
@@ -1917,8 +1915,6 @@ def _probe_p1(target: Target, arguments: argparse.Namespace) -> int:
             if family in {"SLOT", "RUN", "FINGERPRINT"} or family.startswith("DUE/")
         )
         checks = {
-            "refused_full_history": cast("dict[str, object]", refusals["full_history"])["result"]
-            == {"command": "admit", "refused": "FULL_HISTORY_NOT_ENABLED"},
             "refused_non_v1": cast("dict[str, object]", refusals["non_v1"])["result"]
             == {"command": "admit", "refused": "PROTOCOL_MIGRATION_UNSUPPORTED"},
             "refusals_wrote_nothing": before == after_refusals,
@@ -2141,12 +2137,11 @@ def _baseline_graphs(session: Any, table: str, baseline: Mapping[str, str]) -> d
 def _p1_refusal_invariants(
     target: Target, arguments: argparse.Namespace, admit: Sequence[str], table: str, session: Any
 ) -> dict[str, object]:
-    """P1 (I): the two pre-domain refusals still refuse and write nothing."""
+    """P1 (I): the pre-domain refusal (a non-v1 protocol) still refuses and writes nothing."""
     before = _table_census(session, table)
     stamp = _utc_stamp().lower()
     results: dict[str, object] = {}
     for name, extra, signal in (
-        ("full_history", ("--label", "full_history"), "FULL_HISTORY_NOT_ENABLED"),
         ("non_v1", ("--protocol-version", "v2"), "PROTOCOL_MIGRATION_UNSUPPORTED"),
     ):
         _, result = _operator(

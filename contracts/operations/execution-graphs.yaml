@@ -10,7 +10,7 @@
 # A changed bound or ceiling is a new protocol version, refused before mutation with
 # PROTOCOL_MIGRATION_UNSUPPORTED; v1 has exactly one active version.
 contract: execution-graphs
-contract_revision: 2
+contract_revision: 3
 protocol_version: v1
 authority_epochs:
   shadow: 0
@@ -278,8 +278,9 @@ requester_group: operations-run-requesters
 api_routes:
   - POST /api/operations/run-requests
   - GET /api/operations/run-requests/{request_id}
+# Revision 3 (ADR-161): the class is derived and recorded on the receipt, never refused, and no
+# caller label is refused.
 admission_classes: [cadence, bounded_validation, historical]
-caller_labels_refused: [full_history]
 
 run_request_schema:
   RunRequest.v1:
@@ -290,7 +291,8 @@ run_request_schema:
       [request_id, request_digest, decision, reason, row, authority_epoch, mode, conflict_unit,
        input_revision, fingerprint, run_id, graph_id, root_flow_id, retry_generation,
        superseded_request_id, legacy_plan_key, joined_request_id, retried_run_id, recorded_at,
-       protocol_version, contract_revision, manifest_key, version_id]
+       protocol_version, contract_revision, manifest_key, version_id, admission_class]
+    # Revision 3 (ADR-161): admission_class is recorded whenever admission read the manifest.
     # S6 §2.4 (revision 2): an epoch-1 receipt records the admitted manifest_key and version_id,
     # the inputs its run's materialize_raw node reads; epoch-0 (SHADOW) receipts omit both.
     # Row 2's receipt lives beside the original at RECEIPT#<request_id>/CONFLICT#<request_digest>.
@@ -302,7 +304,6 @@ refusal_classes:
     - SCHEMA_INVALID
     - MANIFEST_KEY_BODY_MISMATCH
     - PROTOCOL_MIGRATION_UNSUPPORTED
-    - FULL_HISTORY_NOT_ENABLED
     - RUN_REQUEST_REASON_NOT_PERMITTED
     - AGENT_MUTATION_NOT_ENABLED
     - LEGACY_ADOPTION_UNSUPPORTED
@@ -315,7 +316,6 @@ refusal_classes:
   domain_decision_reasons:
     - request_id_conflict
     - RUN_ADMISSION_NOT_ACTIVE
-    - FULL_HISTORY_NOT_ENABLED
     - manifest_key_rewritten
     - conflict_unit_blocked
     - conflict_unit_history_over_bound
@@ -333,11 +333,11 @@ retry_row_approved: true
 
 # First matching row wins. The generator proves the table total over its closed inputs, that
 # every row is reachable, that rows 16-19 match only in epoch 1, and that row 11 decides nothing.
+# Row 4 (class_historical) retired in revision 3 (ADR-161); row numbers are stable.
 decision_table:
   - {row: 1, when: receipt_same_digest, decision: RETURN_RECEIPT}
   - {row: 2, when: receipt_other_digest, decision: REFUSED, reason: request_id_conflict}
   - {row: 3, when: mode_not_admitting, decision: REFUSED, reason: RUN_ADMISSION_NOT_ACTIVE}
-  - {row: 4, when: class_historical, decision: REFUSED, reason: FULL_HISTORY_NOT_ENABLED}
   - {row: 5, when: key_rewritten, decision: REFUSED, reason: manifest_key_rewritten}
   - {row: 6, when: unit_blocked, decision: REFUSED, reason: conflict_unit_blocked}
   - {row: 7, when: fingerprint_is_active, decision: JOINED}
@@ -394,6 +394,7 @@ root_vocabulary:
 
 # The historical predicate's replay band (V-8), computed by the fixture planner from its own
 # output and pinned here so admission reads it from the contract. A unit test proves equality.
+# The class it derives is recorded on the receipt and logged, never refused (ADR-161).
 historical_policy:
   replay_base: "2026-10-06T00:00:00Z"
   first_day: "2025-07-01"
