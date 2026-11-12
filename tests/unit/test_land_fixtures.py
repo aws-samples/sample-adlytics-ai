@@ -826,10 +826,12 @@ def test_every_landable_fixture_is_planned_in_declared_and_cadence_order() -> No
         elif fixture == "generated/vendor-traffic-by-asin.json":
             expected.extend(f"{fixture}#daily-run={day}" for day in vendor_days)
         elif fixture == "generated/vendor-product-hierarchy.jsonl":
-            # 238 rows (one per span day) per delivery, ADR-086 amendment 2026-10-06.
+            # Equal chunks of at most 238 rows (one per span day), ADR-086 amendments 2026-10-06
+            # and 2026-11-12: the 500-day span is 167/167/166.
+            assert len(days) == 500
             expected.extend(
-                f"{fixture}#chunk={days[start]}..{days[min(start + 238, len(days)) - 1]}"
-                for start in range(0, len(days), 238)
+                f"{fixture}#chunk={days[start]}..{days[end]}"
+                for start, end in ((0, 166), (167, 333), (334, 499))
             )
         else:
             expected.append(fixture)
@@ -2803,6 +2805,37 @@ def test_the_hierarchy_chunks_are_whole_complete_snapshots_covering_every_row_on
         frozenset({DeliveryClass.CADENCE, DeliveryClass.WHOLE}), run_days_from=span.last_day
     )
     assert [item for item in chunks if increment.selects(item)] == [chunks[-1]]
+
+
+@pytest.mark.covers("ADR-086")
+def test_a_hierarchy_split_with_a_chunk_smaller_than_the_catalogue_is_refused() -> None:
+    """An incomplete chunk would land as the newest snapshot and drop products from it."""
+    shape = load_synthetic_entity_catalog(ROOT).shape
+    first = date(2025, 7, 1)
+
+    def runs(rows: int, products: int) -> tuple[Any, ...]:
+        text = "".join(
+            json.dumps({"asin": f"B0FIXTUR{index % products:02d}"}) + "\n" for index in range(rows)
+        )
+        declaration: dict[str, object] = {
+            "period_start": first.isoformat(),
+            "period_end": (first + timedelta(days=rows - 1)).isoformat(),
+        }
+        return bundle_module._whole_chunk_runs(  # pyright: ignore[reportPrivateUsage]
+            bundle_module._SourceRunsRequest(  # pyright: ignore[reportPrivateUsage]
+                _HIERARCHY, text, declaration, None, shape
+            )
+        )
+
+    # 239 rows split 120/119: 119 products fit, 120 do not.
+    assert [len(run[1].splitlines()) for run in runs(239, 119)] == [120, 119]
+    with pytest.raises(LandingError) as refused:
+        runs(239, 120)
+    assert str(refused.value) == (
+        f"{_HIERARCHY}: 120 products in 239 rows split into 2 chunks of at most 238 rows leave a "
+        "119-row chunk, so it is not a complete snapshot (dev fixture limit: 119 products on "
+        "this span, 119 on any)."
+    )
 
 
 @pytest.mark.covers("ADR-086")
