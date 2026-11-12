@@ -289,12 +289,12 @@ def test_a_column_the_registry_does_not_list_is_refused() -> None:
 
 
 def test_a_value_outside_the_registry_type_is_refused() -> None:
-    row = KEPT.replace(",2971,", ",2971.5,")
+    row = KEPT.replace(",2998,", ",2998.5,")
     assert _check(_csv(HEADER, row)).findings == (
         Finding(
             "FIXTURE_TYPE_MISMATCH",
             FIXTURE,
-            "impressions is LONG; 1 row(s), first at data row 1: '2971.5'.",
+            "impressions is LONG; 1 row(s), first at data row 1: '2998.5'.",
         ),
     )
 
