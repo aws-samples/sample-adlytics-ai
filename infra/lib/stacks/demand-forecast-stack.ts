@@ -91,6 +91,17 @@ export class DemandForecastStack extends cdk.Stack {
     const artifact = s3Prefix(forecast.modelArtifactUri);
     const jobPrefix = processingJobPrefix(config.envName);
     const jobArn = arn('sagemaker', `processing-job/${jobPrefix}*`);
+    // Read by scripts/deploy_preflight.py before any diff or deploy. The Forecast map runs up to
+    // maxParallelJobs single-instance jobs at once, and a lower quota fails a run.
+    this.templateOptions.metadata = {
+      'Adlytics::ServiceQuotaRequirements': [
+        {
+          serviceCode: 'sagemaker',
+          quotaName: `${forecast.instanceType} for processing job usage`,
+          minimum: forecast.maxParallelJobs,
+        },
+      ],
+    };
 
     // ---- ForecastJobImage (I-9): the bootstrap repository, the asset hash over the runtime set.
     const image = new DockerImageAsset(this, 'ForecastJobImage', {

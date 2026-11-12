@@ -77,6 +77,13 @@ describe('DemandForecastStack', () => {
     });
   });
 
+  test('the template declares the Processing quota the deploy preflight reads', () => {
+    expect(template.toJSON().Metadata).toEqual({
+      'Adlytics::ServiceQuotaRequirements': [
+        { serviceCode: 'sagemaker', quotaName: 'ml.m5.xlarge for processing job usage', minimum: 8 },
+      ],
+    });
+  });
   test('the Processing role writes only candidate objects and is trusted only for its jobs', () => {
     const list = statements(template, 'ForecastProcessingRole');
     const put = list.filter((statement) => ([] as string[]).concat(statement.Action).includes('s3:PutObject'));
