@@ -354,6 +354,16 @@ tier) and the email allowlist
 also matches patch headers, so listing an internal tool's name there refuses a commit that adds
 its output directory on any clone; a tracked ignore rule would publish the name.
 
+The audit check runs only for a changed lockfile and audits it twice: at HEAD and at `BASE` (from
+`git show`; a lockfile absent at `BASE` has no advisories). pip-audit reports every advisory
+outside `PIP_AUDIT_REVIEWED`; npm audit counts only HIGH and CRITICAL. An advisory is its ID plus
+aliases, and it refuses with `AUDIT_FINDING` only when none of them is among `BASE`'s. A
+pre-existing one prints `publication-gate: audit WARN ...` with the first register row that names
+it, looked up in `security-findings.md` beside the checkout, then beside the main checkout's
+`.git` (for a worktree), then `docs/security-dispositions.md`; "no register row" when none does.
+A warning never changes the exit code and is kept in the run record's `steps.json`. A scanner
+that cannot run on either side refuses.
+
 The gate reads no remote and scans only `BASE..HEAD`. It proves BASE is an ancestor of HEAD, not
 that BASE is the current public main, so run `git fetch public` first (`make publish` fetches and
 passes the tip itself); a later BASE leaves the commits before it unscanned. Tags are outside the range and are never

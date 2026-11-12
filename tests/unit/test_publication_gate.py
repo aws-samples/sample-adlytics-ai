@@ -23,12 +23,13 @@ import os
 import secrets
 import shutil
 import string
+import subprocess
 import sys
 import time
 from collections.abc import Iterator
 from pathlib import Path
 from types import ModuleType
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from gate_script_support import SCRIPTS, git
@@ -491,60 +492,333 @@ def test_the_full_gate_runs_every_check(gate: ModuleType) -> None:
 
 
 REVIEWED_VULN = "GHSA-xcq7-p3pf-p88h"
-OTHER_VULN = "GHSA-0000-0000-0000"
-PIP_AUDIT_FINDING = "Found 1 known vulnerability in 1 package"
+OLD_VULN = "CVE-2026-0000001"
+OLD_ALIAS = "GHSA-aaaa-bbbb-cccc"
+NEW_VULN = "CVE-2026-0000002"
+NPM_OLD = "GHSA-1111-2222-3333"
+NPM_NEW = "GHSA-4444-5555-6666"
 
 
-def _audit_uv_lock(  # noqa: PLR0913, PLR0917 - three fixtures and the findings
-    gate: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, found: list[str]
-) -> tuple[list[Any], list[list[str]]]:
-    """Run check_audit on a changed uv.lock against a stand-in pip-audit that reports `found`.
+def _pip_report(*vulns: tuple[str, tuple[str, ...]]) -> dict[str, Any]:
+    """Return pip-audit's JSON shape: one dependency carrying each (id, aliases)."""
+    return {
+        "dependencies": [
+            {
+                "name": "fixture-package",
+                "version": "1.0",
+                "vulns": [
+                    {"id": vuln, "aliases": list(aliases), "fix_versions": []}
+                    for vuln, aliases in vulns
+                ],
+            }
+        ],
+        "fixes": [],
+    }
 
-    The stand-in honours `--ignore-vuln` the way pip-audit does: it exits 0 when every finding is
-    ignored, else 1 with pip-audit's summary line. Every argv the check ran is returned.
-    """
-    calls: list[list[str]] = []
 
-    def fake_run(argv: list[str], cwd: Path, **_: object) -> Any:  # noqa: ARG001
-        calls.append(list(argv))
-        if "pip-audit" not in argv:
-            return gate.subprocess.CompletedProcess(argv, 0, b"", b"")
-        ignored = {argv[i + 1] for i, arg in enumerate(argv) if arg == "--ignore-vuln"}
-        if all(vuln in ignored for vuln in found):
-            clean = b"No known vulnerabilities found\n"
-            return gate.subprocess.CompletedProcess(argv, 0, clean, b"")
-        return gate.subprocess.CompletedProcess(argv, 1, f"{PIP_AUDIT_FINDING}\n".encode(), b"")
+def _npm_report(*vias: tuple[str, int, str]) -> dict[str, Any]:
+    """Return npm audit's JSON shape: one package whose `via` has each (GHSA, source, severity)."""
+    return {
+        "auditReportVersion": 2,
+        "vulnerabilities": {
+            "fixture-npm": {
+                "name": "fixture-npm",
+                "severity": "high",
+                "via": [
+                    "fixture-parent",
+                    *(
+                        {
+                            "source": source,
+                            "name": "fixture-npm",
+                            "severity": severity,
+                            "url": f"https://github.com/advisories/{ghsa}",
+                        }
+                        for ghsa, source, severity in vias
+                    ),
+                ],
+            }
+        },
+    }
 
-    def changed_lockfiles(*_args: object, **_kw: object) -> bytes:
-        return b"uv.lock\0"
 
-    monkeypatch.setattr(gate, "git_bytes", changed_lockfiles)
-    monkeypatch.setattr(gate, "_run", fake_run)
-    ctx = gate.Context(
-        root=tmp_path, base="b", head="h", tree="t", runs_root=tmp_path, work=tmp_path
+def _finds(report: object) -> bool:
+    """Return whether a stand-in report holds a finding the real tool exits 1 for."""
+    if not isinstance(report, dict):
+        return False
+    data = cast("dict[str, Any]", report)
+    if "dependencies" in data:
+        return any(dep["vulns"] for dep in cast("list[dict[str, Any]]", data["dependencies"]))
+    entries = cast("dict[str, dict[str, Any]]", data["vulnerabilities"])
+    vias = [via for entry in entries.values() for via in cast("list[object]", entry["via"])]
+    return any(
+        isinstance(via, dict) and cast("dict[str, Any]", via)["severity"] in {"high", "critical"}
+        for via in vias
     )
-    return gate.check_audit(ctx), calls
 
 
-def test_pip_audit_ignores_exactly_the_reviewed_advisory(
+class AuditWorld:
+    """Stand-ins for git, uv, pip-audit and npm audit, per side (BASE or HEAD).
+
+    pip-audit and npm audit exit as the real tools do: 1 when they report a finding (npm: at
+    HIGH or above), else 0; `rc` overrides that per side. A report of None writes no JSON, and a
+    `bytes` report is written as is. BASE's files exist only for the paths in `base_paths`.
+    """
+
+    def __init__(self, tmp_path: Path, changed: str) -> None:
+        self.root = tmp_path / "root"
+        self.work = tmp_path / "work"
+        self.root.mkdir()
+        self.work.mkdir()
+        self.common = tmp_path / "main-checkout" / ".git"
+        self.common.mkdir(parents=True)
+        self.changed = changed
+        self.base_paths = {"pyproject.toml", "uv.lock", f"{Path(changed).parent}/package.json"}
+        self.base_paths.add(changed)
+        self.reports: dict[str, Any] = {"head": _pip_report(), "base": _pip_report()}
+        self.rc: dict[str, int] = {}
+        self.calls: list[list[str]] = []
+
+    def git_bytes(self, _root: Path, *args: str, **_kw: object) -> bytes:
+        if args[0] == "diff":
+            return f"{self.changed}\0".encode()
+        if args[0] == "ls-tree":
+            return "".join(f"{p}\0" for p in args[4:] if p in self.base_paths).encode()
+        if args[0] == "show":
+            return b"{}\n"
+        if args[0] == "rev-parse":
+            return f"{self.common}\n".encode()
+        raise AssertionError(args)
+
+    def _side(self, argv: list[str], cwd: Path) -> str:
+        if "npm" in argv:
+            return "base" if self.work in cwd.parents else "head"
+        requirements = argv[argv.index("-r") + 1]
+        return "base" if requirements.endswith("-base.txt") else "head"
+
+    def run(self, argv: list[str], cwd: Path, **_: object) -> Any:
+        self.calls.append(list(argv))
+        completed = subprocess.CompletedProcess
+        if "export" in argv:
+            Path(argv[argv.index("-o") + 1]).write_text("fixture==1.0\n")
+            return completed(argv, 0, b"", b"")
+        side = self._side(argv, cwd)
+        report = self.reports[side]
+        found = _finds(report)
+        if "npm" in argv:
+            stdout = report if isinstance(report, bytes) else json.dumps(report).encode()
+            return completed(argv, self.rc.get(side, int(found)), stdout, b"")
+        if report is not None:
+            output = Path(argv[argv.index("--output") + 1])
+            output.write_bytes(report if isinstance(report, bytes) else json.dumps(report).encode())
+        return completed(argv, self.rc.get(side, int(found)), b"", b"pip-audit error\n")
+
+    def check(self, gate: ModuleType, monkeypatch: pytest.MonkeyPatch) -> tuple[list[Any], Any]:
+        monkeypatch.setattr(gate, "git_bytes", self.git_bytes)
+        monkeypatch.setattr(gate, "_run", self.run)
+        ctx = gate.Context(
+            root=self.root, base="b", head="h", tree="t", runs_root=self.root, work=self.work
+        )
+        return gate.check_audit(ctx), ctx
+
+
+def _details(refusals: list[Any]) -> list[tuple[str, str]]:
+    return [(r.code, r.detail) for r in refusals]
+
+
+def test_pip_audit_ignores_exactly_the_reviewed_advisory_on_both_sides(
     gate: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     assert gate.PIP_AUDIT_REVIEWED == (("GHSA-xcq7-p3pf-p88h", "O-OTEL-TRACESTATE-001"),)
-    refusals, calls = _audit_uv_lock(gate, tmp_path, monkeypatch, [REVIEWED_VULN])
+    world = AuditWorld(tmp_path, "uv.lock")
+
+    refusals, ctx = world.check(gate, monkeypatch)
+
     assert refusals == []
-    audit = next(argv for argv in calls if "pip-audit" in argv)
-    assert "--strict" in audit
-    assert [audit[i + 1] for i, arg in enumerate(audit) if arg == "--ignore-vuln"] == [
-        REVIEWED_VULN
+    assert ctx.warnings == []
+    audits = [argv for argv in world.calls if "pip-audit" in argv]
+    assert [argv[argv.index("-r") + 1].rsplit("-", 1)[-1] for argv in audits] == [
+        "head.txt",
+        "base.txt",
+    ]
+    for audit in audits:
+        assert "--strict" in audit
+        assert [audit[i + 1] for i, arg in enumerate(audit) if arg == "--ignore-vuln"] == [
+            REVIEWED_VULN
+        ]
+
+
+def test_a_pip_advisory_already_in_base_warns_with_its_register_row(
+    gate: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    world = AuditWorld(tmp_path, "uv.lock")
+    world.reports["head"] = _pip_report((OLD_VULN, (OLD_ALIAS,)))
+    world.reports["base"] = _pip_report((OLD_VULN, (OLD_ALIAS,)))
+    # The worktree case: the local register lives beside the main checkout's .git.
+    (world.common.parent / "security-findings.md").write_text(
+        f"| ID | Severity |\n|---|---|\n| O-FIXTURE-001 | MEDIUM | pkg, {OLD_VULN}; open |\n"
+    )
+
+    refusals, ctx = world.check(gate, monkeypatch)
+
+    assert refusals == []
+    assert ctx.warnings == [
+        f"pip-audit uv.lock {OLD_VULN} / {OLD_ALIAS} in fixture-package is pre-existing versus "
+        "BASE (register row O-FIXTURE-001)"
     ]
 
 
-def test_any_other_pip_audit_finding_still_refuses(
+def test_a_pre_existing_advisory_without_a_register_row_warns_and_never_refuses(
     gate: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    refusals, _ = _audit_uv_lock(gate, tmp_path, monkeypatch, [REVIEWED_VULN, OTHER_VULN])
-    assert [(r.code, r.detail) for r in refusals] == [
-        ("AUDIT_FINDING", f"pip-audit uv.lock exited 1: {PIP_AUDIT_FINDING}")
+    world = AuditWorld(tmp_path, "uv.lock")
+    world.reports["head"] = _pip_report((OLD_VULN, ()))
+    world.reports["base"] = _pip_report((OLD_VULN, ()))
+
+    refusals, ctx = world.check(gate, monkeypatch)
+
+    assert refusals == []
+    assert [w.endswith("(no register row)") for w in ctx.warnings] == [True]
+
+
+def test_a_pip_advisory_new_in_head_refuses_naming_it(
+    gate: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    world = AuditWorld(tmp_path, "uv.lock")
+    world.reports["head"] = _pip_report((OLD_VULN, ()), (NEW_VULN, ()))
+    world.reports["base"] = _pip_report((OLD_VULN, ()))
+
+    refusals, ctx = world.check(gate, monkeypatch)
+
+    assert _details(refusals) == [
+        ("AUDIT_FINDING", f"pip-audit uv.lock {NEW_VULN} in fixture-package is new versus BASE")
+    ]
+    assert len(ctx.warnings) == 1
+    assert OLD_VULN in ctx.warnings[0]
+
+
+def test_a_head_advisory_matching_only_a_base_alias_is_pre_existing(
+    gate: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A database can re-key an advisory between the two audits; the alias still ties them.
+    world = AuditWorld(tmp_path, "uv.lock")
+    world.reports["head"] = _pip_report((OLD_ALIAS, ()))
+    world.reports["base"] = _pip_report((OLD_VULN, (OLD_ALIAS,)))
+
+    refusals, ctx = world.check(gate, monkeypatch)
+
+    assert refusals == []
+    assert len(ctx.warnings) == 1
+
+
+def test_every_head_advisory_is_new_when_base_has_no_uv_lock(
+    gate: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    world = AuditWorld(tmp_path, "uv.lock")
+    world.base_paths -= {"uv.lock"}
+    world.reports["head"] = _pip_report((OLD_VULN, ()))
+    world.reports["base"] = _pip_report((OLD_VULN, ()))
+
+    refusals, _ = world.check(gate, monkeypatch)
+
+    assert [r.code for r in refusals] == ["AUDIT_FINDING"]
+    assert "is new versus BASE" in refusals[0].detail
+    assert not any(
+        argv[argv.index("-r") + 1].endswith("-base.txt")
+        for argv in world.calls
+        if "pip-audit" in argv
+    )
+
+
+def test_a_new_npm_high_refuses_and_a_pre_existing_one_warns(
+    gate: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    world = AuditWorld(tmp_path, "infra/package-lock.json")
+    world.reports["head"] = _npm_report((NPM_OLD, 101, "high"), (NPM_NEW, 102, "critical"))
+    world.reports["base"] = _npm_report((NPM_OLD, 101, "high"))
+
+    refusals, ctx = world.check(gate, monkeypatch)
+
+    lock = "npm audit infra/package-lock.json"
+    assert _details(refusals) == [
+        ("AUDIT_FINDING", f"{lock} {NPM_NEW} / npm-advisory-102 in fixture-npm is new versus BASE")
+    ]
+    assert ctx.warnings == [
+        f"{lock} {NPM_OLD} / npm-advisory-101 in fixture-npm is pre-existing versus BASE "
+        "(no register row)"
+    ]
+
+
+def test_a_new_npm_moderate_is_not_compared(
+    gate: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    world = AuditWorld(tmp_path, "infra/package-lock.json")
+    world.reports["head"] = _npm_report((NPM_NEW, 102, "moderate"))
+    world.reports["base"] = _npm_report()
+
+    refusals, ctx = world.check(gate, monkeypatch)
+
+    assert refusals == []
+    assert ctx.warnings == []
+
+
+@pytest.mark.parametrize("side", ["head", "base"])
+@pytest.mark.parametrize("lockfile", ["uv.lock", "frontend/package-lock.json"])
+@pytest.mark.parametrize("failure", ["exit-2", "invalid-json"])
+def test_a_scanner_that_cannot_run_on_either_side_refuses(  # noqa: PLR0913, PLR0917
+    gate: ModuleType,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    side: str,
+    lockfile: str,
+    failure: str,
+) -> None:
+    world = AuditWorld(tmp_path, lockfile)
+    if failure == "exit-2":
+        world.rc[side] = 2
+    else:
+        world.reports[side] = b"{not json"
+
+    refusals, _ = world.check(gate, monkeypatch)
+
+    assert [r.code for r in refusals] == ["AUDIT_FINDING"]
+    assert " could not run: " in refusals[0].detail
+
+
+def test_a_scanner_exit_1_with_no_advisory_listed_refuses(
+    gate: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Exit 1 with an empty report is a scanner fault (pip-audit --strict on an unresolvable
+    # dependency), not a clean audit.
+    world = AuditWorld(tmp_path, "uv.lock")
+    world.rc["head"] = 1
+
+    refusals, _ = world.check(gate, monkeypatch)
+
+    assert [r.code for r in refusals] == ["AUDIT_FINDING"]
+    assert "exited 1 but listed no advisory" in refusals[0].detail
+
+
+@needs_gitleaks
+def test_warnings_print_after_ok_are_recorded_and_never_change_the_exit_code(
+    gate: ModuleType, repo: Repo
+) -> None:
+    def warns(ctx: Any) -> list[Any]:
+        ctx.warnings.append(f"pip-audit uv.lock {OLD_VULN} is pre-existing versus BASE")
+        return []
+
+    repo.commit({"docs/notes.md": "public notes\n"})
+    checks = (gate.Check("audit", "AUDIT_FINDING", warns),)
+    lines: list[str] = []
+
+    code = gate.run_gate(repo.path, repo.base, checks, out=lines.append)
+
+    assert code == 0, lines
+    assert lines[lines.index("publication-gate: audit ok") + 1] == (
+        f"publication-gate: audit WARN pip-audit uv.lock {OLD_VULN} is pre-existing versus BASE"
+    )
+    steps = json.loads((_gate_record(repo) / "steps.json").read_text())
+    assert [(s["exit_code"], s["warnings"]) for s in steps if s["name"] == "audit"] == [
+        (0, [f"pip-audit uv.lock {OLD_VULN} is pre-existing versus BASE"])
     ]
 
 
