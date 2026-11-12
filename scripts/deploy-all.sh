@@ -24,6 +24,10 @@
 #   deployed. When both exist, both flags are on from the start; leaving either off would detach a
 #   live route. Any error reading them other than "not found" stops the run.
 # - The invite. Re-running with the same EMAIL does not send a second invite.
+# - The preflight (scripts/deploy_preflight.py), in both modes, before any diff or deploy: the
+#   Lambda concurrency, Athena active DML and declared Service Quotas values and the Bedrock model
+#   access the synthesized app needs. A value below its minimum, or a read error, stops the run
+#   with the fix printed.
 #
 # Not decided for you: an update to a new version may carry a one-time step between two stacks.
 # Those are stated beside the stack in DEPLOY_ORDER (infra/lib/config/index.ts); read them before
@@ -100,6 +104,11 @@ else
   ADLYTICS_API_ORIGIN_ATTACHED=true ADLYTICS_CONVERSATION_ORIGIN_ATTACHED=true
 fi
 cdk() { (cd infra && npx cdk "$@" --profile "$PROFILE" -c env="$ENV_NAME"); }
+
+step "Checking quotas and model access (read-only)"
+cdk synth --quiet >/dev/null
+uv run python scripts/deploy_preflight.py --profile "$PROFILE" --region "$REGION" \
+  --cdk-out infra/cdk.out
 
 if [ "$APPROVE" != "1" ]; then
   step "Changes a deployment would make (nothing is deployed)"
