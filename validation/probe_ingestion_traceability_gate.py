@@ -68,7 +68,7 @@ _ROOT: Final = Path(__file__).resolve().parents[1]
 _BASE: Final = "1aca2df020eec4b44dc9b4533d0405eab9acf17b"
 """The implementation base of this plan; every changed-file set is measured from it."""
 FIXED_PROBE_DELIVERY: Final = (
-    "generated/amc-dsp-impressions.csv#daily-run=2026-10-06#chunk=2026-10-04"
+    "generated/amc-dsp-impressions.csv#daily-run=2026-11-12#chunk=2026-11-10"
 )
 """The one fixed phase-A delivery P0 copies; `test_probe_delivery_unrestated` pins it."""
 FIXED_PROBE_CONTRACT: Final = "amc-dsp-impressions"

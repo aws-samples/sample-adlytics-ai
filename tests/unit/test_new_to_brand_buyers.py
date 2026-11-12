@@ -151,7 +151,7 @@ US = "ATVPDKIKX0DER"
 NOW = datetime(2026, 10, 6, 12, tzinfo=UTC)
 WEEK = DateRange(date(2026, 9, 14), date(2026, 9, 20))
 SEPTEMBER = DateRange(date(2026, 9, 1), date(2026, 9, 30))
-NOT_RETURNED_WEEK = DateRange(date(2026, 8, 24), date(2026, 8, 30))
+NOT_RETURNED_WEEK = DateRange(date(2026, 9, 28), date(2026, 10, 4))
 """The catalog's declared suppressed-only week (six weeks before the shape_anchor week)."""
 HEADER = (
     "conversion_event_marketplace_name,buyers_new_to_brand_12mo,buyers_attributed,"
@@ -1414,15 +1414,15 @@ def test_both_buyer_counts_are_plannable_in_the_shoppers_and_reach_category(
 def test_the_fixture_is_one_delivery_per_complete_week_and_month() -> None:
     rows = tuple(csv.DictReader(io.StringIO((FIXTURES / f"{PACK_ID}.csv").read_text())))
     windows = [(row["time_window_start"], row["time_window_end"]) for row in rows]
-    assert len(windows) == len(set(windows)) == 80
+    assert len(windows) == len(set(windows)) == 86  # 70 weeks and 16 months to 2026-11-12
     suppressed = [row for row in rows if row["rows_suppressed"] == "true"]
     assert suppressed == [
         {
             "conversion_event_marketplace_name": "",
             "buyers_new_to_brand_12mo": "1",
             "buyers_attributed": "1",
-            "time_window_start": "2026-08-24T00:00:00.000Z",
-            "time_window_end": "2026-08-31T00:00:00.000Z",
+            "time_window_start": "2026-09-28T00:00:00.000Z",
+            "time_window_end": "2026-10-05T00:00:00.000Z",
             "distinct_user_count": "1",
             "suppression_reason": (
                 "1 amazon_attributed_events_by_conversion_time users < 2 required"

@@ -29,7 +29,9 @@ def _expected() -> probe.VendorExpectations:
 
 
 def _key(index: int = 100) -> tuple[str, probe.date]:
-    return sorted(_expected().final)[index]
+    # The probe checks the catalog span; the Vendor history before it (K-4) isn't probed.
+    expected = _expected()
+    return sorted(key for key in expected.final if key[1] >= expected.span.start)[index]
 
 
 def test_the_committed_final_values_pass_with_full_denominators() -> None:

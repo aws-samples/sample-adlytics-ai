@@ -44,7 +44,7 @@ WINDOW = (
     "window=2026-10-04_2026-10-06/options=44136fa355b3678a/"
 )
 PROBE_KEY = f"{WINDOW}retrieved=20261006T092520Z/manifest.json"
-HISTORICAL_KEY = f"{WINDOW}retrieved=20261006T092300Z/manifest.json"
+HISTORICAL_KEY = f"{WINDOW}retrieved=20261112T100228Z/manifest.json"  # backfill slot 564
 
 
 def _store(

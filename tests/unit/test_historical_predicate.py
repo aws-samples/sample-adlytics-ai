@@ -76,11 +76,11 @@ def test_v8_the_predicate_is_total_over_the_planner_output() -> None:
         if is_historical(manifest_facts(item.manifest), policy) is not expected:
             wrong.append(f"{phase}: {item.fixture}")
     assert wrong == []
-    # The plan's own counts (ADR-086 §14): 2,038 phase-B deliveries, 2 of them phase-A keys, plus
-    # the 70 periodic backfill deliveries each of pack 1 (amc-new-to-brand-buyers-platform) and
-    # pack 2 (amc-new-to-brand-buyers-channel) adds, one per complete ISO week and calendar month
-    # of the corpus that ends on or before the cut, and pack 3's (amc-new-to-brand-buyers-campaign)
-    # 13, one per calendar month.
+    # The plan's own counts (ADR-086 §14) at the 2026-11-12 span, cut 2026-09-17: 2,750 phase-B
+    # deliveries, 2 of them phase-A keys, plus the 76 periodic backfill deliveries each of pack 1
+    # (amc-new-to-brand-buyers-platform) and pack 2 (amc-new-to-brand-buyers-channel) adds, one per
+    # complete ISO week (62) and calendar month (14) of the corpus that ends on or before the cut,
+    # and pack 3's (amc-new-to-brand-buyers-campaign) 14, one per calendar month.
     periodic_backfill = sum(
         1
         for item in planned
@@ -93,8 +93,8 @@ def test_v8_the_predicate_is_total_over_the_planner_output() -> None:
             )
         )
     )
-    assert periodic_backfill == 153
-    # Packs 5-7 (exposure groups, frequency per platform and channel) add their 97 periods that
+    assert periodic_backfill == 166
+    # Packs 5-7 (exposure groups, frequency per platform and channel) add their 108 periods that
     # land on or before the cut; packs 8-15 plan none there.
     d2_backfill = sum(
         1
@@ -108,7 +108,7 @@ def test_v8_the_predicate_is_total_over_the_planner_output() -> None:
             )
         )
     )
-    assert d2_backfill == 97
+    assert d2_backfill == 108
     assert (
         counts["B"]
         + sum(
@@ -117,7 +117,7 @@ def test_v8_the_predicate_is_total_over_the_planner_output() -> None:
             if item.delivery_class is DeliveryClass.BACKFILL
             and item.manifest.manifest_key in phase_a_keys
         )
-        == 2_038 + periodic_backfill + d2_backfill
+        == 2_750 + periodic_backfill + d2_backfill
     )
     assert counts["0"] > 0 and counts["A"] > 0 and counts["old"] > 0
 

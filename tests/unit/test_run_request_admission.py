@@ -512,8 +512,9 @@ def test_a_full_history_label_and_a_historical_manifest_are_admitted_with_the_cl
     manifests = FakeManifests(retrieved_at=window_identity(request.manifest_key).retrieved_at)
     labelled = admit_run_request(request, AdmissionDependencies(store, manifests, fixed_now))
     assert (labelled.decision, labelled.admission_class) == ("ADMITTED", "bounded_validation")
-    # 09:23:00 is a phase-B backfill slot of the replay band: the derived class is historical.
-    historical = admit(store, "request-0002", key("20261006T092300Z"))
+    # 2026-11-12 10:02:28 is a phase-B backfill slot (564) of the replay band: the derived class
+    # is historical.
+    historical = admit(store, "request-0002", key("20261112T100228Z"))
     assert (historical.decision, historical.row, historical.reason) == ("ADMITTED", 20, None)
     assert historical.admission_class == "historical"
     assert store.read_receipt("request-0002") == historical

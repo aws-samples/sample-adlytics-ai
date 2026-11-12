@@ -102,10 +102,18 @@ def _plan() -> tuple[LandedDelivery, ...]:
     return plan_landings(ROOT)
 
 
-_AMC_DAILY_DELIVERIES = 4_495
-"""Chunked daily runs per generated AMC fixture over the 463-day span: runs 1..30 populate
-1..30 days (ceil(n / 3) chunks each, 165 in all) and the other 433 runs populate 30 days (10
-chunks each, 4,330), so 165 + 4,330 = 4,495."""
+_AMC_DAILY_DELIVERIES = 4_865
+"""Chunked daily runs per generated AMC fixture over the 500-day span: runs 1..30 populate
+1..30 days (ceil(n / 3) chunks each, 165 in all) and the other 470 runs populate 30 days (10
+chunks each, 4,700), so 165 + 4,700 = 4,865."""
+
+
+def _vendor_days(shape: Any) -> tuple[date, ...]:
+    """Return the Vendor report days: vendor_history_start to last_day less the unlanded day."""
+    forecast, last_day = shape.forecast, shape.fixture_span.last_day
+    first = forecast.vendor_history_start
+    every = (first + timedelta(days=offset) for offset in range((last_day - first).days + 1))
+    return tuple(day for day in every if day != forecast.vendor_day_unlanded)
 
 
 class _Recording:
@@ -674,7 +682,11 @@ _COHORTS = "generated/amc-acquisition-cohorts.csv"
 
 @pytest.mark.covers("ADR-100", "ADR-104")
 def test_the_cohort_corpora_plan_every_whole_vintage_the_span_holds_less_the_refused_one() -> None:
-    """Packs 14-15 plan one delivery per 13-month vintage in the span, from the catalog alone."""
+    """Packs 14-15 plan one delivery per delivered 13-month vintage, from the catalog alone.
+
+    The corpus delivers the three shaped vintages (refused, degraded, quarterly; cohorts.py), the
+    newest the span holds; a longer span holds older whole vintages that are never generated.
+    """
     shape = load_synthetic_entity_catalog(ROOT).shape
     span = shape.fixture_span
     first = (
@@ -694,6 +706,8 @@ def test_the_cohort_corpora_plan_every_whole_vintage_the_span_holds_less_the_ref
         vintages.append((start, end))
         start = date(start.year + start.month // 12, start.month % 12 + 1, 1)
     refused = vintage_ending(shape.acquisition_cohorts.refused_vintage)
+    vintages = [vintage for vintage in vintages if vintage[1] >= refused.end]
+    assert len(vintages) == 3  # refused, degraded, quarterly
     planned = _plan()
     for fixture in (
         "generated/amc-acquisition-cohorts.csv",
@@ -782,6 +796,7 @@ def test_every_landable_fixture_is_planned_in_declared_and_cadence_order() -> No
     span, seal_generation = shape.fixture_span, shape.seal_generation
     day_values = tuple(span.first_day + timedelta(days=offset) for offset in range(span.span_days))
     days = tuple(day.isoformat() for day in day_values)
+    vendor_days = tuple(day.isoformat() for day in _vendor_days(shape))
     for fixture in LANDABLE:
         if fixture in _D2_CORPORA:
             expected.extend(_corpus_period_names(fixture))
@@ -803,13 +818,13 @@ def test_every_landable_fixture_is_planned_in_declared_and_cadence_order() -> No
                     for days in _expected_seal_chunks(fixture)
                 )
         elif fixture == "generated/vendor-sales-by-asin.json":
-            for day in days:
+            for day in vendor_days:
                 expected.append(f"{fixture}#daily-run={day}")
                 # A restating report lands only once due: none for the last two days (§2.2).
                 if date.fromisoformat(day) + timedelta(days=2) <= span.last_day:
                     expected.append(f"{fixture}#restatement={day}")
         elif fixture == "generated/vendor-traffic-by-asin.json":
-            expected.extend(f"{fixture}#daily-run={day}" for day in days)
+            expected.extend(f"{fixture}#daily-run={day}" for day in vendor_days)
         elif fixture == "generated/vendor-product-hierarchy.jsonl":
             # 238 rows (one per span day) per delivery, ADR-086 amendment 2026-10-06.
             expected.extend(
@@ -973,7 +988,7 @@ def test_a_fixtures_selection_lands_only_the_named_feed() -> None:
         and item.run_day is not None
         and item.run_day >= date(2026, 8, 12)
     )
-    assert len(selected) == 560  # runs 2026-08-12..2026-10-06, 10 chunks each
+    assert len(selected) == 930  # runs 2026-08-12..2026-11-12, 10 chunks each
     with pytest.raises(LandingError, match="enumerated landable fixtures"):
         PlanSelection(frozenset({DeliveryClass.CADENCE}), fixtures=frozenset({"traps/none.csv"}))
     parsed = land_cli._parse_args(  # pyright: ignore[reportPrivateUsage]
@@ -1421,14 +1436,16 @@ def _vendor(fixture: str, kind: str) -> dict[date, LandedDelivery]:
 
 @pytest.mark.covers("ADR-086")
 def test_the_last_two_days_carry_only_the_first_report() -> None:
-    span = load_synthetic_entity_catalog(ROOT).shape.fixture_span
+    shape = load_synthetic_entity_catalog(ROOT).shape
+    span = shape.fixture_span
     daily, restated = _vendor(_SALES, "daily-run"), _vendor(_SALES, "restatement")
-    assert len(daily) == span.span_days
+    assert sorted(daily) == list(_vendor_days(shape))
+    assert len(daily) == 765  # 2024-10-08..2026-11-12 is 766 days, less the unlanded day
     assert sorted(set(daily) - set(restated)) == [
         span.last_day - timedelta(days=1),
         span.last_day,
     ]
-    assert len(restated) == span.span_days - 2
+    assert len(restated) == len(daily) - 2
 
 
 @pytest.mark.covers("ADR-086")
@@ -1680,7 +1697,7 @@ def _assert_partition(plan: tuple[LandedDelivery, ...], last_day: date, span_day
 def test_the_phases_partition_the_full_plan() -> None:
     span = load_synthetic_entity_catalog(ROOT).shape.fixture_span
     plan = _plan()
-    assert len(_phases(span.span_days, span.last_day)) == 9  # phase 0, A and 7 batches
+    assert len(_phases(span.span_days, span.last_day)) == 10  # phase 0, A and 8 batches
     _assert_partition(plan, span.last_day, span.span_days)
     selected = plan_landings(ROOT, PlanSelection(frozenset({DeliveryClass.TRAP})))
     assert tuple(item.fixture for item in selected) == tuple(
@@ -2946,26 +2963,28 @@ def test_the_backfill_counts_are_the_evaluated_ones_and_replace_only_the_old_cad
     counts: dict[str, int] = {}
     for item in _backfill_plan():
         counts[item.fixture.partition("#")[0]] = counts.get(item.fixture.partition("#")[0], 0) + 1
-    amc = dict.fromkeys(bundle_module.AMC_DAILY_DATE_COLUMNS, 136)
+    # 2025-07-01..2026-09-17 is 444 days, in chunks of 3: 148 per AMC daily fixture.
+    amc = dict.fromkeys(bundle_module.AMC_DAILY_DATE_COLUMNS, 148)
     assert counts == {
         **amc,
-        "generated/vendor-sales-by-asin.json": 407,
-        "generated/vendor-traffic-by-asin.json": 407,
+        # 2024-10-08..2026-09-17 is 710 days, less the unlanded day.
+        "generated/vendor-sales-by-asin.json": 709,
+        "generated/vendor-traffic-by-asin.json": 709,
         # Every complete week and month landing on or before the cut, unchanged (ADR-100), for
         # each grain set: pack 1 (platform) and pack 2 (channel) land the same periods, and
         # pack 3 (campaign) its calendar months only.
-        "generated/amc-new-to-brand-buyers-platform.csv": 70,
-        "generated/amc-new-to-brand-buyers-channel.csv": 70,
-        "generated/amc-new-to-brand-buyers-campaign.csv": 13,
+        "generated/amc-new-to-brand-buyers-platform.csv": 76,
+        "generated/amc-new-to-brand-buyers-channel.csv": 76,
+        "generated/amc-new-to-brand-buyers-campaign.csv": 14,
         # The D2 corpora's periods landing on or before the cut: pack 5 weeks and months less
         # its refused week, packs 6-7 months and quarters less the refused month. The segment
         # packs (8-13) plan no pre-cut period (their datasets are unencoded in the pinned band),
         # and no cohort vintage (packs 14-15) lands that early.
-        "generated/amc-exposure-groups.csv": 67,
-        "generated/amc-exposure-frequency-platform.csv": 15,
-        "generated/amc-exposure-frequency-channel.csv": 15,
+        "generated/amc-exposure-groups.csv": 74,
+        "generated/amc-exposure-frequency-platform.csv": 17,
+        "generated/amc-exposure-frequency-channel.csv": 17,
     }
-    assert sum(counts.values()) == 2_288
+    assert sum(counts.values()) == 3_024
     cut = bundle_module.backfill_last_day(load_synthetic_entity_catalog(ROOT).shape)
     replay = [
         item
@@ -2974,10 +2993,10 @@ def test_the_backfill_counts_are_the_evaluated_ones_and_replace_only_the_old_cad
         and item.run_day is not None
         and item.run_day <= cut
     ]
-    # Pack 2 (amc-new-to-brand-buyers-channel) adds its 70 cadence deliveries on or before the cut,
-    # pack 3 (amc-new-to-brand-buyers-campaign) its 13 monthly ones, and packs 5-7 their
-    # 97 periods on or before the cut.
-    assert len(replay) == 38_739
+    # Pack 2 (amc-new-to-brand-buyers-channel) adds its 76 cadence deliveries on or before the cut,
+    # pack 3 (amc-new-to-brand-buyers-campaign) its 14 monthly ones, and packs 5-7 their
+    # 108 periods on or before the cut.
+    assert len(replay) == 43_184
     # The full plan, phase A and the increment do not change: the backfill is selected only.
     assert all(item.delivery_class is not DeliveryClass.BACKFILL for item in _plan())
     assert all(item.run_day is not None and item.run_day <= cut for item in _backfill_plan())
@@ -3004,6 +3023,7 @@ def test_every_backfill_watermark_meets_its_retired_floor_and_a_first_report_one
     None
 ):
     touched = 0
+    ties: list[str] = []
     for item in _backfill_plan():
         fixture = item.fixture.partition("#")[0]
         floor = bundle_module._retired_floor(  # pyright: ignore[reportPrivateUsage]
@@ -3011,12 +3031,21 @@ def test_every_backfill_watermark_meets_its_retired_floor_and_a_first_report_one
         )
         if floor is None:
             continue
-        touched += 1
         assert item.manifest.source_watermark is not None
         assert item.manifest.source_watermark >= floor
+        if item.manifest.period_start == floor:
+            ties.append(item.fixture)
+            continue
+        touched += 1
         # Positive control: a first-report watermark (the chunk's first day) is below the floor.
         assert item.manifest.period_start < floor
     assert touched >= 7
+    # The retired Vendor generation's own last day (watermark 2026-09-15) is the only tie: a tie
+    # outranks the retired generation, so there a first report meets the floor too.
+    assert ties == [
+        "generated/vendor-sales-by-asin.json#restatement=2026-09-15",
+        "generated/vendor-traffic-by-asin.json#daily-run=2026-09-15",
+    ]
 
 
 @pytest.mark.covers("ADR-086")
@@ -3038,7 +3067,7 @@ def test_backfill_values_equal_what_the_full_replay_leaves_current() -> None:
         if column is not None:
             for day, rows in _rows_by_day(item, column).items():
                 backfilled[(fixture, day)] = rows
-    assert len(backfilled) == len(replay_last) == 3_663
+    assert len(backfilled) == len(replay_last) == 3_996  # 9 AMC daily fixtures x 444 days
     mismatched = [
         key for key, rows in backfilled.items() if sorted(rows) != sorted(replay_last[key])
     ]
@@ -3069,14 +3098,14 @@ def test_backfill_values_equal_what_the_full_replay_leaves_current() -> None:
     periodic = [
         item for item in _backfill_plan() if item.fixture.partition("#")[0] in AMC_PERIODIC_FIXTURES
     ]
-    assert len(periodic) == 250  # 153 NTB periods and 97 from packs 5-7
+    assert len(periodic) == 274  # 166 NTB periods and 108 from packs 5-7
     assert all(replay_periodic[item.marker.key] == item.data[0].body for item in periodic)
     assert all("#daily-run=" not in item.fixture for item in vendor if "sales" in item.fixture)
 
 
 # --- V-24: the probe-input producer, `--probe-retrieval` with `--no-twin` (S1, P0 commit) -----
 
-_PROBE_NAME = "generated/amc-dsp-impressions.csv#daily-run=2026-10-06#chunk=2026-10-04"
+_PROBE_NAME = "generated/amc-dsp-impressions.csv#daily-run=2026-11-12#chunk=2026-11-10"
 """The probe runner's fixed phase-A delivery (validation/probe_ingestion_traceability_gate.py)."""
 
 
@@ -3413,9 +3442,12 @@ def _vendor_runs(
 
 
 def _traffic_with_pre_span_days() -> tuple[dict[str, Any], dict[str, Any], date]:
-    """Return the traffic corpus, and a copy whose first day's rows repeat on 14 earlier days."""
+    """Return the traffic corpus, and a copy whose first day's rows repeat on 14 earlier days.
+
+    The corpus starts at the catalog's Vendor history start (K-4), the contract's paired origin.
+    """
     today: dict[str, Any] = json.loads((ROOT / "tests" / "fixtures" / _TRAFFIC).read_text())
-    first = load_synthetic_entity_catalog(ROOT).shape.fixture_span.first_day
+    first = load_synthetic_entity_catalog(ROOT).shape.forecast.vendor_history_start
     extended = dict(today)
     for array in ("trafficByAsin", "trafficAggregate"):
         rows = cast("list[dict[str, Any]]", today[array])
@@ -3449,8 +3481,9 @@ def test_vendor_days_before_first_day_plan_and_decode_to_their_own_run_days() ->
     today, extended, first = _traffic_with_pre_span_days()
     origin = first - timedelta(days=_PRE_SPAN_DAYS)
     _, band = _with_backfill()
+    assert band.paired_first_day == first
     policy = replace(band, paired_first_day=origin)
-    current = _vendor_runs(today, None)
+    current = _vendor_runs(today, first)
     runs = _vendor_runs(extended, origin)
     pre_span, in_span = runs[:_PRE_SPAN_DAYS], runs[_PRE_SPAN_DAYS:]
     assert [run[3] for run in pre_span] == [
@@ -3471,15 +3504,17 @@ def test_vendor_days_before_first_day_plan_and_decode_to_their_own_run_days() ->
     } == {timedelta(seconds=28)}
     # Without the earlier origin, the same corpus is refused rather than mis-keyed.
     with pytest.raises(LandingError, match="precedes the paired origin"):
-        _vendor_runs(extended, None)
+        _vendor_runs(extended, first)
 
 
 def test_a_paired_vendor_span_reaching_the_seal_slots_is_refused() -> None:
     today, _, first = _traffic_with_pre_span_days()
-    # 463 span days x 64 s puts the seal slots at offset 29,632; a 14,816-day origin reaches it.
+    # 500 span days x 64 s puts the seal slots at offset 32,000. The corpus runs 765 days from its
+    # first day to last_day, so an origin 15,235 days earlier puts the last day's restating
+    # report at (765 + 15,235) x 2 + 1 = 32,001 s, in the slots; 15,234 days stays at 31,999 s.
     with pytest.raises(LandingError, match="reaches the seal retrieval slots"):
-        _vendor_runs(today, first - timedelta(days=14_816))
-    assert _vendor_runs(today, first - timedelta(days=14_000))
+        _vendor_runs(today, first - timedelta(days=15_235))
+    assert _vendor_runs(today, first - timedelta(days=15_234))
 
 
 # --- S6: the probe retrieval's on_demand twin (V-19) ---------------------------------------------
@@ -3731,11 +3766,13 @@ def test_d7_a_reservation_landed_by_apply_immutable_verifies_for_its_launch() ->
 # Live in dev, the September coarse frequency months and quarterly cohort vintages quarantined
 # PACK_VARIANT_MISMATCH: the planner named the variant but stamped the base pack's governance.
 
+# At the 2026-11-12 shape_anchor: the coarse month is October (the month after the -2 month) and
+# the quarterly vintage is the one as of October (-1).
 _VARIANT_DELIVERIES = {
-    "generated/amc-exposure-frequency-platform.csv#period=2026-09-01..2026-09-30": "coarse",
-    "generated/amc-exposure-frequency-channel.csv#period=2026-09-01..2026-09-30": "coarse",
-    "generated/amc-acquisition-cohorts.csv#period=2025-09-01..2026-09-30": "quarterly",
-    "generated/amc-acquisition-cohorts-arp.csv#period=2025-09-01..2026-09-30": "quarterly",
+    "generated/amc-exposure-frequency-platform.csv#period=2026-10-01..2026-10-31": "coarse",
+    "generated/amc-exposure-frequency-channel.csv#period=2026-10-01..2026-10-31": "coarse",
+    "generated/amc-acquisition-cohorts.csv#period=2025-10-01..2026-10-31": "quarterly",
+    "generated/amc-acquisition-cohorts-arp.csv#period=2025-10-01..2026-10-31": "quarterly",
 }
 """Every planned delivery whose rows are a declared variant's shape, from the catalog's shapes."""
 
