@@ -167,7 +167,10 @@ page someone.
   dead letter or a failed task, and users see every page on its last good version, as today.
 - Outside dev, pages keep publishing one at a time after a landing, as they do today. Publishing
   them together everywhere would need the graph authority to be deployable everywhere, which is a
-  separate decision.
+  separate decision. *Amended 2026-11-12 (owner decision D4):* the graph authority comes with the
+  operational status plane, an off-by-default setting any environment now accepts. A deployment
+  without it keeps publishing one page at a time, and the legacy entry stays until the plane is
+  the default.
 
 ## Alternatives considered
 - **Finalize per page** on the graph entry (each page binds and advances on its own). Deferred: the

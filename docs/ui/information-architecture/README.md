@@ -260,6 +260,5 @@ current and observed spend, and wording that tells a curve state from a scenario
 |---|---|---|
 | The Scorecard model selector changes no figure today | The owner of that business outcomes requirement keeps or retires it through an amendment | Nothing; it stays until then |
 | The 404 status code | The 404 slice's dev probe records it; the guide was read in that slice ([ADR-123](../../decisions/adr-123-serve-a-real-404-through-a-manifest-generated-allowlist.md) decision 3) | Nothing; 200 is the recorded fallback |
-| Lifting the dev-only guard on operational status | A separate infrastructure decision with its own cost and retention review | Data pipeline status outside dev |
 | The alert evaluator | The owner adds it later as a control-plane workload | The Alerts badge and inbox |
 | Simulator curve states and their wording | The forecasting design's owner | The Plan hub |

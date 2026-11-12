@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1130 880" role="img" focusable="false" aria-labelledby="end-to-end-title end-to-end-desc">
   <title id="end-to-end-title">Architecture diagram: Adlytics AI end to end, from your AMC data to pages and answers in the browser</title>
-  <desc id="end-to-end-desc">Your extraction pipeline, in a separate producer AWS account, runs the declared AMC SQL and lands each result in the deployment's data landing bucket, which accepts AMC query packs only and refuses a delivery that fails its data contract; Vendor Central reports can't be landed yet. A valid delivery is published as an immutable version in the data lake. The metric layer computes figures from it with tested SQL on Athena. Page baking builds pages from those figures, one page at a time in a customer deployment; only the dev environment builds every page as one set. Insight narration on Amazon Bedrock writes the text of the insight cards that aren't fixed rules, from a page's own figures, and that text joins the served page by its revision. The analytics assistant calls the metric layer as tools. Pages, card text and answers reach the signed-in browser through the secure edge: CloudFront, AWS WAF and Cognito sign-in. Everything except your pipeline and the browser runs in one deployment AWS account created by make deploy-all.</desc>
+  <desc id="end-to-end-desc">Your extraction pipeline, in a separate producer AWS account, runs the declared AMC SQL and lands each result in the deployment's data landing bucket, which accepts AMC query packs only and refuses a delivery that fails its data contract; Vendor Central reports can't be landed yet. A valid delivery is published as an immutable version in the data lake. The metric layer computes figures from it with tested SQL on Athena. Page baking builds pages from those figures, one page at a time by default; the opt-in operational status plane builds every page as one set. Insight narration on Amazon Bedrock writes the text of the insight cards that aren't fixed rules, from a page's own figures, and that text joins the served page by its revision. The analytics assistant calls the metric layer as tools. Pages, card text and answers reach the signed-in browser through the secure edge: CloudFront, AWS WAF and Cognito sign-in. Everything except your pipeline and the browser runs in one deployment AWS account created by make deploy-all.</desc>
   <defs>
     <marker id="end-to-end-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#536275"/></marker>
   </defs>
@@ -77,7 +77,7 @@
       <text x="890" y="388">rebuilds a page</text>
       <text x="890" y="408">on new data,</text>
       <text x="890" y="428">one page at a time</text>
-      <text x="890" y="458" font-style="italic">Dev environment only:</text>
+      <text x="890" y="458" font-style="italic">Opt-in plane:</text>
       <text x="890" y="478" font-style="italic">every page as one set</text>
       <text x="630" y="384">writes the text of</text>
       <text x="630" y="404">cards that aren't</text>

@@ -453,8 +453,9 @@ export interface GatewayGuardrailConfig {
 /** Shared provisioning and sampling settings for the online-evaluation control plane. */
 export interface OnlineEvaluationConfig {
   /**
-   * Whether the result link and the current evaluation family (V4) exist. Dev-only: V4 was never
-   * promoted beyond dev, and the V3 family it superseded was retired 2026-09-27 (ADR-079).
+   * Whether the result link and the current evaluation family (V4) exist. Off by default and
+   * accepted in any environment (owner decision D4, 2026-11-12); live-accepted only in dev. The V3
+   * family V4 superseded was retired 2026-09-27 (ADR-079).
    */
   readonly provisioned: boolean;
 
@@ -493,7 +494,7 @@ export interface EvaluationQualityConfig {
 export interface OnlineEvaluationV4Config {
   /**
    * Whether the V4 evaluation gate is asked to enable execution (ADR-079). A request, not a
-   * state: the gate enables only after every readback and calibration holds. Dev-only.
+   * state: the gate enables only after every readback and calibration holds. Off by default.
    */
   readonly executionRequested: boolean;
 }
@@ -507,7 +508,7 @@ export interface EvaluationInputConfig {
   readonly provisioned: boolean;
 }
 
-/** Development-only operational data-flow observation infrastructure. */
+/** Opt-in operational data-flow observation infrastructure, off by default. */
 /**
  * Traceability FR-10: the exact-one-of staffed destination. The email arm uses the existing
  * in-account ingestion alarm topic; its endpoint is a live input to the destination verifier,
@@ -867,7 +868,7 @@ export interface AppConfig {
   /** ADR-075 Stage-1 projection limits and sole deployment handoff input. */
   readonly ingestion: IngestionConfig;
 
-  /** Development-only authority-backed operational status observation slice. */
+  /** Opt-in authority-backed operational status observation slice, off by default. */
   readonly operationalStatus: OperationalStatusConfig;
 
   /**
@@ -2691,7 +2692,7 @@ export const DEPLOY_ORDER = [
   'DependenciesStack',
   // Permanent retained Semantic V2 storage and state.
   'DataV2Stack',
-  // Development-only retained operational read model precedes its disposable projector and API reader.
+  // Opt-in retained operational read model precedes its disposable projector and API reader.
   'OperationalStatusStoreStack',
   // Reads the attempts stream and writes only the retained operational projection above.
   'OperationalStatusProcessorStack',

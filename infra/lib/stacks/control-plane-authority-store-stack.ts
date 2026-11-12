@@ -29,7 +29,7 @@ export interface ControlPlaneAuthorityStoreStackProps extends cdk.StackProps {
  * The probe pair is built by the same construct from the same generated schema. Store-level live
  * tests write only there, through the probe role, which holds exactly the generated action set on
  * the probe tables and nothing on the live table. No worker role is granted anything on them
- * (V-15). Composed with the development-only operational plane, like the status store.
+ * (V-15). Composed with the opt-in operational plane, like the status store.
  *
  * The probe role trusts this account's root, so any principal here that may assume roles can use
  * it; that is acceptable for the development probe tables and is why it reaches no live table.

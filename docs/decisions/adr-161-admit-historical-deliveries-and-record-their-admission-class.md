@@ -28,6 +28,7 @@ The only stated reason was a module docstring: "v1 has no legitimate historical 
 - `contract_revision` 3 re-keys every input fingerprint (`manifest_fingerprint` keys on the revision). A revision-2 input delivered again is decided afresh, not JOINED at row 9.
 - The class is still decoded from the dev replay band, so for a real delivery `historical` means "period ends on or before 2026-08-11". It is a recorded attribute only; no behaviour depends on it.
 - A large customer backfill now runs, and costs Athena queries and bake fan-out on the legacy entry in proportion to the days it covers.
+- The operational status explanation derives a root's candidate graph IDs with the current revision (`src/adapters/inbound/operational_status/explanation.py`, `_graphs`). For a root admitted under revision 2 those derived candidates miss; the projected graph rows still list its graphs.
 ## Reversibility
 Restore row 4, the label refusal and the port check under a new `contract_revision`. Receipts keep their row numbers and no stored item changes, so a reversal needs no migration.
 ## Alternatives considered

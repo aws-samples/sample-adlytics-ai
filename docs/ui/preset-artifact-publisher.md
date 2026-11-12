@@ -40,7 +40,7 @@ Three decoupled parts follow the publications stream, so semantic publication, s
 fail and retry independently. The mandated target under
 [ADR-075](../decisions/adr-075-generate-page-artifacts-once-per-dependency-cohort.md) is stated in
 [Target pipeline](#target-pipeline); the paragraphs below describe the legacy entry, the one every
-environment except `dev` runs.
+deployment without the operational plane runs (the default).
 
 **Stream consumer.** The enqueue Lambda accepts `CURRENT` stream records, re-attests the exact current
 publication, and sends the complete V2 page/preset declaration to the bake queue for every retained
@@ -170,8 +170,8 @@ settlement follows the shared completion/SLO concept and never gates determinist
 ## Target pipeline
 
 Mandated by [ADR-075](../decisions/adr-075-generate-page-artifacts-once-per-dependency-cohort.md).
-The `GRAPH` cohort bake on dev (above) is the deployed step toward it; outside dev the legacy entry
-still runs, and ADR-075's status line owns which stages are accepted. Each component below is built only against its accepted low-level design in
+The `GRAPH` cohort bake on dev (above) is the deployed step toward it; a deployment without the
+operational plane still runs the legacy entry, and ADR-075's status line owns which stages are accepted. Each component below is built only against its accepted low-level design in
 [Generation coordination](generation-coordination.md) and
 [Generation materialization](generation-materialization.md). It replaces the stream consumer and bake
 unit above in one change, never alongside them.

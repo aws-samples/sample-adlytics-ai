@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1300 720" role="img" focusable="false" aria-labelledby="ncr-title ncr-desc">
   <title id="ncr-title">Call-flow diagram: how the New customers and Retention pages get their figures, in a customer deployment</title>
-  <desc id="ncr-desc">Your extraction pipeline, in a second AWS account, runs the declared Amazon Marketing Cloud queries for new-to-brand purchases, new buyers and acquisition cohorts, and lands each result in the S3 landing bucket, where it is checked against its data contract and published to the governed data lake as an immutable version. With a Paid Features subscription, the cohorts also count any repeat purchase. A new published version starts the page bake, which computes each figure with tested code on AWS Lambda and Amazon Athena and writes the built page, with figures or a designed absence, to the page store. Each insight card is a fixed-rule statement computed from those figures; no AI model writes the cards. The Presentation API serves each page's latest good version to the signed-in user. Customer deployments bake one page at a time; building all affected pages as one set runs in the dev environment only.</desc>
+  <desc id="ncr-desc">Your extraction pipeline, in a second AWS account, runs the declared Amazon Marketing Cloud queries for new-to-brand purchases, new buyers and acquisition cohorts, and lands each result in the S3 landing bucket, where it is checked against its data contract and published to the governed data lake as an immutable version. With a Paid Features subscription, the cohorts also count any repeat purchase. A new published version starts the page bake, which computes each figure with tested code on AWS Lambda and Amazon Athena and writes the built page, with figures or a designed absence, to the page store. Each insight card is a fixed-rule statement computed from those figures; no AI model writes the cards. The Presentation API serves each page's latest good version to the signed-in user. By default a deployment bakes one page at a time; with the opt-in operational status plane, all affected pages are built as one set.</desc>
   <defs>
     <marker id="ncr-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#536275"/></marker>
   </defs>
@@ -88,9 +88,9 @@
       <text x="30" y="532">from the page's figures by tested code.</text>
       <text x="30" y="550">No AI model writes the cards.</text>
       <text x="717" y="492" font-size="15" font-weight="bold">How pages refresh</text>
-      <text x="717" y="514">Customer deployments bake one page at a time;</text>
+      <text x="717" y="514">By default a deployment bakes one page at a time;</text>
       <text x="717" y="532">a page that fails keeps its last good version.</text>
-      <text x="717" y="550">Dev environment only: all affected pages are built</text>
+      <text x="717" y="550">Opt-in operational plane: all affected pages are built</text>
       <text x="717" y="568">as one set and switch to new data together.</text>
     </g>
   </g>

@@ -60,13 +60,14 @@ only source of hubs, tabs and routes.**
    with no mapping. The API keeps enforcing each entitlement on its own.
 8. **Data pipeline status is listed only where it's provisioned.** `/me` returns
    `can_read_operational_status` as true only for a member of the `operations-status-read` group in a
-   deployment where the operational status API is provisioned, which is dev only today
-   [repo: `infra/lib/config/index.ts:1001-1004`]. A direct visit elsewhere shows "Data pipeline status
+   deployment where the operational status API is provisioned, an opt-in setting that is off by
+   default [repo: `infra/lib/config/index.ts`, `operationalStatusConfig`]. A direct visit elsewhere shows "Data pipeline status
    isn't set up in this deployment." with "Go to Overview". `/me` also returns
    `operational_status_provisioned`, which grants nothing, so a direct visit where it's provisioned
    but the session isn't in the group shows "You don't have access to this page" instead. Until
-   Overview ships, both links name the root tab, as the 404 page does. Lifting the dev-only guard is
-   a separate infrastructure decision with its own cost and retention review.
+   Overview ships, both links name the root tab, as the 404 page does. *Amended 2026-11-12 (owner
+   decision D4):* the dev-only guard is lifted; synth accepts the setting in any environment, and
+   live acceptance has run only in dev.
 9. **Navigation by width.** A 232 px sidebar from 1420 px, an 88 px labelled rail from 881 to 1419 px,
    and a slide-out sheet below 881 px. The 881 px breakpoint is fixed by the owner.
 10. **Nav links carry a preset only when the user chose it and the target declares it.** Otherwise the
