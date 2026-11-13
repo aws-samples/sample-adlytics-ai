@@ -185,3 +185,47 @@ def test_a_pointer_change_between_the_two_reads_still_blocks_settle() -> None:
     )
     observation = _observe([_dated(), moved], max_seconds=60)
     assert "a pointer advanced between the two end reads" in observation.findings
+
+
+_EXPIRES_AT_OLD = "1793878200"  # 2026-11-05T11:30:00Z: an advance at 2026-10-06T11:30:00Z
+_EXPIRES_AT_RECENT = "1793879910"  # 2026-11-05T11:58:30Z: an advance 90 s before _NOW
+
+
+def _anchored(superseded_expires_at: str | None, written_at: str | None) -> probe.PipelineRead:
+    return _dated(**{"campaigns#7d": probe.last_advance(superseded_expires_at, written_at)})
+
+
+def test_a_never_advanced_pointer_is_dated_by_its_own_written_at() -> None:
+    """A pointer with no earlier revision blocked every settle on dev (2026-11-13, D2)."""
+    old = _anchored(None, "2026-10-06T11:56:59Z")  # 181 s before _NOW
+    assert probe.quiet_findings(old, _NOW, 180) == ()
+    assert _observe([old]).findings == ()
+    recent = _anchored(None, "2026-10-06T11:58:30Z")  # 90 s before _NOW
+    assert probe.quiet_findings(recent, _NOW, 180) == (
+        "pointer campaigns#7d advanced 90 s ago, inside the 180 s quiet period",
+    )
+    assert _observe([recent], max_seconds=300).findings
+
+
+def test_a_pointer_with_neither_stamp_is_never_quiet() -> None:
+    undated = _anchored(None, None)
+    assert probe.quiet_findings(undated, _NOW, 180) == (
+        "pointer campaigns#7d has no measurable last advance",
+    )
+    assert _observe([undated], max_seconds=300).findings
+
+
+def test_the_superseded_expires_at_still_wins_over_written_at() -> None:
+    # Positive control for the unchanged path: expires_at dates the advance 30 minutes ago, and
+    # a written_at inside the quiet period does not override it.
+    both = _anchored(_EXPIRES_AT_OLD, "2026-10-06T11:58:30Z")
+    assert probe.last_advance(_EXPIRES_AT_OLD, "2026-10-06T11:58:30Z") == datetime(
+        2026, 10, 6, 11, 30, tzinfo=UTC
+    )
+    assert probe.quiet_findings(both, _NOW, 180) == ()
+    assert _observe([both]).findings == ()
+    recent = _anchored(_EXPIRES_AT_RECENT, "2026-10-06T11:00:00Z")
+    assert probe.quiet_findings(recent, _NOW, 180) == (
+        "pointer campaigns#7d advanced 90 s ago, inside the 180 s quiet period",
+    )
+    assert _observe([recent], max_seconds=300).findings

@@ -11,9 +11,14 @@ the maximum: at that point the probe reports not settled with the last findings.
 
 The quiet period's evidence: the pointer table stamps a superseded revision with
 `expires_at = advance + 30 days` (`SUPERSEDED_HISTORY_RETENTION`), so the last advance of each
-variant is that value minus 30 days. On 2026-10-06 the slowest observed fan-out from a write to
-a pointer advance was about 43 s (Publisher deploy 05:48:18Z, campaigns pointers 05:49:01Z;
-retail attested 08:58:39Z, pointers 08:58:56Z), so 3 minutes is more than four times it.
+variant is that value minus 30 days. A pointer with no datable superseded revision (it has never
+advanced, or TTL removed the revision) is dated by its CURRENT item's own `written_at`, set only
+by a graph bake's advance (2026-11-13, slice 1 D2). That anchor is later, so stricter, than the
+`expires_at` basis for the same advance (275-461 s later on dev); both come before the
+finalize's CURRENT write. A pointer with neither stamp is never quiet. On 2026-10-06 the
+slowest observed fan-out from a write to a pointer advance was about 43 s (Publisher deploy
+05:48:18Z, campaigns pointers 05:49:01Z; retail attested 08:58:39Z, pointers 08:58:56Z), so 3
+minutes is more than four times it.
 
 `--capture-baseline` writes the baseline before a phase. A full run writes a report to
 `validation/evidence/reports/` and, with `--settled-report`, the `pipeline-settled` v1 file the
@@ -292,12 +297,13 @@ def _pointers(
     """The CURRENT revisions and each variant's last advance, from the table's own stamps."""
     found: dict[str, str] = {}
     supersedes: dict[str, str] = {}
+    written: dict[str, str | None] = {}
     paginator = dynamodb.get_paginator("scan")
     for page in paginator.paginate(
         TableName=table,
         FilterExpression="record_key = :current",
         ExpressionAttributeValues={":current": {"S": _CURRENT_RECORD}},
-        ProjectionExpression="page_variant_key, revision, supersedes",
+        ProjectionExpression="page_variant_key, revision, supersedes, written_at",
     ):
         for item in page.get("Items", []):
             key = item.get("page_variant_key", {}).get("S")
@@ -305,6 +311,7 @@ def _pointers(
             if key is None or revision is None:
                 raise ProbeError("a CURRENT pointer item is malformed")
             found[key] = revision
+            written[key] = item.get("written_at", {}).get("S")
             prior = item.get("supersedes", {}).get("S")
             if prior is not None:
                 supersedes[key] = prior
@@ -322,12 +329,23 @@ def _pointers(
         )
         stamp = None if history is None else history.get("expires_at", {})
         raw = None if stamp is None else (stamp.get("N") or stamp.get("S"))
-        advanced[key] = (
-            None
-            if raw is None
-            else datetime.fromtimestamp(int(raw), UTC) - SUPERSEDED_HISTORY_RETENTION
-        )
+        advanced[key] = last_advance(raw, written[key])
     return found, advanced
+
+
+def last_advance(superseded_expires_at: str | None, written_at: str | None) -> datetime | None:
+    """Date a CURRENT pointer's last advance, or None when nothing dates it.
+
+    The superseded revision's `expires_at` (epoch seconds, advance + 30 days) wins. Without it,
+    the CURRENT item's `written_at` (`YYYY-MM-DDTHH:MM:SSZ`) is the later, stricter anchor.
+    """
+    if superseded_expires_at is not None:
+        return datetime.fromtimestamp(int(superseded_expires_at), UTC) - (
+            SUPERSEDED_HISTORY_RETENTION
+        )
+    if written_at is not None:
+        return datetime.strptime(written_at, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+    return None
 
 
 @dataclass(frozen=True, slots=True)
