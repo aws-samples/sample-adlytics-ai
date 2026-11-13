@@ -214,7 +214,7 @@ def test_revision_2_generates_the_routes_and_each_node_route_to_both_projections
 
 def test_serving_coalescing_has_dedicated_closed_controls_without_moving_v1_bounds() -> None:
     assert SERVING_COALESCING == {
-        "serving_candidate_roster_max": 512,
+        "serving_candidate_roster_max": 5338,
         "serving_frontier_shards": 32,
         "next_election_min_remaining_ms": 10493,
         "binding_kinds": ("direct", "alias"),

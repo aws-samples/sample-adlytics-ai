@@ -44,6 +44,7 @@ from domain.operations.generated_execution_graphs import (
 )
 from domain.operations.run_request import RunState, Waiter
 from domain.operations.status import canonical_authority_digest
+from domain.shared_kernel.errors import ErrorCode, InvariantError
 
 __all__ = [
     "AUTHORITY_MODE_CHANGED",
@@ -83,6 +84,7 @@ __all__ = [
     "RUN_STATE_CHANGED",
     "SEMANTIC_WRITE_ROUTE",
     "SENT_NODE_STATES",
+    "SERVING_ROSTER_OVER_BOUND",
     "SETTLE_CHUNK_MEMBERS",
     "SLOT_NOT_OWNED",
     "STREAM_TRIGGER_AFTER_CUTOVER",
@@ -571,6 +573,9 @@ class CompleteObligation:
 
 
 _SERVING_ROSTER_MAX: Final = int(SERVING_COALESCING["serving_candidate_roster_max"])
+SERVING_ROSTER_OVER_BOUND: Final = ErrorCode("EXEC_GRAPH", 45)
+"""A roster above `serving_candidate_roster_max`, the derived DynamoDB item limit (interim until
+the roster lists are paged, OQ-28): the election is refused and reported, nothing is dropped."""
 _SERVING_FRONTIER_SHARDS: Final = int(SERVING_COALESCING["serving_frontier_shards"])
 _ELECTED_TRANSACTION_MEMBERS: Final = _SERVING_FRONTIER_SHARDS + 8 + 8 + 3
 _NO_ELIGIBLE_TRANSACTION_MEMBERS: Final = _SERVING_FRONTIER_SHARDS + 8 + 2
@@ -689,7 +694,11 @@ def validate_serving_candidates(
 ) -> tuple[ServingCandidate, ...]:
     """Validate and canonically order one complete candidate roster; never truncate it."""
     if len(candidates) > _SERVING_ROSTER_MAX:
-        raise ValueError("the serving candidate roster exceeds its dedicated protocol bound.")
+        raise InvariantError(
+            SERVING_ROSTER_OVER_BOUND,
+            "the serving candidate roster exceeds its derived item-size bound.",
+            context={"roster": len(candidates), "bound": _SERVING_ROSTER_MAX},
+        )
     if not candidates:
         return ()
     domains = {candidate.domain for candidate in candidates}

@@ -95,7 +95,19 @@ write_unit_batching:
 # GRAPH serving coalescing (design §§2-3): closed pure protocol vocabulary. These controls sit
 # outside `bounds`, so the pre-cutover v1 bounds digest and its route/ceiling controls do not move.
 serving_coalescing:
-  serving_candidate_roster_max: 512
+  # INTERIM until the roster lists are paged (OQ-28, required before slice 4). A derived DynamoDB
+  # item limit, not a policy: four items carry one entry per candidate (head `elected_run_ids`,
+  # `COALESCE#.run_ids`, the winner's bake node `serving_run_ids`, the direct binding's
+  # `contributor_roots`), about 73 conservative oracle bytes each. Measured by the shared byte
+  # oracle on the real final-transaction images (build-s1/evidence/graph-stall/serve-fix/
+  # roster-bound.json, 2026-11-13): the largest N keeping every one of them within 400,000 less
+  # the adapter's 8,192-byte settle headroom (UNREAD_ITEM_BYTES) is 5,338 (the bake node binds).
+  # The maximum byte fixture (both cohorts at 5,338) measures the final transaction's largest
+  # target, the head, at 391,882 bytes (8,118 left) and the transaction at 1,585,556 of
+  # 4,000,000. A larger roster is refused,
+  # ADLY-EXEC_GRAPH-0045, and reported; no candidate is dropped. At about 22 settled runs a minute
+  # it is reached only after about 4 h of held serving under a sustained backfill.
+  serving_candidate_roster_max: 5338
   serving_frontier_shards: 32
   # Measured by FreshElectionTimingV1: ceil(2 * max(total_ms)) over every attempt of
   # every sample. Evidence: .agents/tasks/ingestion-traceability/evidence/graph-bake-delivery/fresh-election-timing-v1.json
