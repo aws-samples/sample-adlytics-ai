@@ -262,7 +262,7 @@ test: ## Unit tests on bounded parallel workers, recorded; PYTEST_WORKERS=0..4 o
 test-integration: ## Adapter tests against real AWS resources, recorded: make test-integration PROFILE=...
 	$(call require_profile)
 	@AWS_PROFILE=$(PROFILE) uv run python scripts/run_record.py run --kind $@ --format pytest -- \
-		python -m pytest -m integration '--junitxml={staging}/junit.xml'
+		python -m pytest -m integration tests/integration '--junitxml={staging}/junit.xml'
 
 verify: ## Everything that gates a merge on the backend, in order, stopping at the first failure; recorded
 	@uv run python scripts/run_record.py gate --kind verify

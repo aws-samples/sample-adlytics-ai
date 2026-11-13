@@ -173,6 +173,9 @@ the totals, status.json `progress` and raw/junit.xml hold the same tests and cou
 run. The one exception is a module that fails to collect: one process stops before any test runs,
 while xdist runs the other modules, so the totals differ, but both runs record the error and fail.
 Integration tests (`make test-integration`) and mutation runs stay in one process.
+`make test-integration` names `tests/integration`, as `make test` names `tests/unit`, so it never
+imports `tests/forecasting`, whose modules need the forecasting group's numpy
+(`make check-forecasting`).
 
 ## steps.json
 
