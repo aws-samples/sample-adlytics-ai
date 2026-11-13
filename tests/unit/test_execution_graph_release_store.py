@@ -412,6 +412,7 @@ def test_a_same_id_replay_with_changed_elected_facts_is_refused_without_writes(
         "no_eligible": replace(
             request,
             successor_candidates=(),
+            successor_coordinates=(),
             successor_winner=None,
             successor_cohort_revision=None,
             successor_input_revision=None,

@@ -29,10 +29,14 @@ from __future__ import annotations
 import gzip
 import json
 import re
+from collections.abc import Sequence
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Final, cast
 
-from adapters.outbound.dynamodb.byte_oracle import MAX_CONSERVATIVE_SERVICE_ITEM_BYTES
+from adapters.outbound.dynamodb.byte_oracle import (
+    MAX_CONSERVATIVE_SERVICE_ITEM_BYTES,
+    MAX_DISTINCT_ITEM_ACTIONS,
+)
 from adapters.outbound.dynamodb.execution_graph import due_shard, root_clock_attribute
 from adapters.outbound.dynamodb.execution_graph_dispatch import (
     DynamoGraphDispatchStore,
@@ -158,10 +162,12 @@ from ports.outbound.execution_graph_release import (
     ServingDomainReadResult,
     ServingElectionOutcome,
     ServingExecutionContext,
+    ServingMarkerCoordinate,
     ServingMutationResult,
     ServingOutcomeReconciliationRequest,
     ServingOutcomeReconciliationResult,
     ServingPromoterTransition,
+    ServingStagePage,
     SupersededGrant,
     UnarmedPrecomputeSettlement,
 )
@@ -302,6 +308,107 @@ def _text_list(item: Item, name: str) -> tuple[str, ...]:
 def _unavailable_list(unavailable: tuple[tuple[str, str], ...]) -> AttributeValueTypeDef:
     """S6 §2.8: `(artifact_key, reason)` pairs as a list of two-string lists, in order."""
     return {"L": [{"L": [write_text(key), write_text(reason)]} for key, reason in unavailable]}
+
+
+_STAGE_KIND: Final = "serving_election_stage"
+"""ADR-162: a staged-election page in the domain's due shard; not a flow obligation."""
+
+
+def _stage_prefix(domain: str) -> str:
+    return f"ELECTION#{domain}#"
+
+
+def _stage_key(page: ServingStagePage) -> Item:
+    return _key(
+        due_shard(page.domain), f"{_stage_prefix(page.domain)}{page.stage_id}#{page.page:06d}"
+    )
+
+
+def _stage_entry(read: ServingCandidateRead) -> AttributeValueTypeDef:
+    """One staged candidate: every fact the election reads, in a fixed positional order."""
+    candidate, coordinate = read.candidate, read.coordinate
+    clock = candidate.root_clock_started_at
+    return {
+        "L": [
+            write_text(candidate.run_id),
+            write_text(candidate.grant_id),
+            write_int(candidate.grant_ordinal),
+            write_text(candidate.root_flow_id),
+            write_text(candidate.publication_effect_digest),
+            write_text(read.target_digest),
+            {"NULL": True} if clock is None else write_text(clock),
+            write_int(coordinate.frontier_shard),
+            write_int(coordinate.eligible_coordinate),
+        ]
+    }
+
+
+def _stage_item(page: ServingStagePage) -> Item:
+    return {
+        **_stage_key(page),
+        "item_kind": write_text(_STAGE_KIND),
+        "domain": write_text(page.domain),
+        "stage_id": write_text(page.stage_id),
+        "page": write_int(page.page),
+        "entries": {"L": [_stage_entry(read) for read in page.reads]},
+    }
+
+
+def _staged_read(domain: str, entry: AttributeValueTypeDef) -> ServingCandidateRead:
+    """Rebuild one staged candidate; only a validated candidate is ever staged (ADR-162)."""
+    values = cast("list[dict[str, Any]]", entry.get("L", []))
+    if len(values) != 9:  # noqa: PLR2004 -- the fixed positional entry written by `_stage_entry`
+        raise GraphStoreUnavailableError("a staged serving candidate is malformed.")
+    run_id, grant_id = str(values[0]["S"]), str(values[1]["S"])
+    ordinal = int(str(values[2]["N"]))
+    clock = None if "NULL" in values[6] else str(values[6]["S"])
+    candidate = ServingCandidate(
+        run_id=run_id,
+        grant_id=grant_id,
+        root_flow_id=str(values[3]["S"]),
+        domain=domain,
+        grant_ordinal=ordinal,
+        publication_effect_digest=str(values[4]["S"]),
+        root_clock_started_at=clock,
+    )
+    return ServingCandidateRead(
+        candidate,
+        ServingAuthorityIdentity(run_id, grant_id, ordinal, domain),
+        str(values[5]["S"]),
+        ServingMarkerCoordinate(run_id, int(str(values[7]["N"])), int(str(values[8]["N"]))),
+    )
+
+
+def _stage_page(domain: str, item: Item) -> ServingStagePage:
+    if _text(item, "item_kind") != _STAGE_KIND or _text(item, "domain") != domain:
+        raise GraphStoreUnavailableError("a staged serving page names another kind or domain.")
+    entries = cast("list[AttributeValueTypeDef]", item.get("entries", {}).get("L", []))
+    return ServingStagePage(
+        domain,
+        _req_text(item, "stage_id"),
+        _req_int(item, "page"),
+        tuple(_staged_read(domain, entry) for entry in entries),
+    )
+
+
+def _stage_chunks(page: ServingStagePage) -> list[ServingStagePage]:
+    """Split a page's reads into consecutive pages that each fit one item (halving)."""
+    pending = [page.reads]
+    chunks: list[tuple[ServingCandidateRead, ...]] = []
+    while pending:
+        reads = pending.pop(0)
+        probe = ServingStagePage(page.domain, page.stage_id, page.page, reads)
+        if item_bytes(_stage_item(probe)) <= MAX_CONSERVATIVE_SERVICE_ITEM_BYTES:
+            chunks.append(reads)
+            continue
+        if len(reads) == 1:
+            raise GraphStoreUnavailableError("one staged serving candidate exceeds an item.")
+        middle = len(reads) // 2
+        pending[:0] = [reads[:middle], reads[middle:]]
+    return [
+        ServingStagePage(page.domain, page.stage_id, page.page + index, reads)
+        for index, reads in enumerate(chunks)
+    ]
 
 
 def _read_unavailable(item: Item) -> tuple[tuple[str, str], ...]:
@@ -1516,7 +1623,14 @@ class DynamoGraphReleaseStore(DynamoGraphDispatchStore):
             binding_present=self.read_serving_binding(run.grant_id) is not None,
             root_clock_started_at=run.root_clock_started_at,
         )
-        return ServingCandidateRead(candidate, identity, _req_text(marker, "target_digest"))
+        coordinate = ServingMarkerCoordinate(
+            run_id,
+            _req_int(marker, "frontier_shard"),
+            _req_int(marker, "eligible_coordinate"),
+        )
+        return ServingCandidateRead(
+            candidate, identity, _req_text(marker, "target_digest"), coordinate
+        )
 
     def read_serving_execution(self, grant_id: str, run_id: str) -> ServingExecutionContext | None:
         """Read winner context stamped on its bake fan-out node by the atomic election."""
@@ -1726,13 +1840,14 @@ class DynamoGraphReleaseStore(DynamoGraphDispatchStore):
             != request.successor_candidate_digest
         ):
             raise GraphStoreUnavailableError("the successor candidate digest changed.")
+        # ADR-162: each coordinate was read with its candidate's `SETTLED_ELIGIBLE` marker
+        # (`read_serving_candidate`), and a settled marker never changes, so the proof does not
+        # read every successor's marker a second time.
         coordinates: dict[int, set[int]] = {shard: set() for shard in range(_SERVING_SHARDS)}
-        for candidate in request.successor_candidates:
-            marker = self._get(_serving_marker_key(candidate.run_id))
-            if marker is None or _text(marker, "state") != "SETTLED_ELIGIBLE":
+        for coordinate in request.successor_coordinates:
+            if coordinate.frontier_shard not in coordinates:
                 raise GraphStoreUnavailableError("a successor publication marker is incomplete.")
-            shard = _req_int(marker, "frontier_shard")
-            coordinates[shard].add(_req_int(marker, "eligible_coordinate"))
+            coordinates[coordinate.frontier_shard].add(coordinate.eligible_coordinate)
         for shard in range(_SERVING_SHARDS):
             expected = set(
                 range(
@@ -2119,6 +2234,46 @@ class DynamoGraphReleaseStore(DynamoGraphDispatchStore):
             elected_cohort_revision=_text(item, "elected_cohort_revision"),
             elected_at=_text(item, "elected_at"),
         )
+
+    # --- staged serving election (ADR-162) ---------------------------------------------------
+
+    def read_serving_stage(self, domain: str) -> tuple[ServingStagePage, ...]:
+        """Strongly read every staged-election page of the domain, in page order."""
+        pages = [
+            _stage_page(domain, item)
+            for item in self._query(due_shard(domain), _stage_prefix(domain))
+        ]
+        return tuple(sorted(pages, key=lambda page: (page.stage_id, page.page)))
+
+    def write_serving_stage(self, page: ServingStagePage) -> tuple[ServingStagePage, ...]:
+        """Create `page.reads` as consecutive pages from `page.page`, each within one item.
+
+        Each page is created once (`attribute_not_exists`) in its own transaction, so a pass
+        killed between two pages keeps every page it wrote and loses none it did not.
+        """
+        written: list[ServingStagePage] = []
+        for chunk in _stage_chunks(page):
+            self._commit(
+                [
+                    put(
+                        MemberSpec("", {}, _SERVING_HEAD_CHANGED, "attribute_not_exists(pk)"),
+                        _stage_item(chunk),
+                    )
+                ]
+            )
+            written.append(chunk)
+        return tuple(written)
+
+    def delete_serving_stage(self, pages: Sequence[ServingStagePage]) -> None:
+        """Delete staged-election pages, at most one transaction's actions at a time."""
+        keys = [_stage_key(page) for page in pages]
+        for start in range(0, len(keys), MAX_DISTINCT_ITEM_ACTIONS):
+            self._commit(
+                [
+                    delete(MemberSpec("", key, _SERVING_HEAD_CHANGED, "attribute_exists(pk)"))
+                    for key in keys[start : start + MAX_DISTINCT_ITEM_ACTIONS]
+                ]
+            )
 
     def _final_transition_replay_change(
         self, request: DrainFinalAliasAndActivateNextRequest, head: ServingDomainHead | None

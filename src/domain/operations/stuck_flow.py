@@ -12,7 +12,10 @@ Flow obligations are the items that keep a flow open: `INSTANTIATE#`, `WAITER#`,
 `OUTBOX#`, `FENCE#`, `RELEASE#`, `APPLY#`, and (S6 §2.2) `ARM#` (an arming that waits) and
 `COMPLETE#` (a granted run not yet `SUCCEEDED`), and (plan 4.1, F9) `BAKE_RECOVERY#` (a failed bake
 task's recovery owner, deleted only by the transaction that obsoletes or settles its winner).
-`PROMOTE#` is a wakeup, not a flow obligation, so it is measured by its own age instead. A flow
+`PROMOTE#` is a wakeup, not a flow obligation, so it is measured by its own age instead.
+`ELECTION#` (ADR-162) is a staged serving election's page of validated candidates: a read cache
+of immutable facts that the domain's `COMPLETE#` items already keep open, so it is not counted.
+A flow
 obligation without a stamped root clock is counted apart (`without_root_clock`): every S5 writer
 stamps one, so such an item is either residue from before S5 or a writer defect, and it has its
 own alarm rather than a guessed due time.
@@ -63,6 +66,7 @@ __all__ = [
     "PRECOMPUTE_BLOCKED_AFTER",
     "PROMOTION_KIND",
     "PROTOCOL_CEILING",
+    "STAGE_KIND",
     "ContributionObservation",
     "DueObservation",
     "HoldState",
@@ -92,6 +96,8 @@ FLOW_OBLIGATION_KINDS: Final = frozenset(
 """Every item kind that keeps a flow open; the detector counts these and nothing else."""
 PROMOTION_KIND: Final = "PROMOTE"
 """A wakeup for the promoter: measured by age, never counted as a flow."""
+STAGE_KIND: Final = "ELECTION"
+"""ADR-162: a staged serving election's page; its candidates' `COMPLETE#` items are the flows."""
 PROTOCOL_CEILING: Final = timedelta(seconds=int(BOUNDS["protocol_ceiling_seconds"]))
 """The v1 protocol ceiling, from the generated contract. A changed ceiling is a new protocol."""
 _PERIOD: Final = int(BAKE_TASKS["worker_schedule_seconds"])
@@ -364,6 +370,8 @@ def sweep(  # noqa: PLR0913, PLR0917 -- the shards, their names, the hold, the c
         for item in shards[shard] or ():
             if item.kind == PROMOTION_KIND:
                 promotions.append(item)
+                continue
+            if item.kind == STAGE_KIND:
                 continue
             if item.kind not in FLOW_OBLIGATION_KINDS:
                 raise SweepIncompleteError(f"an undeclared due item kind was read ({shard}).")

@@ -30,6 +30,7 @@ __all__ = [
     "ITEM_RESERVE_MS",
     "NO_DEADLINE",
     "PROMOTE_RESERVE_MS",
+    "SERVING_STAGE_RESERVE_MS",
     "UNITS_COLLECT_RESERVE_MS",
     "PassBudget",
     "remaining_reader",
@@ -55,6 +56,18 @@ UNITS_COLLECT_RESERVE_MS: Final = 25_000
 gets at least 15 s before `ITEM_RESERVE_MS`. One `TABLE#<k>` grant is one transaction; a guard
 adds one re-read of at most 24 members (48 calls, about 0.5 s) per retry. Tables the grant phase
 does not reach keep their units PENDING for the next pass, oldest head first."""
+
+UNITS_SHARE_MS: Final = 10_000
+"""The units collection's share of a pass in which a serving backlog also runs: about 310 units
+`ARM#` items at the measured 32 ms each (graph-stall RCA §3)."""
+
+SERVING_STAGE_RESERVE_MS: Final = UNITS_COLLECT_RESERVE_MS + UNITS_SHARE_MS
+"""35 s: the serving election reads no new candidate, and the drain starts no further alias,
+below this, so the units collection that follows in the same pass still gets its 10 s share
+before `UNITS_COLLECT_RESERVE_MS` (serve-rca.md §3.4). Serving starts about 4 s into a 60 s pass
+once the waiter phase is quiet, so it gets about 20 s: about 200 candidates at the measured
+101.5 ms each (dev, 2026-11-13, 135 drains, R² 0.996), or 130 aliases at about 150 ms.
+The first alias of a pass keeps today's `next_election_min_remaining_ms` guard alone."""
 
 COMPLETE_RESERVE_MS: Final = 35_000
 """The release stops visiting `COMPLETE#` items that are not a domain's ACTIVE winner here, so

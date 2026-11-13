@@ -36,6 +36,7 @@ time, and ADR-144 bounds the baker.
    |---|---|---|
    | `PROMOTE_RESERVE_MS` | 40,000 ms | The promoter's waiter phase (`promote_shard`), so the arm pass keeps at least 40 s |
    | `COMPLETE_RESERVE_MS` | 35,000 ms | The release's waiting `COMPLETE#` items, so its `RELEASE#` phase keeps at least 25 s |
+   | `SERVING_STAGE_RESERVE_MS` | 35,000 ms | Serving candidate reads and every alias after a pass's first, so units collection keeps its 10 s share (`UNITS_COLLECT_RESERVE_MS` + 10 s) |
    | `UNITS_COLLECT_RESERVE_MS` | 25,000 ms | Units collection, so the grant phase keeps at least 15 s |
    | `ITEM_RESERVE_MS` | 10,000 ms | Table grants, serving arming, the release's applies, winners and triggers |
 
@@ -59,17 +60,56 @@ time, and ADR-144 bounds the baker.
      the time that issues new grants.
 4. **No cursor.** Whatever a pass leaves stays in its `DUE#` shard, and the next pass reads it
    again strongly. Every commit is still one conditioned transaction, so stopping early loses no
-   item and repeats none. A cursor would add writes on the path a timeout kills, and the stuck-flow
-   sweep would refuse a new `DUE#` item kind.
+   item and repeats none. A cursor would add writes on the path a timeout kills.
 5. **Where the reserves live.** They are Python constants, like `INSTANTIATE_GRACE`. In the contract,
    a changed bound is a new protocol version, and a new `serving_coalescing` key would change the
    generated projection under `infra/`, which slice 1 has not approved.
 6. **Visibility.** The terminal line of each pass gains `deferred`: the items it left unstarted.
    The promoter's waiter phase still reads each shard after its budget has stopped it, three cheap
    queries, so the count covers every shard. The promoter's terminal line also gains
-   `grants_deferred`. The function-errors alarms clear
+   `grants_deferred`, `serving_staged` (candidates staged this pass) and `serving_unstaged`
+   (candidates left unread). The function-errors alarms clear
    because passes stop timing out. open-flows-past-ceiling and PromoteObligationAge stay the
    backlog alarms, unchanged.
+7. **Staged serving election (added 2026-11-13, serve-rca.md §3).** An election reads every
+   candidate (about 10 strong reads, 101.5 ms each on dev), and on dev 3,502 of them took about
+   400 s, so every 60 s pass was killed before its commit. Now:
+   - Candidates are read in grant-ordinal order while `SERVING_STAGE_RESERVE_MS` remains. When the
+     budget stops the reads, the validated reads go into `ELECTION#<domain>#<stage_id>#<page>`
+     items in the domain's due shard, each created once and split to fit one item. A later pass
+     reads only the candidates no page holds, and the commit runs once every candidate is read.
+   - The commit evaluates the same functions over the same complete roster, in the same order, as
+     one unpaged read: `validate_serving_candidates`, `serving_gap`, the newest winner, the cohort
+     and candidate digests, the coordinate proof and the live-frontier ConditionChecks. A roster
+     small enough for one pass writes no page, so it commits exactly as before.
+   - `stage_id` digests the head version. A waiting candidate (GRANTED, publish SUCCEEDED,
+     precompute WAITING_INPUT, bake PENDING, no claim, no binding) changes only through this
+     promoter's own serving transitions, and each one moves the head version. Writer census: a
+     grant fence and a pause need no `grant_id`; completion, the unarmed settlement, the pin and the
+     finalizer act on the armed winner; a claim needs a READY node, and only the election arms one.
+     A page under another version is dead and is deleted.
+   - A publication that settles during staging is one more unstaged candidate, so it joins the
+     roster; its frontier move also fails a commit read before it, as before. Staging converges
+     while a pass reads more candidates (about 200) than settle in a minute (at most 22 on dev).
+   - A pass whose candidate reads took longer than one fresh iteration (5,246 ms, half the
+     measured guard) pages those reads, reads the head, frontier and walk again, and reads only
+     the candidates that settled meanwhile before it commits. Otherwise a settlement during a
+     20 s read window, nearly certain at 22 a minute, fails every commit's frontier check.
+   - Each marker's frontier coordinate is read once with its candidate, so the final transition's
+     coordinate proof no longer reads every successor's marker again. A settled marker never
+     changes.
+   - The page is a read cache of immutable facts, not a cursor: the commit still re-proves `ARM#`,
+     `COMPLETE#`, the head and the frontier. The stuck-flow sweep declares `ELECTION` as a
+     non-flow kind; the candidates' `COMPLETE#` items stay the flows it counts.
+8. **Several aliases a pass.** A drain orders its cohort newest grant first from the walk's
+   `COMPLETE#` ordinals and reads only the alias it drains next. The first alias of a pass keeps
+   the `next_election_min_remaining_ms` guard alone; each further alias, and the final alias's
+   successor reads, wait for `SERVING_STAGE_RESERVE_MS`. A non-final drain ConditionChecks the head
+   and never moves it, so one head read serves every drain of the pass.
+9. **The roster bound.** `serving_candidate_roster_max` is 5,338, derived by the byte oracle from
+   the four items that hold one entry per candidate (contract comment). It is interim until those
+   lists are paged (OQ-28). A larger roster is refused with `EXEC_GRAPH-45` and reported; nothing is
+   dropped.
 
 Decided by (1) and (3) of the
 [decision-weighting rubric](../delivery-practice.md#5-the-decision-weighting-rubric). A killed pass
@@ -101,7 +141,22 @@ smallest change that ends the stall.
   - Invalid and rising readings are refused with `EXEC_GRAPH-35`.
   - The reserves are ordered and each is under one pass.
 - `tests/unit/test_execution_graph_promoter.py`: a waiter reached under the promote reserve
-  waits for the next pass, and the next pass promotes it once.
+  waits for the next pass, and the next pass promotes it once. Below the guard the final alias
+  waits; at the guard with no successor it drains (42 members); successors are read only at the
+  stage reserve, and then elect in that pass (51 members).
+- `tests/unit/test_execution_graph_serving_stage.py`, at dev's per-call rates:
+  - A roster of 1,030 (twice the old 512 cap) is staged over at least 3 passes, never killed,
+    and leaves exactly the store an unbounded pass leaves: same winner, roster and digests.
+  - A small roster elects in one pass and writes no page (control).
+  - A pass killed before any store call of its first or second pass converges to that state.
+  - A publication that arrives while staging joins the roster and wins.
+  - A publication that settles during a slow pass's reads is read again and that pass commits;
+    without the second read the commit fails with `SERVING_FRONTIER_CHANGED`.
+  - A head version change kills the stage; its pages are deleted and re-read.
+  - A cohort of 1,029 aliases drains at least 2 a pass over at least 3 passes, and the first pass
+    reads only the runs it aliases.
+- `tests/unit/test_execution_graph_dispatch.py`: 5,338 candidates are accepted and 5,339 are
+  refused with `EXEC_GRAPH-45`.
 - The existing promoter, release, unit-batch, bake and whole-chain suites pass unchanged, so an
   ample budget changes nothing.
 
@@ -110,7 +165,12 @@ smallest change that ends the stall.
 - A backlog drains over several passes instead of stalling. At the dev rates, one pass collects
   about 900 runs (30 s at 32 ms a run) and grants each table its oldest 24 or fewer [inference
   from rca.md §3].
-- Serving still drains one alias per domain per pass (rca.md F3). The budget does not change that.
+- Serving drains about 130 to 250 aliases a pass and reads about 200 candidates a pass, so D2's
+  3,502 waiting runs elect in about 18 passes and drain in about 14 to 27 [projection from the
+  dev rates; confirmed by the deploy step from the terminal lines].
+- Each staged pass adds one page write per about 1,100 candidates and one `ELECTION#` query per
+  election attempt. The Release's `direct_binding` (one read a cohort member, about 35 s at 3,502)
+  and the PostGrantConsumer's `_cohort_eligible` stay unbudgeted (serve-rca.md §5).
 - The release reads each `COMPLETE#` domain's head once a pass: one item and 32 frontier shards,
   about 0.4 s a domain at the dev rate. With no `COMPLETE#` item it reads none.
 - While a `COMPLETE#` backlog lasts, the release polls at most about 25 s of waiting runs a pass,
@@ -124,15 +184,17 @@ smallest change that ends the stall.
 
 ## Reversibility
 
-Delete the budget checks. No stored item, contract or `infra/` value changes, so a reversal needs
-no migration.
+Delete the budget checks. Staged pages are read caches: deleting every `ELECTION#` item loses
+only reads, which the next pass repeats. The roster bound is a contract value; lowering it again
+refuses rosters between the two values.
 
 ## Alternatives considered
 
 | Alternative | Why not, or why |
 |---|---|
 | Raise the two Lambdas' timeouts | Needs `infra/` approval, and any fixed timeout is outgrown by a larger backlog |
-| A durable cursor per pass | Adds writes on the path a kill interrupts, and a new `DUE#` kind breaks the stuck-flow sweep |
+| A durable cursor per pass | Adds writes on the path a kill interrupts. The serving stage is not one: it caches immutable facts and the commit re-proves the rest |
+| Elect from the oldest 512 | Changes the winner, fails the coordinate proof, and the rest could never be elected (serve-rca.md §3.1) |
 | Concurrent per-item reads (bounded fan-out) | Raises capacity, but convergence does not need it. It can come later, with the bound from configuration |
 | Reserves in the contract | A changed bound is a new protocol version, and the generated `infra/` projection would move |
 | **A per-item budget, oldest first, no cursor** | **Chosen** |

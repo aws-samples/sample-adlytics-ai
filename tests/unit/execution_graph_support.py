@@ -377,10 +377,14 @@ class FakeDynamo:
         values = kwargs["ExpressionAttributeValues"]
         pk = values[":pk"]["S"]
         prefix = values.get(":prefix", {"S": ""})["S"]
+        # Select, then sort: the same answer, without sorting the whole table on every query.
         found = [
             copy.deepcopy(item)
-            for (item_pk, item_sk), item in sorted(self.items.items())
-            if item_pk == pk and item_sk.startswith(prefix)
+            for _key, item in sorted(
+                (key, item)
+                for key, item in self.items.items()
+                if key[0] == pk and key[1].startswith(prefix)
+            )
         ]
         self.queries.append((pk, prefix))
         if self.after_query is not None:

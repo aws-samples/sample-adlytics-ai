@@ -826,8 +826,12 @@ _GUARD_MS = 10_493
 """The measured guard (FreshElectionTimingV1, 2026-10-15), pinned so a contract change is seen."""
 
 
+_STAGE_RESERVE_MS = 35_000
+"""ADR-162's serving stage reserve, pinned: no successor candidate is read below it."""
+
+
 def test_below_the_election_guard_the_final_alias_waits_and_the_next_invocation_elects() -> None:
-    world = build_world(3, 2)
+    world = build_world(3, 0)
     fake = world.fake
     before = copy.deepcopy(fake.items)
 
@@ -835,8 +839,24 @@ def test_below_the_election_guard_the_final_alias_waits_and_the_next_invocation_
 
     assert waiting is None
     assert fake.items == before  # the final alias and its COALESCE# stay durable
-    elected = capture_final_transaction(world, "next-invocation", lambda: _GUARD_MS)
+    # With no successor to read, the guard alone admits the final transaction.
+    drained = capture_final_transaction(world, "next-invocation", lambda: _GUARD_MS)
+    assert drained is not None and len(drained.request["TransactItems"]) == 42
+
+
+def test_successors_are_read_only_above_the_stage_reserve_and_then_elect_in_that_pass() -> None:
+    world = build_world(3, 2)
+    fake = world.fake
+    before = copy.deepcopy(fake.items)
+
+    for clock in (_GUARD_MS, _STAGE_RESERVE_MS - 1):
+        waiting = capture_final_transaction(world, f"low-{clock}", lambda clock=clock: clock)
+        assert waiting is None
+        assert fake.items == before  # nothing read, so nothing staged and nothing drained
+
+    elected = capture_final_transaction(world, "next-invocation", lambda: _STAGE_RESERVE_MS)
     assert elected is not None and len(elected.request["TransactItems"]) == 51
+    assert not [key for key in fake.items if key[1].startswith("ELECTION#")]
 
 
 def test_a_publication_racing_the_final_transaction_fails_it_whole_and_joins_the_retry() -> None:
