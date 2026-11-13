@@ -1725,6 +1725,17 @@ export const PARAMS = {
     name: 'v2/semantic-publications-stream-arn',
     producedBy: 'DataV2Stack',
   },
+  /** ENV=dev only: the streamless leases/publications pair the coordinator probes write. */
+  semanticV2ProbeLeasesTableName: {
+    area: 'data',
+    name: 'v2/semantic-leases-probe-table',
+    producedBy: 'DataV2Stack',
+  },
+  semanticV2ProbePublicationsTableName: {
+    area: 'data',
+    name: 'v2/semantic-publications-probe-table',
+    producedBy: 'DataV2Stack',
+  },
   semanticV2SourceDatabase: {
     area: 'data',
     name: 'v2/source-aligned-glue-database',

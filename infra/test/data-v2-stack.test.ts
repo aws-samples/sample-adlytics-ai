@@ -92,11 +92,11 @@ function workgroupMismatches(template: Props): string[] {
   return mismatches;
 }
 
-function synth(): Template {
+function synth(config: typeof TEST_CONFIG = TEST_CONFIG): Template {
   const app = new cdk.App();
   return Template.fromStack(
     new DataV2Stack(app, 'DataV2', {
-      config: TEST_CONFIG,
+      config,
       env: { account: TEST_CONFIG.account, region: TEST_CONFIG.region },
       tablesPath: TABLES,
     }),
@@ -240,8 +240,40 @@ describe('isolated retained Semantic V2 storage', () => {
     expect(expiry?.Filter).toBeUndefined();
   });
 
+  it('gives the dev coordinator probes a streamless pair that no live consumer reads', () => {
+    const resources = Object.values(synth().toJSON().Resources as Record<string, Props>);
+    const tables = (name: string): Props | undefined =>
+      resources.find(
+        (resource) =>
+          resource.Type === 'AWS::DynamoDB::Table' &&
+          (resource.Properties as Props).TableName === name,
+      )?.Properties as Props | undefined;
+    const live = tables(semanticV2StateTableName(TEST_CONFIG.envName, 'publications'));
+    for (const kind of ['leases', 'publications'] as const) {
+      const probe = tables(`${semanticV2StateTableName(TEST_CONFIG.envName, kind)}-probe`);
+      expect(probe).toBeDefined();
+      expect(probe?.StreamSpecification).toBeUndefined();
+      expect(probe?.BillingMode).toBe('PAY_PER_REQUEST');
+      expect(probe?.PointInTimeRecoverySpecification).toEqual({ PointInTimeRecoveryEnabled: true });
+      expect(probe?.SSESpecification).toEqual(
+        tables(semanticV2StateTableName(TEST_CONFIG.envName, kind))?.SSESpecification,
+      );
+    }
+    const probePublications = tables(
+      `${semanticV2StateTableName(TEST_CONFIG.envName, 'publications')}-probe`,
+    );
+    expect(probePublications?.GlobalSecondaryIndexes).toEqual(live?.GlobalSecondaryIndexes);
+    for (const key of ['semanticV2ProbeLeasesTableName', 'semanticV2ProbePublicationsTableName'] as const) {
+      synth().hasResourceProperties('AWS::SSM::Parameter', {
+        Name: paramPath(TEST_CONFIG.envName, key),
+      });
+    }
+  });
+
   it('creates isolated point-in-time recoverable publication authorities', () => {
-    synth().resourceCountIs('AWS::DynamoDB::Table', 3);
+    // Three live tables plus, in ENV=dev, the streamless probe pair.
+    synth().resourceCountIs('AWS::DynamoDB::Table', 5);
+    synth({ ...TEST_CONFIG, envName: 'prod' }).resourceCountIs('AWS::DynamoDB::Table', 3);
     for (const kind of ['attempts', 'leases', 'publications'] as const) {
       synth().hasResourceProperties('AWS::DynamoDB::Table', {
         TableName: semanticV2StateTableName(TEST_CONFIG.envName, kind),
@@ -317,8 +349,12 @@ describe('isolated retained Semantic V2 storage', () => {
       'semanticV2CurrentDatabase',
       'semanticV2StagingBucketName',
       'semanticV2StagingDatabase',
+      // ENV=dev only: the coordinator probes' streamless pair.
+      'semanticV2ProbeLeasesTableName',
+      'semanticV2ProbePublicationsTableName',
     ] as const;
     synth().resourceCountIs('AWS::SSM::Parameter', keys.length);
+    synth({ ...TEST_CONFIG, envName: 'prod' }).resourceCountIs('AWS::SSM::Parameter', keys.length - 2);
     for (const key of keys) {
       synth().hasResourceProperties('AWS::SSM::Parameter', {
         Name: paramPath(TEST_CONFIG.envName, key),
