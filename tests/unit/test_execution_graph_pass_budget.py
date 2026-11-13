@@ -12,15 +12,26 @@ Fictional data only.
 
 from __future__ import annotations
 
+import copy
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import timedelta
-from typing import Any
+from typing import Any, cast
 
 import pytest
-from execution_graph_dispatch_support import NOW, store, write_text
+from execution_graph_dispatch_support import (
+    NOW,
+    now_text,
+    seed_run,
+    set_mode,
+    store,
+    write_bool,
+    write_int,
+    write_text,
+)
 from execution_graph_release_support import (
     context,
+    granted_run,
     release_store,
     reserve_winner,
     seed_granting_run,
@@ -30,6 +41,7 @@ from execution_graph_support import FakeDynamo
 from unit_batch_support import node_of, unit_run
 
 from adapters.jobs.execution_graph.budget import (
+    COMPLETE_RESERVE_MS,
     ITEM_RESERVE_MS,
     PROMOTE_RESERVE_MS,
     UNITS_COLLECT_RESERVE_MS,
@@ -37,7 +49,12 @@ from adapters.jobs.execution_graph.budget import (
 )
 from adapters.jobs.execution_graph.fence_settler import due_shards
 from adapters.jobs.execution_graph.instantiate import ingestion_node_plan
-from adapters.jobs.execution_graph.promoter import ArmCounts, PromoterContext, arm_pass
+from adapters.jobs.execution_graph.promoter import (
+    ArmCounts,
+    PromoterContext,
+    arm_pass,
+    promote_shard,
+)
 from adapters.jobs.execution_graph.release import (
     ReleaseCounts,
     ReleaseOutcome,
@@ -46,8 +63,9 @@ from adapters.jobs.execution_graph.release import (
     release_pass,
     release_run,
 )
-from adapters.outbound.dynamodb.execution_graph import due_shard
-from domain.operations.execution_graph_dispatch import NodeState
+from adapters.outbound.dynamodb.execution_graph import due_shard, receipt_item
+from domain.operations.execution_graph import AuthorityMode
+from domain.operations.execution_graph_dispatch import FenceReason, NodeState
 from domain.operations.execution_graph_release import (
     INGESTION_RELEASE_DOMAIN,
     CohortContribution,
@@ -58,6 +76,8 @@ from domain.operations.execution_graph_release import (
 )
 from domain.operations.generated_execution_graphs import BAKE_TASKS
 from domain.shared_kernel.errors import InvariantError
+from ports.outbound.execution_graph import ReceiptRecord
+from ports.outbound.execution_graph_dispatch import FenceRunRequest
 
 pytestmark = [pytest.mark.unit, pytest.mark.covers("ADR-162")]
 
@@ -393,16 +413,18 @@ def test_a_not_ready_backlog_in_the_first_shard_no_longer_starves_the_last_shard
 
     left = meter.remaining
     metered.idle()
-    assert counts.outcomes == {"applied": 1, "not_ready": 17}
-    assert (counts.completed, counts.completion_pending, counts.deferred) == (1, 1, 23)
+    assert counts.outcomes == {"applied": 1, "not_ready": 10}
+    # The winner completed; the run just applied is a waiting `COMPLETE#` reached at 19.95 s,
+    # under the 35 s `COMPLETE#` reserve, so it and 30 triggers wait for the next pass.
+    assert (counts.completed, counts.completion_pending, counts.deferred) == (1, 0, 31)
     assert (counts.failed, counts.failed_shards) == (0, 0)
     assert str(fake.items[(f"RUN#{completing}", "RUN")]["state"]["S"]) == "SUCCEEDED"
     assert str(fake.items[(f"RUN#{applying}", "RUN")]["state"]["S"]) == "GRANTED"
-    # The triggers polled were the oldest 9 by root clock, whatever their run IDs.
+    # The triggers polled were the oldest 10 by root clock, whatever their run IDs.
     polled = [run for run in waiting if f"RUN#{run}" in meter.runs_read]
-    assert polled == waiting[:17]
-    # The 18th trigger would have started under the 10 s reserve; the pass returned instead.
-    assert left == 9_800
+    assert polled == waiting[:10]
+    # The 11th trigger would have started under the 10 s reserve; the pass returned instead.
+    assert left == 9_550
 
 
 def test_control_the_same_release_world_with_an_ample_clock_polls_every_trigger() -> None:
@@ -416,6 +438,231 @@ def test_control_the_same_release_world_with_an_ample_clock_polls_every_trigger(
     assert counts.outcomes == {"applied": 1, "not_ready": 40}
     # The run applied in the APPLY# phase is visited by the COMPLETE# phase that follows it.
     assert (counts.completed, counts.completion_pending, counts.deferred) == (1, 1, 0)
+
+
+def _waiting_on_serving(fake: FakeDynamo, count: int, shard: int) -> list[str]:
+    """`count` granted, applied runs in `DUE#<shard>` waiting on serving, lowest ordinal first.
+
+    Each `COMPLETE#` is a poll for the release: the run is completed by the promoter's alias
+    drain, not by the release.
+    """
+    return [
+        granted_run(
+            fake,
+            unit=_unit(shard, index + 1),
+            fingerprint=f"{index + 96:02x}" * 32,
+            request_id=f"r-serve-{index:03d}",
+        )
+        for index in range(count)
+    ]
+
+
+def _complete_world(waiting: int) -> tuple[FakeDynamo, list[str], str, str]:
+    """Seed `waiting` runs in `DUE#0`, a completable winner in `DUE#15`, a trigger in `DUE#3`."""
+    fake = FakeDynamo()
+    runs = _waiting_on_serving(fake, waiting, 0)
+    winner = _completable(fake, _unit(15, 1))
+    ready = seed_granting_run(
+        fake, unit=_unit(3, 1), fingerprint="d" * 64, request_id="r-ready"
+    ).record.run_id
+    return fake, runs, winner, ready
+
+
+def _run_state(fake: FakeDynamo, run: str) -> str:
+    return str(fake.items[(f"RUN#{run}", "RUN")]["state"]["S"])
+
+
+def test_a_complete_backlog_larger_than_one_pass_still_completes_the_winner_and_grants() -> None:
+    """Review round 1, AGG-1: 60 waiting runs in `DUE#0` cost 60 s to poll in shard order.
+
+    The round-1 pass polled them first and reached neither the winner in `DUE#15` nor the
+    trigger, so no run was completed or granted and the drain stopped again. The meter charges
+    25 ms a shard query and 250 ms a call, so a waiting run's poll (4 calls) costs 1 s.
+    """
+    fake, runs, winner, ready = _complete_world(60)
+    metered = Metered(fake, due_query_ms=25, call_ms=250)
+    meter = metered.invocation()
+
+    counts = _release(fake, meter.clock)
+
+    left = meter.remaining
+    metered.idle()
+    assert counts.outcomes == {"applied": 1}
+    assert (counts.completed, counts.completion_pending, counts.deferred) == (1, 5, 55)
+    assert (counts.failed, counts.failed_shards) == (0, 0)
+    assert (_run_state(fake, winner), _run_state(fake, ready)) == ("SUCCEEDED", "GRANTED")
+    # The waiting runs polled were the 5 lowest grant ordinals; the rest wait for the next pass.
+    assert [run for run in runs if f"RUN#{run}" in meter.runs_read] == runs[:5]
+    assert {_run_state(fake, run) for run in runs} == {"GRANTED"}
+    # The winner started at 50.95 s and the waiting runs until 35.7 s; the trigger, the last
+    # item, started at 34.3 s, above the 10 s reserve, and the pass returned before the kill.
+    assert left == 8_550
+
+
+def test_control_the_same_complete_world_with_an_ample_clock_visits_every_item() -> None:
+    fake, runs, winner, ready = _complete_world(60)
+
+    counts = _release(fake, lambda: 60_000)
+
+    assert counts.outcomes == {"applied": 1}
+    assert (counts.completed, counts.completion_pending, counts.deferred) == (1, 60, 0)
+    assert (_run_state(fake, winner), _run_state(fake, ready)) == ("SUCCEEDED", "GRANTED")
+    assert {_run_state(fake, run) for run in runs} == {"GRANTED"}
+
+
+def _finalizer_world(waiting: int) -> tuple[FakeDynamo, list[str], str]:
+    """Seed `waiting` serving `ARM#` items in `DUE#0..14` and the ACTIVE winner in `DUE#15`.
+
+    The winner's bake has fanned out: its one task is terminal and its finalizer PENDING, and
+    its serving `ARM#` is re-put, as `fan_out_bake_tasks` does, so the arm pass can arm the
+    finalizer. A waiting run's arm is a no-op: it is not its execution's winner.
+    """
+    fake = FakeDynamo()
+    runs: list[str] = []
+    for index in range(waiting):
+        run = granted_run(
+            fake,
+            unit=_unit(index % 15, index // 15 + 1),
+            fingerprint=f"{index + 96:02x}" * 32,
+            request_id=f"r-serve-{index:03d}",
+        )
+        settle_publish(fake, run)
+        runs.append(run)
+    unit = _unit(15, 1)
+    winner = granted_run(fake, unit=unit, fingerprint="e" * 64, request_id="r-winner")
+    settle_publish(fake, winner)
+    arm_key = (due_shard(unit), f"ARM#{winner}")
+    arm = copy.deepcopy(fake.items[arm_key])
+    reserve_winner(fake, winner)
+    template = fake.items[(f"RUN#{winner}", "NODE#precompute")]
+    for name, state, after, node_id in (
+        ("bake_task:campaigns#7d", "SUCCEEDED", "bake", "a" * 64),
+        ("bake_finalize", "PENDING", "bake_task", "b" * 64),
+    ):
+        node = copy.deepcopy(template)
+        node.update(
+            sk=write_text(f"NODE#{name}"),
+            node=write_text(name),
+            node_id=write_text(node_id),
+            state=write_text(state),
+            after={"L": [write_text(after)]},
+            lock_key=write_text(f"POST_GRANT#{name}#{unit}"),
+            group_id=write_text(f"{name}#{unit}"),
+        )
+        fake.items[(f"RUN#{winner}", f"NODE#{name}")] = node
+    fake.items[arm_key] = arm
+    return fake, runs, winner
+
+
+def _finalizer(fake: FakeDynamo, run: str) -> str:
+    return str(fake.items[(f"RUN#{run}", "NODE#bake_finalize")]["state"]["S"])
+
+
+def test_the_active_winners_finalizer_is_armed_first_behind_a_serving_backlog() -> None:
+    """Review round 1, AGG-2: 45 waiting serving `ARM#` items in `DUE#0..14` fill one pass.
+
+    The round-1 pass armed them in shard order and stopped at the reserve before the winner in
+    `DUE#15`, so its finalizer never armed, its head stayed ACTIVE and serving stopped. The
+    meter charges 10 ms a shard query and 250 ms a call; a waiting item costs about 1 s.
+    """
+    fake, _runs, winner = _finalizer_world(45)
+    metered = Metered(fake, due_query_ms=10, call_ms=250)
+    meter = metered.invocation()
+
+    counts = _arm(fake, meter.clock)
+
+    left = meter.remaining
+    metered.idle()
+    assert (counts.armed, counts.retired, counts.failed, counts.deferred) == (1, 1, 0, 5)
+    assert _finalizer(fake, winner) == "READY"
+    assert (due_shard(_unit(15, 1)), f"ARM#{winner}") not in fake.items
+    assert _arms_left(fake) == 45  # every waiting item stays for a later pass
+    # The winner was armed at 51.11 s; 40 waiting items followed until 10.46 s remained.
+    assert left == 9_450
+
+
+def test_control_the_same_finalizer_world_with_an_ample_clock_arms_the_same_finalizer() -> None:
+    fake, _runs, winner = _finalizer_world(45)
+
+    counts = _arm(fake, lambda: 60_000)
+
+    assert (counts.armed, counts.retired, counts.failed, counts.deferred) == (1, 1, 0, 0)
+    assert _finalizer(fake, winner) == "READY"
+    assert _arms_left(fake) == 45
+
+
+def _released_waiter(fake: FakeDynamo, unit: str, tag: str) -> None:
+    """Seed a unit whose active run was released with one waiter queued, for the next promote."""
+    set_mode(fake, AuthorityMode.GRAPH)
+    active = seed_run(
+        fake, unit=unit, fingerprint=f"{tag}1" * 32, request_id=f"active-{tag}", instantiate=False
+    ).record
+    request_id = f"wait-{tag}"
+    fake.items[(f"RECEIPT#{request_id}", "RECEIPT")] = cast(
+        "Any",
+        receipt_item(
+            ReceiptRecord(
+                request_id=request_id,
+                request_digest="d" * 64,
+                decision="QUEUED_LATEST",
+                reason=None,
+                row=19,
+                authority_epoch=1,
+                mode=AuthorityMode.GRAPH,
+                conflict_unit=unit,
+                input_revision=NOW.isoformat(),
+                fingerprint=f"{tag}8" * 32,
+                recorded_at=now_text(),
+                protocol_version="v1",
+                contract_revision=1,
+                root_flow_id=f"root-{tag}",
+            )
+        ),
+    )
+    fake.items[(due_shard(unit), f"WAITER#{unit}")] = {
+        "pk": write_text(due_shard(unit)),
+        "sk": write_text(f"WAITER#{unit}"),
+        "item_kind": write_text("waiter"),
+        "authority_epoch": write_int(1),
+        "request_id": write_text(request_id),
+        "fingerprint": write_text(f"{tag}8" * 32),
+        "retrieved_at": write_text(NOW.isoformat()),
+        "held": write_bool(False),
+        "revision": write_int(1),
+        "due_at": write_text(now_text()),
+    }
+    store(fake).fence_run(FenceRunRequest(active, FenceReason.CANCELLED, now_text()))
+
+
+def test_a_later_shards_waiter_left_by_the_promote_reserve_is_counted_and_promoted_next() -> None:
+    """Review round 1, AGG-3: a shard the budget stopped before was not read or counted.
+
+    The terminal `deferred` was 0 while a waiter was left unstarted in a later shard, so a
+    backlog could look drained.
+    """
+    fake = FakeDynamo()
+    first, later = _unit(2, 1), _unit(9, 1)
+    _released_waiter(fake, first, "a")
+    _released_waiter(fake, later, "b")
+    promoter = PromoterContext(release_store(fake), ingestion_node_plan, lambda: NOW)
+    readings = iter((40_000, 40_000, 40_000, 40_000))
+    # The entries of `DUE#0`, `DUE#1` and `DUE#2` and `DUE#2`'s one unit see 40 s; every later
+    # reading is 39.999 s, under the reserve.
+    budget = PassBudget.of(lambda: next(readings, 39_999))
+
+    passes = [promote_shard(promoter, shard, budget) for shard in due_shards()]
+
+    assert sum(item.deferred for item in passes) == 1  # what the handler's terminal line sums
+    assert [item.branches for item in passes if item.branches] == [{"promote_waiter": 1}]
+    assert (due_shard(first), f"WAITER#{first}") not in fake.items
+    assert (due_shard(later), f"WAITER#{later}") in fake.items
+    # The next pass, with its time, promotes the later shard's waiter once.
+    again = [
+        promote_shard(promoter, shard, PassBudget.of(lambda: 60_000)) for shard in due_shards()
+    ]
+    assert sum(item.deferred for item in again) == 0
+    assert [item.branches for item in again if item.branches] == [{"promote_waiter": 1}]
+    assert (due_shard(later), f"WAITER#{later}") not in fake.items
 
 
 # --- The budget itself ------------------------------------------------------------------------
@@ -446,9 +693,7 @@ def test_the_reserves_are_ordered_and_each_is_under_one_deployed_pass() -> None:
     """A reserve at or over the Lambda timeout would stop every pass before its first item."""
     pass_ms = int(BAKE_TASKS["worker_pass_seconds"]) * 1000
     assert pass_ms == 60_000
-    assert (ITEM_RESERVE_MS, UNITS_COLLECT_RESERVE_MS, PROMOTE_RESERVE_MS) == (
-        10_000,
-        25_000,
-        40_000,
-    )
-    assert ITEM_RESERVE_MS < UNITS_COLLECT_RESERVE_MS < PROMOTE_RESERVE_MS < pass_ms
+    reserves = (ITEM_RESERVE_MS, UNITS_COLLECT_RESERVE_MS, COMPLETE_RESERVE_MS, PROMOTE_RESERVE_MS)
+    assert reserves == (10_000, 25_000, 35_000, 40_000)
+    assert ITEM_RESERVE_MS < UNITS_COLLECT_RESERVE_MS < COMPLETE_RESERVE_MS < PROMOTE_RESERVE_MS
+    assert pass_ms > PROMOTE_RESERVE_MS

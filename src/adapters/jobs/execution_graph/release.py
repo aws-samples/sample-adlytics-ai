@@ -34,7 +34,8 @@ back to idle, so no undefined state remains and clearing the block restores rele
 superseded or fenced run is never granted, so the units it completed leave no published pointer
 (V-16).
 
-ADR-162: one pass sweeps every due shard, `APPLY#` first, then `COMPLETE#`, then `RELEASE#`
+ADR-162: one pass sweeps every due shard, `APPLY#` first, then `COMPLETE#` (each domain's
+ACTIVE winner first, the waiting runs only while `COMPLETE_RESERVE_MS` remains), then `RELEASE#`
 oldest first, and starts no item once less than `ITEM_RESERVE_MS` of the invocation remains
 (`release_pass`). Each item commits on its own, so what a pass leaves is taken by the next one.
 
@@ -49,7 +50,12 @@ from datetime import datetime, timedelta
 from enum import StrEnum
 from typing import Final, Literal, Protocol, cast
 
-from adapters.jobs.execution_graph.budget import ITEM_RESERVE_MS, NO_DEADLINE, PassBudget
+from adapters.jobs.execution_graph.budget import (
+    COMPLETE_RESERVE_MS,
+    ITEM_RESERVE_MS,
+    NO_DEADLINE,
+    PassBudget,
+)
 from adapters.jobs.execution_graph.isolation import FailureSink, ignore_failure, isolated
 from adapters.outbound.telemetry.graph_metrics import emit_serving_withheld
 from adapters.outbound.telemetry.reporting import LogSeverity, OperationLog
@@ -836,31 +842,69 @@ def release_pass(
     ADR-162: committed grants are applied and granted runs completed before any trigger is
     polled, and triggers run oldest first by root clock, so a backlog of `NOT_READY` triggers
     never starves a later shard's apply or completion. Each phase reads its prefix in every shard
-    just before it runs. No item starts below `ITEM_RESERVE_MS`; the rest are counted `deferred`
-    and stay in their shards for the next pass. A shard whose read fails is reported, counted in
-    `failed_shards` and skipped (S3V-7).
+    just before it runs. In `COMPLETE#` each domain's ACTIVE winner goes first, then the waiting
+    runs in grant-ordinal order, which stop at `COMPLETE_RESERVE_MS` so a `COMPLETE#` backlog
+    never takes the `RELEASE#` phase's time. No other item starts below `ITEM_RESERVE_MS`; the
+    rest are counted `deferred` and stay in their shards for the next pass. A shard whose read
+    fails is reported, counted in `failed_shards` and skipped (S3V-7).
 
     S6 §2.8 (AGG3-7): the `COMPLETE#` phase makes the release worker the run-completion writer.
     A `COMPLETE#` stays until completion commits, so a failed completion is retried each pass.
     """
     counts = ReleaseCounts()
     failed: set[str] = set()
-    phases: tuple[tuple[str, Callable[[str], None]], ...] = (
-        ("APPLY#", lambda run: counts.add(apply_run(context, run))),
-        ("COMPLETE#", lambda run: _complete(context, run, counts)),
-        ("RELEASE#", lambda run: counts.add(release_run(context, run))),
-    )
-    for prefix, action in phases:
-        items = _read_phase(context, shards, prefix, failed)
-        if prefix == "RELEASE#":
-            items.sort(key=lambda item: (item.root_clock_started_at or "", item.subject))
+
+    def run(items: Sequence[DueItem], reserve_ms: int, action: Callable[[str], None]) -> None:
         for index, item in enumerate(items):
-            if not budget.allows(ITEM_RESERVE_MS):
+            if not budget.allows(reserve_ms):
                 counts.deferred += len(items) - index
-                break
-            _isolate(context, lambda run=item.subject, act=action: act(run), counts)
+                return
+            _isolate(context, lambda subject=item.subject: action(subject), counts)
+
+    run(
+        _read_phase(context, shards, "APPLY#", failed),
+        ITEM_RESERVE_MS,
+        lambda subject: counts.add(apply_run(context, subject)),
+    )
+    complete = _read_phase(context, shards, "COMPLETE#", failed)
+    winners = _active_winners(context, complete, counts)
+    waiting = sorted(
+        (item for item in complete if item.subject not in winners),
+        key=lambda item: (item.grant_ordinal is None, item.grant_ordinal or 0, item.subject),
+    )
+
+    def finish(subject: str) -> None:
+        _complete(context, subject, counts)
+
+    run([item for item in complete if item.subject in winners], ITEM_RESERVE_MS, finish)
+    run(waiting, COMPLETE_RESERVE_MS, finish)
+    triggers = sorted(
+        _read_phase(context, shards, "RELEASE#", failed),
+        key=lambda item: (item.root_clock_started_at or "", item.subject),
+    )
+    run(triggers, ITEM_RESERVE_MS, lambda subject: counts.add(release_run(context, subject)))
     counts.failed_shards = len(failed)
     return counts
+
+
+def _active_winners(
+    context: ReleaseContext, complete: Sequence[DueItem], counts: ReleaseCounts
+) -> frozenset[str]:
+    """Return each `COMPLETE#` domain's ACTIVE winner: the one completion that can move it.
+
+    One strong head read per domain. A failed read is reported and counted; that domain's winner
+    is then visited in ordinal order with the others.
+    """
+    winners: set[str] = set()
+    for domain in sorted({item.domain for item in complete if item.domain}):
+
+        def read(domain: str = domain) -> None:
+            head = context.store.read_serving_domain(domain).head
+            if head is not None and head.state == "ACTIVE" and head.winner_run_id:
+                winners.add(head.winner_run_id)
+
+        _isolate(context, read, counts)
+    return frozenset(winners)
 
 
 def _read_phase(  # noqa: PLR0913, PLR0917 -- one private phase reader

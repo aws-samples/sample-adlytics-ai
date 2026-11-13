@@ -41,10 +41,11 @@ group transaction that commits its last PENDING unit, decided from committed gro
 
 ADR-162: every loop is bounded by the invocation's remaining time (`budget.py`). The waiter
 phase stops at `PROMOTE_RESERVE_MS`, units collection at `UNITS_COLLECT_RESERVE_MS`, and table
-grants and serving arming at `ITEM_RESERVE_MS`. Collection is oldest first by the D41 key, so
-every run it does not reach is younger than every run it collected and each grant still takes
-its table's oldest unit. What a pass leaves is counted `deferred` and read again, strongly, by
-the next pass; nothing in memory crosses invocations.
+grants and serving arming at `ITEM_RESERVE_MS`. Each domain's ACTIVE winner is armed before any
+other `ARM#` item, so a serving backlog never hides its finalizer. Collection is oldest first by
+the D41 key, so every run it does not reach is younger than every run it collected and each
+grant still takes its table's oldest unit. What a pass leaves is counted `deferred` and read
+again, strongly, by the next pass; nothing in memory crosses invocations.
 
 Deployed disabled with the dispatcher while the mode is not GRAPH.
 """
@@ -853,6 +854,9 @@ class _DomainPass:
     walk: tuple[CompleteObligation, ...]
     arm_ids: frozenset[str]
     rehearsal: FreshElectionRehearsal | None = None
+    winners: set[str] = field(default_factory=set[str])
+    """ADR-162: each domain's ACTIVE winner as this pass read its head, for `arm_pass` to arm
+    first. A head this pass activates is not added: its winner's `ARM#` went with activation."""
 
 
 def coalesce_serving(  # noqa: PLR0913, PLR0917
@@ -861,13 +865,15 @@ def coalesce_serving(  # noqa: PLR0913, PLR0917
     counts: ArmCounts,
     remaining_ms: Callable[[], int],
     aws_request_id: str,
+    winners: set[str] | None = None,
 ) -> tuple[ServingDomainElectionResult, ...]:
     """Elect or drain each domain from wholly fresh rolling authority reads.
 
     Each domain is isolated: its failure marks its typed child, is reported once through the
     pass's failure sink, and the next domain is still decided. A conflict is not retried here,
     because only a wholly fresh iteration may retry it; the next invocation is that iteration. An
-    invalid Lambda clock is a pass failure and ends the pass.
+    invalid Lambda clock is a pass failure and ends the pass. Each ACTIVE head's winner is added
+    to `winners` when given (ADR-162), so the arm pass reaches it before any other serving item.
     """
     if not callable(remaining_ms) or not aws_request_id:
         raise InvariantError(_PROMOTER_CONTEXT_INVALID, "the promoter Lambda context is invalid.")
@@ -881,6 +887,7 @@ def coalesce_serving(  # noqa: PLR0913, PLR0917
         aws_request_id,
         walk,
         frozenset(item.subject for item in arms if item.scope is ArmScope.SERVING),
+        winners=set() if winners is None else winners,
     )
     results: list[ServingDomainElectionResult] = []
     for domain in sorted({item.domain for item in walk}):
@@ -902,6 +909,8 @@ def _coalesce_domain(state: _DomainPass, domain: str) -> ServingDomainElectionRe
     authority = state.context.store.read_serving_domain(domain)
     if authority.head is None or authority.frontier is None:
         return None
+    if authority.head.state == "ACTIVE" and authority.head.winner_run_id:
+        state.winners.add(authority.head.winner_run_id)
     if authority.head.state == "IDLE":
         return _elect_idle(state, domain, authority)
     if authority.head.state != "BOUND_DRAINING" or authority.head.direct_grant_id is None:
@@ -1188,23 +1197,31 @@ def arm_pass(  # noqa: PLR0913, PLR0917
 ) -> ArmCounts:
     """Run one fresh rolling election/drain pass plus independent unit batching (ADR-162).
 
-    After the election, units `ARM#` items are collected oldest first by the D41 key while at
-    least `UNITS_COLLECT_RESERVE_MS` remains, then granted per table, then every other `ARM#`
-    item is armed while `ITEM_RESERVE_MS` remains. Every uncollected run is younger than every
-    collected one, so each table's grant still goes to its oldest PENDING unit. An item the
-    budget leaves unstarted is counted `deferred` and stays in its shard for the next pass.
+    After the election, the serving `ARM#` of each domain's ACTIVE winner is armed first, so a
+    winner's finalizer is reached whatever its shard. Then units `ARM#` items are collected
+    oldest first by the D41 key while at least `UNITS_COLLECT_RESERVE_MS` remains and granted
+    per table, then every other `ARM#` item is armed oldest first while `ITEM_RESERVE_MS`
+    remains. Every uncollected run is younger than every collected one, so each table's grant
+    still goes to its oldest PENDING unit. An item the budget leaves unstarted is counted
+    `deferred` and stays in its shard for the next pass.
     """
     counts = ArmCounts()
     budget = PassBudget.of(remaining_ms)
-    coalesce_serving(context, shards, counts, remaining_ms, aws_request_id)
+    winners: set[str] = set()
+    coalesce_serving(context, shards, counts, remaining_ms, aws_request_id, winners)
     arms = read_arms(context, shards, counts)
     walk = walk_complete(context, shards)
     if walk is None:
         counts.walk_failed += 1
-    units = sorted(
-        (item for item in arms if item.scope is ArmScope.UNITS),
-        key=lambda item: (item.root_clock_started_at or "", item.subject),
-    )
+
+    def oldest(item: DueItem) -> tuple[str, str]:
+        return (item.root_clock_started_at or "", item.subject)
+
+    def first(item: DueItem) -> bool:
+        return item.scope is ArmScope.SERVING and item.subject in winners
+
+    _arm_serving(context, [item for item in arms if first(item)], walk, counts, budget)
+    units = sorted((item for item in arms if item.scope is ArmScope.UNITS), key=oldest)
     candidates: list[UnitCandidate] = []
     pending: dict[str, int] = {}
     for index, item in enumerate(units):
@@ -1217,16 +1234,30 @@ def arm_pass(  # noqa: PLR0913, PLR0917
             counts,
         )
     arm_unit_groups(context, candidates, pending, counts, budget)
-    others = [item for item in arms if item.scope is not ArmScope.UNITS]
-    for index, item in enumerate(others):
+    others = sorted(
+        (item for item in arms if item.scope is not ArmScope.UNITS and not first(item)),
+        key=oldest,
+    )
+    _arm_serving(context, others, walk, counts, budget)
+    return counts
+
+
+def _arm_serving(  # noqa: PLR0913, PLR0917 -- the pass context, its items, walk, counts, budget
+    context: PromoterContext,
+    items: Sequence[DueItem],
+    walk: tuple[CompleteObligation, ...] | None,
+    counts: ArmCounts,
+    budget: PassBudget,
+) -> None:
+    """Arm each serving `ARM#` item in order while `ITEM_RESERVE_MS` remains; count the rest."""
+    for index, item in enumerate(items):
         if not budget.allows(ITEM_RESERVE_MS):
-            counts.deferred += len(others) - index
-            break
+            counts.deferred += len(items) - index
+            return
         # TD-290: a serving item this pass's election consumed is not armed again.
         if walk is not None and not unconsumed_arms(context, (item,)):
             continue
         _count_arm(context, lambda item=item: arm_run(context, item, walk, counts), counts)
-    return counts
 
 
 def _count_arm(context: PromoterContext, action: Callable[[], None], counts: ArmCounts) -> None:
@@ -1241,32 +1272,55 @@ def promote_shard(
     """One promoter pass over a shard: every woken or waiting unit, then stale instantiations.
 
     No unit or instantiation starts below `PROMOTE_RESERVE_MS`, so the arm pass after it keeps
-    its time (ADR-162); what is left is counted `deferred` and stays for the next pass.
+    its time (ADR-162). The shard is read even once the budget has stopped the pass, so every
+    unit and stale instantiation left unstarted, in this shard or a later one, is counted
+    `deferred`; each stays for the next pass.
     """
     counts = PromotionCounts()
     store = context.store
-    if not budget.allows(PROMOTE_RESERVE_MS):
-        return counts
+    stopped = not budget.allows(PROMOTE_RESERVE_MS)
     units = {item.subject for item in store.read_due(shard, "PROMOTE#")}
     units |= {item.subject for item in store.read_due(shard, "WAITER#")}
-    ordered = sorted(units)
-    for index, unit in enumerate(ordered):
-        if not budget.allows(PROMOTE_RESERVE_MS):
-            counts.deferred += len(ordered) - index
-            return counts
-        _isolate(context, lambda unit=unit: _promote(context, unit, counts), counts)
+    stopped = _promote_while(
+        sorted(units),
+        stopped,
+        budget,
+        lambda unit: _isolate(context, lambda: _promote(context, unit, counts), counts),
+        counts,
+    )
     cutoff = context.now() - INSTANTIATE_GRACE
     stale = [
-        item
+        item.subject
         for item in store.read_due(shard, "INSTANTIATE#")
         if item.due_at is None or datetime.fromisoformat(item.due_at) <= cutoff
     ]
-    for index, item in enumerate(stale):
-        if not budget.allows(PROMOTE_RESERVE_MS):
-            counts.deferred += len(stale) - index
-            return counts
-        _isolate(context, lambda run=item.subject: _instantiate(context, run, counts), counts)
+    _promote_while(
+        stale,
+        stopped,
+        budget,
+        lambda run: _isolate(context, lambda: _instantiate(context, run, counts), counts),
+        counts,
+    )
     return counts
+
+
+def _promote_while(  # noqa: PLR0913, PLR0917 -- the subjects, the stop state, budget, action, counts
+    subjects: Sequence[str],
+    stopped: bool,
+    budget: PassBudget,
+    action: Callable[[str], None],
+    counts: PromotionCounts,
+) -> bool:
+    """Run `action` on each subject while `PROMOTE_RESERVE_MS` remains; count the rest.
+
+    Return whether the budget has stopped the pass. Once stopped, the clock is not read again.
+    """
+    for index, subject in enumerate(subjects):
+        if stopped or not budget.allows(PROMOTE_RESERVE_MS):
+            counts.deferred += len(subjects) - index
+            return True
+        action(subject)
+    return stopped
 
 
 def _promote(context: PromoterContext, unit: str, counts: PromotionCounts) -> None:

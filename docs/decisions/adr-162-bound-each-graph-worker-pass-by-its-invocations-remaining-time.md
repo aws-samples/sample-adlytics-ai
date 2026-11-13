@@ -35,8 +35,9 @@ time, and ADR-144 bounds the baker.
    | Reserve | Value | Where it stops |
    |---|---|---|
    | `PROMOTE_RESERVE_MS` | 40,000 ms | The promoter's waiter phase (`promote_shard`), so the arm pass keeps at least 40 s |
+   | `COMPLETE_RESERVE_MS` | 35,000 ms | The release's waiting `COMPLETE#` items, so its `RELEASE#` phase keeps at least 25 s |
    | `UNITS_COLLECT_RESERVE_MS` | 25,000 ms | Units collection, so the grant phase keeps at least 15 s |
-   | `ITEM_RESERVE_MS` | 10,000 ms | Table grants, serving arming and every release item |
+   | `ITEM_RESERVE_MS` | 10,000 ms | Table grants, serving arming, the release's applies, winners and triggers |
 
    The derivation is in each constant's docstring: about 11 ms per store call, measured on dev on
    2026-11-13. The largest item is about 40 calls, and up to 8 re-reads repeat it. The deploy
@@ -46,8 +47,16 @@ time, and ADR-144 bounds the baker.
      `run_id`). Every run it does not reach is younger than every run it collected, so each table
      grant still goes to that table's oldest PENDING unit.
    - Table grants run oldest head first, so no table can starve behind another by name.
+   - The promoter arms the serving `ARM#` of each domain's ACTIVE winner before any other item,
+     from the head `coalesce_serving` already read. Its finalizer is the only way the head moves
+     on, so a serving backlog can never hide it in a later shard. The other serving items follow
+     oldest first.
    - The release runs `APPLY#`, then `COMPLETE#`, across every shard, then `RELEASE#` oldest first.
      Each phase reads its prefix in every shard just before it runs.
+   - In `COMPLETE#` the release reads each domain's head once and visits its ACTIVE winner first.
+     The other runs wait for the promoter's alias drain, so visiting them is a poll. They go in
+     grant-ordinal order and stop at `COMPLETE_RESERVE_MS`, so a `COMPLETE#` backlog cannot take
+     the time that issues new grants.
 4. **No cursor.** Whatever a pass leaves stays in its `DUE#` shard, and the next pass reads it
    again strongly. Every commit is still one conditioned transaction, so stopping early loses no
    item and repeats none. A cursor would add writes on the path a timeout kills, and the stuck-flow
@@ -56,7 +65,9 @@ time, and ADR-144 bounds the baker.
    a changed bound is a new protocol version, and a new `serving_coalescing` key would change the
    generated projection under `infra/`, which slice 1 has not approved.
 6. **Visibility.** The terminal line of each pass gains `deferred`: the items it left unstarted.
-   The promoter's terminal line also gains `grants_deferred`. The function-errors alarms clear
+   The promoter's waiter phase still reads each shard after its budget has stopped it, three cheap
+   queries, so the count covers every shard. The promoter's terminal line also gains
+   `grants_deferred`. The function-errors alarms clear
    because passes stop timing out. open-flows-past-ceiling and PromoteObligationAge stay the
    backlog alarms, unchanged.
 
@@ -76,8 +87,17 @@ smallest change that ends the stall.
   - Under the metered clock, a small backlog leaves exactly the same store state as under an
     ample clock.
   - With time for only one grant, the table with the oldest head goes first.
-  - With 40 `NOT_READY` triggers in `DUE#0`, the `APPLY#` and `COMPLETE#` in `DUE#15` are
-    applied and completed first, and the oldest 17 triggers are polled.
+  - With 40 `NOT_READY` triggers in `DUE#0`, the `APPLY#` and the winner's `COMPLETE#` in
+    `DUE#15` are applied and completed first, and the oldest 10 triggers are polled.
+  - With 60 waiting `COMPLETE#` items in `DUE#0`, more than one pass can poll, the winner in
+    `DUE#15` is completed and a ready trigger is granted in the same pass. The 5 lowest ordinals
+    are polled and 55 items are deferred.
+  - With 45 waiting serving `ARM#` items in `DUE#0..14`, more than one pass can visit, the
+    winner's finalizer in `DUE#15` is armed first.
+  - A waiter in a later shard, left after the promote reserve stopped the pass, is counted in
+    `deferred` and promoted once by the next pass.
+  - Each of these three has a control with an ample clock, and each fails on the round-1 code
+    (`evidence/graph-stall/fix-round-2-repro.txt`).
   - Invalid and rising readings are refused with `EXEC_GRAPH-35`.
   - The reserves are ordered and each is under one pass.
 - `tests/unit/test_execution_graph_promoter.py`: a waiter reached under the promote reserve
@@ -91,6 +111,11 @@ smallest change that ends the stall.
   about 900 runs (30 s at 32 ms a run) and grants each table its oldest 24 or fewer [inference
   from rca.md §3].
 - Serving still drains one alias per domain per pass (rca.md F3). The budget does not change that.
+- The release reads each `COMPLETE#` domain's head once a pass: one item and 32 frontier shards,
+  about 0.4 s a domain at the dev rate. With no `COMPLETE#` item it reads none.
+- While a `COMPLETE#` backlog lasts, the release polls at most about 25 s of waiting runs a pass,
+  and the same lowest ordinals each time. Those runs are closed by the alias drain, not by the
+  release, so the order does not delay them.
 - The release completes a run it applied in the same pass, but not a run it granted in its
   `RELEASE#` phase. That run's `COMPLETE#` waits for the next pass, about a minute, which is less
   than its post-grant work takes anyway.

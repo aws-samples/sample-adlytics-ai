@@ -26,6 +26,7 @@ from domain.shared_kernel.errors import ErrorCode, InvariantError
 
 __all__ = [
     "CLOCK_INVALID",
+    "COMPLETE_RESERVE_MS",
     "ITEM_RESERVE_MS",
     "NO_DEADLINE",
     "PROMOTE_RESERVE_MS",
@@ -54,6 +55,14 @@ UNITS_COLLECT_RESERVE_MS: Final = 25_000
 gets at least 15 s before `ITEM_RESERVE_MS`. One `TABLE#<k>` grant is one transaction; a guard
 adds one re-read of at most 24 members (48 calls, about 0.5 s) per retry. Tables the grant phase
 does not reach keep their units PENDING for the next pass, oldest head first."""
+
+COMPLETE_RESERVE_MS: Final = 35_000
+"""The release stops visiting `COMPLETE#` items that are not a domain's ACTIVE winner here, so
+its `RELEASE#` phase keeps at least 25 s before `ITEM_RESERVE_MS` (about 570 triggers at 44 ms).
+A non-winner waits for the promoter's alias drain, so its visit is a poll; the winner, whose
+completion is the only move from ACTIVE to draining, is visited first under `ITEM_RESERVE_MS`.
+Without this reserve a `COMPLETE#` backlog of about 1,100 waiting runs would take every pass and
+no new grant would be issued (graph-fix review round 1, AGG-1) [inference from rca.md §3]."""
 
 PROMOTE_RESERVE_MS: Final = 40_000
 """The promoter's waiter phase (`promote_shard`) starts no unit below this, so the arm pass that
