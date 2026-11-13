@@ -1,0 +1,101 @@
+# SPDX-License-Identifier: MIT-0
+"""The remaining-time budget of one graph-worker pass (ADR-162).
+
+A graph worker runs every minute under a fixed Lambda timeout. A pass that walks more due items
+than fit in one invocation is killed, and a killed pass loses everything it held only in memory.
+So the promoter and the release read the invocation's remaining time before each item and start
+no new item below a reserve. A pass that stops on its budget leaves every unstarted item in its
+`DUE#` shard, where the next pass reads it strongly; each item's commit is one conditioned
+transaction, so stopping early loses nothing and repeats nothing. There is no cursor.
+
+The reserves are Python constants, not contract bounds: a changed bound is a new protocol
+version, and the generated projection under `infra/` would move (ADR-162, "Where the reserves
+live"). Each reserve is measured as remaining time, so it holds for any timeout above the
+largest one; `test_execution_graph_pass_budget.py` refuses a reserve at or over the deployed
+pass time (`bake_tasks.worker_pass_seconds`).
+"""
+
+from __future__ import annotations
+
+import sys
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Final
+
+from domain.shared_kernel.errors import ErrorCode, InvariantError
+
+__all__ = [
+    "CLOCK_INVALID",
+    "ITEM_RESERVE_MS",
+    "NO_DEADLINE",
+    "PROMOTE_RESERVE_MS",
+    "UNITS_COLLECT_RESERVE_MS",
+    "PassBudget",
+    "remaining_reader",
+]
+
+CLOCK_INVALID: Final = ErrorCode("EXEC_GRAPH", 35)
+"""A remaining-time reading that is not a positive integer, or that rose: the pass ends."""
+
+ITEM_RESERVE_MS: Final = 10_000
+"""No graph-worker loop starts a new item, or a new table grant, with less time remaining.
+
+It covers the one item already started plus the pass's tail. Measured on dev on 2026-11-13
+(the graph-stall RCA, §3): a store call costs about 11 ms client side at 512 MB (a release
+`NOT_READY` item is 4 calls in about 44 ms; a promoter units item 2 calls in about 32 ms). The
+largest item is a release that reserves, grants and applies inline, about 40 calls (0.5 s);
+`max_redecide` (8) re-reads bound it at about 4 s [inference from those rates]. The tail is the
+terminal line plus the 2 s bounded trace flush. 10 s covers both with margin; the deploy step
+confirms it from the REPORT durations.
+"""
+
+UNITS_COLLECT_RESERVE_MS: Final = 25_000
+"""The promoter stops collecting units `ARM#` items here, so the grant phase that commits them
+gets at least 15 s before `ITEM_RESERVE_MS`. One `TABLE#<k>` grant is one transaction; a guard
+adds one re-read of at most 24 members (48 calls, about 0.5 s) per retry. Tables the grant phase
+does not reach keep their units PENDING for the next pass, oldest head first."""
+
+PROMOTE_RESERVE_MS: Final = 40_000
+"""The promoter's waiter phase (`promote_shard`) starts no unit below this, so the arm pass that
+follows it in the same invocation always keeps at least 40 s of a 60 s pass."""
+
+
+def remaining_reader(remaining_ms: Callable[[], object]) -> Callable[[], int]:
+    """Wrap the Lambda clock so every reading is a positive integer that never rises."""
+    prior: int | None = None
+
+    def read() -> int:
+        nonlocal prior
+        # The Lambda callable is untrusted at runtime; validate the reading as an object.
+        value = remaining_ms()
+        if (
+            not isinstance(value, int)
+            or isinstance(value, bool)
+            or value <= 0
+            or (prior is not None and value > prior)
+        ):
+            raise InvariantError(CLOCK_INVALID, "the graph worker's remaining clock is invalid.")
+        prior = value
+        return value
+
+    return read
+
+
+@dataclass(frozen=True, slots=True)
+class PassBudget:
+    """One invocation's remaining time, read through a validated reader."""
+
+    remaining_ms: Callable[[], int]
+
+    @classmethod
+    def of(cls, remaining_ms: Callable[[], object]) -> PassBudget:
+        """Build a budget over the Lambda context's `get_remaining_time_in_millis`."""
+        return cls(remaining_reader(remaining_ms))
+
+    def allows(self, reserve_ms: int) -> bool:
+        """Return whether a new item may start: at least `reserve_ms` remains."""
+        return self.remaining_ms() >= reserve_ms
+
+
+NO_DEADLINE: Final = PassBudget(lambda: sys.maxsize)
+"""A budget that never stops a pass: a single-shard sweep with no invocation (tests, tooling)."""

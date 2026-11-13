@@ -48,6 +48,7 @@ from fixed_member_byte_fixture_support import (
 )
 
 from adapters.jobs.execution_graph import promoter as promoter_module
+from adapters.jobs.execution_graph.budget import PassBudget
 from adapters.jobs.execution_graph.fence_settler import due_shards, settle_shard
 from adapters.jobs.execution_graph.instantiate import ingestion_node_plan
 from adapters.jobs.execution_graph.promoter import (
@@ -179,6 +180,24 @@ def test_v20_a_crash_after_the_release_leaves_promote_and_the_next_pass_promotes
     again = promote_shard(_context(fake), SHARD)
     assert again.branches == {}
     assert _slot_run(fake) == promoted
+
+
+@pytest.mark.covers("ADR-162")
+def test_a_waiter_reached_under_the_40_s_promote_reserve_waits_for_the_next_pass() -> None:
+    fake = FakeDynamo()
+    run = _active(fake)
+    _seed_waiter(fake)
+    _release(fake, run)
+    readings = iter((40_000, 39_999))
+
+    held = promote_shard(_context(fake), SHARD, PassBudget.of(lambda: next(readings)))
+
+    assert (held.branches, held.deferred, held.instantiated) == ({}, 1, 0)
+    assert kinds(fake, "PROMOTE#") == [(SHARD, f"PROMOTE#{UNIT}")]
+    assert kinds(fake, "WAITER#") != []
+    # Control: the next pass, with its time, promotes the same waiter once.
+    counts = promote_shard(_context(fake), SHARD, PassBudget.of(lambda: 40_000))
+    assert (counts.branches, counts.deferred, counts.instantiated) == ({"promote_waiter": 1}, 0, 1)
 
 
 def test_retired_publish_wait_rows_are_not_read_by_the_final_promoter() -> None:

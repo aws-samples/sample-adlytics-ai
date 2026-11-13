@@ -34,17 +34,22 @@ back to idle, so no undefined state remains and clearing the block restores rele
 superseded or fenced run is never granted, so the units it completed leave no published pointer
 (V-16).
 
+ADR-162: one pass sweeps every due shard, `APPLY#` first, then `COMPLETE#`, then `RELEASE#`
+oldest first, and starts no item once less than `ITEM_RESERVE_MS` of the invocation remains
+(`release_pass`). Each item commits on its own, so what a pass leaves is taken by the next one.
+
 Deployed disabled with the other graph workers while the mode is not GRAPH.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import StrEnum
 from typing import Final, Literal, Protocol, cast
 
+from adapters.jobs.execution_graph.budget import ITEM_RESERVE_MS, NO_DEADLINE, PassBudget
 from adapters.jobs.execution_graph.isolation import FailureSink, ignore_failure, isolated
 from adapters.outbound.telemetry.graph_metrics import emit_serving_withheld
 from adapters.outbound.telemetry.reporting import LogSeverity, OperationLog
@@ -100,6 +105,7 @@ from domain.operations.execution_graph_release import (
 from domain.operations.generated_execution_graphs import BOUNDS, SERVING_COALESCING, TEMPLATES
 from domain.operations.run_request import RunState
 from ports.outbound.execution_graph_dispatch import (
+    DueItem,
     GraphDispatchStore,
     GraphStoreUnavailableError,
     NodeRecord,
@@ -139,6 +145,7 @@ __all__ = [
     "issue_grant",
     "post_grant_specs",
     "record_contribution_once",
+    "release_pass",
     "release_run",
     "release_shard",
     "serving_binding_for",
@@ -219,6 +226,10 @@ class ReleaseCounts:
     """`COMPLETE#` items whose run is not yet terminal or bound; the next pass retries them."""
     unarmed_settled: int = 0
     """ADR-140: winners whose bake skipped the finalizer that this pass settled and bound."""
+    deferred: int = 0
+    """ADR-162: items this pass left unstarted because its budget stopped it."""
+    failed_shards: int = 0
+    """Shards with at least one failed due read this pass; their other phases still ran."""
 
     def add(self, outcome: ReleaseOutcome) -> None:
         """Count one outcome."""
@@ -817,21 +828,59 @@ def _complete(context: ReleaseContext, run_id: str, counts: ReleaseCounts) -> No
         counts.completion_pending += 1
 
 
-def release_shard(context: ReleaseContext, shard: str) -> ReleaseCounts:
-    """One release pass over a shard: `RELEASE#` triggers, `APPLY#` re-drives, `COMPLETE#`.
+def release_pass(
+    context: ReleaseContext, shards: Sequence[str], budget: PassBudget
+) -> ReleaseCounts:
+    """One release pass over every due shard: `APPLY#`, then `COMPLETE#`, then `RELEASE#`.
 
-    S6 §2.8 (AGG3-7): the third loop makes the release worker the run-completion writer. A
-    `COMPLETE#` stays until completion commits, so a failed completion is retried each pass.
+    ADR-162: committed grants are applied and granted runs completed before any trigger is
+    polled, and triggers run oldest first by root clock, so a backlog of `NOT_READY` triggers
+    never starves a later shard's apply or completion. Each phase reads its prefix in every shard
+    just before it runs. No item starts below `ITEM_RESERVE_MS`; the rest are counted `deferred`
+    and stay in their shards for the next pass. A shard whose read fails is reported, counted in
+    `failed_shards` and skipped (S3V-7).
+
+    S6 §2.8 (AGG3-7): the `COMPLETE#` phase makes the release worker the run-completion writer.
+    A `COMPLETE#` stays until completion commits, so a failed completion is retried each pass.
     """
     counts = ReleaseCounts()
-    store = context.store
-    for item in store.read_due(shard, "RELEASE#"):
-        _isolate(context, lambda run=item.subject: counts.add(release_run(context, run)), counts)
-    for item in store.read_due(shard, "APPLY#"):
-        _isolate(context, lambda run=item.subject: counts.add(apply_run(context, run)), counts)
-    for item in store.read_due(shard, "COMPLETE#"):
-        _isolate(context, lambda run=item.subject: _complete(context, run, counts), counts)
+    failed: set[str] = set()
+    phases: tuple[tuple[str, Callable[[str], None]], ...] = (
+        ("APPLY#", lambda run: counts.add(apply_run(context, run))),
+        ("COMPLETE#", lambda run: _complete(context, run, counts)),
+        ("RELEASE#", lambda run: counts.add(release_run(context, run))),
+    )
+    for prefix, action in phases:
+        items = _read_phase(context, shards, prefix, failed)
+        if prefix == "RELEASE#":
+            items.sort(key=lambda item: (item.root_clock_started_at or "", item.subject))
+        for index, item in enumerate(items):
+            if not budget.allows(ITEM_RESERVE_MS):
+                counts.deferred += len(items) - index
+                break
+            _isolate(context, lambda run=item.subject, act=action: act(run), counts)
+    counts.failed_shards = len(failed)
     return counts
+
+
+def _read_phase(  # noqa: PLR0913, PLR0917 -- one private phase reader
+    context: ReleaseContext, shards: Sequence[str], prefix: str, failed: set[str]
+) -> list[DueItem]:
+    """Read one prefix in every shard; a shard whose read fails is reported and skipped."""
+    items: list[DueItem] = []
+    for shard in shards:
+
+        def read(shard: str = shard) -> None:
+            items.extend(context.store.read_due(shard, prefix))
+
+        if not isolated(read, context.on_failure).ok:
+            failed.add(shard)
+    return items
+
+
+def release_shard(context: ReleaseContext, shard: str) -> ReleaseCounts:
+    """One release pass over one shard with no invocation deadline: the unit tests' sweep."""
+    return release_pass(context, (shard,), NO_DEADLINE)
 
 
 def _isolate(context: ReleaseContext, action: Callable[[], None], counts: ReleaseCounts) -> None:

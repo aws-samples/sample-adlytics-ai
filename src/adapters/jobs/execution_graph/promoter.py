@@ -33,11 +33,18 @@ grant ordinal blocks; a failed `COMPLETE#` shard read arms no serving node. `ARM
 the scope's last PENDING routed node (AGG4-1); a run that is not live deletes it alone.
 
 Slice 7 (1b, §2.2 "Batch arming"; D30-D33, D41): `units`-scope nodes are armed per table, not
-per node. The pass collects every OPEN run's eligible PENDING `write_unit` nodes across all
-`ARM#` items, groups them by `TABLE#<k>`, grants each table once through `take_grant` (oldest
-first, a solo node alone, at most `MAX_BATCH_MEMBERS`) and commits each grant with
+per node. The pass collects OPEN runs' eligible PENDING `write_unit` nodes from the units `ARM#`
+items, oldest run first, groups them by `TABLE#<k>`, grants each table once through `take_grant`
+(oldest first, a solo node alone, at most `MAX_BATCH_MEMBERS`) and commits each grant with
 `arm_unit_batch`. A `PAUSED` run's units wait (`paused_wait`). A run's `ARM#` is deleted in the
 group transaction that commits its last PENDING unit, decided from committed groups only (N6).
+
+ADR-162: every loop is bounded by the invocation's remaining time (`budget.py`). The waiter
+phase stops at `PROMOTE_RESERVE_MS`, units collection at `UNITS_COLLECT_RESERVE_MS`, and table
+grants and serving arming at `ITEM_RESERVE_MS`. Collection is oldest first by the D41 key, so
+every run it does not reach is younger than every run it collected and each grant still takes
+its table's oldest unit. What a pass leaves is counted `deferred` and read again, strongly, by
+the next pass; nothing in memory crosses invocations.
 
 Deployed disabled with the dispatcher while the mode is not GRAPH.
 """
@@ -51,6 +58,15 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Final, Protocol
 
+from adapters.jobs.execution_graph.budget import (
+    CLOCK_INVALID,
+    ITEM_RESERVE_MS,
+    NO_DEADLINE,
+    PROMOTE_RESERVE_MS,
+    UNITS_COLLECT_RESERVE_MS,
+    PassBudget,
+    remaining_reader,
+)
 from adapters.jobs.execution_graph.instantiate import (
     InstantiateRequest,
     NodePlanner,
@@ -84,6 +100,7 @@ from domain.operations.execution_graph_dispatch import (
     arm_eligible,
     batch_id_for,
     decide_promotion,
+    grant_order_key,
     is_write_unit,
     newest_eligible_candidate,
     scope_pending,
@@ -170,7 +187,7 @@ _LIVE: Final = LIVE_RUN_STATES
 _ARM_INVARIANT: Final = ErrorCode("EXEC_GRAPH", 26)
 """An `ARM#` or `COMPLETE#` item that breaks the arming protocol: reported, never guessed."""
 _PROMOTER_CONTEXT_INVALID: Final = ErrorCode("EXEC_GRAPH", 34)
-_PROMOTER_CLOCK_INVALID: Final = ErrorCode("EXEC_GRAPH", 35)
+_PROMOTER_CLOCK_INVALID: Final = CLOCK_INVALID
 _NEXT_ELECTION_MIN_REMAINING_MS: Final = int(SERVING_COALESCING["next_election_min_remaining_ms"])
 _DOMAIN_FAILED: Final = "failed"
 """The promoter-domain child's closed outcome when its attempt raised; every other outcome is a
@@ -216,6 +233,8 @@ class PromotionCounts:
     instantiation_deferred: int = 0
     conflicts: int = 0
     failed: int = 0
+    deferred: int = 0
+    """ADR-162: units and instantiations this pass left unstarted because its budget stopped it."""
 
     def add(self, branch: PromoterBranch) -> None:
         """Count one decided branch."""
@@ -353,6 +372,10 @@ class ArmCounts:
     """Slice 7: `TABLE#<k>` grants committed (one `arm_unit_batch` each)."""
     batch_members: int = 0
     """Slice 7: units those grants armed."""
+    deferred: int = 0
+    """ADR-162: `ARM#` items this pass left unstarted because its budget stopped it."""
+    grants_deferred: int = 0
+    """ADR-162: `TABLE#<k>` grants this pass left unstarted because its budget stopped it."""
 
 
 def read_arms(context: PromoterContext, shards: Sequence[str], counts: ArmCounts) -> list[DueItem]:
@@ -592,17 +615,29 @@ def _arm_group(  # noqa: PLR0913, PLR0917 -- the pass context, one group, its co
     counts.guards += 1
 
 
-def arm_unit_groups(  # noqa: PLR0913, PLR0917 -- the pass context, its units, its counts
+def arm_unit_groups(  # noqa: PLR0913, PLR0917 -- the pass context, its units, its counts, budget
     context: PromoterContext,
     candidates: Sequence[UnitCandidate],
     pending: dict[str, int],
     counts: ArmCounts,
+    budget: PassBudget = NO_DEADLINE,
 ) -> None:
-    """Group the collected units by `TABLE#<k>` and grant each table once, each isolated."""
+    """Group the collected units by `TABLE#<k>` and grant each table once, each isolated.
+
+    Tables are granted in the order of their oldest member (D41 key, then the table), so a table
+    the budget does not reach this pass is the one with the youngest head, never a fixed one
+    (ADR-162). No grant starts below `ITEM_RESERVE_MS`; its units stay PENDING for the next pass.
+    """
     groups: dict[str, list[UnitCandidate]] = {}
     for candidate in candidates:
         groups.setdefault(candidate.node.lock_key, []).append(candidate)
-    for lock_key in sorted(groups):
+    order = sorted(
+        groups, key=lambda key: (min(grant_order_key(item) for item in groups[key]), key)
+    )
+    for index, lock_key in enumerate(order):
+        if not budget.allows(ITEM_RESERVE_MS):
+            counts.grants_deferred += len(order) - index
+            return
         result = isolated(
             lambda group=groups[lock_key]: _arm_group(context, group, pending, counts),
             context.on_failure,
@@ -672,26 +707,8 @@ def _candidate_digest(candidates: Sequence[Any]) -> str:
     )
 
 
-def _remaining_reader(remaining_ms: Callable[[], object]) -> Callable[[], int]:
-    prior: int | None = None
-
-    def read() -> int:
-        nonlocal prior
-        # The Lambda callable is untrusted at runtime; validate the reading as an object.
-        value = remaining_ms()
-        if (
-            not isinstance(value, int)
-            or isinstance(value, bool)
-            or value <= 0
-            or (prior is not None and value > prior)
-        ):
-            raise InvariantError(
-                _PROMOTER_CLOCK_INVALID, "the promoter remaining clock is invalid."
-            )
-        prior = value
-        return value
-
-    return read
+_remaining_reader: Final = remaining_reader
+"""The promoter's validated Lambda clock, shared with the release (`budget.remaining_reader`)."""
 
 
 @trace_boundary(EXECUTION_GRAPH_PROMOTER_DOMAIN)
@@ -1169,44 +1186,85 @@ def arm_pass(  # noqa: PLR0913, PLR0917
     remaining_ms: Callable[[], int],
     aws_request_id: str,
 ) -> ArmCounts:
-    """Run one fresh rolling election/drain pass plus independent unit batching."""
+    """Run one fresh rolling election/drain pass plus independent unit batching (ADR-162).
+
+    After the election, units `ARM#` items are collected oldest first by the D41 key while at
+    least `UNITS_COLLECT_RESERVE_MS` remains, then granted per table, then every other `ARM#`
+    item is armed while `ITEM_RESERVE_MS` remains. Every uncollected run is younger than every
+    collected one, so each table's grant still goes to its oldest PENDING unit. An item the
+    budget leaves unstarted is counted `deferred` and stays in its shard for the next pass.
+    """
     counts = ArmCounts()
+    budget = PassBudget.of(remaining_ms)
     coalesce_serving(context, shards, counts, remaining_ms, aws_request_id)
     arms = read_arms(context, shards, counts)
     walk = walk_complete(context, shards)
     if walk is None:
         counts.walk_failed += 1
-    else:
-        arms = unconsumed_arms(context, arms)
+    units = sorted(
+        (item for item in arms if item.scope is ArmScope.UNITS),
+        key=lambda item: (item.root_clock_started_at or "", item.subject),
+    )
     candidates: list[UnitCandidate] = []
     pending: dict[str, int] = {}
-    for item in arms:
-        if item.scope is ArmScope.UNITS:
-            action = lambda item=item: collect_unit_candidates(  # noqa: E731
-                context, item, counts, (candidates, pending)
-            )
-        else:
-            action = lambda item=item: arm_run(context, item, walk, counts)  # noqa: E731
-        result = isolated(action, context.on_failure)
-        counts.conflicts += result.conflicts
-        counts.failed += 0 if result.ok else 1
-    arm_unit_groups(context, candidates, pending, counts)
+    for index, item in enumerate(units):
+        if not budget.allows(UNITS_COLLECT_RESERVE_MS):
+            counts.deferred += len(units) - index
+            break
+        _count_arm(
+            context,
+            lambda item=item: collect_unit_candidates(context, item, counts, (candidates, pending)),
+            counts,
+        )
+    arm_unit_groups(context, candidates, pending, counts, budget)
+    others = [item for item in arms if item.scope is not ArmScope.UNITS]
+    for index, item in enumerate(others):
+        if not budget.allows(ITEM_RESERVE_MS):
+            counts.deferred += len(others) - index
+            break
+        # TD-290: a serving item this pass's election consumed is not armed again.
+        if walk is not None and not unconsumed_arms(context, (item,)):
+            continue
+        _count_arm(context, lambda item=item: arm_run(context, item, walk, counts), counts)
     return counts
 
 
-def promote_shard(context: PromoterContext, shard: str) -> PromotionCounts:
-    """One promoter pass over a shard: every woken or waiting unit, then stale instantiations."""
+def _count_arm(context: PromoterContext, action: Callable[[], None], counts: ArmCounts) -> None:
+    result = isolated(action, context.on_failure)
+    counts.conflicts += result.conflicts
+    counts.failed += 0 if result.ok else 1
+
+
+def promote_shard(
+    context: PromoterContext, shard: str, budget: PassBudget = NO_DEADLINE
+) -> PromotionCounts:
+    """One promoter pass over a shard: every woken or waiting unit, then stale instantiations.
+
+    No unit or instantiation starts below `PROMOTE_RESERVE_MS`, so the arm pass after it keeps
+    its time (ADR-162); what is left is counted `deferred` and stays for the next pass.
+    """
     counts = PromotionCounts()
     store = context.store
+    if not budget.allows(PROMOTE_RESERVE_MS):
+        return counts
     units = {item.subject for item in store.read_due(shard, "PROMOTE#")}
     units |= {item.subject for item in store.read_due(shard, "WAITER#")}
-    for unit in sorted(units):
+    ordered = sorted(units)
+    for index, unit in enumerate(ordered):
+        if not budget.allows(PROMOTE_RESERVE_MS):
+            counts.deferred += len(ordered) - index
+            return counts
         _isolate(context, lambda unit=unit: _promote(context, unit, counts), counts)
     cutoff = context.now() - INSTANTIATE_GRACE
-    for item in store.read_due(shard, "INSTANTIATE#"):
-        due = None if item.due_at is None else datetime.fromisoformat(item.due_at)
-        if due is not None and due > cutoff:
-            continue
+    stale = [
+        item
+        for item in store.read_due(shard, "INSTANTIATE#")
+        if item.due_at is None or datetime.fromisoformat(item.due_at) <= cutoff
+    ]
+    for index, item in enumerate(stale):
+        if not budget.allows(PROMOTE_RESERVE_MS):
+            counts.deferred += len(stale) - index
+            return counts
         _isolate(context, lambda run=item.subject: _instantiate(context, run, counts), counts)
     return counts
 
