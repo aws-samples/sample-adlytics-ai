@@ -115,12 +115,14 @@ time, and ADR-144 bounds the baker.
    the `next_election_min_remaining_ms` guard alone; each further alias, and the final alias's
    successor reads, wait for `SERVING_STAGE_RESERVE_MS`. A non-final drain ConditionChecks the head
    and never moves it, so one head read serves every drain of the pass.
-   The guard's 10,493 ms was measured before staging. The pass that commits a fully staged final
-   election (the iteration, the `ELECTION#` page query, the head and the 52-member transaction)
-   is measured by `validation/run_fresh_election_timing.py --staged-successors N`, which seeds
-   the probe table with every successor already on pages. It runs on dev at N = 3,502 and
-   N = 5,417 before merge (step s1-serve-deploy); the contract takes `ceil(2 * max(total_ms))`
-   over both. A guard above `PROMOTE_RESERVE_MS` (40,000 ms), the least an arm pass keeps at
+   The pass that commits a fully staged final election (the iteration, the `ELECTION#` page
+   query, the head and the 52-member transaction) is measured by
+   `validation/run_fresh_election_timing.py --staged-successors N`, which seeds the probe table
+   with every successor already on pages. Measured on dev on 2026-11-14 at `cf8a77a0`, 5 samples
+   of 9 attempts each, no successor read again: N = 3,502 gave a largest attempt of 9,333 ms
+   (guard 18,666 ms) and N = 5,417 gave 8,801 ms (17,602 ms). The contract takes the larger,
+   18,666 ms, replacing the pre-staging 10,493 ms. The real activation attempt dominates (5.8 to
+   9.3 s); injected-conflict attempts take 3.4 to 5.9 s. A guard above `PROMOTE_RESERVE_MS` (40,000 ms), the least an arm pass keeps at
    its start, is refused. That ceiling is an upper refusal only: the guard is read after the
    pass's own `ARM#`/`COMPLETE#` iteration (about 0.8 s at N = 3,502), so a guard just under it
    would not pass while a waiter backlog persists. The measured guard sets serving freshness.

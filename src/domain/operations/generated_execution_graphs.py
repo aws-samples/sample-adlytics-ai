@@ -4,7 +4,7 @@
 from typing import Any, Final
 
 CONTRACT_REVISION: Final = 3
-CONTRACT_DIGEST: Final = '2e35909b02b89a8ac43fdb7e24194cdb09776597100eac7e0851e197637b3ba3'
+CONTRACT_DIGEST: Final = '7c093274fdbc4e8ceae2cd3a9974cc91720a64da2b7feb81b3a4607b5c5ff064'
 PROTOCOL_VERSION: Final = 'v1'
 AUTHORITY_EPOCHS: Final[Any] = (
 {'shadow': 0, 'graph': 1}
@@ -67,7 +67,7 @@ WRITE_UNIT_BATCHING: Final[Any] = (
 SERVING_COALESCING: Final[Any] = (
 {'serving_candidate_roster_max': 5417,
  'serving_frontier_shards': 32,
- 'next_election_min_remaining_ms': 10493,
+ 'next_election_min_remaining_ms': 18666,
  'binding_kinds': ('direct', 'alias')}
 )
 BAKE_TASKS: Final[Any] = (

@@ -113,9 +113,10 @@ serving_coalescing:
   serving_candidate_roster_max: 5417
   serving_frontier_shards: 32
   # Measured by FreshElectionTimingV1: ceil(2 * max(total_ms)) over every attempt of
-  # every sample. Evidence: .agents/tasks/ingestion-traceability/evidence/graph-bake-delivery/fresh-election-timing-v1.json
-  # SHA-256 3527fa724e03e32dad8f9a20a09ecf4207bf5a6732a45ba0ca908ea9cbb02e9a.
-  next_election_min_remaining_ms: 10493
+  # every sample. Evidence: .agents/tasks/demand-forecast/build-s1/evidence/graph-stall/serve-deploy/timing/fresh-election-timing-v1-staged-3502-attempt4.json
+  # SHA-256 6528463f412f75fb0f4d3cc59532727688fc65c08aae7143efff8f0fad18465a. The larger of the staged runs at N = 3,502 (18,666)
+  # and N = 5,417 (17,602, ...-staged-5417-attempt1.json), both at cf8a77a0.
+  next_election_min_remaining_ms: 18666
   binding_kinds: [direct, alias]
 
 # GRAPH bake stage 1 (plan 3.1, A1.1): the roster is data and every consumer reads it as N rows.

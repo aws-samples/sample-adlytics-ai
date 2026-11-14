@@ -216,7 +216,7 @@ def test_serving_coalescing_has_dedicated_closed_controls_without_moving_v1_boun
     assert SERVING_COALESCING == {
         "serving_candidate_roster_max": 5417,
         "serving_frontier_shards": 32,
-        "next_election_min_remaining_ms": 10493,
+        "next_election_min_remaining_ms": 18666,
         "binding_kinds": ("direct", "alias"),
     }
     assert "serving_candidate_roster_max" not in BOUNDS
