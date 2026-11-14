@@ -172,6 +172,59 @@ def test_one_sample_seeds_rehearses_activates_once_and_returns_every_row() -> No
     )
 
 
+@pytest.mark.covers("ADR-162")
+def test_a_pre_staged_sample_commits_from_its_pages_reading_no_successor_again() -> None:
+    """AGG-R2-2: the guard must be measured on the pass that commits a fully staged roster.
+
+    A successor read during that pass would time the unstaged path instead, so the sample
+    counts them and the control shows the count sees an unstaged world's reads.
+    """
+    table = _ProbeTable()
+    inputs = timing.SampleInputs(
+        table, "probe", _MAX_REDECIDE, 60_000, clock=_clock(), staged_successors=6
+    )
+
+    sample = timing.run_sample(1, inputs)
+
+    world = cast("dict[str, Any]", sample["world"])
+    assert (world["b_size"], world["staged_successors"]) == (6, 6)
+    assert world["stage_pages"] == 1  # six candidates fit one ELECTION# page
+    assert world["successor_candidate_reads"] == 0
+    assert sample["outcome"] == "elected"
+    attempts = cast("list[dict[str, Any]]", sample["attempts"])
+    assert [item["injected_conflict"] for item in attempts] == [True] * _MAX_REDECIDE + [False]
+    final = [
+        members
+        for members in table.transactions
+        if len(members) > 1 and any("SERVING_TRANSITION#" in str(member) for member in members)
+    ]
+    assert len(final) == 1 and len(final[0]) == 52
+    assert table.items == {}  # the pages were seeded rows and are disposed of with the rest
+    # Control: today's unstaged world reads its successors in every attempt.
+    control = timing.run_sample(1, _inputs(_ProbeTable()))
+    unstaged = cast("dict[str, Any]", control["world"])
+    assert (unstaged["stage_pages"], unstaged["successor_candidate_reads"]) == (
+        0,
+        2 * (_MAX_REDECIDE + 1),
+    )
+
+
+@pytest.mark.covers("ADR-162")
+def test_a_staged_guard_above_what_every_arm_pass_keeps_is_refused() -> None:
+    from adapters.jobs.execution_graph.budget import PROMOTE_RESERVE_MS  # noqa: PLC0415
+
+    assert timing.STAGED_GUARD_MAX_MS == PROMOTE_RESERVE_MS == 40_000
+    whole = [True] * _MAX_REDECIDE + [False]
+    staged = _identity(staged_successors=3502)
+    accepted = timing.timing_document(staged, [_sample(whole, total=20_000.0)])
+    assert accepted["next_election_min_remaining_ms"] == 40_000
+    with pytest.raises(timing.TimingError, match="exceeds the 40000 ms an arm pass keeps"):
+        timing.timing_document(staged, [_sample(whole, total=20_000.5)])
+    # Control: the unstaged rehearsal keeps only the Promoter-timeout refusal.
+    unstaged = timing.timing_document(_identity(), [_sample(whole, total=20_000.5)])
+    assert unstaged["next_election_min_remaining_ms"] == 40_001
+
+
 def test_a_colliding_probe_row_is_refused_and_only_the_seeded_rows_are_returned() -> None:
     table = _ProbeTable()
     foreign_key = (f"SERVING_DOMAIN#{INGESTION_RELEASE_DOMAIN}", "HEAD")

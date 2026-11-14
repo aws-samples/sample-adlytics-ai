@@ -3,7 +3,8 @@
 
     uv run python validation/run_fresh_election_timing.py --profile <profile> --environment dev \
         --region <region> --expected-account <account> --graph-store-stack <store-stack> \
-        --output <evidence-dir>/fresh-election-timing-v1.json [--samples 5] [--write-contract]
+        --output <evidence-dir>/fresh-election-timing-v1.json [--samples 5] [--write-contract] \
+        [--staged-successors 3502]
 
 A non-clearing rehearsal of the held final runtime's fresh election, dev only. It runs the
 promoter code at this worktree's clean HEAD from the operator host against the dev probe table
@@ -27,6 +28,16 @@ promoter code at this worktree's clean HEAD from the operator host against the d
 
 The guard is exactly `ceil(2 * max(total_ms))` over every attempt of every sample. An empty
 sample set, or a guard at or above the Promoter timeout, is refused and writes no derivation.
+
+`--staged-successors N` (ADR-162 §7) measures the pass that commits a fully staged final
+election: B holds N successors, and before seeding every one is read through the production
+store and written as `ELECTION#` pages under the head's stage id, as earlier staging passes
+would leave them. Every attempt then reads the pages, the iteration and the head, and commits
+the 52-member transaction; a successor candidate read during the rehearsal means the world was
+not fully staged and refuses the sample. Acceptance: the derived guard must not exceed
+`PROMOTE_RESERVE_MS` (40,000 ms), the least an arm pass always keeps, so a fully staged commit
+fits every pass; a larger one is refused. Run it at N=3,502 (dev's roster on 2026-11-13) and at
+`serving_candidate_roster_max`; the contract takes the larger guard.
 `--write-contract` then rewrites only the contract's `next_election_min_remaining_ms` line and
 its comment with the value, the artifact path and its SHA-256; regenerate both projections next.
 """
@@ -34,6 +45,8 @@ its comment with the value, the artifact path and its SHA-256; regenerate both p
 from __future__ import annotations
 
 import argparse
+import copy
+import functools
 import hashlib
 import json
 import math
@@ -57,6 +70,8 @@ SCHEMA: Final = "fresh-election-timing-v1"
 DERIVATION: Final = "ceil(2 * max(total_ms))"
 CONTRACT_PATH: Final = _ROOT / "contracts" / "operations" / "execution-graphs.yaml"
 DEFAULT_SAMPLES: Final = 5
+STAGED_GUARD_MAX_MS: Final = 40_000
+"""`PROMOTE_RESERVE_MS`: the least time an arm pass keeps (budget.py); a test pins the two."""
 WORLD_A_SIZE: Final = 3
 WORLD_B_SIZE: Final = 2
 EXPECTED_MODE_REVISION: Final = 12
@@ -107,6 +122,15 @@ def attempt_document(attempt: Any) -> dict[str, object]:
     }
 
 
+def accept_staged_guard(guard: int, staged_successors: int) -> int:
+    """Refuse a fully staged commit's guard above what every arm pass keeps (ADR-162 §7)."""
+    if staged_successors and guard > STAGED_GUARD_MAX_MS:
+        raise TimingError(
+            f"the staged guard {guard} ms exceeds the {STAGED_GUARD_MAX_MS} ms an arm pass keeps"
+        )
+    return guard
+
+
 def validate_samples(samples: Sequence[Mapping[str, object]], max_redecide: int) -> list[float]:
     """Require each sample to be the whole envelope; return every attempt total."""
     if not samples:
@@ -137,7 +161,8 @@ def timing_document(
     max_redecide = int(cast("int", identity["max_redecide"]))
     timeout = int(cast("int", identity["promoter_timeout_ms"]))
     totals = validate_samples(samples, max_redecide)
-    guard = derive_guard(totals, timeout)
+    staged = int(cast("int", identity.get("staged_successors", 0)))
+    guard = accept_staged_guard(derive_guard(totals, timeout), staged)
     return {
         "schema_version": SCHEMA,
         **identity,
@@ -229,6 +254,15 @@ class RecordingClient:
     owned: set[Key] = field(default_factory=set[Key])
     unresolved: set[Key] = field(default_factory=set[Key])
     refused: list[Key] = field(default_factory=list[Key])
+    watched: frozenset[Key] = frozenset()
+    """Keys whose reads are counted: a staged sample's successor publish nodes."""
+    watched_reads: int = 0
+
+    def get_item(self, **kwargs: Any) -> Any:
+        """Read through, counting a read of a watched key."""
+        if _key_of(kwargs["Key"]) in self.watched:
+            self.watched_reads += 1
+        return self.client.get_item(**kwargs)
 
     def transact_write_items(self, **kwargs: Any) -> Any:
         """Preflight the transaction's new targets, then own them only after it commits."""
@@ -366,6 +400,51 @@ class SampleInputs:
     max_redecide: int
     remaining_ms: int
     clock: Callable[[], float] = time.perf_counter
+    staged_successors: int = 0
+    """0: today's world (B of 2, no page). N: B of N, every successor pre-staged (ADR-162 §7)."""
+
+
+def pre_stage(fake: Any, successors: Sequence[str]) -> int:
+    """Write every successor as the domain's `ELECTION#` pages; return how many pages.
+
+    The reads are the production store's own (`read_serving_candidate`), in grant order, under
+    the stage id the promoter derives from the head, so the rehearsal's commit pass reads the
+    pages exactly as it would after earlier staging passes and reads no successor again.
+    """
+    from execution_graph_release_support import release_store
+
+    from adapters.jobs.execution_graph.promoter import (
+        _stage_id,  # pyright: ignore[reportPrivateUsage]
+    )
+    from domain.operations.execution_graph_release import INGESTION_RELEASE_DOMAIN
+    from ports.outbound.execution_graph_release import ServingStagePage
+
+    store = release_store(fake)
+    head = store.read_serving_domain(INGESTION_RELEASE_DOMAIN).head
+    if head is None:
+        raise TimingError("the staged world has no serving head")
+    reads = [store.read_serving_candidate(run_id) for run_id in successors]
+    if any(read is None for read in reads):
+        raise TimingError("a staged successor is not an eligible serving candidate")
+    ordered = sorted(
+        (read for read in reads if read is not None),
+        key=lambda read: (
+            read.candidate.grant_ordinal,
+            read.candidate.grant_id,
+            read.candidate.run_id,
+        ),
+    )
+    page = ServingStagePage(INGESTION_RELEASE_DOMAIN, _stage_id(head), 0, tuple(ordered))
+    return len(store.write_serving_stage(page))
+
+
+@functools.cache
+def _staged_world(successors: int) -> tuple[Any, int]:
+    """Build the pre-staged world once per size; each sample seeds a deep copy."""
+    from fixed_member_byte_fixture_support import build_world
+
+    world = build_world(WORLD_A_SIZE, successors)
+    return world, pre_stage(world.fake, world.b_runs)
 
 
 def run_sample(index: int, inputs: SampleInputs) -> dict[str, object]:
@@ -382,8 +461,17 @@ def run_sample(index: int, inputs: SampleInputs) -> dict[str, object]:
     from adapters.outbound.dynamodb.execution_graph_release import DynamoGraphReleaseStore
     from domain.operations.execution_graph_release import INGESTION_RELEASE_DOMAIN
 
-    world = build_world(WORLD_A_SIZE, WORLD_B_SIZE)
-    recording = RecordingClient(inputs.client, inputs.table)
+    staged = inputs.staged_successors
+    if staged:
+        built, pages = _staged_world(staged)
+        world = copy.deepcopy(built)
+    else:
+        world, pages = build_world(WORLD_A_SIZE, WORLD_B_SIZE), 0
+    recording = RecordingClient(
+        inputs.client,
+        inputs.table,
+        watched=frozenset((f"RUN#{run_id}", "NODE#publish") for run_id in world.b_runs),
+    )
     seeded: list[Key] = []
     rehearsal = FreshElectionRehearsal(conflicts=inputs.max_redecide, clock=inputs.clock)
     request_id = f"fresh-election-timing-{uuid.uuid4().hex[:16]}"
@@ -410,6 +498,10 @@ def run_sample(index: int, inputs: SampleInputs) -> dict[str, object]:
     disposition = dispose(inputs.client, inputs.table, [*seeded, *recording.owned])
     if failure is None and (recording.refused or recording.unresolved):
         failure = TimingError("a rehearsal write met a probe row it does not own")
+    if failure is None and staged and recording.watched_reads:
+        failure = TimingError(
+            f"the staged commit read {recording.watched_reads} successor candidates again"
+        )
     unowned = sorted({*recording.refused, *recording.unresolved})
     disposition["unowned_kept"] = [list(key) for key in unowned]
     if failure is not None:
@@ -425,7 +517,10 @@ def run_sample(index: int, inputs: SampleInputs) -> dict[str, object]:
         "aws_request_id": request_id,
         "world": {
             "a_size": WORLD_A_SIZE,
-            "b_size": WORLD_B_SIZE,
+            "b_size": len(world.b_runs),
+            "staged_successors": staged,
+            "stage_pages": pages,
+            "successor_candidate_reads": recording.watched_reads,
             "a_run_ids": list(world.a_runs),
             "b_run_ids": list(world.b_runs),
             "final_alias_run_id": world.final_alias,
@@ -457,6 +552,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--samples", type=int, default=DEFAULT_SAMPLES)
     parser.add_argument("--write-contract", action="store_true")
+    parser.add_argument("--staged-successors", type=int, default=0)
     return parser
 
 
@@ -556,6 +652,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise TimingError("--expected-account must be a 12-digit account id")
         if arguments.samples < 1:
             raise TimingError("--samples must be at least 1")
+        if arguments.staged_successors < 0 or arguments.staged_successors == 1:
+            raise TimingError("--staged-successors must be 0 or at least 2")
         output = Path(arguments.output).resolve()
         if output.exists():
             raise TimingError(f"refusing to overwrite {output}")
@@ -592,7 +690,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         samples = [
             run_sample(
                 index,
-                SampleInputs(client, table, max_redecide, int(cast("int", promoter["timeout_ms"]))),
+                SampleInputs(
+                    client,
+                    table,
+                    max_redecide,
+                    int(cast("int", promoter["timeout_ms"])),
+                    staged_successors=int(arguments.staged_successors),
+                ),
             )
             for index in range(1, arguments.samples + 1)
         ]
@@ -611,6 +715,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "promoter_timeout_ms": promoter["timeout_ms"],
             "max_redecide": max_redecide,
             "conflicts_per_sample": max_redecide,
+            "staged_successors": int(arguments.staged_successors),
             "current_contract_guard_ms": int(SERVING_COALESCING["next_election_min_remaining_ms"]),
             "sample_started_at": sample_started,
             "sample_ended_at": datetime.now(UTC).isoformat(),
