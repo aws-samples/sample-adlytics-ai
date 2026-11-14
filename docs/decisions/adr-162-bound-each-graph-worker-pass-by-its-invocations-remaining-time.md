@@ -120,10 +120,8 @@ time, and ADR-144 bounds the baker.
    is measured by `validation/run_fresh_election_timing.py --staged-successors N`, which seeds
    the probe table with every successor already on pages. It runs on dev at N = 3,502 and
    N = 5,417 before merge (step s1-serve-deploy); the contract takes `ceil(2 * max(total_ms))`
-   over both. A guard above `PROMOTE_RESERVE_MS` (40,000 ms), the least an arm pass keeps at
-   its start, is refused. That ceiling is an upper refusal only: the guard is read after the
-   pass's own `ARM#`/`COMPLETE#` iteration (about 0.8 s at N = 3,502), so a guard just under it
-   would not pass while a waiter backlog persists. The measured guard sets serving freshness.
+   over both, and a guard above `PROMOTE_RESERVE_MS` (40,000 ms) is refused, because a fully
+   staged commit must fit in every arm pass.
 9. **The roster bound.** `serving_candidate_roster_max` is 5,417: the DynamoDB item limit of the
    five items that hold one entry per member, derived over every state those items reach under
    every production writer (contract comment; `serve-fix/r2/roster-bound.json`, 2026-11-14). The
@@ -234,8 +232,7 @@ smallest change that ends the stall.
   reads its members and fans out; a legacy unverifiable member fails only its own cohort.
 - `tests/unit/test_run_fresh_election_timing.py`: a pre-staged rehearsal sample commits from its
   `ELECTION#` pages, reads no successor again (an unstaged control reads them every attempt),
-  and a staged guard above 40,000 ms is refused. A foreign dead-stage `ELECTION#` page refuses
-  the sample and stays byte-identical, and the preflight finds it (AGG-R3-1).
+  and a staged guard above 40,000 ms is refused.
 - The existing promoter, release, unit-batch, bake and whole-chain suites pass unchanged, so an
   ample budget changes nothing.
 
