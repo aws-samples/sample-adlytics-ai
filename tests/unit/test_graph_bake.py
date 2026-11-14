@@ -1454,19 +1454,51 @@ def test_c1_a_curated_loser_makes_a_zero_curation_winner_fan_out() -> None:
     assert _bake_member(control, alone).outcome.value == "no_eligible"
 
 
-@pytest.mark.covers("ADR-140")
-def test_c1_an_unverifiable_member_effect_is_a_consumer_invariant_u2() -> None:
+@pytest.mark.covers("ADR-140", "ADR-162")
+def test_c1_an_unverifiable_member_effect_refuses_the_election_u2() -> None:
+    """U2 moved to the election (ADR-162 §10).
+
+    The cohort's summed effect is verified member by member there, so no consumer ever decides
+    from an effect that does not re-hash. The positive control is
+    `test_c1_a_curated_loser_makes_a_zero_curation_winner_fan_out`.
+    """
+    from graph_consumer_support import publish_settled  # noqa: PLC0415
+
+    from adapters.jobs.execution_graph.fence_settler import due_shards  # noqa: PLC0415
+    from adapters.jobs.execution_graph.instantiate import ingestion_node_plan  # noqa: PLC0415
+    from adapters.jobs.execution_graph.promoter import PromoterContext, arm_pass  # noqa: PLC0415
+    from domain.operations.status import canonical_authority_digest  # noqa: PLC0415
+
     bake = Bake(roster=roster(2))
-    loser, winner = _cohort(bake, 1, 0)
+    loser, winner = (
+        publish_settled(
+            bake.tables,
+            advanced_curation=curation,
+            unit=canonical_authority_digest(["fictional-cohort", name]),
+            fingerprint=name * 64,
+            request_id=f"request-{name}",
+        )
+        for name, curation in (("a", 1), ("b", 0))
+    )
     bake.tables.items[(f"RUN#{loser}", "NODE#publish")]["effect_digest"] = {"S": "tampered"}
+    failures: list[BaseException] = []
 
-    result = bake.fan_out(winner)
+    arm_pass(
+        PromoterContext(
+            release_store(bake.tables), ingestion_node_plan, lambda: NOW, on_failure=failures.append
+        ),
+        due_shards(),
+        lambda: 60_000,
+        "test-request",
+    )
 
-    assert result.node_state is NodeState.FAILED
-    member = _bake_member(bake, winner)
-    assert member.outcome.value == "unavailable"
-    assert {reason for _key, reason in member.unavailable} == {"post_grant_invariant"}
-    assert bake.node(winner, "bake").failure_reason == "post_grant_invariant"
+    assert [(type(error).__name__, str(error)) for error in failures] == [
+        (
+            "GraphStoreUnavailableError",
+            "ADLY-EXEC_GRAPH-0020: a serving candidate's publish effect does not verify.",
+        )
+    ]
+    assert bake.node(winner, "bake").state is NodeState.PENDING  # nothing was elected
     assert _keys(bake, winner, "NODE#bake_task:") == []
 
 

@@ -28,9 +28,11 @@ from execution_graph_dispatch_support import (
 )
 from execution_graph_support import FakeDynamo
 
+from adapters.inbound.ingestion_handlers.graph_publish import publish_effect_record
 from adapters.jobs.execution_graph.release import ReleaseContext, ReleaseOutcome, release_run
 from adapters.outbound.dynamodb.execution_graph import due_shard
 from adapters.outbound.dynamodb.execution_graph_release import DynamoGraphReleaseStore
+from adapters.outbound.dynamodb.semantic_state import PublishCounts
 from domain.operations.execution_graph import AuthorityMode
 from domain.operations.execution_graph_dispatch import (
     ArmScope,
@@ -176,9 +178,14 @@ def settle_publish(fake: FakeDynamo, run: str) -> None:
     release_store(fake).put_successors(
         SuccessorRequest(record, (), ArmScope.SERVING, False, now_text())
     )
-    fake.items[(f"RUN#{run}", "NODE#publish")].setdefault(
-        "effect_digest", write_text(f"effect-{run}")
-    )
+    publish = fake.items[(f"RUN#{run}", "NODE#publish")]
+    if "effect_digest" not in publish:
+        # What the publish handler writes: a frozen record and the digest it re-hashes to.
+        effect, digest = publish_effect_record(
+            (record.grant_id, record.grant_ordinal), PublishCounts(1, 0, 0, 0), 1
+        )
+        publish["effect_record"] = write_text(effect)
+        publish["effect_digest"] = write_text(digest)
     complete = fake.items[(due_shard(record.conflict_unit), f"COMPLETE#{run}")]
     identity = {name: complete[name] for name in ("run_id", "grant_id", "grant_ordinal", "domain")}
     fake.items[(due_shard(record.conflict_unit), f"ARM#{run}")].update(identity)

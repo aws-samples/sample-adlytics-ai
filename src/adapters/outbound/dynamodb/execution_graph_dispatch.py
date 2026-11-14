@@ -399,6 +399,8 @@ def read_node_item(item: Item) -> NodeRecord:
         serving_input_revision=_text(item, "serving_input_revision"),
         serving_plan_digest=_text(item, "serving_plan_digest"),
         serving_run_ids=_text_list(item, "serving_run_ids"),
+        serving_cohort_advanced_count=_int(item, "serving_cohort_advanced_count"),
+        serving_cohort_advanced_curation_count=_int(item, "serving_cohort_advanced_curation_count"),
         item_bytes=item_bytes(item),
     )
 

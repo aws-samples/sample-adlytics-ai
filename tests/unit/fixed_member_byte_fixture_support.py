@@ -115,15 +115,15 @@ class Profile:
 
 
 PROFILES: Final[dict[str, Profile]] = {
-    # The protocol maximum: `serving_candidate_roster_max` = 5,338 on both cohorts (the derived
+    # The protocol maximum: `serving_candidate_roster_max` = 5,417 on both cohorts (the derived
     # item-size bound, contracts/operations/execution-graphs.yaml).
-    "maximum": Profile(5338, 5338),
+    "maximum": Profile(5417, 5417),
     # The 98-candidate offline profile (the retained 98-root delivery shape).
     "candidates-98": Profile(98, 98),
     # `NO_ELIGIBLE`: A's final alias with no successor publication.
     "no-eligible-98": Profile(98, 0),
-    # One action beyond: the 5,338 maximum plus 50 distinct ConditionChecks, 101 actions.
-    "one-beyond": Profile(5338, 5338, extra_condition_checks=50),
+    # One action beyond: the 5,417 maximum plus 49 distinct ConditionChecks, 101 actions.
+    "one-beyond": Profile(5417, 5417, extra_condition_checks=49),
 }
 
 _ORACLE: Final = Stage1DynamoByteOracle()

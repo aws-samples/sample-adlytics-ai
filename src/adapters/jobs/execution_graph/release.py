@@ -758,7 +758,9 @@ def direct_binding(
     """Derive a settled cohort's direct binding from the winner's exact active authority.
 
     Shared by `serving_binding_for` (the finalizer and `contribute`) and the Release's unarmed
-    settlement (ADR-140), so every writer binds the same bytes.
+    settlement (ADR-140), so every writer binds the same bytes. The contributor roots come from
+    the roster the election recorded (ADR-162 §10), so no cohort member is read: the Release's
+    60 s pass and the precompute consumer's 30 s envelope never meet the cohort's size.
     """
     grant_id = settlement.grant_id
     execution = store.read_serving_execution(grant_id, run.run_id)
@@ -769,12 +771,9 @@ def direct_binding(
         or execution.head.serving_input_revision is None
     ):
         raise ValueError("a serving contribution has no exact active winner/cohort/day authority.")
-    cohort_runs = tuple(store.read_run(run_id) for run_id in execution.run_ids)
-    if any(candidate is None for candidate in cohort_runs):
-        raise ValueError("an active serving cohort names a missing candidate run.")
-    contributor_roots = tuple(
-        candidate.root_flow_id for candidate in cohort_runs if candidate is not None
-    )
+    contributor_roots = execution.contributor_roots
+    if run.root_flow_id not in contributor_roots:
+        raise ValueError("an active serving roster does not name its winner's root.")
     return bind_serving(
         settlement,
         conflict_unit=run.conflict_unit,

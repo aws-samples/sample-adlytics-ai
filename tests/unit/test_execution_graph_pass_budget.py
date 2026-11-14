@@ -414,7 +414,8 @@ def test_a_not_ready_backlog_in_the_first_shard_no_longer_starves_the_last_shard
     left = meter.remaining
     metered.idle()
     assert counts.outcomes == {"applied": 1, "not_ready": 10}
-    # The winner completed; the run just applied is a waiting `COMPLETE#` reached at 19.95 s,
+    # The winner completed (its context read includes its roster item, ADR-162 §10); the run
+    # just applied is a waiting `COMPLETE#` reached at 19.70 s,
     # under the 35 s `COMPLETE#` reserve, so it and 30 triggers wait for the next pass.
     assert (counts.completed, counts.completion_pending, counts.deferred) == (1, 0, 31)
     assert (counts.failed, counts.failed_shards) == (0, 0)
@@ -424,7 +425,7 @@ def test_a_not_ready_backlog_in_the_first_shard_no_longer_starves_the_last_shard
     polled = [run for run in waiting if f"RUN#{run}" in meter.runs_read]
     assert polled == waiting[:10]
     # The 11th trigger would have started under the 10 s reserve; the pass returned instead.
-    assert left == 9_550
+    assert left == 9_300
 
 
 def test_control_the_same_release_world_with_an_ample_clock_polls_every_trigger() -> None:
@@ -494,9 +495,10 @@ def test_a_complete_backlog_larger_than_one_pass_still_completes_the_winner_and_
     # The waiting runs polled were the 5 lowest grant ordinals; the rest wait for the next pass.
     assert [run for run in runs if f"RUN#{run}" in meter.runs_read] == runs[:5]
     assert {_run_state(fake, run) for run in runs} == {"GRANTED"}
-    # The winner started at 50.95 s and the waiting runs until 35.7 s; the trigger, the last
-    # item, started at 34.3 s, above the 10 s reserve, and the pass returned before the kill.
-    assert left == 8_550
+    # The winner started at 50.95 s and, with its roster read (ADR-162 §10), the waiting runs
+    # until 35.45 s; the trigger, the last item, started at 34.05 s, above the 10 s reserve, and
+    # the pass returned before the kill.
+    assert left == 8_300
 
 
 def test_control_the_same_complete_world_with_an_ample_clock_visits_every_item() -> None:
@@ -577,8 +579,9 @@ def test_the_active_winners_finalizer_is_armed_first_behind_a_serving_backlog() 
     assert _finalizer(fake, winner) == "READY"
     assert (due_shard(_unit(15, 1)), f"ARM#{winner}") not in fake.items
     assert _arms_left(fake) == 45  # every waiting item stays for a later pass
-    # The winner was armed at 51.11 s; 40 waiting items followed until 10.46 s remained.
-    assert left == 9_450
+    # The winner was armed, with its roster read (ADR-162 §10), at 50.86 s; 40 waiting items
+    # followed until 10.21 s remained.
+    assert left == 9_200
 
 
 def test_control_the_same_finalizer_world_with_an_ample_clock_arms_the_same_finalizer() -> None:

@@ -115,10 +115,30 @@ time, and ADR-144 bounds the baker.
    the `next_election_min_remaining_ms` guard alone; each further alias, and the final alias's
    successor reads, wait for `SERVING_STAGE_RESERVE_MS`. A non-final drain ConditionChecks the head
    and never moves it, so one head read serves every drain of the pass.
-9. **The roster bound.** `serving_candidate_roster_max` is 5,338, derived by the byte oracle from
-   the four items that hold one entry per candidate (contract comment). It is interim until those
-   lists are paged (OQ-28). A larger roster is refused with `EXEC_GRAPH-45` and reported; nothing is
-   dropped.
+9. **The roster bound.** `serving_candidate_roster_max` is 5,417: the DynamoDB item limit of the
+   five items that hold one entry per member, derived over every state those items reach under
+   every production writer (contract comment; `serve-fix/r2/roster-bound.json`, 2026-11-14). The
+   direct binding binds at 399,937 of 400,000 oracle bytes. A larger roster is refused with
+   `EXEC_GRAPH-45` and reported; nothing is dropped. Paging the lists (OQ-28) would remove it.
+10. **No reader of a cohort reads its members (added 2026-11-14, review round 1 AGG-1).** Three
+   callers used to read every member one at a time inside a fixed time budget: the Release's
+   unarmed settlement (`direct_binding`, 60 s pass), the precompute consumer (`direct_binding`
+   and `_cohort_eligible`, 30 s) and the bake finalizer (900 s). At about 10 ms a read, a 3,502
+   cohort took about 35 s, past the precompute's timeout [projection]. Now the election records
+   what they read:
+   - the cohort's sorted, distinct contributor roots, in the winner's `RUN#<winner>/SERVING_ROSTER`
+     item, created once by the election transaction (one more member: 43 on activation, 52 on the
+     final transition). The promoter already writes `RUN#*` and every reader already reads it, so
+     no IAM changes;
+   - the cohort's summed publish effect (`advanced_count`, `advanced_curation_count`) on the
+     winner's bake node. Each candidate's effect record is verified (re-hashed) when it is read
+     for the election, so an unverifiable effect refuses the election (U2) instead of a consumer.
+     Every consumer's eligibility is a count above zero, so the sum is eligible exactly when some
+     member is.
+
+   `read_serving_execution` reads the run, the bake node and the roster: three reads whatever the
+   cohort's size. A winner elected before this change has no roster item, so its readers refuse
+   (fail closed) rather than read members; no such winner is in flight on dev (deploy check).
 
 Decided by (1) and (3) of the
 [decision-weighting rubric](../delivery-practice.md#5-the-decision-weighting-rubric). A killed pass
@@ -152,7 +172,7 @@ smallest change that ends the stall.
 - `tests/unit/test_execution_graph_promoter.py`: a waiter reached under the promote reserve
   waits for the next pass, and the next pass promotes it once. Below the guard the final alias
   waits; at the guard with no successor it drains (42 members); successors are read only at the
-  stage reserve, and then elect in that pass (51 members).
+  stage reserve, and then elect in that pass (52 members).
 - `tests/unit/test_execution_graph_serving_stage.py`, at dev's per-call rates:
   - A roster of 1,030 (twice the old 512 cap) is staged over at least 3 passes, never killed,
     and leaves exactly the store an unbounded pass leaves: same winner, roster and digests.
@@ -169,8 +189,15 @@ smallest change that ends the stall.
   - A head version change kills the stage; its pages are deleted and re-read.
   - A cohort of 1,029 aliases drains at least 2 a pass over at least 3 passes, and the first pass
     reads only the runs it aliases.
-- `tests/unit/test_execution_graph_dispatch.py`: 5,338 candidates are accepted and 5,339 are
+- `tests/unit/test_execution_graph_dispatch.py`: 5,417 candidates are accepted and 5,418 are
   refused with `EXEC_GRAPH-45`.
+- `tests/unit/test_serving_roster_callers.py`: an elected snapshot padded to 5,417 members that
+  have no items drives the Release's unarmed settlement (60 s), the precompute consumer (30 s, a
+  curated loser making a zero-curation winner eligible) and the bake finalizer (900 s) under a
+  metered clock at dev's per-call rates. Each binds all 5,417 roots, reads no member, and makes
+  exactly as many store calls as its paired small cohort (46, 28 and 266).
+- `tests/unit/test_graph_bake.py`: a member whose publish effect does not re-hash refuses the
+  election, and nothing is elected (U2, moved to the election).
 - The existing promoter, release, unit-batch, bake and whole-chain suites pass unchanged, so an
   ample budget changes nothing.
 
@@ -183,8 +210,7 @@ smallest change that ends the stall.
   3,502 waiting runs elect in about 18 passes and drain in about 14 to 27 [projection from the
   dev rates; confirmed by the deploy step from the terminal lines].
 - Each staged pass adds one page write per about 1,100 candidates and one `ELECTION#` query per
-  election attempt. The Release's `direct_binding` (one read a cohort member, about 35 s at 3,502)
-  and the PostGrantConsumer's `_cohort_eligible` stay unbudgeted (serve-rca.md §5).
+  election attempt. Binding and eligibility read three items whatever the cohort's size (§10).
 - The release reads each `COMPLETE#` domain's head once a pass: one item and 32 frontier shards,
   about 0.4 s a domain at the dev rate. With no `COMPLETE#` item it reads none.
 - While a `COMPLETE#` backlog lasts, the release polls at most about 25 s of waiting runs a pass,

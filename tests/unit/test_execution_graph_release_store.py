@@ -195,7 +195,7 @@ def test_direct_drain_preserves_publication_marker_and_cumulative_frontier() -> 
 
 
 def test_fixed_member_final_transaction_counts_are_roster_independent() -> None:
-    assert election_transaction_member_count() == 51
+    assert election_transaction_member_count() == 52
     assert election_transaction_member_count(successor=False) == 42
 
 
@@ -233,7 +233,7 @@ def _cohort_rows(fake: FakeDynamo) -> list[tuple[str, str]]:
     return sorted(key for key in fake.items if key[1].startswith("COALESCE#"))
 
 
-def test_the_final_transaction_drains_a_and_activates_b_in_51_actions() -> None:
+def test_the_final_transaction_drains_a_and_activates_b_in_52_actions() -> None:
     world = _final_world()
     fake, final = world.fake, world.final_alias
     a_head = release_store(fake).read_serving_domain(INGESTION_RELEASE_DOMAIN).head
@@ -242,7 +242,7 @@ def test_the_final_transaction_drains_a_and_activates_b_in_51_actions() -> None:
 
     capture = capture_final_transaction(world)
 
-    assert capture is not None and len(capture.request["TransactItems"]) == 51
+    assert capture is not None and len(capture.request["TransactItems"]) == 52
     head = release_store(fake).read_serving_domain(INGESTION_RELEASE_DOMAIN).head
     assert head is not None and head.state == "ACTIVE"
     assert head.winner_run_id == world.b_runs[-1]
@@ -311,7 +311,7 @@ def test_a_failed_final_transaction_keeps_the_alias_and_obligation_then_retries_
     assert fake.items == before
     assert len(fake.transactions) == committed
     retried = capture_final_transaction(world, request_id="fixture-next-invocation")
-    assert retried is not None and len(retried.request["TransactItems"]) == 51
+    assert retried is not None and len(retried.request["TransactItems"]) == 52
     head = release_store(fake).read_serving_domain(INGESTION_RELEASE_DOMAIN).head
     assert head is not None and head.winner_run_id == world.b_runs[-1]
 
@@ -509,7 +509,7 @@ def test_a_fixed_member_count_drift_refuses_before_any_write(
     before = _domain_items(fake)
     committed = len(fake.transactions)
 
-    with pytest.raises(GraphStoreUnavailableError, match="52 actions, expected 51"):
+    with pytest.raises(GraphStoreUnavailableError, match="53 actions, expected 52"):
         capture_final_transaction(world)
 
     assert len(fake.transactions) == committed

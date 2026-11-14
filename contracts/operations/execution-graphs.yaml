@@ -95,19 +95,22 @@ write_unit_batching:
 # GRAPH serving coalescing (design §§2-3): closed pure protocol vocabulary. These controls sit
 # outside `bounds`, so the pre-cutover v1 bounds digest and its route/ceiling controls do not move.
 serving_coalescing:
-  # INTERIM until the roster lists are paged (OQ-28, required before slice 4). A derived DynamoDB
-  # item limit, not a policy: four items carry one entry per candidate (head `elected_run_ids`,
-  # `COALESCE#.run_ids`, the winner's bake node `serving_run_ids`, the direct binding's
-  # `contributor_roots`), about 73 conservative oracle bytes each. Measured by the shared byte
-  # oracle on the real final-transaction images (build-s1/evidence/graph-stall/serve-fix/
-  # roster-bound.json, 2026-11-13): the largest N keeping every one of them within 400,000 less
-  # the adapter's 8,192-byte settle headroom (UNREAD_ITEM_BYTES) is 5,338 (the bake node binds).
-  # The maximum byte fixture (both cohorts at 5,338) measures the final transaction's largest
-  # target, the head, at 391,882 bytes (8,118 left) and the transaction at 1,585,556 of
-  # 4,000,000. A larger roster is refused,
-  # ADLY-EXEC_GRAPH-0045, and reported; no candidate is dropped. At about 22 settled runs a minute
-  # it is reached only after about 4 h of held serving under a sustained backfill.
-  serving_candidate_roster_max: 5338
+  # The DynamoDB item limit, the only limit on a roster (ADR-162 §9-10). No reader of an elected
+  # cohort reads its members: the election records the contributor roots (the winner's
+  # `SERVING_ROSTER`) and the summed publish effect (its bake node), so no worker's pass time
+  # depends on the roster. Five items carry one entry per member, about 73 conservative oracle
+  # bytes each: the head's `elected_run_ids`, `COALESCE#.run_ids`, the bake node's
+  # `serving_run_ids`, `SERVING_ROSTER` and the direct binding's `contributor_roots`. Derived
+  # 2026-11-14 (build-s1/evidence/graph-stall/serve-fix/r2/roster-bound.json, roster_bound.py):
+  # every state those items reach while the unit suites run every production writer (election,
+  # staging, drains, release, precompute, bake, finalizer, replays) is recorded, timestamps and
+  # request ids widened to production length and the binding's `unavailable` list set to every
+  # bake roster row; the largest N keeping every state, its list padded to N 64-character
+  # entries, within 400,000 oracle bytes is 5,417 (the binding binds, 399,937 bytes). A larger
+  # roster is refused, ADLY-EXEC_GRAPH-0045, and reported; no candidate is dropped. At about 22
+  # settled runs a minute it is reached only after about 4 h of held serving under a sustained
+  # backfill. Paging the lists (OQ-28) removes it.
+  serving_candidate_roster_max: 5417
   serving_frontier_shards: 32
   # Measured by FreshElectionTimingV1: ceil(2 * max(total_ms)) over every attempt of
   # every sample. Evidence: .agents/tasks/ingestion-traceability/evidence/graph-bake-delivery/fresh-election-timing-v1.json

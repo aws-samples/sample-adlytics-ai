@@ -857,7 +857,7 @@ def test_successors_are_read_only_above_the_stage_reserve_and_then_elect_in_that
         assert fake.items == before  # nothing read, so nothing staged and nothing drained
 
     elected = capture_final_transaction(world, "next-invocation", lambda: _STAGE_RESERVE_MS)
-    assert elected is not None and len(elected.request["TransactItems"]) == 51
+    assert elected is not None and len(elected.request["TransactItems"]) == 52
     assert not [key for key in fake.items if key[1].startswith("ELECTION#")]
 
 
@@ -901,7 +901,7 @@ def test_a_publication_racing_the_final_transaction_fails_it_whole_and_joins_the
     assert fake.items.get((f"SERVING#{final_record.grant_id}", "BINDING")) == alias_before
     assert fake.items[obligation] == obligation_before
     retried = capture_final_transaction(world, "fresh-retry")
-    assert retried is not None and len(retried.request["TransactItems"]) == 51
+    assert retried is not None and len(retried.request["TransactItems"]) == 52
     head = release_store(fake).read_serving_domain(INGESTION_RELEASE_DOMAIN).head
     assert head is not None and set(head.elected_run_ids) == {*world.b_runs, late}
     assert head.winner_run_id == late

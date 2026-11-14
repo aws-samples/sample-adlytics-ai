@@ -161,7 +161,7 @@ def test_one_sample_seeds_rehearses_activates_once_and_returns_every_row() -> No
         for members in table.transactions
         if len(members) > 1 and any("SERVING_TRANSITION#" in str(member) for member in members)
     ]
-    assert len(final) == 1 and len(final[0]) == 51
+    assert len(final) == 1 and len(final[0]) == 52
     disposition = sample["disposition"]
     assert isinstance(disposition, dict)
     assert disposition["remaining"] == 0 and disposition["removed"] > 0

@@ -69,6 +69,7 @@ from domain.operations.execution_graph_dispatch import (
     NodeState,
 )
 from domain.operations.generated_execution_graphs import BOUNDS, ROUTES
+from domain.operations.publish_effect import PUBLISH_EFFECT_NAMESPACE
 from domain.operations.run_request import RunState
 from domain.operations.status import canonical_authority_digest
 from domain.shared_kernel.errors import DependencyError, ErrorCode, InvariantError
@@ -107,7 +108,6 @@ __all__ = [
 
 PUBLISH_NODE: Final = "publish"
 MAX_RECEIVES: Final = int(ROUTES["semantic_write"]["max_receive_count"])
-PUBLISH_EFFECT_NAMESPACE: Final = "execution-graph-publish-effect/v1"
 PUBLISH_INVARIANT: Final = "publish_invariant"
 """The closed `Signal` dimension `GraphPostGrantInvariant` counts a publish invariant under."""
 GRAPH_POST_GRANT_RETRY_EXHAUSTED: Final = "GRAPH_POST_GRANT_RETRY_EXHAUSTED"

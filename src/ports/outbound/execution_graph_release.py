@@ -39,6 +39,7 @@ from domain.operations.execution_graph_release import (
     ServingBinding,
     ServingOutcome,
 )
+from domain.operations.publish_effect import PublishEffect
 from domain.operations.status import canonical_authority_digest
 from domain.presentation.preset_artifacts import PresetArtifactPointer
 from ports.outbound.execution_graph_dispatch import (
@@ -266,11 +267,18 @@ class ServingStagePage:
 
 @dataclass(frozen=True, slots=True)
 class ServingExecutionContext:
-    """The active cohort identity every winner contribution must match."""
+    """The active cohort identity every winner contribution must match.
+
+    ADR-162 §10: the election also records what the cohort's binding and eligibility need, so
+    no reader of this context reads a cohort member: the sorted contributor roots (from the
+    winner's `SERVING_ROSTER` item) and the cohort's summed publish effect (on its bake node).
+    """
 
     head: ServingDomainHead
     run_ids: tuple[str, ...]
     plan_digest: str
+    contributor_roots: tuple[str, ...]
+    cohort_effect: PublishEffect
 
 
 @dataclass(frozen=True, slots=True)

@@ -183,6 +183,9 @@ class NodeRecord:
     serving_plan_digest: str | None = None
     serving_run_ids: tuple[str, ...] = ()
     """Slice 3 winner context stamped by the atomic election."""
+    serving_cohort_advanced_count: int | None = None
+    serving_cohort_advanced_curation_count: int | None = None
+    """ADR-162 §10: the cohort's summed publish effect, stamped by the same election."""
     item_bytes: int = field(default=0, compare=False)
     """Slice 7 (F3): the item's size as read, by the shared byte oracle; 0 when not read."""
 
