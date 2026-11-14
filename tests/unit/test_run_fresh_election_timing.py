@@ -225,14 +225,21 @@ def test_a_staged_guard_above_what_every_arm_pass_keeps_is_refused() -> None:
     assert unstaged["next_election_min_remaining_ms"] == 40_001
 
 
-def test_a_colliding_probe_row_is_refused_and_only_the_seeded_rows_are_returned() -> None:
+@pytest.mark.parametrize("write_concurrency", [1, 8])
+def test_a_colliding_probe_row_is_refused_and_only_the_seeded_rows_are_returned(
+    write_concurrency: int,
+) -> None:
+    """With puts in flight at the collision, each one that landed must still be disposed of."""
     table = _ProbeTable()
     foreign_key = (f"SERVING_DOMAIN#{INGESTION_RELEASE_DOMAIN}", "HEAD")
     foreign = {"pk": {"S": foreign_key[0]}, "sk": {"S": foreign_key[1]}, "owner": {"S": "other"}}
     table.items[foreign_key] = copy.deepcopy(foreign)
+    inputs = timing.SampleInputs(
+        table, "probe", _MAX_REDECIDE, 60_000, clock=_clock(), write_concurrency=write_concurrency
+    )
 
     with pytest.raises(timing.TimingError, match="already holds SERVING_DOMAIN#"):
-        timing.run_sample(1, _inputs(table))
+        timing.run_sample(1, inputs)
 
     assert table.items == {foreign_key: foreign}  # the foreign row is untouched, ours are gone
 
@@ -524,6 +531,26 @@ def test_the_live_mode_must_be_held_graph_revision_12(monkeypatch: pytest.Monkey
     for mode in ({**held, "hold": {"BOOL": False}}, {**held, "revision": {"N": "13"}}, None):
         with pytest.raises(timing.TimingError, match="not held GRAPH revision 12"):
             timing._held_mode(_Session(mode=mode), "dev", "store")  # pyright: ignore[reportPrivateUsage]
+
+
+def test_concurrent_seeding_puts_every_row_and_returns_them_in_key_order() -> None:
+    items = {
+        (f"RUN#{index:03d}", "RUN"): {"pk": {"S": f"RUN#{index:03d}"}, "sk": {"S": "RUN"}}
+        for index in range(40)
+    }
+    table = _ProbeTable()
+    seeded = timing.seed_world(table, "probe", items, concurrency=8)
+    assert seeded == sorted(items) and set(table.items) == set(items)
+    disposition = timing.dispose(table, "probe", seeded, concurrency=8)
+    assert (disposition["removed"], disposition["remaining"]) == (40, 0)
+    assert table.items == {}
+
+
+def test_a_write_concurrency_below_one_is_refused() -> None:
+    assert timing._write_concurrency(None) == 10  # pyright: ignore[reportPrivateUsage]
+    assert timing._write_concurrency(3) == 3  # pyright: ignore[reportPrivateUsage]
+    with pytest.raises(timing.TimingError, match="at least 1"):
+        timing._write_concurrency(0)  # pyright: ignore[reportPrivateUsage]
 
 
 def test_the_mode_row_is_never_seeded() -> None:

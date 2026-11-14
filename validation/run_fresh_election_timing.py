@@ -38,8 +38,8 @@ the 52-member transaction; a successor candidate read during the rehearsal means
 not fully staged and refuses the sample. A derived guard above `PROMOTE_RESERVE_MS`
 (40,000 ms), the least an arm pass keeps at its start, is refused. That is an upper refusal
 only: the guard is checked after the pass's own iteration, so a guard just under 40,000 ms is
-accepted here yet would not pass while a waiter backlog persists. Run it at N=3,502 (dev's roster on 2026-11-13) and at
-`serving_candidate_roster_max`; the contract takes the larger guard.
+accepted here yet would not pass while a waiter backlog persists. Run it at N=3,502 (dev's
+roster on 2026-11-13) and at `serving_candidate_roster_max`; the contract takes the larger guard.
 `--write-contract` then rewrites only the contract's `next_election_min_remaining_ms` line and
 its comment with the value, the artifact path and its SHA-256; regenerate both projections next.
 """
@@ -58,6 +58,7 @@ import sys
 import time
 import uuid
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -365,23 +366,51 @@ def foreign_obligations(client: Any, table: str, shards: Iterable[str]) -> list[
     return sorted(found)
 
 
-def seed_world(client: Any, table: str, items: Mapping[Key, Item]) -> list[Key]:
-    """Put each world row absent-conditioned; a collision stops and returns what was seeded."""
+def seed_world(
+    client: Any, table: str, items: Mapping[Key, Item], *, concurrency: int = 1
+) -> list[Key]:
+    """Put each world row absent-conditioned, at most `concurrency` puts in flight.
+
+    The first failure stops new puts; every put already in flight finishes, and the collision
+    carries exactly the rows that landed (sorted), so the disposal returns all of them.
+    """
     from botocore.exceptions import ClientError
 
+    def put(key: Key) -> None:
+        client.put_item(
+            TableName=table, Item=items[key], ConditionExpression="attribute_not_exists(pk)"
+        )
+
+    pending = iter(key for key in sorted(items) if key not in _SKIPPED_KEYS)
     seeded: list[Key] = []
-    for key in sorted(items):
-        if key in _SKIPPED_KEYS:
-            continue
-        try:
-            client.put_item(
-                TableName=table, Item=items[key], ConditionExpression="attribute_not_exists(pk)"
-            )
-        except ClientError as error:
-            code = str(error.response.get("Error", {}).get("Code"))
-            raise _Collision(seeded, key, code) from None
-        seeded.append(key)
-    return seeded
+    failure: tuple[Key, BaseException] | None = None
+    with ThreadPoolExecutor(max_workers=concurrency) as pool:
+        inflight: dict[Future[None], Key] = {}
+        while True:
+            while failure is None and len(inflight) < concurrency:
+                key = next(pending, None)
+                if key is None:
+                    break
+                inflight[pool.submit(put, key)] = key
+            if not inflight:
+                break
+            done, _ = wait(inflight, return_when=FIRST_COMPLETED)
+            for future in done:
+                key = inflight.pop(future)
+                error = future.exception()
+                if error is None:
+                    seeded.append(key)
+                elif failure is None:
+                    failure = (key, error)
+    if failure is not None:
+        key, error = failure
+        code = (
+            str(error.response.get("Error", {}).get("Code"))
+            if isinstance(error, ClientError)
+            else type(error).__name__
+        )
+        raise _Collision(sorted(seeded), key, code) from None
+    return sorted(seeded)
 
 
 class _Collision(TimingError):
@@ -397,12 +426,22 @@ class _Collision(TimingError):
         self.seeded = seeded
 
 
-def dispose(client: Any, table: str, keys: Iterable[Key]) -> dict[str, object]:
-    """Delete every recorded key, then strongly prove each one absent."""
+def dispose(
+    client: Any, table: str, keys: Iterable[Key], *, concurrency: int = 1
+) -> dict[str, object]:
+    """Delete every recorded key, then strongly prove each one absent (bounded concurrency)."""
     ordered = sorted(set(keys))
-    for key in ordered:
+
+    def delete(key: Key) -> None:
         client.delete_item(TableName=table, Key={"pk": {"S": key[0]}, "sk": {"S": key[1]}})
-    remaining = [key for key in ordered if _strong_get(client, table, key) is not None]
+
+    def present(key: Key) -> bool:
+        return _strong_get(client, table, key) is not None
+
+    with ThreadPoolExecutor(max_workers=concurrency) as pool:
+        list(pool.map(delete, ordered))
+        found = list(pool.map(present, ordered))
+    remaining = [key for key, here in zip(ordered, found, strict=True) if here]
     digest = hashlib.sha256(json.dumps(ordered, separators=(",", ":")).encode()).hexdigest()
     return {
         "removed": len(ordered) - len(remaining),
@@ -423,6 +462,8 @@ class SampleInputs:
     clock: Callable[[], float] = time.perf_counter
     staged_successors: int = 0
     """0: today's world (B of 2, no page). N: B of N, every successor pre-staged (ADR-162 §7)."""
+    write_concurrency: int = 1
+    """Seeding and disposal puts/deletes in flight; the rehearsal itself stays sequential."""
 
 
 def pre_stage(fake: Any, successors: Sequence[str]) -> int:
@@ -500,7 +541,9 @@ def run_sample(index: int, inputs: SampleInputs) -> dict[str, object]:
     failure: BaseException | None = None
     result: Any = None
     try:
-        seeded = seed_world(inputs.client, inputs.table, world.fake.items)
+        seeded = seed_world(
+            inputs.client, inputs.table, world.fake.items, concurrency=inputs.write_concurrency
+        )
         recording.seeded = frozenset(seeded)
         store = DynamoGraphReleaseStore(inputs.table, recording)
         remaining = inputs.remaining_ms
@@ -516,7 +559,12 @@ def run_sample(index: int, inputs: SampleInputs) -> dict[str, object]:
         seeded, failure = collision.seeded, collision
     except Exception as error:  # noqa: BLE001 -- disposed first, then re-raised below
         failure = error
-    disposition = dispose(inputs.client, inputs.table, [*seeded, *recording.owned])
+    disposition = dispose(
+        inputs.client,
+        inputs.table,
+        [*seeded, *recording.owned],
+        concurrency=inputs.write_concurrency,
+    )
     if failure is None and (recording.refused or recording.unresolved):
         failure = TimingError("a rehearsal write met a probe row it does not own")
     if failure is None and staged and recording.watched_reads:
@@ -574,7 +622,23 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--samples", type=int, default=DEFAULT_SAMPLES)
     parser.add_argument("--write-contract", action="store_true")
     parser.add_argument("--staged-successors", type=int, default=0)
+    parser.add_argument(
+        "--write-concurrency",
+        type=int,
+        default=None,
+        help="seeding and disposal writes in flight (default: botocore's connection pool size)",
+    )
     return parser
+
+
+def _write_concurrency(requested: int | None) -> int:
+    """Return the bound, defaulting to the client's own connection pool size."""
+    from botocore.config import Config
+
+    value = int(Config().max_pool_connections) if requested is None else requested
+    if value < 1:
+        raise TimingError("--write-concurrency must be at least 1")
+    return value
 
 
 def _git(*arguments: str) -> str:
@@ -589,8 +653,11 @@ def _clean_head() -> str:
     return _git("rev-parse", "HEAD")
 
 
-def _assumed_probe_client(session: Any, account: str, environment: str, region: str) -> Any:
+def _assumed_probe_client(  # noqa: PLR0917 -- the five target inputs, each explicit
+    session: Any, account: str, environment: str, region: str, pool: int
+) -> Any:
     import boto3
+    from botocore.config import Config
 
     role = f"arn:aws:iam::{account}:role/adlytics-{environment}-execution-graph-probe"
     credentials = session.client("sts").assume_role(
@@ -599,6 +666,7 @@ def _assumed_probe_client(session: Any, account: str, environment: str, region: 
     return boto3.client(
         "dynamodb",
         region_name=region,
+        config=Config(max_pool_connections=pool),
         aws_access_key_id=credentials["AccessKeyId"],
         aws_secret_access_key=credentials["SecretAccessKey"],
         aws_session_token=credentials["SessionToken"],
@@ -675,6 +743,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise TimingError("--samples must be at least 1")
         if arguments.staged_successors < 0 or arguments.staged_successors == 1:
             raise TimingError("--staged-successors must be 0 or at least 2")
+        concurrency = _write_concurrency(arguments.write_concurrency)
         output = Path(arguments.output).resolve()
         if output.exists():
             raise TimingError(f"refusing to overwrite {output}")
@@ -701,7 +770,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         table = f"adlytics-{environment}-execution-graph-probe"
         client = _assumed_probe_client(
-            session, str(arguments.expected_account), environment, str(arguments.region)
+            session,
+            str(arguments.expected_account),
+            environment,
+            str(arguments.region),
+            concurrency,
         )
         foreign = foreign_obligations(client, table, due_shards())
         if foreign:
@@ -717,6 +790,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     max_redecide,
                     int(cast("int", promoter["timeout_ms"])),
                     staged_successors=int(arguments.staged_successors),
+                    write_concurrency=concurrency,
                 ),
             )
             for index in range(1, arguments.samples + 1)
@@ -737,6 +811,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "max_redecide": max_redecide,
             "conflicts_per_sample": max_redecide,
             "staged_successors": int(arguments.staged_successors),
+            "write_concurrency": concurrency,
             "current_contract_guard_ms": int(SERVING_COALESCING["next_election_min_remaining_ms"]),
             "sample_started_at": sample_started,
             "sample_ended_at": datetime.now(UTC).isoformat(),
