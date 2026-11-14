@@ -553,6 +553,45 @@ def test_a_write_concurrency_below_one_is_refused() -> None:
         timing._write_concurrency(0)  # pyright: ignore[reportPrivateUsage]
 
 
+def test_the_probe_client_re_assumes_the_role_before_its_credentials_expire() -> None:
+    from datetime import UTC, datetime, timedelta  # noqa: PLC0415
+
+    issued: list[datetime] = []
+
+    class _Sts:
+        def assume_role(self, **kwargs: Any) -> dict[str, Any]:
+            assert kwargs["RoleArn"].endswith(":role/adlytics-dev-execution-graph-probe")
+            # The first session is already inside botocore's mandatory refresh window.
+            expiry = datetime.now(UTC) + timedelta(minutes=5 if not issued else 60)
+            issued.append(expiry)
+            return {
+                "Credentials": {
+                    "AccessKeyId": f"AKIAFICTION{len(issued)}",
+                    "SecretAccessKey": "fictional",
+                    "SessionToken": "fictional",
+                    "Expiration": expiry,
+                }
+            }
+
+    class _StsSession:
+        def client(self, name: str) -> _Sts:
+            assert name == "sts"
+            return _Sts()
+
+    client = timing._assumed_probe_client(_StsSession(), "000000000000", "dev", "us-east-1", 4)  # pyright: ignore[reportPrivateUsage]
+    frozen = client._request_signer._credentials.get_frozen_credentials()  # pyright: ignore[reportPrivateUsage]
+    assert len(issued) == 2 and frozen.access_key == "AKIAFICTION2"
+    assert client.meta.config.max_pool_connections == 4
+
+
+def test_each_finished_sample_is_appended_as_one_line(tmp_path: pathlib.Path) -> None:
+    sidecar = tmp_path / "timing.json.samples.jsonl"
+    timing.record_sample(sidecar, {"sample": 1, "attempts": []})
+    timing.record_sample(sidecar, {"sample": 2, "attempts": []})
+    assert [line[:12] for line in sidecar.read_text().splitlines()] == ['{"attempts":'] * 2
+    assert '"sample": 2' in sidecar.read_text().splitlines()[1]
+
+
 def test_the_mode_row_is_never_seeded() -> None:
     items = {
         ("MODE#ingestion", "MODE"): {"pk": {"S": "MODE#ingestion"}, "sk": {"S": "MODE"}},

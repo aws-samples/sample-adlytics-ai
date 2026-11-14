@@ -656,21 +656,52 @@ def _clean_head() -> str:
 def _assumed_probe_client(  # noqa: PLR0917 -- the five target inputs, each explicit
     session: Any, account: str, environment: str, region: str, pool: int
 ) -> Any:
+    """Return a probe-role client whose credentials re-assume the role before they expire.
+
+    A staged run outlasts one role session (attempt 3 at N = 3,502 lost its disposal to
+    ExpiredTokenException on 2026-11-14). A refresh adds one STS call to whichever request
+    meets it, so it can only lengthen an attempt, never shorten the guard.
+    """
     import boto3
+    import botocore.session
     from botocore.config import Config
+    from botocore.credentials import RefreshableCredentials
 
     role = f"arn:aws:iam::{account}:role/adlytics-{environment}-execution-graph-probe"
-    credentials = session.client("sts").assume_role(
-        RoleArn=role, RoleSessionName="fresh-election-timing"
-    )["Credentials"]
-    return boto3.client(
-        "dynamodb",
-        region_name=region,
-        config=Config(max_pool_connections=pool),
-        aws_access_key_id=credentials["AccessKeyId"],
-        aws_secret_access_key=credentials["SecretAccessKey"],
-        aws_session_token=credentials["SessionToken"],
+    sts = session.client("sts")
+
+    def assume() -> dict[str, str]:
+        found = sts.assume_role(RoleArn=role, RoleSessionName="fresh-election-timing")
+        credentials = found["Credentials"]
+        return {
+            "access_key": credentials["AccessKeyId"],
+            "secret_key": credentials["SecretAccessKey"],
+            "token": credentials["SessionToken"],
+            "expiry_time": credentials["Expiration"].isoformat(),
+        }
+
+    core = botocore.session.get_session()
+    core._credentials = RefreshableCredentials.create_from_metadata(  # pyright: ignore[reportPrivateUsage]
+        metadata=assume(), refresh_using=assume, method="sts-assume-role"
     )
+    return boto3.Session(botocore_session=core, region_name=region).client(
+        "dynamodb", config=Config(max_pool_connections=pool)
+    )
+
+
+def _fresh_sidecar(output: Path) -> Path:
+    """Name the per-sample sidecar of `output`; refuse when either file already exists."""
+    sidecar = output.with_name(f"{output.name}.samples.jsonl")
+    for path in (output, sidecar):
+        if path.exists():
+            raise TimingError(f"refusing to overwrite {path}")
+    return sidecar
+
+
+def record_sample(path: Path, sample: Mapping[str, object]) -> None:
+    """Append one finished sample, so a later failure never loses an attempt already timed."""
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(sample, sort_keys=True) + "\n")
 
 
 def _held_mode(session: Any, environment: str, store_stack: str) -> dict[str, object]:
@@ -745,8 +776,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise TimingError("--staged-successors must be 0 or at least 2")
         concurrency = _write_concurrency(arguments.write_concurrency)
         output = Path(arguments.output).resolve()
-        if output.exists():
-            raise TimingError(f"refusing to overwrite {output}")
+        sidecar = _fresh_sidecar(output)
         repository_relative(output)
         code_sha = _clean_head()
         import boto3
@@ -781,20 +811,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise TimingError(f"the probe due shards hold {len(foreign)} foreign obligations")
         max_redecide = int(BOUNDS["max_redecide"])
         sample_started = datetime.now(UTC).isoformat()
-        samples = [
-            run_sample(
-                index,
-                SampleInputs(
-                    client,
-                    table,
-                    max_redecide,
-                    int(cast("int", promoter["timeout_ms"])),
-                    staged_successors=int(arguments.staged_successors),
-                    write_concurrency=concurrency,
-                ),
-            )
-            for index in range(1, arguments.samples + 1)
-        ]
+        inputs = SampleInputs(
+            client,
+            table,
+            max_redecide,
+            int(cast("int", promoter["timeout_ms"])),
+            staged_successors=int(arguments.staged_successors),
+            write_concurrency=concurrency,
+        )
+        samples: list[dict[str, object]] = []
+        for index in range(1, arguments.samples + 1):
+            samples.append(run_sample(index, inputs))
+            record_sample(sidecar, samples[-1])
         identity: dict[str, object] = {
             "contract_revision": int(CONTRACT_REVISION),
             "protocol_version": PROTOCOL_VERSION,
