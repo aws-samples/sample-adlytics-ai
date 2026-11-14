@@ -824,7 +824,7 @@ def test_b_publishes_while_a_is_active_and_a_final_transaction_elects_b() -> Non
     assert _state(fake, b_runs[0], "bake") == "PENDING"
 
 
-_GUARD_MS = 10_493
+_GUARD_MS = 18_666
 """The measured guard (FreshElectionTimingV1, 2026-10-15), pinned so a contract change is seen."""
 
 
