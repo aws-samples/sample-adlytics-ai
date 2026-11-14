@@ -26,11 +26,12 @@ from adapters.outbound.bake_sources import (
     PinnedRead,
     reads_digest,
 )
+from adapters.outbound.telemetry.reporting import Report, report_error
 from domain.operations.execution_graph_release import DurableBakeSourceManifestInvalidError
 from domain.shared_kernel.errors import InvariantError
 from ports.outbound.publication_selection import PinnedPublication
 from ports.outbound.query import QueryResult
-from ports.outbound.semantic_state import InspectExactResult
+from ports.outbound.semantic_state import InspectExactResult, ScopeHorizon
 
 pytestmark = [pytest.mark.unit]
 
@@ -248,6 +249,55 @@ def test_a_reordered_and_repeated_replay_answers_equal_and_empty_reads_replay_ty
             reads.earliest_current_for_scope(cast("Any", _Scope("other")))
     assert len(current.reads) == seen  # I1: zero provider reads in replay
     assert reads.mode is BakeReadMode.PASSTHROUGH
+
+
+@dataclass
+class _ErrorLog:
+    errors: list[dict[str, Any]] = field(default_factory=list[dict[str, Any]])
+
+    def error(self, message: str, *, extra: dict[str, Any]) -> None:
+        del message
+        self.errors.append(extra)
+
+
+def test_an_unpinned_scope_read_logs_its_scope_horizon_key_and_the_pinned_horizons() -> None:
+    """Without the key the refusal cannot say which read the pin pass missed (B-1, 7eced71e)."""
+    reads, _ = _reads()
+    with reads.snapshot(), reads.recording(ROW) as handle:
+        reads.current_for_scope(cast("Any", _Scope("s")), ROW.window(1))
+    latest = ScopeHorizon(newest=1)
+    log = _ErrorLog()
+    with reads.replaying(handle.reads, ROW):
+        assert reads.current_for_scope(cast("Any", _Scope("s")), ROW.window(1))  # control
+        with pytest.raises(DurableBakeSourceManifestInvalidError) as other_horizon:
+            reads.current_for_scope(cast("Any", _Scope("s")), latest)
+        with pytest.raises(DurableBakeSourceManifestInvalidError) as never_read:
+            reads.current_for_scope(cast("Any", _Scope("u")), latest)
+    assert other_horizon.value.context == {
+        "read_kind": "current_for_scope",
+        "scope": "s",
+        "horizon": "newest=1",
+        "read_key": ["s", "newest=1"],
+        "pinned_horizons": ["from=2026-06-12"],
+        "signal": "durable_bake_source_manifest_invalid",
+        "detail": "an unpinned current_for_scope read",
+    }
+    assert never_read.value.context["pinned_horizons"] == []
+    report_error(
+        never_read.value,
+        Report("graph_bake", "123e4567-e89b-42d3-a456-426614174000", cast("Any", log)),
+    )
+    (logged,) = log.errors
+    assert logged["error_code"] == "ADLY-GRAPH_BAKE_V3-0002"
+    assert logged["error_context"] == {
+        "read_kind": "current_for_scope",
+        "scope": "u",
+        "horizon": "newest=1",
+        "read_key": ["u", "newest=1"],
+        "pinned_horizons": [],
+        "signal": "durable_bake_source_manifest_invalid",
+        "detail": "an unpinned current_for_scope read",
+    }
 
 
 def test_the_duplicate_rule_first_wins_equal_ignored_conflicting_fatal() -> None:
