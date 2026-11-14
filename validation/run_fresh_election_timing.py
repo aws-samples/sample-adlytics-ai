@@ -35,9 +35,10 @@ election: B holds N successors, and before seeding every one is read through the
 store and written as `ELECTION#` pages under the head's stage id, as earlier staging passes
 would leave them. Every attempt then reads the pages, the iteration and the head, and commits
 the 52-member transaction; a successor candidate read during the rehearsal means the world was
-not fully staged and refuses the sample. Acceptance: the derived guard must not exceed
-`PROMOTE_RESERVE_MS` (40,000 ms), the least an arm pass always keeps, so a fully staged commit
-fits every pass; a larger one is refused. Run it at N=3,502 (dev's roster on 2026-11-13) and at
+not fully staged and refuses the sample. A derived guard above `PROMOTE_RESERVE_MS`
+(40,000 ms), the least an arm pass keeps at its start, is refused. That is an upper refusal
+only: the guard is checked after the pass's own iteration, so a guard just under 40,000 ms is
+accepted here yet would not pass while a waiter backlog persists. Run it at N=3,502 (dev's roster on 2026-11-13) and at
 `serving_candidate_roster_max`; the contract takes the larger guard.
 `--write-contract` then rewrites only the contract's `next_election_min_remaining_ms` line and
 its comment with the value, the artifact path and its SHA-256; regenerate both projections next.
@@ -72,7 +73,10 @@ DERIVATION: Final = "ceil(2 * max(total_ms))"
 CONTRACT_PATH: Final = _ROOT / "contracts" / "operations" / "execution-graphs.yaml"
 DEFAULT_SAMPLES: Final = 5
 STAGED_GUARD_MAX_MS: Final = 40_000
-"""`PROMOTE_RESERVE_MS`: the least time an arm pass keeps (budget.py); a test pins the two."""
+"""An upper refusal only: `PROMOTE_RESERVE_MS`, the least an arm pass keeps at its start
+(budget.py); a test pins the two. The guard is read after the pass's own iteration (about 0.8 s
+at N = 3,502), so a guard at this ceiling would not pass while a waiter backlog persists; the
+measured guard, not this ceiling, sets serving freshness."""
 WORLD_A_SIZE: Final = 3
 WORLD_B_SIZE: Final = 2
 EXPECTED_MODE_REVISION: Final = 12
