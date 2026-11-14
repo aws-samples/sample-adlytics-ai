@@ -14,20 +14,23 @@ declarations the runtime itself reads:
   packs' cadence lags. A harness missing one of them tests a runtime nobody deploys.
 - **Window** is the governed default a question naming no period gets
   (`MetricWindowDefaults`): the newest window the metric's own sources fully cover. A periodic
-  metric resolves it to the latest measured complete period (ADR-100).
-- **Grain**: a daily metric is asked by `date`, which every daily fact carries. A periodic metric
-  is asked at its declared grains: a grain column a writer bounds is pinned to its first declared
-  value, an open one (segment, cohort) is grouped, so every grain column is accounted for
-  (ADR-024).
+  metric is answered at the latest measured complete period instead (ADR-100), and the test
+  derives that period itself from the served-period publications the answer read.
+- **Grain**: a daily metric is asked by its first declared grain (`valid_grains`) that every fact
+  it reads carries. A periodic metric is asked at its declared grains: a grain column a writer
+  bounds is pinned to its first declared value, an open one (segment, cohort) is grouped, so
+  every grain column is accounted for (ADR-024).
 - **Pins**: `FILTER_POOL` on the columns the facts declare, with a value no writer of the
   metric's measures can produce replaced by the writer's own; plus the metric's required source
   options and mandatory selectors.
 
 Values are checked loosely and shape strictly. What each figure *is* belongs to the tests that
 pin a known number (`test_measurement_end_to_end`, `test_roas_end_to_end`,
-`test_suppression_end_to_end`). Four declared kinds are refused by the live planner on purpose,
-before any publication is bound or any query runs; they are asserted as refusals, and every
-answered metric here is their positive control.
+`test_suppression_end_to_end`). Some declared kinds are refused by the catalog on purpose
+(`ADLY-CATALOG-0002`) when the answer is planned, before the answer binds a publication; they
+are asserted as refusals, and every answered metric here is their positive control. The
+served-period and roster reads a request needs happen before planning by design
+(`handle_batch`), so they are not part of that boundary.
 """
 
 from __future__ import annotations
@@ -71,10 +74,11 @@ from adapters.producer.packs import load_query_packs
 from domain.catalog.capability import Metric, MetricKind, references_in_definition
 from domain.data_contracts.contract import DataContract
 from domain.measurement.periodic import periodic_leaves
-from domain.measurement.planning import GRAIN_COLUMNS, FactShape, leaf_references
+from domain.measurement.planning import GRAIN_COLUMNS, FactShape, GrainSetShape, leaf_references
 from domain.narrative.shaped_response import ResolutionProvenance, ShapedResponse, UnitKind
 from domain.semantics.analytical_resolution import AuthorizedAnalyticalScope, FieldOrigin
-from domain.semantics.calendar_periods import is_complete_period
+from domain.semantics.calendar_periods import CalendarPeriod
+from domain.semantics.time import TimeGrain
 from domain.shared_kernel.errors import DomainError
 from domain.shared_kernel.values import DateRange
 from ports.outbound.publication_selection import (
@@ -82,6 +86,7 @@ from ports.outbound.publication_selection import (
     PublicationSelectionRequest,
 )
 from ports.outbound.query import QueryPort
+from ports.outbound.served_periods import ServedPeriods, ServedPeriodsRequest
 
 pytestmark = [pytest.mark.integration, pytest.mark.covers("ADR-028", "ADR-035", "ADR-100")]
 
@@ -220,7 +225,17 @@ def _question(metric: Metric) -> _Question:
         {name: values[0] for name, values in metric.required_selectors if name != "time_grain"}
     )
     if not periodic_leaves(CATALOG, metric):
-        return _Question(grains=("date",), filters=filters)
+        # The first declared grain whose column every fact carries and no pin already fixes.
+        daily = next(
+            (
+                grain
+                for grain in metric.valid_grains
+                if GRAIN_COLUMNS[grain] in declared and GRAIN_COLUMNS[grain] not in filters
+            ),
+            None,
+        )
+        assert daily is not None, f"{metric.name}: no declared grain is in every fact it reads"
+        return _Question(grains=(daily,), filters=filters)
     grain_columns = {column for shape in shapes for column in shape.grain_for({})}
     grains: list[str] = []
     for grain in metric.valid_grains:
@@ -234,10 +249,50 @@ def _question(metric: Metric) -> _Question:
     return _Question(grains=tuple(grains) or metric.valid_grains[:1], filters=filters)
 
 
-def _is_one_declared_period(metric: Metric, window: DateRange) -> bool:
-    """Whether a window is one complete calendar period at a grain the metric declares."""
-    grains = {grain for leaf in periodic_leaves(CATALOG, metric) for grain in leaf.period_grains}
-    return any(is_complete_period(grain, window.start, window.end) for grain in grains)
+def _latest_measured_period(
+    metric: Metric, reads: tuple[tuple[ServedPeriodsRequest, ServedPeriods], ...]
+) -> CalendarPeriod:
+    """Return the period a question naming none must be answered at, from what was published.
+
+    ADR-100: the latest complete period every contract the answer reads has a CURRENT
+    publication for, at the week when the metric and its contracts have one, else the metric's
+    first declared grain the contracts deliver; a cohort-only metric reads its newest vintage.
+    Derived from the publications the served-period port returned, never from the resolver.
+    """
+    assert reads, f"{metric.name}: a periodic answer read no served periods"
+    leaves = periodic_leaves(CATALOG, metric)
+    declared = tuple(
+        grain
+        for grain in leaves[0].period_grains
+        if all(grain in leaf.period_grains for leaf in leaves)
+    )
+    delivered = {
+        grain
+        for request, _ in reads
+        for contract in request.contracts
+        for shape in GrainSetShape.of(contract)
+        for grain in shape.period_grains
+    }
+    grains = tuple(grain for grain in declared if grain in delivered) or declared
+    if grains == (TimeGrain.CUSTOM,):
+        grain = TimeGrain.CUSTOM
+    else:
+        grain = TimeGrain.WEEK if TimeGrain.WEEK in grains else grains[0]
+    as_of = reads[0][0].now.date()
+    measured = [
+        period
+        for _, served in reads
+        for _, period in served.publications
+        if period.grain is grain
+        and (grain is TimeGrain.CUSTOM or period.end <= as_of)
+        and all(
+            (contract.contract_id, period) in read.publications
+            for request, read in reads
+            for contract in request.contracts
+        )
+    ]
+    assert measured, f"{metric.name}: no {grain.value} is published by every contract it reads"
+    return max(measured)
 
 
 class _RecordingSelector:
@@ -271,19 +326,44 @@ class _CountingQueries:
         return _forward
 
 
+class _RecordingPeriods:
+    """Delegate to the deployed served-period reader while retaining every read the answer made."""
+
+    def __init__(self, periods: PublicationSelector) -> None:
+        self._periods = periods
+        self.reads: list[tuple[ServedPeriodsRequest, ServedPeriods]] = []
+
+    def served_periods(self, request: ServedPeriodsRequest) -> ServedPeriods:
+        served = self._periods.served_periods(request)
+        self.reads.append((request, served))
+        return served
+
+
+@dataclass(frozen=True, slots=True)
+class _Deployed:
+    """The deployed adapters and contract sets, read once per session as the entry point does."""
+
+    selector: PublicationSelector
+    athena: AthenaQueryAdapter
+    labels: DimensionLabelResolver
+    rosters: RosterReaders
+    window_defaults: MetricWindowDefaults
+
+
 @dataclass(frozen=True, slots=True)
 class _Harness:
-    """One test's tooling, composed as the measurement entry point composes chat's."""
+    """One test's tooling: the shared deployed adapters behind this test's own recorders."""
 
     publications: _RecordingSelector
+    periods: _RecordingPeriods
     queries: _CountingQueries
     tooling: MeasurementTooling
     window_defaults: MetricWindowDefaults
 
 
-@pytest.fixture
-def harness(settings: Settings) -> _Harness:
-    """Compose a fresh harness per test, so no recorded selection or count crosses tests."""
+@pytest.fixture(scope="session")
+def deployed(settings: Settings) -> _Deployed:
+    """Compose the deployed adapters once, as `measurement_entrypoint.py` composes chat's."""
     packs = load_source_packs(ROOT)
     bridge = load_commerce_identity_bridge(ROOT)
     taxonomy = load_media_taxonomy(ROOT)
@@ -307,10 +387,6 @@ def harness(settings: Settings) -> _Harness:
             results=ResultTransport.PAGED,
         )
     )
-    # Only the answer's own binding and statements are recorded; the roster readers share the
-    # same deployed selector and adapter unrecorded, as the entry point shares them.
-    publications = _RecordingSelector(selector)
-    counting = _CountingQueries(athena)
     segment_labels = CanonicalSegmentLabels(current, canonical, packs, CONTRACTS, bridge)
     labels = DimensionLabelResolver(
         CanonicalEntityCatalog(
@@ -326,13 +402,10 @@ def harness(settings: Settings) -> _Harness:
         AuthorizedAnalyticalScope(frozenset({bridge.commerce_scope})),
         segments=segment_labels,
     )
-    tooling = MeasurementTooling(
-        queries=cast("QueryPort", counting),
-        publications=publications,
+    return _Deployed(
+        selector=selector,
+        athena=athena,
         labels=labels,
-        query_batch_max_concurrency=settings.athena_query_batch_max_concurrency,
-        periods=selector,
-        pack_coverage=selector,
         rosters=RosterReaders(
             spend=SpendRosterReader(
                 catalog=CATALOG,
@@ -353,14 +426,37 @@ def harness(settings: Settings) -> _Harness:
                 clock=lambda: datetime.now(UTC),
             ),
         ),
-    )
-    return _Harness(
-        publications=publications,
-        queries=counting,
-        tooling=tooling,
         window_defaults=MetricWindowDefaults(
             PageWindowCatalog(current, packs, CONTRACTS, bridge), CATALOG
         ),
+    )
+
+
+@pytest.fixture
+def harness(deployed: _Deployed, settings: Settings) -> _Harness:
+    """Wrap the shared adapters in fresh recorders, so no observation crosses tests.
+
+    Only the answer's own binding, served-period reads and statements are recorded. The roster
+    readers share the deployed selector and adapter unrecorded, as the entry point shares them.
+    """
+    publications = _RecordingSelector(deployed.selector)
+    periods = _RecordingPeriods(deployed.selector)
+    counting = _CountingQueries(deployed.athena)
+    tooling = MeasurementTooling(
+        queries=cast("QueryPort", counting),
+        publications=publications,
+        labels=deployed.labels,
+        query_batch_max_concurrency=settings.athena_query_batch_max_concurrency,
+        periods=periods,
+        pack_coverage=deployed.selector,
+        rosters=deployed.rosters,
+    )
+    return _Harness(
+        publications=publications,
+        periods=periods,
+        queries=counting,
+        tooling=tooling,
+        window_defaults=deployed.window_defaults,
     )
 
 
@@ -416,9 +512,8 @@ def test_the_metric_executes_and_returns_a_qualified_envelope(
             assert error.user_visible_description.endswith(
                 f"Available instead: {', '.join(refusal.offered)}."
             )
-        # Refused by the catalog, before any publication was bound or any statement ran.
+        # Refused by the catalog when the answer is planned, so the answer bound no publication.
         assert harness.publications.selection is None
-        assert sum(harness.queries.calls.values()) == 0
         return
 
     response: ShapedResponse = handle(request, harness.tooling)
@@ -430,7 +525,9 @@ def test_the_metric_executes_and_returns_a_qualified_envelope(
     assert metadata.actual_coverage_intervals == (asked,)
     assert metadata.coverage_holes == ()
     if periodic_leaves(CATALOG, metric):
-        assert _is_one_declared_period(metric, asked), f"{asked} is not one declared period"
+        # Never an older complete period: that would present stale figures as current.
+        latest = _latest_measured_period(metric, tuple(harness.periods.reads))
+        assert asked == latest.window
     else:
         assert asked == window
     assert metadata.loaded_at is not None
