@@ -520,8 +520,18 @@ def test_stop_drives_a_running_execution_to_cancelled(
     terminal.stop(accepted.query_execution_id)
     observed = _await_terminal(terminal, accepted.query_execution_id)
     assert observed.state is ProviderTerminalState.CANCELLED
-    # A cancelled execution reports no engine time; the settlement must carry it as missing.
-    assert observed.engine_ms is None
+    # Usage comes only from the terminal statistics, identically for CANCELLED: a reported zero
+    # is a known quantity and only an absent one is missing (write-discipline.md, "Each accepted
+    # provider terminal"). Read back through an uncounted client, so the count below stays exact.
+    statistics = (
+        boto3.client("athena")
+        .get_query_execution(QueryExecutionId=accepted.query_execution_id)["QueryExecution"]
+        .get("Statistics", {})
+    )
+    assert (observed.scanned_bytes, observed.engine_ms) == (
+        statistics.get("DataScannedInBytes"),
+        statistics.get("EngineExecutionTimeInMillis"),
+    )
     assert athena.calls["stop_query_execution"] == 1
 
 

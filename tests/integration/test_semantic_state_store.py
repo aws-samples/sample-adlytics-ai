@@ -475,9 +475,9 @@ def test_group_commit_is_all_or_none_when_one_member_loses_its_fence(
     with pytest.raises(ValueError, match="20"):
         CommitPublicationGroupRequest(initial.members * 11)
     oversized_read = tuple(
-        _partition(probe, date(2026, 1, 1) + timedelta(days=index)) for index in range(101)
+        _partition(probe, date(2026, 1, 1) + timedelta(days=index)) for index in range(1001)
     )
-    with pytest.raises(ValueError, match="1-100"):
+    with pytest.raises(ValueError, match="requires 1-1000 partitions"):
         publications.current_exact(oversized_read)
     assert publications.commit_group(initial).accepted
 

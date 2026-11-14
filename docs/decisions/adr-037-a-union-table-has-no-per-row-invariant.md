@@ -141,3 +141,13 @@ to be relaxed deliberately rather than deleted in passing.
 Revisit if a second fact acquires several writers. The rule is derived from the contracts and needs
 no edit to cover one, but the assumption that partial writing is rare — one fact of eight — is what
 makes the looser invariant an acceptable trade.
+
+## Amendment (2026-11-14)
+
+The first Consequence no longer describes `tests/integration/test_every_metric_executes.py`. The
+sweep was recreated against today's contracts and holds no expected failure: every metric in the
+dictionary either returns a qualified envelope or is one of the declared refusals the module pins by
+name. `cost_per_purchase` and `cost_per_ntb` execute against dev and pass the envelope checks
+[verified: `make test-integration`, dev, 2026-11-14], so a future failure of either is a regression,
+not an expected outcome. This amendment does not close G-35: the sweep checks a currency only when
+rows come back.
