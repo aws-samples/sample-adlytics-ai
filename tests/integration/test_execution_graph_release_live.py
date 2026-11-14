@@ -6,12 +6,11 @@ test works in its own fresh namespace: a random fingerprint, conflict unit and c
 domain (`ReleaseContext.domain_override`), so no run ever shares a release-order head, lineage
 or block with another run or with the live table. Fictional data only.
 
-The legacy-head test also reads, never writes, the dev raw zone and the coordinator table under
-the operator profile, for the window of the P0 probe retrieval, whose legacy plan COMPLETED.
-Run only through the probe runner's fail-closed JUnit check, one file at a time:
-    AWS_PROFILE=<bound> AWS_REGION=us-east-1 ADL_TEST_ENV=dev ADL_P4_RAW_BUCKET=<raw>
-        ADL_P4_LEGACY_KEY=<P0 probe key> uv run pytest -m integration
-        tests/integration/test_execution_graph_release_live.py   (one line; the runner adds JUnit)
+The legacy-head tests also read, never write, the raw zone and the coordinator table under the
+operator profile, for the window of one retrieval whose legacy plan COMPLETED. `make
+test-integration` resolves both targets from the deployed environment (the `legacy` fixture); the
+P4 probe runner pins its own P0 probe key through `ADL_P4_RAW_BUCKET` and `ADL_P4_LEGACY_KEY`
+and runs this file through its fail-closed JUnit check.
 """
 
 from __future__ import annotations
@@ -38,6 +37,7 @@ from adapters.outbound.dynamodb.execution_graph_release import DynamoGraphReleas
 from adapters.outbound.dynamodb.items import write_int, write_text
 from adapters.outbound.dynamodb.stage1_writer_authority import Stage1WriterAuthorityReader
 from adapters.outbound.legacy_head import S3CoordinatorLegacyHead
+from domain.curation.landing import MANIFEST_NAME
 from domain.operations.execution_graph import AuthorityMode, graph_id, run_id
 from domain.operations.execution_graph_dispatch import NodePhase
 from domain.operations.execution_graph_release import (
@@ -45,7 +45,7 @@ from domain.operations.execution_graph_release import (
     ReleaseRefusedError,
 )
 from domain.operations.generated_execution_graphs import SERVING_COALESCING
-from domain.operations.ingestion_root import window_identity
+from domain.operations.ingestion_root import RootRefusedError, window_identity
 from domain.operations.status import canonical_authority_digest
 from ports.outbound.execution_graph import ReceiptRecord
 from ports.outbound.execution_graph_dispatch import NodeSpec, PutNodesRequest
@@ -312,27 +312,73 @@ def test_bf8_positive_r_then_r_plus_one_advance_once_each(client: Any) -> None:
     assert head is not None and head["head_epoch"] == {"N": str(head_epoch(second_r))}
 
 
-def _legacy_reader() -> tuple[S3CoordinatorLegacyHead, str]:
-    """Return the real legacy-head reader over the dev raw zone and coordinator, read-only."""
-    bucket, key = os.environ.get("ADL_P4_RAW_BUCKET"), os.environ.get("ADL_P4_LEGACY_KEY")
-    if not bucket or not key:
-        pytest.fail("ADL_P4_RAW_BUCKET and ADL_P4_LEGACY_KEY are required (no skip)")
-    session = boto3.Session()
-    table = (
+_LEGACY_SEARCH_BOUND = 500
+"""The most manifest retrievals examined, oldest first, for one whose legacy plan COMPLETED."""
+
+
+def _parameter(session: Any, name: str) -> str:
+    return str(
         session.client("ssm")
-        .get_parameter(Name=f"/adlytics/{ENV_NAME}/data/v2/semantic-publications-table")[
-            "Parameter"
-        ]
+        .get_parameter(Name=f"/adlytics/{ENV_NAME}/{name}")["Parameter"]
         .get("Value", "")
     )
+
+
+def _oldest_legacy_completed_key(session: Any, bucket: str, reader: S3CoordinatorLegacyHead) -> str:
+    """Find the oldest manifest retrieval whose exact version's legacy plan reached COMPLETED.
+
+    Read-only: one listing of the raw zone, then the same `completed_plan_key` the release reads,
+    oldest first, since legacy plans predate graph authority. Fails, never skips, when none is
+    found within the bound.
+    """
+    s3 = session.client("s3")
+    retrievals: list[tuple[datetime, str]] = []
+    for page in s3.get_paginator("list_objects_v2").paginate(Bucket=bucket):
+        for item in page.get("Contents", []):
+            key = str(item.get("Key", ""))
+            if not key.endswith(f"/{MANIFEST_NAME}"):
+                continue
+            try:
+                retrievals.append((window_identity(key).retrieved_at, key))
+            except RootRefusedError:
+                continue
+    for _, key in sorted(retrievals)[:_LEGACY_SEARCH_BOUND]:
+        versions = [
+            str(version.get("VersionId", ""))
+            for page in s3.get_paginator("list_object_versions").paginate(Bucket=bucket, Prefix=key)
+            for version in page.get("Versions", [])
+            if version.get("Key") == key
+        ]
+        if any(reader.completed_plan_key(key, version) for version in versions):
+            return key
+    pytest.fail(f"no legacy-COMPLETED retrieval among the oldest {_LEGACY_SEARCH_BOUND} (no skip)")
+
+
+@pytest.fixture(scope="module")
+def legacy() -> tuple[S3CoordinatorLegacyHead, str]:
+    """Return the real legacy-head reader over the raw zone and coordinator, and a legacy key.
+
+    `ADL_P4_RAW_BUCKET` and `ADL_P4_LEGACY_KEY` pin the targets (the P4 probe runner passes its
+    P0 probe key). Unset, each is resolved from the deployed environment: the raw bucket from the
+    parameter DataV2Stack publishes, the key from the raw zone itself. Read-only either way.
+    """
+    session = boto3.Session()
+    bucket = os.environ.get("ADL_P4_RAW_BUCKET") or _parameter(session, "data/v2/raw-bucket")
+    table = _parameter(session, "data/v2/semantic-publications-table")
     authority = Stage1WriterAuthorityReader(
-        str(table), "legacy-head-reads-no-leases", session.client("dynamodb")
+        table, "legacy-head-reads-no-leases", session.client("dynamodb")
     )
-    return S3CoordinatorLegacyHead(bucket, session.client("s3"), authority), key
+    reader = S3CoordinatorLegacyHead(bucket, session.client("s3"), authority)
+    key = os.environ.get("ADL_P4_LEGACY_KEY") or _oldest_legacy_completed_key(
+        session, bucket, reader
+    )
+    return reader, key
 
 
-def test_bf8_r_after_a_legacy_completed_newer_retrieval_is_refused(client: Any) -> None:
-    reader, key = _legacy_reader()
+def test_bf8_r_after_a_legacy_completed_newer_retrieval_is_refused(
+    client: Any, legacy: tuple[S3CoordinatorLegacyHead, str]
+) -> None:
+    reader, key = legacy
     identity = window_identity(key)
     older = identity.retrieved_at - timedelta(seconds=1)
     assert reader.head_after(identity.window, older) is not None, "the P0 probe plan completed"
@@ -346,8 +392,10 @@ def test_bf8_r_after_a_legacy_completed_newer_retrieval_is_refused(client: Any) 
     assert _get(client, f"HEAD#{ns.unit}", "HEAD") is None
 
 
-def test_bf8_positive_no_newer_legacy_completed_retrieval_grants(client: Any) -> None:
-    reader, key = _legacy_reader()
+def test_bf8_positive_no_newer_legacy_completed_retrieval_grants(
+    client: Any, legacy: tuple[S3CoordinatorLegacyHead, str]
+) -> None:
+    reader, key = legacy
     identity = window_identity(key)
     newest = NOW + timedelta(days=1)
     assert reader.head_after(identity.window, newest) is None
