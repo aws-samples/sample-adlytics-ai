@@ -279,6 +279,20 @@ tuning is a future review trigger, not a Stage-1 acceptance condition. Other sta
 retain their own explicit owner/removal policies. Baking gains one deterministic stage before
 measurement, so the bakeability gate must budget the materialization step separately from rendering.
 
+**Coordinator probe tables (dev only, added 2026-11-13).** The credentialed coordinator probes
+(`tests/integration/test_stage1_projection_coordinator_live.py`) write outbox records. In the
+live `adlytics-dev-v2-semantic-publications` table its stream fed them to the live lifecycle
+producer, which was denied the probe partition and rewrote the probe's own records.
+
+| What | Detail |
+|---|---|
+| Tables | `adlytics-dev-v2-semantic-leases-probe` and `adlytics-dev-v2-semantic-publications-probe`, in `DataV2Stack`, only when `ENV=dev` |
+| Isolation | No stream, so no consumer ever sees a probe record; the same publication GSIs as the live table, so the probes exercise the same queries |
+| Access | No Lambda or runtime role is granted either table. The probes run under the operator profile |
+| Discovery | SSM parameters `semanticV2ProbeLeasesTableName` and `semanticV2ProbePublicationsTableName`. Without them the coordinator module skips and names the pair |
+| Lifecycle | `RETAIN`, like the stack's other tables, with PITR. Tearing down the stack leaves both tables and their items; delete them by hand after teardown if the environment is gone |
+| Cost | On-demand, so storage of probe items plus the probes' own requests: about $0 a month at the probe volume [inference from on-demand pricing] |
+
 Lifecycle observability under ADR-073 becomes more valuable, not merely more precise: every stage
 it records is now a stage the platform intends to keep. ADR-074's usage ledger becomes the
 acceptance instrument for this decision rather than a report on waste the design tolerates.
