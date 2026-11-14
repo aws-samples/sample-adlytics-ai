@@ -88,7 +88,7 @@ from ports.outbound.publication_selection import (
 from ports.outbound.query import QueryPort
 from ports.outbound.served_periods import ServedPeriods, ServedPeriodsRequest
 
-pytestmark = [pytest.mark.integration, pytest.mark.covers("ADR-028", "ADR-035", "ADR-100")]
+pytestmark = [pytest.mark.integration, pytest.mark.covers("ADR-028", "ADR-035")]
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 CATALOG = load_catalog(ROOT)
@@ -488,48 +488,32 @@ def _metric(name: str) -> Metric:
     return metric
 
 
-@pytest.mark.parametrize("metric_name", METRIC_NAMES)
-def test_the_metric_executes_and_returns_a_qualified_envelope(
-    metric_name: str, harness: _Harness
-) -> None:
-    """The statement composes, Athena accepts it, and the answer qualifies itself.
+PERIODIC_ANSWERED = tuple(
+    name
+    for name in METRIC_NAMES
+    if periodic_leaves(CATALOG, _metric(name)) and _declared_refusal(_metric(name)) is None
+)
+"""Answered periodic metrics: the only cases that reach ADR-100's served-period assertion."""
+
+DAILY_OR_REFUSED = tuple(name for name in METRIC_NAMES if name not in PERIODIC_ANSWERED)
+"""Every other metric; together the two parametrizations are the whole dictionary."""
+
+
+def _qualified_coverage(
+    request: MeasurementToolRequest, response: ShapedResponse, harness: _Harness
+) -> DateRange:
+    """Assert the answer qualifies itself, and return the one interval it says it covers.
 
     Zero rows is not a failure, because the fixtures do not populate every fact for every lens.
     A response that came back must still name its basis, its freshness and the exact period it
     covers, because an unqualified figure is what this platform exists not to produce.
     """
-    metric = _metric(metric_name)
-    refusal = _declared_refusal(metric)
-    request, window = _ask(metric, harness)
-    if refusal is not None:
-        with pytest.raises(DomainError) as refused:
-            handle(request, harness.tooling)
-        error = refused.value
-        assert type(error) is DomainError
-        assert str(error.code) == NOT_YET_COMPUTABLE
-        assert error.context == {"requested": refusal.requested, "reason": "not_yet_computable"}
-        if refusal.offered:
-            assert error.user_visible_description.endswith(
-                f"Available instead: {', '.join(refusal.offered)}."
-            )
-        # Refused by the catalog when the answer is planned, so the answer bound no publication.
-        assert harness.publications.selection is None
-        return
-
-    response: ShapedResponse = handle(request, harness.tooling)
-
     metadata = response.metadata
     assert metadata.measurement_basis, "an answer must name the system it measured"
     assert metadata.freshness_status is not None
     (asked,) = metadata.requested_coverage_intervals
     assert metadata.actual_coverage_intervals == (asked,)
     assert metadata.coverage_holes == ()
-    if periodic_leaves(CATALOG, metric):
-        # Never an older complete period: that would present stale figures as current.
-        latest = _latest_measured_period(metric, tuple(harness.periods.reads))
-        assert asked == latest.window
-    else:
-        assert asked == window
     assert metadata.loaded_at is not None
     assert metadata.loaded_at.tzinfo is not None
     selected = harness.publications.selection
@@ -551,6 +535,46 @@ def test_the_metric_executes_and_returns_a_qualified_envelope(
     else:
         # An empty result carries no units: there is nothing to denominate.
         assert response.data.units is None
+    return asked
+
+
+@pytest.mark.parametrize("metric_name", DAILY_OR_REFUSED)
+def test_the_metric_executes_and_returns_a_qualified_envelope(
+    metric_name: str, harness: _Harness
+) -> None:
+    metric = _metric(metric_name)
+    refusal = _declared_refusal(metric)
+    request, window = _ask(metric, harness)
+    if refusal is not None:
+        with pytest.raises(DomainError) as refused:
+            handle(request, harness.tooling)
+        error = refused.value
+        assert type(error) is DomainError
+        assert str(error.code) == NOT_YET_COMPUTABLE
+        assert error.context == {"requested": refusal.requested, "reason": "not_yet_computable"}
+        if refusal.offered:
+            assert error.user_visible_description.endswith(
+                f"Available instead: {', '.join(refusal.offered)}."
+            )
+        # Refused by the catalog when the answer is planned, so the answer bound no publication.
+        assert harness.publications.selection is None
+        return
+
+    response: ShapedResponse = handle(request, harness.tooling)
+    assert _qualified_coverage(request, response, harness) == window
+
+
+@pytest.mark.covers("ADR-100")
+@pytest.mark.parametrize("metric_name", PERIODIC_ANSWERED)
+def test_a_periodic_metric_is_answered_at_its_latest_measured_complete_period(
+    metric_name: str, harness: _Harness
+) -> None:
+    """Never an older complete period: that would present stale figures as current."""
+    metric = _metric(metric_name)
+    request, _ = _ask(metric, harness)
+    response: ShapedResponse = handle(request, harness.tooling)
+    asked = _qualified_coverage(request, response, harness)
+    assert asked == _latest_measured_period(metric, tuple(harness.periods.reads)).window
 
 
 def test_the_declared_refusals_are_exactly_the_dictionary_kinds() -> None:

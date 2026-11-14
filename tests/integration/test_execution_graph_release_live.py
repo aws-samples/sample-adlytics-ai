@@ -312,10 +312,6 @@ def test_bf8_positive_r_then_r_plus_one_advance_once_each(client: Any) -> None:
     assert head is not None and head["head_epoch"] == {"N": str(head_epoch(second_r))}
 
 
-_LEGACY_SEARCH_BOUND = 500
-"""The most manifest retrievals examined, oldest first, for one whose legacy plan COMPLETED."""
-
-
 def _parameter(session: Any, name: str) -> str:
     return str(
         session.client("ssm")
@@ -328,8 +324,8 @@ def _oldest_legacy_completed_key(session: Any, bucket: str, reader: S3Coordinato
     """Find the oldest manifest retrieval whose exact version's legacy plan reached COMPLETED.
 
     Read-only: one listing of the raw zone, then the same `completed_plan_key` the release reads,
-    oldest first, since legacy plans predate graph authority. Fails, never skips, when none is
-    found within the bound.
+    oldest first, since legacy plans predate graph authority, until the first match. Fails, never
+    skips, when no retrieval in the raw zone has one.
     """
     s3 = session.client("s3")
     retrievals: list[tuple[datetime, str]] = []
@@ -342,7 +338,7 @@ def _oldest_legacy_completed_key(session: Any, bucket: str, reader: S3Coordinato
                 retrievals.append((window_identity(key).retrieved_at, key))
             except RootRefusedError:
                 continue
-    for _, key in sorted(retrievals)[:_LEGACY_SEARCH_BOUND]:
+    for _, key in sorted(retrievals):
         versions = [
             str(version.get("VersionId", ""))
             for page in s3.get_paginator("list_object_versions").paginate(Bucket=bucket, Prefix=key)
@@ -351,7 +347,7 @@ def _oldest_legacy_completed_key(session: Any, bucket: str, reader: S3Coordinato
         ]
         if any(reader.completed_plan_key(key, version) for version in versions):
             return key
-    pytest.fail(f"no legacy-COMPLETED retrieval among the oldest {_LEGACY_SEARCH_BOUND} (no skip)")
+    pytest.fail(f"no legacy-COMPLETED retrieval among {len(retrievals)} in the raw zone (no skip)")
 
 
 @pytest.fixture(scope="module")
