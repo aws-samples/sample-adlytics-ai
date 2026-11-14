@@ -398,6 +398,10 @@ class _Reduction:
         default_factory=dict[_Label, tuple[RankedPopulation, ...]]
     )
     """The gateway's population per (channel, ad product): how many products it lists."""
+    titles: Mapping[str, RetailProductIdentity] = field(
+        default_factory=dict[str, RetailProductIdentity]
+    )
+    """The effective product titles, read once before the first query (A5.1)."""
 
     def rows(self, label: _Label) -> GroupedAnswer:
         """Return one parsed answer by (marketplace, section, metric, role)."""
@@ -606,6 +610,17 @@ class NewCustomersArtifactRenderer:
     def render_new_customers(self, request: NewCustomersRenderInput) -> NewCustomersRenderResult:
         """Measure every marketplace, reduce it, and bake the deterministic insight."""
         plans = self._market_plans(request)
+        # A5.1: the titles are a CURRENT read, so it happens before the first query, decided
+        # from plan state alone. The V3 pin pass answers every query empty and never reaches
+        # the gateway, so a read made there would be unpinned at the task's replay.
+        identities = (
+            self.titles.hierarchy(request.period)
+            if self.titles is not None and any(plan.gateway.covered for plan in plans)
+            else None
+        )
+        titles: Mapping[str, RetailProductIdentity] = (
+            {} if identities is None else identities.by_asin
+        )
         requests, labels = _BatchBuilder(
             self.catalog, self.contracts, self.clock, len(self.labels.ad_products)
         ).batch(request, plans)
@@ -663,7 +678,7 @@ class NewCustomersArtifactRenderer:
             if label[1] == "gateway_products"
         }
         artifact = self._artifact(
-            _Reduction(request, plans, answers, rosters, populations), measured
+            _Reduction(request, plans, answers, rosters, populations, titles), measured
         )
         return NewCustomersRenderResult(artifact, measured if artifact is not None else ())
 
@@ -915,12 +930,7 @@ class NewCustomersArtifactRenderer:
         products = reduction.rows(label).rows
         listed_counts = {item.partition: item.count for item in reduction.populations[label]}
         totals = reduction.rows((plan.marketplace, "gateway_total", _GATEWAY, "current")).rows
-        identities = (
-            None if self.titles is None else self.titles.hierarchy(reduction.request.period)
-        )
-        titles: Mapping[str, RetailProductIdentity] = (
-            {} if identities is None else identities.by_asin
-        )
+        titles = reduction.titles
         entries: list[GatewayEntry] = []
         for ad_product, label in channels:
             listed: dict[str, tuple[str, int]] = {}

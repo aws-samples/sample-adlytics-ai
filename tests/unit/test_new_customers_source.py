@@ -21,7 +21,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from preset_artifact_support import published_result
-from publication_support import StubPublications
+from publication_support import PublicationSpec, StubPublications, successful_publication
 
 from adapters.config import PresetArtifactBakeSettings
 from adapters.inbound.tool_handlers.measurement import MeasurementTooling
@@ -53,14 +53,17 @@ from adapters.jobs.preset_artifact_publisher.new_customers_source import (
     new_customers_policy,
     retained_new_customers_preset_artifact_source,
 )
+from adapters.jobs.preset_artifact_publisher.retail_source import CanonicalRetailProductHierarchy
 from adapters.jobs.preset_artifact_publisher.transport import (
     BakeIntent,
     DeclaredBakeIntents,
     load_declared_bake_intents,
 )
 from adapters.outbound.athena.composition import compose
-from adapters.outbound.bake_sources import BakeSourceReads
+from adapters.outbound.bake_sources import BakeRowHorizon, BakeSourceReads, PinnedRead
+from adapters.outbound.commerce_identity import load_commerce_identity_bridge
 from adapters.outbound.metric_dictionary import load_catalog
+from adapters.outbound.source_pack import load_source_packs
 from adapters.outbound.telemetry import tracing
 from adapters.outbound.telemetry.generated_spans import PRESET_ARTIFACT_DELIVERY
 from adapters.outbound.telemetry.reporting import OperationLog, Report
@@ -68,7 +71,10 @@ from domain.measurement.pack_coverage import PackDayVersions
 from domain.measurement.planning import measure_alias
 from domain.measurement.ranking import RankedPopulation
 from domain.measurement.rosters import Roster, RosterEntry
-from domain.operations.execution_graph_release import BakeRoster
+from domain.operations.execution_graph_release import (
+    BakeRoster,
+    DurableBakeSourceManifestInvalidError,
+)
 from domain.presentation.insights import InsightSlotId, InsightSlotState
 from domain.presentation.new_customers import (
     NEW_CUSTOMERS_PAGE_ID,
@@ -77,6 +83,7 @@ from domain.presentation.new_customers import (
     NewCustomersAbsence,
     NewCustomersAbsenceReason,
     NewCustomersArtifact,
+    NewCustomersOutcome,
     PerChannel,
     PerChannelState,
     ShareChange,
@@ -128,6 +135,8 @@ CATALOG = load_catalog(ROOT)
 CONTRACTS = tuple(contract for _, contract in load_contracts(ROOT))
 INSIGHTS = {contract.id: contract for _, contract in load_insight_contracts(ROOT)}
 LABELS = new_customers_labels(ROOT, CATALOG)
+SOURCE_PACKS = load_source_packs(ROOT)
+BRIDGE = load_commerce_identity_bridge(ROOT)
 NOW = datetime(2026, 9, 23, 12, tzinfo=UTC)
 PERIOD = DateRange(date(2026, 9, 14), date(2026, 9, 20))
 PRIOR = DateRange(date(2026, 9, 7), date(2026, 9, 13))
@@ -611,6 +620,137 @@ def test_an_uncovered_window_bakes_every_channel_s_coverage_text_and_plans_no_ga
         ("channel_key", "ad_product_key", "amazon_asin", "marketplace_key"),
         ("channel_key", "ad_product_key"),
     ]
+
+
+_ROW = BakeRowHorizon(date(2026, 9, 23), 400)
+_DIM_PRODUCT = successful_publication(
+    "dim_product", PERIOD.end, PublicationSpec("dim-product-nc", NOW)
+)
+_TITLE_ROWS = {
+    "dim-product-nc": (
+        tuple(
+            sorted(
+                {
+                    "amazon_asin": "amazon_asin:B0GATE0001",
+                    "amazon_parent_asin": None,
+                    "marketplace_key": US,
+                    "product_title": "Fictional Gateway One",
+                    "brand": None,
+                    "brand_code": None,
+                    "valid_from": datetime(2026, 1, 1, tzinfo=UTC),
+                    "valid_to": datetime(2099, 1, 1, tzinfo=UTC),
+                    "is_current": True,
+                }.items()
+            )
+        ),
+    )
+}
+"""One fictional dim_product row: B0GATE0001 is titled, B0GATE0002 has no identity."""
+
+
+@dataclass
+class _TitlesCurrent:
+    """CURRENT under the titles reader: the dim_product publication on every scope it reads."""
+
+    reads: list[tuple[str, str]] = field(default_factory=list[tuple[str, str]])
+
+    def current_for_scope(self, scope: Any, horizon: Any = None) -> tuple[Any, ...]:
+        self.reads.append((scope.identity, "unbounded" if horizon is None else horizon.token))
+        return (_DIM_PRODUCT,)
+
+
+class _TitlesExact:
+    def select_exact(self, request: Any) -> tuple[Any, ...]:
+        return tuple(_DIM_PRODUCT for _ in request.pins)
+
+
+class _TitlesCanonical:
+    def rows(self, publication: Any) -> tuple[tuple[tuple[str, object], ...], ...]:
+        return _TITLE_ROWS.get(publication.publication_id.value, ())
+
+
+@dataclass
+class _EmptyAnswers:
+    """The V3 pin pass's answers: every query returns no row."""
+
+    seen: list[QueryRequest] = field(default_factory=list[QueryRequest])
+
+    def run(self, request: QueryRequest) -> QueryResult:
+        self.seen.append(request)
+        return QueryResult((), 0, False, Suppression(rows_suppressed=False))
+
+
+@dataclass(frozen=True)
+class _Replayed:
+    pinned: tuple[PinnedRead, ...]
+    artifact: NewCustomersArtifact
+    queries: NewCustomersQueries
+    current: _TitlesCurrent
+
+
+def _pin_then_replay(coverage: _Coverage) -> _Replayed:
+    """Run the row as GRAPH runs it: RECORD with empty answers, then REPLAY with real rows."""
+    current = _TitlesCurrent()
+    reads = BakeSourceReads(cast("Any", current), cast("Any", _TitlesExact()))
+    titles = CanonicalRetailProductHierarchy(
+        cast("Any", reads), cast("Any", _TitlesCanonical()), SOURCE_PACKS, CONTRACTS, BRIDGE
+    )
+    pin = replace(_renderer(cast("Any", _EmptyAnswers()), coverage=coverage), titles=titles)
+    with reads.snapshot(), reads.recording(_ROW) as recorded:
+        empty = pin.render_new_customers(ROLLING).artifact
+    # No spend row reaches no market, so the empty pass never reaches the gateway section.
+    assert empty is not None
+    assert (empty.outcome, empty.markets) == (NewCustomersOutcome.EMPTY, ())
+    pinned = len(current.reads)
+    queries = NewCustomersQueries(PERIOD)
+    task = replace(pin, tooling=replace(pin.tooling, queries=queries))
+    try:
+        with reads.replaying(recorded.reads, _ROW):
+            result = task.render_new_customers(ROLLING)
+    except DurableBakeSourceManifestInvalidError as error:
+        pytest.fail(f"the task render made an unpinned CURRENT read: {error} {error.context}")
+    assert len(current.reads) == pinned  # zero CURRENT reads past the pin
+    assert result.artifact is not None
+    return _Replayed(recorded.reads, result.artifact, queries, current)
+
+
+def _dim_product_reads(pinned: tuple[PinnedRead, ...]) -> list[tuple[str, tuple[str, ...]]]:
+    return [(read.kind, read.key) for read in pinned if read.key[0].startswith("dim_product|")]
+
+
+_TITLES_KEY = (
+    "dim_product|amazon_retail_us|amazon_us|lens-4e75687f6ae98b8ab67ad9ce|snapshot|technical_utc"
+    "|None|UTC|system_first_observed",
+    "newest=1",
+)
+"""The titles read cohort 7eced71e's new-customers tasks refused (B-1, GRAPH_BAKE_V3-0002)."""
+
+
+def test_the_pin_pass_pins_the_gateway_titles_a_covered_task_replay_shows() -> None:
+    """B-1: a titles read made only once the gateway has rows is unpinned at the task.
+
+    The pin pass answers every query empty, so every covered task refused with V3-0002.
+    """
+    replayed = _pin_then_replay(_Coverage())
+    assert _dim_product_reads(replayed.pinned) == [("current_for_scope", _TITLES_KEY)]
+    (market,) = replayed.artifact.markets
+    sp = next(entry for entry in market.gateway if entry.ad_product_key == SP[1])
+    assert sp.state is GatewayState.ROWS
+    assert [(row.asin, row.title, row.ntb_purchases) for row in sp.rows] == [
+        ("B0GATE0001", "Fictional Gateway One", 5),
+        ("B0GATE0002", "B0GATE0002", 3),  # no governed identity: the product shows its ASIN
+    ]
+    # The read adds no query: 7 step-1 plans plus the gateway's 2 bind as before.
+    assert len(replayed.queries.seen) == 9
+
+
+def test_an_uncovered_task_pins_and_replays_no_titles_read_and_plans_7_queries() -> None:
+    replayed = _pin_then_replay(_Coverage(overrides={PERIOD.start: 1}))
+    assert _dim_product_reads(replayed.pinned) == []
+    assert replayed.current.reads == []
+    (market,) = replayed.artifact.markets
+    assert {entry.state for entry in market.gateway} == {GatewayState.NOT_COVERED}
+    assert len(replayed.queries.seen) == 7
 
 
 def _gateway_products(count: int) -> dict[tuple[tuple[str, str], str], int]:
