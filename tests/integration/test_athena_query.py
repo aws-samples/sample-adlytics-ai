@@ -317,13 +317,16 @@ class TestAthenaAcceptsWhatWeCompose:
             (ROOT / "tests/fixtures/generated/vendor-traffic-by-asin.json").read_text("utf-8")
         )
         day = WEEK.start.isoformat()
+        # Curation keys a product by its namespaced, lower-cased identity (`amazon_asin:b0…`),
+        # not by the raw report ASIN, so the expected map is keyed the way the rows are.
         expected = {
-            item["asin"]: Decimal(item["glanceViews"])
+            f"amazon_asin:{item['asin'].lower()}": Decimal(item["glanceViews"])
             for item in generated["trafficByAsin"]
             if item["startDate"] == day == item["endDate"]
         }
-        for row in result.rows:
-            assert row[AGGREGATE_COLUMN] == expected[row["amazon_asin"]]
+        served = {row["amazon_asin"]: row[AGGREGATE_COLUMN] for row in result.rows}
+        assert set(served) <= set(expected)
+        assert served == {key: expected[key] for key in served}
 
 
 class TestTheWindowPredicateIsPushedDown:
