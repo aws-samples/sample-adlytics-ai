@@ -12,8 +12,8 @@ promoter code at this worktree's clean HEAD from the operator host against the d
 
 1. Strongly read the live `MODE#ingestion` (GRAPH revision 12 with the hold set, or refuse), the
    deployed Promoter's timeout (it must equal the contract's `worker_pass_seconds`), and every
-   probe due shard (any serving `ARM#`, `COMPLETE#` or `COALESCE#` row there refuses the run, so
-   the rehearsal can never elect or drain a row it did not seed).
+   probe due shard (any serving `ARM#`, `COMPLETE#`, `COALESCE#` or `ELECTION#` row there refuses
+   the run, so the rehearsal can never elect, drain or delete a row it did not seed).
 2. Per sample, build the production rolling world over `FakeDynamo` (A drained to its final
    alias, B published while A was ACTIVE), seed its rows into the probe table with
    `attribute_not_exists` puts, and run `promoter.rehearse_fresh_election` with a real
@@ -22,9 +22,10 @@ promoter code at this worktree's clean HEAD from the operator host against the d
    head/frontier read, activation, conflict retry and guarded total.
 3. Dispose of every row the sample owns, and strongly prove each one absent. It owns a row it
    seeded, or one a write created after a strong preflight read found it absent and the write
-   is known to have landed (`RecordingClient`); a row it does not own is never deleted. A
-   collision, an occupied write target, a refused or failed attempt, an unresolved ambiguous
-   write, or an incomplete disposal is fatal.
+   is known to have landed (`RecordingClient`); a row it does not own is never deleted, by the
+   disposal or by the rehearsal (a delete of any other key is refused before it is sent). A
+   collision, an occupied write target, a refused delete, a refused or failed attempt, an
+   unresolved ambiguous write, or an incomplete disposal is fatal.
 
 The guard is exactly `ceil(2 * max(total_ms))` over every attempt of every sample. An empty
 sample set, or a guard at or above the Promoter timeout, is refused and writes no derivation.
@@ -78,7 +79,10 @@ EXPECTED_MODE_REVISION: Final = 12
 _ACCOUNT: Final = re.compile(r"^\d{12}$")
 _SKIPPED_KEYS: Final = frozenset({("MODE#ingestion", "MODE")})
 """World rows never seeded: the rehearsal path reads no mode row, and the probe table owns its own."""
-_OBLIGATION_PREFIXES: Final = ("ARM#", "COMPLETE#", "COALESCE#")
+_OBLIGATION_PREFIXES: Final = ("ARM#", "COMPLETE#", "COALESCE#", "ELECTION#")
+"""Serving rows in a due shard the rehearsal could elect, drain or delete (AGG-R3-1).
+
+`ELECTION#` pages are included because the election deletes every page of a dead stage."""
 _GUARD_LINE: Final = re.compile(
     r"^(?P<comment>(?:  #[^\n]*\n)+)  next_election_min_remaining_ms: \d+\n", re.MULTILINE
 )
@@ -220,19 +224,19 @@ class _Write:
 
 
 def _writes(members: Iterable[Mapping[str, Any]]) -> list[_Write]:
-    """Return a transaction's put and update targets (checks and deletes create no row)."""
+    """Return a transaction's put, update and delete targets (a condition check changes none)."""
     found: list[_Write] = []
     for member in members:
         ((kind, body),) = member.items()
         if kind == "Put":
             found.append(_Write(kind, _key_of(body["Item"]), cast("Item", body["Item"])))
-        elif kind == "Update":
+        elif kind in {"Update", "Delete"}:
             found.append(_Write(kind, _key_of(body["Key"]), None))
     return found
 
 
 class ForeignRowError(TimingError):
-    """A write would land on a probe row this rehearsal neither seeded nor created."""
+    """A write or delete would touch a probe row this rehearsal neither seeded nor created."""
 
 
 @dataclass(slots=True)
@@ -242,7 +246,9 @@ class RecordingClient:
     Ownership is separate from intent. Before each write, every put or update target that the
     sample neither seeded nor already owns is strongly read; an occupied one refuses the request
     before it is sent (`ForeignRowError`), so the rehearsal never writes over a row it did not
-    create. A target becomes owned only after the request succeeds. A definite refusal
+    create. A delete whose key the sample neither seeded nor owns refuses the request the same
+    way, whether or not the row exists, so the rehearsal never deletes a row it did not create
+    (AGG-R3-1). A target becomes owned only after the request succeeds. A definite refusal
     (`_DEFINITE_REFUSALS`) owns nothing. Any other failure is ambiguous, so each target is read
     back: absent stays unowned, a put whose stored image equals the exact image it sent is owned,
     and anything else is `unresolved` and is never deleted.
@@ -280,10 +286,21 @@ class RecordingClient:
         write = _Write("Update", _key_of(kwargs["Key"]), None)
         return self._write([write], lambda: self.client.update_item(**kwargs))
 
+    def delete_item(self, **kwargs: Any) -> Any:
+        """Send one delete only if its key is the sample's own."""
+        write = _Write("Delete", _key_of(kwargs["Key"]), None)
+        return self._write([write], lambda: self.client.delete_item(**kwargs))
+
     def _write(self, writes: Sequence[_Write], send: Callable[[], Any]) -> Any:
         from botocore.exceptions import ClientError
 
-        fresh = [item for item in writes if item.key not in self.seeded | self.owned]
+        mine = self.seeded | self.owned
+        foreign = [item.key for item in writes if item.kind == "Delete" and item.key not in mine]
+        if foreign:
+            self.refused.extend(foreign)
+            where = ", ".join(f"{key[0]}/{key[1]}" for key in foreign)
+            raise ForeignRowError(f"refusing to delete {where}, which this sample does not own")
+        fresh = [item for item in writes if item.kind != "Delete" and item.key not in mine]
         occupied = [item.key for item in fresh if _strong_get(self.client, self.table, item.key)]
         if occupied:
             self.refused.extend(occupied)

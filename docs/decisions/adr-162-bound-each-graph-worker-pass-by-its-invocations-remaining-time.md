@@ -232,7 +232,8 @@ smallest change that ends the stall.
   reads its members and fans out; a legacy unverifiable member fails only its own cohort.
 - `tests/unit/test_run_fresh_election_timing.py`: a pre-staged rehearsal sample commits from its
   `ELECTION#` pages, reads no successor again (an unstaged control reads them every attempt),
-  and a staged guard above 40,000 ms is refused.
+  and a staged guard above 40,000 ms is refused. A foreign dead-stage `ELECTION#` page refuses
+  the sample and stays byte-identical, and the preflight finds it (AGG-R3-1).
 - The existing promoter, release, unit-batch, bake and whole-chain suites pass unchanged, so an
   ample budget changes nothing.
 

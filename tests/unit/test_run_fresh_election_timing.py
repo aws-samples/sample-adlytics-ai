@@ -390,13 +390,69 @@ def test_a_seeding_failure_is_not_reported_as_a_collision() -> None:
 def test_foreign_obligations_in_the_probe_due_shards_are_found() -> None:
     table = _ProbeTable()
     assert timing.foreign_obligations(table, "probe", due_shards()) == []
-    for sk in ("ARM#run-1", "COMPLETE#run-2", "COALESCE#cohort", "RELEASE#run-3"):
+    for sk in (
+        "ARM#run-1",
+        "COMPLETE#run-2",
+        "COALESCE#cohort",
+        "ELECTION#ingestion#stage#000000",
+        "RELEASE#run-3",
+    ):
         table.items[("DUE#3", sk)] = {"pk": {"S": "DUE#3"}, "sk": {"S": sk}}
     assert timing.foreign_obligations(table, "probe", due_shards()) == [
         ("DUE#3", "ARM#run-1"),
         ("DUE#3", "COALESCE#cohort"),
         ("DUE#3", "COMPLETE#run-2"),
+        ("DUE#3", "ELECTION#ingestion#stage#000000"),
     ]
+
+
+def _foreign_dead_stage_page() -> tuple[tuple[str, str], dict[str, Any]]:
+    """Return a page another rehearsal left under a stage id no head of this world derives."""
+    from adapters.outbound.dynamodb import execution_graph_release as adapter  # noqa: PLC0415
+    from ports.outbound.execution_graph_release import ServingStagePage  # noqa: PLC0415
+
+    page = ServingStagePage(INGESTION_RELEASE_DOMAIN, "another-rehearsals-stage", 0, ())
+    item = adapter._stage_item(page)  # pyright: ignore[reportPrivateUsage]
+    return timing._key_of(item), item  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.covers("ADR-162")
+def test_a_foreign_dead_stage_page_is_refused_and_left_byte_identical() -> None:
+    """AGG-R3-1: the election deletes every dead-stage page, so a foreign one must refuse.
+
+    Without the refusal the sample passes after deleting a row it never created, and the
+    derivation that sets `next_election_min_remaining_ms` rests on altered shared state.
+    """
+    table = _ProbeTable()
+    key, item = _foreign_dead_stage_page()
+    table.items[key] = copy.deepcopy(item)
+
+    with pytest.raises(timing.TimingError, match=r"ForeignRowError: refusing to delete DUE#"):
+        timing.run_sample(1, _inputs(table))
+
+    assert table.items == {key: item}  # unchanged; every row the sample seeded is gone
+    assert timing.foreign_obligations(table, "probe", due_shards()) == [key]  # and run-level
+
+
+def test_the_recording_client_deletes_only_a_row_the_sample_seeded_or_owns() -> None:
+    table = _ProbeTable()
+    for name in ("SEEDED", "OWNED", "FOREIGN"):
+        table.items[(f"P#{name}", "S")] = {"pk": {"S": f"P#{name}"}, "sk": {"S": "S"}}
+    recording = timing.RecordingClient(table, "probe", frozenset({("P#SEEDED", "S")}))
+    recording.owned.add(("P#OWNED", "S"))
+
+    def delete(name: str) -> dict[str, Any]:
+        return {"Delete": {"TableName": "probe", "Key": {"pk": {"S": name}, "sk": {"S": "S"}}}}
+
+    recording.transact_write_items(TransactItems=[delete("P#SEEDED")])
+    recording.delete_item(TableName="probe", Key={"pk": {"S": "P#OWNED"}, "sk": {"S": "S"}})
+    assert set(table.items) == {("P#FOREIGN", "S")}  # control: the sample's own rows go
+    with pytest.raises(timing.ForeignRowError, match="refusing to delete P#FOREIGN/S"):
+        recording.transact_write_items(TransactItems=[delete("P#FOREIGN")])
+    with pytest.raises(timing.ForeignRowError, match="refusing to delete P#ABSENT/S"):
+        recording.delete_item(TableName="probe", Key={"pk": {"S": "P#ABSENT"}, "sk": {"S": "S"}})
+    assert set(table.items) == {("P#FOREIGN", "S")}
+    assert recording.refused == [("P#FOREIGN", "S"), ("P#ABSENT", "S")]
 
 
 class _Session:
