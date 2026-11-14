@@ -91,16 +91,25 @@ time, and ADR-144 bounds the baker.
    - A publication that settles during staging is one more unstaged candidate, so it joins the
      roster; its frontier move also fails a commit read before it, as before. Staging converges
      while a pass reads more candidates (about 200) than settle in a minute (at most 22 on dev).
-   - A pass whose candidate reads took longer than one fresh iteration (5,246 ms, half the
-     measured guard) pages those reads, reads the head, frontier and walk again, and reads only
-     the candidates that settled meanwhile before it commits. Otherwise a settlement during a
-     20 s read window, nearly certain at 22 a minute, fails every commit's frontier check.
+   - A pass that completes the roster with candidate reads of its own reads the head, frontier
+     and walk again after them, keeps those reads in memory, and reads only the candidates that
+     settled meanwhile before it commits. The commit ConditionChecks the frontier it read, and
+     about 22 publications settle a minute on dev, so a frontier read before the candidate reads
+     loses the commit to any settlement during them; read after them, it is exposed only to the
+     delta and the commit. No cutoff decides it (review round 1 replaced a 5,246 ms cutoff taken
+     from a whole measured attempt, not an iteration). The cost is one fresh iteration per
+     election, about 0.8 s and 65 reads [inference from the dev rates]. A refused commit writes
+     nothing; the next pass re-reads what this pass had not written as pages.
    - Each marker's frontier coordinate is read once with its candidate, so the final transition's
      coordinate proof no longer reads every successor's marker again. A settled marker never
      changes.
    - The page is a read cache of immutable facts, not a cursor: the commit still re-proves `ARM#`,
      `COMPLETE#`, the head and the frontier. The stuck-flow sweep declares `ELECTION` as a
      non-flow kind; the candidates' `COMPLETE#` items stay the flows it counts.
+   - Worst case for `SERVING_STAGE_RESERVE_MS`: when a waiter backlog runs its phase to
+     `PROMOTE_RESERVE_MS`, serving gets 5 s a pass, about 40 candidates (33 on the final path).
+     That still outruns 22 settlements a minute, but a roster of thousands then takes hours
+     (`budget.py`) [inference from the dev rates].
 8. **Several aliases a pass.** A drain orders its cohort newest grant first from the walk's
    `COMPLETE#` ordinals and reads only the alias it drains next. The first alias of a pass keeps
    the `next_election_min_remaining_ms` guard alone; each further alias, and the final alias's
@@ -150,8 +159,13 @@ smallest change that ends the stall.
   - A small roster elects in one pass and writes no page (control).
   - A pass killed before any store call of its first or second pass converges to that state.
   - A publication that arrives while staging joins the roster and wins.
-  - A publication that settles during a slow pass's reads is read again and that pass commits;
-    without the second read the commit fails with `SERVING_FRONTIER_CHANGED`.
+  - A publication that settles during a pass's candidate reads, on a clock that never moves, is
+    read again and that pass commits; without the second read the commit fails with
+    `SERVING_FRONTIER_CHANGED`.
+  - A final alias with 1,030 successors stages them over at least 3 `STAGED` passes, then drains
+    and elects in one transaction, leaving no page and exactly the store an unbounded pass
+    leaves. A final-path pass killed before any store call of its first or second pass
+    converges to that state.
   - A head version change kills the stage; its pages are deleted and re-read.
   - A cohort of 1,029 aliases drains at least 2 a pass over at least 3 passes, and the first pass
     reads only the runs it aliases.

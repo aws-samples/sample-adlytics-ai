@@ -649,8 +649,10 @@ def test_agg4_14_every_arm_read_precedes_the_first_complete_shard_read_control_l
 
     arm_reads = [i for i, (_pk, prefix) in enumerate(fake.queries) if prefix == "ARM#"]
     walk_reads = [i for i, (_pk, prefix) in enumerate(fake.queries) if prefix == "COMPLETE#"]
-    assert len(arm_reads) == 32
-    assert len(walk_reads) == 32
+    # The pass-start iteration, the election's second iteration after its candidate reads
+    # (ADR-162 §8), and the arm pass: 16 shards each.
+    assert len(arm_reads) == 48
+    assert len(walk_reads) == 48
     assert max(arm_reads[:16]) < min(walk_reads)
     # Control: with L absent, X's `ARM#` was read before the walk and its `COMPLETE#` is in it.
     assert counts.armed == 1

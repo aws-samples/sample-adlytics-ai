@@ -67,7 +67,15 @@ below this, so the units collection that follows in the same pass still gets its
 before `UNITS_COLLECT_RESERVE_MS` (serve-rca.md §3.4). Serving starts about 4 s into a 60 s pass
 once the waiter phase is quiet, so it gets about 20 s: about 200 candidates at the measured
 101.5 ms each (dev, 2026-11-13, 135 drains, R² 0.996), or 130 aliases at about 150 ms.
-The first alias of a pass keeps today's `next_election_min_remaining_ms` guard alone."""
+The first alias of a pass keeps today's `next_election_min_remaining_ms` guard alone.
+
+Worst case: a waiter backlog runs its phase to `PROMOTE_RESERVE_MS`, so serving starts with at
+most 40 s left and gets 5 s above this reserve. Less its fresh iterations (about 0.8 s each: 32
+due-shard queries, the head and 32 frontier reads), that is about 40 candidates a staging pass,
+or about 33 on the final path, which reads its own iteration. That still outruns the at most 22
+publications that settled a minute on dev, so staging converges, but a 3,502 roster then takes
+hours instead of about 18 passes [inference from the dev rates]. The terminal line's
+`serving_unstaged` shows it."""
 
 COMPLETE_RESERVE_MS: Final = 35_000
 """The release stops visiting `COMPLETE#` items that are not a domain's ACTIVE winner here, so

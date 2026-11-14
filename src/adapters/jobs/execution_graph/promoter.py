@@ -685,13 +685,6 @@ def _stage_id(head: ServingDomainHead) -> str:
     )
 
 
-_FRESH_ITERATION_MS: Final = _NEXT_ELECTION_MIN_REMAINING_MS // 2
-"""5,246 ms: the longest measured fresh final iteration (FreshElectionTimingV1; the guard is
-twice it). Candidate reads that took longer leave the head and frontier older than reading them
-again costs, so they are read again before the commit: otherwise a publication settling during
-the reads (about 22 a minute on dev) fails every commit's frontier ConditionCheck (ADR-162)."""
-
-
 @dataclass(frozen=True, slots=True)
 class _ElectionInputs:
     """What an election is decided from: the head and frontier, the roster ids and the walk."""
@@ -720,14 +713,19 @@ class _Roster:
     """The reads this pass made that no page holds yet."""
 
 
-def _staged_roster(state: _DomainPass, domain: str, inputs: _ElectionInputs) -> _Roster:
+def _staged_roster(  # noqa: PLR0913, PLR0917 -- the pass, its domain, inputs and carried reads
+    state: _DomainPass,
+    domain: str,
+    inputs: _ElectionInputs,
+    carried: Sequence[ServingCandidateRead] = (),
+) -> _Roster:
     """Read every candidate of `run_ids` not already staged, while the pass's budget allows.
 
     Candidates are read in grant-ordinal order, so each pass extends one prefix. When every
     candidate is read, the roster is returned in `run_ids` order, exactly what one unpaged read
     would return; otherwise this pass's reads are written as stage pages and None is returned.
     An unreadable candidate empties the roster, as one unpaged read does. A page of a dead stage
-    is deleted.
+    is deleted. `carried` are this pass's earlier unwritten reads under the same stage.
     """
     store, counts = state.context.store, state.counts
     run_ids, walk = inputs.run_ids, inputs.walk
@@ -738,21 +736,19 @@ def _staged_roster(state: _DomainPass, domain: str, inputs: _ElectionInputs) -> 
     if dead:
         store.delete_serving_stage(dead)
     known: dict[str, ServingCandidateRead] = {}
-    for page in live:
-        for read in page.reads:
-            if read.candidate.run_id in known:
-                raise InvariantError(_ARM_INVARIANT, "a staged serving candidate is duplicated.")
-            known[read.candidate.run_id] = read
+    for read in (*(read for page in live for read in page.reads), *carried):
+        if read.candidate.run_id in known:
+            raise InvariantError(_ARM_INVARIANT, "a staged serving candidate is duplicated.")
+        known[read.candidate.run_id] = read
     ordinals = {item.run_id: (item.grant_ordinal, item.grant_id) for item in walk}
     unstaged = sorted(
         (run_id for run_id in run_ids if run_id not in known),
         key=lambda run_id: (*ordinals.get(run_id, (-1, "")), run_id),
     )
-    fresh: list[ServingCandidateRead] = []
+    fresh: list[ServingCandidateRead] = list(carried)
     for index, member in enumerate(unstaged):
         if not state.budget.allows(SERVING_STAGE_RESERVE_MS):
-            _spill(store, (domain, stage), live, fresh)
-            counts.serving_staged += len(fresh)
+            _keep(state, (domain, stage), _Roster(None, live, tuple(fresh)))
             counts.serving_unstaged += len(unstaged) - index
             return _Roster(None, live)
         read = _candidate_read(store, member)
@@ -779,27 +775,34 @@ def _spill(  # noqa: PLR0913, PLR0917 -- the store, the stage, its live pages an
     return (*live, *written)
 
 
+def _keep(state: _DomainPass, stage: tuple[str, str], roster: _Roster) -> None:
+    """Write a roster's unwritten reads as stage pages and count them as staged."""
+    _spill(state.context.store, stage, roster.pages, roster.fresh)
+    state.counts.serving_staged += len(roster.fresh)
+
+
 def _settled_roster(  # noqa: PLR0913, PLR0917 -- the pass, its domain, first inputs, re-read
     state: _DomainPass,
     domain: str,
     first: _ElectionInputs,
     reread: Callable[[], _ElectionInputs],
 ) -> tuple[_Roster, _ElectionInputs]:
-    """Complete the roster, then read the head, frontier and walk again if the reads were slow.
+    """Complete the roster, then read the head, frontier and walk again before the commit.
 
-    The second read costs one fresh iteration; it is taken only when this pass's candidate reads
-    took longer than that (`_FRESH_ITERATION_MS`). Those reads are first written as stage pages,
-    so the second roster reads only the candidates that settled meanwhile, and a commit that
-    still loses a frontier race loses none of them. A roster small enough for a quick pass is
-    committed exactly as before.
+    ADR-162 §8: the commit ConditionChecks the frontier it read, so any publication that settles
+    between that read and the commit refuses it (about 22 a minute on dev). The first frontier
+    was read before every candidate read, the second after them, so only the second leaves the
+    commit exposed for the candidates that settled meanwhile alone; no cutoff decides it. The
+    reads stay in memory and are carried into the second roster, so a small election still
+    writes no page, and a refused commit writes nothing (only this pass's unwritten reads are
+    read again by the next pass).
     """
-    started = state.read_remaining()
     roster = _staged_roster(state, domain, first)
-    if not roster.reads or started - state.read_remaining() <= _FRESH_ITERATION_MS:
+    if not roster.reads or not roster.fresh:
         return roster, first
-    _spill(state.context.store, (domain, _stage_id(first.head)), roster.pages, roster.fresh)
     again = reread()
-    return _staged_roster(state, domain, again), again
+    carried = roster.fresh if _stage_id(again.head) == _stage_id(first.head) else ()
+    return _staged_roster(state, domain, again, carried), again
 
 
 def _clear_stage(context: PromoterContext, pages: Sequence[ServingStagePage]) -> None:
@@ -1109,6 +1112,9 @@ def _elect_idle(
         state, domain, _ElectionInputs(authority, run_ids, domain_walk), reread
     )
     if roster.reads is None:
+        # No cohort exists until every candidate is read, so the attempt is named by its stage.
+        with _promoter_domain(state.aws_request_id, domain, _stage_id(inputs.head)) as recording:
+            recording.record(outcome=ServingElectionOutcome.STAGED)
         return ServingDomainElectionResult(domain, ServingElectionOutcome.STAGED)
     reads = roster.reads
     head, frontier, domain_walk = inputs.head, inputs.authority.frontier, inputs.walk
@@ -1126,18 +1132,17 @@ def _elect_idle(
             return ServingDomainElectionResult(domain, ServingElectionOutcome.WAITING_LOWER_ORDINAL)
         winner = newest_eligible_candidate(candidates)
         assert winner is not None  # noqa: S101 -- nonempty validated candidates
-        context.store.activate_serving_winner(
-            ActivateServingWinnerRequest(
-                head,
-                frontier,
-                candidates,
-                winner,
-                cohort,
-                input_revision,
-                context.now().isoformat(),
-                SERVING_PLAN_DIGEST,
-            )
+        request = ActivateServingWinnerRequest(
+            head,
+            frontier,
+            candidates,
+            winner,
+            cohort,
+            input_revision,
+            context.now().isoformat(),
+            SERVING_PLAN_DIGEST,
         )
+        context.store.activate_serving_winner(request)
         state.counts.armed += 1
         state.counts.retired += 1
         recording.record(outcome=ServingElectionOutcome.ELECTED)

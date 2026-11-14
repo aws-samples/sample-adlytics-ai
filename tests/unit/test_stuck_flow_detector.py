@@ -146,6 +146,23 @@ def test_promote_items_are_never_counted_as_flows() -> None:
     assert reading.promotion_age_seconds == 120.0
 
 
+@pytest.mark.covers("ADR-162")
+def test_a_staged_election_page_beside_flows_is_neither_counted_nor_a_refusal() -> None:
+    """ADR-162: a stage page exists exactly while a serving backlog does.
+
+    That is the moment this sweep watches, so refusing the sweep then would report nothing. The
+    undeclared-kind refusal is the positive control in
+    `test_an_undeclared_item_kind_or_an_extra_shard_yields_no_value`.
+    """
+    page = due("DUE#6", "ELECTION#ingestion-release#stage-a#00000", timedelta(hours=9))
+    flow = due("DUE#6", "COMPLETE#run-a", PROTOCOL_CEILING, grant_id="grant-a")
+    reading = sweep(full(DUE_6=[page, flow]), SHARDS, CLEAR, NOW, None, {"grant-a": (None, None)})
+    assert reading.open_flows == 1
+    assert reading.past_ceiling == (flow,)
+    assert reading.without_root_clock_count == 0
+    assert reading.per_shard() == {"DUE#6": {"past_ceiling": ["COMPLETE#run-a"]}}
+
+
 @pytest.mark.parametrize("failed", ["DUE#0", "DUE#15"])
 def test_no_value_at_all_unless_every_shard_was_read(failed: str) -> None:
     """No zero before the sweep is complete (FR-7 kept rule)."""

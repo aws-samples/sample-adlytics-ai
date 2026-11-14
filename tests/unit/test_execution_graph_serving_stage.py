@@ -20,7 +20,12 @@ import pytest
 from execution_graph_dispatch_support import NOW, write_int
 from execution_graph_release_support import release_store
 from execution_graph_support import FakeDynamo
-from fixed_member_byte_fixture_support import complete_direct_winner, grant_and_publish
+from fixed_member_byte_fixture_support import (
+    DrainActivationWorld,
+    build_world,
+    complete_direct_winner,
+    grant_and_publish,
+)
 from test_execution_graph_pass_budget import LambdaKilledError, Metered
 
 from adapters.jobs.execution_graph.fence_settler import due_shards
@@ -186,14 +191,14 @@ def test_a_publication_arriving_during_staging_joins_the_roster_and_wins() -> No
     assert _pages(world) == []
 
 
-def test_a_publication_settling_during_slow_reads_is_read_again_and_that_pass_commits() -> None:
-    """Without the second read, every slow pass loses its frontier race to a new settlement.
+def test_a_settlement_during_quick_candidate_reads_is_read_again_and_that_pass_commits() -> None:
+    """Without the second read, a commit loses its frontier race to any settlement in its reads.
 
-    On dev about 22 publications settle a minute, so a pass that reads for 20 s almost always
-    sees one; its commit's frontier ConditionCheck then fails and the election never commits.
+    On dev about 22 publications settle a minute, so even a pass that reads for a few seconds
+    often sees one; its commit's frontier ConditionCheck then fails. The clock here never
+    moves: round 1 re-read only reads slower than 5,246 ms and lost this commit.
     """
     world, _runs = _published(3)
-    remaining = {"ms": 60_000}
     late: list[str] = []
     original = world.get_item
 
@@ -201,12 +206,11 @@ def test_a_publication_settling_during_slow_reads_is_read_again_and_that_pass_co
         if str(kwargs["Key"]["pk"]["S"]).startswith("SERVING_PUBLICATION#") and not late:
             world.get_item = original  # type: ignore[method-assign]
             late.append(grant_and_publish(world, "late", 0))
-            remaining["ms"] -= 6_000  # the reads outlast one fresh iteration (5,246 ms)
         return original(**kwargs)
 
     world.get_item = get_item  # type: ignore[method-assign]
 
-    counts, _results, failures = _coalesce(world, lambda: remaining["ms"])
+    counts, _results, failures = _coalesce(world, lambda: 60_000)
 
     assert failures == []
     head = world.items[HEAD]
@@ -233,6 +237,78 @@ def test_a_head_version_change_makes_the_stage_dead_and_its_pages_are_deleted() 
     assert passes[0].serving_staged > 0  # the dead stage's candidates were read again
     assert world.items[HEAD]["winner_run_id"]["S"] == runs[-1]
     assert len(world.items[HEAD]["elected_run_ids"]["L"]) == SMALL
+
+
+@pytest.fixture(scope="module")
+def final_world() -> DrainActivationWorld:
+    """Cohort A drained to its final alias with 1,030 successors waiting; built once.
+
+    This is the path that stalled dev on 2026-11-13, there with 3,501 successors.
+    """
+    return build_world(2, LARGE)
+
+
+def _outcomes_until_active(metered: Metered, limit: int = 12) -> list[ServingElectionOutcome]:
+    outcomes: list[ServingElectionOutcome] = []
+    while _head_state(metered.fake) != "ACTIVE":
+        assert len(outcomes) < limit, "the staged final election did not converge"
+        meter = metered.invocation()
+        _counts, results, failures = _coalesce(metered.fake, meter.clock)
+        assert failures == []
+        assert meter.remaining > 0  # never killed: every pass stopped inside its budget
+        (result,) = results
+        outcomes.append(result.outcome)
+    metered.idle()
+    return outcomes
+
+
+def test_a_final_alias_with_1030_successors_stages_them_and_elects_the_reference_exactly(
+    final_world: DrainActivationWorld,
+) -> None:
+    reference = _ample(final_world.fake)
+    assert reference.items[HEAD]["winner_run_id"]["S"] == final_world.b_runs[-1]
+    assert len(reference.items[HEAD]["elected_run_ids"]["L"]) == LARGE
+    staged = copy.deepcopy(final_world.fake)
+    assert _head_state(staged) == "BOUND_DRAINING"
+
+    outcomes = _outcomes_until_active(_metered(staged))
+
+    assert len(outcomes) >= 3  # the successor roster is larger than one pass
+    assert outcomes[:-1] == [ServingElectionOutcome.STAGED] * (len(outcomes) - 1)
+    assert outcomes[-1] is ServingElectionOutcome.ELECTED
+    assert _pages(staged) == []  # the final transaction's pass deleted every page
+    # The final alias drained and the successor elected exactly as one unbounded pass does.
+    assert staged.items == reference.items
+
+
+FINAL_SMALL = 18
+"""At 160 ms a call the final path stages 7 successors a pass, so 18 take three."""
+
+
+def _final_metered(fake: FakeDynamo) -> Metered:
+    return _metered(fake, call_ms=160, query_ms=30)
+
+
+def test_a_final_alias_pass_killed_at_any_store_call_converges_to_the_reference() -> None:
+    world = build_world(2, FINAL_SMALL).fake
+    reference = _ample(world)
+    probe = _final_metered(copy.deepcopy(world))
+    calls = [_until_one_pass(probe), _until_one_pass(probe)]
+    assert _head_state(probe.fake) == "BOUND_DRAINING" and _pages(probe.fake)
+
+    # The first pass (drain reads, no page yet) and the second (extending a live stage), each
+    # killed in turn before every store call it makes.
+    for killed_pass, count in enumerate(calls):
+        for kill_at in range(1, count + 1):
+            fake = copy.deepcopy(world)
+            metered = _final_metered(fake)
+            for _ in range(killed_pass):
+                _until_one_pass(metered)
+            meter = metered.invocation(kill_at=kill_at)
+            with pytest.raises(LambdaKilledError):
+                _coalesce(fake, meter.clock)
+            _outcomes_until_active(metered)
+            assert fake.items == reference.items, f"pass {killed_pass + 1}, call {kill_at}"
 
 
 def _draining(world: FakeDynamo, runs: tuple[str, ...]) -> FakeDynamo:
