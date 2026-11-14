@@ -61,6 +61,7 @@ from domain.operations.execution_graph_dispatch import (
     TERMINAL_NODE_STATES,
     GraphGuardError,
     NodeState,
+    require_legacy_serving_roster,
 )
 from domain.operations.execution_graph_release import (
     BAKE_BUDGET_EXHAUSTED,
@@ -597,12 +598,63 @@ def _cohort_eligible(
     """ADR-140: whether any member of the winner's cohort advanced what this work consumes.
 
     A `NO_ELIGIBLE` direct binding becomes every loser's alias, so eligibility is the cohort's.
-    The winner's own effect is checked first. Otherwise the cohort's summed effect, which the
-    election verified member by member and stamped on the winner's bake node, decides: every
-    consumer's eligibility is a count above zero, so the sum is eligible exactly when a member is
-    (ADR-162 §10). No member is read here, so the cohort's size never meets this envelope.
+    The winner's own effect is checked first. Otherwise the cohort's verified effect sum, which
+    the election stamped on the winner's bake node, decides: every consumer's eligibility is a
+    count above zero, so the sum is eligible exactly when a verified member is (ADR-162 §10). No
+    member is read, so the cohort's size never meets this envelope. When neither is eligible
+    and a member's effect did not verify, that member might have been: U2, a consumer invariant
+    for this cohort alone, never a silent `NO_ELIGIBLE` (ADR-140 §2).
     """
-    return state.work.eligible(effect) or state.work.eligible(execution.cohort_effect)
+    if state.work.eligible(effect):
+        return True
+    cohort = execution.cohort_effect
+    if cohort is None:
+        return _legacy_cohort_eligible(state, execution)
+    if state.work.eligible(cohort.verified):
+        return True
+    if cohort.unverified_count:
+        raise _unverified_member(cohort.first_unverified_run_id)
+    return False
+
+
+def _unverified_member(member_run_id: str | None) -> InvariantError:
+    return InvariantError(
+        ErrorCode("GRAPH_POST_GRANT", 8),
+        "a cohort member's publish node has no verifiable effect record.",
+        context={
+            "signal": POST_GRANT_INVARIANT,
+            "reason": "cohort_publish_effect",
+            "member_run_id": member_run_id,
+        },
+    )
+
+
+def _legacy_cohort_eligible(state: _Run, execution: ServingExecutionContext) -> bool:
+    """Decide a legacy winner's cohort (no recorded effect) by reading members, as pre-§10 code did.
+
+    Bounded by `LEGACY_SERVING_ROSTER_MAX`, the cap that election enforced (ADR-162 §10).
+    """
+    require_legacy_serving_roster(execution.run_ids)
+    _log(
+        (state.envelope, state.ports.logger),
+        "graph_legacy_serving_cohort",
+        members=len(execution.run_ids),
+    )
+    store = state.ports.store
+    for member_id in execution.run_ids:
+        if member_id == state.envelope.run_id:
+            continue
+        member = store.read_run(member_id)
+        found = (
+            None
+            if member is None or member.grant_id is None
+            else _publish_effect(store.read_nodes(member_id), member.grant_id)
+        )
+        if found is None:
+            raise _unverified_member(member_id)
+        if state.work.eligible(found):
+            return True
+    return False
 
 
 def _execute(state: _Run) -> ConsumeResult:  # noqa: PLR0911, PLR0912 -- one ordered §2.8 lifecycle

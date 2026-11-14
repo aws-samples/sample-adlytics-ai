@@ -68,6 +68,7 @@ __all__ = [
     "LEGACY_BAKE_AFTER_CUTOVER",
     "LEGACY_ENVELOPE_AFTER_CUTOVER",
     "LEGACY_REPLAY_ACKNOWLEDGED",
+    "LEGACY_SERVING_ROSTER_MAX",
     "LIVE_RUN_STATES",
     "MAX_BATCH_MEMBERS",
     "NODE_PLAN_NOT_DEPLOYED",
@@ -131,6 +132,7 @@ __all__ = [
     "node_route",
     "owner_envelope_digest",
     "provider_accounted_bytes",
+    "require_legacy_serving_roster",
     "require_serving_authority_identity",
     "run_may_terminate",
     "scope_pending",
@@ -577,6 +579,29 @@ SERVING_ROSTER_OVER_BOUND: Final = ErrorCode("EXEC_GRAPH", 45)
 """A roster above `serving_candidate_roster_max`, the derived DynamoDB item limit (ADR-162 §9;
 paging the roster lists, OQ-28, removes it): the election is refused and reported, nothing is
 dropped."""
+LEGACY_SERVING_ROSTER_MAX: Final = 512
+"""The roster bound every election before ADR-162 §10 enforced (`serving_candidate_roster_max`
+on main e4832f94 and on the deployed a232957c), so no winner elected without a `SERVING_ROSTER`
+item has a larger cohort. Its readers read the members as that code did (ADR-162 §10, legacy
+winners); a larger legacy cohort cannot have been elected, so it is refused with
+`SERVING_ROSTER_OVER_BOUND`, never read."""
+
+
+def require_legacy_serving_roster(run_ids: Sequence[str]) -> None:
+    """Refuse a legacy (pre-§10) cohort larger than any pre-§10 election could have elected."""
+    if len(run_ids) > LEGACY_SERVING_ROSTER_MAX:
+        raise InvariantError(
+            SERVING_ROSTER_OVER_BOUND,
+            "a winner elected without a serving roster names more members than its election "
+            "allowed.",
+            context={
+                "reason": "legacy_roster",
+                "roster": len(run_ids),
+                "bound": LEGACY_SERVING_ROSTER_MAX,
+            },
+        )
+
+
 _SERVING_FRONTIER_SHARDS: Final = int(SERVING_COALESCING["serving_frontier_shards"])
 _ELECTED_TRANSACTION_MEMBERS: Final = _SERVING_FRONTIER_SHARDS + 8 + 9 + 3
 """52: the frontier checks, the final alias's 8, the successor winner's 9 (ADR-162 §10 adds its
@@ -631,6 +656,9 @@ class ServingCandidate:
     advanced_count: int = 0
     advanced_curation_count: int = 0
     """The verified publish effect's counts, summed onto the winner's bake node (ADR-162 §10)."""
+    publish_effect_verified: bool = True
+    """False when the effect record did not re-hash: the counts are zero and the election counts
+    the member as unverified instead of refusing (ADR-140 §2, U2)."""
 
 
 def cohort_root_clock(candidates: Sequence[ServingCandidate]) -> str | None:

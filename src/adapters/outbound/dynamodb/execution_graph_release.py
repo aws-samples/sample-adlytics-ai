@@ -119,7 +119,12 @@ from domain.operations.execution_graph_release import (
     written_pointer_effects,
 )
 from domain.operations.generated_execution_graphs import BAKE_V3, BOUNDS, SERVING_COALESCING
-from domain.operations.publish_effect import PublishEffect, cohort_publish_effect, publish_effect
+from domain.operations.publish_effect import (
+    CohortPublishEffect,
+    PublishEffect,
+    cohort_publish_effect,
+    publish_effect,
+)
 from domain.operations.run_request import RunState
 from domain.shared_kernel.errors import ErrorCode, InvariantError
 from ports.outbound.execution_graph_dispatch import (
@@ -343,6 +348,7 @@ def _stage_entry(read: ServingCandidateRead) -> AttributeValueTypeDef:
             write_int(coordinate.eligible_coordinate),
             write_int(candidate.advanced_count),
             write_int(candidate.advanced_curation_count),
+            {"BOOL": candidate.publish_effect_verified},
         ]
     }
 
@@ -361,7 +367,7 @@ def _stage_item(page: ServingStagePage) -> Item:
 def _staged_read(domain: str, entry: AttributeValueTypeDef) -> ServingCandidateRead:
     """Rebuild one staged candidate; only a validated candidate is ever staged (ADR-162)."""
     values = cast("list[dict[str, Any]]", entry.get("L", []))
-    if len(values) != 11:  # noqa: PLR2004 -- the fixed positional entry written by `_stage_entry`
+    if len(values) != 12:  # noqa: PLR2004 -- the fixed positional entry written by `_stage_entry`
         raise GraphStoreUnavailableError("a staged serving candidate is malformed.")
     run_id, grant_id = str(values[0]["S"]), str(values[1]["S"])
     ordinal = int(str(values[2]["N"]))
@@ -376,6 +382,7 @@ def _staged_read(domain: str, entry: AttributeValueTypeDef) -> ServingCandidateR
         root_clock_started_at=clock,
         advanced_count=int(str(values[9]["N"])),
         advanced_curation_count=int(str(values[10]["N"])),
+        publish_effect_verified=values[11].get("BOOL") is True,
     )
     return ServingCandidateRead(
         candidate,
@@ -427,16 +434,47 @@ def _cohort_roots(candidates: Sequence[ServingCandidate]) -> tuple[str, ...]:
     return tuple(sorted({candidate.root_flow_id for candidate in candidates}))
 
 
+def _cohort_effect(candidates: Sequence[ServingCandidate]) -> CohortPublishEffect:
+    """Return the cohort's publish effect as the election records it, members in grant order."""
+    return cohort_publish_effect(
+        (
+            item.run_id,
+            PublishEffect(item.advanced_count, item.advanced_curation_count)
+            if item.publish_effect_verified
+            else None,
+        )
+        for item in candidates
+    )
+
+
+def _cohort_effect_set(candidates: Sequence[ServingCandidate]) -> str:
+    """Return the bake-node `SET` clauses `_cohort_effect_values` fills (ADR-162 §10).
+
+    The first unverified member is set only when there is one; the election's PENDING bake node
+    never holds it, so its absence reads as none.
+    """
+    clauses = (
+        "serving_cohort_advanced_count = :advanced, "
+        "serving_cohort_advanced_curation_count = :curation, "
+        "serving_cohort_unverified_count = :unverified"
+    )
+    if _cohort_effect(candidates).first_unverified_run_id is None:
+        return clauses
+    return clauses + ", serving_cohort_unverified_run_id = :unverified_run"
+
+
 def _cohort_effect_values(
     candidates: Sequence[ServingCandidate],
 ) -> dict[str, AttributeValueTypeDef]:
-    effect = cohort_publish_effect(
-        PublishEffect(item.advanced_count, item.advanced_curation_count) for item in candidates
-    )
-    return {
-        "advanced": write_int(effect.advanced_count),
-        "curation": write_int(effect.advanced_curation_count),
+    effect = _cohort_effect(candidates)
+    values: dict[str, AttributeValueTypeDef] = {
+        "advanced": write_int(effect.verified.advanced_count),
+        "curation": write_int(effect.verified.advanced_curation_count),
+        "unverified": write_int(effect.unverified_count),
     }
+    if effect.first_unverified_run_id is not None:
+        values["unverified_run"] = write_text(effect.first_unverified_run_id)
+    return values
 
 
 def _roster_member(  # noqa: PLR0913, PLR0917 -- the winner, its domain, cohort and roster
@@ -1508,8 +1546,7 @@ class DynamoGraphReleaseStore(DynamoGraphDispatchStore):
                 "SET #state = :ready, revision = revision + :one, serving_domain = :domain, "
                 "cohort_revision = :cohort, serving_input_revision = :input, "
                 "serving_plan_digest = :plan, serving_run_ids = :runs, armed_at = :at, "
-                "serving_cohort_advanced_count = :advanced, "
-                "serving_cohort_advanced_curation_count = :curation",
+                + _cohort_effect_set(request.candidates),
             ),
             _roster_member(
                 request.winner.run_id,
@@ -1662,13 +1699,10 @@ class DynamoGraphReleaseStore(DynamoGraphDispatchStore):
         if precompute.state is not NodeState.WAITING_INPUT or bake.state is not NodeState.PENDING:
             return None
         # ADR-162 §10: the election sums these onto the winner's bake node, so a consumer never
-        # reads a member's effect; one that does not re-hash refuses the election, as it once
-        # refused the consumer (U2).
+        # reads a member's effect. One that does not re-hash is counted there as unverified and
+        # never refuses the election: the consumer that needs it fails this cohort alone (U2,
+        # ADR-140 §2), so the domain's later elections still commit.
         effect = publish_effect(publish.effect_record, publish.effect_digest, run.grant_id)
-        if effect is None:
-            raise GraphStoreUnavailableError(
-                "a serving candidate's publish effect does not verify."
-            )
         runtime_present = any(
             self.read_claim(node.node_id) is not None for node in (precompute, bake)
         )
@@ -1688,8 +1722,9 @@ class DynamoGraphReleaseStore(DynamoGraphDispatchStore):
             runtime_state_present=runtime_present,
             binding_present=self.read_serving_binding(run.grant_id) is not None,
             root_clock_started_at=run.root_clock_started_at,
-            advanced_count=effect.advanced_count,
-            advanced_curation_count=effect.advanced_curation_count,
+            advanced_count=0 if effect is None else effect.advanced_count,
+            advanced_curation_count=0 if effect is None else effect.advanced_curation_count,
+            publish_effect_verified=effect is not None,
         )
         coordinate = ServingMarkerCoordinate(
             run_id,
@@ -1704,7 +1739,9 @@ class DynamoGraphReleaseStore(DynamoGraphDispatchStore):
         """Read winner context stamped on its bake node and roster item by the atomic election.
 
         Three strong reads whatever the cohort's size (ADR-162 §10): the run, its bake node and
-        its `SERVING_ROSTER` item.
+        its `SERVING_ROSTER` item. A legacy winner, elected before §10, has neither the roster
+        nor the cohort effect fields; it is returned with both None so its readers read the
+        members as that election's code did, rather than skip the cohort forever.
         """
         run = self.read_run(run_id)
         if run is None or run.grant_id != grant_id:
@@ -1717,31 +1754,45 @@ class DynamoGraphReleaseStore(DynamoGraphDispatchStore):
             or node.serving_input_revision is None
             or node.serving_plan_digest is None
             or not node.serving_run_ids
-            or node.serving_cohort_advanced_count is None
-            or node.serving_cohort_advanced_curation_count is None
         ):
             return None
+        head = ServingDomainHead(
+            domain=node.serving_domain,
+            state="ACTIVE",
+            version=0,
+            cohort_revision=node.cohort_revision,
+            serving_input_revision=node.serving_input_revision,
+            winner_run_id=run_id,
+        )
+        counts = (
+            node.serving_cohort_advanced_count,
+            node.serving_cohort_advanced_curation_count,
+            node.serving_cohort_unverified_count,
+        )
         roster = self._get(_key(f"RUN#{run_id}", _ROSTER_SK))
+        if roster is None and counts == (None, None, None):
+            return ServingExecutionContext(
+                head, node.serving_run_ids, node.serving_plan_digest, None, None
+            )
+        advanced, curation, unverified = counts
         if (
-            roster is None
+            advanced is None
+            or curation is None
+            or unverified is None
+            or roster is None
             or _text(roster, "item_kind") != _ROSTER_KIND
             or _text(roster, "cohort_revision") != node.cohort_revision
         ):
             return None
         return ServingExecutionContext(
-            head=ServingDomainHead(
-                domain=node.serving_domain,
-                state="ACTIVE",
-                version=0,
-                cohort_revision=node.cohort_revision,
-                serving_input_revision=node.serving_input_revision,
-                winner_run_id=run_id,
-            ),
+            head=head,
             run_ids=node.serving_run_ids,
             plan_digest=node.serving_plan_digest,
             contributor_roots=_text_list(roster, "contributor_roots"),
-            cohort_effect=PublishEffect(
-                node.serving_cohort_advanced_count, node.serving_cohort_advanced_curation_count
+            cohort_effect=CohortPublishEffect(
+                PublishEffect(advanced, curation),
+                unverified,
+                node.serving_cohort_unverified_run_id,
             ),
         )
 
@@ -2123,8 +2174,7 @@ class DynamoGraphReleaseStore(DynamoGraphDispatchStore):
                 "SET #state = :ready, revision = revision + :one, serving_domain = :domain, "
                 "cohort_revision = :cohort, serving_input_revision = :input, "
                 "serving_plan_digest = :plan, serving_run_ids = :runs, armed_at = :at, "
-                "serving_cohort_advanced_count = :advanced, "
-                "serving_cohort_advanced_curation_count = :curation",
+                + _cohort_effect_set(request.successor_candidates),
             ),
             _roster_member(
                 run.run_id,
@@ -2430,13 +2480,12 @@ class DynamoGraphReleaseStore(DynamoGraphDispatchStore):
                 bake.serving_run_ids,
                 bake.serving_cohort_advanced_count,
                 bake.serving_cohort_advanced_curation_count,
+                bake.serving_cohort_unverified_count,
+                bake.serving_cohort_unverified_run_id,
             )
         )
         roster = self._get(_key(f"RUN#{winner.run_id}", _ROSTER_SK))
-        effect = cohort_publish_effect(
-            PublishEffect(item.advanced_count, item.advanced_curation_count)
-            for item in request.successor_candidates
-        )
+        effect = _cohort_effect(request.successor_candidates)
         return [
             (
                 (
@@ -2470,8 +2519,10 @@ class DynamoGraphReleaseStore(DynamoGraphDispatchStore):
                     request.successor_input_revision,
                     request.successor_plan_digest,
                     run_ids,
-                    effect.advanced_count,
-                    effect.advanced_curation_count,
+                    effect.verified.advanced_count,
+                    effect.verified.advanced_curation_count,
+                    effect.unverified_count,
+                    effect.first_unverified_run_id,
                 ),
                 "successor winner",
             ),

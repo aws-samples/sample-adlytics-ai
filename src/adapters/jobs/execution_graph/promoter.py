@@ -390,6 +390,9 @@ class ArmCounts:
     """ADR-162: election candidates read and staged this pass for a later pass's commit."""
     serving_unstaged: int = 0
     """ADR-162: election candidates this pass's budget left unread; a later pass reads them."""
+    serving_legacy_winners: int = 0
+    """ADR-162 §10: serving arms of a winner elected before §10, with no `SERVING_ROSTER`; its
+    readers bind and decide eligibility by reading its members, as that election's code did."""
 
 
 def read_arms(context: PromoterContext, shards: Sequence[str], counts: ArmCounts) -> list[DueItem]:
@@ -432,6 +435,18 @@ def walk_complete(
     return tuple(found)
 
 
+def _is_serving_winner(store: PromoterStore, run: RunRecord, counts: ArmCounts) -> bool:
+    """Whether `run` is its cohort's elected winner; a pre-§10 (legacy) winner is counted."""
+    execution = (
+        None if run.grant_id is None else store.read_serving_execution(run.grant_id, run.run_id)
+    )
+    if execution is None or execution.head.winner_run_id != run.run_id:
+        return False
+    if execution.contributor_roots is None:
+        counts.serving_legacy_winners += 1
+    return True
+
+
 def arm_run(
     context: PromoterContext,
     item: DueItem,
@@ -464,12 +479,8 @@ def arm_run(
     remaining = len(scope_pending(scope, run.template, nodes))
     if remaining == 0:
         raise InvariantError(_ARM_INVARIANT, "an ARM# names a scope with no PENDING routed node.")
-    if scope is ArmScope.SERVING:
-        execution = (
-            None if run.grant_id is None else store.read_serving_execution(run.grant_id, run.run_id)
-        )
-        if execution is None or execution.head.winner_run_id != run.run_id:
-            return
+    if scope is ArmScope.SERVING and not _is_serving_winner(store, run, counts):
+        return
     eligible = arm_eligible(scope, run.template, nodes)
     if not eligible:
         counts.predecessor_wait += 1

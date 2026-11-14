@@ -174,6 +174,29 @@ def _until_one_pass(metered: Metered) -> int:
     return meter.calls
 
 
+def test_an_unverified_member_staged_across_pages_is_counted_as_the_reference_counts_it() -> None:
+    """A staged page carries whether each effect verified (ADR-140 §2, AGG-R2-3).
+
+    Lost there, the staged election would sum or drop the member differently from a one-pass
+    election, and the cohort's eligibility would depend on how many passes it took.
+    """
+    world, runs = _published(SMALL)
+    tampered = runs[1]
+    world.items[(f"RUN#{tampered}", "NODE#publish")]["effect_digest"] = {"S": "tampered"}
+    reference = _ample(world)
+    staged = copy.deepcopy(world)
+
+    passes = _until_active(_small_metered(staged))
+
+    assert len(passes) >= 3  # the tampered member was staged on a page, not read at commit
+    assert staged.items == reference.items
+    winner = staged.items[(f"RUN#{runs[-1]}", "NODE#bake")]
+    assert (
+        winner["serving_cohort_unverified_count"],
+        winner["serving_cohort_unverified_run_id"],
+    ) == ({"N": "1"}, {"S": tampered})
+
+
 def test_a_publication_arriving_during_staging_joins_the_roster_and_wins() -> None:
     world, _runs = _published(SMALL)
     metered = _small_metered(world)

@@ -2,10 +2,10 @@
  "branch": "candidates-98",
  "expected": {
   "action_count": 52,
-  "aggregate_upper_bound": 62724,
-  "largest_target_upper_bound": 9368,
+  "aggregate_upper_bound": 62768,
+  "largest_target_upper_bound": 9412,
   "outcome": "accepted",
-  "wire_json_bytes": 54486
+  "wire_json_bytes": 54557
  },
  "expected_request": {
   "TransactItems": [
@@ -1490,6 +1490,9 @@
          "S": "ecbe3808a3720bf6830d3bccb9a38a16e28f685fe5446f95ccfc64948b6dd29a"
         }
        ]
+      },
+      ":unverified": {
+       "N": "0"
       }
      },
      "Key": {
@@ -1501,7 +1504,7 @@
       }
      },
      "TableName": "execution-graph-probe-fixture",
-     "UpdateExpression": "SET #state = :ready, revision = revision + :one, serving_domain = :domain, cohort_revision = :cohort, serving_input_revision = :input, serving_plan_digest = :plan, serving_run_ids = :runs, armed_at = :at, serving_cohort_advanced_count = :advanced, serving_cohort_advanced_curation_count = :curation"
+     "UpdateExpression": "SET #state = :ready, revision = revision + :one, serving_domain = :domain, cohort_revision = :cohort, serving_input_revision = :input, serving_plan_digest = :plan, serving_run_ids = :runs, armed_at = :at, serving_cohort_advanced_count = :advanced, serving_cohort_advanced_curation_count = :curation, serving_cohort_unverified_count = :unverified"
     }
    },
    {
@@ -6194,6 +6197,9 @@
     "serving_cohort_advanced_curation_count": {
      "N": "0"
     },
+    "serving_cohort_unverified_count": {
+     "N": "0"
+    },
     "serving_domain": {
      "S": "8904be088e6605350f79a4b6182c6c14ff6c54ea210b2a43a536c8bff6f9bc1c"
     },
@@ -6509,8 +6515,8 @@
     }
    },
    "pre_state_conservative_bytes": 1677,
-   "result_conservative_bytes": 9368,
-   "target_upper_bound": 9368
+   "result_conservative_bytes": 9412,
+   "target_upper_bound": 9412
   },
   {
    "expected_pre_state_map": null,

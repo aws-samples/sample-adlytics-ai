@@ -1454,23 +1454,16 @@ def test_c1_a_curated_loser_makes_a_zero_curation_winner_fan_out() -> None:
     assert _bake_member(control, alone).outcome.value == "no_eligible"
 
 
-@pytest.mark.covers("ADR-140", "ADR-162")
-def test_c1_an_unverifiable_member_effect_refuses_the_election_u2() -> None:
-    """U2 moved to the election (ADR-162 §10).
+def _tampered_cohort(bake: Bake, curations: tuple[int, ...], tampered: int) -> tuple[str, ...]:
+    """Publish one member per curation, oldest grant first; tamper one effect; elect the newest.
 
-    The cohort's summed effect is verified member by member there, so no consumer ever decides
-    from an effect that does not re-hash. The positive control is
-    `test_c1_a_curated_loser_makes_a_zero_curation_winner_fan_out`.
+    The tamper lands before the election reads the members, so the election itself meets it.
     """
-    from graph_consumer_support import publish_settled  # noqa: PLC0415
+    from graph_consumer_support import arm_and_dispatch, publish_settled  # noqa: PLC0415
 
-    from adapters.jobs.execution_graph.fence_settler import due_shards  # noqa: PLC0415
-    from adapters.jobs.execution_graph.instantiate import ingestion_node_plan  # noqa: PLC0415
-    from adapters.jobs.execution_graph.promoter import PromoterContext, arm_pass  # noqa: PLC0415
     from domain.operations.status import canonical_authority_digest  # noqa: PLC0415
 
-    bake = Bake(roster=roster(2))
-    loser, winner = (
+    runs = tuple(
         publish_settled(
             bake.tables,
             advanced_curation=curation,
@@ -1478,28 +1471,108 @@ def test_c1_an_unverifiable_member_effect_refuses_the_election_u2() -> None:
             fingerprint=name * 64,
             request_id=f"request-{name}",
         )
-        for name, curation in (("a", 1), ("b", 0))
+        for name, curation in zip("abc", curations, strict=False)
     )
-    bake.tables.items[(f"RUN#{loser}", "NODE#publish")]["effect_digest"] = {"S": "tampered"}
-    failures: list[BaseException] = []
+    bake.tables.items[(f"RUN#{runs[tampered]}", "NODE#publish")]["effect_digest"] = {
+        "S": "tampered"
+    }
+    arm_and_dispatch(bake.tables, runs[-1], "bake")
+    return runs
 
-    arm_pass(
-        PromoterContext(
-            release_store(bake.tables), ingestion_node_plan, lambda: NOW, on_failure=failures.append
-        ),
-        due_shards(),
-        lambda: 60_000,
-        "test-request",
-    )
 
-    assert [(type(error).__name__, str(error)) for error in failures] == [
-        (
-            "GraphStoreUnavailableError",
-            "ADLY-EXEC_GRAPH-0020: a serving candidate's publish effect does not verify.",
-        )
-    ]
-    assert bake.node(winner, "bake").state is NodeState.PENDING  # nothing was elected
+@pytest.mark.covers("ADR-140", "ADR-162")
+def test_c1_an_unverifiable_member_effect_fails_only_its_own_cohort_u2() -> None:
+    """U2 stays a consumer invariant of one cohort (ADR-140 §2, review round 2 AGG-R2-3).
+
+    The election counts the unverified member on the winner's bake node and commits, so the
+    domain's later elections are not blocked; the winner's bake, which cannot tell whether that
+    member advanced curation, fails `post_grant_invariant` naming it. The positive control is
+    `test_c1_a_curated_loser_makes_a_zero_curation_winner_fan_out`.
+    """
+    bake = Bake(roster=roster(2))
+    loser, winner = _tampered_cohort(bake, (1, 0), tampered=0)
+    stamped = bake.node(winner, "bake")
+    assert (
+        stamped.serving_cohort_advanced_curation_count,
+        stamped.serving_cohort_unverified_count,
+        stamped.serving_cohort_unverified_run_id,
+    ) == (0, 1, loser)
+
+    result = bake.fan_out(winner)
+
+    assert result.node_state is NodeState.FAILED
+    member = _bake_member(bake, winner)
+    assert member.outcome.value == "unavailable"
+    assert {reason for _key, reason in member.unavailable} == {"post_grant_invariant"}
+    assert bake.node(winner, "bake").failure_reason == "post_grant_invariant"
     assert _keys(bake, winner, "NODE#bake_task:") == []
+
+
+@pytest.mark.covers("ADR-140", "ADR-162")
+def test_c1_a_verified_curated_member_decides_past_an_unverified_one() -> None:
+    bake = Bake(roster=roster(2))
+    _unverified, _curated, winner = _tampered_cohort(bake, (0, 1, 0), tampered=0)
+    stamped = bake.node(winner, "bake")
+    assert (
+        stamped.serving_cohort_advanced_curation_count,
+        stamped.serving_cohort_unverified_count,
+    ) == (1, 1)
+
+    result = bake.fan_out(winner)
+
+    assert (result.outcome, result.node_state) == ("graph_bake_succeeded", NodeState.SUCCEEDED)
+    assert _keys(bake, winner, "NODE#bake_task:") != []
+
+
+def _as_legacy_winner(bake: Bake, winner: str) -> None:
+    """Rewrite an elected winner into the pre-§10 item shape: no roster, no cohort effect."""
+    del bake.tables.items[(f"RUN#{winner}", "SERVING_ROSTER")]
+    node = bake.tables.items[(f"RUN#{winner}", "NODE#bake")]
+    for name in (
+        "serving_cohort_advanced_count",
+        "serving_cohort_advanced_curation_count",
+        "serving_cohort_unverified_count",
+        "serving_cohort_unverified_run_id",
+    ):
+        node.pop(name, None)
+
+
+@pytest.mark.covers("ADR-140", "ADR-162")
+def test_c1_a_legacy_winner_reads_its_members_and_fans_out() -> None:
+    """A winner elected before ADR-162 §10 still bakes after the upgrade (AGG-R2-1).
+
+    Without the legacy path its readers saw no serving context and the domain never drained.
+    """
+    bake = Bake(roster=roster(2))
+    loser, winner = _cohort(bake, 1, 0)
+    _as_legacy_winner(bake, winner)
+    reads: list[str] = []
+    original = bake.tables.get_item
+
+    def recording(**kwargs: Any) -> dict[str, Any]:
+        reads.append(str(kwargs["Key"]["pk"]["S"]))
+        return original(**kwargs)
+
+    bake.tables.get_item = recording  # type: ignore[method-assign]
+
+    result = bake.fan_out(winner)
+
+    assert (result.outcome, result.node_state) == ("graph_bake_succeeded", NodeState.SUCCEEDED)
+    assert _keys(bake, winner, "NODE#bake_task:") != []
+    assert f"RUN#{loser}" in reads  # the loser's curation decided, read as pre-§10 code did
+
+
+@pytest.mark.covers("ADR-140", "ADR-162")
+def test_c1_a_legacy_unverifiable_member_fails_only_its_own_cohort() -> None:
+    bake = Bake(roster=roster(2))
+    loser, winner = _cohort(bake, 1, 0)
+    _as_legacy_winner(bake, winner)
+    bake.tables.items[(f"RUN#{loser}", "NODE#publish")]["effect_digest"] = {"S": "tampered"}
+
+    result = bake.fan_out(winner)
+
+    assert result.node_state is NodeState.FAILED
+    assert bake.node(winner, "bake").failure_reason == "post_grant_invariant"
 
 
 @pytest.mark.covers("ADR-140")

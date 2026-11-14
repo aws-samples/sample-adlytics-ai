@@ -15,7 +15,13 @@ from typing import Final, cast
 
 from domain.operations.status import canonical_authority_digest
 
-__all__ = ["PUBLISH_EFFECT_NAMESPACE", "PublishEffect", "cohort_publish_effect", "publish_effect"]
+__all__ = [
+    "PUBLISH_EFFECT_NAMESPACE",
+    "CohortPublishEffect",
+    "PublishEffect",
+    "cohort_publish_effect",
+    "publish_effect",
+]
 
 PUBLISH_EFFECT_NAMESPACE: Final = "execution-graph-publish-effect/v1"
 
@@ -50,14 +56,36 @@ def publish_effect(record: str | None, digest: str | None, grant_id: str) -> Pub
     return PublishEffect(advanced, curation)
 
 
-def cohort_publish_effect(effects: Iterable[PublishEffect]) -> PublishEffect:
-    """Sum a cohort's member effects.
+@dataclass(frozen=True, slots=True)
+class CohortPublishEffect:
+    """A cohort's publish effects as its election recorded them (ADR-140 §2, ADR-162 §10).
 
-    Every consumer's eligibility is a count above zero, so the sum is eligible exactly when some
-    member is: what the consumer once decided by reading every member, one at a time.
+    `verified` sums every member whose record re-hashed. A member whose record did not is
+    counted, never summed and never a refusal of the election: the consumer that needs it raises
+    `GRAPH_POST_GRANT/8` for this cohort alone (U2), naming the first such member.
     """
-    advanced = curation = 0
-    for effect in effects:
+
+    verified: PublishEffect
+    unverified_count: int = 0
+    first_unverified_run_id: str | None = None
+
+
+def cohort_publish_effect(
+    members: Iterable[tuple[str, PublishEffect | None]],
+) -> CohortPublishEffect:
+    """Sum a cohort's verified member effects, in the order given, and count the rest.
+
+    Every consumer's eligibility is a count above zero and a verified count is never negative,
+    so the verified sum is eligible exactly when some verified member is: what the consumer once
+    decided by reading every member, one at a time.
+    """
+    advanced = curation = unverified = 0
+    first: str | None = None
+    for run_id, effect in members:
+        if effect is None:
+            unverified += 1
+            first = run_id if first is None else first
+            continue
         advanced += effect.advanced_count
         curation += effect.advanced_curation_count
-    return PublishEffect(advanced, curation)
+    return CohortPublishEffect(PublishEffect(advanced, curation), unverified, first)

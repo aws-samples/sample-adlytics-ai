@@ -115,6 +115,13 @@ time, and ADR-144 bounds the baker.
    the `next_election_min_remaining_ms` guard alone; each further alias, and the final alias's
    successor reads, wait for `SERVING_STAGE_RESERVE_MS`. A non-final drain ConditionChecks the head
    and never moves it, so one head read serves every drain of the pass.
+   The guard's 10,493 ms was measured before staging. The pass that commits a fully staged final
+   election (the iteration, the `ELECTION#` page query, the head and the 52-member transaction)
+   is measured by `validation/run_fresh_election_timing.py --staged-successors N`, which seeds
+   the probe table with every successor already on pages. It runs on dev at N = 3,502 and
+   N = 5,417 before merge (step s1-serve-deploy); the contract takes `ceil(2 * max(total_ms))`
+   over both, and a guard above `PROMOTE_RESERVE_MS` (40,000 ms) is refused, because a fully
+   staged commit must fit in every arm pass.
 9. **The roster bound.** `serving_candidate_roster_max` is 5,417: the DynamoDB item limit of the
    five items that hold one entry per member, derived over every state those items reach under
    every production writer (contract comment; `serve-fix/r2/roster-bound.json`, 2026-11-14). The
@@ -130,15 +137,30 @@ time, and ADR-144 bounds the baker.
      item, created once by the election transaction (one more member: 43 on activation, 52 on the
      final transition). The promoter already writes `RUN#*` and every reader already reads it, so
      no IAM changes;
-   - the cohort's summed publish effect (`advanced_count`, `advanced_curation_count`) on the
-     winner's bake node. Each candidate's effect record is verified (re-hashed) when it is read
-     for the election, so an unverifiable effect refuses the election (U2) instead of a consumer.
-     Every consumer's eligibility is a count above zero, so the sum is eligible exactly when some
-     member is.
+   - the cohort's publish effect on the winner's bake node: the sum of the verified member
+     effects (`advanced_count`, `advanced_curation_count`), how many members' records did not
+     re-hash, and the first such member. Each candidate's record is verified when it is read for
+     the election; staging carries the result on its page. An unverified member never refuses
+     the election (review round 2, AGG-R2-3): the consumer that cannot decide without it raises
+     `GRAPH_POST_GRANT/8` for that cohort alone ([ADR-140](adr-140-a-bake-that-skips-the-finalizer-settles-its-cohort.md)
+     §2). A verified count is never negative, and every consumer's eligibility is a count above
+     zero, so the sum is eligible exactly when some verified member is.
 
    `read_serving_execution` reads the run, the bake node and the roster: three reads whatever the
-   cohort's size. A winner elected before this change has no roster item, so its readers refuse
-   (fail closed) rather than read members; no such winner is in flight on dev (deploy check).
+   cohort's size.
+
+   **Legacy winners (review round 2, AGG-R2-1).** A winner elected before this change, by the
+   deployed code or by an old promoter during the stack update's mixed-version window, has no
+   roster item and no recorded effect. `read_serving_execution` returns its context with both
+   absent instead of skipping it, so the promoter still arms it and counts it on the terminal
+   line (`serving_legacy_winners`). Its two member readers then read as the pre-§10 code did:
+   `direct_binding` reads each member's run for its root, and `_cohort_eligible` reads members'
+   effects (logged `graph_legacy_serving_cohort`). Every pre-§10 election refused a roster above
+   512 (`serving_candidate_roster_max` on main `e4832f94` and the deployed `a232957c`), so that
+   is the most such a cohort holds: about 5 s of run reads and 10 s of effect reads at about
+   10 ms a read, inside the precompute's 30 s, as before [projection]. A legacy cohort above 512
+   cannot have been elected and is refused, `EXEC_GRAPH-45` with reason `legacy_roster`, before
+   any member read. No deploy ordering or migration step is needed.
 
 Decided by (1) and (3) of the
 [decision-weighting rubric](../delivery-practice.md#5-the-decision-weighting-rubric). A killed pass
@@ -189,15 +211,28 @@ smallest change that ends the stall.
   - A head version change kills the stage; its pages are deleted and re-read.
   - A cohort of 1,029 aliases drains at least 2 a pass over at least 3 passes, and the first pass
     reads only the runs it aliases.
+  - A member whose effect does not verify, staged on a page over at least 3 passes, is counted
+    on the winner's bake node exactly as an unbounded pass counts it.
 - `tests/unit/test_execution_graph_dispatch.py`: 5,417 candidates are accepted and 5,418 are
   refused with `EXEC_GRAPH-45`.
 - `tests/unit/test_serving_roster_callers.py`: an elected snapshot padded to 5,417 members that
   have no items drives the Release's unarmed settlement (60 s), the precompute consumer (30 s, a
   curated loser making a zero-curation winner eligible) and the bake finalizer (900 s) under a
   metered clock at dev's per-call rates. Each binds all 5,417 roots, reads no member, and makes
-  exactly as many store calls as its paired small cohort (46, 28 and 266).
-- `tests/unit/test_graph_bake.py`: a member whose publish effect does not re-hash refuses the
-  election, and nothing is elected (U2, moved to the election).
+  exactly as many store calls as its paired small cohort (46, 28 and 266). A legacy winner (no
+  roster, no recorded effect) is armed and counted by the promoter, finalized with its own root,
+  bound by the Release from its members' runs, and decided by the precompute consumer from its
+  members' effects; a legacy cohort of 513 is refused with `EXEC_GRAPH-45` before any member
+  read, and one of 512 reads its members (control). The widest direct binding at 5,417 roots,
+  every contract bake roster row unavailable at the longest reason, fits 400,000 oracle bytes;
+  one more roster row does not (control).
+- `tests/unit/test_graph_bake.py`: a member whose publish effect does not re-hash is counted at
+  the election, which commits; the winner's bake then fails `post_grant_invariant` for that
+  cohort alone (U2). A verified curated member decides past an unverified one. A legacy winner
+  reads its members and fans out; a legacy unverifiable member fails only its own cohort.
+- `tests/unit/test_run_fresh_election_timing.py`: a pre-staged rehearsal sample commits from its
+  `ELECTION#` pages, reads no successor again (an unstaged control reads them every attempt),
+  and a staged guard above 40,000 ms is refused.
 - The existing promoter, release, unit-batch, bake and whole-chain suites pass unchanged, so an
   ample budget changes nothing.
 

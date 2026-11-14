@@ -313,6 +313,7 @@ def promoter_handler(_event: dict[str, Any], lambda_context: object) -> dict[str
             "grants_deferred": arming.grants_deferred,
             "serving_staged": arming.serving_staged,
             "serving_unstaged": arming.serving_unstaged,
+            "serving_legacy_winners": arming.serving_legacy_winners,
             "conflicts": sum(item.conflicts for item in passes) + arming.conflicts,
             "failed": sum(item.failed for item in passes) + arming.failed,
             "failed_shards": failed_shards + arming.failed_shards,

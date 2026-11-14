@@ -69,6 +69,7 @@ from domain.operations.execution_graph_dispatch import (
     NodeState,
     ServingCandidate,
     ServingFrontierVector,
+    require_legacy_serving_roster,
 )
 from domain.operations.execution_graph_release import (
     CONFLICT_DOMAIN_BLOCKED,
@@ -760,7 +761,9 @@ def direct_binding(
     Shared by `serving_binding_for` (the finalizer and `contribute`) and the Release's unarmed
     settlement (ADR-140), so every writer binds the same bytes. The contributor roots come from
     the roster the election recorded (ADR-162 §10), so no cohort member is read: the Release's
-    60 s pass and the precompute consumer's 30 s envelope never meet the cohort's size.
+    60 s pass and the precompute consumer's 30 s envelope never meet the cohort's size. A legacy
+    winner (elected before §10, no roster) reads its members' runs as that code did, at most
+    `LEGACY_SERVING_ROSTER_MAX` of them.
     """
     grant_id = settlement.grant_id
     execution = store.read_serving_execution(grant_id, run.run_id)
@@ -771,7 +774,11 @@ def direct_binding(
         or execution.head.serving_input_revision is None
     ):
         raise ValueError("a serving contribution has no exact active winner/cohort/day authority.")
-    contributor_roots = execution.contributor_roots
+    contributor_roots = (
+        _legacy_contributor_roots(store, execution.run_ids)
+        if execution.contributor_roots is None
+        else execution.contributor_roots
+    )
     if run.root_flow_id not in contributor_roots:
         raise ValueError("an active serving roster does not name its winner's root.")
     return bind_serving(
@@ -788,6 +795,15 @@ def direct_binding(
         winner_run_id=run.run_id,
         execution_attempts=1,
     )
+
+
+def _legacy_contributor_roots(store: ReleaseStore, run_ids: tuple[str, ...]) -> tuple[str, ...]:
+    """Read a legacy cohort's roots member by member, the pre-§10 path (ADR-162 §10)."""
+    require_legacy_serving_roster(run_ids)
+    cohort_runs = tuple(store.read_run(run_id) for run_id in run_ids)
+    if any(candidate is None for candidate in cohort_runs):
+        raise ValueError("an active serving cohort names a missing candidate run.")
+    return tuple(candidate.root_flow_id for candidate in cohort_runs if candidate is not None)
 
 
 def contribute(
