@@ -324,7 +324,7 @@ class TestAthenaAcceptsWhatWeCompose:
             for item in generated["trafficByAsin"]
             if item["startDate"] == day == item["endDate"]
         }
-        served = {row["amazon_asin"]: row[AGGREGATE_COLUMN] for row in result.rows}
+        served = {str(row["amazon_asin"]): row[AGGREGATE_COLUMN] for row in result.rows}
         assert set(served) <= set(expected)
         assert served == {key: expected[key] for key in served}
 
