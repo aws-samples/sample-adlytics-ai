@@ -98,6 +98,17 @@ encoder and browser decoder always land in one deploy.
 > request is served as that preset's `window_unavailable`, the preset marked unavailable, until the
 > page's next bake. A request without the field is served exactly as before. The body bytes are
 > format 11's.
+> **Amended 2026-11-15 (demand forecast slice 1; `RetailHealthArtifact` v3, render format 13).**
+> The trend and each row's `shipped_revenue_spark` are daily series. A series states its basis,
+> grain, units and span (`period`) once, then `values`: one value per day, value `i` for the
+> span's start plus `i` days. The trend is `{current, prior}`, one series per trend metric in
+> roster order; an empty or insufficient body carries two empty lists. Both decoders expand each
+> value back into the five-field point, so rows, figures, order and the top-50 rule are format
+> 12's. Repeating units, period and grain on every point put 50 rows over the 256,000-byte cap
+> at 7 days (`body_over_cap`, 284,180 B measured on dev); a series costs about 12 bytes per row
+> per day. Upgrade: a format-12 body is never decoded; the serve path reads it as the preset's
+> not-yet-published absence until the page's next bake ([operational design](operational-design.md)
+> §2).
 
 | Section | Content | Rendering responsibility |
 |---|---|---|
