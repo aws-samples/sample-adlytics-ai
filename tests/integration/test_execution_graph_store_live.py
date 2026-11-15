@@ -4,7 +4,9 @@
 Every write goes to `adlytics-<env>-execution-graph-probe` (and, for the cross-table check, its
 `-probe-legacy` twin) through the probe role, which holds exactly the generated action set on
 the probe tables and nothing on the live table (V-15). Each test works in its own fresh
-namespace (a random fingerprint and conflict unit), so runs never collide. Fictional data only.
+namespace (a random fingerprint and conflict unit), so runs never collide. At teardown the file
+deletes the due obligations its namespaces created and asserts the probe due shards are left as
+found (probe_due.py). Fictional data only.
 
 Run only through the probe runner's fail-closed JUnit check, one file at a time:
 
@@ -29,6 +31,7 @@ from typing import Any, cast
 import boto3
 import pytest
 from botocore.exceptions import ClientError
+from probe_due import DueLedger
 
 from adapters.inbound.ingestion_handlers.graph_claim import (
     MAX_PARALLEL_CLAIMS,
@@ -204,10 +207,21 @@ def _now_text() -> str:
     return _now().isoformat()
 
 
+@pytest.fixture(scope="module", autouse=True)
+def due_ledger(client: Any) -> Iterator[DueLedger]:
+    """Remove the due obligations this file's namespaces create, then prove the shards as found."""
+    ledger = DueLedger(client, PROBE)
+    yield ledger
+    ledger.restore()
+    ledger.assert_as_found()
+
+
 @pytest.fixture
-def world(client: Any) -> Iterator[_World]:
+def world(client: Any, due_ledger: DueLedger) -> Iterator[_World]:
     """Yield a fresh namespace on the probe table, with the probe mode item set to GRAPH."""
     token = uuid.uuid4().hex
+    unit = canonical_authority_digest(["p3-unit", token])
+    due_ledger.claim(unit)
     client.put_item(
         TableName=PROBE,
         Item={
@@ -220,7 +234,7 @@ def world(client: Any) -> Iterator[_World]:
     yield _World(
         client,
         _Hooked(client),
-        canonical_authority_digest(["p3-unit", token]),
+        unit,
         canonical_authority_digest(["p3-fingerprint", token]),
     )
 

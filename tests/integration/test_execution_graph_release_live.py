@@ -4,7 +4,9 @@
 Every graph write goes to `adlytics-<env>-execution-graph-probe` through the probe role. Each
 test works in its own fresh namespace: a random fingerprint, conflict unit and co-release
 domain (`ReleaseContext.domain_override`), so no run ever shares a release-order head, lineage
-or block with another run or with the live table. Fictional data only.
+or block with another run or with the live table. At teardown the file deletes the due
+obligations its namespaces created and asserts the probe due shards are left as found
+(probe_due.py). Fictional data only.
 
 The legacy-head tests also read, never write, the raw zone and the coordinator table under the
 operator profile, for the window of one retrieval whose legacy plan COMPLETED. `make
@@ -17,6 +19,7 @@ from __future__ import annotations
 
 import os
 import uuid
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -24,6 +27,7 @@ from typing import Any
 import boto3
 import pytest
 from botocore.exceptions import ClientError
+from probe_due import DueLedger
 
 from adapters.jobs.execution_graph.release import (
     ReleaseContext,
@@ -103,6 +107,20 @@ def client() -> Any:
     return dynamodb
 
 
+_LEDGER: list[DueLedger] = []
+
+
+@pytest.fixture(scope="module", autouse=True)
+def due_ledger(client: Any) -> Iterator[DueLedger]:
+    """Remove the due obligations this file's namespaces create, then prove the shards as found."""
+    ledger = DueLedger(client, PROBE)
+    _LEDGER.append(ledger)
+    yield ledger
+    _LEDGER.remove(ledger)
+    ledger.restore()
+    ledger.assert_as_found()
+
+
 @dataclass(frozen=True, slots=True)
 class Namespace:
     """One test's fresh identities."""
@@ -114,11 +132,14 @@ class Namespace:
 
 def _namespace() -> Namespace:
     token = uuid.uuid4().hex
-    return Namespace(
+    ns = Namespace(
         unit=canonical_authority_digest(["p4-unit", token]),
         domain=canonical_authority_digest(["p4-domain", token]),
         window=f"integration-probe/p4/{token}/",
     )
+    for ledger in _LEDGER:
+        ledger.claim(ns.unit, ns.domain)
+    return ns
 
 
 def _context(client: Any, ns: Namespace, legacy: Any = None) -> ReleaseContext:
