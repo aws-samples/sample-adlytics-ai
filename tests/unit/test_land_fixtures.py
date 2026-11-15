@@ -681,7 +681,7 @@ _COHORTS = "generated/amc-acquisition-cohorts.csv"
 
 
 @pytest.mark.covers("ADR-100", "ADR-104")
-def test_the_cohort_corpora_plan_every_whole_vintage_the_span_holds_less_the_refused_one() -> None:
+def test_the_cohort_corpora_plan_the_three_shaped_vintages_at_the_span_end_less_refused() -> None:
     """Packs 14-15 plan one delivery per delivered 13-month vintage, from the catalog alone.
 
     The corpus delivers the three shaped vintages (refused, degraded, quarterly; cohorts.py), the

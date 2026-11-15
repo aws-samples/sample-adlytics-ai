@@ -825,7 +825,7 @@ def test_b_publishes_while_a_is_active_and_a_final_transaction_elects_b() -> Non
 
 
 _GUARD_MS = 18_666
-"""The measured guard (FreshElectionTimingV1, 2026-10-15), pinned so a contract change is seen."""
+"""The measured guard (FreshElectionTimingV1, 2026-11-14), pinned so a contract change is seen."""
 
 
 _STAGE_RESERVE_MS = 35_000
