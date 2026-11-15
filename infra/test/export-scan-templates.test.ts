@@ -82,6 +82,7 @@ describe('secretSuppressions (A-ENTROPY-IDENTIFIER-001, A-PROTOCOL-CONSTANT-001)
             Variables: {
               TOPIC: { Ref: id },
               SpecDigest: 'a1'.repeat(32),
+              ADL_DEMAND_FORECAST_LOCK_DIGEST: 'c3'.repeat(32),
               ADL_GATEWAY_TOKEN_AUDIENCE: 'adlytics-dev-gateway',
               // pragma: allowlist nextline secret (A-TEST-LITERALS-001)
               API_KEY: 'FictionalCredentialValueForThisTestOnly',
@@ -118,6 +119,8 @@ describe('secretSuppressions (A-ENTROPY-IDENTIFIER-001, A-PROTOCOL-CONSTANT-001)
     expect(rulesAt('"LogGroupName": "/aws/lambda/adlytics-dev-ExecutionGraphStuckFlowDetector"'))
       .toStrictEqual(['SECRET-BASE64-HIGH-ENTROPY-STRING']);
     expect(rulesAt(`"SpecDigest": "${'a1'.repeat(32)}",`)).toStrictEqual(['SECRET-HEX-HIGH-ENTROPY-STRING']);
+    expect(rulesAt(`"ADL_DEMAND_FORECAST_LOCK_DIGEST": "${'c3'.repeat(32)}",`))
+      .toStrictEqual(['SECRET-HEX-HIGH-ENTROPY-STRING']);
     expect(rulesAt('"ADL_GATEWAY_TOKEN_AUDIENCE": "adlytics-dev-gateway",')).toStrictEqual(['CKV_SECRET_6']);
     // pragma: allowlist nextline secret (A-TEST-LITERALS-001)
     expect(rulesAt('"ClientSecretSource": "EXTERNAL",')).toStrictEqual(['SECRET-SECRET-KEYWORD']);

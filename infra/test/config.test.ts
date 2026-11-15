@@ -455,6 +455,7 @@ describe('what this repository ships', () => {
           `s3://jumpstart-cache-prod-${region}/pytorch-forecasting/pytorch-forecasting-chronos-2/artifacts/inference-prepack/v1.2.0/`,
         );
         expect(forecast.modelArtifactDigest).toBe(
+          // pragma: allowlist nextline secret (A-ENTROPY-IDENTIFIER-001)
           '07e105dbb16a7a6247b9ea9f5b6043b49959406cf28176a25c59076fdd50c939',
         );
       });
