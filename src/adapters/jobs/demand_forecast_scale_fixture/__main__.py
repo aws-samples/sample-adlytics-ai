@@ -13,9 +13,8 @@ from `fixture_generation.scale`, so nothing here is a customer value. Prints the
 shard count and the execution ARN's name only.
 
 `--source catalogue` stages the synthetic catalogue's 104-week Vendor history instead
-(`fixture_generation.forecast_history`), in the same format, under a `staged-catalogue-` run ID:
-the STAGED input for slice 1's acceptance 3 to 6 (slices.md amendment, 2026-11-11), because the
-generated Vendor fixtures start at `fixture_span.first_day`.
+(`fixture_generation.forecast_history`), in the same format, under a `staged-catalogue-` run ID.
+It is a dev rehearsal input only; slice 1's acceptance reads the landed lake path, not this one.
 """
 
 # pyright: reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false

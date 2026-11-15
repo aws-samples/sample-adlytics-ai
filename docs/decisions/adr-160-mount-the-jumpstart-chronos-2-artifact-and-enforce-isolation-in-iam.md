@@ -61,13 +61,13 @@ and give the same forecast for the same input and policy whatever order rows arr
 
 ## Evidence
 
-Dev, synthetic data, 2026-11-11: the network-isolated self-check loaded the weights on the approved
-lock (Python 3.14.10, `chronos-forecasting` 2.3.2, `torch` 2.14.1+cpu), ran as uid 10001, gave
-finite, ordered forecasts with unknown context weeks, two identical passes, and a mounted-copy
-digest equal to the operator command's. No fallback image was needed. A 2,000-ASIN shard (staged
-scale fixture, Chronos-2 and backtest) took 450 s, 479 s and 454 s from `CreateProcessingJob` to
-job end, with a peak RSS of at most 2.57 GiB, inside the 1,800 s bound, so `shard_max_asins` stays 2,000 (P-18;
-[validation results](../../validation/RESULTS.md#demand-forecast-slice-1-engine-and-weekly-input-on-dev--2026-11-11)).
+Dev, synthetic data, 2026-11-15, on 104 landed weeks: the network-isolated self-check loaded the
+weights on the approved lock (Python 3.14.10, `chronos-forecasting` 2.3.2, `torch` 2.14.1+cpu),
+ran as uid 10001, gave finite, ordered forecasts with unknown context weeks, two identical passes,
+and a mounted-copy digest equal to the committed per-Region pin. No fallback image was needed. A
+2,000-ASIN shard (scale fixture, Chronos-2 and backtest) took 471.5 s from `CreateProcessingJob`
+to job end, with a peak RSS of 2.55 GiB, inside the 1,800 s bound, so `shard_max_asins` stays 2,000 (P-18;
+[validation results](../../validation/RESULTS.md#demand-forecast-slice-1-acceptance-on-landed-history-on-dev--2026-11-15)).
 
 ## Alternatives
 
