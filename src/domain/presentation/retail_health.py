@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT-0
 # ruff: noqa: D101, PLR2004, S101, E731
 # pyright: reportArgumentType=false, reportCallIssue=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportUnknownVariableType=false, reportUnnecessaryCast=false
-"""Closed Retail Health artifact (V2) and exact capability-free payload codec."""
+"""Closed Retail Health artifact (V3) and exact capability-free payload codec."""
 
 from __future__ import annotations
 
@@ -55,7 +55,7 @@ from domain.shared_kernel.provenance import MeasurementBasis
 from domain.shared_kernel.values import DateRange, Grain
 
 RETAIL_HEALTH_ARTIFACT_TYPE = "RetailHealthArtifact"
-RETAIL_HEALTH_ARTIFACT_VERSION = 2
+RETAIL_HEALTH_ARTIFACT_VERSION = 3
 RETAIL_HEALTH_MAX_ROWS = 50
 RETAIL_HEALTH_TOTAL_GRAIN = Grain(("period", "marketplace"))
 RETAIL_HEALTH_ROW_GRAIN = Grain(("period", "product", "marketplace"))
@@ -576,13 +576,61 @@ def _units_payload(units: Units) -> dict[str, str | None]:
 
 
 def _point_payload(value: RetailMetricValue) -> dict[str, object]:
-    """Encode a plotted trend point or spark entry: the five fields, never a display value."""
+    """Encode one value's five fields, never a display value (product detail's plotted points)."""
     return {
         "basis": value.basis.value,
         "grain": list(value.grain.dimensions),
         "period": _period_payload(value.period),
         "units": _units_payload(value.units),
         "value": _payload_number(value.value),
+    }
+
+
+def _series_payload(values: tuple[RetailMetricValue, ...], label: str) -> dict[str, object]:
+    """Encode one daily series with its basis, grain, units and span once, then its values.
+
+    Value `i` is the figure for the span's start plus `i` days, so the series must be one
+    point per consecutive day under one basis, grain and units; anything else is refused
+    rather than encoded lossily (render format 13).
+    """
+    if not values:
+        raise ValueError(f"{label} has no points.")
+    first = values[0]
+    for offset, value in enumerate(values):
+        day = first.period.start + timedelta(days=offset)
+        if (value.period, value.basis, value.grain, value.units) != (
+            DateRange(day, day),
+            first.basis,
+            first.grain,
+            first.units,
+        ):
+            raise ValueError(f"{label} is not one point per consecutive day in one unit.")
+    return {
+        "basis": first.basis.value,
+        "grain": list(first.grain.dimensions),
+        "period": _period_payload(DateRange(first.period.start, values[-1].period.end)),
+        "units": _units_payload(first.units),
+        "values": [_payload_number(value.value) for value in values],
+    }
+
+
+def _trend_payload(trend: tuple[RetailTrendPoint, ...]) -> dict[str, list[dict[str, object]]]:
+    """Encode the trend as one current and one prior series per trend metric."""
+    if any(
+        value.period != DateRange(point.day, point.day)
+        for point in trend
+        for value in point.current
+    ):
+        raise ValueError("Retail Health trend point dates its current values elsewhere.")
+    metrics = range(len(trend[0].current)) if trend else range(0)
+    return {
+        role: [
+            _series_payload(
+                tuple(getattr(point, role)[index] for point in trend), f"retail trend {role}"
+            )
+            for index in metrics
+        ]
+        for role in ("current", "prior")
     }
 
 
@@ -619,23 +667,16 @@ def retail_health_artifact_payload(artifact: RetailHealthArtifact) -> dict[str, 
             {"metric": value.metric, "reason": value.reason} for value in artifact.absences
         ],
         "insights": insight_slots_payload(artifact.insights),
-        "trend": [
-            {
-                "date": point.day.isoformat(),
-                "current": [_point_payload(value) for value in point.current],
-                "prior": [_point_payload(value) for value in point.prior],
-            }
-            for point in artifact.trend
-        ],
+        "trend": _trend_payload(artifact.trend),
         "rows": [
             {
                 "child_asin": row.child_asin,
                 "parent_asin": row.parent_asin,
                 "title": row.title,
                 "comparisons": [_comparison_payload(value) for value in row.comparisons],
-                "shipped_revenue_spark": [
-                    _point_payload(value) for value in row.shipped_revenue_spark
-                ],
+                "shipped_revenue_spark": _series_payload(
+                    row.shipped_revenue_spark, "retail row spark"
+                ),
                 "freshness_qualifiers": list(row.freshness_qualifiers),
                 **(
                     {}
@@ -761,24 +802,78 @@ def _grain(value: object, label: str) -> Grain:
 _VALUE_FIELDS = frozenset({"basis", "grain", "period", "units", "value"})
 
 
-def _metric_value(item: dict[str, object], label: str, *, signed: bool) -> RetailMetricValue:
+def _basis(value: object, label: str) -> MeasurementBasis:
     try:
-        basis = MeasurementBasis(_text(item["basis"], f"{label} basis"))
+        return MeasurementBasis(_text(value, f"{label} basis"))
     except ValueError:
         raise ValueError(f"{label} basis is unsupported.") from None
+
+
+def _metric_value(item: dict[str, object], label: str, *, signed: bool) -> RetailMetricValue:
     return RetailMetricValue(
         _numeric(item["value"], f"{label} value", signed=signed),
         _units(item["units"], f"{label} units"),
         _period(item["period"], f"{label} period"),
         _grain(item["grain"], f"{label} grain"),
-        basis,
+        _basis(item["basis"], label),
         signed=signed,
     )
 
 
 def _point_value(value: object, label: str) -> RetailMetricValue:
-    """Decode a trend point or spark entry: exactly the five fields."""
+    """Decode one value's exact five fields (product detail's plotted points)."""
     return _metric_value(_object(value, set(_VALUE_FIELDS), label), label, signed=False)
+
+
+_SERIES_FIELDS = frozenset({"basis", "grain", "period", "units", "values"})
+
+
+def _series_values(value: object, label: str) -> tuple[RetailMetricValue, ...]:
+    """Decode one daily series: exactly one value per day of its span (render format 13)."""
+    item = _object(value, set(_SERIES_FIELDS), label)
+    span = _period(item["period"], f"{label} period")
+    values = _items(item["values"], f"{label} values")
+    if len(values) != span.days:
+        raise ValueError(f"{label} must carry one value per day of its span.")
+    units = _units(item["units"], f"{label} units")
+    grain = _grain(item["grain"], f"{label} grain")
+    basis = _basis(item["basis"], label)
+    return tuple(
+        RetailMetricValue(
+            _numeric(entry, f"{label} value"),
+            units,
+            DateRange(span.start + timedelta(days=offset), span.start + timedelta(days=offset)),
+            grain,
+            basis,
+        )
+        for offset, entry in enumerate(values)
+    )
+
+
+def _trend(value: object) -> tuple[RetailTrendPoint, ...]:
+    """Decode the per-metric current and prior series back into one point per day."""
+    item = _object(value, {"current", "prior"}, "retail trend")
+    current = [
+        _series_values(entry, "retail trend current")
+        for entry in _items(item["current"], "retail trend current")
+    ]
+    prior = [
+        _series_values(entry, "retail trend prior")
+        for entry in _items(item["prior"], "retail trend prior")
+    ]
+    if len(current) != len(prior) or len({series[0].period for series in current}) > 1:
+        raise ValueError("retail trend series do not share one span.")
+    if len({len(series) for series in (*current, *prior)}) > 1:
+        raise ValueError("retail trend series differ in length.")
+    days = len(current[0]) if current else 0
+    return tuple(
+        RetailTrendPoint(
+            current[0][offset].period.start,
+            tuple(series[offset] for series in current),
+            tuple(series[offset] for series in prior),
+        )
+        for offset in range(days)
+    )
 
 
 def _comparison_value(value: object, label: str, *, signed: bool = False) -> RetailMetricValue:
@@ -849,38 +944,60 @@ def _comparison(value: object, label: str) -> RetailComparison:
     )
 
 
+_ARTIFACT_FIELDS = frozenset(
+    {
+        EVIDENCE_STATUS_KEY,
+        RETURN_REASONS_KEY,
+        AMC_RETAIL_PURCHASES_KEY,
+        "kind",
+        "outcome",
+        "period",
+        "prior_period",
+        "distributor_view",
+        "totals",
+        "absences",
+        "insights",
+        "trend",
+        "rows",
+        "total_count",
+        "truncation",
+        "reconciliation",
+        "boundary",
+    }
+)
+
+
+def retail_health_artifact_superseded(value: object) -> bool:
+    """Whether a decoded body is a Retail Health artifact baked before render format 13.
+
+    Such a body has every current field but a list of per-day trend points, and is never
+    decoded: a deploy that bumps the format leaves the retained body in place until the page's
+    next bake, and until then the preset is its not-yet-published absence. Any other shape is
+    not superseded; it stays malformed.
+    """
+    if not isinstance(value, dict):
+        return False
+    item = cast("dict[str, object]", value)
+    return (
+        frozenset(item) == _ARTIFACT_FIELDS
+        and item.get("kind") == "retail_health"
+        and isinstance(item.get("trend"), list)
+    )
+
+
 def retail_health_artifact_from_payload(value: object) -> RetailHealthArtifact:
-    """Strictly decode and re-attest a Retail Health V2 payload.
+    """Strictly decode and re-attest a Retail Health V3 payload.
 
     Every body carries `evidence_status`, null on an empty or insufficient body, and a change
     key on every comparison. The retained reads of format-4 comparisons without a change key
     and format-5 bodies without the coverage key retired in the integration change, and so did
     the read of a format-7 body (the eleven-tile roster, no fixed statuses, no product detail):
     the API, a full re-bake and the browser deploy together (owner revision, 2026-10-08).
+    From render format 13 the trend and each row's spark are daily series that carry their
+    basis, grain, units and span once; a format-12 body is refused here, and the serve path
+    reads it as unpublished (`retail_health_artifact_superseded`), never through this decoder.
     """
-    item = _object(
-        value,
-        {
-            EVIDENCE_STATUS_KEY,
-            RETURN_REASONS_KEY,
-            AMC_RETAIL_PURCHASES_KEY,
-            "kind",
-            "outcome",
-            "period",
-            "prior_period",
-            "distributor_view",
-            "totals",
-            "absences",
-            "insights",
-            "trend",
-            "rows",
-            "total_count",
-            "truncation",
-            "reconciliation",
-            "boundary",
-        },
-        "retail health artifact",
-    )
+    item = _object(value, set(_ARTIFACT_FIELDS), "retail health artifact")
     # Every displayed comparison value carries the key or none does; a mix is a writer bug.
     display_value_mode(_comparison_metric_values(item))
     try:
@@ -903,29 +1020,7 @@ def retail_health_artifact_from_payload(value: object) -> RetailHealthArtifact:
         )
         for raw in _items(item["absences"], "retail absences")
     )
-    trend = tuple(
-        RetailTrendPoint(
-            _date(
-                _object(raw, {"date", "current", "prior"}, "retail trend point")["date"],
-                "retail trend date",
-            ),
-            tuple(
-                _point_value(entry, "retail trend current")
-                for entry in _items(
-                    _object(raw, {"date", "current", "prior"}, "retail trend point")["current"],
-                    "retail trend current",
-                )
-            ),
-            tuple(
-                _point_value(entry, "retail trend prior")
-                for entry in _items(
-                    _object(raw, {"date", "current", "prior"}, "retail trend point")["prior"],
-                    "retail trend prior",
-                )
-            ),
-        )
-        for raw in _items(item["trend"], "retail trend")
-    )
+    trend = _trend(item["trend"])
     rows = tuple(_row(raw) for raw in _items(item["rows"], "retail rows"))
     check_retail_fixed_statuses(item, "retail health artifact")
     reconciliation_value = item["reconciliation"]
@@ -1011,10 +1106,7 @@ def _row(value: object) -> RetailProductRow:
             _comparison(entry, "retail row comparison")
             for entry in _items(row["comparisons"], "retail row comparisons")
         ),
-        tuple(
-            _point_value(entry, "retail row spark")
-            for entry in _items(row["shipped_revenue_spark"], "retail row spark")
-        ),
+        _series_values(row["shipped_revenue_spark"], "retail row spark"),
         tuple(
             _text(entry, "retail row freshness")
             for entry in _items(row["freshness_qualifiers"], "retail row freshness")

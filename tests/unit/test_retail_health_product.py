@@ -7,7 +7,7 @@ import json
 import pathlib
 import re
 from dataclasses import dataclass, field, replace
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any, cast
 
@@ -1043,6 +1043,105 @@ def test_a_publication_baked_before_render_format_12_is_the_tabs_window_absence_
     assert pages.artifact_records == []
     # Paired: the same publication serves Retail health as before.
     assert _serve_parent(presentation_module, pages, publication)["kind"] == "page"
+
+
+def _format_12_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Return the figures as render format 12 baked them: each plotted value a full point."""
+
+    def points(series: dict[str, Any]) -> list[dict[str, Any]]:
+        start = date.fromisoformat(series["period"]["start"])
+        return [
+            {
+                "basis": series["basis"],
+                "grain": series["grain"],
+                "period": {"start": day, "end": day},
+                "units": series["units"],
+                "value": value,
+            }
+            for day, value in (
+                ((start + timedelta(days=offset)).isoformat(), value)
+                for offset, value in enumerate(series["values"])
+            )
+        ]
+
+    current = [points(series) for series in payload["trend"]["current"]]
+    prior = [points(series) for series in payload["trend"]["prior"]]
+    return {
+        **payload,
+        "trend": [
+            {
+                "date": current[0][offset]["period"]["start"],
+                "current": [series[offset] for series in current],
+                "prior": [series[offset] for series in prior],
+            }
+            for offset in range(len(current[0]))
+        ],
+        "rows": [
+            {**row, "shipped_revenue_spark": points(row["shipped_revenue_spark"])}
+            for row in payload["rows"]
+        ],
+    }
+
+
+@pytest.mark.covers("ADR-125", "ADR-070")
+def test_a_body_baked_before_render_format_13_is_every_retail_reads_absence_never_a_500(
+    presentation_module: _PresentationModule,  # noqa: F811
+) -> None:
+    """After the deploy, the serve path reads the retained format-12 body until the re-bake.
+
+    Retail health, Products and ads and Overview (the same route) serve the preset's designed
+    window absence; a tile focus or deep dive over it is the domain refusal. Any other drift
+    stays the malformed-artifact refusal (ADLY-PAGE_CONTEXT-0004).
+    """
+    current = _publication()
+
+    def retained(payload: dict[str, Any]) -> _Publication:
+        body = replace(current.body, payload_json=canonical_preset_artifact_json(payload))
+        return replace(
+            current, body=body, pointer=replace(current.pointer, body_digest=body.digest)
+        )
+
+    def serve(publication: _Publication, event: dict[str, Any]) -> dict[str, Any]:
+        return presentation_module.handle(
+            event, _runtime(presentation_module, _ProductPages(tokens=_TOKENS), publication)
+        )
+
+    # Paired positive control: the format-13 body serves its page.
+    assert _serve_parent(presentation_module, _ProductPages(tokens=_TOKENS), current)["kind"] == (
+        "page"
+    )
+    earlier = _format_12_payload(json.loads(current.body.payload_json))
+    format_12 = retained(earlier)
+    for event in (_retail_health_event({"session_id": SESSION}), _products_and_ads_event()):
+        response = serve(format_12, event)
+        assert response["statusCode"] == 200
+        absent = _served(response)
+        assert (absent["kind"], absent["reason_code"]) == (
+            "window_unavailable",
+            "preset_unavailable",
+        )
+        preset = next(item for item in absent["temporal"]["presets"] if item["id"] == "7d")
+        assert (preset["availability"], preset["reason_code"]) == (
+            "unavailable",
+            "preset_unavailable",
+        )
+    focus = _event(
+        "/api/presentation/retail-metric-focus",
+        {"session_id": SESSION, "metric": "retail_revenue_shipped"},
+    )
+    deep = _event(
+        "/api/presentation/insight-deep-dive", {"session_id": SESSION, "slot_id": "demand-shape"}
+    )
+    for event in (focus, deep):
+        with pytest.raises(DomainError) as refused:
+            serve(format_12, event)
+        assert str(refused.value.code) == "ADLY-PRESENTATION-0002"
+        assert refused.value.description == "No retail results are published for this period."
+    # Another drift is not an earlier format: it stays the malformed-artifact refusal.
+    drifted = {key: value for key, value in earlier.items() if key != "boundary"}
+    with pytest.raises(InvariantError) as malformed:
+        serve(retained(drifted), _retail_health_event({"session_id": SESSION}))
+    assert str(malformed.value.code) == "ADLY-PAGE_CONTEXT-0004"
 
 
 @pytest.mark.covers("ADR-125", "ADR-151")

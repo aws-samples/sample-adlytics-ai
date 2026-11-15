@@ -251,7 +251,11 @@ __all__ = [
 #     ad credit and conversion, projected from its child, so Products and ads reads one object
 #     instead of one child per row. The body bytes are format 11's; a format-11 publication
 #     has no part, and Products and ads serves it as the preset's window absence.
-RETAIL_HEALTH_PRESET_RENDER_FORMAT = 12
+# 13 — the trend and each row's shipped-revenue spark are daily series that carry their basis,
+#     grain, units and span once, then one value per day (RetailHealthArtifact V3), so 50 rows
+#     at 14 days fit the body cap. Rows, figures and order are format 12's. A format-12 body
+#     is served as the preset's not-yet-published absence until the page's next bake.
+RETAIL_HEALTH_PRESET_RENDER_FORMAT = 13
 
 RETAIL_HEALTH_BOUNDARY = (
     "Retail actuals only. No campaign identifier, ROAS, or advertising "

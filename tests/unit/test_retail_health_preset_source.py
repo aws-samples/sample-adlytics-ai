@@ -30,6 +30,7 @@ from adapters.jobs.preset_artifact_publisher.baker import (
     RetailHealthPresetArtifactBaker,
 )
 from adapters.jobs.preset_artifact_publisher.insight_fill import PresetInsightFillChild
+from adapters.jobs.preset_artifact_publisher.isolated_refusals import capped_preset_artifact_json
 from adapters.jobs.preset_artifact_publisher.retail_source import (
     RETAIL_HEALTH_BOUNDARY,
     RETAIL_HEALTH_PRESET_RENDER_FORMAT,
@@ -105,6 +106,7 @@ from domain.presentation.retail_health import (
     RetailDistributorView,
     RetailHealthArtifact,
     RetailHealthOutcome,
+    RetailMetricValue,
     retail_health_artifact_from_payload,
     retail_health_artifact_payload,
     retail_health_coverage_facts,
@@ -721,6 +723,126 @@ def test_fewer_than_50_revenue_products_bake_every_product_zero_revenue_last_by_
         asin.removeprefix("amazon_asin:").upper() for asin in products if asin not in revenue
     )
     assert [row.child_asin for row in artifact.rows[-12:]] == zero
+
+
+def _rendered_window(days: int) -> RetailHealthArtifact:
+    """61 fictional products, so 50 rows of 61 show, over `days` days ending 2026-08-19."""
+    period = DateRange(PERIOD.end - timedelta(days=days - 1), PERIOD.end)
+    prior = DateRange(period.start - timedelta(days=days), period.start - timedelta(days=1))
+    products = _products(61)
+    artifact = (
+        _renderer(
+            RetailQueries(products, period),
+            FakeHierarchy(_hierarchy_result(products)),
+            FakeReported(
+                RetailReportedTotals(
+                    _expected_product_revenue(61),
+                    _expected_product_units(61),
+                    ("reported-total-publication-1",),
+                )
+            ),
+        )
+        .render_retail_health(RetailHealthRenderInput(period, prior))
+        .artifact
+    )
+    assert artifact is not None
+    return artifact
+
+
+def _value_figure(value: RetailMetricValue) -> tuple[object, ...]:
+    return (Decimal(str(value.value)), value.units, value.period, value.grain, value.basis)
+
+
+def _figures(artifact: RetailHealthArtifact) -> tuple[object, ...]:
+    """Every displayed and plotted figure with its units, period and grain, in served order."""
+
+    def comparison(item: RetailComparison) -> tuple[object, ...]:
+        return (item.metric, _value_figure(item.current), _value_figure(item.prior), item.change)
+
+    return (
+        tuple(comparison(item) for item in artifact.totals),
+        tuple(
+            (
+                point.day,
+                tuple(_value_figure(value) for value in point.current),
+                tuple(_value_figure(value) for value in point.prior),
+            )
+            for point in artifact.trend
+        ),
+        tuple(
+            (
+                row.child_asin,
+                row.parent_asin,
+                row.title,
+                tuple(comparison(item) for item in row.comparisons),
+                tuple(_value_figure(value) for value in row.shipped_revenue_spark),
+                row.freshness_qualifiers,
+            )
+            for row in artifact.rows
+        ),
+        artifact.total_count,
+        artifact.truncation,
+        artifact.reconciliation,
+        artifact.insights,
+    )
+
+
+@pytest.mark.covers("ADR-070", "ADR-143")
+def test_a_14_day_body_decodes_to_its_50_rendered_rows_and_figures_exactly() -> None:
+    """Render format 13 states units, period and grain once per series, and loses nothing."""
+    artifact = _rendered_window(14)
+    payload = retail_health_artifact_payload(artifact)
+    decoded = retail_health_artifact_from_payload(
+        json.loads(canonical_preset_artifact_json(payload))
+    )
+
+    assert _figures(decoded) == _figures(artifact)
+    assert retail_health_artifact_payload(decoded) == payload
+    assert (len(decoded.rows), decoded.total_count, decoded.truncation) == (50, 61, 50)
+    # Ordered by current shipped revenue (the fake's base x 10): FICT00061 first, the top 50.
+    assert [row.child_asin for row in decoded.rows] == [
+        f"FICT{index:05d}" for index in range(61, 11, -1)
+    ]
+    # Each spark is one USD value per product-day, the fake's per-day base, in day order.
+    for row in cast("list[dict[str, object]]", payload["rows"]):
+        base = str(int(cast("str", row["child_asin"]).removeprefix("FICT")))
+        assert row["shipped_revenue_spark"] == {
+            "basis": "retail_actual",
+            "grain": ["date", "product", "marketplace"],
+            "period": {"start": "2026-08-06", "end": "2026-08-19"},
+            "units": {"kind": "currency", "currency_code": "USD"},
+            "values": [base] * 14,
+        }
+    # The trend is one current and one prior series per trend metric, 14 daily values each.
+    trend = cast("dict[str, list[dict[str, object]]]", payload["trend"])
+    assert [series["units"] for series in trend["current"]] == [
+        {"kind": "currency", "currency_code": "USD"},
+        {"kind": "count", "currency_code": None},
+        {"kind": "count", "currency_code": None},
+        {"kind": "count", "currency_code": None},
+    ]
+    assert all(series["grain"] == ["date", "marketplace"] for series in trend["current"])
+    assert [series["period"] for series in trend["prior"]] == [
+        {"start": "2026-07-23", "end": "2026-08-05"}
+    ] * 4
+    # Currency values are canonical decimal text and counts integers, as every value is.
+    assert [series["values"] for series in trend["current"]] == [["2"] * 14] + [[2] * 14] * 3
+    assert [series["values"] for series in trend["prior"]] == [["1"] * 14] + [[1] * 14] * 3
+    assert decoded.trend[13].day == date(2026, 8, 19)
+    assert decoded.trend[13].prior[0].period == DateRange(date(2026, 8, 5), date(2026, 8, 5))
+
+
+@pytest.mark.covers("ADR-070", "ADR-143")
+@pytest.mark.parametrize(
+    ("days", "encoded"), [(1, 217_351), (7, 218_971), (14, 220_861)], ids=["1d", "7d", "14d"]
+)
+def test_a_50_row_body_publishes_under_the_cap_at_1d_7d_and_14d(days: int, encoded: int) -> None:
+    """Render format 12 put 50 rows at 7 days over the 256,000-byte cap (`body_over_cap`)."""
+    artifact = _rendered_window(days)
+    body = capped_preset_artifact_json(retail_health_artifact_payload(artifact))
+
+    assert (len(artifact.rows), artifact.truncation) == (50, 50)
+    assert len(body.encode()) == encoded < MAX_PRESET_ARTIFACT_BYTES == 256_000
 
 
 @pytest.mark.covers("ADR-143")
@@ -1668,23 +1790,17 @@ def _comparison_values(payload: dict[str, object]) -> list[dict[str, object]]:
     ]
 
 
-def _point_values(payload: dict[str, object]) -> list[dict[str, object]]:
-    points = [
-        value
-        for point in cast("list[dict[str, object]]", payload["trend"])
-        for side in ("current", "prior")
-        for value in cast("list[dict[str, object]]", point[side])
-    ]
+def _plotted_series(payload: dict[str, object]) -> list[dict[str, object]]:
+    trend = cast("dict[str, list[dict[str, object]]]", payload["trend"])
     spark = [
-        value
+        cast("dict[str, object]", row["shipped_revenue_spark"])
         for row in cast("list[dict[str, object]]", payload["rows"])
-        for value in cast("list[dict[str, object]]", row["shipped_revenue_spark"])
     ]
-    return points + spark
+    return trend["current"] + trend["prior"] + spark
 
 
 @pytest.mark.covers("ADR-084")
-def test_retail_comparisons_display_currency_at_two_places_and_points_stay_five_fields() -> None:
+def test_retail_comparisons_display_currency_at_two_places_and_series_carry_none() -> None:
     """Shipped revenue is USD in dollars at four places; units are counts with null."""
     payload = _complete_retail_payload()
 
@@ -1694,13 +1810,13 @@ def test_retail_comparisons_display_currency_at_two_places_and_points_stay_five_
             assert value["display_value"] == f"{Decimal(str(value['value'])):.2f}"
         else:
             assert value["display_value"] is None
-    points = _point_values(payload)
-    assert points
-    assert all(set(value) == {"basis", "grain", "period", "units", "value"} for value in points)
+    series = _plotted_series(payload)
+    assert series
+    assert all(set(value) == {"basis", "grain", "period", "units", "values"} for value in series)
 
 
 @pytest.mark.covers("ADR-084")
-def test_a_retained_pre_display_retail_body_decodes_and_keeps_five_field_points() -> None:
+def test_a_retained_pre_display_retail_body_decodes_and_keeps_its_plotted_series() -> None:
     payload = _complete_retail_payload()
     retained = cast("dict[str, object]", without_display_values(payload))
     assert all("display_value" not in value for value in _comparison_values(retained))
@@ -1709,8 +1825,8 @@ def test_a_retained_pre_display_retail_body_decodes_and_keeps_five_field_points(
 
     re_encoded = retail_health_artifact_payload(decoded)
     assert re_encoded == payload
-    assert all(len(value) == 5 for value in _point_values(retained))
-    assert all(len(value) == 5 for value in _point_values(re_encoded))
+    assert all(len(value) == 5 for value in _plotted_series(retained))
+    assert all(len(value) == 5 for value in _plotted_series(re_encoded))
 
 
 @pytest.mark.covers("ADR-084")
@@ -1733,7 +1849,7 @@ def test_the_retail_decoder_refuses_a_wrong_count_mixed_or_plotted_display_value
     mixed = json.loads(json.dumps(payload))
     del _comparison_values(mixed)[0]["display_value"]
     plotted = json.loads(json.dumps(payload))
-    _point_values(plotted)[0]["display_value"] = None
+    _plotted_series(plotted)[0]["display_value"] = None
 
     for body in (wrong, on_count):
         with pytest.raises(ValueError, match="display value is not canonical"):
@@ -1746,12 +1862,12 @@ def test_the_retail_decoder_refuses_a_wrong_count_mixed_or_plotted_display_value
 
 @pytest.mark.covers("ADR-084", "ADR-070")
 def test_retail_movers_are_baked_at_two_places_in_the_shipped_revenue_currency() -> None:
-    """Format 4 added display values and two-place movers; formats 5 to 12 keep them."""
+    """Format 4 added display values and two-place movers; formats 5 to 13 keep them."""
     artifact = _rendered(2).artifact
     assert artifact is not None
     movers = artifact.insights[3]
 
-    assert RETAIL_HEALTH_PRESET_RENDER_FORMAT == 12
+    assert RETAIL_HEALTH_PRESET_RENDER_FORMAT == 13
     assert movers.text is not None
     assert re.search(r"changed by -?[\d,]+\.\d{2} USD", movers.text)
 
@@ -1869,9 +1985,18 @@ class _RecordingPersistence:
         self.calls.append(request)
 
 
-def _bake_and_persist(products: int) -> tuple[_RecordingPersistence, int]:
-    """Render `products` real rows, bake, and persist only what the bake returned."""
-    source, _, _ = _source(compiler=cast("Compiler", RenderedCompiler(_rendered(products))))
+def _bake_and_persist(title_length: int) -> tuple[_RecordingPersistence, int]:
+    """Render 50 real rows titled `title_length` characters, bake, and persist what it returned."""
+    products = _products(RETAIL_HEALTH_MAX_ROWS)
+    titled = RetailProductHierarchyResult(
+        {
+            asin: dataclasses.replace(identity, title=identity.title.ljust(title_length, "x"))
+            for asin, identity in _hierarchy_result(products).by_asin.items()
+        },
+        ("dim-product-publication-1",),
+    )
+    rendered = _rendered_with(titled, RETAIL_HEALTH_MAX_ROWS)
+    source, _, _ = _source(compiler=cast("Compiler", RenderedCompiler(rendered)))
     persistence = _RecordingPersistence()
     result = RetailHealthPresetArtifactBaker(source).bake(BakeIntent("retail-health", "7d"))
     assert isinstance(result, BakePublication)
@@ -1881,24 +2006,25 @@ def _bake_and_persist(products: int) -> tuple[_RecordingPersistence, int]:
 
 @pytest.mark.covers("ADR-125")
 def test_an_over_cap_retail_parent_is_the_pages_body_over_cap_before_any_persistence_call() -> None:
-    """Paired: 45 products render under the cap and persist; 50 refuse the page (ADR-142 §3.4).
+    """Paired: 50 rows at 7 days persist; the same rows with 1,000-character titles refuse.
 
     The source checks the encoded parent before it builds the body, so an over-cap body is the
-    page's `body_over_cap` absence (alarmed) and never reaches persistence; D18 stays the
-    last-line invariant behind it.
+    page's `body_over_cap` absence (alarmed) and never reaches persistence (ADR-142 §3.4); D18
+    stays the last-line invariant behind it. Since render format 13, 50 rows fit at every
+    preset, so only text far longer than a catalog title still reaches the cap.
     """
-    written, observed = _bake_and_persist(45)
+    written, observed = _bake_and_persist(200)
     assert len(written.calls) == 1
-    assert observed == 254_046 <= MAX_PRESET_ARTIFACT_BYTES  # the audit's 45-product census
+    assert observed == 228_122 <= MAX_PRESET_ARTIFACT_BYTES  # 50 rows, 200-character titles
 
     with pytest.raises(IsolatedRefusal) as refused:
-        _bake_and_persist(RETAIL_HEALTH_MAX_ROWS)
+        _bake_and_persist(1_000)
     assert (refused.value.reason, refused.value.scope) == (
         IsolatedRefusalReason.BODY_OVER_CAP,
         RefusalScope.PAGE,
     )
     assert dict(refused.value.refusal_context) == {
-        "encoded_bytes": 279_577,  # 50 products
+        "encoded_bytes": 270_522,  # 50 rows, 1,000-character titles
         "max_bytes": MAX_PRESET_ARTIFACT_BYTES,
     }
     # The last line: an over-cap body built directly is still the typed D18 defect.

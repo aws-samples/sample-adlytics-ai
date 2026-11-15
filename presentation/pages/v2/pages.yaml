@@ -269,7 +269,7 @@ pages:
     artifacts:
       - id: retail_health
         type: RetailHealthArtifact
-        version: 2
+        version: 3
         outcomes: [complete, empty, insufficient]
       - id: retail_product_detail
         type: RetailProductDetail
