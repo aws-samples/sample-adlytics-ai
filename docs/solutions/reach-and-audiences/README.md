@@ -15,25 +15,25 @@ Every persona and view is listed in [who it is for](../../business-context.md#wh
 
 ## What you see
 
-The screenshots come from a development deployment with synthetic data, in the light theme, captured in October 2026. Campaigns and figures are fictional; audience segment names are synthetic or follow their providers' own naming. To regenerate them, see [capturing screenshots](../../../validation/README.md#regenerating-readme-screenshots).
+The screenshots come from a development deployment with synthetic data, in the light theme, captured in November 2026. Campaigns and figures are fictional; audience segment names are synthetic or follow their providers' own naming. To regenerate them, see [capturing screenshots](../../../validation/README.md#regenerating-readme-screenshots).
 
-![Reach and funnel page for September 2026 with week, month and quarter windows, the quarter reading Not available yet, an answer sentence saying Amazon DSP reached 438,444 shoppers the sponsored ads didn't, three overlap cards with their August 2026 values, one reading Not available, a proportion bar with each group's shopper count, a Show shopper counts disclosure, and the start of What they did next with its association-not-cause notice, with the assistant docked on the right](../../images/reach.png)
+![Reach and funnel page for October 2026 with week, month and quarter windows, the quarter reading Q3 2026, an answer sentence saying Amazon DSP reached 427,984 shoppers the sponsored ads didn't, three overlap cards with their September 2026 values, one reading Not available, a proportion bar with each group's shopper count, a Show shopper counts disclosure, and the start of What they did next with its association-not-cause notice, with the assistant docked on the right](../../images/reach.png)
 
-**Reach and funnel.** Amazon DSP reached 438,444 shoppers in September 2026 that the sponsored ads didn't, 30.46% of shoppers reached. A cell with too few shoppers reads "Not available" rather than a number AMC withheld. The quarter reads "Not available yet" because the synthetic data has no spend for 1–15 July. See [reach and funnel](../../ui/reach-and-funnel/README.md).
+**Reach and funnel.** Amazon DSP reached 427,984 shoppers in October 2026 that the sponsored ads didn't, 30.15% of shoppers reached. A cell with too few shoppers reads "Not available" rather than a number AMC withheld. See [reach and funnel](../../ui/reach-and-funnel/README.md).
 
-![Audiences page for September 2026: an answer sentence saying shoppers in a synthetic in-market running-shoes segment are 35.0% of buyers but 20.0% of shoppers reached, 1.75× as common among buyers, profile and buyer selectors, and an in-market table comparing each segment's share of buyers with its share of reached shoppers and an index, a note that some breakdowns had too few shoppers to show, with the assistant docked on the right](../../images/audiences.png)
+![Audiences page for October 2026: an answer sentence saying shoppers in a synthetic in-market running-shoes segment are 35.0% of buyers but 20.0% of shoppers reached, 1.75× as common among buyers, profile and buyer selectors, and an in-market table comparing each segment's share of buyers with its share of reached shoppers and an index, a note that some breakdowns had too few shoppers to show, with the assistant docked on the right](../../images/audiences.png)
 
 **Audiences.** Shoppers in one synthetic in-market segment are 35.0% of buyers but 20.0% of shoppers reached, so they are 1.75× as common among buyers. That is a candidate audience to build in your own tools; Adlytics doesn't create or activate audiences. See [audiences](../../ui/audiences/README.md).
 
 ### Close-ups
 
-![When more ads stop paying: the line Sales per ad dollar, all Amazon ads: 11.25× at 1 ad, 2.13× at 10 or more, a one-line association-not-cause notice with a Why this is association, not cause disclosure, the share who bought by number of ads seen from 1 ad to 10 or more drawn as bars from 0%, the return at each step under the bars, a Show values disclosure, and a per-channel return list reading Not available per channel](../../images/reach-frequency.png)
+![When more ads stop paying: the line Sales per ad dollar, all Amazon ads: 11.26× at 1 ad, 2.13× at 10 or more, a one-line association-not-cause notice with a Why this is association, not cause disclosure, the share who bought by number of ads seen from 1 ad to 10 or more drawn as bars from 0%, the return at each step under the bars, a Show values disclosure, and a per-channel return list reading Not available per channel](../../images/reach-frequency.png)
 
-**Frequency.** The share who bought rises from 2.00% at 1 ad to 5.30% at 10 or more, while sales per ad dollar fall from 11.25× to 2.13×, which helps a media buyer set a frequency cap. The notice says this shows association, not cause. Return per channel reads "Not available per channel", because one purchase can follow ads on several channels.
+**Frequency.** The share who bought rises from 2.00% at 1 ad to 5.30% at 10 or more, while sales per ad dollar fall from 11.26× to 2.13×, which helps a media buyer set a frequency cap. The notice says this shows association, not cause. Return per channel reads "Not available per channel", because one purchase can follow ads on several channels.
 
 ![The Where this campaign's sales came from disclosure opened to the DSP campaigns by segment card: a campaign selector with one synthetic DSP campaign chosen, and impressions, CPM and ROAS per segment for that campaign](../../images/audiences-campaigns.png)
 
-**DSP campaigns by segment.** For one DSP campaign, impressions, CPM and return per segment, with its provider where it has one. The synthetic data is flat here: CPM is 87.59 USD on every segment and return is 4.67× to 4.68×.
+**DSP campaigns by segment.** For one DSP campaign, impressions, CPM and return per segment, with its provider where it has one. The synthetic data is flat here: CPM is 85.25 USD on every segment and return is 4.80× to 4.81×.
 
 ## What it answers, and what it won't
 

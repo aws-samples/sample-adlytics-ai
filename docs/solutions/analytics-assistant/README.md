@@ -16,7 +16,7 @@ Personas and every view's reader are in [who it is for](../../business-context.m
 
 ## What you see
 
-These images come from a development deployment with synthetic data, in the light theme, captured in October 2026. They replay a scripted answer, not a recorded conversation, so their campaign names don't appear in the other solutions' images. To regenerate them, see [`validation/capture_screenshots.mjs`](../../../validation/README.md#regenerating-readme-screenshots).
+These images come from a development deployment with synthetic data, in the light theme; the chat images were captured in November 2026 and the Prompt administration images in October 2026. They replay a scripted answer, not a recorded conversation, so their campaign names don't appear in the other solutions' images. To regenerate them, see [`validation/capture_screenshots.mjs`](../../../validation/README.md#regenerating-readme-screenshots).
 
 | ![Assistant panel on the Campaigns page mid-answer: two bullets about campaigns that moved ROAS, a collapsed How this was answered, and a progress list with completed tool calls and one in progress](../../images/chat-streamed-answer.png) | ![A finished assistant answer with three bullets and a note on ad-attributed purchases, How this was answered opened to three numbered steps, each a plain description with its governed tool name, and a Copy reference button](../../images/chat-answer-trace.png) | ![Assistant panel with the finished answer, its collapsed How this was answered and Copy reference, then a declined question with the refusal message and its own Copy reference](../../images/chat-refusal.png) |
 |---|---|---|
