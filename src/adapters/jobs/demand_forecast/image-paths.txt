@@ -18,6 +18,7 @@ src/adapters/jobs/demand_forecast/job_log.py
 src/adapters/jobs/demand_forecast/job_log_schema.json
 src/adapters/jobs/demand_forecast/json_output.py
 src/adapters/jobs/demand_forecast/parquet_input.py
+src/adapters/jobs/demand_forecast/process_privileges.py
 src/adapters/jobs/demand_forecast/requirements.lock
 src/adapters/jobs/demand_forecast/self_check.py
 src/adapters/outbound/__init__.py

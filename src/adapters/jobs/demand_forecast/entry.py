@@ -36,6 +36,7 @@ from adapters.jobs.demand_forecast.chronos2_model import Chronos2ForecastModel
 from adapters.jobs.demand_forecast.job_log import JobLog, structured_error
 from adapters.jobs.demand_forecast.json_output import JsonCandidateOutput
 from adapters.jobs.demand_forecast.parquet_input import ParquetForecastInput
+from adapters.jobs.demand_forecast.process_privileges import privilege_fields
 from adapters.jobs.demand_forecast.self_check import SelfCheckRequest, run_self_check
 from adapters.outbound.demand_forecast_policy import LoadedPolicy, load_policy
 from domain.forecasting.artifact_roster import roster_digest
@@ -178,6 +179,7 @@ def run_forecast_mode(request: ForecastModeRequest, log: JobLog) -> RunReportV1:
         "INFO",
         "forecast.start",
         uid=os.getuid(),
+        **privilege_fields(),
         model_id=CHRONOS2_MODEL_ID,
         shard=request.shard,
         attempt_id=request.attempt_id,

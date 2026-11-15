@@ -32,6 +32,7 @@ from typing import Any
 from adapters.jobs.demand_forecast.artifact_digest import local_roster_entries
 from adapters.jobs.demand_forecast.chronos2_model import Chronos2ForecastModel
 from adapters.jobs.demand_forecast.job_log import JobLog
+from adapters.jobs.demand_forecast.process_privileges import privilege_fields
 from domain.forecasting.artifact_roster import roster_digest
 from domain.forecasting.checks import check_forecast_shape, first_unordered_week
 from domain.forecasting.models import (
@@ -184,7 +185,13 @@ def run_self_check(
     load: Callable[[Path, int], ForecastModelPort] = Chronos2ForecastModel,
 ) -> SelfCheckReport:
     """Run the self-check and write `self-check.json`, pass or fail."""
-    log.write("INFO", "self_check.start", uid=os.getuid(), model_id=CHRONOS2_MODEL_ID)
+    log.write(
+        "INFO",
+        "self_check.start",
+        uid=os.getuid(),
+        model_id=CHRONOS2_MODEL_ID,
+        **privilege_fields(),
+    )
     entries = local_roster_entries(request.model_dir)
     digest = roster_digest(entries)
     log.write("INFO", "self_check.artifact", artifact_digest=digest, artifact_files=len(entries))
