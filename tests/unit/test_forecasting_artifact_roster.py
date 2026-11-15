@@ -24,6 +24,7 @@ def test_the_digest_ignores_listing_order() -> None:
 def test_the_digest_is_sha256_of_the_compact_sorted_json_roster() -> None:
     """Pinned: the operator command and the job must agree byte for byte on this form."""
     assert roster_digest([A, B]) == (
+        # pragma: allowlist nextline secret (A-ENTROPY-IDENTIFIER-001)
         "5a743d970dc599b7bc26e166be897812219eaaf4d53cc787f4c160798b410c2e"
     )
 

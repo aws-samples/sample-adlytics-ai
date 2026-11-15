@@ -69,6 +69,15 @@ global_settings:
     - path: tests/unit/golden/staged_value_text.json
       rule_id: SECRET-HEX-HIGH-ENTROPY-STRING
       reason: "A-ENTROPY-IDENTIFIER-001: base renderer git blob id, bound by test_ash_secret_suppression_scope"
+    # A-ENTROPY-IDENTIFIER-001: the demand-forecast boundary schema digests, which
+    # make generate-forecast-schemas writes, and the reviewed JumpStart artifact roster digest per
+    # Region (ADR-160). JSON cannot carry a marker.
+    - path: contracts/generated/demand-forecast-boundaries.json
+      rule_id: SECRET-HEX-HIGH-ENTROPY-STRING
+      reason: "A-ENTROPY-IDENTIFIER-001: generated boundary schema digests, bound by test_ash_secret_suppression_scope"
+    - path: contracts/forecasting/model-artifacts.json
+      rule_id: SECRET-HEX-HIGH-ENTROPY-STRING
+      reason: "A-ENTROPY-IDENTIFIER-001: reviewed artifact roster digests, bound by test_ash_secret_suppression_scope"
     # O-ASH-BANDIT-NOSEC-001: bandit tests outside the publication gate's reviewed nosec set
     # (scripts/check-publication-boundary.py REVIEWED_BANDIT_IDS), scoped to the one file each.
     - path: scripts/lambda_layer_packaging.py

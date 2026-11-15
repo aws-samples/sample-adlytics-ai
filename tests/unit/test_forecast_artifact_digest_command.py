@@ -16,6 +16,7 @@ from adapters.jobs.demand_forecast_artifact_digest.__main__ import (
 )
 
 pytestmark = pytest.mark.unit
+# pragma: allowlist nextline secret (A-ENTROPY-IDENTIFIER-001)
 REVIEWED = "07e105dbb16a7a6247b9ea9f5b6043b49959406cf28176a25c59076fdd50c939"
 PIN = PinnedArtifact("s3://b/p/", "a" * 64, 41)
 

@@ -567,6 +567,7 @@ def test_the_probe_client_re_assumes_the_role_before_its_credentials_expire() ->
             return {
                 "Credentials": {
                     "AccessKeyId": f"AKIAFICTION{len(issued)}",
+                    # pragma: allowlist nextline secret (A-TEST-LITERALS-001)
                     "SecretAccessKey": "fictional",
                     "SessionToken": "fictional",
                     "Expiration": expiry,
