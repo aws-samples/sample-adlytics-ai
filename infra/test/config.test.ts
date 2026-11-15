@@ -482,6 +482,7 @@ describe('what this repository ships', () => {
       },
       () => {
         expect(getConfig('dev').demandForecast.modelArtifactDigest).toBe(
+          // pragma: allowlist nextline secret (A-ENTROPY-IDENTIFIER-001)
           '07e105dbb16a7a6247b9ea9f5b6043b49959406cf28176a25c59076fdd50c939',
         );
       },
