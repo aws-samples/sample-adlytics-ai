@@ -109,6 +109,14 @@ global_settings:
     - path: uv.lock
       rule_id: CVE-2026-69112
       reason: "O-ACCELERATE-CHECKPOINT-001: vulnerable loaders not in the forecast job's execute path"
+    # O-DF-JOB-ROOT-USER-001: the forecast job image's user is root only for the entrypoint, which
+    # drops to uid 10001 before any job code runs. One path, the two rule IDs, nothing wider.
+    - path: src/adapters/jobs/demand_forecast/Dockerfile
+      rule_id: DS-0002
+      reason: "O-DF-JOB-ROOT-USER-001: privileges drop to uid 10001 with no capabilities and no-new-privs in the entrypoint before any job code runs (ADR-160)"
+    - path: src/adapters/jobs/demand_forecast/Dockerfile
+      rule_id: CKV_DOCKER_3
+      reason: "O-DF-JOB-ROOT-USER-001: privileges drop to uid 10001 with no capabilities and no-new-privs in the entrypoint before any job code runs (ADR-160)"
     # O-ASH-LICENSE-INFO-001: informational permissive-licence notices from trivy, not findings.
     - path: "*package-lock.json"
       rule_id: "*:MIT"
