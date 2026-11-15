@@ -28,9 +28,20 @@ The page applies the authorization and data-protection boundaries from the
 |---|---|
 | Source cohort incomplete | Current: the baker returns a typed unavailable terminal and the invocation is spent; the last-good pointer continues serving with its loaded-as-of stamp. Target (ADR-075): the generation remains open and no bake is scheduled. |
 | Reconciliation mismatch | A dated discrepancy state-note carrying both figures; the page still renders every independently answerable element. The review must decide whether this is successful-with-warning or blocks the freshness objective. |
-| Reported-total or hierarchy missing | New artifact is unavailable; existing by-product or last-good evidence remains qualified rather than treated as fresh completion. |
+| Reported-total or hierarchy publication missing | New artifact is unavailable; existing by-product or last-good evidence remains qualified rather than treated as fresh completion. |
+| A shown product has no identity effective by the window end (first observed later, as after a backfill) | The product keeps every figure, its rank and its share of the totals, and is labelled by its display ASIN (title and parent both the ASIN), as New customers' gateway does. Its title appears in the first window whose end is on or after its first observation. Owner decision B-2, 2026-11-14. |
 | Sourcing-view request context | Ordered figures render the designed withheld state, never zero. |
 | Prompted insight unavailable | Deterministic page renders; optional AI objective records unavailable separately. |
+
+Identity day boundary (L-2): an identity is effective in a window when its `valid_from` UTC day is
+on or before the window end and its `valid_to` UTC day, if any, is after it
+(`CanonicalRetailProductHierarchy.hierarchy`). Window ends are Vendor Pacific days, and a UTC
+day is never earlier than the Pacific day of the same instant, so both sides can be one day late:
+
+- A product first observed late on the window-end Pacific day (after 16:00 PST or 17:00 PDT) shows its ASIN for that window.
+- A title replaced late on the window-end Pacific day (after 16:00 PST or 17:00 PDT) still shows the replaced title for that window.
+
+Each case changes one window's label only, never a figure.
 
 ## 3. Observability and alarms
 

@@ -1060,9 +1060,7 @@ def _rows(
     )
     displayed: list[RetailProductRow] = []
     for asin in shown:
-        identity = hierarchy.by_asin.get(asin)
-        if identity is None:
-            return None
+        identity = _shown_identity(hierarchy, asin)
         row = _product_row(context, asin)
         if row is None:
             return None
@@ -1177,9 +1175,7 @@ def _movers(
     operands: list[InsightFindingOperand] = []
     asin_by_name: dict[str, str] = {}
     for asin in keys:
-        identity = hierarchy.by_asin.get(asin)
-        if identity is None:
-            return None
+        identity = _shown_identity(hierarchy, asin)
         name = f"{identity.title} ({identity.child_asin})"
         asin_by_name[name] = asin
         key = (asin, context.marketplace)
@@ -1927,6 +1923,20 @@ def _display_asin(canonical: str) -> str:
     return canonical.removeprefix(_ASIN_NAMESPACE_PREFIX)
 
 
+def _shown_identity(hierarchy: RetailProductHierarchyResult, asin: str) -> RetailProductIdentity:
+    """Return a shown product's effective identity, or its ASIN when none is effective yet.
+
+    The first-observed rule stays (ADR-086 §16): a product first observed after the window end has
+    no identity in this window. It keeps every figure and is labelled by its display ASIN, as New
+    customers' gateway does; its title appears in the first window that has one (owner B-2).
+    """
+    identity = hierarchy.by_asin.get(asin)
+    if identity is not None:
+        return identity
+    shown = _display_asin(asin)
+    return RetailProductIdentity(shown, shown, shown)
+
+
 @dataclass(frozen=True, slots=True)
 class CanonicalRetailProductHierarchy:
     """Read effective dim_product identities from retained canonical truth."""
@@ -1991,8 +2001,10 @@ class CanonicalRetailProductHierarchy:
                     by_asin[row.amazon_asin] = RetailProductIdentity(child, parent, title)
         except ValueError:
             return None
-        if not by_asin:
+        if not publications:
             return None
+        # A read hierarchy with no identity effective by the window end is still a hierarchy:
+        # its products show their ASIN (B-2), so a first backfill is not an unavailable page.
         return RetailProductHierarchyResult(by_asin, tuple(sorted(publications)))
 
 

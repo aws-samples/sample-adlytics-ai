@@ -134,6 +134,10 @@ the selection's latest `retrieved_at`.**
 16. **Product names (OQ-7).** The product hierarchy is a `system_first_observed` snapshot, so dev
     product names are valid only from the hierarchy's first dev observation, 2026-08-28 (read
     2026-10-05). Changing that needs a contract change outside this work.
+    **Amended 2026-11-14 (owner decision B-2):** the rule stands. A product first observed after a
+    window's end has no name in that window, and Retail health then shows it under its ASIN with
+    every figure, as New customers does, instead of withholding the page
+    (docs/ui/retail-health/operational-design.md §2).
 17. **Data is fixed before display (owner decision #8, 2026-10-05).** The 2026-10-04 UX review
     found returns above shipped units (F16), an implausibly small prior retail week (F11) and one
     CTR on every campaign (F24). They were artifacts of the earlier dev generation, and the page

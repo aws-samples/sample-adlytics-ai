@@ -922,20 +922,102 @@ def test_renderer_bounds_displayed_rows_at_fifty_with_a_boundless_total() -> Non
     assert reconciliation.outcome == "reconciled"
 
 
-def test_renderer_refuses_a_population_without_complete_product_identity() -> None:
+def _rendered_with(hierarchy: RetailProductHierarchyResult, count: int) -> RetailHealthRenderResult:
+    reported = FakeReported(
+        RetailReportedTotals(
+            _expected_product_revenue(count),
+            _expected_product_units(count),
+            ("reported-total-publication-1",),
+        )
+    )
+    return _renderer(
+        RetailQueries(_products(count), PERIOD), FakeHierarchy(hierarchy), reported
+    ).render_retail_health(RetailHealthRenderInput(PERIOD, PRIOR))
+
+
+def _shipped_revenue(comparisons: tuple[RetailComparison, ...]) -> Decimal:
+    return Decimal(
+        next(item for item in comparisons if item.metric == "retail_revenue_shipped").current.value
+    )
+
+
+def test_a_product_first_observed_after_the_window_end_shows_its_asin_with_every_figure() -> None:
+    """B-2 (owner 2026-11-14): only the label falls back; no figure, total or order changes."""
     products = _products(2)
-    queries = RetailQueries(products, PERIOD)
-    hierarchy = FakeHierarchy(_hierarchy_result(products[:1]))
+    baseline = _rendered(2)
+    titled = baseline.artifact
+    assert titled is not None
+    # Product 2 has no identity effective by the window end (first observed after it).
+    rendered = _rendered_with(_hierarchy_result(products[:1]), 2)
+    artifact = rendered.artifact
+    assert artifact is not None
+    assert artifact.outcome is RetailHealthOutcome.COMPLETE
+    assert tuple(row.child_asin for row in artifact.rows) == ("fict00002", "FICT00001")
+    untitled, control = artifact.rows
+    assert (untitled.parent_asin, untitled.title) == ("fict00002", "fict00002")
+    # Its figures are exactly the titled render's figures for the same product.
+    assert untitled.comparisons == titled.rows[0].comparisons
+    assert untitled.shipped_revenue_spark == titled.rows[0].shipped_revenue_spark
+    assert untitled.freshness_qualifiers == titled.rows[0].freshness_qualifiers
+    # Paired control: the titled product's row is unchanged.
+    assert control == titled.rows[1]
+    assert control.title == "Fictional Product 00001"
+    # Totals, count, reconciliation, evidence and revision inputs are unchanged.
+    assert artifact.totals == titled.totals
+    assert artifact.total_count == titled.total_count == 2
+    assert artifact.reconciliation == titled.reconciliation
+    assert artifact.evidence_status == titled.evidence_status
+    assert rendered.publication_identities == baseline.publication_identities
+    # The page's product sums cover every product, the untitled one included: the rows sum to the
+    # reported control total and the reconciliation states it (a missing product would show as a
+    # dated discrepancy).
+    assert sum(
+        (_shipped_revenue(row.comparisons) for row in artifact.rows), Decimal(0)
+    ) == _expected_product_revenue(2)
+    reconciliation = artifact.reconciliation
+    assert reconciliation is not None
+    assert reconciliation.outcome == "reconciled"
+    # The movers finding names the product by its ASIN, with the titled render's figures.
+    movers = artifact.insights[3]
+    assert movers.text is not None
+    titled_text = titled.insights[3].text
+    assert titled_text is not None
+    assert "fict00002 (fict00002)" in movers.text
+    assert movers.text == titled_text.replace(
+        "Fictional Product 00002 (FICT00002)", "fict00002 (fict00002)"
+    )
+
+
+def test_a_read_hierarchy_with_no_effective_identity_labels_every_product_by_asin() -> None:
+    """A first backfill: every product is first observed after the window end."""
+    rendered = _rendered_with(RetailProductHierarchyResult({}, ("dim-product-publication-1",)), 2)
+    artifact = rendered.artifact
+    assert artifact is not None
+    assert artifact.outcome is RetailHealthOutcome.COMPLETE
+    assert tuple((row.child_asin, row.parent_asin, row.title) for row in artifact.rows) == (
+        ("fict00002", "fict00002", "fict00002"),
+        ("fict00001", "fict00001", "fict00001"),
+    )
+    assert sum(
+        (_shipped_revenue(row.comparisons) for row in artifact.rows), Decimal(0)
+    ) == _expected_product_revenue(2)
+    reconciliation = artifact.reconciliation
+    assert reconciliation is not None
+    assert reconciliation.outcome == "reconciled"
+    assert "dim-product-publication-1" in rendered.publication_identities
+
+
+def test_renderer_refuses_when_no_product_hierarchy_is_published() -> None:
+    """A missing hierarchy publication stays unavailable (operational-design.md section 2)."""
+    products = _products(2)
     reported = FakeReported(
         RetailReportedTotals(
             _expected_product_revenue(2), _expected_product_units(2), ("reported-1",)
         )
     )
-
-    rendered = _renderer(queries, hierarchy, reported).render_retail_health(
-        RetailHealthRenderInput(PERIOD, PRIOR)
-    )
-
+    rendered = _renderer(
+        RetailQueries(products, PERIOD), FakeHierarchy(None), reported
+    ).render_retail_health(RetailHealthRenderInput(PERIOD, PRIOR))
     assert rendered.artifact is None
 
 
@@ -1315,6 +1397,63 @@ def test_product_hierarchy_reads_effective_identities_with_parent_fallback() -> 
     # A standalone product is its own parent, and its ASIN stands in for a missing title.
     assert result.by_asin["amazon_asin:FICT00002"] == RetailProductIdentity(
         "FICT00002", "FICT00002", "FICT00002"
+    )
+
+
+def _hierarchy_row(asin: str, valid_from: datetime) -> tuple[tuple[str, object], ...]:
+    return tuple(
+        sorted(
+            {
+                "amazon_asin": asin,
+                "amazon_parent_asin": None,
+                "marketplace_key": "amazon_us",
+                "product_title": f"Title of {asin}",
+                "brand": None,
+                "brand_code": None,
+                "valid_from": valid_from,
+                "valid_to": datetime(2099, 1, 1, tzinfo=UTC),
+                "is_current": True,
+            }.items()
+        )
+    )
+
+
+def test_product_hierarchy_keeps_the_first_observed_rule_and_returns_a_read_publication() -> None:
+    """An identity first observed after the window end stays out; the read publication stays in."""
+    window = DateRange(date(2026, 8, 13), date(2026, 8, 19))
+    publication = successful_publication(
+        "dim_product", date(2026, 8, 20), PublicationSpec("dim-product-1", NOW)
+    )
+    after = datetime(2026, 8, 20, 1, tzinfo=UTC)
+    on_end = datetime(2026, 8, 19, 23, tzinfo=UTC)
+
+    def read(
+        rows: tuple[tuple[tuple[str, object], ...], ...],
+    ) -> RetailProductHierarchyResult | None:
+        return CanonicalRetailProductHierarchy(
+            cast("CurrentPublicationPort", FakeCurrent((publication,))),
+            cast("CanonicalDatasetReadPort", FakeCanonical({"dim-product-1": rows})),
+            SOURCE_PACKS,
+            CONTRACTS,
+            BRIDGE,
+        ).hierarchy(window)
+
+    assert read((_hierarchy_row("amazon_asin:fict00002", after),)) == (
+        RetailProductHierarchyResult({}, ("dim-product-1",))
+    )
+    # Control: an identity observed on the window's end day is effective; the later one is not.
+    assert read(
+        (
+            _hierarchy_row("amazon_asin:fict00001", on_end),
+            _hierarchy_row("amazon_asin:fict00002", after),
+        )
+    ) == RetailProductHierarchyResult(
+        {
+            "amazon_asin:fict00001": RetailProductIdentity(
+                "fict00001", "fict00001", "Title of amazon_asin:fict00001"
+            )
+        },
+        ("dim-product-1",),
     )
 
 
