@@ -81,6 +81,7 @@ from domain.forecasting.publish import (
     PointerDecision,
     PublishedGeneration,
     ReceiptKeyRequest,
+    ReceiptRecord,
     RollbackRequest,
     RollbackState,
     RosterPart,
@@ -113,6 +114,7 @@ from ports.outbound.forecast_store import (
     OutcomeCommitRequest,
     OutcomeCommitResult,
     RunReceipt,
+    superseded_receipt,
 )
 
 if TYPE_CHECKING:
@@ -670,30 +672,24 @@ def _commit_publish(
     if advance.decision is PointerDecision.ALREADY_CURRENT:
         return _Committed(RunOutcome.PUBLISHED.value, 0)
     landing = round((now - manifest.newest_publication_published_at).total_seconds())
+    receipt = RunReceipt(
+        sk=meta.receipt_sk,
+        outcome=RunOutcome.PUBLISHED,
+        recorded_at=now,
+        generation_id=meta.generation_id,
+        published_at=now,
+        retry_disposition=decision.disposition,
+        run_fingerprint=fingerprint,
+        run_identity=manifest.run_identity,
+        counts_by_reason=meta.counts_by_reason,
+        landing_to_publish_seconds=landing,
+    )
     if advance.decision is PointerDecision.SUPERSEDED:
-        receipt = RunReceipt(
-            sk=meta.receipt_sk,
-            outcome=RunOutcome.SUPERSEDED,
-            recorded_at=now,
-            generation_id=meta.generation_id,
-            run_fingerprint=fingerprint,
-            run_identity=manifest.run_identity,
-            counts_by_reason=meta.counts_by_reason,
+        # The store's derivation too, so either path records one receipt (§6b replay rule).
+        commit = OutcomeCommitRequest(
+            publisher.set_id, manifest.expected_fence, superseded_receipt(receipt)
         )
-        commit = OutcomeCommitRequest(publisher.set_id, manifest.expected_fence, receipt)
     else:
-        receipt = RunReceipt(
-            sk=meta.receipt_sk,
-            outcome=RunOutcome.PUBLISHED,
-            recorded_at=now,
-            generation_id=meta.generation_id,
-            published_at=now,
-            retry_disposition=decision.disposition,
-            run_fingerprint=fingerprint,
-            run_identity=manifest.run_identity,
-            counts_by_reason=meta.counts_by_reason,
-            landing_to_publish_seconds=landing,
-        )
         commit = OutcomeCommitRequest(
             publisher.set_id,
             manifest.expected_fence,
@@ -820,12 +816,16 @@ class RecordOutcomeRequest:
         return receipt_sk(ReceiptKeyRequest(self.run_id, self.redrive_count, self.step))
 
 
-def _receipt(request: RecordOutcomeRequest, outcome: RunOutcome, at: datetime) -> RunReceipt:
+def _receipt(
+    request: RecordOutcomeRequest, at: datetime, disposition: Disposition | None = None
+) -> RunReceipt:
+    """Return the request's receipt; every request-bound field comes from the request (§6b)."""
     return RunReceipt(
         sk=request.receipt_sk,
-        outcome=outcome,
+        outcome=request.outcome,
         recorded_at=at,
         failure_category=request.category,
+        retry_disposition=disposition,
         attempt_id=request.attempt_id,
         operator_reason=request.operator_reason,
         run_fingerprint=request.run_fingerprint,
@@ -862,24 +862,19 @@ def _pointer_commit(
     if fence is None:
         fence = 0 if current is None else current.fence
     advance = next_pointer(PointerAdvanceRequest(current, fence, attempt))
+    receipt = _receipt(request, at, decision.disposition)
     if advance.decision is PointerDecision.SUPERSEDED:
-        receipt = _receipt(request, RunOutcome.SUPERSEDED, at)
-        return OutcomeCommitRequest(publisher.set_id, fence, receipt)
+        return OutcomeCommitRequest(publisher.set_id, fence, superseded_receipt(receipt))
     previous = None if current is None else current.last_attempt
-    receipt = RunReceipt(
-        sk=request.receipt_sk,
-        outcome=request.outcome,
-        recorded_at=at,
-        failure_category=request.category,
-        retry_disposition=decision.disposition,
-        attempt_id=request.attempt_id,
-        operator_reason=request.operator_reason,
-        run_fingerprint=request.run_fingerprint,
-        shard=request.shard,
-    )
     return OutcomeCommitRequest(
         publisher.set_id, fence, receipt, advance.pointer, previous_attempt=previous
     )
+
+
+def _published_generation(recorded: ReceiptRecord | None) -> str | None:
+    if recorded is None or recorded.outcome is not RunOutcome.PUBLISHED:
+        return None
+    return recorded.generation_id
 
 
 def record_outcome(publisher: Publisher, request: RecordOutcomeRequest) -> StepOutcome:
@@ -891,7 +886,7 @@ def record_outcome(publisher: Publisher, request: RecordOutcomeRequest) -> StepO
     at = publisher.now()
     if not changes_last_attempt(request.outcome, request.run_fingerprint):
         commit = OutcomeCommitRequest(
-            publisher.set_id, request.expected_fence or 0, _receipt(request, request.outcome, at)
+            publisher.set_id, request.expected_fence or 0, _receipt(request, at)
         )
     else:
         commit = _pointer_commit(publisher, request, at)
@@ -899,11 +894,14 @@ def record_outcome(publisher: Publisher, request: RecordOutcomeRequest) -> StepO
     outcome = _recorded(result)
     if result.disposition in _NEW_RECEIPT:
         _emit(publisher, [run_outcome(outcome)], at)
+    # A replay reports the receipt on record, never this request's facts (R1-14, R1-15).
+    recorded = result.recorded
     return StepOutcome(
         outcome=outcome,
         step=request.step,
-        category=request.category,
-        shard=request.shard,
+        category=request.category if recorded is None else recorded.failure_category,
+        shard=request.shard if recorded is None else recorded.shard,
+        generation_id=_published_generation(recorded),
         receipt_sk=result.receipt_sk,
         store_retry_attempts=result.retry_attempts,
     )

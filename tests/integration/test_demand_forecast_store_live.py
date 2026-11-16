@@ -4,8 +4,9 @@
 What no unit fake can establish: that the real `TransactWriteItems` applies the fence conditions
 the adapter writes, so a stale run can never move what planners see; that a rollback moves the
 pointer back with `fence + 1`; and that the slot marker's conditional put admits one execution
-per period. A failure here means a published forecast could be overwritten by an older run or a
-week could start two scheduled runs.
+per period; and that a receipt reads back every field the one replay rule compares. A failure
+here means a published forecast could be overwritten by an older run, a week could start two
+scheduled runs, or a retry could report facts its receipt doesn't hold.
 
 Every key lives under a forecast set named from the probe prefix and the test's node ID
 (`SET#`, `SLOT#` and `GEN#` partitions), and teardown deletes exactly the items the test wrote,
@@ -42,6 +43,7 @@ from domain.forecasting.publish import (
     LastAttempt,
     PointerAdvanceRequest,
     PublishedGeneration,
+    ReceiptRecord,
     RollbackRequest,
     RollbackState,
     RunOutcome,
@@ -246,6 +248,48 @@ def test_a_commit_under_a_key_holding_another_generations_receipt_is_a_conflict(
     assert (receipt.outcome, receipt.generation_id) == (RunOutcome.PUBLISHED, first.generation_id)
     current = _current(probe)
     assert (current.generation_id, current.fence) == (first.generation_id, 1)
+
+
+def test_a_receipt_replay_compares_every_request_bound_field_the_service_returns(
+    probe: Probe,
+) -> None:
+    """The real service's token mismatch and stored map reach the one replay rule (R1-14).
+
+    A true retry reads its run identity back equal; another identity is refused.
+    """
+    now = datetime.now(UTC)
+    receipt = RunReceipt(
+        sk=f"RUN#{probe.set_id}-noop#r0#select",
+        outcome=RunOutcome.NO_OP_SAME_INPUT,
+        recorded_at=now,
+        operator_reason="probe",
+        run_fingerprint="5" * 64,
+        run_identity=_identity(),
+    )
+    probe.written.add((set_key(probe.set_id), receipt.sk))
+    first = OutcomeCommitRequest(probe.set_id, 0, receipt)
+    assert probe.store.commit_outcome(first).disposition is CommitDisposition.APPLIED
+    expected = ReceiptRecord(
+        sk=receipt.sk,
+        outcome=RunOutcome.NO_OP_SAME_INPUT,
+        generation_id=None,
+        published_at=None,
+        operator_reason="probe",
+        run_fingerprint="5" * 64,
+        run_identity=_identity(),
+    )
+    retry = replace(receipt, recorded_at=now + timedelta(seconds=1))
+    replayed = probe.store.commit_outcome(OutcomeCommitRequest(probe.set_id, 0, retry))
+    assert (replayed.disposition, replayed.recorded) == (CommitDisposition.REPLAYED, expected)
+    other = replace(
+        retry, run_identity=_identity().model_copy(update={"input_fingerprint": "6" * 64})
+    )
+    with pytest.raises(
+        ForecastStoreConflictError, match=r"the receipt records another run_identity$"
+    ):
+        probe.store.commit_outcome(OutcomeCommitRequest(probe.set_id, 0, other))
+    assert probe.store.get_receipt(probe.set_id, receipt.sk) == expected
+    assert probe.store.get_current(probe.set_id) is None
 
 
 def _rollback(probe: Probe, target: GenerationMeta, run: str) -> OutcomeCommitRequest:

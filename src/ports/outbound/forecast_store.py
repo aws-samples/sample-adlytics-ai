@@ -18,7 +18,7 @@ Slice 3 adds the readers (`read_list_page`, `read_generation_item`).
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from enum import StrEnum
 from typing import Protocol
@@ -31,6 +31,7 @@ from domain.forecasting.publish import (
     Disposition,
     GenerationRecord,
     LastAttempt,
+    ReceiptIdentity,
     ReceiptRecord,
     RunOutcome,
     ShardAttempt,
@@ -182,6 +183,35 @@ class RunReceipt:
         ):
             raise ValueError("retry_disposition is set exactly when last_attempt changes")
 
+    @property
+    def identity(self) -> ReceiptIdentity:
+        """The request-bound fields the replay rule compares (`replay_basis()`, §6b)."""
+        return ReceiptIdentity(
+            outcome=self.outcome,
+            generation_id=self.generation_id,
+            attempt_id=self.attempt_id,
+            run_fingerprint=self.run_fingerprint,
+            run_identity=self.run_identity,
+            failure_category=self.failure_category,
+            operator_reason=self.operator_reason,
+            shard=self.shard,
+        )
+
+
+def superseded_receipt(prepared: RunReceipt) -> RunReceipt:
+    """Return the one `superseded` derivation of a prepared receipt (§6b replay rule).
+
+    Every request-bound field stays, so the publisher's and the store's derivations of one
+    request are the same receipt; only what an applied outcome alone has is dropped.
+    """
+    return replace(
+        prepared,
+        outcome=RunOutcome.SUPERSEDED,
+        published_at=None,
+        retry_disposition=None,
+        landing_to_publish_seconds=None,
+    )
+
 
 @dataclass(frozen=True)
 class OutcomeCommitRequest:
@@ -249,6 +279,8 @@ class OutcomeCommitResult:
     retry_attempts: int
     recorded_generation_id: str | None = None
     """The generation the receipt on record names (R1-3); None for an outcome without one."""
+    recorded: ReceiptRecord | None = None
+    """On `REPLAYED`, the receipt on record the replay rule matched (R1-14)."""
 
 
 @dataclass(frozen=True)

@@ -33,15 +33,18 @@ from collections.abc import Iterable, Mapping
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
+from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Final, NoReturn, cast
 
 import boto3
-from boto3.dynamodb.types import TypeSerializer
+from boto3.dynamodb.types import TypeDeserializer, TypeSerializer
 from botocore.config import Config
 from botocore.exceptions import ClientError
+from pydantic import ValidationError
 
 from adapters.outbound.dynamodb.byte_oracle import Stage1DynamoByteOracle
 from adapters.outbound.dynamodb.items import ItemError, read_int, read_text
+from domain.forecasting.boundary import RunIdentityV1
 from domain.forecasting.list_pages import ListPage
 from domain.forecasting.publish import (
     CurrentPointer,
@@ -49,8 +52,11 @@ from domain.forecasting.publish import (
     GenerationRecord,
     LastAttempt,
     ReceiptRecord,
+    ReplayCheck,
     RunOutcome,
     ShardAttempt,
+    replay_basis,
+    replay_mismatch,
 )
 from ports.outbound.forecast_store import (
     Attestation,
@@ -67,6 +73,7 @@ from ports.outbound.forecast_store import (
     SlotClaimRequest,
     SlotClaimResult,
     StoreWriteResult,
+    superseded_receipt,
 )
 
 if TYPE_CHECKING:
@@ -113,6 +120,7 @@ _CONDITION_FAILED: Final = "ConditionalCheckFailed"
 
 _ORACLE: Final = Stage1DynamoByteOracle()
 _SERIALIZER: Final = TypeSerializer()
+_DESERIALIZER: Final = TypeDeserializer()
 
 Item = dict[str, "AttributeValueTypeDef"]
 
@@ -322,6 +330,54 @@ def _optional_moment(item: Mapping[str, Any], name: str) -> datetime | None:
 def _optional_date(item: Mapping[str, Any], name: str) -> date | None:
     text = _optional_text(item, name)
     return None if text is None else date.fromisoformat(text)
+
+
+def _optional_int(item: Mapping[str, Any], name: str) -> int | None:
+    return None if item.get(name) is None else read_int(cast("Item", item), name)
+
+
+def _plain(value: object) -> object:
+    """Return a deserialized attribute as JSON, each DynamoDB number as the int written."""
+    if isinstance(value, Decimal):
+        if value != value.to_integral_value():
+            raise ItemError(f"{value} is not an integer.")
+        return int(value)
+    if isinstance(value, dict):
+        return {key: _plain(inner) for key, inner in cast("dict[str, object]", value).items()}
+    if isinstance(value, list):
+        return [_plain(inner) for inner in cast("list[object]", value)]
+    return value
+
+
+def _optional_run_identity(item: Mapping[str, Any], name: str) -> RunIdentityV1 | None:
+    found = item.get(name)
+    if found is None:
+        return None
+    if "M" not in found:
+        raise ItemError(f"{name} is not a map.")
+    try:
+        return RunIdentityV1.model_validate(_plain(_DESERIALIZER.deserialize(found)))
+    except ValidationError as error:
+        raise ItemError(f"{name}: {error}") from error
+
+
+def _read_receipt(sk: str, item: Item) -> ReceiptRecord:
+    """Read every field the replay rule and a rollback compare (§6b, R1-14)."""
+    try:
+        return ReceiptRecord(
+            sk=sk,
+            outcome=RunOutcome(read_text(item, "outcome")),
+            generation_id=_optional_text(item, "generation_id"),
+            published_at=_optional_moment(item, "published_at"),
+            attempt_id=_optional_text(item, "attempt_id"),
+            run_fingerprint=_optional_text(item, "run_fingerprint"),
+            run_identity=_optional_run_identity(item, "run_identity"),
+            failure_category=_optional_text(item, "failure_category"),
+            operator_reason=_optional_text(item, "operator_reason"),
+            shard=_optional_int(item, "shard"),
+        )
+    except ValueError as error:
+        raise ItemError(f"{sk}: {error}") from error
 
 
 def _read_last_attempt(item: Item) -> LastAttempt | None:
@@ -547,18 +603,7 @@ class DynamoDbForecastStore(ForecastStorePort):
     def get_receipt(self, set_id: str, sk: str) -> ReceiptRecord | None:
         """Read one receipt with a strongly consistent read."""
         stored = self._get(set_key(set_id), sk)
-        if stored is None:
-            return None
-        try:
-            outcome = RunOutcome(read_text(stored, "outcome"))
-        except ValueError as error:
-            raise ItemError(f"{sk}: {error}") from error
-        return ReceiptRecord(
-            sk=sk,
-            outcome=outcome,
-            generation_id=_optional_text(stored, "generation_id"),
-            published_at=_optional_moment(stored, "published_at"),
-        )
+        return None if stored is None else _read_receipt(sk, stored)
 
     def get_generation(self, generation: str) -> GenerationRecord | None:
         """Read a generation's `META` identity with a strongly consistent read."""
@@ -800,16 +845,10 @@ class DynamoDbForecastStore(ForecastStorePort):
             return OutcomeCommitResult(
                 CommitDisposition.ALREADY_CURRENT, receipt.sk, RunOutcome.PUBLISHED, retried
             )
-        # A superseded publish keeps the generation it attested, so a replay can be told from
-        # another attempt set's commit (R1-10); only a published or rolled_back receipt makes it
-        # a rollback target.
-        superseded = replace(
-            receipt,
-            outcome=RunOutcome.SUPERSEDED,
-            published_at=None,
-            failure_category=None,
-            retry_disposition=None,
-        )
+        # The one derivation the publisher also uses, so a retry that finds the fence moved before
+        # it writes records the same receipt (§6b replay rule). A superseded publish keeps the
+        # generation it attested (R1-10); only a published receipt makes it a rollback target.
+        superseded = superseded_receipt(receipt)
         result = self._commit(
             OutcomeCommitRequest(request.set_id, request.expected_fence, superseded),
             prepared=receipt.outcome,
@@ -826,24 +865,27 @@ class DynamoDbForecastStore(ForecastStorePort):
     def _replayed(
         self, request: OutcomeCommitRequest, retried: int, prepared: RunOutcome
     ) -> OutcomeCommitResult:
-        """Accept the receipt on record only as this outcome's own earlier write (R1-3, R1-10).
+        """Accept the receipt on record only under the one replay rule, `replay_basis()` (§6b).
 
-        `prepared` is the outcome the caller prepared; a `superseded` write derived from it may
-        find that outcome already recorded by an unseen earlier success. Any other outcome, or
-        another generation, is another request's receipt under this key: a conflict.
+        Every receipt write reaches this on a taken key or a reused token: the first commit, a
+        derived `superseded` and a rollback alike. Anything the rule doesn't name is another
+        request's receipt under this key: a conflict (R1-3, R1-10, R1-14).
         """
         receipt = request.receipt
         sk = receipt.sk
         recorded = self.get_receipt(request.set_id, sk)
         if recorded is None:
             raise ForecastStoreConflictError(sk, "the request token was reused for no receipt")
-        if recorded.outcome not in {receipt.outcome, prepared}:
-            detail = f"the receipt records {recorded.outcome.value}, not {receipt.outcome.value}"
-            raise ForecastStoreConflictError(sk, detail)
-        if recorded.generation_id != receipt.generation_id:
-            raise ForecastStoreConflictError(sk, "the receipt names another generation")
+        check = ReplayCheck(sk, recorded.identity, receipt.identity, prepared)
+        if replay_basis(check) is None:
+            raise ForecastStoreConflictError(sk, replay_mismatch(check))
         return OutcomeCommitResult(
-            CommitDisposition.REPLAYED, sk, recorded.outcome, retried, recorded.generation_id
+            CommitDisposition.REPLAYED,
+            sk,
+            recorded.outcome,
+            retried,
+            recorded.generation_id,
+            recorded,
         )
 
 

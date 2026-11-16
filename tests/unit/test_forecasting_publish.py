@@ -32,6 +32,7 @@ from adapters.jobs.demand_forecast_publisher.handler import (
     ObjectStoreError,
     Publisher,
     PublishFailedError,
+    PublishHeld,
     PublishShardRequest,
     RecordOutcomeRequest,
     StepOutcome,
@@ -49,7 +50,7 @@ from adapters.outbound.dynamodb.demand_forecast_store import (
     STORE_CLIENT_CONFIG,
     DynamoDbForecastStore,
 )
-from adapters.outbound.telemetry.demand_forecast_metrics import Datapoint
+from adapters.outbound.telemetry.demand_forecast_metrics import Datapoint, MetricEmitError
 from domain.forecasting.boundary import (
     CandidateSeriesV1,
     InputManifestV1,
@@ -113,6 +114,7 @@ from ports.outbound.forecast_store import (
     GenerationSeries,
     OutcomeCommitRequest,
     RunReceipt,
+    superseded_receipt,
 )
 
 pytestmark = pytest.mark.unit
@@ -2105,3 +2107,292 @@ def test_a_select_no_op_receipt_records_the_input_fingerprint_select_read() -> N
 def test_a_run_identity_outside_a_select_no_op_or_hold_is_refused(changes: dict[str, Any]) -> None:
     with pytest.raises(PublishFailedError, match=f"^{REQUEST_INVALID}$"):
         record_request(_select_no_op(**changes))
+
+
+# --- R1F: one replay rule for every receipt write (R1-14, R1-15) -------------------------------
+
+SELECT_SK = f"RUN#{RUN}#r0#select"
+COMMIT_SK = f"RUN#{RUN}#r0#commit"
+
+
+def _select_failure(**changes: Any) -> RunReceipt:
+    """Return a `SelectInput` failure's receipt: receipt-only, no fingerprint (ruling R1-1)."""
+    receipt = RunReceipt(
+        sk=SELECT_SK,
+        outcome=RunOutcome.FAILED,
+        recorded_at=AT,
+        failure_category="input_build:ATHENA_TIMEOUT",
+    )
+    return replace(receipt, **changes)
+
+
+def _operator_no_op(**changes: Any) -> RunReceipt:
+    """Return an operator start's no-op receipt: fingerprint, run identity, reason (R1-12)."""
+    receipt = RunReceipt(
+        sk=SELECT_SK,
+        outcome=RunOutcome.NO_OP_SAME_INPUT,
+        recorded_at=AT,
+        operator_reason="restated sales",
+        run_fingerprint=FINGERPRINT,
+        run_identity=_manifest().run_identity,
+    )
+    return replace(receipt, **changes)
+
+
+def _commit_hold(**changes: Any) -> OutcomeCommitRequest:
+    """Return a commit-level hold naming its shard and attempt, prepared from an empty table."""
+    request = _held_request(0)
+    receipt = replace(request.receipt, **({"attempt_id": "r0a0", "shard": 1} | changes))
+    return replace(request, receipt=receipt)
+
+
+OTHER_IDENTITY = _manifest().run_identity.model_copy(update={"input_fingerprint": "e" * 64})
+
+
+@pytest.mark.parametrize(
+    ("first", "second", "field_name"),
+    [
+        pytest.param(
+            _select_failure(),
+            _select_failure(failure_category="input_build:MARKETPLACE_UNKNOWN"),
+            "failure_category",
+            id="failure-category",
+        ),
+        pytest.param(
+            _operator_no_op(),
+            _operator_no_op(run_identity=OTHER_IDENTITY),
+            "run_identity",
+            id="run-identity",
+        ),
+        pytest.param(
+            _operator_no_op(),
+            _operator_no_op(run_fingerprint="e" * 64),
+            "run_fingerprint",
+            id="run-fingerprint",
+        ),
+        pytest.param(
+            _operator_no_op(),
+            _operator_no_op(operator_reason="another reason"),
+            "operator_reason",
+            id="operator-reason",
+        ),
+    ],
+)
+def test_a_receipt_only_write_with_another_request_identity_under_its_key_is_a_conflict(
+    first: RunReceipt, second: RunReceipt, field_name: str
+) -> None:
+    """R1-14: the second request's facts must never be reported over the first's receipt."""
+    table = ForecastTableFake()
+    store = _table_store(table)
+    assert store.commit_outcome(OutcomeCommitRequest(SET_ID, 0, first)).disposition is (
+        CommitDisposition.APPLIED
+    )
+    stored = dict(table.items[(f"SET#{SET_ID}", SELECT_SK)])
+    with pytest.raises(
+        ForecastStoreConflictError,
+        match=f"^{SELECT_SK}: the receipt records another {field_name}$",
+    ):
+        store.commit_outcome(OutcomeCommitRequest(SET_ID, 0, second))
+    assert table.items[(f"SET#{SET_ID}", SELECT_SK)] == stored
+
+
+@pytest.mark.parametrize(
+    ("changes", "field_name"),
+    [({"attempt_id": "r0a1"}, "attempt_id"), ({"shard": 2}, "shard")],
+    ids=["attempt-id", "shard"],
+)
+def test_a_pointer_write_with_another_request_identity_under_its_key_is_a_conflict(
+    changes: dict[str, Any], field_name: str
+) -> None:
+    """R1-14 on the pointer path: `last_attempt` moved, so the store derives `superseded`.
+
+    The key holds another hold's receipt, which is no replay of this one.
+    """
+    table = ForecastTableFake()
+    store = _table_store(table)
+    first = _commit_hold()
+    assert store.commit_outcome(first).disposition is CommitDisposition.APPLIED
+    before = (dict(table.items[(f"SET#{SET_ID}", COMMIT_SK)]), store.get_current(SET_ID))
+    with pytest.raises(
+        ForecastStoreConflictError, match=f"^{COMMIT_SK}: the receipt records another {field_name}$"
+    ):
+        store.commit_outcome(_commit_hold(**changes))
+    assert (dict(table.items[(f"SET#{SET_ID}", COMMIT_SK)]), store.get_current(SET_ID)) == before
+
+
+def test_a_recorded_outcome_never_reports_a_category_its_receipt_does_not_hold() -> None:
+    """gpt-5.6-sol round 3 #1: a second request under one key read back as a replay."""
+    rig = _Rig()
+    first = _failure(RUN, "select")
+    assert record_outcome(rig.publisher, record_request(first)).category == (
+        "input_build:ATHENA_TIMEOUT"
+    )
+    # Paired control: the same failure recorded again is its own replay and counts once.
+    rig.table.forget_tokens()
+    again = record_outcome(rig.publisher, record_request(first))
+    assert (again.outcome, again.category) == ("failed", "input_build:ATHENA_TIMEOUT")
+    other = _failure(RUN, "select", error=_caught("InputBuildFailedError", "MARKETPLACE_UNKNOWN"))
+    with pytest.raises(PublishHeld, match=r"the receipt records another failure_category$"):
+        record_outcome(rig.publisher, record_request(other))
+    receipt = rig.table.items[(f"SET#{PUBLISH_SET}", SELECT_SK)]
+    assert receipt["failure_category"] == {"S": "input_build:ATHENA_TIMEOUT"}
+    assert rig.metrics.outcomes() == ["failed"]
+
+
+@dataclass
+class _MetricsLost(MetricsFake):
+    """`PutMetricData` fails once, after the commit applied (opus-5.5 round 3 F1)."""
+
+    lose_next: bool = True
+
+    def emit(self, points: Sequence[Datapoint], timestamp: datetime) -> None:
+        if self.lose_next:
+            self.lose_next = False
+            raise MetricEmitError("ThrottlingException")
+        super().emit(points, timestamp)
+
+
+def _commit_catch(run_id: str, expected_fence: int) -> dict[str, Any]:
+    """`RecordOutcome`'s input from the `Commit` Catch after `MetricEmitError`."""
+    cause = json.dumps({"errorType": "MetricEmitError", "errorMessage": "ThrottlingException"})
+    return {
+        "run_id": run_id,
+        "redrive_count": 0,
+        "step": "commit",
+        "outcome": "failed",
+        "phase": "publish",
+        "error": {"Error": "MetricEmitError", "Cause": cause},
+        "run_fingerprint": FINGERPRINT,
+        "expected_fence": expected_fence,
+    }
+
+
+def test_a_failure_after_the_pass_published_reports_the_published_commit() -> None:
+    """R1-15: the commit applied and its metric was lost; the run's outcome is `published`."""
+    rig = _Rig(metrics=_MetricsLost())
+    _stage(rig)
+    with pytest.raises(MetricEmitError, match=r"^ThrottlingException$"):
+        _commit_run(rig, _publish_all(rig))
+    generation = rig.table.items[(f"SET#{PUBLISH_SET}", COMMIT_SK)]["generation_id"]["S"]
+    before = (rig.current(), rig.receipts())
+    recorded = record_outcome(rig.publisher, record_request(_commit_catch(RUN, 0)))
+    assert (
+        recorded.outcome,
+        recorded.receipt_sk,
+        recorded.category,
+        recorded.generation_id,
+    ) == ("published", COMMIT_SK, None, generation)
+    assert (rig.current(), rig.receipts()) == before
+    assert before[1] == {COMMIT_SK: "published"}
+    # The lost datapoint stays lost: a replay emits nothing, so nothing counts twice.
+    assert rig.metrics.outcomes() == []
+
+
+def test_a_failure_after_the_pass_was_superseded_reports_the_superseded_commit() -> None:
+    rig = _Rig()
+    _stage(rig, run_id="run-2")
+    _stage(rig, run_id="run-3")
+    _commit_run(rig, _publish_all(rig, "run-2"), "run-2")
+    rig.metrics = _MetricsLost()
+    with pytest.raises(MetricEmitError, match=r"^ThrottlingException$"):
+        _commit_run(rig, _publish_all(rig, "run-3"), "run-3")
+    before = (rig.current(), rig.receipts())
+    recorded = record_outcome(rig.publisher, record_request(_commit_catch("run-3", 0)))
+    assert (recorded.outcome, recorded.receipt_sk, recorded.category) == (
+        "superseded",
+        "RUN#run-3#r0#commit",
+        None,
+    )
+    assert (rig.current(), rig.receipts()) == before
+    assert before[1]["RUN#run-3#r0#commit"] == "superseded"
+
+
+def test_a_hold_recorded_under_a_commit_key_holding_the_pass_publish_is_still_a_conflict() -> None:
+    """Paired control for R1-15: only a `publish:` failure after the commit reads its outcome.
+
+    A later attempt set's hold under that key never reads as `published` (R1-10, R1-16).
+    """
+    rig = _Rig()
+    _stage(rig)
+    assert _commit_run(rig, _publish_all(rig)).outcome == "published"
+    before = (rig.current(), rig.receipts())
+    event = {
+        "run_id": RUN,
+        "redrive_count": 0,
+        "step": "commit",
+        "outcome": "held_quality",
+        "category": "identity_mismatch",
+        "shard": 0,
+        "run_fingerprint": FINGERPRINT,
+        "expected_fence": 0,
+    }
+    with pytest.raises(PublishHeld, match=r"the receipt records published, not superseded$"):
+        record_outcome(rig.publisher, record_request(event))
+    assert (rig.current(), rig.receipts()) == before
+
+
+@pytest.mark.parametrize(
+    "later",
+    [timedelta(0), timedelta(minutes=1)],
+    ids=["after-the-token-window", "same-token-later-request"],
+)
+def test_a_true_replay_is_accepted_and_reports_every_field_on_record(later: timedelta) -> None:
+    """R1-14 (c): the rule compares what the store reads back.
+
+    So a true replay must read every request-bound field back equal, run identity included.
+    """
+    table = ForecastTableFake()
+    store = _table_store(table)
+    receipt = _operator_no_op()
+    assert store.commit_outcome(OutcomeCommitRequest(SET_ID, 0, receipt)).disposition is (
+        CommitDisposition.APPLIED
+    )
+    if not later:
+        table.forget_tokens()
+    retry = replace(receipt, recorded_at=AT + later)
+    replayed = store.commit_outcome(OutcomeCommitRequest(SET_ID, 0, retry))
+    assert (replayed.disposition, replayed.recorded_outcome) == (
+        CommitDisposition.REPLAYED,
+        RunOutcome.NO_OP_SAME_INPUT,
+    )
+    assert replayed.recorded == ReceiptRecord(
+        sk=SELECT_SK,
+        outcome=RunOutcome.NO_OP_SAME_INPUT,
+        generation_id=None,
+        published_at=None,
+        run_fingerprint=FINGERPRINT,
+        run_identity=_manifest().run_identity,
+        operator_reason="restated sales",
+    )
+    assert _receipts(table) == {SELECT_SK: "no_op_same_input"}
+
+
+def test_the_store_and_the_publisher_derive_one_superseded_receipt_for_one_request() -> None:
+    """A retry finding the fence moved replays the store's first derivation, never conflicts.
+
+    Both paths call one `superseded_receipt()`.
+    """
+    table = ForecastTableFake()
+    store = _table_store(table)
+    assert store.commit_outcome(_held_request(0)).disposition is CommitDisposition.APPLIED
+    attempt = _attempt(RunOutcome.FAILED, "publish:SlowDown", run_id="run-5")
+    receipt = RunReceipt(
+        sk="RUN#run-5#r0#commit",
+        outcome=RunOutcome.FAILED,
+        recorded_at=AT,
+        failure_category="publish:SlowDown",
+        retry_disposition=Disposition.RETRY,
+        run_fingerprint=FINGERPRINT,
+    )
+    prepared = OutcomeCommitRequest(
+        SET_ID, 0, receipt, CurrentPointer(fence=0, last_attempt=attempt)
+    )
+    assert store.commit_outcome(prepared).disposition is CommitDisposition.SUPERSEDED
+    retry = replace(superseded_receipt(receipt), recorded_at=AT + timedelta(minutes=1))
+    replayed = store.commit_outcome(OutcomeCommitRequest(SET_ID, 0, retry))
+    assert replayed.disposition is CommitDisposition.REPLAYED
+    assert replayed.recorded is not None
+    assert (replayed.recorded.outcome, replayed.recorded.failure_category) == (
+        RunOutcome.SUPERSEDED,
+        "publish:SlowDown",
+    )

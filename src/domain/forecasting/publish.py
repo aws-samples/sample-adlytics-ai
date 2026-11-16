@@ -12,6 +12,8 @@ The publisher Lambda reads objects and writes items; every decision it takes is 
   in one transaction. A fence that moved means another run or a rollback won (`superseded`).
 - `retry_disposition()`: whether the next daily check re-runs a fingerprint (P-17).
 - `receipt_sk()`: one immutable receipt key per execution pass and step (R3-18).
+- `replay_basis()`: the one replay rule for a receipt key already taken; `ReplayBasis` lists
+  every accepted case (§6b, R1-14).
 
 The adapter maps an unparseable object to `HeldQuality(SCHEMA_MISMATCH)`; the checks here start
 from parsed boundary models and the digests the publisher computed over the bytes it read.
@@ -25,7 +27,7 @@ import json
 import re
 from collections import Counter
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields, replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from enum import StrEnum
@@ -35,6 +37,7 @@ from domain.forecasting.boundary import (
     ForecastSetV1,
     InputManifestV1,
     RosterEntryV1,
+    RunIdentityV1,
     RunReportV1,
     ShardV1,
     TargetCandidateV1,
@@ -807,13 +810,144 @@ class GenerationRecord:
 
 
 @dataclass(frozen=True)
+class ReceiptIdentity:
+    """Every request-bound field of a `RUN#` receipt: what makes two writes one request's.
+
+    Design §6b replay rule (ruling 2026-11-16, R1-14). Left out are the facts a retry of the
+    same request recomputes: `recorded_at`, `published_at` and `landing_to_publish_seconds`
+    from the clock, `retry_disposition` from the `last_attempt` it read, and the counts and
+    durations from the run's own output.
+    """
+
+    outcome: RunOutcome
+    generation_id: str | None = None
+    attempt_id: str | None = None
+    run_fingerprint: str | None = None
+    run_identity: RunIdentityV1 | None = None
+    failure_category: str | None = None
+    operator_reason: str | None = None
+    shard: int | None = None
+
+
+RECEIPT_IDENTITY_FIELDS = tuple(identity_field.name for identity_field in fields(ReceiptIdentity))
+
+
+@dataclass(frozen=True)
 class ReceiptRecord:
-    """What a rollback reads of the receipt `META.receipt_sk` names."""
+    """A `RUN#` receipt as read back: what a rollback and the replay rule compare."""
 
     sk: str
     outcome: RunOutcome
     generation_id: str | None
     published_at: datetime | None
+    attempt_id: str | None = None
+    run_fingerprint: str | None = None
+    run_identity: RunIdentityV1 | None = None
+    failure_category: str | None = None
+    operator_reason: str | None = None
+    shard: int | None = None
+
+    @property
+    def identity(self) -> ReceiptIdentity:
+        """The receipt's request-bound fields."""
+        return ReceiptIdentity(
+            outcome=self.outcome,
+            generation_id=self.generation_id,
+            attempt_id=self.attempt_id,
+            run_fingerprint=self.run_fingerprint,
+            run_identity=self.run_identity,
+            failure_category=self.failure_category,
+            operator_reason=self.operator_reason,
+            shard=self.shard,
+        )
+
+
+# --- The replay rule (§6b, R1-14 and R1-15) ---------------------------------------------------
+
+
+class ReplayBasis(StrEnum):
+    """Why a receipt write that finds its key taken is a replay. The complete list (§6b).
+
+    Every conditional receipt write goes through `replay_basis()`: a key holding anything this
+    list doesn't name is another request's receipt, and the write is a conflict.
+    """
+
+    SAME_REQUEST = "same_request"
+    """Every request-bound field matches: this write's own earlier, unseen success."""
+    PREPARED_RECORDED = "prepared_recorded"
+    """The fence moved, so the store wrote `superseded` derived from the prepared outcome
+    (`superseded_receipt()`), and the key holds the prepared outcome itself, every other field
+    equal: an earlier unseen success of the prepared write (R1-10)."""
+    OWN_COMMIT_RECORDED = "own_commit_recorded"
+    """A `publish:` failure caught after the `Commit` state is `superseded` under the pass's
+    `commit` key, and that key holds the pass's own commit (`published`, or `superseded` naming
+    the attested generation) with the same run fingerprint: the commit applied and a later step
+    of the same call failed, so the run's outcome is the commit's (R1-15)."""
+
+
+@dataclass(frozen=True)
+class ReplayCheck:
+    """A receipt write that found its key taken: the receipt on record and this write's."""
+
+    sk: str
+    recorded: ReceiptIdentity
+    written: ReceiptIdentity
+    prepared: RunOutcome
+    """The outcome the caller prepared; `written` is `superseded` derived from it when the
+    store found the fence moved, else the prepared receipt itself."""
+
+
+_COMMIT_STEP = "commit"
+_PUBLISH_FAILURE = "publish:"
+_COMMIT_RECORDS = frozenset({RunOutcome.PUBLISHED, RunOutcome.SUPERSEDED})
+
+
+def _own_commit_recorded(check: ReplayCheck) -> bool:
+    recorded, written = check.recorded, check.written
+    category = written.failure_category
+    return (
+        check.sk.rsplit("#", 1)[-1] == _COMMIT_STEP
+        and written.outcome is RunOutcome.SUPERSEDED
+        and written.generation_id is None
+        and category is not None
+        and category.startswith(_PUBLISH_FAILURE)
+        and recorded.outcome in _COMMIT_RECORDS
+        and recorded.generation_id is not None
+        and recorded.failure_category is None
+        and recorded.run_fingerprint is not None
+        and recorded.run_fingerprint == written.run_fingerprint
+    )
+
+
+def replay_basis(check: ReplayCheck) -> ReplayBasis | None:
+    """Return the `ReplayBasis` that makes the receipt on record this write's, or None."""
+    recorded, written = check.recorded, check.written
+    if recorded == written:
+        return ReplayBasis.SAME_REQUEST
+    if (
+        written.outcome is RunOutcome.SUPERSEDED
+        and check.prepared is not RunOutcome.SUPERSEDED
+        and recorded == replace(written, outcome=check.prepared)
+    ):
+        return ReplayBasis.PREPARED_RECORDED
+    if _own_commit_recorded(check):
+        return ReplayBasis.OWN_COMMIT_RECORDED
+    return None
+
+
+def replay_mismatch(check: ReplayCheck) -> str:
+    """Name what makes the receipt on record another request's: the conflict's detail."""
+    recorded, written = check.recorded, check.written
+    if recorded.outcome not in {written.outcome, check.prepared}:
+        return f"the receipt records {recorded.outcome.value}, not {written.outcome.value}"
+    if recorded.generation_id != written.generation_id:
+        return "the receipt names another generation"
+    differ = [
+        name
+        for name in RECEIPT_IDENTITY_FIELDS
+        if name != "outcome" and getattr(recorded, name) != getattr(written, name)
+    ]
+    return "the receipt records another " + (", ".join(differ) or "outcome")
 
 
 @dataclass(frozen=True)
