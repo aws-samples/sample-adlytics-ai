@@ -10,11 +10,17 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import UTC, date, datetime, time, timedelta
-from typing import Any
+from typing import Any, cast
 
 import pytest
+from botocore.exceptions import ReadTimeoutError
 from forecast_series_support import INPUT_END, asin, policy
+from forecast_store_support import ForecastTableFake, LambdaCrashed
 
+from adapters.outbound.dynamodb.demand_forecast_store import (
+    STORE_CLIENT_CONFIG,
+    DynamoDbForecastStore,
+)
 from domain.forecasting.boundary import (
     CandidateSeriesV1,
     InputManifestV1,
@@ -24,6 +30,7 @@ from domain.forecasting.boundary import (
     boundary_schema_digests,
 )
 from domain.forecasting.identity import display_asin
+from domain.forecasting.list_pages import cut_pages, rank_entries
 from domain.forecasting.models import SkipReason
 from domain.forecasting.policy import TARGETS
 from domain.forecasting.publish import (
@@ -58,6 +65,16 @@ from domain.forecasting.publish import (
     validate_shard_candidate,
 )
 from domain.forecasting.summaries import roster_entry
+from ports.outbound.forecast_store import (
+    Attestation,
+    CommitDisposition,
+    ForecastStoreConflictError,
+    ForecastStoreThrottled,
+    GenerationMeta,
+    GenerationSeries,
+    OutcomeCommitRequest,
+    RunReceipt,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -899,3 +916,341 @@ def test_an_operator_reason_outside_1_to_200_printable_characters_is_refused(rea
 
 def test_a_200_character_reason_is_accepted() -> None:
     assert _rollback(reason="x" * 200).reason == "x" * 200
+
+
+# --- The store at each commit boundary (failure injection, §6b) ------------------------------
+
+
+def _table_store(table: ForecastTableFake) -> DynamoDbForecastStore:
+    return DynamoDbForecastStore("forecast-table", 350_000, cast("Any", table))
+
+
+def _series(shard: int, title: str = "P") -> tuple[GenerationSeries, ...]:
+    return tuple(
+        GenerationSeries(_candidate(n, shard), f"{title}{n}", title_truncated=False)
+        for n in SHARDS[shard]
+    )
+
+
+def _meta(run_id: str = RUN, input_end: date = INPUT_END) -> GenerationMeta:
+    attempts = tuple(
+        ShardPublishResult(
+            shard, "r0a0", SERIES, 2, f"runs/{run_id}/shards/{shard}/roster.jsonl.gz", HEX
+        )
+        for shard in range(len(SHARDS))
+    )
+    entries = [
+        roster_entry(_candidate(n, shard), f"P{n}", title_truncated=False)
+        for shard, numbers in enumerate(SHARDS)
+        for n in numbers
+    ]
+    pages = cut_pages(rank_entries(entries, "units_ordered_p50_13w"), policy().serving)
+    return GenerationMeta(
+        set_id=SET_ID,
+        run_id=run_id,
+        receipt_sk=f"RUN#{run_id}#r0#commit",
+        input_end=input_end,
+        run_fingerprint=FINGERPRINT,
+        run_identity=_manifest().run_identity,
+        attempts=attempts,
+        currency_codes=("USD",),
+        counts_by_reason={},
+        counts_by_model={"chronos2": 6},
+        pages=pages,
+    )
+
+
+def _write_generation(store: DynamoDbForecastStore, meta: GenerationMeta) -> int:
+    """Write every item the way the publisher does, META last; return the replays seen."""
+    replayed = 0
+    for shard in range(len(SHARDS)):
+        replayed += store.put_generation_items(meta.generation_id, _series(shard)).replayed
+    replayed += store.put_list_pages(meta.generation_id, meta.pages.pages).replayed
+    replayed += store.put_generation_meta(meta).replayed
+    assert store.attest_generation(meta) is Attestation.ATTESTED
+    return replayed
+
+
+def _publish_request(
+    meta: GenerationMeta, expected_fence: int, at: datetime = AT
+) -> OutcomeCommitRequest:
+    attempt = _attempt(RunOutcome.PUBLISHED, None, disposition=Disposition.SUPPRESS)
+    attempt = replace(attempt, run_id=meta.run_id, at=at)
+    pointer = CurrentPointer(
+        fence=expected_fence + 1,
+        generation_id=meta.generation_id,
+        input_end=meta.input_end,
+        published_at=at,
+        run_fingerprint=FINGERPRINT,
+        last_attempt=attempt,
+    )
+    receipt = RunReceipt(
+        sk=meta.receipt_sk,
+        outcome=RunOutcome.PUBLISHED,
+        recorded_at=at,
+        generation_id=meta.generation_id,
+        published_at=at,
+        retry_disposition=Disposition.SUPPRESS,
+        run_fingerprint=FINGERPRINT,
+    )
+    return OutcomeCommitRequest(SET_ID, expected_fence, receipt, pointer, meta.series_sha256)
+
+
+def _held_request(expected_fence: int) -> OutcomeCommitRequest:
+    attempt = _attempt(RunOutcome.HELD_QUALITY, "target_empty", disposition=Disposition.SUPPRESS)
+    receipt = RunReceipt(
+        sk=f"RUN#{RUN}#r0#commit",
+        outcome=RunOutcome.HELD_QUALITY,
+        recorded_at=AT,
+        failure_category="target_empty",
+        retry_disposition=Disposition.SUPPRESS,
+    )
+    pointer = CurrentPointer(fence=expected_fence, last_attempt=attempt)
+    return OutcomeCommitRequest(SET_ID, expected_fence, receipt, pointer)
+
+
+def _receipts(table: ForecastTableFake) -> dict[str, str]:
+    return {
+        sk: table.items[(pk, sk)]["outcome"]["S"]
+        for pk, sk in table.keys(f"SET#{SET_ID}")
+        if sk.startswith("RUN#")
+    }
+
+
+def test_a_crash_after_some_asin_items_then_a_rerun_publishes_once() -> None:
+    table = ForecastTableFake(crash_on_put=2)
+    store, meta = _table_store(table), _meta()
+    with pytest.raises(LambdaCrashed):
+        _write_generation(store, meta)
+    assert store.get_current(SET_ID) is None
+    table.crash_on_put = None
+    assert _write_generation(store, meta) >= 1
+    result = store.commit_outcome(_publish_request(meta, 0))
+    assert result.disposition is CommitDisposition.APPLIED
+    current = store.get_current(SET_ID)
+    assert current is not None
+    assert (current.generation_id, current.fence) == (meta.generation_id, 1)
+    assert len(list(table.keys(f"GEN#{meta.generation_id}#ASIN#"))) == 6
+    assert _receipts(table) == {meta.receipt_sk: "published"}
+
+
+def test_a_crash_after_every_item_but_before_meta_leaves_nothing_current() -> None:
+    meta = _meta()
+    before_meta = 6 + len(meta.pages.pages) + 1
+    table = ForecastTableFake(crash_on_put=before_meta)
+    store = _table_store(table)
+    with pytest.raises(LambdaCrashed):
+        _write_generation(store, meta)
+    assert table.item(f"GEN#{meta.generation_id}", "META") is None
+    assert store.attest_generation(meta) is Attestation.META_MISSING
+    table.crash_on_put = None
+    assert _write_generation(store, meta) == 6 + len(meta.pages.pages)
+    assert store.commit_outcome(_publish_request(meta, 0)).disposition is CommitDisposition.APPLIED
+
+
+def test_a_stop_after_meta_before_the_transaction_republishes_on_a_rerun() -> None:
+    table = ForecastTableFake()
+    store, meta = _table_store(table), _meta()
+    _write_generation(store, meta)
+    assert store.get_current(SET_ID) is None
+    assert _receipts(table) == {}
+    assert _write_generation(store, meta) == 6 + len(meta.pages.pages) + 1
+    assert store.commit_outcome(_publish_request(meta, 0)).disposition is CommitDisposition.APPLIED
+
+
+def test_a_fence_expected_on_an_empty_item_writes_only_a_superseded_receipt() -> None:
+    table = ForecastTableFake()
+    store, meta = _table_store(table), _meta()
+    _write_generation(store, meta)
+    result = store.commit_outcome(_publish_request(meta, 3))
+    assert result.disposition is CommitDisposition.SUPERSEDED
+    assert result.recorded_outcome is RunOutcome.SUPERSEDED
+    assert store.get_current(SET_ID) is None
+    assert _receipts(table) == {meta.receipt_sk: "superseded"}
+    assert "generation_id" not in cast(
+        "dict[str, Any]", table.item(f"SET#{SET_ID}", meta.receipt_sk)
+    )
+
+
+def test_a_publish_whose_fence_moved_on_an_existing_item_leaves_current_alone() -> None:
+    table = ForecastTableFake()
+    store, first, second = _table_store(table), _meta(), _meta("run-2")
+    _write_generation(store, first)
+    store.commit_outcome(_publish_request(first, 0))
+    _write_generation(store, second)
+    result = store.commit_outcome(_publish_request(second, 0))
+    assert result.disposition is CommitDisposition.SUPERSEDED
+    current = store.get_current(SET_ID)
+    assert current is not None
+    assert (current.generation_id, current.fence) == (first.generation_id, 1)
+    assert _receipts(table) == {first.receipt_sk: "published", second.receipt_sk: "superseded"}
+
+
+def test_a_publish_of_an_older_input_end_than_current_is_superseded() -> None:
+    table = ForecastTableFake()
+    store = _table_store(table)
+    newer, older = _meta(), _meta("run-2", INPUT_END - timedelta(weeks=1))
+    _write_generation(store, newer)
+    store.commit_outcome(_publish_request(newer, 0))
+    _write_generation(store, older)
+    result = store.commit_outcome(_publish_request(older, 1))
+    assert result.disposition is CommitDisposition.SUPERSEDED
+    current = store.get_current(SET_ID)
+    assert current is not None
+    assert current.generation_id == newer.generation_id
+
+
+def test_a_meta_that_no_longer_matches_cancels_the_whole_transaction() -> None:
+    table = ForecastTableFake()
+    store, meta = _table_store(table), _meta()
+    _write_generation(store, meta)
+    request = replace(_publish_request(meta, 0), series_sha256="c" * 64)
+    with pytest.raises(ForecastStoreConflictError) as refused:
+        store.commit_outcome(request)
+    assert refused.value.key == f"GEN#{meta.generation_id}"
+    assert store.get_current(SET_ID) is None
+    assert _receipts(table) == {}
+
+
+def test_a_commit_retried_after_an_unseen_success_writes_nothing_twice() -> None:
+    table = ForecastTableFake(lose_transaction_response=True)
+    store, meta = _table_store(table), _meta()
+    _write_generation(store, meta)
+    with pytest.raises(ReadTimeoutError):
+        store.commit_outcome(_publish_request(meta, 0))
+    within_window = store.commit_outcome(_publish_request(meta, 0))
+    assert within_window.disposition is CommitDisposition.APPLIED
+    table.forget_tokens()
+    after_window = store.commit_outcome(_publish_request(meta, 0))
+    assert after_window.disposition is CommitDisposition.ALREADY_CURRENT
+    assert after_window.recorded_outcome is RunOutcome.PUBLISHED
+    current = store.get_current(SET_ID)
+    assert current is not None
+    assert current.fence == 1
+    assert _receipts(table) == {meta.receipt_sk: "published"}
+
+
+def test_a_held_outcome_on_an_empty_table_creates_current_at_fence_zero_and_replays() -> None:
+    table = ForecastTableFake()
+    store = _table_store(table)
+    assert store.commit_outcome(_held_request(0)).disposition is CommitDisposition.APPLIED
+    current = store.get_current(SET_ID)
+    assert current is not None
+    assert (current.fence, current.generation_id) == (0, None)
+    assert current.last_attempt == cast("CurrentPointer", _held_request(0).pointer).last_attempt
+    table.forget_tokens()
+    replayed = store.commit_outcome(
+        replace(
+            _held_request(0),
+            receipt=replace(_held_request(0).receipt, recorded_at=AT + timedelta(minutes=11)),
+        )
+    )
+    assert replayed.disposition is CommitDisposition.REPLAYED
+    assert replayed.recorded_outcome is RunOutcome.HELD_QUALITY
+    assert store.get_current(SET_ID) == current
+
+
+def test_a_rollback_moves_the_fence_and_names_what_it_rolled_back_from() -> None:
+    table = ForecastTableFake()
+    store, first, second = _table_store(table), _meta(), _meta("run-2")
+    _write_generation(store, first)
+    store.commit_outcome(_publish_request(first, 0))
+    _write_generation(store, second)
+    store.commit_outcome(_publish_request(second, 1, AT + timedelta(weeks=1)))
+    target = store.get_generation(first.generation_id)
+    assert target is not None
+    state = RollbackState(
+        store.get_current(SET_ID),
+        target,
+        store.get_receipt(SET_ID, target.receipt_sk),
+        "rollback-1",
+        LATER,
+    )
+    plan = rollback_pointer(RollbackRequest(SET_ID, first.generation_id, 2, "bad model"), state)
+    receipt = RunReceipt(
+        sk=plan.receipt_sk,
+        outcome=RunOutcome.ROLLED_BACK,
+        recorded_at=LATER,
+        generation_id=first.generation_id,
+        retry_disposition=Disposition.SUPPRESS,
+        operator_reason="bad model",
+    )
+    result = store.commit_outcome(OutcomeCommitRequest(SET_ID, 2, receipt, plan.pointer))
+    assert result.disposition is CommitDisposition.APPLIED
+    assert store.get_current(SET_ID) == plan.pointer
+    assert _receipts(table)[plan.receipt_sk] == "rolled_back"
+
+
+def test_a_rollback_whose_fence_moved_writes_no_pointer_change() -> None:
+    table = ForecastTableFake()
+    store, first = _table_store(table), _meta()
+    _write_generation(store, first)
+    store.commit_outcome(_publish_request(first, 0))
+    pointer = replace(
+        cast("CurrentPointer", store.get_current(SET_ID)),
+        rolled_back_from="run-0-aaaaaaaaaaaa",
+        last_attempt=_attempt(RunOutcome.ROLLED_BACK, None, disposition=Disposition.SUPPRESS),
+    )
+    receipt = RunReceipt(
+        sk="RUN#rollback-1#r0#rollback",
+        outcome=RunOutcome.ROLLED_BACK,
+        recorded_at=LATER,
+        generation_id=first.generation_id,
+        retry_disposition=Disposition.SUPPRESS,
+    )
+    result = store.commit_outcome(OutcomeCommitRequest(SET_ID, 7, receipt, pointer))
+    assert result.disposition is CommitDisposition.SUPERSEDED
+    assert cast("CurrentPointer", store.get_current(SET_ID)).fence == 1
+
+
+def test_a_receipt_only_outcome_is_a_one_action_transaction_that_leaves_current_alone() -> None:
+    table = ForecastTableFake()
+    store = _table_store(table)
+    receipt = RunReceipt(
+        sk=f"RUN#{RUN}#r0#select", outcome=RunOutcome.NO_OP_SAME_INPUT, recorded_at=AT
+    )
+    result = store.commit_outcome(OutcomeCommitRequest(SET_ID, 0, receipt))
+    assert result.disposition is CommitDisposition.APPLIED
+    assert len(table.transactions[-1]["TransactItems"]) == 1
+    assert store.get_current(SET_ID) is None
+    assert _receipts(table) == {receipt.sk: "no_op_same_input"}
+
+
+def test_a_replayed_asin_item_with_other_bytes_is_a_conflict_not_an_overwrite() -> None:
+    table = ForecastTableFake()
+    store, meta = _table_store(table), _meta()
+    store.put_generation_items(meta.generation_id, _series(0))
+    with pytest.raises(ForecastStoreConflictError) as refused:
+        store.put_generation_items(meta.generation_id, _series(0, title="Other"))
+    assert refused.value.key.startswith(f"GEN#{meta.generation_id}#ASIN#")
+    stored = table.item(refused.value.key, "ITEM")
+    assert stored is not None
+    assert stored["title"]["S"].startswith("P")
+
+
+def test_a_throttle_past_the_client_retries_raises_the_typed_error() -> None:
+    table = ForecastTableFake(throttle_puts=True)
+    store, meta = _table_store(table), _meta()
+    with pytest.raises(ForecastStoreThrottled) as put_refused:
+        store.put_generation_items(meta.generation_id, _series(0))
+    assert (put_refused.value.code, put_refused.value.retry_attempts) == (
+        "ProvisionedThroughputExceededException",
+        9,
+    )
+    table.throttle_transaction = "ThrottlingError"
+    with pytest.raises(ForecastStoreThrottled) as commit_refused:
+        store.commit_outcome(_held_request(0))
+    assert commit_refused.value.code == "ThrottlingError"
+    assert store.get_current(SET_ID) is None
+
+
+def test_every_store_read_is_strongly_consistent_and_the_client_retries_adaptively() -> None:
+    table = ForecastTableFake()
+    store, meta = _table_store(table), _meta()
+    _write_generation(store, meta)
+    store.commit_outcome(_publish_request(meta, 0))
+    store.get_receipt(SET_ID, meta.receipt_sk)
+    store.get_generation(meta.generation_id)
+    assert table.gets
+    assert all(get["ConsistentRead"] is True for get in table.gets)
+    assert cast("Any", STORE_CLIENT_CONFIG).retries == {"mode": "adaptive", "max_attempts": 10}

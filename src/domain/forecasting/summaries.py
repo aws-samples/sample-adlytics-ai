@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: MIT-0
 """Forecast summaries for the page and tools, one implementation for both (design §4a).
 
-Slice 2 holds only `roster_entry()`, the one function that builds a list row: `publish_shard`
-uses it for roster parts and the readers for an exact-ASIN search. The p50 totals are sums of
+Slice 2 holds `roster_entry()`, the one function that builds a list row (`publish_shard` uses
+it for roster parts and the readers for an exact-ASIN search), and `cap_title()`, the display
+rule for titles over `serving.title_max_bytes`. The p50 totals are sums of
 the stored four-place values (§4d), so they are exact and stay stored values; rounding for
 display happens later, once. `accuracy_class` is null until `classify_accuracy()` lands
 (slice 3).
@@ -10,6 +11,7 @@ display happens later, once. `accuracy_class` is null until `classify_accuracy()
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from decimal import Decimal
 
 from domain.forecasting.boundary import (
@@ -23,6 +25,32 @@ from domain.forecasting.policy import MONEY_TARGETS, TARGETS
 
 P50_VIEWS: tuple[str, ...] = ("4", "8", "13")
 """The list row's p50 totals: the first 4, 8 and 13 forecast weeks (`serving.views`)."""
+
+TRUNCATION_MARK = "…"
+
+
+@dataclass(frozen=True)
+class DisplayTitle:
+    """A title capped to `serving.title_max_bytes`, and whether it was cut."""
+
+    title: str | None
+    truncated: bool
+
+
+def cap_title(title: str | None, max_bytes: int) -> DisplayTitle:
+    """Cut a title over `max_bytes` UTF-8 bytes to fit, ending in `…` (§6b).
+
+    The cut falls at the last whole code point that leaves room for the mark. The full title
+    stays in `dim_product`.
+    """
+    encoded = b"" if title is None else title.encode("utf-8")
+    if title is None or len(encoded) <= max_bytes:
+        return DisplayTitle(title, truncated=False)
+    room = max_bytes - len(TRUNCATION_MARK.encode("utf-8"))
+    if room < 0:
+        raise ValueError(f"title_max_bytes {max_bytes} leaves no room for the truncation mark")
+    kept = encoded[:room].decode("utf-8", errors="ignore")
+    return DisplayTitle(kept + TRUNCATION_MARK, truncated=True)
 
 
 def _target_row(target: str, candidate: TargetCandidateV1, currency: str | None) -> RosterTargetV1:
