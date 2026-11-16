@@ -774,7 +774,7 @@ export class DemandForecastStack extends cdk.Stack {
           {
             Condition: "{% $states.input.outcome = 'held_quality' %}",
             Output:
-              "{% {'step': $states.input.step, 'outcome': 'held_quality', 'category': $states.input.category, 'attempt_id': $states.input.attempt_id} %}",
+              "{% {'step': $states.input.step, 'outcome': 'held_quality', 'category': $states.input.category, 'attempt_id': $states.input.attempt_id, 'shard': $states.input.shard} %}",
             Next: 'RecordOutcome',
           },
         ],
@@ -787,7 +787,7 @@ export class DemandForecastStack extends cdk.Stack {
         Arguments: {
           FunctionName: publisher.functionArn,
           Payload:
-            `{% {'operation': 'record', 'run_id': $run_id, 'redrive_count': ${redrive}, 'step': $states.input.step, 'outcome': $states.input.outcome, 'category': $states.input.category, 'phase': $states.input.phase, 'error': $states.input.error, 'attempt_id': $states.input.attempt_id, 'run_fingerprint': $run_fingerprint, 'expected_fence': $expected_fence, 'operator_reason': $operator_reason} %}`,
+            `{% {'operation': 'record', 'run_id': $run_id, 'redrive_count': ${redrive}, 'step': $states.input.step, 'outcome': $states.input.outcome, 'category': $states.input.category, 'phase': $states.input.phase, 'error': $states.input.error, 'attempt_id': $states.input.attempt_id, 'shard': $states.input.shard, 'run_fingerprint': $run_fingerprint, 'expected_fence': $expected_fence, 'operator_reason': $operator_reason} %}`,
         },
         Output: '{% $states.result.Payload %}',
         Retry: lambdaRetry,
@@ -814,8 +814,10 @@ export class DemandForecastStack extends cdk.Stack {
               manifest_key: '{% $states.input.probe.manifest_key %}',
               build_attempt_id: '{% $states.input.probe.build_attempt_id %}',
               run_hash12: '{% $states.input.probe.run_hash12 %}',
-              run_fingerprint: null,
-              expected_fence: null,
+              // The staged run's identity and fence, so a probe failure is recorded against the
+              // fence it read and is `superseded` after a rollback (ruling 2026-11-16 R1-1).
+              run_fingerprint: '{% $states.input.probe.run_fingerprint %}',
+              expected_fence: '{% $states.input.probe.expected_fence %}',
               operator_reason: null,
             },
             Output: "{% {'shards': $states.input.probe.shards} %}",
@@ -924,9 +926,23 @@ export class DemandForecastStack extends cdk.Stack {
       evaluationPeriods: 1,
       treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
     });
-    // Emitted by every daily SelectInput, so two days without it mean the check stopped running.
+    // Ruling 2026-11-16 R1-4: every daily SelectInput emits UnknownSalesDays, but the age only once
+    // a generation is CURRENT. A day with no check reads as just over stale_after_days, so a
+    // stopped check alarms; a set never published, with its checks running, stays OK.
     alarm('DemandForecastStale', 'The forecast planners see is older than stale_after_days, or the daily check stopped.', {
-      metric: metric(OPERATIONAL_METRICS.ForecastCurrentAgeDays),
+      metric: new cloudwatch.MathExpression({
+        expression: `IF(FILL(checks, 0) < 1, ${STALE_AFTER_DAYS + 1}, FILL(age, 0))`,
+        usingMetrics: {
+          checks: new cloudwatch.Metric({
+            namespace: OPERATIONAL_METRICS.UnknownSalesDays.namespace,
+            metricName: OPERATIONAL_METRICS.UnknownSalesDays.name,
+            statistic: 'SampleCount',
+            period: day,
+          }),
+          age: metric(OPERATIONAL_METRICS.ForecastCurrentAgeDays),
+        },
+        period: day,
+      }),
       threshold: STALE_AFTER_DAYS,
       comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
       evaluationPeriods: 2,

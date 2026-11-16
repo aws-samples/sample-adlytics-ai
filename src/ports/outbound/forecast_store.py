@@ -27,14 +27,15 @@ from domain.forecasting.boundary import CandidateSeriesV1, RunIdentityV1
 from domain.forecasting.list_pages import ListPage, ListPages
 from domain.forecasting.policy import MAX_SHARDS
 from domain.forecasting.publish import (
-    POINTER_OUTCOMES,
     CurrentPointer,
     Disposition,
     GenerationRecord,
+    LastAttempt,
     ReceiptRecord,
     RunOutcome,
     ShardAttempt,
     ShardPublishResult,
+    changes_last_attempt,
     generation_id,
     generation_series_sha256,
 )
@@ -156,6 +157,8 @@ class RunReceipt:
     counts_by_reason: Mapping[str, int] = field(default_factory=dict[str, int])
     durations_ms: Mapping[str, int] = field(default_factory=dict[str, int])
     landing_to_publish_seconds: int | None = None
+    shard: int | None = None
+    """The shard a held commit names (design §6c, R1-5); absent on every other receipt."""
 
     def __post_init__(self) -> None:
         if not self.sk.startswith("RUN#"):
@@ -166,8 +169,10 @@ class RunReceipt:
             raise ValueError("generation_id is set exactly on published and rolled_back")
         if (self.published_at is not None) != (self.outcome is RunOutcome.PUBLISHED):
             raise ValueError("published_at is set exactly on published")
-        if (self.retry_disposition is not None) != (self.outcome in POINTER_OUTCOMES):
-            raise ValueError("retry_disposition is set exactly on pointer outcomes")
+        if (self.retry_disposition is not None) != changes_last_attempt(
+            self.outcome, self.run_fingerprint
+        ):
+            raise ValueError("retry_disposition is set exactly when last_attempt changes")
 
 
 @dataclass(frozen=True)
@@ -175,7 +180,9 @@ class OutcomeCommitRequest:
     """One outcome transaction: the receipt and, for a pointer outcome, `CURRENT` after it.
 
     `pointer` is what `next_pointer()` or `rollback_pointer()` returned; `series_sha256` is the
-    attested `META` digest a publish conditions on.
+    attested `META` digest a publish conditions on. `previous_attempt` is the `last_attempt` read
+    with `CURRENT`: a held or failed update conditions on it as well as on the fence, so two
+    outcomes prepared from one `CURRENT` can't both replace it (R1-2).
     """
 
     set_id: str
@@ -183,6 +190,7 @@ class OutcomeCommitRequest:
     receipt: RunReceipt
     pointer: CurrentPointer | None = None
     series_sha256: str | None = None
+    previous_attempt: LastAttempt | None = None
 
     def __post_init__(self) -> None:
         outcome = self.receipt.outcome
@@ -190,8 +198,10 @@ class OutcomeCommitRequest:
             raise ValueError("set_id is non-empty and has no '#'")
         if self.expected_fence < 0:
             raise ValueError("expected_fence is never negative")
-        if (self.pointer is not None) != (outcome in POINTER_OUTCOMES):
-            raise ValueError("a pointer is given exactly for a pointer outcome")
+        if (self.pointer is not None) != changes_last_attempt(
+            outcome, self.receipt.run_fingerprint
+        ):
+            raise ValueError("a pointer is given exactly when last_attempt changes")
         if (self.series_sha256 is not None) != (outcome is RunOutcome.PUBLISHED):
             raise ValueError("series_sha256 is given exactly for a published outcome")
         pointer = self.pointer
@@ -229,6 +239,8 @@ class OutcomeCommitResult:
     receipt_sk: str
     recorded_outcome: RunOutcome
     retry_attempts: int
+    recorded_generation_id: str | None = None
+    """The generation the receipt on record names (R1-3); None for an outcome without one."""
 
 
 @dataclass(frozen=True)

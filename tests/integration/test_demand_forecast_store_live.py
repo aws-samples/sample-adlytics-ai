@@ -257,6 +257,55 @@ def test_a_rollback_restores_the_target_with_fence_plus_one(probe: Probe) -> Non
         RunOutcome.ROLLED_BACK,
         Disposition.SUPPRESS,
     )
+    # Ruling 2026-11-16 R1-8: the next publish removes the rollback's rolled_back_from.
+    third = _meta(probe, "run-c", "3" * 64)
+    assert _publish(probe, third, expected_fence=3) is CommitDisposition.APPLIED
+    after = _current(probe)
+    assert (after.generation_id, after.rolled_back_from) == (third.generation_id, None)
+
+
+def _held_from(probe: Probe, read: CurrentPointer, run: str) -> OutcomeCommitRequest:
+    """Prepare a held outcome from `read`, as RecordOutcome does from the CURRENT it read."""
+    now = datetime.now(UTC)
+    run_id = f"{probe.set_id}-{run}"
+    attempt = LastAttempt(
+        run_id=run_id,
+        attempt_id=None,
+        run_fingerprint="4" * 64,
+        outcome=RunOutcome.HELD_QUALITY,
+        failure_category="target_empty",
+        retry_disposition=Disposition.SUPPRESS,
+        transient_retries=0,
+        at=now,
+    )
+    advance = next_pointer(PointerAdvanceRequest(read, read.fence, attempt))
+    receipt = RunReceipt(
+        sk=f"RUN#{run_id}#r0#commit",
+        outcome=RunOutcome.HELD_QUALITY,
+        recorded_at=now,
+        failure_category="target_empty",
+        retry_disposition=Disposition.SUPPRESS,
+        run_fingerprint="4" * 64,
+    )
+    probe.written.add((set_key(probe.set_id), receipt.sk))
+    return OutcomeCommitRequest(
+        probe.set_id, read.fence, receipt, advance.pointer, previous_attempt=read.last_attempt
+    )
+
+
+def test_two_holds_prepared_from_one_current_record_one_and_supersede_the_other(
+    probe: Probe,
+) -> None:
+    """The real service compares the stored `last_attempt` map with the one the run read (R1-2)."""
+    first = _meta(probe, "run-a", "1" * 64)
+    assert _publish(probe, first, expected_fence=0) is CommitDisposition.APPLIED
+    read = _current(probe)
+    one, two = _held_from(probe, read, "held-1"), _held_from(probe, read, "held-2")
+    assert probe.store.commit_outcome(one).disposition is CommitDisposition.APPLIED
+    assert probe.store.commit_outcome(two).disposition is CommitDisposition.SUPERSEDED
+    current = _current(probe)
+    assert one.pointer is not None
+    assert (current.fence, current.last_attempt) == (1, one.pointer.last_attempt)
 
 
 def test_a_rollback_planned_before_the_fence_moved_is_superseded(probe: Probe) -> None:

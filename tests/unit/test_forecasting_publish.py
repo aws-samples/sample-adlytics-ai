@@ -93,6 +93,14 @@ from domain.forecasting.publish import (
     validate_commit,
     validate_shard_candidate,
 )
+from domain.forecasting.selection import (
+    SelectBasis,
+    SelectDecision,
+    SelectDecisionRequest,
+    SelectOutcome,
+    Trigger,
+    select_decision,
+)
 from domain.forecasting.summaries import roster_entry
 from ports.outbound.forecast_store import (
     Attestation,
@@ -1363,12 +1371,17 @@ def _digest(body: bytes) -> str:
 
 
 def _stage(rig: _Rig, run_id: str = RUN, expected_fence: int = 0, **records: Any) -> None:
-    """Stage a 3-shard build attempt and each shard's r0a0 candidate as the job writes them."""
+    """Stage a 3-shard build attempt and each shard's r0a0 candidate as the job writes them.
+
+    `fingerprint=` sets the run fingerprint the manifest and every run report carry.
+    """
+    fingerprint = str(records.pop("fingerprint", FINGERPRINT))
     base = f"runs/{run_id}/input/r0a0"
     titles = (_titles().model_dump_json() + "\n").encode("utf-8")
     manifest = _manifest(
         run_id=run_id,
         expected_fence=expected_fence,
+        run_fingerprint=fingerprint,
         titles_key=f"{base}/titles.json",
         titles_sha256=_digest(titles),
     )
@@ -1379,7 +1392,9 @@ def _stage(rig: _Rig, run_id: str = RUN, expected_fence: int = 0, **records: Any
         body = series_bytes(candidates)
         prefix = f"runs/{run_id}/shards/{shard}/attempts/r0a0/candidate/"
         rig.objects.objects[prefix + SERIES_FILE] = body
-        report = _report(shard, run_id=run_id, series_sha256=_digest(body))
+        report = _report(
+            shard, run_id=run_id, series_sha256=_digest(body), run_fingerprint=fingerprint
+        )
         rig.objects.objects[prefix + REPORT_FILE] = report.model_dump_json().encode()
 
 
@@ -1492,17 +1507,23 @@ def _part_lines(rig: _Rig, payloads: list[dict[str, object]], shard: int) -> lis
     return gzip.decompress(body).splitlines(keepends=True)
 
 
-def test_a_missing_roster_part_holds_the_commit_and_nothing_becomes_current() -> None:
+def test_a_missing_roster_part_holds_the_commit_naming_its_shard_and_nothing_is_current() -> None:
     rig = _Rig()
     _stage(rig)
     payloads = _publish_all(rig)
     del rig.objects.objects[str(payloads[1]["roster_part_key"])]
     held = _commit_run(rig, payloads)
-    assert (held.outcome, held.step, held.category) == (
+    assert (held.outcome, held.step, held.category, held.shard) == (
         "held_quality",
         "commit",
         "identity_mismatch",
+        1,
     )
+    # Design §6c and R1-5: the hold names the shard and the missing key, for the operator.
+    assert held.held_detail == (
+        f"shard 1 roster part runs/{RUN}/shards/1/attempts/r0a0/roster-part.jsonl.gz is missing"
+    )
+    assert held.payload()["shard"] == 1
     assert rig.current() is None
     assert rig.metrics.points == []
 
@@ -1651,7 +1672,7 @@ def _caught(name: str, message: str | None = None, exit_code: str | None = None)
     "case",
     [
         (
-            "select",
+            "build-r0a0",
             "input_build",
             _caught("InputBuildFailedError", "MARKETPLACE_UNKNOWN"),
             "input_build:MARKETPLACE_UNKNOWN",
@@ -1688,7 +1709,7 @@ def test_every_caught_failure_records_failed_with_its_category_and_emits_failed(
     step, phase, error, category, disposition = case
     assert failure_category(phase, error) == category
     rig = _Rig()
-    request = RecordOutcomeRequest(RUN, 0, step, RunOutcome.FAILED, category)
+    request = RecordOutcomeRequest(RUN, 0, step, RunOutcome.FAILED, category, FINGERPRINT)
     assert record_outcome(rig.publisher, request).outcome == "failed"
     current = rig.current()
     assert current is not None
@@ -1737,3 +1758,204 @@ def test_a_rollback_restores_the_earlier_generation_and_counts_rolled_back() -> 
     assert current is not None
     assert (current.generation_id, current.fence) == (first.generation_id, 3)
     assert rig.metrics.outcomes() == ["published", "published", "rolled_back"]
+
+
+# --- R1 round 1: what a failure, a hold and a rollback leave in last_attempt ----------------
+
+BAD_FINGERPRINT = "b" * 64
+"""The run fingerprint of the model an operator rolled back or a check held."""
+
+
+def _rolled_back(rig: _Rig) -> CurrentPointer:
+    """run-2 publishes, run-3 publishes a bad model, and the operator rolls back to run-2."""
+    _stage(rig, run_id="run-2")
+    _stage(rig, run_id="run-3", expected_fence=1, fingerprint=BAD_FINGERPRINT)
+    first = _commit_run(rig, _publish_all(rig, "run-2"), "run-2")
+    _commit_run(rig, _publish_all(rig, "run-3"), "run-3")
+    assert first.generation_id is not None
+    request = RollbackRequest(PUBLISH_SET, first.generation_id, 2, "bad model")
+    assert rollback(rig.publisher, request, "rollback-1").outcome == "rolled_back"
+    current = rig.current()
+    assert current is not None
+    return current
+
+
+def _failure(run_id: str, step: str, **changes: Any) -> dict[str, Any]:
+    event: dict[str, Any] = {
+        "run_id": run_id,
+        "redrive_count": 0,
+        "step": step,
+        "outcome": "failed",
+        "phase": "input_build",
+        "error": _caught("InputBuildFailedError", "ATHENA_TIMEOUT"),
+        "run_fingerprint": None,
+        "expected_fence": None,
+    }
+    return {**event, **changes}
+
+
+def _slot_check(current: CurrentPointer | None, fingerprint: str) -> SelectDecision:
+    retry = policy().retry
+    request = SelectDecisionRequest(
+        fingerprint, current, Trigger.SCHEDULED, SLOT_DAY, retry.admission_weekday
+    )
+    return select_decision(request)
+
+
+SLOT_DAY = date(2026, 11, 19)
+"""A Thursday, the contract's admission weekday."""
+
+
+def test_a_select_failure_after_a_rollback_keeps_the_rolled_back_model_suppressed() -> None:
+    rig = _Rig()
+    before = _rolled_back(rig)
+    recorded = record_outcome(rig.publisher, record_request(_failure("run-4", "select")))
+    assert (recorded.outcome, recorded.category) == ("failed", "input_build:ATHENA_TIMEOUT")
+    # Ruling 2026-11-16 R1-1: a failure with no fingerprint writes only its receipt.
+    assert rig.current() == before
+    assert rig.receipts()["RUN#run-4#r0#select"] == "failed"
+    assert rig.metrics.outcomes()[-1] == "failed"
+    decision = _slot_check(rig.current(), BAD_FINGERPRINT)
+    assert (decision.outcome, decision.basis) == (
+        SelectOutcome.NO_OP_SAME_INPUT,
+        SelectBasis.LAST_ATTEMPT_SUPPRESSED,
+    )
+
+
+def test_a_select_failure_after_a_hold_keeps_the_held_fingerprint_suppressed() -> None:
+    rig = _Rig()
+    _stage(rig, run_id="run-2")
+    _commit_run(rig, _publish_all(rig, "run-2"), "run-2")
+    _stage(rig, run_id="run-3", expected_fence=1, fingerprint=BAD_FINGERPRINT)
+    payloads = _publish_all(rig, "run-3")
+    del rig.objects.objects[str(payloads[2]["roster_part_key"])]
+    held = _commit_run(rig, payloads, "run-3")
+    event = {
+        "run_id": "run-3",
+        "redrive_count": 0,
+        "step": held.step,
+        "outcome": held.outcome,
+        "category": held.category,
+        "shard": held.shard,
+        "run_fingerprint": BAD_FINGERPRINT,
+        "expected_fence": 1,
+    }
+    assert record_outcome(rig.publisher, record_request(event)).shard == 2
+    receipt = rig.table.items[(f"SET#{PUBLISH_SET}", "RUN#run-3#r0#commit")]
+    assert (receipt["outcome"], receipt["shard"]) == ({"S": "held_quality"}, {"N": "2"})
+    before = rig.current()
+    record_outcome(rig.publisher, record_request(_failure("run-4", "select")))
+    assert rig.current() == before
+    decision = _slot_check(rig.current(), BAD_FINGERPRINT)
+    assert (decision.outcome, decision.basis) == (
+        SelectOutcome.NO_OP_SAME_INPUT,
+        SelectBasis.LAST_ATTEMPT_SUPPRESSED,
+    )
+
+
+def test_a_fingerprinted_failure_after_a_rollback_still_records_last_attempt() -> None:
+    rig = _Rig()
+    _rolled_back(rig)
+    other = "c" * 64
+    event = _failure("run-4", "build-r0a0", run_fingerprint=other, expected_fence=3)
+    assert record_outcome(rig.publisher, record_request(event)).outcome == "failed"
+    current = rig.current()
+    assert current is not None
+    attempt = current.last_attempt
+    assert attempt is not None
+    assert (attempt.run_fingerprint, attempt.outcome, attempt.retry_disposition) == (
+        other,
+        RunOutcome.FAILED,
+        Disposition.RETRY,
+    )
+
+
+def test_a_probe_failure_staged_before_a_rollback_writes_only_a_superseded_receipt() -> None:
+    rig = _Rig()
+    before = _rolled_back(rig)
+    event = _failure("scale-1", "s0-r0a0", phase="job", run_fingerprint="d" * 64, expected_fence=1)
+    event["error"] = _caught("States.Timeout")
+    assert record_outcome(rig.publisher, record_request(event)).outcome == "superseded"
+    assert rig.current() == before
+    assert rig.receipts()["RUN#scale-1#r0#s0-r0a0"] == "superseded"
+
+
+def test_two_outcomes_prepared_from_one_current_cannot_both_replace_last_attempt() -> None:
+    table = ForecastTableFake()
+    store = _table_store(table)
+    store.commit_outcome(_held_request(0))
+    read = cast("CurrentPointer", store.get_current(SET_ID))
+
+    def failed(run_id: str) -> OutcomeCommitRequest:
+        attempt = _attempt(RunOutcome.FAILED, "publish:SlowDown", run_id=run_id)
+        receipt = RunReceipt(
+            sk=f"RUN#{run_id}#r0#commit",
+            outcome=RunOutcome.FAILED,
+            recorded_at=AT,
+            failure_category="publish:SlowDown",
+            retry_disposition=Disposition.RETRY,
+            run_fingerprint=FINGERPRINT,
+        )
+        pointer = replace(read, last_attempt=attempt)
+        return OutcomeCommitRequest(SET_ID, 0, receipt, pointer, previous_attempt=read.last_attempt)
+
+    first, late = failed("run-5"), failed("run-6")
+    assert store.commit_outcome(first).disposition is CommitDisposition.APPLIED
+    assert store.commit_outcome(late).disposition is CommitDisposition.SUPERSEDED
+    assert cast("CurrentPointer", store.get_current(SET_ID)).last_attempt == (
+        cast("CurrentPointer", first.pointer).last_attempt
+    )
+    assert _receipts(table)["RUN#run-6#r0#commit"] == "superseded"
+
+
+def test_two_rollbacks_under_one_receipt_key_never_report_the_others_generation() -> None:
+    table = ForecastTableFake()
+    store, first, second = _table_store(table), _meta(), _meta("run-2")
+    _write_generation(store, first)
+    store.commit_outcome(_publish_request(first, 0))
+    _write_generation(store, second)
+    store.commit_outcome(_publish_request(second, 1, AT + timedelta(weeks=1)))
+
+    def rollback_to(target: GenerationMeta, fence: int) -> OutcomeCommitRequest:
+        record = store.get_generation(target.generation_id)
+        assert record is not None
+        state = RollbackState(
+            store.get_current(SET_ID),
+            record,
+            store.get_receipt(SET_ID, record.receipt_sk),
+            "rollback-1",
+            LATER,
+        )
+        plan = rollback_pointer(RollbackRequest(SET_ID, target.generation_id, fence, "x"), state)
+        receipt = RunReceipt(
+            sk=plan.receipt_sk,
+            outcome=RunOutcome.ROLLED_BACK,
+            recorded_at=LATER,
+            generation_id=target.generation_id,
+            retry_disposition=Disposition.SUPPRESS,
+            operator_reason="x",
+        )
+        return OutcomeCommitRequest(SET_ID, fence, receipt, plan.pointer)
+
+    applied = store.commit_outcome(rollback_to(first, 2))
+    assert (applied.disposition, applied.recorded_generation_id) == (
+        CommitDisposition.APPLIED,
+        first.generation_id,
+    )
+    # A second rollback in the same second, to the generation now rolled back from.
+    with pytest.raises(ForecastStoreConflictError, match="another generation"):
+        store.commit_outcome(rollback_to(second, 3))
+    assert cast("CurrentPointer", store.get_current(SET_ID)).generation_id == first.generation_id
+
+
+def test_a_publish_after_a_rollback_clears_rolled_back_from() -> None:
+    rig = _Rig()
+    assert _rolled_back(rig).rolled_back_from is not None
+    _stage(rig, run_id="run-4", expected_fence=3, fingerprint="c" * 64)
+    published = _commit_run(rig, _publish_all(rig, "run-4"), "run-4")
+    assert published.outcome == "published"
+    current = rig.current()
+    assert current is not None
+    # Ruling 2026-11-16 R1-8: the field names only the rollback that made CURRENT what it is.
+    assert (current.generation_id, current.rolled_back_from) == (published.generation_id, None)
+    assert "rolled_back_from" not in rig.table.items[(f"SET#{PUBLISH_SET}", "CURRENT")]

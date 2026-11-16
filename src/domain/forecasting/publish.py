@@ -489,6 +489,18 @@ POINTER_OUTCOMES = frozenset(
 """The outcomes that change `CURRENT` or `last_attempt`; every other one is receipt-only."""
 
 
+def changes_last_attempt(outcome: RunOutcome, run_fingerprint: str | None) -> bool:
+    """Whether this outcome replaces `CURRENT.last_attempt` (§6b, ruling 2026-11-16 R1-1).
+
+    A `failed` outcome with no run fingerprint (a `SelectInput` failure) names nothing the next
+    check could suppress or retry, so it writes only its receipt and keeps a rollback's or a
+    hold's `suppress` in place.
+    """
+    if outcome is RunOutcome.FAILED and run_fingerprint is None:
+        return False
+    return outcome in POINTER_OUTCOMES
+
+
 class Disposition(StrEnum):
     """Whether the next daily check re-runs `last_attempt`'s fingerprint (§6d step 3)."""
 
@@ -706,9 +718,10 @@ def _fence_holds(request: PointerAdvanceRequest) -> bool:
 def next_pointer(request: PointerAdvanceRequest) -> PointerAdvance:
     """Return how a published, held or failed outcome moves `CURRENT`.
 
-    `published` sets the generation and `fence = if_not_exists(fence, 0) + 1`; held and failed
-    set only `last_attempt` and keep the fence (0 on a new item). `rolled_back_from` is left as
-    it was: the §6b update expression doesn't name it.
+    `published` sets the generation and `fence = if_not_exists(fence, 0) + 1` and clears
+    `rolled_back_from`, which names only the rollback that made the shown generation CURRENT
+    (ruling 2026-11-16 R1-8). Held and failed set only `last_attempt` and keep the fence (0 on a
+    new item) and `rolled_back_from`.
     """
     current, generation = request.current, request.generation
     if (
@@ -737,7 +750,7 @@ def next_pointer(request: PointerAdvanceRequest) -> PointerAdvance:
             input_end=generation.input_end,
             published_at=generation.published_at,
             run_fingerprint=generation.run_fingerprint,
-            rolled_back_from=base.rolled_back_from,
+            rolled_back_from=None,
             last_attempt=request.attempt,
         )
     return PointerAdvance(PointerDecision.ADVANCE, pointer)

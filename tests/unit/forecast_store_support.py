@@ -3,9 +3,10 @@
 
 `ForecastTableFake` keeps low-level items by (`PK`, `SK`) and evaluates the subset of the
 DynamoDB expression grammar the store writes: `attribute_exists`, `attribute_not_exists`,
-comparisons, `AND`, `OR`, parentheses, and `SET` with `if_not_exists` and `+`. A transaction is
-all-or-nothing with per-action `CancellationReasons`, and a reused `ClientRequestToken` is
-idempotent while `remember_tokens` holds, as the service is within its 10-minute window.
+comparisons, `AND`, `OR`, parentheses, `SET` with `if_not_exists` and `+`, and a trailing
+`REMOVE`. A transaction is all-or-nothing with per-action `CancellationReasons`, and a reused
+`ClientRequestToken` is idempotent while `remember_tokens` holds, as the service is within its
+10-minute window.
 
 Faults model a dying Lambda (`crash_on_put`), a response lost after the write applied
 (`lose_transaction_response`), and throttles (`throttle_puts`, `throttle_transaction`).
@@ -140,8 +141,8 @@ class _Expression:
         assert self._peek() is None, f"unparsed {self._tokens[self._at :]}"
         return result
 
-    def apply(self, item: Mapping[str, Any] | None) -> dict[str, Any]:
-        """Evaluate a `SET` expression and return the new attributes."""
+    def apply(self, item: Mapping[str, Any] | None) -> tuple[dict[str, Any], set[str]]:
+        """Evaluate a `SET` expression with an optional `REMOVE` clause: new and removed names."""
         self._take("SET")
         updates: dict[str, Any] = {}
         while True:
@@ -151,8 +152,15 @@ class _Expression:
             if self._peek() != ",":
                 break
             self._take()
+        removed: set[str] = set()
+        if self._peek() == "REMOVE":
+            self._take()
+            removed.add(self._name(self._take()))
+            while self._peek() == ",":
+                self._take()
+                removed.add(self._name(self._take()))
         assert self._peek() is None, f"unparsed {self._tokens[self._at :]}"
-        return updates
+        return updates, removed
 
 
 def refuse_unmatched_placeholders(operation: str, body: Mapping[str, Any]) -> None:
@@ -252,7 +260,9 @@ class ForecastTableFake:
                 body.get("ExpressionAttributeNames", {}),
                 body.get("ExpressionAttributeValues", {}),
             )
-            self.items[key] = {**(current or body["Key"]), **expression.apply(current)}
+            updates, removed = expression.apply(current)
+            merged = {**(current or body["Key"]), **updates}
+            self.items[key] = {name: v for name, v in merged.items() if name not in removed}
 
     def transact_write_items(self, **request: Any) -> Wire:
         with self._lock:

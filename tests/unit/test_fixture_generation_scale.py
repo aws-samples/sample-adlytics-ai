@@ -13,6 +13,7 @@ import io
 import tracemalloc
 from collections import Counter
 from datetime import date
+from typing import cast
 
 import pyarrow.parquet as pq
 import pytest
@@ -104,7 +105,10 @@ def test_a_staged_input_carries_a_valid_manifest_and_the_jobs_exact_parquet_sche
     ):
         part = pq.ParquetFile(io.BytesIO(staged.objects[f"{base}/{kind}/shard=0/part-0"]))
         assert part.schema_arrow.equals(arrow_schema(model), check_metadata=False)
-    assert staged.probe["probe"]["shards"] == [{"shard": 0}]  # pyright: ignore[reportIndexIssue]
+    probe = cast("dict[str, object]", staged.probe["probe"])
+    assert probe["shards"] == [{"shard": 0}]
+    # A probe failure is recorded against the staged run and fence (ruling 2026-11-16 R1-1).
+    assert (probe["run_fingerprint"], probe["expected_fence"]) == (manifest.run_fingerprint, 3)
 
 
 @pytest.mark.parametrize(("current", "fence"), [(None, 0), (CurrentPointer(fence=4), 4)])

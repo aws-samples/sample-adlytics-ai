@@ -257,6 +257,7 @@ def receipt_item(set_id: str, receipt: RunReceipt) -> dict[str, object]:
             None if receipt.run_identity is None else receipt.run_identity.model_dump(mode="json")
         ),
         "landing_to_publish_seconds": receipt.landing_to_publish_seconds,
+        "shard": receipt.shard,
     }
     return {
         PK: set_key(set_id),
@@ -456,7 +457,11 @@ class DynamoDbForecastStore(ForecastStorePort):
         except ClientError as error:
             return self._cancelled(request, positions, error)
         return OutcomeCommitResult(
-            CommitDisposition.APPLIED, receipt.sk, receipt.outcome, _retries(response)
+            CommitDisposition.APPLIED,
+            receipt.sk,
+            receipt.outcome,
+            _retries(response),
+            receipt.generation_id,
         )
 
     # The weekly slot marker
@@ -633,6 +638,7 @@ class DynamoDbForecastStore(ForecastStorePort):
                 "#published_at = :published_at",
                 "#run_fingerprint = :run_fingerprint",
             ]
+        removals: list[str] = []
         if outcome is RunOutcome.ROLLED_BACK:
             values |= {":rolled_back_from": pointer.rolled_back_from, ":one": 1}
             assignments += ["#rolled_back_from = :rolled_back_from", "#fence = #fence + :one"]
@@ -642,25 +648,45 @@ class DynamoDbForecastStore(ForecastStorePort):
             if outcome is RunOutcome.PUBLISHED:
                 values[":one"] = 1
                 assignments.append("#fence = if_not_exists(#fence, :zero) + :one")
+                # Ruling 2026-11-16 R1-8: only the rollback that made the shown generation
+                # CURRENT is named; a later publish clears it.
+                removals.append("#rolled_back_from")
             else:
                 assignments.append("#fence = if_not_exists(#fence, :zero)")
             condition = self._fence_condition(request.expected_fence, outcome)
+            if outcome is not RunOutcome.PUBLISHED:
+                condition = f"({condition}) AND {self._attempt_condition(request, values)}"
         if ":expected_fence" in condition:
             values[":expected_fence"] = request.expected_fence
+        update = "SET " + ", ".join(assignments)
+        if removals:
+            update += " REMOVE " + ", ".join(removals)
         names = {
-            f"#{name}": PK if name == "pk" else name
-            for name in _names_in(" ".join([*assignments, condition]))
+            f"#{name}": PK if name == "pk" else name for name in _names_in(f"{update} {condition}")
         }
         return {
             "Update": {
                 "TableName": self._table,
                 "Key": {PK: {"S": set_key(request.set_id)}, SK: {"S": CURRENT_SK}},
-                "UpdateExpression": "SET " + ", ".join(assignments),
+                "UpdateExpression": update,
                 "ConditionExpression": condition,
                 "ExpressionAttributeNames": names,
                 "ExpressionAttributeValues": {name: _value(v) for name, v in values.items()},
             }
         }
+
+    @staticmethod
+    def _attempt_condition(request: OutcomeCommitRequest, values: dict[str, object]) -> str:
+        """Require the `last_attempt` the outcome was prepared from (R1-2).
+
+        A held or failed update keeps the fence, so the fence alone can't tell two outcomes
+        prepared from one `CURRENT` apart; the later one is refused and recorded `superseded`.
+        """
+        previous = request.previous_attempt
+        if previous is None:
+            return "attribute_not_exists(#last_attempt)"
+        values[":previous_attempt"] = _last_attempt(previous)
+        return "#last_attempt = :previous_attempt"
 
     @staticmethod
     def _fence_condition(expected_fence: int, outcome: RunOutcome) -> str:
@@ -762,7 +788,13 @@ class DynamoDbForecastStore(ForecastStorePort):
         recorded = self.get_receipt(request.set_id, sk)
         if recorded is None:
             raise ForecastStoreConflictError(sk, "the request token was reused for no receipt")
-        return OutcomeCommitResult(CommitDisposition.REPLAYED, sk, recorded.outcome, retried)
+        # R1-3: a receipt that names another generation is not this outcome's replay.
+        wanted = request.receipt.generation_id
+        if wanted is not None and recorded.generation_id != wanted:
+            raise ForecastStoreConflictError(sk, "the receipt names another generation")
+        return OutcomeCommitResult(
+            CommitDisposition.REPLAYED, sk, recorded.outcome, retried, recorded.generation_id
+        )
 
 
 def _names_in(expression: str) -> Iterable[str]:

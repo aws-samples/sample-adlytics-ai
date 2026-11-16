@@ -390,6 +390,8 @@ def _assemble(assembly: _Assembly) -> StagedInput:
             "manifest_key": manifest_key,
             "build_attempt_id": "r0a0",
             "run_hash12": run_hash12(request.run_id),
+            "run_fingerprint": manifest.run_fingerprint,
+            "expected_fence": manifest.expected_fence,
             "shards": [{"shard": s.index} for s in shards],
         }
     }

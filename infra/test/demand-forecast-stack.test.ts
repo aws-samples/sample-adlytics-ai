@@ -41,6 +41,60 @@ function synth(envName = 'dev'): Template {
   return Template.fromStack(stack);
 }
 
+/**
+ * Evaluate one period of a CloudWatch metric-math expression built from `IF`, `FILL`, `<`,
+ * numbers and metric IDs; a metric absent from `values` has no datapoint that period.
+ */
+function evaluateMath(expression: string, values: Record<string, number>): number {
+  const tokens = expression.match(/[A-Za-z_][A-Za-z0-9_]*|\d+(?:\.\d+)?|[(),<]/g) ?? [];
+  let at = 0;
+  const take = (expected?: string): string => {
+    const token = tokens[at++];
+    if (token === undefined || (expected !== undefined && token !== expected)) {
+      throw new Error(`expected ${expected ?? 'a token'} at ${at - 1} in ${expression}`);
+    }
+    return token;
+  };
+  const call = (arity: number): number[] => {
+    take('(');
+    const args: number[] = [];
+    for (let index = 0; index < arity; index += 1) {
+      if (index > 0) take(',');
+      args.push(compare());
+    }
+    take(')');
+    return args;
+  };
+  const operand = (): number => {
+    const token = take();
+    if (/^\d/.test(token)) return Number(token);
+    if (token === 'IF') {
+      const [condition, then, otherwise] = call(3) as [number, number, number];
+      return condition !== 0 ? then : otherwise;
+    }
+    if (token === 'FILL') {
+      take('(');
+      const id = take();
+      take(',');
+      const fallback = Number(take());
+      take(')');
+      return values[id] ?? fallback;
+    }
+    const value = values[token];
+    if (value === undefined) throw new Error(`${token} has no datapoint, so the expression has none`);
+    return value;
+  };
+  const compare = (): number => {
+    const left = operand();
+    if (tokens[at] !== '<') return left;
+    take('<');
+    return left < operand() ? 1 : 0;
+  };
+  const result = compare();
+  if (at !== tokens.length) throw new Error(`unparsed ${tokens.slice(at).join(' ')}`);
+  return result;
+}
+
 function statements(template: Template, rolePrefix: string): Statement[] {
   const policies = template.findResources('AWS::IAM::Policy');
   return Object.entries(policies)
@@ -349,7 +403,12 @@ describe('DemandForecastStack', () => {
     const states = definition(template).States as Record<string, Record<string, unknown>>;
     const probe = (states.ProbeStart?.Choices as Array<Record<string, unknown>>)[0];
     expect(probe?.Next).toBe('Forecast');
-    expect(probe?.Assign).toMatchObject({ run_fingerprint: null, expected_fence: null, operator_reason: null });
+    // Ruling 2026-11-16 R1-1: a probe failure is recorded against the staged fence and run.
+    expect(probe?.Assign).toMatchObject({
+      run_fingerprint: '{% $states.input.probe.run_fingerprint %}',
+      expected_fence: '{% $states.input.probe.expected_fence %}',
+      operator_reason: null,
+    });
   });
 
   test('the daily schedule starts the one machine with its execution ID and scheduled time', () => {
@@ -419,7 +478,7 @@ describe('DemandForecastStack', () => {
       ComparisonOperator: 'GreaterThanOrEqualToThreshold',
       TreatMissingData: 'notBreaching',
     });
-    expect(single('DemandForecastStale', OPERATIONAL_METRICS.ForecastCurrentAgeDays)).toMatchObject({
+    expect(byName('DemandForecastStale')).toMatchObject({
       Threshold: STALE_AFTER_DAYS,
       ComparisonOperator: 'GreaterThanThreshold',
       EvaluationPeriods: 2,
@@ -465,6 +524,32 @@ describe('DemandForecastStack', () => {
       const props = Object.values(alarms).find((alarm) => alarm.Properties.AlarmName === name)?.Properties;
       expect(props?.AlarmActions).toHaveLength(1);
     }
+  });
+
+  // Ruling 2026-11-16 R1-4: a set never published must not page while its checks run, and a
+  // stopped check or a stale forecast must. The synthesized expression is evaluated for one day.
+  test.each([
+    ['never published, checks running', { checks: 1 }, false],
+    ['checks stopped', {}, true],
+    ['forecast older than stale_after_days', { checks: 1, age: STALE_AFTER_DAYS + 1 }, true],
+    ['fresh forecast', { checks: 1, age: 3 }, false],
+  ] as const)('the Stale alarm on a day where %s', (_case, day: Record<string, number>, breaching) => {
+    const alarm = Object.values(template.findResources('AWS::CloudWatch::Alarm')).find(
+      (found) => found.Properties.AlarmName === 'adlytics-dev-DemandForecastStale',
+    )?.Properties as { Metrics: Array<{ Id: string; Expression?: string; MetricStat?: Record<string, unknown> }>; Threshold: number };
+    const ids = alarm.Metrics.filter((item) => item.Expression === undefined);
+    expect(Object.fromEntries(ids.map((item) => [item.Id, item.MetricStat]))).toMatchObject({
+      checks: {
+        Metric: { Namespace: OPERATIONAL_METRICS.UnknownSalesDays.namespace, MetricName: OPERATIONAL_METRICS.UnknownSalesDays.name },
+        Stat: 'SampleCount',
+      },
+      age: {
+        Metric: { Namespace: OPERATIONAL_METRICS.ForecastCurrentAgeDays.namespace, MetricName: OPERATIONAL_METRICS.ForecastCurrentAgeDays.name },
+        Stat: OPERATIONAL_METRICS.ForecastCurrentAgeDays.statistic,
+      },
+    });
+    const expression = alarm.Metrics.find((item) => item.Expression !== undefined)?.Expression ?? '';
+    expect(evaluateMath(expression, day) > alarm.Threshold).toBe(breaching);
   });
 
   test('the Stale threshold is the contract stale_after_days', () => {

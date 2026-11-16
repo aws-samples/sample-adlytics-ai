@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import secrets
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -203,9 +204,18 @@ class _NoObjects:
         raise AssertionError(f"a rollback writes no object: {key}")
 
 
+ROLLBACK_NONCE_BYTES: Final = 6
+"""Random bytes in a rollback's run ID, so two rollbacks in one second never share a receipt."""
+
+
 def rollback_run_id(set_id: str, at: datetime) -> str:
-    """Return `<set hash 12>-<UTC timestamp>-rollback`, the rollback's `RUN#` key."""
-    return f"{set_id}-{at.astimezone(UTC).strftime('%Y%m%dT%H%M%SZ')}-rollback"
+    """Return `<set hash 12>-<UTC timestamp>-<12 hex>-rollback`, the rollback's `RUN#` key.
+
+    The random part keeps two rollbacks started in the same second apart (R1-3); the store also
+    refuses a receipt key that already names another generation.
+    """
+    token = secrets.token_hex(ROLLBACK_NONCE_BYTES)
+    return f"{set_id}-{at.astimezone(UTC).strftime('%Y%m%dT%H%M%SZ')}-{token}-rollback"
 
 
 @dataclass(frozen=True)

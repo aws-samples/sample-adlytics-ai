@@ -10,6 +10,7 @@ generation that was never published, or overwrite a newer publish.
 from __future__ import annotations
 
 import json
+import re
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
@@ -60,6 +61,7 @@ from scripts.demand_forecast_operator import (  # noqa: E402
     main,
     name_taken,
     rollback,
+    rollback_run_id,
     start_run,
 )
 
@@ -276,7 +278,10 @@ class _Store:
             return OutcomeCommitResult(CommitDisposition.SUPERSEDED, sk, RunOutcome.SUPERSEDED, 0)
         self.commits.append(request)
         self.current = request.pointer
-        return OutcomeCommitResult(CommitDisposition.APPLIED, sk, request.receipt.outcome, 0)
+        receipt = request.receipt
+        return OutcomeCommitResult(
+            CommitDisposition.APPLIED, sk, receipt.outcome, 0, receipt.generation_id
+        )
 
     def put_generation_items(
         self, generation: str, series: tuple[GenerationSeries, ...]
@@ -328,7 +333,9 @@ def test_a_rollback_fences_on_the_current_fence_and_restores_the_published_gener
     store, metrics = _Store(_current(5), _published()), _Metrics()
     done = rollback(_publisher(store, metrics), RollbackCommand(G1, "bad model"))
     assert (done.outcome, done.generation_id, done.expected_fence) == ("rolled_back", G1, 5)
-    assert done.receipt_sk == f"RUN#{SET}-20261116T093005Z-rollback#r0#rollback"
+    assert re.fullmatch(
+        rf"RUN#{SET}-20261116T093005Z-[0-9a-f]{{12}}-rollback#r0#rollback", str(done.receipt_sk)
+    )
     assert store.current is not None
     assert (store.current.generation_id, store.current.fence) == (G1, 6)
     assert store.current.rolled_back_from == G2
@@ -343,6 +350,12 @@ def test_a_rollback_fences_on_the_current_fence_and_restores_the_published_gener
     assert [(p.spec.name, p.value, p.dimensions) for p in metrics.points] == [
         ("ForecastRunOutcome", 1.0, (("outcome", "rolled_back"),))
     ]
+
+
+def test_two_rollbacks_in_one_second_get_their_own_receipt_keys() -> None:
+    first, second = rollback_run_id(SET, AT), rollback_run_id(SET, AT)
+    assert first != second
+    assert all(run.startswith(f"{SET}-20261116T093005Z-") for run in (first, second))
 
 
 def test_a_rollback_whose_fence_moves_after_the_operator_read_writes_nothing() -> None:

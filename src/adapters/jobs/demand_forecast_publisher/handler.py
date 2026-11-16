@@ -87,6 +87,7 @@ from domain.forecasting.publish import (
     ShardAttempt,
     ShardCandidateValidationRequest,
     ShardPublishResult,
+    changes_last_attempt,
     forecast_set_id,
     generation_id,
     inferred_zero_week_share,
@@ -142,7 +143,6 @@ RECORDED_OUTCOMES: Final = frozenset(
     }
 )
 """The outcomes `RecordOutcome` writes; `published` and `superseded` come from the commit."""
-_RECEIPT_ONLY: Final = frozenset({RunOutcome.NO_OP_SAME_INPUT, RunOutcome.HELD_INPUT_NOT_READY})
 _NEW_RECEIPT: Final = frozenset({CommitDisposition.APPLIED, CommitDisposition.SUPERSEDED})
 
 
@@ -163,11 +163,12 @@ class ObjectStoreError(Exception):
 
 
 class PublishHeld(Exception):  # noqa: N818 - names the outcome, which is not an error
-    """A check held the run; `RecordOutcome` records `held_quality(<check>)`."""
+    """A check held the run; `RecordOutcome` records `held_quality(<check>)` and the shard."""
 
-    def __init__(self, held: HeldQuality) -> None:
+    def __init__(self, held: HeldQuality, shard: int | None = None) -> None:
         super().__init__(f"{held.category}: {held.detail}")
         self.held = held
+        self.shard = shard
 
 
 # ---- composition seams (fakes in unit tests) ----
@@ -220,6 +221,9 @@ class StepOutcome:
     series_published: int = 0
     series_withheld: int = 0
     store_retry_attempts: int = 0
+    held_detail: str | None = None
+    """What a held check found (keys, shards, counts and digests; never a value or title).
+    Logged as `held_detail` on the terminal line, never returned to the state machine (R1-5)."""
 
     def payload(self) -> dict[str, object]:
         """Return the state output: a shard result, a held outcome or a recorded outcome."""
@@ -451,6 +455,7 @@ def publish_shard(publisher: Publisher, request: PublishShardRequest) -> StepOut
             category=held.held.category,
             shard=request.shard,
             attempt_id=request.attempt_id,
+            held_detail=held.held.detail,
         )
 
 
@@ -502,18 +507,26 @@ def _read_parts(
         raise _held(HeldCheck.IDENTITY_MISMATCH, detail)
     parts: list[RosterPart] = []
     for result in sorted(request.published, key=lambda result: result.shard):
-        expected = roster_part_key(request.run_id, result.shard, result.attempt_id)
-        if result.roster_part_key != expected:
-            detail = f"shard {result.shard}: roster part key is not its attempt's"
-            raise _held(HeldCheck.IDENTITY_MISMATCH, detail)
-        what = f"shard {result.shard} roster part"
-        body = _read(publisher.objects, expected, what)
-        digest = _sha256(body)
-        if digest != result.roster_part_sha256:
-            # Before parsing: a changed byte is a digest mismatch, never a schema mismatch.
-            raise _held(HeldCheck.IDENTITY_MISMATCH, f"{what} digest differs from its result")
-        parts.append(RosterPart(result.shard, digest, _lines(RosterEntryV1, body, what)))
+        try:
+            parts.append(_read_part(publisher, request.run_id, result))
+        except PublishHeld as held:
+            # Design §6c: a hold at the commit names the shard whose part failed (R1-5).
+            raise PublishHeld(held.held, result.shard) from None
     return tuple(parts)
+
+
+def _read_part(publisher: Publisher, run_id: str, result: ShardPublishResult) -> RosterPart:
+    expected = roster_part_key(run_id, result.shard, result.attempt_id)
+    if result.roster_part_key != expected:
+        detail = f"shard {result.shard}: roster part key is not its attempt's"
+        raise _held(HeldCheck.IDENTITY_MISMATCH, detail)
+    what = f"shard {result.shard} roster part"
+    body = _read(publisher.objects, expected, what)
+    digest = _sha256(body)
+    if digest != result.roster_part_sha256:
+        # Before parsing: a changed byte is a digest mismatch, never a schema mismatch.
+        raise _held(HeldCheck.IDENTITY_MISMATCH, f"{what} digest differs from its result")
+    return RosterPart(result.shard, digest, _lines(RosterEntryV1, body, what))
 
 
 def _currencies(parts: Sequence[RosterPart]) -> tuple[str, ...]:
@@ -687,7 +700,9 @@ def commit_generation(publisher: Publisher, request: CommitRequest) -> StepOutco
             outcome=RunOutcome.HELD_QUALITY.value,
             step="commit",
             category=held.held.category,
+            shard=held.shard,
             receipt_sk=request.receipt_sk,
+            held_detail=held.held.detail,
         )
 
 
@@ -741,6 +756,8 @@ class RecordOutcomeRequest:
     expected_fence: int | None = None
     """The fence `SelectInput` read; None when the run failed before reading it."""
     operator_reason: str | None = None
+    shard: int | None = None
+    """The shard a held commit names (design §6c, R1-5)."""
 
     def __post_init__(self) -> None:
         try:
@@ -754,6 +771,7 @@ class RecordOutcomeRequest:
             or (categorised and not self.category)
             or (self.outcome is RunOutcome.NO_OP_SAME_INPUT and self.category is not None)
             or (self.expected_fence is not None and self.expected_fence < 0)
+            or (self.shard is not None and not 0 <= self.shard < MAX_SHARDS)
         ):
             raise PublishFailedError(REQUEST_INVALID)
 
@@ -772,6 +790,7 @@ def _receipt(request: RecordOutcomeRequest, outcome: RunOutcome, at: datetime) -
         attempt_id=request.attempt_id,
         operator_reason=request.operator_reason,
         run_fingerprint=request.run_fingerprint,
+        shard=request.shard,
     )
 
 
@@ -806,6 +825,7 @@ def _pointer_commit(
     if advance.decision is PointerDecision.SUPERSEDED:
         receipt = _receipt(request, RunOutcome.SUPERSEDED, at)
         return OutcomeCommitRequest(publisher.set_id, fence, receipt)
+    previous = None if current is None else current.last_attempt
     receipt = RunReceipt(
         sk=request.receipt_sk,
         outcome=request.outcome,
@@ -815,14 +835,21 @@ def _pointer_commit(
         attempt_id=request.attempt_id,
         operator_reason=request.operator_reason,
         run_fingerprint=request.run_fingerprint,
+        shard=request.shard,
     )
-    return OutcomeCommitRequest(publisher.set_id, fence, receipt, advance.pointer)
+    return OutcomeCommitRequest(
+        publisher.set_id, fence, receipt, advance.pointer, previous_attempt=previous
+    )
 
 
 def record_outcome(publisher: Publisher, request: RecordOutcomeRequest) -> StepOutcome:
-    """Write the outcome's receipt and, for a held or failed outcome, `last_attempt`."""
+    """Write the outcome's receipt and, for a held or fingerprinted failed one, `last_attempt`.
+
+    A failure with no run fingerprint (a `SelectInput` failure) writes only its receipt (ruling
+    2026-11-16 R1-1), so a rollback's or a hold's `suppress` stays in place.
+    """
     at = publisher.now()
-    if request.outcome in _RECEIPT_ONLY:
+    if not changes_last_attempt(request.outcome, request.run_fingerprint):
         commit = OutcomeCommitRequest(
             publisher.set_id, request.expected_fence or 0, _receipt(request, request.outcome, at)
         )
@@ -836,6 +863,7 @@ def record_outcome(publisher: Publisher, request: RecordOutcomeRequest) -> StepO
         outcome=outcome,
         step=request.step,
         category=request.category,
+        shard=request.shard,
         receipt_sk=result.receipt_sk,
         store_retry_attempts=result.retry_attempts,
     )
@@ -871,7 +899,7 @@ def rollback(publisher: Publisher, request: RollbackRequest, rollback_run_id: st
     return StepOutcome(
         outcome=outcome,
         step="rollback",
-        generation_id=request.generation_id if outcome == RunOutcome.ROLLED_BACK else None,
+        generation_id=result.recorded_generation_id if outcome == RunOutcome.ROLLED_BACK else None,
         receipt_sk=result.receipt_sk,
         store_retry_attempts=result.retry_attempts,
     )
@@ -1073,6 +1101,7 @@ def record_request(event: Mapping[str, Any]) -> RecordOutcomeRequest:
         attempt_id=_optional_text(event, "attempt_id"),
         expected_fence=None if fence is None else _int(event, "expected_fence"),
         operator_reason=_optional_text(event, "operator_reason"),
+        shard=None if event.get("shard") is None else _int(event, "shard"),
     )
 
 
@@ -1125,9 +1154,15 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, object]:
             held_category=step.category if held else None,
         )
         payload = step.payload()
+        held_detail = {} if step.held_detail is None else {"held_detail": step.held_detail}
         _report(
             operation,
             step.outcome,
-            {**payload, "store_retry_attempts": step.store_retry_attempts, "throttled": False},
+            {
+                **payload,
+                **held_detail,
+                "store_retry_attempts": step.store_retry_attempts,
+                "throttled": False,
+            },
         )
         return payload
