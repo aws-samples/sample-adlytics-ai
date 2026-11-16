@@ -27,14 +27,126 @@ def test_the_committed_policy_loads_with_its_digest_and_versions() -> None:
     assert loaded.policy.engine.shard_max_asins == 2000
     assert loaded.policy.eligibility.horizon_weeks == 13
     assert len(loaded.sha256) == 64
-    assert set(loaded.section_versions) == {
-        "input",
-        "missing_weeks",
-        "eligibility",
-        "engine",
-        "numeric",
-        "serving",
+    assert loaded.section_versions == {
+        "input": 1,
+        "missing_weeks": 1,
+        "eligibility": 1,
+        "engine": 1,
+        "numeric": 1,
+        "gate": 1,
+        "serving": 1,
+        "retry": 1,
     }
+
+
+def test_the_committed_gate_and_retry_sections_are_the_approved_values() -> None:
+    policy = load_policy(POLICY).policy
+    assert policy.gate.metric == "wql"
+    assert policy.gate.margin == 0.0
+    assert policy.gate.simplicity_order == ("seasonal_naive", "ets", "chronos2")
+    assert policy.retry.max_transient_retries == 3
+    assert policy.retry.admission_weekday == "thursday"
+    assert policy.retry.suppressed_outcomes == (
+        "held_quality",
+        "failed(target_empty)",
+        "failed(job:MODEL_ARTIFACT_MISMATCH)",
+        "failed(job:RUN_IDENTITY_MISMATCH)",
+        "failed(job:INPUT_SCHEMA_MISMATCH)",
+        "failed(job:INPUT_SHARD_MISMATCH)",
+        "failed(input_build:MARKETPLACE_UNKNOWN)",
+        "failed(input_build:statement_too_large)",
+        "failed(input_build:SHARD_PLAN_MISMATCH)",
+        "failed(input_build:ROSTER_TOO_LARGE)",
+        "rolled_back",
+    )
+
+
+@pytest.mark.parametrize("section", ["gate", "retry"])
+def test_a_missing_gate_or_retry_section_is_refused(section: str) -> None:
+    document = _document()
+    del document[section]
+    with pytest.raises(PolicyError, match=rf"policy: missing \['{section}'\], unknown \[\]"):
+        parse_policy(document)
+
+
+@pytest.mark.parametrize(
+    ("section", "key"),
+    [
+        ("gate", "version"),
+        ("gate", "metric"),
+        ("gate", "margin"),
+        ("gate", "simplicity_order"),
+        ("gate", "comparator_fallback"),
+        ("gate", "no_valid_simple_model"),
+        ("gate", "comparator_quantiles"),
+        ("gate", "not_publishable"),
+        ("retry", "version"),
+        ("retry", "suppressed_outcomes"),
+        ("retry", "max_transient_retries"),
+        ("retry", "admission_weekday"),
+    ],
+)
+def test_a_missing_gate_or_retry_key_is_refused(section: str, key: str) -> None:
+    document = _document()
+    del document[section][key]
+    with pytest.raises(PolicyError, match=rf"{section}: missing \['{key}'\], unknown \[\]"):
+        parse_policy(document)
+
+
+@pytest.mark.parametrize("section", ["gate", "retry"])
+def test_an_unknown_gate_or_retry_key_is_refused(section: str) -> None:
+    document = _document()
+    document[section]["margn"] = 0.0
+    with pytest.raises(PolicyError, match=rf"{section}: missing \[\], unknown \['margn'\]"):
+        parse_policy(document)
+
+
+@pytest.mark.parametrize(
+    ("path", "value", "message"),
+    [
+        ("gate.metric", "mase", "gate.metric must be wql"),
+        ("gate.margin", -0.01, "gate.margin must be at least 0 and below 1"),
+        ("gate.margin", 1.0, "gate.margin must be at least 0 and below 1"),
+        ("gate.margin", float("nan"), "gate.margin must be at least 0 and below 1"),
+        ("gate.margin", True, "gate.margin must be a number"),
+        ("gate.margin", "0.0", "gate.margin must be a number"),
+        ("gate.simplicity_order", ["ets", "seasonal_naive", "chronos2"], "simplicity_order"),
+        ("gate.simplicity_order", ["seasonal_naive", "ets"], "simplicity_order"),
+        ("gate.comparator_fallback", "compare_scored", "comparator_fallback must be"),
+        ("gate.no_valid_simple_model", "show_untested", "no_valid_simple_model must be"),
+        ("gate.comparator_quantiles", "raw", "comparator_quantiles must be"),
+        ("gate.not_publishable", "withhold", "not_publishable must be"),
+        ("retry.max_transient_retries", -1, "max_transient_retries must be a whole number"),
+        ("retry.max_transient_retries", True, "max_transient_retries must be a whole number"),
+        ("retry.admission_weekday", "thu", "admission_weekday must be one of"),
+        ("retry.admission_weekday", "Thursday", "admission_weekday must be one of"),
+        ("retry.suppressed_outcomes", [], "suppressed_outcomes must be non-empty"),
+        ("retry.suppressed_outcomes", ["rolled_back"] * 2, "must not repeat"),
+        ("retry.suppressed_outcomes", ["failed"], r"failed needs its \(<category>\)"),
+        ("retry.suppressed_outcomes", ["published"], "'published' is not held_quality"),
+        ("retry.suppressed_outcomes", ["failed(job:)"], r"'failed\(job:\)' is not"),
+        ("retry.suppressed_outcomes", ["failed(Job)"], r"'failed\(Job\)' is not"),
+    ],
+)
+def test_a_gate_or_retry_value_outside_its_range_is_refused(
+    path: str, value: object, message: str
+) -> None:
+    section, key = path.split(".")
+    document = _document()
+    document[section][key] = value
+    with pytest.raises(PolicyError, match=message):
+        parse_policy(document)
+
+
+def test_a_positive_margin_and_another_weekday_are_accepted() -> None:
+    document = _document()
+    document["gate"]["margin"] = 0.05
+    document["retry"]["admission_weekday"] = "friday"
+    document["retry"]["max_transient_retries"] = 0
+    policy = parse_policy(document)
+    assert policy.gate.margin == 0.05
+    assert policy.retry.admission_weekday == "friday"
+    assert policy.retry.max_transient_retries == 0
 
 
 def test_an_unknown_key_is_refused() -> None:

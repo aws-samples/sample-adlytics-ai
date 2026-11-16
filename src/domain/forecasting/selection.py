@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from enum import StrEnum
 
+from domain.forecasting.policy import WEEKDAYS
 from domain.shared_kernel.values import DateRange
 
 WINDOW_DAYS = 728
@@ -72,6 +73,17 @@ class WindowPins:
 
 def _held(category: HeldCategory, input_end: date | None) -> WindowPins:
     return WindowPins(category, input_end, None, (), (), (), (), None)
+
+
+def admits_new_input(check_date: date, admission_weekday: str) -> bool:
+    """Whether a scheduled check on UTC `check_date` is the weekly slot (design §6d step 4).
+
+    Only the slot admits a new run fingerprint; the caller passes the date it already reads for
+    the selection window, so the domain reads no clock.
+    """
+    if admission_weekday not in WEEKDAYS:
+        raise ValueError(f"admission_weekday must be one of {list(WEEKDAYS)}")
+    return WEEKDAYS[check_date.weekday()] == admission_weekday
 
 
 def _covered_days(intervals: tuple[DateRange, ...]) -> set[date]:

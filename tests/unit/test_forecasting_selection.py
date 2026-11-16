@@ -11,6 +11,7 @@ from domain.forecasting.selection import (
     HeldCategory,
     SelectionWindowRequest,
     WindowPin,
+    admits_new_input,
     window_pins,
 )
 from domain.shared_kernel.values import DateRange
@@ -90,6 +91,32 @@ def test_a_272_day_lag_runs_and_a_273_day_lag_is_too_old() -> None:
     old = window_pins(_request(_pins(FIRST, LAST), LAST + timedelta(days=273)))
     assert old.held is HeldCategory.INPUT_END_TOO_OLD
     assert old.input_fingerprint is None
+
+
+WEEKDAY_NAMES = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+
+
+@pytest.mark.parametrize(
+    ("offset", "weekday"),
+    [
+        (1, "monday"),
+        (2, "tuesday"),
+        (3, "wednesday"),
+        (4, "thursday"),
+        (5, "friday"),
+        (6, "saturday"),
+        (7, "sunday"),
+    ],
+)
+def test_a_check_date_admits_a_new_input_only_on_its_own_weekday(offset: int, weekday: str) -> None:
+    """A wrong slot would run every restatement (cost) or never admit a new week (stale page)."""
+    check_date = FIRST + timedelta(days=offset)  # FIRST is a Sunday
+    assert [name for name in WEEKDAY_NAMES if admits_new_input(check_date, name)] == [weekday]
+
+
+def test_an_unknown_admission_weekday_is_refused() -> None:
+    with pytest.raises(ValueError, match="admission_weekday must be one of"):
+        admits_new_input(LAST, "thu")
 
 
 def test_no_complete_week_is_held() -> None:

@@ -21,13 +21,24 @@ from domain.forecasting.policy import (
     DemandForecastPolicy,
     EligibilityPolicy,
     EnginePolicy,
+    GatePolicy,
     InputPolicy,
     MissingWeekPolicy,
     NumericPolicy,
+    RetryPolicy,
     ServingPolicy,
 )
 
-SECTIONS = ("input", "missing_weeks", "eligibility", "engine", "numeric", "serving")
+SECTIONS = (
+    "input",
+    "missing_weeks",
+    "eligibility",
+    "engine",
+    "numeric",
+    "gate",
+    "serving",
+    "retry",
+)
 
 
 class PolicyError(ValueError):
@@ -77,6 +88,13 @@ def _bool(document: Mapping[str, object], key: str, where: str) -> bool:
     if not isinstance(value, bool):
         raise PolicyError(f"{where}.{key} must be true or false")
     return value
+
+
+def _float(document: Mapping[str, object], key: str, where: str) -> float:
+    value = document[key]
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise PolicyError(f"{where}.{key} must be a number")
+    return float(value)
 
 
 def _list(document: Mapping[str, object], key: str, where: str) -> list[object]:
@@ -194,6 +212,36 @@ def _serving(raw: Mapping[str, object]) -> ServingPolicy:
     )
 
 
+def _gate(raw: Mapping[str, object]) -> GatePolicy:
+    words = ("comparator_fallback", "no_valid_simple_model", "comparator_quantiles")
+    _keys(
+        raw,
+        ("version", "metric", "margin", "simplicity_order", *words, "not_publishable"),
+        "gate",
+    )
+    return GatePolicy(
+        version=_int(raw, "version", "gate"),
+        metric=_str(raw, "metric", "gate"),
+        margin=_float(raw, "margin", "gate"),
+        simplicity_order=_strs(raw, "simplicity_order", "gate"),
+        comparator_fallback=_str(raw, "comparator_fallback", "gate"),
+        no_valid_simple_model=_str(raw, "no_valid_simple_model", "gate"),
+        comparator_quantiles=_str(raw, "comparator_quantiles", "gate"),
+        not_publishable=_str(raw, "not_publishable", "gate"),
+    )
+
+
+def _retry(raw: Mapping[str, object]) -> RetryPolicy:
+    names = ("version", "suppressed_outcomes", "max_transient_retries", "admission_weekday")
+    _keys(raw, names, "retry")
+    return RetryPolicy(
+        version=_int(raw, "version", "retry"),
+        suppressed_outcomes=_strs(raw, "suppressed_outcomes", "retry"),
+        max_transient_retries=_int(raw, "max_transient_retries", "retry"),
+        admission_weekday=_str(raw, "admission_weekday", "retry"),
+    )
+
+
 def parse_policy(document: object) -> DemandForecastPolicy:
     """Return the typed policy, refusing any structural or value defect as `PolicyError`."""
     root = _mapping(document, "policy")
@@ -206,7 +254,9 @@ def parse_policy(document: object) -> DemandForecastPolicy:
             eligibility=_eligibility(_mapping(root["eligibility"], "eligibility")),
             engine=_engine(_mapping(root["engine"], "engine")),
             numeric=_numeric(_mapping(root["numeric"], "numeric")),
+            gate=_gate(_mapping(root["gate"], "gate")),
             serving=_serving(_mapping(root["serving"], "serving")),
+            retry=_retry(_mapping(root["retry"], "retry")),
         )
     except PolicyError:
         raise
