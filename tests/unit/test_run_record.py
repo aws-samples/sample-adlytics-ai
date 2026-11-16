@@ -650,6 +650,41 @@ def test_an_xdist_worker_never_registers_the_report_writer(
     assert "RUN_RECORD_PYTEST_PROGRESS" not in os.environ
 
 
+@pytest.mark.parametrize("tier", ["integration", "forecasting"])
+def test_each_recorded_pytest_tier_outside_unit_registers_the_report_writer(
+    tier: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`make test-integration` and `make check-forecasting` never load tests/unit/conftest.py.
+
+    Without their own registration the record seals with no tests.json, so a live probe that never
+    ran reads the same as one that passed (D1 live store check, R1-6).
+    """
+    tier_dir = Path(run_record_report.__file__).resolve().parents[1] / tier
+    monkeypatch.syspath_prepend(str(tier_dir))
+    spec = importlib.util.spec_from_file_location(f"_{tier}_conftest", tier_dir / "conftest.py")
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    # Registered first: the conftest's dataclasses resolve their own module while they are created.
+    monkeypatch.setitem(sys.modules, spec.name, module)
+    spec.loader.exec_module(module)
+    monkeypatch.setenv("RUN_RECORD_PYTEST_REPORT", str(tmp_path / "report.json"))
+    registered: list[str] = []
+
+    def register(_plugin: object, name: str) -> None:
+        registered.append(name)
+
+    module.pytest_configure(
+        cast(
+            "Any",
+            SimpleNamespace(rootpath=tmp_path, pluginmanager=SimpleNamespace(register=register)),
+        )
+    )
+
+    assert registered == ["run-record"]
+    assert "RUN_RECORD_PYTEST_REPORT" not in os.environ
+
+
 # --------------------------------------------------------------------------------------------
 # Parallel unit runs: the bounded worker count and the xdist report
 # --------------------------------------------------------------------------------------------
