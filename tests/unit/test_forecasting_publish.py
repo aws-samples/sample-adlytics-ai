@@ -4,23 +4,50 @@
 A lax check here publishes a forecast from the wrong attempt or input, one the gate would not
 have chosen, or a title from another product; a wrong pointer rule lets an older or superseded
 run replace what planners see, or a rollback land on a generation that was never published.
+The handler part reads the objects the way the Lambda does: a missing, altered or short roster
+part that published anyway would show planners a generation the shards never produced, and a
+transient read error that held the run would stop its retries.
 """
 
 from __future__ import annotations
 
-from dataclasses import replace
+import gzip
+import hashlib
+import json
+from collections.abc import Sequence
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any, cast
 
 import pytest
-from botocore.exceptions import ReadTimeoutError
+from botocore.exceptions import ClientError, ReadTimeoutError
 from forecast_series_support import INPUT_END, asin, policy
 from forecast_store_support import ForecastTableFake, LambdaCrashed
 
+from adapters.jobs.demand_forecast.json_output import REPORT_FILE, SERIES_FILE, series_bytes
+from adapters.jobs.demand_forecast_publisher.handler import (
+    ERROR_UNREADABLE,
+    ObjectMissingError,
+    ObjectStoreError,
+    Publisher,
+    PublishShardRequest,
+    RecordOutcomeRequest,
+    StepOutcome,
+    commit_generation,
+    commit_request,
+    failure_category,
+    publish_shard,
+    record_outcome,
+    record_request,
+    rollback,
+    s3_error,
+)
+from adapters.outbound.demand_forecast_policy import LoadedPolicy
 from adapters.outbound.dynamodb.demand_forecast_store import (
     STORE_CLIENT_CONFIG,
     DynamoDbForecastStore,
 )
+from adapters.outbound.telemetry.demand_forecast_metrics import Datapoint
 from domain.forecasting.boundary import (
     CandidateSeriesV1,
     InputManifestV1,
@@ -56,6 +83,7 @@ from domain.forecasting.publish import (
     ShardAttempt,
     ShardCandidateValidationRequest,
     ShardPublishResult,
+    forecast_set_id,
     generation_id,
     next_pointer,
     receipt_sk,
@@ -1254,3 +1282,419 @@ def test_every_store_read_is_strongly_consistent_and_the_client_retries_adaptive
     assert table.gets
     assert all(get["ConsistentRead"] is True for get in table.gets)
     assert cast("Any", STORE_CLIENT_CONFIG).retries == {"mode": "adaptive", "max_attempts": 10}
+
+
+# --- The publisher handler: objects in, items and receipts out (§6c) -------------------------
+
+MANIFEST_KEY = f"runs/{RUN}/input/r0a0/manifest.json"
+PUBLISH_SET = forecast_set_id(_manifest().forecast_set)
+LANDING_SECONDS = 3 * 24 * 3600
+"""`AT` less the manifest's newest publication (`AT` - 3 days)."""
+
+
+@dataclass
+class ObjectsFake:
+    """The processing bucket at the publisher's seam: missing keys and injected read errors."""
+
+    objects: dict[str, bytes] = field(default_factory=dict[str, bytes])
+    failures: dict[str, Exception] = field(default_factory=dict[str, Exception])
+    reads: list[str] = field(default_factory=list[str])
+
+    def get(self, key: str) -> bytes:
+        self.reads.append(key)
+        if key in self.failures:
+            raise self.failures[key]
+        if key not in self.objects:
+            raise ObjectMissingError(key)
+        return self.objects[key]
+
+    def put_if_absent(self, key: str, body: bytes) -> bool:
+        if key in self.objects:
+            return False
+        self.objects[key] = body
+        return True
+
+
+@dataclass
+class MetricsFake:
+    points: list[tuple[str, tuple[tuple[str, str], ...], float]] = field(
+        default_factory=list[tuple[str, tuple[tuple[str, str], ...], float]]
+    )
+
+    def emit(self, points: Sequence[Datapoint], timestamp: datetime) -> None:
+        assert timestamp.tzinfo is not None
+        self.points.extend((p.spec.name, p.dimensions, p.value) for p in points)
+
+    def outcomes(self) -> list[str]:
+        return [dims[0][1] for name, dims, _ in self.points if name == "ForecastRunOutcome"]
+
+
+@dataclass
+class _Rig:
+    objects: ObjectsFake = field(default_factory=ObjectsFake)
+    table: ForecastTableFake = field(default_factory=ForecastTableFake)
+    metrics: MetricsFake = field(default_factory=MetricsFake)
+
+    @property
+    def publisher(self) -> Publisher:
+        return Publisher(
+            policy=LoadedPolicy(policy(), HEX, {}),
+            set_id=PUBLISH_SET,
+            objects=self.objects,
+            store=_table_store(self.table),
+            metrics=self.metrics,
+            now=lambda: AT,
+        )
+
+    def current(self) -> CurrentPointer | None:
+        return _table_store(self.table).get_current(PUBLISH_SET)
+
+    def receipts(self) -> dict[str, str]:
+        return {
+            sk: self.table.items[(pk, sk)]["outcome"]["S"]
+            for pk, sk in self.table.keys(f"SET#{PUBLISH_SET}")
+            if sk.startswith("RUN#")
+        }
+
+
+def _digest(body: bytes) -> str:
+    return hashlib.sha256(body).hexdigest()
+
+
+def _stage(rig: _Rig, run_id: str = RUN, expected_fence: int = 0, **records: Any) -> None:
+    """Stage a 3-shard build attempt and each shard's r0a0 candidate as the job writes them."""
+    base = f"runs/{run_id}/input/r0a0"
+    titles = (_titles().model_dump_json() + "\n").encode("utf-8")
+    manifest = _manifest(
+        run_id=run_id,
+        expected_fence=expected_fence,
+        titles_key=f"{base}/titles.json",
+        titles_sha256=_digest(titles),
+    )
+    rig.objects.objects[f"{base}/titles.json"] = titles
+    rig.objects.objects[f"{base}/manifest.json"] = manifest.model_dump_json(by_alias=True).encode()
+    for shard, numbers in enumerate(SHARDS):
+        candidates = records.get(f"shard{shard}") or [_candidate(n, shard) for n in numbers]
+        body = series_bytes(candidates)
+        prefix = f"runs/{run_id}/shards/{shard}/attempts/r0a0/candidate/"
+        rig.objects.objects[prefix + SERIES_FILE] = body
+        report = _report(shard, run_id=run_id, series_sha256=_digest(body))
+        rig.objects.objects[prefix + REPORT_FILE] = report.model_dump_json().encode()
+
+
+def _shard_publish(shard: int, run_id: str = RUN) -> PublishShardRequest:
+    return PublishShardRequest(
+        run_id=run_id,
+        redrive_count=0,
+        shard=shard,
+        attempt_id="r0a0",
+        manifest_key=f"runs/{run_id}/input/r0a0/manifest.json",
+        attempts=tuple(ShardAttempt(k, "r0a0") for k in range(len(SHARDS))),
+    )
+
+
+def _publish_all(rig: _Rig, run_id: str = RUN) -> list[dict[str, object]]:
+    return [publish_shard(rig.publisher, _shard_publish(k, run_id)).payload() for k in range(3)]
+
+
+def _commit_run(rig: _Rig, payloads: list[dict[str, object]], run_id: str = RUN) -> StepOutcome:
+    event = {
+        "run_id": run_id,
+        "redrive_count": 0,
+        "manifest_key": f"runs/{run_id}/input/r0a0/manifest.json",
+        "shard_results": payloads,
+    }
+    return commit_generation(rig.publisher, commit_request(event))
+
+
+def test_a_three_shard_run_publishes_and_makes_its_generation_current() -> None:
+    rig = _Rig()
+    _stage(rig)
+    payloads = _publish_all(rig)
+    assert [p["outcome"] for p in payloads] == ["published"] * 3
+    assert all(len(json.dumps(p)) < 400 for p in payloads)  # the ~300-byte result (R5-15)
+    committed = _commit_run(rig, payloads)
+    assert (committed.outcome, committed.receipt_sk) == ("published", f"RUN#{RUN}#r0#commit")
+    current = rig.current()
+    assert current is not None
+    assert (current.generation_id, current.fence) == (committed.generation_id, 1)
+    assert rig.receipts() == {f"RUN#{RUN}#r0#commit": "published"}
+    receipt = rig.table.items[(f"SET#{PUBLISH_SET}", f"RUN#{RUN}#r0#commit")]
+    assert receipt["landing_to_publish_seconds"] == {"N": str(LANDING_SECONDS)}
+    meta = rig.table.items[(f"GEN#{committed.generation_id}", "META")]
+    assert meta["item_count"] == {"N": "6"}
+    assert rig.metrics.points == [
+        ("ForecastRunOutcome", (("outcome", "published"),), 1.0),
+        ("LandingToPublishSeconds", (), LANDING_SECONDS),
+    ]
+    assert (committed.series_published, committed.series_withheld) == (24, 0)
+
+
+def test_a_replayed_shard_publish_and_commit_change_nothing_and_count_once() -> None:
+    rig = _Rig()
+    _stage(rig)
+    payloads = _publish_all(rig)
+    first = _commit_run(rig, payloads)
+    assert _publish_all(rig) == payloads
+    again = _commit_run(rig, payloads)
+    assert (again.outcome, again.generation_id) == ("published", first.generation_id)
+    current = rig.current()
+    assert current is not None
+    assert current.fence == 1
+    assert rig.metrics.outcomes() == ["published"]
+
+
+def _with_part(rig: _Rig, key: object, body: bytes) -> None:
+    rig.objects.objects[str(key)] = body
+
+
+def _part_lines(rig: _Rig, payloads: list[dict[str, object]], shard: int) -> list[bytes]:
+    body = rig.objects.objects[str(payloads[shard]["roster_part_key"])]
+    return gzip.decompress(body).splitlines(keepends=True)
+
+
+def test_a_missing_roster_part_holds_the_commit_and_nothing_becomes_current() -> None:
+    rig = _Rig()
+    _stage(rig)
+    payloads = _publish_all(rig)
+    del rig.objects.objects[str(payloads[1]["roster_part_key"])]
+    held = _commit_run(rig, payloads)
+    assert (held.outcome, held.step, held.category) == (
+        "held_quality",
+        "commit",
+        "identity_mismatch",
+    )
+    assert rig.current() is None
+    assert rig.metrics.points == []
+
+
+def test_a_roster_part_with_one_changed_byte_holds_the_commit_run() -> None:
+    rig = _Rig()
+    _stage(rig)
+    payloads = _publish_all(rig)
+    lines = _part_lines(rig, payloads, 2)
+    lines[0] = lines[0].replace(b'"title":"P9"', b'"title":"P8"')
+    _with_part(rig, payloads[2]["roster_part_key"], gzip.compress(b"".join(lines), mtime=0))
+    assert _commit_run(rig, payloads).category == "identity_mismatch"
+    assert rig.current() is None
+
+
+def test_a_roster_part_one_line_short_holds_the_commit_even_when_its_digest_matches() -> None:
+    rig = _Rig()
+    _stage(rig)
+    payloads = _publish_all(rig)
+    short = gzip.compress(b"".join(_part_lines(rig, payloads, 0)[:1]), mtime=0)
+    _with_part(rig, payloads[0]["roster_part_key"], short)
+    payloads[0] = {**payloads[0], "roster_part_sha256": _digest(short)}
+    held = _commit_run(rig, payloads)
+    assert (held.outcome, held.category) == ("held_quality", "identity_mismatch")
+    assert rig.current() is None
+
+
+def test_a_replayed_shard_publish_whose_part_exists_with_other_bytes_is_held() -> None:
+    rig = _Rig()
+    _stage(rig)
+    key = f"runs/{RUN}/shards/1/attempts/r0a0/roster-part.jsonl.gz"
+    rig.objects.objects[key] = gzip.compress(b"{}\n", mtime=0)
+    held = publish_shard(rig.publisher, _shard_publish(1))
+    assert held.payload() == {
+        "outcome": "held_quality",
+        "step": "s1-r0a0",
+        "category": "identity_mismatch",
+        "shard": 1,
+        "attempt_id": "r0a0",
+    }
+
+
+def test_a_commit_missing_one_shard_is_held_before_any_part_is_read() -> None:
+    rig = _Rig()
+    _stage(rig)
+    payloads = _publish_all(rig)
+    rig.objects.reads.clear()
+    held = _commit_run(rig, payloads[:2])
+    assert (held.outcome, held.category) == ("held_quality", "identity_mismatch")
+    assert not any(key.endswith("roster-part.jsonl.gz") for key in rig.objects.reads)
+
+
+def test_a_held_shard_passes_through_the_commit_without_a_read() -> None:
+    rig = _Rig()
+    _stage(rig)
+    payloads = _publish_all(rig)
+    payloads[2] = {
+        "outcome": "held_quality",
+        "step": "s2-r0a0",
+        "category": "gate_mismatch",
+        "shard": 2,
+        "attempt_id": "r0a0",
+    }
+    rig.objects.reads.clear()
+    held = _commit_run(rig, payloads)
+    assert (held.step, held.category) == ("s2-r0a0", "gate_mismatch")
+    assert rig.objects.reads == []
+
+
+def test_a_candidate_the_gate_would_not_choose_is_held_before_any_item_is_written() -> None:
+    rig = _Rig()
+    worse = _with_target(5, 1, evaluations=_evaluations(chronos_wql="0.9000"))
+    _stage(rig, shard1=[worse, _candidate(7, 1)])
+    held = publish_shard(rig.publisher, _shard_publish(1))
+    assert (held.outcome, held.category) == ("held_quality", "gate_mismatch")
+    assert rig.table.puts == []
+
+
+def test_a_candidate_from_another_build_attempt_is_held_identity_mismatch() -> None:
+    rig = _Rig()
+    _stage(rig)
+    prefix = f"runs/{RUN}/shards/0/attempts/r0a0/candidate/"
+    body = rig.objects.objects[prefix + SERIES_FILE]
+    other = _report(0, input_attempt_id="r1a0", series_sha256=_digest(body))
+    rig.objects.objects[prefix + REPORT_FILE] = other.model_dump_json().encode()
+    assert publish_shard(rig.publisher, _shard_publish(0)).category == "identity_mismatch"
+
+
+def test_a_missing_candidate_is_held_identity_mismatch() -> None:
+    rig = _Rig()
+    _stage(rig)
+    del rig.objects.objects[f"runs/{RUN}/shards/2/attempts/r0a0/candidate/{SERIES_FILE}"]
+    assert publish_shard(rig.publisher, _shard_publish(2)).category == "identity_mismatch"
+
+
+@pytest.mark.parametrize("code", ["SlowDown", "InternalError"])
+def test_a_transient_part_read_error_is_raised_then_recorded_failed_with_retry(code: str) -> None:
+    rig = _Rig()
+    _stage(rig)
+    payloads = _publish_all(rig)
+    key = str(payloads[1]["roster_part_key"])
+    rig.objects.failures[key] = s3_error(key, ClientError({"Error": {"Code": code}}, "GetObject"))
+    with pytest.raises(ObjectStoreError, match=code):
+        _commit_run(rig, payloads)
+    cause = json.dumps({"errorType": "ObjectStoreError", "errorMessage": code})
+    event = {
+        "run_id": RUN,
+        "redrive_count": 0,
+        "step": "commit",
+        "outcome": "failed",
+        "phase": "publish",
+        "error": {"Error": "ObjectStoreError", "Cause": cause},
+        "run_fingerprint": FINGERPRINT,
+        "expected_fence": 0,
+    }
+    recorded = record_outcome(rig.publisher, record_request(event))
+    assert (recorded.outcome, recorded.category) == ("failed", f"publish:{code}")
+    current = rig.current()
+    assert current is not None
+    assert current.generation_id is None
+    assert current.last_attempt is not None
+    assert current.last_attempt.retry_disposition is Disposition.RETRY
+    assert rig.metrics.outcomes() == ["failed"]
+
+
+def test_an_s3_failure_keeps_its_code_and_only_no_such_key_is_a_missing_object() -> None:
+    def client_error(code: str) -> ClientError:
+        return ClientError({"Error": {"Code": code}}, "GetObject")
+
+    assert isinstance(s3_error("k", client_error("NoSuchKey")), ObjectMissingError)
+    assert str(s3_error("k", client_error("AccessDenied"))) == "AccessDenied"
+    timeout = s3_error("k", ReadTimeoutError(endpoint_url="https://s3"))
+    assert (type(timeout), str(timeout)) == (ObjectStoreError, "ReadTimeoutError")
+
+
+def _caught(name: str, message: str | None = None, exit_code: str | None = None) -> dict[str, str]:
+    cause: dict[str, object] = {}
+    if message is not None:
+        cause = {"errorType": name, "errorMessage": message}
+    if exit_code is not None:
+        cause = {"ExitMessage": json.dumps({"code": exit_code, "cause": [], "run_id": None})}
+    return {"Error": name, "Cause": json.dumps(cause)}
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        (
+            "select",
+            "input_build",
+            _caught("InputBuildFailedError", "MARKETPLACE_UNKNOWN"),
+            "input_build:MARKETPLACE_UNKNOWN",
+            Disposition.SUPPRESS,
+        ),
+        ("s1-r0a0", "job", _caught("States.Timeout"), "job:States.Timeout", Disposition.RETRY),
+        (
+            "s1-r0a0",
+            "job",
+            _caught("SageMaker.ProcessingJobFailed", exit_code="MODEL_ARTIFACT_MISMATCH"),
+            "job:MODEL_ARTIFACT_MISMATCH",
+            Disposition.SUPPRESS,
+        ),
+        (
+            "commit",
+            "publish",
+            _caught("ForecastStoreThrottled", "ThrottlingException after 9 client retries"),
+            "publish:ForecastStoreThrottled",
+            Disposition.RETRY,
+        ),
+        (
+            "commit",
+            "publish",
+            {"Error": "not a code", "Cause": "not json"},
+            f"publish:{ERROR_UNREADABLE}",
+            Disposition.RETRY,
+        ),
+    ],
+    ids=["coded-deterministic", "timeout", "job-exit-code", "throttle", "unreadable"],
+)
+def test_every_caught_failure_records_failed_with_its_category_and_emits_failed(
+    case: tuple[str, str, dict[str, str], str, Disposition],
+) -> None:
+    step, phase, error, category, disposition = case
+    assert failure_category(phase, error) == category
+    rig = _Rig()
+    request = RecordOutcomeRequest(RUN, 0, step, RunOutcome.FAILED, category)
+    assert record_outcome(rig.publisher, request).outcome == "failed"
+    current = rig.current()
+    assert current is not None
+    assert current.last_attempt is not None
+    assert (current.fence, current.last_attempt.failure_category) == (0, category)
+    assert current.last_attempt.retry_disposition is disposition
+    assert rig.receipts() == {f"RUN#{RUN}#r0#{step}": "failed"}
+    assert rig.metrics.outcomes() == ["failed"]
+
+
+def test_a_no_op_writes_only_its_receipt_and_leaves_current_alone() -> None:
+    rig = _Rig()
+    request = RecordOutcomeRequest(RUN, 0, "select", RunOutcome.NO_OP_SAME_INPUT, None, FINGERPRINT)
+    assert record_outcome(rig.publisher, request).outcome == "no_op_same_input"
+    assert rig.current() is None
+    assert rig.receipts() == {f"RUN#{RUN}#r0#select": "no_op_same_input"}
+    assert rig.metrics.outcomes() == ["no_op_same_input"]
+
+
+def test_a_commit_whose_fence_moved_writes_only_a_superseded_receipt() -> None:
+    rig = _Rig()
+    _stage(rig, run_id="run-2")
+    _stage(rig, run_id="run-3")
+    _commit_run(rig, _publish_all(rig, "run-2"), "run-2")
+    late = _commit_run(rig, _publish_all(rig, "run-3"), "run-3")
+    assert (late.outcome, late.generation_id) == ("superseded", None)
+    current = rig.current()
+    assert current is not None
+    assert current.generation_id is not None
+    assert current.generation_id.startswith("run-2-")
+    assert rig.receipts()["RUN#run-3#r0#commit"] == "superseded"
+    assert rig.metrics.outcomes() == ["published", "superseded"]
+
+
+def test_a_rollback_restores_the_earlier_generation_and_counts_rolled_back() -> None:
+    rig = _Rig()
+    _stage(rig, run_id="run-2")
+    _stage(rig, run_id="run-3", expected_fence=1)
+    first = _commit_run(rig, _publish_all(rig, "run-2"), "run-2")
+    _commit_run(rig, _publish_all(rig, "run-3"), "run-3")
+    assert first.generation_id is not None
+    request = RollbackRequest(PUBLISH_SET, first.generation_id, 2, "bad model")
+    done = rollback(rig.publisher, request, "rollback-1")
+    assert (done.outcome, done.generation_id) == ("rolled_back", first.generation_id)
+    current = rig.current()
+    assert current is not None
+    assert (current.generation_id, current.fence) == (first.generation_id, 3)
+    assert rig.metrics.outcomes() == ["published", "published", "rolled_back"]

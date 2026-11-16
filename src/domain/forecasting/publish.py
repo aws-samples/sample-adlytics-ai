@@ -3,6 +3,7 @@
 
 The publisher Lambda reads objects and writes items; every decision it takes is here, pure:
 
+- `forecast_set_id()`: the set's `SET#` partition, the same from every caller.
 - `generation_id()`: one generation per run and set of bound shard attempts, so a redriven
   publish targets the same items and a late attempt can never write into another generation.
 - `validate_shard_candidate()` and `validate_commit()`: the attempt, schema, content, gate and
@@ -31,6 +32,7 @@ from enum import StrEnum
 
 from domain.forecasting.boundary import (
     CandidateSeriesV1,
+    ForecastSetV1,
     InputManifestV1,
     RosterEntryV1,
     RunReportV1,
@@ -103,6 +105,21 @@ def _shard_index(shard: int) -> None:
 
 
 # --- Generation identity --------------------------------------------------------------------
+
+
+SET_ID_CHARS = 12
+"""Hex characters of a forecast set's ID, the `<set hash 12>` of execution names (§6d)."""
+
+
+def forecast_set_id(forecast_set: ForecastSetV1) -> str:
+    """Return the first 12 hex of SHA-256 of the set's canonical JSON (§6a: one set, one pointer).
+
+    The publisher, the input builder and the operator derive it from the same three values, so
+    they name the same `SET#` partition.
+    """
+    document = forecast_set.model_dump(mode="json", by_alias=True)
+    canonical = json.dumps(document, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:SET_ID_CHARS]
 
 
 @dataclass(frozen=True)

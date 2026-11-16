@@ -199,6 +199,15 @@ class DemandForecastInputSettings:
 
 
 @dataclass(frozen=True, slots=True)
+class DemandForecastPublisherSettings:
+    """The demand-forecast publisher's bucket, table and set (design §6c). All required."""
+
+    processing_bucket: str
+    forecast_table: str
+    marketplace_key: str
+
+
+@dataclass(frozen=True, slots=True)
 class PresetArtifactBackfillSettings:
     """The declared FIFO target consumed only by the backfill custom resource."""
 
@@ -464,6 +473,32 @@ def demand_forecast_input_settings(
         instance_type=found["instance_type"],
         max_runtime_seconds=int(runtime),
     )
+
+
+_DEMAND_FORECAST_PUBLISHER_ENV: tuple[tuple[str, str], ...] = (
+    ("processing_bucket", "DEMAND_FORECAST_PROCESSING_BUCKET"),
+    ("forecast_table", "DEMAND_FORECAST_TABLE"),
+    ("marketplace_key", "DEMAND_FORECAST_MARKETPLACE_KEY"),
+)
+
+
+def demand_forecast_publisher_settings(
+    source: Mapping[str, str] | None = None,
+) -> DemandForecastPublisherSettings:
+    """Resolve the publisher's settings; refuse, naming each, any missing value."""
+    values = source if source is not None else os.environ
+    found = {
+        field: values.get(f"{ENV_PREFIX}{name}", "").strip()
+        for field, name in _DEMAND_FORECAST_PUBLISHER_ENV
+    }
+    missing = sorted(field for field, value in found.items() if not value)
+    if missing:
+        raise InvariantError(
+            CONFIG_UNRESOLVED,
+            "Demand-forecast publisher configuration is incomplete.",
+            context={"missing": missing},
+        )
+    return DemandForecastPublisherSettings(**found)
 
 
 @lru_cache(maxsize=1)

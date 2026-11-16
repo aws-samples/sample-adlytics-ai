@@ -21,6 +21,7 @@ __all__ = [
     "CONVERSATION_ROUTE_EXCHANGE",
     "CONVERSATION_TURN",
     "DEMAND_FORECAST_BUILD",
+    "DEMAND_FORECAST_PUBLISH",
     "DEMAND_FORECAST_SELECT",
     "EVALUATION_GATE",
     "EVALUATION_OUTBOX_DISPATCH",
@@ -154,3 +155,4 @@ EXECUTION_GRAPH_PROMOTER_PASS: Final = "execution_graph.promoter_pass"
 EXECUTION_GRAPH_PROMOTER_DOMAIN: Final = "execution_graph.promoter_domain"
 DEMAND_FORECAST_SELECT: Final = "demand_forecast.input.select"
 DEMAND_FORECAST_BUILD: Final = "demand_forecast.input.build"
+DEMAND_FORECAST_PUBLISH: Final = "demand_forecast.publish"
