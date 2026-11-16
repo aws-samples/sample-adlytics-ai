@@ -7,7 +7,11 @@ from pathlib import Path
 import pytest
 
 from adapters.jobs.contract_validation.loader import load_contracts
-from adapters.outbound.metric_dictionary import load_catalog
+from adapters.outbound.metric_dictionary import (
+    OperationalMetric,
+    load_catalog,
+    load_operational_metrics,
+)
 from domain.catalog.capability import Catalog, CatalogError, RatioScale, references_in_definition
 from domain.narrative.shaped_response import UnitKind
 from domain.semantics.compatibility import AggregationKind, SemanticAxis
@@ -52,7 +56,7 @@ compatibility_defaults:
 """
 
 
-def _write(tmp_path: Path, metric: str) -> Path:
+def _write(tmp_path: Path, metric: str, operational: str = "operational_metrics: {}\n") -> Path:
     """Write a one-metric dictionary beside the committed contracts, packs and taxonomy.
 
     Loading derives each simple metric's source platforms from those files (ADR-106), so the
@@ -67,7 +71,7 @@ def _write(tmp_path: Path, metric: str) -> Path:
         "    label: Example category\n    display_order: 1\n"
         "    metric_ids: [example]\n"
         "metrics:\n  example:\n" + metric + "    is_default_roas: true\n"
-        "deferred: []\n"
+        "deferred: []\n" + operational
     )
     return root
 
@@ -460,3 +464,71 @@ def test_a_ratio_without_its_scale_or_a_scale_off_a_ratio_is_refused(tmp_path: P
         load_catalog(_committed_root(tmp_path / "off", off_ratio))
     # Positive control: the committed text itself loads.
     assert load_catalog(_committed_root(tmp_path / "committed", text)).metric("ctr") is not None
+
+
+_OPERATIONAL_ENTRY = (
+    "operational_metrics:\n  ExampleOutcome:\n    namespace: Adlytics/Example\n"
+    "    unit: Count\n    statistic: Sum\n"
+    "    dimensions:\n      outcome: [ok, failed]\n"
+    "    meaning: One per example run, by outcome.\n"
+)
+
+
+def test_no_operational_metric_reaches_the_catalog() -> None:
+    """The assistant reads metrics only through Catalog; an operational counter must not be one."""
+    operational = {metric.name for metric in load_operational_metrics(ROOT)}
+    catalog = load_catalog(ROOT)
+    exposed = (
+        {metric.name for metric in catalog.metrics}
+        | {metric.name for metric in catalog.deferred}
+        | {name for category in catalog.inventory_categories for name in category.metric_ids}
+    )
+    assert {"ForecastRunOutcome", "InferredZeroWeekShare", "ProducerOutcome"} <= operational
+    assert operational.isdisjoint(exposed)
+
+
+def test_a_declared_operational_metric_loads_with_its_closed_dimensions(tmp_path: Path) -> None:
+    root = _write(tmp_path, _valid_metric(), _OPERATIONAL_ENTRY)
+    assert load_operational_metrics(root) == (
+        OperationalMetric(
+            namespace="Adlytics/Example",
+            name="ExampleOutcome",
+            unit="Count",
+            statistic="Sum",
+            dimensions=(("outcome", ("ok", "failed")),),
+            meaning="One per example run, by outcome.",
+        ),
+    )
+    assert load_catalog(root).metric("ExampleOutcome") is None
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        ("    meaning:", "    alarm_threshold: 5\n    meaning:", "expected exactly namespace"),
+        ("    meaning: One per example run, by outcome.\n", "", "expected exactly namespace"),
+        ("unit: Count", "unit: Days", "not a CloudWatch unit"),
+        ("statistic: Sum", "statistic: p99", "not a CloudWatch statistic"),
+        ("[ok, failed]", "[ok, ok]", "each allowed value once"),
+        ("[ok, failed]", "[]", "each allowed value once"),
+        ("namespace: Adlytics/Example", "namespace: ' '", "non-blank"),
+    ],
+)
+def test_a_malformed_operational_metric_fails_both_loaders(
+    tmp_path: Path, case: tuple[str, str, str]
+) -> None:
+    old, new, refusal = case
+    assert old in _OPERATIONAL_ENTRY
+    root = _write(tmp_path, _valid_metric(), _OPERATIONAL_ENTRY.replace(old, new, 1))
+    with pytest.raises(CatalogError, match=refusal):
+        load_operational_metrics(root)
+    with pytest.raises(CatalogError, match=refusal):
+        load_catalog(root)
+
+
+def test_a_dictionary_without_the_operational_section_is_refused(tmp_path: Path) -> None:
+    root = _write(tmp_path, _valid_metric(), "")
+    with pytest.raises(CatalogError, match="declares no operational_metrics section"):
+        load_operational_metrics(root)
+    with pytest.raises(CatalogError, match="deferred and operational_metrics"):
+        load_catalog(root)

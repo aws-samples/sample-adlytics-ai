@@ -157,6 +157,9 @@ DEEP_INPUT_REVISIONS: Final[tuple[tuple[str, str], ...]] = (
     # series (units, period and grain once) and a format-12 body is the preset's absence. Named
     # .15.4 because 2026-11-15.1 to .3 may name closures on other dev integration trees.
     ("2026-11-15.4", "1354d6112de6cf449627d58253443a31639c7e6733bb1a56ae0d201873fab868"),
+    # Demand forecast slice 2: the dictionary gains its operational_metrics section, which
+    # load_catalog() validates and never returns; deep inputs are unchanged.
+    ("2026-11-16.1", "c87b52dab06ec78b647fc7f6daa09bb32a9f86e8dac14200494c53e2c831b27e"),
 )
 DEEP_INPUT_REVISION: Final[str] = DEEP_INPUT_REVISIONS[-1][0]
 """The revision every deep cache key carries (``#DEEPINPUT#<revision>``)."""

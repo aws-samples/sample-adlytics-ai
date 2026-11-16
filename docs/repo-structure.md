@@ -16,6 +16,7 @@ adlytics-ai/
 ├── docs/                   # current design docs and ADRs; solutions/ holds one README per solution
 ├── presentation/           # versioned analytical page declarations
 ├── infra/                  # CDK v2, TypeScript
+├── connectors/             # first-party source connectors (ADR-097); today only generated metric names
 ├── src/                    # Python backend, hexagonal
 ├── frontend/               # Next.js static export
 ├── tests/                  # unit, contract, integration, and evaluation tests
@@ -110,7 +111,7 @@ src/
 
 `adapters/jobs/` contains infrastructure orchestration. Reusable arithmetic remains in `domain/`, so jobs and request-time tools share deterministic rules without sharing AWS code.
 
-The weekly demand forecast follows the same split. `domain/forecasting/` holds the weekly series, scoring, numeric and batching rules and the boundary schemas; `adapters/jobs/demand_forecast/` is the SageMaker Processing job (its own `Dockerfile`, hashed `requirements.lock` and the closed `image-paths.txt` it is built from); `adapters/jobs/demand_forecast_input/` is the input builder Lambda; `contracts/forecasting/demand-forecast.yaml` is the versioned policy, `contracts/forecasting/model-artifacts.json` the reviewed Chronos-2 artifact and digest per Region, and `contracts/generated/demand-forecast-boundaries.json` the generated boundary schemas.
+The weekly demand forecast follows the same split. `domain/forecasting/` holds the weekly series, scoring, numeric and batching rules and the boundary schemas; `adapters/jobs/demand_forecast/` is the SageMaker Processing job (its own `Dockerfile`, hashed `requirements.lock` and the closed `image-paths.txt` it is built from); `adapters/jobs/demand_forecast_input/` is the input builder Lambda; `contracts/forecasting/demand-forecast.yaml` is the versioned policy, `contracts/forecasting/model-artifacts.json` the reviewed Chronos-2 artifact and digest per Region, and `contracts/generated/demand-forecast-boundaries.json` the generated boundary schemas. Its CloudWatch metrics, and the Vendor Central producer's, are declared in the `operational_metrics` section of `contracts/shared/metric-dictionary.yaml`, which the business catalog never loads; `make generate-operational-metrics` projects them to `src/domain/operations/generated_operational_metrics.py`, `infra/lib/generated/operational-metrics.ts` and `connectors/vendor_central/generated_metrics.py`, and `make check-operational-metrics` (in `make check`) fails a stale one.
 
 ## 3. `infra/` — CDK v2, TypeScript
 

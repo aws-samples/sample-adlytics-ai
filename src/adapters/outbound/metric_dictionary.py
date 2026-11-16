@@ -835,13 +835,121 @@ def _deferred_metrics_from(value: object, *, where: str) -> tuple[DeferredMetric
     return tuple(deferred)
 
 
-def load_catalog(root: Path) -> Catalog:
-    """Read the metric dictionary into a `Catalog`.
+CLOUDWATCH_UNITS = frozenset(
+    {
+        "Seconds",
+        "Microseconds",
+        "Milliseconds",
+        "Bytes",
+        "Kilobytes",
+        "Megabytes",
+        "Gigabytes",
+        "Terabytes",
+        "Bits",
+        "Kilobits",
+        "Megabits",
+        "Gigabits",
+        "Terabits",
+        "Percent",
+        "Count",
+        "Bytes/Second",
+        "Kilobytes/Second",
+        "Megabytes/Second",
+        "Gigabytes/Second",
+        "Terabytes/Second",
+        "Bits/Second",
+        "Kilobits/Second",
+        "Megabits/Second",
+        "Gigabits/Second",
+        "Terabits/Second",
+        "Count/Second",
+        "None",
+    }
+)
+"""CloudWatch's `MetricDatum.Unit` values; an operational metric declares one of them."""
 
-    Takes the repository root rather than a full path, matching `load_contracts` and
-    `load_registry`, so a caller states where the repository is and not where inside it each
-    reference file lives.
+CLOUDWATCH_STATISTICS = frozenset({"SampleCount", "Average", "Sum", "Minimum", "Maximum"})
+"""CloudWatch's simple statistics; an operational metric names the one its alarm reads."""
+
+_OPERATIONAL_FIELDS = frozenset({"namespace", "unit", "statistic", "dimensions", "meaning"})
+
+
+@dataclass(frozen=True, slots=True)
+class OperationalMetric:
+    """One CloudWatch metric an operational component emits; never a business metric.
+
+    Declared in the dictionary's `operational_metrics` section (demand-forecast design §9).
+    `dimensions` pairs each closed dimension name with every value it may take, in declared
+    order, so an emitter or alarm cannot use an undeclared value.
     """
+
+    namespace: str
+    name: str
+    unit: str
+    statistic: str
+    dimensions: tuple[tuple[str, tuple[str, ...]], ...]
+    meaning: str
+
+
+def _nonblank(value: object, *, key: str, where: str) -> str:
+    text = _as_str(value, key=key, where=where)
+    if not text.strip() or text != text.strip():
+        raise CatalogError(f"{where}: {key} must be non-blank with no surrounding space.")
+    return text
+
+
+def _operational_dimensions(
+    value: object, *, where: str
+) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    dimensions: list[tuple[str, tuple[str, ...]]] = []
+    for name, raw_values in _as_mapping(value, where=f"{where}.dimensions").items():
+        label = f"dimensions.{name}"
+        _nonblank(name, key=label, where=where)
+        values = tuple(
+            _nonblank(item, key=f"{label}[]", where=where)
+            for item in _as_str_tuple(raw_values, key=label, where=where)
+        )
+        if not values or len(set(values)) != len(values):
+            raise CatalogError(f"{where}: {label} must list each allowed value once.")
+        dimensions.append((name, values))
+    return tuple(dimensions)
+
+
+def _operational_metrics_from(value: object, *, where: str) -> tuple[OperationalMetric, ...]:
+    """Validate the `operational_metrics` section's closed shape; refuse any unknown field."""
+    metrics: list[OperationalMetric] = []
+    for name, raw_metric in _as_mapping(value, where=where).items():
+        metric_where = f"{where}.{name}"
+        _nonblank(name, key="name", where=metric_where)
+        entry = _as_mapping(raw_metric, where=metric_where)
+        if frozenset(entry) != _OPERATIONAL_FIELDS:
+            raise CatalogError(
+                f"{metric_where}: expected exactly namespace, unit, statistic, dimensions and "
+                "meaning."
+            )
+        unit = _as_str(entry["unit"], key="unit", where=metric_where)
+        if unit not in CLOUDWATCH_UNITS:
+            raise CatalogError(f"{metric_where}: unit {unit!r} is not a CloudWatch unit.")
+        statistic = _as_str(entry["statistic"], key="statistic", where=metric_where)
+        if statistic not in CLOUDWATCH_STATISTICS:
+            raise CatalogError(
+                f"{metric_where}: statistic {statistic!r} is not a CloudWatch statistic."
+            )
+        metrics.append(
+            OperationalMetric(
+                namespace=_nonblank(entry["namespace"], key="namespace", where=metric_where),
+                name=name,
+                unit=unit,
+                statistic=statistic,
+                dimensions=_operational_dimensions(entry["dimensions"], where=metric_where),
+                meaning=_nonblank(entry["meaning"], key="meaning", where=metric_where),
+            )
+        )
+    return tuple(metrics)
+
+
+def _read_dictionary(root: Path) -> tuple[Mapping, str]:
+    """Parse the dictionary after refusing duplicate keys; return it with its path label."""
     path = root / DICTIONARY_PATH
     if not path.exists():
         # The dictionary ships with the code, so its absence means the deployment is broken
@@ -854,7 +962,27 @@ def load_catalog(root: Path) -> Catalog:
     if composed is not None and not isinstance(composed, yaml.Node):
         raise CatalogError(f"{where}: parser returned an invalid YAML node.")
     _reject_duplicate_keys(composed, where)
-    raw = _as_mapping(repository_yaml.safe_load(text), where=where)
+    return _as_mapping(repository_yaml.safe_load(text), where=where), where
+
+
+def load_operational_metrics(root: Path) -> tuple[OperationalMetric, ...]:
+    """Read only the dictionary's `operational_metrics` section, in declared order."""
+    raw, where = _read_dictionary(root)
+    if "operational_metrics" not in raw:
+        raise CatalogError(f"{where}: declares no operational_metrics section.")
+    return _operational_metrics_from(
+        raw["operational_metrics"], where=f"{where}: operational_metrics"
+    )
+
+
+def load_catalog(root: Path) -> Catalog:
+    """Read the metric dictionary into a `Catalog`.
+
+    Takes the repository root rather than a full path, matching `load_contracts` and
+    `load_registry`, so a caller states where the repository is and not where inside it each
+    reference file lives.
+    """
+    raw, where = _read_dictionary(root)
     if set(raw) != {
         "version",
         "axis_defaults",
@@ -863,11 +991,15 @@ def load_catalog(root: Path) -> Catalog:
         "inventory_categories",
         "metrics",
         "deferred",
+        "operational_metrics",
     }:
         raise CatalogError(
             f"{where}: expected version, axis_defaults, compatibility_defaults, units, "
-            "inventory_categories, metrics and deferred."
+            "inventory_categories, metrics, deferred and operational_metrics."
         )
+    # Validated so a malformed section fails here too, and never put into the Catalog: the
+    # curation pipeline, tools and Context Engine must never see an operational counter.
+    _operational_metrics_from(raw["operational_metrics"], where=f"{where}: operational_metrics")
     version = raw["version"]
     if isinstance(version, bool) or not isinstance(version, int) or version != 1:
         raise CatalogError(f"{where}: version must be integer 1.")
