@@ -160,6 +160,9 @@ DEEP_INPUT_REVISIONS: Final[tuple[tuple[str, str], ...]] = (
     # Demand forecast slice 2: the dictionary gains its operational_metrics section, which
     # load_catalog() validates and never returns; deep inputs are unchanged.
     ("2026-11-16.1", "c87b52dab06ec78b647fc7f6daa09bb32a9f86e8dac14200494c53e2c831b27e"),
+    # Demand forecast slice 2 (A7): the generated spans and the tracing re-export gain the
+    # DEMAND_FORECAST_PUBLISH span; deep inputs are unchanged.
+    ("2026-11-16.2", "e0aa8e36ac9ba4cef4a307807b683ad21e6c95e8431580ebf63364b278d7cae5"),
 )
 DEEP_INPUT_REVISION: Final[str] = DEEP_INPUT_REVISIONS[-1][0]
 """The revision every deep cache key carries (``#DEEPINPUT#<revision>``)."""
