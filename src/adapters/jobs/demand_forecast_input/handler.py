@@ -3,10 +3,14 @@
 
 One Lambda (`ForecastInputFunction`) serves both Step Functions states.
 
-- **select** checks the marketplace key against the commerce identity bridge
-  (`MARKETPLACE_UNKNOWN`), reads the CURRENT pins of the 1,000 days ending today, picks
-  `input_end`, holds `held_input_not_ready` (`no_complete_week`, `input_end_too_old`) and returns
-  the input and run fingerprints. Slice 1 has no store, so there is no CURRENT to no-op against.
+- **select** applies §6d steps 1 to 5. It checks the marketplace key against the commerce
+  identity bridge (`MARKETPLACE_UNKNOWN`), reads the set's `CURRENT` (one consistent GetItem)
+  and the CURRENT pins of the 1,000 days ending the check date, picks `input_end`, and decides
+  `run`, `no_op_same_input` or `held_input_not_ready` (`no_complete_week`, `input_end_too_old`,
+  `weekly_slot_not_due`). A scheduled check's date and run ID come from its `scheduled_time`
+  (OQ-S2-3); an operator start's run ID is its execution name and its date is today. Off the slot
+  weekday, the latest slot run's `#select` receipt is the one further GetItem (OQ-S2-1). Every
+  call emits `ForecastCurrentAgeDays` (when a generation is CURRENT) and `UnknownSalesDays`.
 - **build** re-reads the selection and refuses `SELECTION_MOVED` if its input fingerprint moved;
   reads the roster and cross-checks it against `plan_shards()` (`SHARD_PLAN_MISMATCH`,
   `ROSTER_TOO_LARGE`); reads the forecast marketplace's product titles (`SELECTION_MOVED` when
@@ -14,7 +18,8 @@ One Lambda (`ForecastInputFunction`) serves both Step Functions states.
   hierarchy); runs the two partitioned UNLOADs into the attempt's fresh prefix
   `runs/<run_id>/input/r<RedriveCount>a<RetryCount>/`; gives every shard the traffic `UNLOAD`
   wrote nothing for a zero-row traffic object; and writes `titles.json` (`TitleMapV1`) and
-  `manifest.json` (`InputManifestV1`, `expected_fence` 0), both validated before they are written.
+  `manifest.json` (`InputManifestV1`, with the `expected_fence` select read), both validated
+  before they are written.
 
 A refusal raises `InputBuildFailedError` whose message is the failure category, so the state machine
 and an operator read the same code.
@@ -24,7 +29,7 @@ from __future__ import annotations
 
 import hashlib
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from functools import lru_cache
@@ -53,11 +58,18 @@ from adapters.outbound.athena.weekly_series import (
 )
 from adapters.outbound.commerce_identity import load_commerce_identity_bridge
 from adapters.outbound.demand_forecast_policy import LoadedPolicy, load_policy
+from adapters.outbound.dynamodb.demand_forecast_store import DynamoDbForecastStore
 from adapters.outbound.dynamodb.semantic_state import DynamoCurrentPublications
 from adapters.outbound.publication_selection import ForecastHistorySelector
 from adapters.outbound.s3.semantic_storage import S3CanonicalAdapter
 from adapters.outbound.source_pack import load_source_packs
 from adapters.outbound.telemetry.bootstrap import configure_tracing, flushes_traces
+from adapters.outbound.telemetry.demand_forecast_metrics import (
+    CloudWatchDemandForecastMetrics,
+    Datapoint,
+    current_age,
+    unknown_days,
+)
 from adapters.outbound.telemetry.reporting import LogSeverity, OperationLog, report_operation
 from adapters.outbound.telemetry.tracing import (
     DEMAND_FORECAST_BUILD,
@@ -66,6 +78,7 @@ from adapters.outbound.telemetry.tracing import (
     trace_boundary,
 )
 from domain.forecasting.boundary import (
+    ForecastSetV1,
     InputManifestV1,
     TitleMapV1,
     boundary_schema_digests,
@@ -73,11 +86,31 @@ from domain.forecasting.boundary import (
 from domain.forecasting.fingerprint import RunIdentity, run_fingerprint, run_hash12
 from domain.forecasting.identity import ProductKeyError, display_map
 from domain.forecasting.models import CHRONOS2_MODEL_ID
+from domain.forecasting.publish import (
+    OPERATOR_REASON_MAX_CHARS,
+    CurrentPointer,
+    ReceiptKeyRequest,
+    ReceiptRecord,
+    RunOutcome,
+    forecast_set_id,
+    receipt_sk,
+)
 from domain.forecasting.selection import (
     SELECTION_DAYS,
+    SelectDecision,
+    SelectDecisionRequest,
     SelectionWindowRequest,
+    SelectOutcome,
+    Trigger,
     WindowPin,
     WindowPins,
+    admits_new_input,
+    current_age_days,
+    pointer_consumes_slot,
+    previous_slot_date,
+    scheduled_run_id,
+    select_decision,
+    unknown_sales_days,
     window_pins,
 )
 from domain.forecasting.shards import RosterTooLargeError, ShardPlanRequest, plan_shards
@@ -101,8 +134,13 @@ if TYPE_CHECKING:
 
 _TRACING = configure_tracing(tracing_settings())
 _LOGGER = Logger(service="adlytics-demand-forecast-input")
+_RUN_ID_MAX: Final = 80
+"""Step Functions' execution-name limit [verified API_StartExecution, read 2026-11-16]."""
 _RUN_ID: Final = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
 _ATTEMPT: Final = re.compile(r"^r[0-9]{1,4}a[0-9]{1,4}$")
+_OPERATOR_RUN_ID: Final = re.compile(
+    r"^(?P<set>[0-9a-f]{12})-[0-9]{4}-[0-9]{2}-[0-9]{2}-op-[1-9][0-9]*$"
+)
 _SHARD_PATH: Final = re.compile(r"/shard=([0-9]{1,3})/")
 _TAIL_BYTES: Final = 64 * 1024
 _CHUNK: Final = 1024 * 1024
@@ -121,6 +159,26 @@ def _root() -> Path:
 
 
 # ---- composition seams (fakes in unit tests) ----
+
+
+class PointerReads(Protocol):
+    """The two forecast-table reads `select` makes (`ForecastStorePort` satisfies it)."""
+
+    def get_current(self, set_id: str) -> CurrentPointer | None:
+        """Read the set's `CURRENT` item, strongly consistent."""
+        ...
+
+    def get_receipt(self, set_id: str, sk: str) -> ReceiptRecord | None:
+        """Read one `RUN#` receipt, strongly consistent."""
+        ...
+
+
+class MetricsSink(Protocol):
+    """Where operational datapoints go."""
+
+    def emit(self, points: Sequence[Datapoint], timestamp: datetime) -> None:
+        """Put every datapoint at `timestamp`."""
+        ...
 
 
 class ObjectStore(Protocol):
@@ -154,7 +212,63 @@ class InputBuilder:
     titles: RetailProductHierarchySource
     weekly: Callable[[Callable[[], float]], WeeklySeriesSourcePort]
     objects: ObjectStore
-    today: Callable[[], date]
+    store: PointerReads
+    metrics: MetricsSink
+    now: Callable[[], datetime]
+
+    @property
+    def set_id(self) -> str:
+        """The one set's ID, as the publisher derives it (`forecast_set_id()`)."""
+        policy = self.policy.policy.input
+        return forecast_set_id(
+            ForecastSetV1(
+                marketplace_key=self.settings.marketplace_key,
+                distributor_view=policy.distributor_view,
+                selling_program=policy.selling_program,
+            )
+        )
+
+
+@dataclass(frozen=True)
+class SelectRequest:
+    """One `select` invocation: the execution and, for a scheduled check, its scheduled time.
+
+    A scheduled input carries `scheduled_time` and never `RETRY_FAILED` or a reason (§6d step
+    3). An operator start is named `<set hash 12>-<UTC date>-op-<n>`; `RETRY_FAILED` needs a
+    reason of 1 to 200 printable characters.
+    """
+
+    execution_name: str
+    scheduled_time: datetime | None = None
+    retry_failed: bool = False
+    operator_reason: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.execution_name:
+            raise InputBuildFailedError("REQUEST_INVALID")
+        if self.scheduled_time is not None:
+            if self.scheduled_time.tzinfo is None:
+                raise InputBuildFailedError("REQUEST_INVALID")
+            if self.retry_failed or self.operator_reason is not None:
+                raise InputBuildFailedError("REQUEST_INVALID")
+            return
+        if (
+            len(self.execution_name) > _RUN_ID_MAX
+            or _OPERATOR_RUN_ID.fullmatch(self.execution_name) is None
+        ):
+            raise InputBuildFailedError("REQUEST_INVALID")
+        reason = self.operator_reason
+        if reason is None:
+            if self.retry_failed:
+                raise InputBuildFailedError("OPERATOR_REASON_INVALID")
+            return
+        if not 1 <= len(reason) <= OPERATOR_REASON_MAX_CHARS or not reason.isprintable():
+            raise InputBuildFailedError("OPERATOR_REASON_INVALID")
+
+    @property
+    def trigger(self) -> Trigger:
+        """Scheduled when the input carries a scheduled time; otherwise an operator start."""
+        return Trigger.OPERATOR if self.scheduled_time is None else Trigger.SCHEDULED
 
 
 @dataclass(frozen=True)
@@ -165,6 +279,8 @@ class BuildRequest:
     redrive_count: int
     retry_count: int
     input_fingerprint: str
+    expected_fence: int
+    """The `CURRENT` fence `select` read; the manifest carries it to the commit (§6b)."""
 
     @property
     def build_attempt_id(self) -> str:
@@ -186,11 +302,10 @@ def _window_pins(history: PinnedContractHistory) -> tuple[WindowPin, ...]:
     )
 
 
-def _select(builder: InputBuilder) -> _Selected:
+def _select(builder: InputBuilder, today: date) -> _Selected:
     key = builder.settings.marketplace_key
     if key not in {mapping.target.value for mapping in builder.bridge.marketplace_mappings}:
         raise InputBuildFailedError("MARKETPLACE_UNKNOWN")
-    today = builder.today()
     window = DateRange(today - timedelta(days=SELECTION_DAYS - 1), today)
     policy = builder.policy.policy.input
     selectors = tuple(
@@ -229,26 +344,125 @@ def _identity(builder: InputBuilder, input_fingerprint: str) -> RunIdentity:
     )
 
 
-def select_input(builder: InputBuilder) -> dict[str, object]:
-    """Return `run` with the fingerprints, or `held_input_not_ready` with its category."""
-    selected = _select(builder)
+def _run_id(builder: InputBuilder, request: SelectRequest, check_date: date) -> str:
+    if request.trigger is Trigger.SCHEDULED:
+        return scheduled_run_id(builder.set_id, check_date)
+    match = _OPERATOR_RUN_ID.fullmatch(request.execution_name)
+    if match is None or match["set"] != builder.set_id:
+        raise InputBuildFailedError("REQUEST_INVALID")
+    return request.execution_name
+
+
+_SELECT_DECISIONS: Final = frozenset({RunOutcome.NO_OP_SAME_INPUT, RunOutcome.HELD_INPUT_NOT_READY})
+"""The `#select` receipts a select decision writes. A select failure's `failed` (or
+`superseded`) receipt under the same key does not consume the slot (R7-M2)."""
+
+
+def _slot_consumed(builder: InputBuilder, current: CurrentPointer | None, check_date: date) -> bool:
+    """Whether the latest slot run left a `#select` decision or a known fingerprint (OQ-S2-1).
+
+    `CURRENT` is already in hand, so the receipt GetItem happens only when it can still decide.
+    """
+    weekday = builder.policy.policy.retry.admission_weekday
+    slot_run = scheduled_run_id(builder.set_id, previous_slot_date(check_date, weekday))
+    if pointer_consumes_slot(current, slot_run):
+        return True
+    key = receipt_sk(ReceiptKeyRequest(slot_run, 0, "select"))
+    receipt = builder.store.get_receipt(builder.set_id, key)
+    return receipt is not None and receipt.outcome in _SELECT_DECISIONS
+
+
+@dataclass(frozen=True)
+class _Check:
+    """One check's request, its UTC date and the `CURRENT` it read."""
+
+    request: SelectRequest
+    check_date: date
+    current: CurrentPointer | None
+
+
+def _decide(builder: InputBuilder, check: _Check, fingerprint: str) -> SelectDecision:
+    weekday = builder.policy.policy.retry.admission_weekday
+    trigger = check.request.trigger
+    off_slot = trigger is Trigger.SCHEDULED and not admits_new_input(check.check_date, weekday)
+    consumed = _slot_consumed(builder, check.current, check.check_date) if off_slot else None
+    return select_decision(
+        SelectDecisionRequest(
+            run_fingerprint=fingerprint,
+            current=check.current,
+            trigger=trigger,
+            check_date=check.check_date,
+            admission_weekday=weekday,
+            retry_failed=check.request.retry_failed,
+            slot_consumed=consumed,
+        )
+    )
+
+
+def _emit_check_metrics(
+    builder: InputBuilder, check: _Check, pins: WindowPins
+) -> dict[str, object]:
+    now = builder.now()
+    grace = builder.policy.policy.missing_weeks.unknown_day_grace_days
+    unknown = unknown_sales_days(pins, check.check_date, grace)
+    points = [unknown_days(unknown)]
+    age = None
+    current = check.current
+    if current is not None and current.published_at is not None:
+        age = current_age_days(current.published_at, now)
+        points.append(current_age(age))
+    builder.metrics.emit(points, now)
+    return {"current_age_days": age, "unknown_sales_days": unknown}
+
+
+def select_input(builder: InputBuilder, request: SelectRequest) -> dict[str, object]:
+    """Decide `run`, `no_op_same_input` or `held_input_not_ready` (design §6d steps 1 to 5)."""
+    scheduled = request.scheduled_time
+    check_date = (
+        builder.now().astimezone(UTC).date()
+        if scheduled is None
+        else (scheduled.astimezone(UTC).date())
+    )
+    run_id = _run_id(builder, request, check_date)
+    current = builder.store.get_current(builder.set_id)
+    check = _Check(request, check_date, current)
+    selected = _select(builder, check_date)
     pins = selected.pins
+    common: dict[str, object] = {
+        "run_id": run_id,
+        "trigger": request.trigger.value,
+        "check_date": check_date.isoformat(),
+        "expected_fence": 0 if current is None else current.fence,
+        "operator_reason": request.operator_reason,
+        "input_end": None if pins.input_end is None else pins.input_end.isoformat(),
+    }
     if pins.held is not None or pins.input_fingerprint is None or pins.input_end is None:
+        metrics = _emit_check_metrics(builder, check, pins)
         return {
-            "outcome": "held_input_not_ready",
+            "outcome": SelectOutcome.HELD_INPUT_NOT_READY.value,
             "category": None if pins.held is None else pins.held.value,
-            "input_end": None if pins.input_end is None else pins.input_end.isoformat(),
+            **common,
+            **metrics,
         }
     identity = _identity(builder, pins.input_fingerprint)
-    return {
-        "outcome": "run",
-        "category": None,
-        "input_end": pins.input_end.isoformat(),
-        "input_fingerprint": pins.input_fingerprint,
-        "run_fingerprint": run_fingerprint(identity),
-        "sales_pins": len(pins.sales),
-        "traffic_pins": len(pins.traffic),
+    fingerprint = run_fingerprint(identity)
+    decision = _decide(builder, check, fingerprint)
+    metrics = _emit_check_metrics(builder, check, pins)
+    result: dict[str, object] = {
+        "outcome": decision.outcome.value,
+        "category": None if decision.category is None else decision.category.value,
+        "basis": decision.basis.value,
+        **common,
+        "run_fingerprint": fingerprint,
+        **metrics,
     }
+    if decision.outcome is SelectOutcome.RUN:
+        result |= {
+            "input_fingerprint": pins.input_fingerprint,
+            "sales_pins": len(pins.sales),
+            "traffic_pins": len(pins.traffic),
+        }
+    return result
 
 
 def _titles(builder: InputBuilder, selected: _Selected, roster: tuple[str, ...]) -> TitleMapV1:
@@ -354,7 +568,9 @@ def build_input(
         or _ATTEMPT.fullmatch(request.build_attempt_id) is None
     ):
         raise InputBuildFailedError("REQUEST_INVALID")
-    selected = _select(builder)
+    if isinstance(request.expected_fence, bool) or request.expected_fence < 0:
+        raise InputBuildFailedError("REQUEST_INVALID")
+    selected = _select(builder, builder.now().astimezone(UTC).date())
     pins = selected.pins
     if pins.input_fingerprint != request.input_fingerprint or pins.input_end is None:
         raise InputBuildFailedError("SELECTION_MOVED")
@@ -409,7 +625,7 @@ def build_input(
                 "selling_program": policy.input.selling_program,
             },
             "input_end": pins.input_end.isoformat(),
-            "expected_fence": 0,
+            "expected_fence": request.expected_fence,
             "input_fingerprint": request.input_fingerprint,
             "run_fingerprint": run_fingerprint(identity),
             "run_identity": {
@@ -539,9 +755,10 @@ def _builder() -> InputBuilder:
         boto3.client("athena"),
         s3,
     )
+    policy = load_policy(root / "contracts/forecasting/demand-forecast.yaml")
     return InputBuilder(
         settings=settings,
-        policy=load_policy(root / "contracts/forecasting/demand-forecast.yaml"),
+        policy=policy,
         bridge=bridge,
         selection=ForecastHistorySelector(current, packs, contracts, bridge),
         titles=CanonicalRetailProductHierarchy(
@@ -554,7 +771,9 @@ def _builder() -> InputBuilder:
         ),
         weekly=lambda remaining: AthenaWeeklySeriesSource(target, remaining),
         objects=_S3Objects(s3, settings.processing_bucket),
-        today=lambda: datetime.now(UTC).date(),
+        store=DynamoDbForecastStore(settings.forecast_table, policy.policy.serving.item_max_bytes),
+        metrics=CloudWatchDemandForecastMetrics(boto3.client("cloudwatch")),
+        now=lambda: datetime.now(UTC),
     )
 
 
@@ -563,6 +782,28 @@ def _int(event: Mapping[str, Any], key: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise InputBuildFailedError("REQUEST_INVALID")
     return value
+
+
+def select_request(event: Mapping[str, Any]) -> SelectRequest:
+    """Parse `SelectInput`'s input: the execution name and the scheduled or operator fields."""
+    name = event.get("execution_name")
+    scheduled = event.get("scheduled_time")
+    retry = event.get("retry_failed", False)
+    reason = event.get("operator_reason")
+    if (
+        not isinstance(name, str)
+        or not isinstance(retry, bool)
+        or (scheduled is not None and not isinstance(scheduled, str))
+        or (reason is not None and not isinstance(reason, str))
+    ):
+        raise InputBuildFailedError("REQUEST_INVALID")
+    at = None
+    if scheduled is not None:
+        try:
+            at = datetime.fromisoformat(scheduled)
+        except ValueError:
+            raise InputBuildFailedError("REQUEST_INVALID") from None
+    return SelectRequest(name, at, retry, reason)
 
 
 @trace_boundary(DEMAND_FORECAST_SELECT, DEMAND_FORECAST_BUILD)
@@ -576,7 +817,7 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, object]:
     )
     if operation == "select":
         with span(DEMAND_FORECAST_SELECT, operation="select") as recording:
-            result = select_input(_builder())
+            result = select_input(_builder(), select_request(event))
             recording.record(outcome=str(result["outcome"]))
             _report("select", str(result["outcome"]), result)
             return result
@@ -586,6 +827,7 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, object]:
             redrive_count=_int(event, "redrive_count"),
             retry_count=_int(event, "retry_count"),
             input_fingerprint=str(event.get("input_fingerprint", "")),
+            expected_fence=_int(event, "expected_fence"),
         )
         with span(DEMAND_FORECAST_BUILD, operation="build") as recording:
             started = datetime.now(UTC)

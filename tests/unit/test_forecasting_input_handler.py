@@ -8,6 +8,7 @@ publication would show names from a revision the run never read.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -20,6 +21,7 @@ from adapters.jobs.demand_forecast_input.handler import (
     BuildRequest,
     InputBuilder,
     InputBuildFailedError,
+    SelectRequest,
     build_input,
     select_input,
 )
@@ -29,7 +31,9 @@ from adapters.jobs.preset_artifact_publisher.retail_source import (
 )
 from adapters.outbound.commerce_identity import load_commerce_identity_bridge
 from adapters.outbound.demand_forecast_policy import load_policy
+from adapters.outbound.telemetry.demand_forecast_metrics import Datapoint
 from domain.forecasting.boundary import InputManifestV1, TitleMapV1
+from domain.forecasting.publish import CurrentPointer, ReceiptRecord
 from domain.shared_kernel.values import DateRange
 from ports.outbound.forecast_history_selection import (
     ForecastHistorySelectionRequest,
@@ -57,6 +61,7 @@ SETTINGS = DemandForecastInputSettings(
     athena_batch_workgroup="batch",
     semantic_v2_current_database="current",
     processing_bucket="adlytics-dev-demand-forecast",
+    forecast_table="adlytics-dev-demand-forecast",
     marketplace_key="amazon_us",
     model_artifact_digest="1" * 64,
     processor_code_identity="2" * 64,
@@ -130,6 +135,26 @@ class FakeObjects:
         self.bodies[key] = body
 
 
+@dataclass
+class NoPointer:
+    """A forecast table before the first outcome: no CURRENT, no receipts."""
+
+    def get_current(self, set_id: str) -> CurrentPointer | None:
+        del set_id
+
+    def get_receipt(self, set_id: str, sk: str) -> ReceiptRecord | None:
+        del set_id, sk
+
+
+@dataclass
+class FakeMetrics:
+    points: list[Datapoint] = field(default_factory=list[Datapoint])
+
+    def emit(self, points: Sequence[Datapoint], timestamp: datetime) -> None:
+        del timestamp
+        self.points.extend(points)
+
+
 def _parquet(rows: int) -> bytes:
     return parquet_bytes(["canonical_asin", "x"], rows)
 
@@ -181,19 +206,25 @@ def _builder(  # noqa: PLR0913, PLR0917 -- four optional overrides of one fixtur
         titles=FakeTitles(titles),
         weekly=lambda _remaining: fake,
         objects=objects,
-        today=lambda: TODAY,
+        store=NoPointer(),
+        metrics=FakeMetrics(),
+        now=lambda: datetime.combine(TODAY, datetime.min.time(), UTC),
     )
     return builder, objects
 
 
-def _request(builder: InputBuilder, redrive: int = 0) -> BuildRequest:
-    selected = select_input(builder)
-    return BuildRequest("df-s1-unit", redrive, 0, str(selected["input_fingerprint"]))
+def _operator(builder: InputBuilder) -> SelectRequest:
+    return SelectRequest(f"{builder.set_id}-{TODAY.isoformat()}-op-1")
+
+
+def _request(builder: InputBuilder, redrive: int = 0, fence: int = 0) -> BuildRequest:
+    selected = select_input(builder, _operator(builder))
+    return BuildRequest("df-s1-unit", redrive, 0, str(selected["input_fingerprint"]), fence)
 
 
 def test_select_runs_on_the_newest_complete_saturday() -> None:
     builder, _ = _builder()
-    result = select_input(builder)
+    result = select_input(builder, _operator(builder))
     assert result["outcome"] == "run"
     assert result["input_end"] == "2026-10-03"
     assert result["sales_pins"] == 728
@@ -202,20 +233,20 @@ def test_select_runs_on_the_newest_complete_saturday() -> None:
 def test_an_unknown_marketplace_is_refused() -> None:
     builder, _ = _builder(marketplace="amazon_mars")
     with pytest.raises(InputBuildFailedError, match="MARKETPLACE_UNKNOWN"):
-        select_input(builder)
+        select_input(builder, _operator(builder))
 
 
-def test_build_writes_a_valid_manifest_and_titles_under_the_attempt_prefix() -> None:
+def test_build_writes_the_read_fence_and_titles_into_a_valid_manifest_under_the_attempt() -> None:
     titles = RetailProductHierarchyResult(
         {ROSTER[0]: RetailProductIdentity("b0fixtur01", "b0fixtur01", "Product 1")},
         ("prod-2026-10-01",),
     )
     builder, objects = _builder(titles)
-    result = build_input(builder, _request(builder, redrive=1), lambda: 900.0)
+    result = build_input(builder, _request(builder, redrive=1, fence=3), lambda: 900.0)
     assert result["manifest_key"] == "runs/df-s1-unit/input/r1a0/manifest.json"
     manifest = InputManifestV1.model_validate_json(objects.bodies[str(result["manifest_key"])])
     assert manifest.build_attempt_id == "r1a0"
-    assert manifest.expected_fence == 0
+    assert manifest.expected_fence == 3
     assert [(o.kind, o.rows, o.shard) for o in manifest.parquet_objects] == [
         ("target", 8, 0),
         ("traffic", 2, 0),
@@ -267,7 +298,7 @@ def test_a_hierarchy_naming_an_unpinned_publication_is_selection_moved() -> None
 def test_a_moved_input_fingerprint_is_selection_moved() -> None:
     builder, _ = _builder()
     with pytest.raises(InputBuildFailedError, match="SELECTION_MOVED"):
-        build_input(builder, BuildRequest("df-s1-unit", 0, 0, "f" * 64), lambda: 900.0)
+        build_input(builder, BuildRequest("df-s1-unit", 0, 0, "f" * 64, 0), lambda: 900.0)
 
 
 def test_a_roster_the_shard_rule_does_not_reproduce_is_refused() -> None:

@@ -190,6 +190,7 @@ class DemandForecastInputSettings:
     athena_batch_workgroup: str
     semantic_v2_current_database: str
     processing_bucket: str
+    forecast_table: str
     marketplace_key: str
     model_artifact_digest: str
     processor_code_identity: str
@@ -432,6 +433,7 @@ _DEMAND_FORECAST_INPUT_ENV: tuple[tuple[str, str], ...] = (
     ("athena_batch_workgroup", "SEMANTIC_V2_ATHENA_BATCH_WORKGROUP"),
     ("semantic_v2_current_database", "SEMANTIC_V2_CURRENT_DATABASE"),
     ("processing_bucket", "DEMAND_FORECAST_PROCESSING_BUCKET"),
+    ("forecast_table", "DEMAND_FORECAST_TABLE"),
     ("marketplace_key", "DEMAND_FORECAST_MARKETPLACE_KEY"),
     ("model_artifact_digest", "DEMAND_FORECAST_MODEL_ARTIFACT_DIGEST"),
     ("processor_code_identity", "DEMAND_FORECAST_PROCESSOR_CODE_IDENTITY"),
@@ -466,6 +468,7 @@ def demand_forecast_input_settings(
         athena_batch_workgroup=found["athena_batch_workgroup"],
         semantic_v2_current_database=found["semantic_v2_current_database"],
         processing_bucket=found["processing_bucket"],
+        forecast_table=found["forecast_table"],
         marketplace_key=found["marketplace_key"],
         model_artifact_digest=found["model_artifact_digest"],
         processor_code_identity=found["processor_code_identity"],

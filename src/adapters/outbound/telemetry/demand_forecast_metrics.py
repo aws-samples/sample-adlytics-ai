@@ -22,8 +22,10 @@ from typing import TYPE_CHECKING, Any, Final, cast
 from botocore.exceptions import BotoCoreError, ClientError
 
 from domain.operations.generated_operational_metrics import (
+    FORECAST_CURRENT_AGE_DAYS,
     FORECAST_RUN_OUTCOME,
     LANDING_TO_PUBLISH_SECONDS,
+    UNKNOWN_SALES_DAYS,
     OperationalMetricSpec,
 )
 
@@ -69,6 +71,16 @@ def run_outcome(outcome: str) -> Datapoint:
 def landing_to_publish(seconds: float) -> Datapoint:
     """`LandingToPublishSeconds`: from the newest selected publication to `published_at`."""
     return Datapoint(LANDING_TO_PUBLISH_SECONDS, seconds)
+
+
+def current_age(days: int) -> Datapoint:
+    """`ForecastCurrentAgeDays`: whole days since CURRENT's generation was published."""
+    return Datapoint(FORECAST_CURRENT_AGE_DAYS, float(days))
+
+
+def unknown_days(days: int) -> Datapoint:
+    """`UnknownSalesDays`: the input window's unknown sales days past the grace days."""
+    return Datapoint(UNKNOWN_SALES_DAYS, float(days))
 
 
 def metric_data(points: Sequence[Datapoint], timestamp: datetime) -> list[dict[str, object]]:
