@@ -165,8 +165,16 @@ class RunReceipt:
             raise ValueError(f"a receipt key starts RUN#, got {self.sk!r}")
         if self.recorded_at.tzinfo is None:
             raise ValueError("recorded_at is timezone-aware")
-        if (self.generation_id is not None) != (self.outcome in _GENERATION_OUTCOMES):
-            raise ValueError("generation_id is set exactly on published and rolled_back")
+        # A superseded commit names the attested generation that did not become CURRENT, so its
+        # replay can be told from another attempt set's (R1-10); a superseded hold names none.
+        if self.outcome in _GENERATION_OUTCOMES and self.generation_id is None:
+            raise ValueError("generation_id is set on published and rolled_back")
+        if (
+            self.generation_id is not None
+            and self.outcome not in _GENERATION_OUTCOMES
+            and self.outcome is not RunOutcome.SUPERSEDED
+        ):
+            raise ValueError("generation_id is set only on published, rolled_back and superseded")
         if (self.published_at is not None) != (self.outcome is RunOutcome.PUBLISHED):
             raise ValueError("published_at is set exactly on published")
         if (self.retry_disposition is not None) != changes_last_attempt(

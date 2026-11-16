@@ -28,6 +28,7 @@ from adapters.jobs.preset_artifact_publisher.retail_source import RetailProductH
 from adapters.outbound.commerce_identity import load_commerce_identity_bridge
 from adapters.outbound.demand_forecast_policy import load_policy
 from adapters.outbound.telemetry.demand_forecast_metrics import Datapoint
+from domain.forecasting.boundary import RunIdentityV1
 from domain.forecasting.publish import (
     CurrentPointer,
     GenerationRecord,
@@ -379,6 +380,18 @@ def test_days_alone_never_change_the_fingerprint_so_every_lag_no_ops(lag: int) -
     assert _decided(result) == ("no_op_same_input", None, "same_as_current")
     assert world.table.current is not None
     assert result["run_fingerprint"] == world.table.current.run_fingerprint
+
+
+def test_two_daily_no_ops_carry_the_published_runs_input_fingerprint_for_their_receipts() -> None:
+    """Acceptance 2 (R1-12): the receipts prove unchanged input, not another suppression."""
+    world = World()
+    published = world.publish_by_operator(INPUT_END + timedelta(days=1))
+    for day in _days(INPUT_END + timedelta(days=2), 2):
+        result = world.check(day)
+        assert _decided(result) == ("no_op_same_input", None, "same_as_current")
+        identity = RunIdentityV1.model_validate(result["run_identity"])
+        assert identity.input_fingerprint == published["input_fingerprint"]
+        assert (identity.instance_type, identity.max_runtime_seconds) == ("ml.m5.xlarge", 3600)
 
 
 def test_a_lag_of_273_days_holds_input_end_too_old_before_comparing() -> None:

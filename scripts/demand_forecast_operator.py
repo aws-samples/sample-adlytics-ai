@@ -57,6 +57,7 @@ from domain.forecasting.publish import (
     forecast_set_id,
     operator_reason_valid,
 )
+from ports.outbound.forecast_store import ForecastStoreConflictError
 
 if TYPE_CHECKING:
     from types_boto3_stepfunctions.client import SFNClient
@@ -66,6 +67,9 @@ POLICY: Final = ROOT / "contracts/forecasting/demand-forecast.yaml"
 REFUSED: Final = 2
 _ACCOUNT: Final = re.compile(r"[0-9]{12}")
 NAME_TAKEN_CODE: Final = "ExecutionAlreadyExists"
+RECEIPT_CONFLICT_CODE: Final = "ROLLBACK_RECEIPT_CONFLICT"
+"""The rollback's receipt key already holds another request's receipt; the transaction wrote
+nothing (R1-13)."""
 
 
 class OperatorRefusedError(Exception):
@@ -246,13 +250,18 @@ class RollbackDone:
 def rollback(publisher: Publisher, command: RollbackCommand) -> RollbackDone:
     """Roll `CURRENT` back to `command.generation_id`, fenced on the fence read now (§6c).
 
-    Raises `RollbackRefusedError` with its code before any write.
+    Raises `RollbackRefusedError` with its code before any write, and `OperatorRefusedError`
+    (`ROLLBACK_RECEIPT_CONFLICT`) when the refused transaction found another receipt under the
+    rollback's key.
     """
     current = publisher.store.get_current(publisher.set_id)
     fence = 0 if current is None else current.fence
     request = RollbackRequest(publisher.set_id, command.generation_id, fence, command.reason)
     run_id = rollback_run_id(publisher.set_id, publisher.now())
-    step = publisher_rollback(publisher, request, run_id)
+    try:
+        step = publisher_rollback(publisher, request, run_id)
+    except ForecastStoreConflictError:
+        raise OperatorRefusedError(RECEIPT_CONFLICT_CODE) from None
     return RollbackDone(step.outcome, step.generation_id, step.receipt_sk, fence)
 
 

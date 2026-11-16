@@ -399,6 +399,19 @@ describe('DemandForecastStack', () => {
     }
   });
 
+  test('a select no-op or hold passes its run identity to its RecordOutcome receipt', () => {
+    // R1-12: acceptance 2 reads the unchanged input fingerprint from both daily no-op receipts.
+    const states = definition(template).States as Record<string, Record<string, unknown>>;
+    const choices = states.Decide?.Choices as Array<Record<string, unknown>>;
+    const receiptOnly = choices.find((choice) => choice.Next === 'RecordOutcome');
+    expect(receiptOnly?.Output).toBe(
+      "{% {'step': 'select', 'outcome': $states.input.outcome, 'category': $states.input.category, 'run_identity': $states.input.run_identity} %}",
+    );
+    expect(String((states.RecordOutcome?.Arguments as Record<string, unknown>).Payload)).toContain(
+      "'run_identity': $states.input.run_identity",
+    );
+  });
+
   test('the dev probe continues from Forecast into Publish and Commit', () => {
     const states = definition(template).States as Record<string, Record<string, unknown>>;
     const probe = (states.ProbeStart?.Choices as Array<Record<string, unknown>>)[0];

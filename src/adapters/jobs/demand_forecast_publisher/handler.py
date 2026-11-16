@@ -63,6 +63,7 @@ from domain.forecasting.boundary import (
     ForecastSetV1,
     InputManifestV1,
     RosterEntryV1,
+    RunIdentityV1,
     RunReportV1,
     TitleMapV1,
 )
@@ -91,6 +92,7 @@ from domain.forecasting.publish import (
     forecast_set_id,
     generation_id,
     inferred_zero_week_share,
+    late_attempt,
     next_pointer,
     receipt_sk,
     retry_disposition,
@@ -143,6 +145,8 @@ RECORDED_OUTCOMES: Final = frozenset(
     }
 )
 """The outcomes `RecordOutcome` writes; `published` and `superseded` come from the commit."""
+_SELECT_OUTCOMES: Final = frozenset({RunOutcome.NO_OP_SAME_INPUT, RunOutcome.HELD_INPUT_NOT_READY})
+"""The `select` outcomes whose receipt may carry the run identity `SelectInput` computed."""
 _NEW_RECEIPT: Final = frozenset({CommitDisposition.APPLIED, CommitDisposition.SUPERSEDED})
 
 
@@ -492,8 +496,34 @@ class CommitRequest:
 
     @property
     def receipt_sk(self) -> str:
-        """`RUN#<run_id>#r<RedriveCount>#commit`."""
+        """`RUN#<run_id>#r<RedriveCount>#commit`, the pass's first committed attempt set."""
         return receipt_sk(ReceiptKeyRequest(self.run_id, self.redrive_count, "commit"))
+
+
+def _commit_receipt_sk(publisher: Publisher, request: CommitRequest, generation: str) -> str:
+    """Return the pass's `commit` key, or a later attempt set's own `s<k>-<attempt>` key.
+
+    Design §6b and slice-2 acceptance 5 (R1-10): a second commit in one pass binds another
+    attempt set, so it never takes the key whose receipt describes the first. A `commit` receipt
+    that names no generation (a hold or failure there) can't be compared, so it holds.
+    """
+    store = publisher.store
+    recorded = store.get_receipt(publisher.set_id, request.receipt_sk)
+    if recorded is None or recorded.generation_id == generation:
+        return request.receipt_sk
+    earlier = None
+    if recorded.generation_id is not None:
+        earlier = store.get_generation(recorded.generation_id)
+    attempts = [ShardAttempt(result.shard, result.attempt_id) for result in request.published]
+    late = None if earlier is None else late_attempt(attempts, earlier.attempts)
+    if late is None:
+        detail = (
+            f"{request.receipt_sk} records {recorded.outcome.value}"
+            " for no readable attempt set of this pass"
+        )
+        raise _held(HeldCheck.IDENTITY_MISMATCH, detail)
+    step = f"s{late.shard}-{late.attempt_id}"
+    return receipt_sk(ReceiptKeyRequest(request.run_id, request.redrive_count, step))
 
 
 def _read_parts(
@@ -555,10 +585,11 @@ def _commit_generation(publisher: Publisher, request: CommitRequest) -> StepOutc
     ranked = rank_entries(merge_roster_parts([part.entries for part in parts]), serving.rank_by)
     attempts = [ShardAttempt(result.shard, result.attempt_id) for result in request.published]
     generation = generation_id(request.run_id, attempts)
+    key = _commit_receipt_sk(publisher, request, generation)
     meta = GenerationMeta(
         set_id=publisher.set_id,
         run_id=request.run_id,
-        receipt_sk=request.receipt_sk,
+        receipt_sk=key,
         input_end=manifest.input_end,
         run_fingerprint=manifest.run_fingerprint,
         run_identity=manifest.run_identity,
@@ -583,7 +614,7 @@ def _commit_generation(publisher: Publisher, request: CommitRequest) -> StepOutc
         outcome=committed.outcome,
         step="commit",
         generation_id=generation if committed.outcome == RunOutcome.PUBLISHED else None,
-        receipt_sk=request.receipt_sk,
+        receipt_sk=key,
         series_published=shown,
         series_withheld=withheld,
         store_retry_attempts=retries + committed.retry_attempts,
@@ -644,6 +675,7 @@ def _commit_publish(
             sk=meta.receipt_sk,
             outcome=RunOutcome.SUPERSEDED,
             recorded_at=now,
+            generation_id=meta.generation_id,
             run_fingerprint=fingerprint,
             run_identity=manifest.run_identity,
             counts_by_reason=meta.counts_by_reason,
@@ -758,6 +790,8 @@ class RecordOutcomeRequest:
     operator_reason: str | None = None
     shard: int | None = None
     """The shard a held commit names (design §6c, R1-5)."""
+    run_identity: RunIdentityV1 | None = None
+    """Every run fingerprint component `SelectInput` computed, on its receipt only (R1-12)."""
 
     def __post_init__(self) -> None:
         try:
@@ -772,8 +806,13 @@ class RecordOutcomeRequest:
             or (self.outcome is RunOutcome.NO_OP_SAME_INPUT and self.category is not None)
             or (self.expected_fence is not None and self.expected_fence < 0)
             or (self.shard is not None and not 0 <= self.shard < MAX_SHARDS)
+            or (self.run_identity is not None and not self._select_receipt)
         ):
             raise PublishFailedError(REQUEST_INVALID)
+
+    @property
+    def _select_receipt(self) -> bool:
+        return self.step == "select" and self.outcome in _SELECT_OUTCOMES
 
     @property
     def receipt_sk(self) -> str:
@@ -790,6 +829,7 @@ def _receipt(request: RecordOutcomeRequest, outcome: RunOutcome, at: datetime) -
         attempt_id=request.attempt_id,
         operator_reason=request.operator_reason,
         run_fingerprint=request.run_fingerprint,
+        run_identity=request.run_identity,
         shard=request.shard,
     )
 
@@ -1091,6 +1131,11 @@ def record_request(event: Mapping[str, Any]) -> RecordOutcomeRequest:
             raise PublishFailedError(REQUEST_INVALID)
         category = failure_category(_text(event, "phase"), cast("Mapping[str, object]", error))
     fence = event.get("expected_fence")
+    identity = event.get("run_identity")
+    try:
+        run_identity = None if identity is None else RunIdentityV1.model_validate(identity)
+    except ValidationError:
+        raise PublishFailedError(REQUEST_INVALID) from None
     return RecordOutcomeRequest(
         run_id=_text(event, "run_id"),
         redrive_count=_int(event, "redrive_count"),
@@ -1102,6 +1147,7 @@ def record_request(event: Mapping[str, Any]) -> RecordOutcomeRequest:
         expected_fence=None if fence is None else _int(event, "expected_fence"),
         operator_reason=_optional_text(event, "operator_reason"),
         shard=None if event.get("shard") is None else _int(event, "shard"),
+        run_identity=run_identity,
     )
 
 

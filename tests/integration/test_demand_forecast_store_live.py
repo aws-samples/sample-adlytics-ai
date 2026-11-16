@@ -17,13 +17,13 @@ from __future__ import annotations
 import hashlib
 import os
 from collections.abc import Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
 import boto3
 import pytest
-from botocore.exceptions import BotoCoreError, ClientError
+from botocore.exceptions import ClientError, NoCredentialsError
 from probe_identity import PROBE_PREFIX, pytest_node_id
 
 from adapters.outbound.dynamodb.demand_forecast_store import (
@@ -51,6 +51,7 @@ from domain.forecasting.publish import (
 )
 from ports.outbound.forecast_store import (
     CommitDisposition,
+    ForecastStoreConflictError,
     GenerationMeta,
     OutcomeCommitRequest,
     RunReceipt,
@@ -78,16 +79,25 @@ class Probe:
 
 @pytest.fixture
 def probe(request: pytest.FixtureRequest) -> Iterator[Probe]:
-    """Yield the deployed table and a fresh probe set; skip when the table is not deployed."""
+    """Yield the deployed table and a fresh probe set.
+
+    Skips only with no AWS credentials or no deployed table parameter (R1-11). Any other error,
+    `AccessDenied` or a throttle included, fails the test, so a broken dev never reads as
+    "nothing to probe".
+    """
     if ENV_NAME != "dev":
         pytest.skip("demand-forecast store probes run only against dev")
     try:
         parameter = boto3.client("ssm").get_parameter(
             Name=f"/adlytics/{ENV_NAME}/data/demand-forecast-table-name"
         )["Parameter"]
-        name = str(parameter.get("Value", ""))
-    except (BotoCoreError, ClientError) as error:
-        pytest.skip(f"integration tier needs the deployed forecast table: {type(error).__name__}")
+    except NoCredentialsError:
+        pytest.skip("integration tier needs AWS credentials")
+    except ClientError as error:
+        if error.response.get("Error", {}).get("Code") != "ParameterNotFound":
+            raise
+        pytest.skip(f"integration tier needs the deployed {ENV_NAME} forecast table")
+    name = str(parameter.get("Value", ""))
     digest = hashlib.sha256(pytest_node_id(request).encode()).hexdigest()[:12]
     found = Probe(DynamoDbForecastStore(name, ITEM_MAX_BYTES), name, f"{PROBE_PREFIX}-{digest}")
     yield found
@@ -208,11 +218,34 @@ def test_a_fenced_publish_advances_current_and_a_stale_fence_is_superseded(probe
     assert (current.generation_id, current.fence) == (first.generation_id, 1)
     receipt = probe.store.get_receipt(probe.set_id, stale.receipt_sk)
     assert receipt is not None
-    assert (receipt.outcome, receipt.generation_id) == (RunOutcome.SUPERSEDED, None)
+    # R1-10: a superseded commit names the generation it attested, never CURRENT.
+    assert (receipt.outcome, receipt.generation_id) == (RunOutcome.SUPERSEDED, stale.generation_id)
     # Paired control: the same kind of publish on the fence it read advances.
     fresh = _meta(probe, "run-c", "3" * 64)
     assert _publish(probe, fresh, expected_fence=1) is CommitDisposition.APPLIED
     assert (_current(probe).generation_id, _current(probe).fence) == (fresh.generation_id, 2)
+
+
+def test_a_commit_under_a_key_holding_another_generations_receipt_is_a_conflict(
+    probe: Probe,
+) -> None:
+    """The real cancellation reason reaches the replay check, which refuses (R1-10)."""
+    first = _meta(probe, "run-a", "1" * 64)
+    assert _publish(probe, first, expected_fence=0) is CommitDisposition.APPLIED
+    # The same run and pass with shard 0's late attempt r0a1: another generation, one key.
+    late = replace(first.attempts[0], attempt_id="r0a1", series_sha256="2" * 64)
+    other = replace(first, attempts=(late,))
+    assert probe.store.put_generation_meta(other).written == 1
+    probe.written.add((meta_key(other.generation_id), META_SK))
+    assert other.receipt_sk == first.receipt_sk
+    assert other.generation_id != first.generation_id
+    with pytest.raises(ForecastStoreConflictError, match="the receipt names another generation"):
+        _publish(probe, other, expected_fence=0)
+    receipt = probe.store.get_receipt(probe.set_id, first.receipt_sk)
+    assert receipt is not None
+    assert (receipt.outcome, receipt.generation_id) == (RunOutcome.PUBLISHED, first.generation_id)
+    current = _current(probe)
+    assert (current.generation_id, current.fence) == (first.generation_id, 1)
 
 
 def _rollback(probe: Probe, target: GenerationMeta, run: str) -> OutcomeCommitRequest:

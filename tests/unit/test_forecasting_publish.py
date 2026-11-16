@@ -27,9 +27,11 @@ from forecast_store_support import ForecastTableFake, LambdaCrashed
 from adapters.jobs.demand_forecast.json_output import REPORT_FILE, SERIES_FILE, series_bytes
 from adapters.jobs.demand_forecast_publisher.handler import (
     ERROR_UNREADABLE,
+    REQUEST_INVALID,
     ObjectMissingError,
     ObjectStoreError,
     Publisher,
+    PublishFailedError,
     PublishShardRequest,
     RecordOutcomeRequest,
     StepOutcome,
@@ -1104,9 +1106,11 @@ def test_a_fence_expected_on_an_empty_item_writes_only_a_superseded_receipt() ->
     assert result.recorded_outcome is RunOutcome.SUPERSEDED
     assert store.get_current(SET_ID) is None
     assert _receipts(table) == {meta.receipt_sk: "superseded"}
-    assert "generation_id" not in cast(
-        "dict[str, Any]", table.item(f"SET#{SET_ID}", meta.receipt_sk)
-    )
+    # R1-10: the receipt names the attested generation that did not become CURRENT, never a
+    # publish time, so only a published receipt can be a rollback target.
+    receipt = cast("dict[str, Any]", table.item(f"SET#{SET_ID}", meta.receipt_sk))
+    assert receipt["generation_id"] == {"S": meta.generation_id}
+    assert "published_at" not in receipt
 
 
 def test_a_publish_whose_fence_moved_on_an_existing_item_leaves_current_alone() -> None:
@@ -1959,3 +1963,145 @@ def test_a_publish_after_a_rollback_clears_rolled_back_from() -> None:
     # Ruling 2026-11-16 R1-8: the field names only the rollback that made CURRENT what it is.
     assert (current.generation_id, current.rolled_back_from) == (published.generation_id, None)
     assert "rolled_back_from" not in rig.table.items[(f"SET#{PUBLISH_SET}", "CURRENT")]
+
+
+# --- R1 round 2: a late attempt's own receipt, strict replays, select receipts ------------------
+
+LATE_ATTEMPTS = (ShardAttempt(0, "r0a1"), ShardAttempt(1, "r0a0"), ShardAttempt(2, "r0a0"))
+"""Shard 0's late attempt r0a1 beside the published r0a0 attempts of shards 1 and 2."""
+
+
+def _stage_late_attempt(rig: _Rig) -> None:
+    """Write shard 0's complete r0a1 candidate, as the operator's dev job does (acceptance 5)."""
+    source = f"runs/{RUN}/shards/0/attempts/r0a0/candidate/"
+    target = f"runs/{RUN}/shards/0/attempts/r0a1/candidate/"
+    rig.objects.objects[target + SERIES_FILE] = rig.objects.objects[source + SERIES_FILE]
+    report = RunReportV1.model_validate_json(rig.objects.objects[source + REPORT_FILE])
+    late = report.model_copy(update={"attempt_id": "r0a1"})
+    rig.objects.objects[target + REPORT_FILE] = late.model_dump_json().encode()
+
+
+def _publish_late(rig: _Rig) -> list[dict[str, object]]:
+    return [
+        publish_shard(
+            rig.publisher,
+            replace(_shard_publish(a.shard), attempt_id=a.attempt_id, attempts=LATE_ATTEMPTS),
+        ).payload()
+        for a in LATE_ATTEMPTS
+    ]
+
+
+def test_a_late_attempt_committed_after_its_pass_published_is_superseded_under_its_own_key() -> (
+    None
+):
+    """Slice-2 acceptance 5 as ruled (OQ-S2-4): a late attempt never reads as published."""
+    rig = _Rig()
+    _stage(rig)
+    first = _commit_run(rig, _publish_all(rig))
+    assert first.outcome == "published"
+    before = rig.current()
+    _stage_late_attempt(rig)
+    late = _commit_run(rig, _publish_late(rig))
+    assert (late.outcome, late.receipt_sk, late.generation_id) == (
+        "superseded",
+        f"RUN#{RUN}#r0#s0-r0a1",
+        None,
+    )
+    assert rig.current() == before
+    assert rig.receipts() == {
+        f"RUN#{RUN}#r0#commit": "published",
+        f"RUN#{RUN}#r0#s0-r0a1": "superseded",
+    }
+    published = rig.table.items[(f"SET#{PUBLISH_SET}", f"RUN#{RUN}#r0#commit")]
+    assert published["generation_id"] == {"S": first.generation_id}
+    receipt = rig.table.items[(f"SET#{PUBLISH_SET}", f"RUN#{RUN}#r0#s0-r0a1")]
+    late_generation = receipt["generation_id"]["S"]
+    assert late_generation != first.generation_id
+    assert late_generation.startswith(f"{RUN}-")
+    meta = rig.table.items[(f"GEN#{late_generation}", "META")]
+    assert meta["receipt_sk"] == {"S": f"RUN#{RUN}#r0#s0-r0a1"}
+    assert rig.metrics.outcomes() == ["published", "superseded"]
+    # The same late commit again keeps its own key and writes no other receipt.
+    receipts = rig.receipts()
+    again = _commit_run(rig, _publish_late(rig))
+    assert (again.outcome, again.receipt_sk) == ("superseded", f"RUN#{RUN}#r0#s0-r0a1")
+    assert (rig.current(), rig.receipts()) == (before, receipts)
+
+
+def test_a_second_commit_after_a_commit_receipt_with_no_generation_holds_and_writes_nothing() -> (
+    None
+):
+    rig = _Rig()
+    _stage(rig)
+    held = RecordOutcomeRequest(RUN, 0, "commit", RunOutcome.HELD_QUALITY, "target_empty")
+    assert record_outcome(rig.publisher, held).outcome == "held_quality"
+    before = (rig.current(), rig.receipts())
+    late = _commit_run(rig, _publish_all(rig))
+    assert (late.outcome, late.category) == ("held_quality", "identity_mismatch")
+    assert late.held_detail == (
+        f"RUN#{RUN}#r0#commit records held_quality for no readable attempt set of this pass"
+    )
+    assert (rig.current(), rig.receipts()) == before
+
+
+def test_a_receipt_key_holding_another_outcome_is_a_conflict_not_a_replay() -> None:
+    store = _table_store(ForecastTableFake())
+    held = _held_request(0)
+    assert store.commit_outcome(held).disposition is CommitDisposition.APPLIED
+    no_op = RunReceipt(
+        sk=held.receipt.sk,
+        outcome=RunOutcome.NO_OP_SAME_INPUT,
+        recorded_at=AT,
+        run_fingerprint=FINGERPRINT,
+    )
+    with pytest.raises(
+        ForecastStoreConflictError, match=r"records held_quality, not no_op_same_input$"
+    ):
+        store.commit_outcome(OutcomeCommitRequest(SET_ID, 0, no_op))
+    # Paired control: the held outcome retried later (another request, one token) replays.
+    retried = replace(held, receipt=replace(held.receipt, recorded_at=AT + timedelta(minutes=1)))
+    replayed = store.commit_outcome(retried)
+    assert (replayed.disposition, replayed.recorded_outcome) == (
+        CommitDisposition.REPLAYED,
+        RunOutcome.HELD_QUALITY,
+    )
+
+
+def _select_no_op(**changes: Any) -> dict[str, Any]:
+    """`RecordOutcome`'s input after `Decide` passes a select no-op on (R1-12)."""
+    event: dict[str, Any] = {
+        "run_id": RUN,
+        "redrive_count": 0,
+        "step": "select",
+        "outcome": "no_op_same_input",
+        "run_identity": _manifest().run_identity.model_dump(mode="json"),
+        "run_fingerprint": FINGERPRINT,
+        "expected_fence": 0,
+    }
+    return event | changes
+
+
+def test_a_select_no_op_receipt_records_the_input_fingerprint_select_read() -> None:
+    rig = _Rig()
+    assert record_outcome(rig.publisher, record_request(_select_no_op())).outcome == (
+        "no_op_same_input"
+    )
+    receipt = rig.table.items[(f"SET#{PUBLISH_SET}", f"RUN#{RUN}#r0#select")]
+    identity = receipt["run_identity"]["M"]
+    assert identity["input_fingerprint"] == {"S": HEX}
+    assert identity["max_runtime_seconds"] == {"N": "3600"}
+    assert receipt["run_fingerprint"] == {"S": FINGERPRINT}
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"step": "commit", "outcome": "held_quality", "category": "target_empty"},
+        {"step": "select", "outcome": "failed", "category": "input_build:ATHENA_TIMEOUT"},
+        {"run_identity": {"input_fingerprint": HEX}},
+    ],
+    ids=["not-select", "select-failure", "malformed"],
+)
+def test_a_run_identity_outside_a_select_no_op_or_hold_is_refused(changes: dict[str, Any]) -> None:
+    with pytest.raises(PublishFailedError, match=f"^{REQUEST_INVALID}$"):
+        record_request(_select_no_op(**changes))

@@ -340,6 +340,17 @@ def _identity(builder: InputBuilder, input_fingerprint: str) -> RunIdentity:
     )
 
 
+def _identity_json(builder: InputBuilder, identity: RunIdentity) -> dict[str, object]:
+    """Return the `RunIdentityV1` form a manifest and a select receipt carry."""
+    settings = builder.settings
+    return {
+        **{k: v for k, v in identity.as_json().items() if k not in {"execution_plan"}},
+        "policy_section_versions": builder.policy.section_versions,
+        "instance_type": settings.instance_type,
+        "max_runtime_seconds": settings.max_runtime_seconds,
+    }
+
+
 def _run_id(builder: InputBuilder, request: SelectRequest, check_date: date) -> str:
     if request.trigger is Trigger.SCHEDULED:
         return scheduled_run_id(builder.set_id, check_date)
@@ -448,6 +459,9 @@ def select_input(builder: InputBuilder, request: SelectRequest) -> dict[str, obj
         "basis": decision.basis.value,
         **common,
         "run_fingerprint": fingerprint,
+        # Every component, the input fingerprint included, for a no-op's or a slot hold's
+        # receipt (slice-2 acceptance 2, R1-12).
+        "run_identity": _identity_json(builder, identity),
         "slot_holder": holder,
         **metrics,
     }
@@ -623,12 +637,7 @@ def build_input(
             "expected_fence": request.expected_fence,
             "input_fingerprint": request.input_fingerprint,
             "run_fingerprint": run_fingerprint(identity),
-            "run_identity": {
-                **{k: v for k, v in identity.as_json().items() if k not in {"execution_plan"}},
-                "policy_section_versions": builder.policy.section_versions,
-                "instance_type": settings.instance_type,
-                "max_runtime_seconds": settings.max_runtime_seconds,
-            },
+            "run_identity": _identity_json(builder, identity),
             "pins": {
                 "sales": _pin_json(selected.result.sales, window_ids),
                 "traffic": _pin_json(selected.result.traffic, window_ids),

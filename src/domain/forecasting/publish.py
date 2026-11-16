@@ -632,6 +632,22 @@ def receipt_sk(request: ReceiptKeyRequest) -> str:
     return f"RUN#{request.run_id}#r{request.redrive_count}#{request.step}"
 
 
+def late_attempt(
+    attempts: Sequence[ShardAttempt], bound: Sequence[ShardAttempt]
+) -> ShardAttempt | None:
+    """Return the lowest shard's attempt that differs from the pass's committed generation.
+
+    A second commit in one pass binds another attempt set; its receipt step is that attempt's
+    `s<k>-<attempt_id>`, so it never takes the pass's `commit` key (design §6b, R1-10). None when
+    every shard's attempt matches, which is the same generation.
+    """
+    committed = {attempt.shard: attempt.attempt_id for attempt in bound}
+    for attempt in sorted(attempts, key=lambda attempt: attempt.shard):
+        if committed.get(attempt.shard) != attempt.attempt_id:
+            return attempt
+    return None
+
+
 # --- The CURRENT pointer --------------------------------------------------------------------
 
 
@@ -779,13 +795,15 @@ class RollbackRequest:
 
 @dataclass(frozen=True)
 class GenerationRecord:
-    """What a rollback reads of the target's `META`."""
+    """What a rollback, or a second commit in one pass, reads of a generation's `META`."""
 
     generation_id: str
     set_id: str
     receipt_sk: str
     input_end: date
     run_fingerprint: str
+    attempts: tuple[ShardAttempt, ...] = ()
+    """Each shard's bound attempt (`META.attempts`)."""
 
 
 @dataclass(frozen=True)

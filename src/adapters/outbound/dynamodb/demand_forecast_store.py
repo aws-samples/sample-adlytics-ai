@@ -50,6 +50,7 @@ from domain.forecasting.publish import (
     LastAttempt,
     ReceiptRecord,
     RunOutcome,
+    ShardAttempt,
 )
 from ports.outbound.forecast_store import (
     Attestation,
@@ -349,6 +350,26 @@ def _read_last_attempt(item: Item) -> LastAttempt | None:
         raise ItemError(f"last_attempt: {error}") from error
 
 
+def _read_attempts(item: Item) -> tuple[ShardAttempt, ...]:
+    found = item.get("attempts")
+    listed = None if found is None else found.get("L")
+    if listed is None:
+        raise ItemError("META.attempts is not a list.")
+    attempts: list[ShardAttempt] = []
+    for entry in listed:
+        mapped = entry.get("M")
+        if mapped is None:
+            raise ItemError("META.attempts holds an entry that is not a map.")
+        stored = cast("Item", mapped)
+        try:
+            attempts.append(
+                ShardAttempt(read_int(stored, "shard"), read_text(stored, "attempt_id"))
+            )
+        except ValueError as error:
+            raise ItemError(f"META.attempts: {error}") from error
+    return tuple(attempts)
+
+
 def _read_current(item: Item) -> CurrentPointer:
     try:
         return CurrentPointer(
@@ -399,6 +420,19 @@ class _Positions:
     check: int | None
 
 
+@dataclass(frozen=True)
+class _Pending:
+    """A sent outcome transaction: its request, action positions and the prepared outcome.
+
+    `prepared` is the outcome the caller prepared; a `superseded` receipt derived from it may
+    find that outcome already recorded by an earlier unseen success (R1-10).
+    """
+
+    request: OutcomeCommitRequest
+    positions: _Positions
+    prepared: RunOutcome
+
+
 # --- The store -------------------------------------------------------------------------------
 
 
@@ -447,6 +481,9 @@ class DynamoDbForecastStore(ForecastStorePort):
 
     def commit_outcome(self, request: OutcomeCommitRequest) -> OutcomeCommitResult:
         """Apply one outcome as one `TransactWriteItems` call with `ClientRequestToken` (§6b)."""
+        return self._commit(request, prepared=request.receipt.outcome)
+
+    def _commit(self, request: OutcomeCommitRequest, prepared: RunOutcome) -> OutcomeCommitResult:
         receipt = request.receipt
         actions, positions = self._transaction(request)
         try:
@@ -455,7 +492,7 @@ class DynamoDbForecastStore(ForecastStorePort):
                 ClientRequestToken=client_request_token(receipt.sk, receipt.outcome),
             )
         except ClientError as error:
-            return self._cancelled(request, positions, error)
+            return self._cancelled(_Pending(request, positions, prepared), error)
         return OutcomeCommitResult(
             CommitDisposition.APPLIED,
             receipt.sk,
@@ -534,6 +571,7 @@ class DynamoDbForecastStore(ForecastStorePort):
             receipt_sk=read_text(stored, "receipt_sk"),
             input_end=date.fromisoformat(read_text(stored, "input_end")),
             run_fingerprint=read_text(stored, "run_fingerprint"),
+            attempts=_read_attempts(stored),
         )
 
     # Internals: generation puts
@@ -725,14 +763,13 @@ class DynamoDbForecastStore(ForecastStorePort):
             }
         }
 
-    def _cancelled(
-        self, request: OutcomeCommitRequest, positions: _Positions, error: ClientError
-    ) -> OutcomeCommitResult:
+    def _cancelled(self, pending: _Pending, error: ClientError) -> OutcomeCommitResult:
         """Resolve a refused transaction: fence moved, replay, `META` mismatch or throttle."""
+        request, positions, prepared = pending.request, pending.positions, pending.prepared
         code = _code(error)
         retried = _retries(error.response)
         if code == "IdempotentParameterMismatchException":
-            return self._replayed(request, retried)
+            return self._replayed(request, retried, prepared)
         if code != "TransactionCanceledException":
             _raise_store_error(error)
         reasons = cast("list[Mapping[str, Any]]", error.response.get("CancellationReasons", []))
@@ -746,7 +783,7 @@ class DynamoDbForecastStore(ForecastStorePort):
         if positions.current in failed:
             return self._fence_moved(request, retried)
         if positions.receipt in failed:
-            return self._replayed(request, retried)
+            return self._replayed(request, retried, prepared)
         generation = cast("CurrentPointer", request.pointer).generation_id
         detail = "META no longer matches the committed generation"
         raise ForecastStoreConflictError(meta_key(cast("str", generation)), detail) from error
@@ -763,16 +800,19 @@ class DynamoDbForecastStore(ForecastStorePort):
             return OutcomeCommitResult(
                 CommitDisposition.ALREADY_CURRENT, receipt.sk, RunOutcome.PUBLISHED, retried
             )
+        # A superseded publish keeps the generation it attested, so a replay can be told from
+        # another attempt set's commit (R1-10); only a published or rolled_back receipt makes it
+        # a rollback target.
         superseded = replace(
             receipt,
             outcome=RunOutcome.SUPERSEDED,
-            generation_id=None,
             published_at=None,
             failure_category=None,
             retry_disposition=None,
         )
-        result = self.commit_outcome(
-            OutcomeCommitRequest(request.set_id, request.expected_fence, superseded)
+        result = self._commit(
+            OutcomeCommitRequest(request.set_id, request.expected_fence, superseded),
+            prepared=receipt.outcome,
         )
         disposition = (
             CommitDisposition.SUPERSEDED
@@ -783,14 +823,24 @@ class DynamoDbForecastStore(ForecastStorePort):
             result, disposition=disposition, retry_attempts=retried + result.retry_attempts
         )
 
-    def _replayed(self, request: OutcomeCommitRequest, retried: int) -> OutcomeCommitResult:
-        sk = request.receipt.sk
+    def _replayed(
+        self, request: OutcomeCommitRequest, retried: int, prepared: RunOutcome
+    ) -> OutcomeCommitResult:
+        """Accept the receipt on record only as this outcome's own earlier write (R1-3, R1-10).
+
+        `prepared` is the outcome the caller prepared; a `superseded` write derived from it may
+        find that outcome already recorded by an unseen earlier success. Any other outcome, or
+        another generation, is another request's receipt under this key: a conflict.
+        """
+        receipt = request.receipt
+        sk = receipt.sk
         recorded = self.get_receipt(request.set_id, sk)
         if recorded is None:
             raise ForecastStoreConflictError(sk, "the request token was reused for no receipt")
-        # R1-3: a receipt that names another generation is not this outcome's replay.
-        wanted = request.receipt.generation_id
-        if wanted is not None and recorded.generation_id != wanted:
+        if recorded.outcome not in {receipt.outcome, prepared}:
+            detail = f"the receipt records {recorded.outcome.value}, not {receipt.outcome.value}"
+            raise ForecastStoreConflictError(sk, detail)
+        if recorded.generation_id != receipt.generation_id:
             raise ForecastStoreConflictError(sk, "the receipt names another generation")
         return OutcomeCommitResult(
             CommitDisposition.REPLAYED, sk, recorded.outcome, retried, recorded.generation_id

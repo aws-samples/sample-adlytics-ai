@@ -38,6 +38,7 @@ from domain.forecasting.publish import (
 from ports.outbound.forecast_store import (
     Attestation,
     CommitDisposition,
+    ForecastStoreConflictError,
     GenerationMeta,
     GenerationSeries,
     ListPage,
@@ -389,3 +390,18 @@ def test_a_rollback_outside_its_preconditions_is_refused_with_its_code_and_write
     assert refused.value.code is code
     assert store.commits == []
     assert store.current == current
+
+
+def test_a_rollback_whose_receipt_key_holds_another_receipt_is_refused_with_its_code() -> None:
+    """R1-13: the store refused the transaction, so the operator reads a code, not a trace."""
+
+    class Taken(_Store):
+        def commit_outcome(self, request: OutcomeCommitRequest) -> OutcomeCommitResult:
+            raise ForecastStoreConflictError(
+                request.receipt.sk, "the receipt names another generation"
+            )
+
+    store = Taken(_current(5), _published())
+    with pytest.raises(OperatorRefusedError, match=r"^ROLLBACK_RECEIPT_CONFLICT$"):
+        rollback(_publisher(store), RollbackCommand(G1, "bad model"))
+    assert store.current == _current(5)

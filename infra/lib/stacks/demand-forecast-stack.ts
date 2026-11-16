@@ -685,10 +685,11 @@ export class DemandForecastStack extends cdk.Stack {
         Choices: [
           { Condition: "{% $states.input.outcome = 'run' %}", Next: 'BuildInput' },
           {
-            // no_op_same_input or held_input_not_ready: a select receipt only.
+            // no_op_same_input or held_input_not_ready: a select receipt only, carrying the run
+            // identity (its input fingerprint) when select computed one (R1-12).
             Condition: "{% $states.input.outcome != 'run' %}",
             Output:
-              "{% {'step': 'select', 'outcome': $states.input.outcome, 'category': $states.input.category} %}",
+              "{% {'step': 'select', 'outcome': $states.input.outcome, 'category': $states.input.category, 'run_identity': $states.input.run_identity} %}",
             Next: 'RecordOutcome',
           },
         ],
@@ -787,7 +788,7 @@ export class DemandForecastStack extends cdk.Stack {
         Arguments: {
           FunctionName: publisher.functionArn,
           Payload:
-            `{% {'operation': 'record', 'run_id': $run_id, 'redrive_count': ${redrive}, 'step': $states.input.step, 'outcome': $states.input.outcome, 'category': $states.input.category, 'phase': $states.input.phase, 'error': $states.input.error, 'attempt_id': $states.input.attempt_id, 'shard': $states.input.shard, 'run_fingerprint': $run_fingerprint, 'expected_fence': $expected_fence, 'operator_reason': $operator_reason} %}`,
+            `{% {'operation': 'record', 'run_id': $run_id, 'redrive_count': ${redrive}, 'step': $states.input.step, 'outcome': $states.input.outcome, 'category': $states.input.category, 'phase': $states.input.phase, 'error': $states.input.error, 'attempt_id': $states.input.attempt_id, 'shard': $states.input.shard, 'run_identity': $states.input.run_identity, 'run_fingerprint': $run_fingerprint, 'expected_fence': $expected_fence, 'operator_reason': $operator_reason} %}`,
         },
         Output: '{% $states.result.Payload %}',
         Retry: lambdaRetry,
