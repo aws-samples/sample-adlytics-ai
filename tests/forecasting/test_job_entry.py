@@ -233,7 +233,10 @@ def test_a_staged_input_gives_valid_candidates_and_a_run_report(
     lines = gzip.decompress((tmp_path / "output/series.jsonl.gz").read_bytes()).splitlines()
     records = [CandidateSeriesV1.model_validate_json(line) for line in lines]
     assert [r.canonical_asin for r in records] == list(ASINS)
-    assert {r.targets["units_ordered"].chosen_model for r in records} == {"chronos2"}
+    # The staged series repeat every 13 weeks, so SeasonalNaive's lag-52 holdout is exact (WQL 0)
+    # and Chronos-2 can't be strictly lower: the gate shows SeasonalNaive (design §5c).
+    assert {r.targets["units_ordered"].chosen_model for r in records} == {"seasonal_naive"}
+    assert {"ets" in report.durations_ms, "model" in report.durations_ms} == {True}
     assert {len(r.recent_weeks) for r in records} == {13}
     assert report.asin_count == 2
     assert report.model_artifact_digest == digest
@@ -273,7 +276,7 @@ def test_a_shard_with_no_traffic_rows_still_forecasts(
     digest = roster_digest(local_roster_entries(forecast_model_dir))
     staged = _stage(tmp_path, artifact=digest, no_traffic=True)
     report = run_forecast_mode(_request(tmp_path, staged, forecast_model_dir), _log())
-    assert report.counts_by_reason["units_ordered.chosen.chronos2"] == 2
+    assert report.counts_by_reason["units_ordered.chosen.seasonal_naive"] == 2
 
 
 def test_another_artifact_fails_model_artifact_mismatch(

@@ -11,7 +11,7 @@ Adapted from the source engine's inference entry. Two modes:
   fingerprint must recompute from them (`RUN_IDENTITY_MISMATCH`, see `check_run_identity`); the
   mounted artifact's digest must equal the run identity's before the model loads
   (`MODEL_ARTIFACT_MISMATCH`); then the weekly series, the run and the candidate, series first and
-  the run report last.
+  the run report last. The run binds Chronos-2 and the statsmodels ETS comparator.
 
 Callers may rely on: exit 0 means the mode passed; any other exit writes the typed error envelope
 to `/opt/ml/output/message` (SageMaker's `ExitMessage`), with the code and the cause chain's class
@@ -33,6 +33,7 @@ from pathlib import Path
 from adapters.jobs.demand_forecast.artifact_digest import local_roster_entries
 from adapters.jobs.demand_forecast.cause_chain import cause_chain
 from adapters.jobs.demand_forecast.chronos2_model import Chronos2ForecastModel
+from adapters.jobs.demand_forecast.ets_statsmodels import StatsmodelsStateSpaceEts
 from adapters.jobs.demand_forecast.job_log import JobLog, structured_error
 from adapters.jobs.demand_forecast.json_output import JsonCandidateOutput
 from adapters.jobs.demand_forecast.parquet_input import ParquetForecastInput
@@ -41,6 +42,7 @@ from adapters.jobs.demand_forecast.self_check import SelfCheckRequest, run_self_
 from adapters.outbound.demand_forecast_policy import LoadedPolicy, load_policy
 from domain.forecasting.artifact_roster import roster_digest
 from domain.forecasting.boundary import InputManifestV1, RunReportV1, boundary_schema_digests
+from domain.forecasting.comparators import EtsRequest, EtsResult
 from domain.forecasting.fingerprint import RunIdentity, run_fingerprint
 from domain.forecasting.models import (
     CHRONOS2_MODEL_ID,
@@ -121,6 +123,24 @@ class _TimedModel:
         self.elapsed_ms = 0
 
     def __call__(self, request: ForecastBatchRequest, /) -> ForecastBatchResult:
+        started = time.monotonic()
+        try:
+            return self._call(request)
+        finally:
+            self.elapsed_ms += _elapsed_ms(started)
+
+
+class _TimedEts:
+    """The ETS adapter's `fit_forecast`, timed, as the domain's `EtsForecaster`.
+
+    Its total is the run report's `ets` duration, the ETS time per ASIN that approval C-1 bounds.
+    """
+
+    def __init__(self, call: Callable[[EtsRequest], EtsResult]) -> None:
+        self._call = call
+        self.elapsed_ms = 0
+
+    def __call__(self, request: EtsRequest, /) -> EtsResult:
         started = time.monotonic()
         try:
             return self._call(request)
@@ -229,6 +249,7 @@ def run_forecast_mode(request: ForecastModeRequest, log: JobLog) -> RunReportV1:
     model = Chronos2ForecastModel(request.model_dir, policy.engine.batch_size)
     durations["model_load"] = _elapsed_ms(started)
     timed = _TimedModel(model.forecast)
+    timed_ets = _TimedEts(StatsmodelsStateSpaceEts().fit_forecast)
     started = time.monotonic()
     result = run_forecast(
         ForecastRunRequest(
@@ -237,10 +258,12 @@ def run_forecast_mode(request: ForecastModeRequest, log: JobLog) -> RunReportV1:
             series=series,
             policy=policy,
             forecaster=timed,
+            ets=timed_ets,
         )
     )
     durations["run"] = _elapsed_ms(started)
     durations["model"] = timed.elapsed_ms
+    durations["ets"] = timed_ets.elapsed_ms
     started = time.monotonic()
     output = JsonCandidateOutput(request.output_dir)
     written = output.write_series(result.candidates)

@@ -54,8 +54,6 @@ class SkipReason(StrEnum):
     PRODUCT_KEY_INVALID = "PRODUCT_KEY_INVALID"
     DISPLAY_ASIN_COLLISION = "DISPLAY_ASIN_COLLISION"
     CURRENCY_MIXED = "CURRENCY_MIXED"
-    MODEL_NOT_RUN = "MODEL_NOT_RUN"
-    """Slice 1 only: the comparators are not run until slice 2's gate; retired with it."""
 
 
 class AccuracyGap(StrEnum):

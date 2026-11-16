@@ -9,6 +9,7 @@ against a comparator that can't be tested.
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 
 import pytest
 
@@ -29,19 +30,23 @@ MIN_RESIDUALS = 13
 HORIZON = 13
 
 
-def _series(values: list[float | None]) -> SeriesHistory:
+def _series(values: Sequence[float | None]) -> SeriesHistory:
     return SeriesHistory(
         "amazon_asin:b0fixtur01", "units_ordered", tuple(values), tuple(1.0 for _ in values)
     )
 
 
-def _request(values: list[float | None]) -> SeasonalNaiveRequest:
+def _request(values: Sequence[float | None]) -> SeasonalNaiveRequest:
     return SeasonalNaiveRequest(_series(values), HORIZON, MIN_RESIDUALS)
 
 
 def _ramp() -> list[float | None]:
     """One season of `i`, then `2j` for the next 13 weeks: the residuals are exactly 0 to 12."""
-    return [float(i) for i in range(SEASON)] + [2.0 * j for j in range(MIN_RESIDUALS)]
+    values: list[float | None] = [
+        *(float(i) for i in range(SEASON)),
+        *(2.0 * j for j in range(MIN_RESIDUALS)),
+    ]
+    return values
 
 
 def test_p50_is_the_value_52_weeks_earlier_and_the_band_adds_the_residual_spread() -> None:
@@ -93,8 +98,9 @@ def test_a_week_with_an_unknown_lag_is_nan_and_marked_unknown() -> None:
 
 def test_censoring_floors_every_quantile_at_zero_and_keeps_the_band_ordered() -> None:
     # An intermittent product: last year's week was 0 and the residuals spread both ways.
-    values: list[float | None] = [0.0] * SEASON + [
-        float(v) for v in (1, 3, 2, 5, 4, 2, 6, 3, 4, 7, 1, 2, 6)
+    values: list[float | None] = [
+        *([0.0] * SEASON),
+        *(float(v) for v in (1, 3, 2, 5, 4, 2, 6, 3, 4, 7, 1, 2, 6)),
     ]
     raw = seasonal_naive(_request(values)).forecast
     assert raw is not None

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT-0
-"""One shard's slice 1 run (Chronos-2, no gate) with a fake model.
+"""One shard's run: three models per target, the backtest and the gate, with fake models.
 
 A wrong candidate rule would show a forecast that failed its own checks, or none where one
 passed; a wrong recent-week record would mislabel stock-outs on the page.
@@ -7,12 +7,13 @@ passed; a wrong recent-week record would mislabel stock-outs on the page.
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from dataclasses import dataclass, field, replace
+from dataclasses import replace
 
 import pytest
 from forecast_series_support import (
     STARTS,
+    FakeEts,
+    FakeModel,
     asin,
     policy,
     product_rows,
@@ -29,7 +30,6 @@ from domain.forecasting.models import (
     ForecastBatchRequest,
     ForecastBatchResult,
     ModelName,
-    QuantileForecast,
     SkipReason,
 )
 from domain.forecasting.policy import TARGETS, DemandForecastPolicy
@@ -48,38 +48,11 @@ SET = ForecastSetV1(
 )
 
 
-@dataclass
-class FakeModel:
-    """Forecast each series flat at its mean known value, p10 and p90 two units either side.
-
-    `shift(asin, context_weeks)` moves one series' level, so a test can move only the forecast
-    origin (104 context weeks) and leave the backtest (91) alone.
-    """
-
-    shift: Callable[[str, int], float] = lambda _asin, _weeks: 0.0
-    calls: list[tuple[int, int]] = field(default_factory=list[tuple[int, int]])
-
-    def __call__(self, request: ForecastBatchRequest, /) -> ForecastBatchResult:
-        self.calls.append((len(request.series), request.horizon_weeks))
-        forecasts: list[QuantileForecast] = []
-        for item in request.series:
-            known = [v for v in item.values if v is not None]
-            level = sum(known) / len(known) + self.shift(item.canonical_asin, len(item.values))
-            h = request.horizon_weeks
-            forecasts.append(
-                QuantileForecast(
-                    item.canonical_asin,
-                    item.target,
-                    (level - 2,) * h,
-                    (level,) * h,
-                    (level + 2,) * h,
-                )
-            )
-        return ForecastBatchResult(tuple(forecasts))
-
-
-def _run(
-    result: WeeklySeriesResult, model: FakeModel, run_policy: DemandForecastPolicy | None = None
+def _run(  # noqa: PLR0913, PLR0917 -- the series, the model and two overrides
+    result: WeeklySeriesResult,
+    model: FakeModel,
+    run_policy: DemandForecastPolicy | None = None,
+    ets: FakeEts | None = None,
 ) -> ForecastRunResult:
     return run_forecast(
         ForecastRunRequest(
@@ -88,6 +61,7 @@ def _run(
             series=result,
             policy=run_policy or policy(),
             forecaster=model,
+            ets=ets or FakeEts(),
         )
     )
 
@@ -98,35 +72,100 @@ def _steady(n: int, weeks: range = range(104)) -> list[WeeklyTargetAggregateRowV
     )
 
 
-def test_a_valid_publishable_series_shows_chronos2_with_three_evaluations_and_13_recent_weeks() -> (
+def _spiky(n: int, weeks: range = range(104)) -> list[WeeklyTargetAggregateRowV1]:
+    """Flat at 10 with spikes of 16 on even weeks of the first year only.
+
+    Last year's spikes mislead SeasonalNaive and FakeEts's band is wider than FakeModel's, so
+    Chronos-2 has the lowest WQL.
+    """
+    return product_rows(asin(n), weeks, lambda w, _t: 16.0 if w < 52 and w % 2 == 0 else 10.0)
+
+
+def test_a_seasonal_series_shows_seasonal_naive_with_every_model_scored_and_13_recent_weeks() -> (
     None
 ):
     result = _run(series(_steady(1)), FakeModel())
     (candidate,) = result.candidates
     CandidateSeriesV1.model_validate(candidate.model_dump(mode="json", by_alias=True))
     ordered = candidate.targets["units_ordered"]
+    # The series repeats every 4 weeks, so last year's value is exact: WQL 0 beats Chronos-2.
     assert (ordered.chosen_model, ordered.withheld_reason, ordered.gate_reason) == (
-        ModelName.CHRONOS2,
+        ModelName.SEASONAL_NAIVE,
         None,
-        None,
+        "CHRONOS_NOT_BETTER",
     )
     by_model = {e.model: e for e in ordered.evaluations}
-    assert by_model[ModelName.CHRONOS2].origin_status == "publishable"
-    assert by_model[ModelName.CHRONOS2].backtest_score is not None
-    for model in (ModelName.SEASONAL_NAIVE, ModelName.ETS):
-        assert (by_model[model].validity_reason, by_model[model].origin_status) == (
-            SkipReason.MODEL_NOT_RUN,
-            "not_attempted",
-        )
+    assert {m: (e.validity_reason, e.origin_status) for m, e in by_model.items()} == dict.fromkeys(
+        ModelName, (None, "publishable")
+    )
+    seasonal = by_model[ModelName.SEASONAL_NAIVE].backtest_score
+    assert seasonal is not None
+    assert (seasonal.wql, seasonal.weeks_scored, ordered.scored_weeks) == ("0.0000", 13, 13)
     assert ordered.chosen_forecast is not None
-    assert len(ordered.chosen_forecast.p50) == 13
+    # Shown units ordered are last year's: 11 + (week mod 4) for grid weeks 104 to 116.
+    assert ordered.chosen_forecast.p50[:4] == ("11.0000", "12.0000", "13.0000", "14.0000")
     assert len(candidate.recent_weeks) == 13
     # Ordered units exceed shipped units by 1 every week, so each recent week is a stock-out week.
     assert {week.stockout for week in candidate.recent_weeks} == {True}
     assert candidate.stockout_weeks_last_13 == 13
     assert candidate.display_asin == "B0TEST0001"
     assert candidate.currency_code == "USD"
+    assert result.counts_by_reason["units_ordered.chosen.seasonal_naive"] == 1
+
+
+def test_chronos2_shows_where_it_beats_both_simple_models_on_the_backtest() -> None:
+    result = _run(series(_spiky(1)), FakeModel())
+    ordered = result.candidates[0].targets["units_ordered"]
+    assert (ordered.chosen_model, ordered.gate_reason) == (ModelName.CHRONOS2, None)
+    wql = {e.model: e.backtest_score.wql for e in ordered.evaluations if e.backtest_score}
+    assert wql[ModelName.CHRONOS2] < min(wql[ModelName.SEASONAL_NAIVE], wql[ModelName.ETS])
+    assert ordered.chosen_forecast is not None
+    # FakeModel's origin forecast is the 104-week context mean: (26 x 16 + 78 x 10) / 104.
+    assert ordered.chosen_forecast.p50[0] == "11.5000"
     assert result.counts_by_reason["units_ordered.chosen.chronos2"] == 1
+
+
+def test_a_series_under_78_weeks_cant_show_chronos2_and_shows_ets() -> None:
+    result = _run(series(_spiky(1, range(30, 104))), FakeModel())
+    ordered = result.candidates[0].targets["units_ordered"]
+    seasonal = next(e for e in ordered.evaluations if e.model is ModelName.SEASONAL_NAIVE)
+    assert seasonal.validity_reason is SkipReason.HISTORY_TOO_SHORT_FOR_SEASON
+    assert (ordered.chosen_model, ordered.gate_reason) == (
+        ModelName.ETS,
+        "COMPARATOR_UNAVAILABLE(seasonal_naive)",
+    )
+
+
+def test_a_constant_short_series_with_an_unconverged_ets_is_withheld_accuracy_not_testable() -> (
+    None
+):
+    rows = product_rows(asin(1), range(44, 104), 5.0)
+    result = _run(series(rows), FakeModel(), ets=FakeEts(unconverged=frozenset({asin(1)})))
+    ordered = result.candidates[0].targets["units_ordered"]
+    assert (ordered.chosen_model, ordered.withheld_reason, ordered.chosen_forecast) == (
+        None,
+        SkipReason.ACCURACY_NOT_TESTABLE,
+        None,
+    )
+    reasons = {e.model: e.validity_reason for e in ordered.evaluations}
+    assert reasons == {
+        ModelName.CHRONOS2: None,
+        ModelName.SEASONAL_NAIVE: SkipReason.HISTORY_TOO_SHORT_FOR_SEASON,
+        ModelName.ETS: SkipReason.ETS_FIT_FAILED,
+    }
+    assert result.counts_by_reason["units_ordered.withheld.ACCURACY_NOT_TESTABLE"] == 1
+
+
+def test_too_few_known_weeks_before_the_origin_make_ets_insufficient_known() -> None:
+    base = policy()
+    strict = replace(base, eligibility=replace(base.eligibility, ets_min_known_weeks=92))
+    ordered = _run(series(_steady(1)), FakeModel(), strict).candidates[0].targets["units_ordered"]
+    ets = next(e for e in ordered.evaluations if e.model is ModelName.ETS)
+    # The backtest history holds 91 weeks, one short of 92.
+    assert (ets.validity_reason, ets.origin_status) == (
+        SkipReason.ETS_INSUFFICIENT_KNOWN,
+        "not_attempted",
+    )
 
 
 def test_a_short_launch_series_is_withheld_insufficient_context_and_never_forecast() -> None:
@@ -134,21 +173,21 @@ def test_a_short_launch_series_is_withheld_insufficient_context_and_never_foreca
     result = _run(series([*_steady(1), *_steady(2, range(84, 104))]), model)
     short = result.candidates[1].targets["units_shipped"]
     assert (short.chosen_model, short.withheld_reason) == (None, SkipReason.INSUFFICIENT_CONTEXT)
-    chronos = next(e for e in short.evaluations if e.model is ModelName.CHRONOS2)
-    assert (chronos.validity_reason, chronos.origin_status, chronos.backtest_score) == (
-        SkipReason.INSUFFICIENT_CONTEXT,
-        "not_attempted",
-        None,
-    )
+    assert {(e.validity_reason, e.origin_status, e.backtest_score) for e in short.evaluations} == {
+        (SkipReason.INSUFFICIENT_CONTEXT, "not_attempted", None)
+    }
     # Every call carried only the one eligible series: 4 targets x (backtest + forecast).
     assert model.calls == [(1, 13)] * 8
 
 
-def test_a_negative_origin_forecast_is_withheld_not_publishable_with_its_backtest_kept() -> None:
+def test_a_negative_chronos2_origin_shows_the_better_simple_model_with_the_backtest_kept() -> None:
     model = FakeModel(shift=lambda a, weeks: -100.0 if (a, weeks) == (asin(2), 104) else 0.0)
-    result = _run(series([*_steady(1), *_steady(2)]), model)
+    result = _run(series([*_spiky(1), *_spiky(2)]), model)
     target = result.candidates[1].targets["units_ordered"]
-    assert (target.chosen_model, target.withheld_reason) == (None, SkipReason.FORECAST_NEGATIVE)
+    assert (target.chosen_model, target.gate_reason) == (
+        ModelName.ETS,
+        "CHRONOS_NOT_PUBLISHABLE(FORECAST_NEGATIVE)",
+    )
     chronos = next(e for e in target.evaluations if e.model is ModelName.CHRONOS2)
     assert (chronos.origin_status, chronos.origin_failure) == (
         "not_publishable",
@@ -156,6 +195,7 @@ def test_a_negative_origin_forecast_is_withheld_not_publishable_with_its_backtes
     )
     assert chronos.validity_reason is None
     assert chronos.backtest_score is not None
+    assert result.candidates[0].targets["units_ordered"].chosen_model is ModelName.CHRONOS2
 
 
 def test_a_shard_with_no_series_to_show_still_gives_every_candidate_withheld() -> None:
@@ -181,11 +221,12 @@ def test_one_shard_empty_for_a_target_leaves_coverage_to_the_run_level_check() -
                 series=shard,
                 policy=policy(),
                 forecaster=FakeModel(),
+                ets=FakeEts(),
             )
         )
         for index, shard in enumerate(shards)
     ]
-    assert results[0].counts_by_reason["units_ordered.chosen.chronos2"] == 1
+    assert results[0].counts_by_reason["units_ordered.chosen.seasonal_naive"] == 1
     assert results[1].counts_by_reason["units_ordered.withheld.INSUFFICIENT_CONTEXT"] == 1
     assert [c.shard_index for r in results for c in r.candidates] == [0, 1]
 
@@ -204,7 +245,7 @@ def test_a_declared_null_run_that_leaves_too_little_context_is_target_value_miss
     rows += [target_row(asin(1), w, "revenue_shipped", value=None, nulls=7) for w in range(50, 104)]
     (candidate,) = _run(series(rows), FakeModel()).candidates
     assert candidate.targets["revenue_shipped"].withheld_reason is SkipReason.TARGET_VALUE_MISSING
-    assert candidate.targets["units_ordered"].chosen_model is ModelName.CHRONOS2
+    assert candidate.targets["units_ordered"].chosen_model is ModelName.SEASONAL_NAIVE
 
 
 def test_batches_follow_the_policy_batch_size() -> None:
