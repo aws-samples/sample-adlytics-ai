@@ -7,13 +7,14 @@
 | **Owns** | Offline baseline forecast artifacts for ad-attributed purchases and ad-attributed revenue, their serving contract, freshness, uncertainty, and quality gates. |
 | **Conventions** | [Documentation conventions](../../conventions.md) |
 
-> **Revision, 2026-11-11: weekly retail demand engine built in dev, not served.** Slice 1 of the
-> demand forecast adds a weekly Vendor demand engine (Chronos-2 on ordered and shipped units,
-> shipped revenue and COGS, 13 weeks ahead) and its weekly input in dev on synthetic data
-> ([ADR-160](../../decisions/adr-160-mount-the-jumpstart-chronos-2-artifact-and-enforce-isolation-in-iam.md)).
-> Nothing is published or shown yet: the gate and store come in slice 2, and the page, tools and
-> the rewrite of this package in slice 3. Live dev acceptance:
-> [validation results](../../../validation/RESULTS.md#demand-forecast-slice-1-acceptance-on-landed-history-on-dev--2026-11-15).
+> **Revision, 2026-11-16: weekly retail demand forecast gated and stored in dev, not shown.**
+> Slice 1 added a weekly Vendor demand engine (Chronos-2 on ordered and shipped units, shipped
+> revenue and COGS, 13 weeks ahead) and its weekly input in dev on synthetic data
+> ([ADR-160](../../decisions/adr-160-mount-the-jumpstart-chronos-2-artifact-and-enforce-isolation-in-iam.md);
+> [slice 1 acceptance](../../../validation/RESULTS.md#demand-forecast-slice-1-acceptance-on-landed-history-on-dev--2026-11-15)).
+> Slice 2 adds the daily check, the quality gate, the publisher and the retained store with its
+> fenced `CURRENT` pointer, the operator's start and rollback commands, and the forecast alarms.
+> Planners see nothing yet: the page, tools and the rewrite of this package come in slice 3.
 
 > **Revision proposed, 2026-10-07.** [ADR-092](../../decisions/adr-092-forecast-the-chronos-2-baseline-with-known-in-advance-covariates.md), [ADR-094](../../decisions/adr-094-run-offline-modelling-on-sagemaker-processing-without-a-vpc.md) and [ADR-114](../../decisions/adr-114-run-curve-and-forecast-jobs-as-execution-graph-workloads.md) (all Proposed) would add an internal `pacing_spend` target and a quantile-grid artifact, share the SageMaker Processing host with the curve jobs, and replace the Scheduler and Step Functions flow with execution-graph plans. See [Response curves and budget simulation](../../concepts/response-curves-and-budget-simulation.md). This package changes when they are accepted and built.
 

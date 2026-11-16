@@ -280,15 +280,15 @@ You are responsible for the cost of the AWS services you use while running this 
 
 ### While idle
 
-Charged whether or not anyone uses the deployment. Counts are from the default configuration (24 stacks; the alarm count was re-read from a synthesized template on 2026-10-19, plus the one alarm the two demand-forecast stacks add, read from their synthesized templates on 2026-11-11); prices are from the AWS Price List API on 2026-10-01, and alarm billing per metric from the [CloudWatch pricing](https://aws.amazon.com/cloudwatch/pricing/) page on 2026-10-19.
+Charged whether or not anyone uses the deployment. Counts are from the default configuration (24 stacks; the alarm count was re-read from a synthesized template on 2026-10-19, plus the 7 alarms on 11 metrics the two demand-forecast stacks add, read from their synthesized templates on 2026-11-16); prices are from the AWS Price List API on 2026-10-01, and alarm billing per metric from the [CloudWatch pricing](https://aws.amazon.com/cloudwatch/pricing/) page on 2026-10-19.
 
 | Service | What is deployed | Monthly |
 |---|---|---:|
 | AWS WAF | 3 web ACLs ($5 each) with 8 rules in total ($1 each) | $23.00 |
-| CloudWatch alarms | 77 standard-resolution alarms, billed $0.10 per metric each alarm reads: 65 alarms on 74 metrics, plus 12 Metrics Insights query alarms billed per metric their query analyses (at least one each) | from $8.60 |
+| CloudWatch alarms | 83 standard-resolution alarms, billed $0.10 per metric each alarm reads: 71 alarms on 84 metrics, plus 12 Metrics Insights query alarms billed per metric their query analyses (at least one each) | from $9.60 |
 | AWS Secrets Manager | 3 secrets ($0.40 each) | $1.20 |
 | AWS KMS | 1 customer-managed signing key | $1.00 |
-| **Subtotal** | | **from $33.80** |
+| **Subtotal** | | **from $34.80** |
 
 Add small charges for scheduled Lambda jobs, DynamoDB point-in-time recovery, S3 and CloudWatch Logs storage, the demand-forecast job image in Amazon ECR (about 0.5 GB), and AgentCore Memory, all of which grow with use. [AWS WAF](https://aws.amazon.com/waf/pricing/), [CloudWatch](https://aws.amazon.com/cloudwatch/pricing/), [Secrets Manager](https://aws.amazon.com/secrets-manager/pricing/), and [KMS](https://aws.amazon.com/kms/pricing/) pricing pages have current rates.
 
