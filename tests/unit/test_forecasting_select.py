@@ -46,17 +46,14 @@ from domain.forecasting.publish import (
     retry_disposition,
     rollback_pointer,
 )
-from domain.forecasting.selection import (
-    pointer_consumes_slot,
-    previous_slot_date,
-    scheduled_run_id,
-)
+from domain.forecasting.selection import scheduled_run_id, slot_date
 from domain.shared_kernel.values import DateRange
 from ports.outbound.forecast_history_selection import (
     ForecastHistorySelectionRequest,
     ForecastHistorySelectionResult,
     PinnedContractHistory,
 )
+from ports.outbound.forecast_store import SlotClaimRequest, SlotClaimResult
 from ports.outbound.publication_selection import PinnedPublication
 from ports.outbound.weekly_series_source import WeeklySeriesSourcePort
 
@@ -168,11 +165,13 @@ def _no_weekly(remaining: object) -> WeeklySeriesSourcePort:
 
 @dataclass
 class Table:
-    """The set's `CURRENT` and receipts as the publisher leaves them, and every read."""
+    """The set's `CURRENT`, receipts and slot markers as the store keeps them, and every call."""
 
     set_id: str = ""
     current: CurrentPointer | None = None
     receipts: dict[str, ReceiptRecord] = field(default_factory=dict[str, ReceiptRecord])
+    slots: dict[date, tuple[str, str]] = field(default_factory=dict[date, tuple[str, str]])
+    """Slot date -> (run ID, execution name), as `DynamoDbForecastStore.claim_slot` writes."""
     reads: list[str] = field(default_factory=list[str])
 
     def get_current(self, set_id: str) -> CurrentPointer | None:
@@ -180,10 +179,12 @@ class Table:
         self.reads.append("CURRENT")
         return self.current
 
-    def get_receipt(self, set_id: str, sk: str) -> ReceiptRecord | None:
-        assert set_id == self.set_id
-        self.reads.append(sk)
-        return self.receipts.get(sk)
+    def claim_slot(self, request: SlotClaimRequest) -> SlotClaimResult:
+        """`attribute_not_exists(PK)`: the first claim wins; the same execution keeps it."""
+        assert request.set_id == self.set_id
+        self.reads.append(f"SLOT#{request.slot_date.isoformat()}")
+        held = self.slots.setdefault(request.slot_date, (request.run_id, request.execution_name))
+        return SlotClaimResult(held[1] == request.execution_name, held[0])
 
 
 @dataclass(frozen=True)
@@ -238,8 +239,13 @@ class World:
         self.published: dict[str, tuple[PublishedGeneration, str]] = {}
         self.operator_starts = 0
 
-    def check(self, day: date, operator: OperatorStart | None = None) -> dict[str, object]:
-        """Run `select` at 13:00 UTC on `day`; a no-op or hold writes its `#select` receipt."""
+    def check(
+        self, day: date, operator: OperatorStart | None = None, execution: str | None = None
+    ) -> dict[str, object]:
+        """Run `select` at 13:00 UTC on `day`; a no-op or hold writes its `#select` receipt.
+
+        Each scheduled check is its own Scheduler execution unless `execution` names one.
+        """
         self.clock = datetime.combine(day, time(13), UTC)
         self.table.reads.clear()
         if operator is not None:
@@ -247,7 +253,8 @@ class World:
             name = f"{self.builder.set_id}-{day.isoformat()}-op-{self.operator_starts}"
             request = SelectRequest(name, None, operator.retry_failed, operator.reason)
         else:
-            request = SelectRequest(SCHEDULER_EXECUTION_ID, self.clock)
+            name = execution or f"{SCHEDULER_EXECUTION_ID}{day:%Y%m%d}"
+            request = SelectRequest(name, self.clock)
         result = select_input(self.builder, request)
         if result["outcome"] != "run":
             sk = f"RUN#{result['run_id']}#r0#select"
@@ -559,42 +566,97 @@ def test_a_five_thursday_month_with_weekly_restatements_starts_five_scheduled_ru
     assert runs == [THURSDAY + timedelta(days=7 * n) for n in range(1, 6)]
 
 
-# ---- OQ-S2-1: what consumes the slot, and the R7-M2 late admission ----
+# ---- the slot marker (F-A8 ruling, 2026-11-16): what consumes the slot, and R7-M2 ----
 
 
-def test_slot_consumed_by_the_slot_runs_select_receipt() -> None:
+def test_the_slot_check_that_no_ops_consumes_the_slot_and_a_friday_change_waits() -> None:
     world = World()
     world.publish_by_operator(INPUT_END + timedelta(days=1))
     assert _decided(world.check(THURSDAY))[0] == "no_op_same_input"
+    slot_run = f"{world.builder.set_id}-{THURSDAY.isoformat()}"
+    assert world.table.slots[THURSDAY][0] == slot_run
     world.selection.restate(INPUT_END - timedelta(days=10))
     result = world.check(THURSDAY + timedelta(days=1))
     assert _decided(result) == ("held_input_not_ready", "weekly_slot_not_due", "slot_not_due")
-    slot_run = f"{world.builder.set_id}-2030-01-10"
-    assert world.table.reads == ["CURRENT", f"RUN#{slot_run}#r0#select"]
+    assert result["slot_holder"] == slot_run
+    assert world.table.reads == ["CURRENT", f"SLOT#{THURSDAY.isoformat()}"]
 
 
-def test_slot_consumed_by_current_published_by_the_slot_run() -> None:
+def test_a_late_admitted_friday_run_takes_the_slot_so_later_changes_wait() -> None:
+    # F-A8-1: no Thursday start, a Friday change runs, and the rest of the period waits.
+    world = World()
+    world.publish_by_operator(INPUT_END + timedelta(days=1))
+    world.selection.restate(INPUT_END - timedelta(days=10))
+    friday = THURSDAY + timedelta(days=1)
+    late = world.check(friday)
+    assert _decided(late) == ("run", None, "slot_missed")
+    world.end(late, RunOutcome.PUBLISHED)
+    waits: list[tuple[object, object, object]] = []
+    for day in _days(friday + timedelta(days=1), 5):
+        world.selection.restate(day - timedelta(days=40))
+        waits.append(_decided(world.check(day)))
+    assert waits == [("held_input_not_ready", "weekly_slot_not_due", "slot_not_due")] * 5
+    assert world.table.slots == {THURSDAY: (late["run_id"], f"{SCHEDULER_EXECUTION_ID}20300111")}
+
+
+def test_an_operator_publish_after_the_slot_does_not_free_it() -> None:
+    # F-A8-2: an operator start replaces CURRENT and last_attempt, never the marker.
     world = World()
     world.publish_on_slot(THURSDAY)
     friday = THURSDAY + timedelta(days=1)
     world.selection.restate(INPUT_END - timedelta(days=10))
-    started = world.check(friday, OperatorStart())
-    world.end(started, RunOutcome.FAILED, "input_build:athena_timeout")
+    world.end(world.check(friday, OperatorStart()), RunOutcome.PUBLISHED)
     world.selection.restate(INPUT_END - timedelta(days=20))
     result = world.check(friday + timedelta(days=1))
     assert _decided(result) == ("held_input_not_ready", "weekly_slot_not_due", "slot_not_due")
-    assert world.table.reads == ["CURRENT"]
 
 
-def test_slot_consumed_by_the_slot_runs_last_attempt_with_a_fingerprint() -> None:
+def test_a_rollback_after_the_slot_does_not_free_it() -> None:
+    world = World()
+    first = world.publish_by_operator(INPUT_END + timedelta(days=1))
+    world.selection.restate(INPUT_END - timedelta(days=10))
+    world.publish_on_slot(THURSDAY)
+    target = generation_id(str(first["run_id"]), [ShardAttempt(0, "r0a0")])
+    world.rollback(THURSDAY + timedelta(days=1), target)
+    world.selection.restate(INPUT_END - timedelta(days=20))
+    result = world.check(THURSDAY + timedelta(days=2))
+    assert _decided(result) == ("held_input_not_ready", "weekly_slot_not_due", "slot_not_due")
+
+
+def test_a_slot_run_still_in_flight_holds_the_slot_whatever_its_redrive() -> None:
+    # F-A8-3: no receipt and no last_attempt yet, but the marker was written at admission.
     world = World()
     world.publish_by_operator(INPUT_END + timedelta(days=1))
     world.selection.restate(INPUT_END - timedelta(days=10))
-    world.end(world.check(THURSDAY), RunOutcome.FAILED, "input_build:athena_timeout")
+    assert _decided(world.check(THURSDAY)) == ("run", None, "weekly_slot")
     world.selection.restate(INPUT_END - timedelta(days=20))
     result = world.check(THURSDAY + timedelta(days=1))
     assert _decided(result) == ("held_input_not_ready", "weekly_slot_not_due", "slot_not_due")
-    assert world.table.reads == ["CURRENT"]
+
+
+def test_a_duplicate_delivery_of_the_slot_check_is_held_and_names_the_holder() -> None:
+    # F-A8-4: two executions for one scheduled time derive one run ID; only the first runs.
+    world = World()
+    world.publish_by_operator(INPUT_END + timedelta(days=1))
+    world.selection.restate(INPUT_END - timedelta(days=10))
+    first = world.check(THURSDAY, execution="firstdelivery01")
+    second = world.check(THURSDAY, execution="seconddelivery2")
+    assert _decided(first) == ("run", None, "weekly_slot")
+    assert _decided(second) == (
+        "held_input_not_ready",
+        "slot_already_consumed",
+        "slot_already_consumed",
+    )
+    assert second["slot_holder"] == first["run_id"]
+
+
+def test_a_lambda_retry_of_the_admitted_execution_still_runs() -> None:
+    world = World()
+    world.publish_by_operator(INPUT_END + timedelta(days=1))
+    world.selection.restate(INPUT_END - timedelta(days=10))
+    first = world.check(THURSDAY, execution="sameexecution01")
+    again = world.check(THURSDAY, execution="sameexecution01")
+    assert _decided(first) == _decided(again) == ("run", None, "weekly_slot")
 
 
 def test_a_thursday_select_failure_admits_the_new_fingerprint_on_friday() -> None:
@@ -612,34 +674,38 @@ def test_no_thursday_start_admits_the_new_fingerprint_on_friday() -> None:
     world.selection.restate(INPUT_END - timedelta(days=10))
     result = world.check(THURSDAY + timedelta(days=1))
     assert _decided(result) == ("run", None, "slot_missed")
-    slot_run = f"{world.builder.set_id}-2030-01-10"
-    assert world.table.reads == ["CURRENT", f"RUN#{slot_run}#r0#select"]
+    assert world.table.reads == ["CURRENT", f"SLOT#{THURSDAY.isoformat()}"]
 
 
-def test_only_the_slot_runs_own_generation_consumes_the_slot() -> None:
-    slot_run = "a1b2c3d4e5f6-2030-01-10"
-    digest = "0123456789ab"
-
-    def published_by(run_id: str) -> CurrentPointer:
-        return CurrentPointer(
-            fence=1,
-            generation_id=f"{run_id}-{digest}",
-            input_end=INPUT_END,
-            published_at=datetime.combine(THURSDAY, time(14), UTC),
-            run_fingerprint="f" * 64,
-        )
-
-    assert pointer_consumes_slot(published_by(slot_run), slot_run)
-    assert not pointer_consumes_slot(published_by(f"{slot_run}-op-1"), slot_run)
-    assert not pointer_consumes_slot(None, slot_run)
+def test_a_new_period_admits_again_after_a_consumed_slot() -> None:
+    # Paired control for the holds above: the next Thursday's marker is free.
+    world = World()
+    world.publish_on_slot(THURSDAY)
+    world.selection.restate(INPUT_END - timedelta(days=10))
+    assert _decided(world.check(THURSDAY + timedelta(days=6)))[1] == "weekly_slot_not_due"
+    next_slot = THURSDAY + timedelta(days=7)
+    assert _decided(world.check(next_slot)) == ("run", None, "weekly_slot")
+    assert sorted(world.table.slots) == [THURSDAY, next_slot]
 
 
-def test_the_previous_slot_is_strictly_before_the_check_date() -> None:
-    assert previous_slot_date(THURSDAY, "thursday") == date(2030, 1, 3)
-    assert previous_slot_date(THURSDAY + timedelta(days=1), "thursday") == date(2030, 1, 10)
+def test_operator_starts_and_retries_neither_read_nor_write_the_marker() -> None:
+    world = World()
+    world.publish_on_slot(THURSDAY)
+    friday = THURSDAY + timedelta(days=1)
+    world.selection.restate(INPUT_END - timedelta(days=10))
+    started = world.check(friday, OperatorStart())
+    assert world.table.reads == ["CURRENT"]
+    world.end(started, RunOutcome.FAILED, "input_build:athena_timeout")
+    retried = world.check(friday + timedelta(days=1))
+    assert _decided(retried) == ("run", None, "last_attempt_retry")
+    assert world.table.reads == ["CURRENT"]
+    assert list(world.table.slots) == [THURSDAY]
 
 
-# ---- the request: scheduled time, operator name and REASON ----
+def test_the_slot_date_is_the_admission_weekday_on_or_before_the_check_date() -> None:
+    assert slot_date(THURSDAY, "thursday") == THURSDAY
+    assert slot_date(THURSDAY + timedelta(days=6), "thursday") == THURSDAY
+    assert slot_date(THURSDAY - timedelta(days=1), "thursday") == THURSDAY - timedelta(days=7)
 
 
 def test_a_scheduled_input_never_carries_retry_failed() -> None:

@@ -161,12 +161,29 @@ class ShardPublishResult:
     item_count: int
     roster_part_key: str
     roster_part_sha256: str
+    inferred_zero_weeks: int = 0
+    """Context weeks in state `inferred_zero` over the shard's series (its run report)."""
+    known_weeks: int = 0
+    """Context weeks `observed` or `inferred_zero`: the share's denominator (§3b)."""
 
     def __post_init__(self) -> None:
         _shard_index(self.shard)
         _attempt_id(self.attempt_id)
         if self.item_count < 1:
             raise ValueError("a published shard holds at least one record")
+        if not 0 <= self.inferred_zero_weeks <= self.known_weeks:
+            raise ValueError("inferred-zero weeks lie between 0 and the known weeks")
+
+
+def inferred_zero_week_share(results: Sequence[ShardPublishResult]) -> float | None:
+    """`InferredZeroWeekShare` in percent: set-wide inferred-zero ÷ known weeks (§3b, R2-23).
+
+    None when no context week is known, so no datapoint is emitted rather than a division by 0.
+    """
+    known = sum(result.known_weeks for result in results)
+    if known == 0:
+        return None
+    return 100.0 * sum(result.inferred_zero_weeks for result in results) / known
 
 
 def generation_series_sha256(results: Sequence[ShardPublishResult]) -> str:

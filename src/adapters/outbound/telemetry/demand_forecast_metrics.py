@@ -24,6 +24,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 from domain.operations.generated_operational_metrics import (
     FORECAST_CURRENT_AGE_DAYS,
     FORECAST_RUN_OUTCOME,
+    INFERRED_ZERO_WEEK_SHARE,
     LANDING_TO_PUBLISH_SECONDS,
     UNKNOWN_SALES_DAYS,
     OperationalMetricSpec,
@@ -71,6 +72,13 @@ def run_outcome(outcome: str) -> Datapoint:
 def landing_to_publish(seconds: float) -> Datapoint:
     """`LandingToPublishSeconds`: from the newest selected publication to `published_at`."""
     return Datapoint(LANDING_TO_PUBLISH_SECONDS, seconds)
+
+
+def inferred_zero_share(percent: float) -> Datapoint:
+    """`InferredZeroWeekShare`: the published generation's inferred-zero share of known weeks."""
+    if not 0.0 <= percent <= 100.0:  # noqa: PLR2004 - the declared Percent range
+        raise ValueError("InferredZeroWeekShare is a percentage from 0 to 100")
+    return Datapoint(INFERRED_ZERO_WEEK_SHARE, percent)
 
 
 def current_age(days: int) -> Datapoint:

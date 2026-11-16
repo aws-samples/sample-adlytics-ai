@@ -6,6 +6,7 @@ Key layout (one partition key per `ASIN#` and `PAGE#` item, R5-08):
 | PK | SK |
 |---|---|
 | `SET#<set_id>` | `CURRENT`, `RUN#<run_id>#r<n>#<step>` |
+| `SLOT#<set_id>` | `<slot date>` (one weekly slot marker, never overwritten or deleted) |
 | `GEN#<generation_id>` | `META` |
 | `GEN#<generation_id>#ASIN#<display_asin>` | `ITEM` |
 | `GEN#<generation_id>#PAGE#<filter>#<page, 5 digits>` | `ITEM` |
@@ -62,6 +63,8 @@ from ports.outbound.forecast_store import (
     OutcomeCommitRequest,
     OutcomeCommitResult,
     RunReceipt,
+    SlotClaimRequest,
+    SlotClaimResult,
     StoreWriteResult,
 )
 
@@ -119,6 +122,14 @@ Item = dict[str, "AttributeValueTypeDef"]
 def set_key(set_id: str) -> str:
     """Return the set's partition key."""
     return f"SET#{set_id}"
+
+
+def slot_key(set_id: str) -> str:
+    """Return the set's slot-marker partition key.
+
+    It is apart from `SET#`, so the marker's writer can't reach `CURRENT` or a receipt.
+    """
+    return f"SLOT#{set_id}"
 
 
 def meta_key(generation: str) -> str:
@@ -446,6 +457,42 @@ class DynamoDbForecastStore(ForecastStorePort):
             return self._cancelled(request, positions, error)
         return OutcomeCommitResult(
             CommitDisposition.APPLIED, receipt.sk, receipt.outcome, _retries(response)
+        )
+
+    # The weekly slot marker
+
+    def claim_slot(self, request: SlotClaimRequest) -> SlotClaimResult:
+        """Put the period's marker on `attribute_not_exists(PK)`; on a held marker, read who.
+
+        The same execution finding its own marker is a Lambda retry after an unseen success, so it
+        still holds the slot; any other execution, a duplicate delivery included, does not.
+        """
+        pk, sk = slot_key(request.set_id), request.slot_date.isoformat()
+        item = {
+            PK: pk,
+            SK: sk,
+            "run_id": request.run_id,
+            "execution_name": request.execution_name,
+            "scheduled_time": _moment(request.scheduled_time),
+        }
+        try:
+            self._dynamodb.put_item(
+                TableName=self._table,
+                Item=_wire(item),
+                ConditionExpression="attribute_not_exists(#pk)",
+                ExpressionAttributeNames={"#pk": PK},
+            )
+        except ClientError as error:
+            if _code(error) != f"{_CONDITION_FAILED}Exception":
+                _raise_store_error(error)
+        else:
+            return SlotClaimResult(claimed=True, holder_run_id=request.run_id)
+        stored = self._get(pk, sk)
+        if stored is None:
+            raise ForecastStoreConflictError(f"{pk}/{sk}", "a held slot marker is gone")
+        return SlotClaimResult(
+            claimed=read_text(stored, "execution_name") == request.execution_name,
+            holder_run_id=read_text(stored, "run_id"),
         )
 
     # Reads

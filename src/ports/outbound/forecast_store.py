@@ -231,6 +231,35 @@ class OutcomeCommitResult:
     retry_attempts: int
 
 
+@dataclass(frozen=True)
+class SlotClaimRequest:
+    """Claim one slot period's marker for a scheduled check (F-A8 ruling, 2026-11-16)."""
+
+    set_id: str
+    slot_date: date
+    """The period's admission weekday, `selection.slot_date()` of the check date."""
+    run_id: str
+    execution_name: str
+    """The Scheduler-named execution; the same execution re-claiming is a Lambda retry."""
+    scheduled_time: datetime
+
+    def __post_init__(self) -> None:
+        if not self.set_id or "#" in self.set_id:
+            raise ValueError("set_id is non-empty and has no '#'")
+        if not self.run_id or not self.execution_name:
+            raise ValueError("a slot claim names its run and execution")
+        if self.scheduled_time.tzinfo is None:
+            raise ValueError("scheduled_time is timezone-aware")
+
+
+@dataclass(frozen=True)
+class SlotClaimResult:
+    """Whether this execution holds the period's marker, and the run that holds it."""
+
+    claimed: bool
+    holder_run_id: str
+
+
 class ForecastStorePort(Protocol):
     """The publisher's and the input builder's view of the forecast table."""
 
@@ -254,6 +283,10 @@ class ForecastStorePort(Protocol):
 
     def commit_outcome(self, request: OutcomeCommitRequest) -> OutcomeCommitResult:
         """Apply one outcome as one `TransactWriteItems` call (§6b)."""
+        ...
+
+    def claim_slot(self, request: SlotClaimRequest) -> SlotClaimResult:
+        """Write the period's `SLOT#` marker if absent; never overwrite or delete one."""
         ...
 
     def get_current(self, set_id: str) -> CurrentPointer | None:

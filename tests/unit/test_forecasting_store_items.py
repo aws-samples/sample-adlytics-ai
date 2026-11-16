@@ -10,7 +10,7 @@ write.
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import UTC, datetime, time, timedelta
 from typing import Any, cast
 
 import pytest
@@ -39,8 +39,10 @@ from domain.forecasting.publish import ShardPublishResult
 from domain.forecasting.summaries import cap_title, roster_entry
 from ports.outbound.forecast_store import (
     ForecastItemTooLargeError,
+    ForecastStoreThrottled,
     GenerationMeta,
     GenerationSeries,
+    SlotClaimRequest,
 )
 
 pytestmark = pytest.mark.unit
@@ -246,3 +248,57 @@ def test_the_same_item_built_twice_carries_the_same_digest() -> None:
     other = asin_item(GENERATION, GenerationSeries(_candidate(1), "Other", False))
     assert first["item_sha256"] == again["item_sha256"]
     assert first["item_sha256"] != other["item_sha256"]
+
+
+# ---- the weekly slot marker (F-A8 ruling, 2026-11-16) ----
+
+SLOT_DAY = INPUT_END + timedelta(days=5)
+
+
+def _claim(execution: str, run_id: str = "a1b2c3d4e5f6-slot") -> SlotClaimRequest:
+    return SlotClaimRequest(
+        set_id="a1b2c3d4e5f6",
+        slot_date=SLOT_DAY,
+        run_id=run_id,
+        execution_name=execution,
+        scheduled_time=datetime.combine(SLOT_DAY, time(13), UTC),
+    )
+
+
+def test_the_first_claim_writes_the_marker_under_its_own_partition_on_absence() -> None:
+    table = ForecastTableFake()
+    store = DynamoDbForecastStore("forecast-table", CEILING, cast("Any", table))
+    result = store.claim_slot(_claim("exec-1"))
+    assert (result.claimed, result.holder_run_id) == (True, "a1b2c3d4e5f6-slot")
+    (put,) = table.puts
+    assert put["ConditionExpression"] == "attribute_not_exists(#pk)"
+    assert put["Item"]["PK"] == {"S": "SLOT#a1b2c3d4e5f6"}
+    assert put["Item"]["SK"] == {"S": SLOT_DAY.isoformat()}
+    assert put["Item"]["execution_name"] == {"S": "exec-1"}
+
+
+def test_another_execution_finds_the_slot_held_and_the_marker_unchanged() -> None:
+    table = ForecastTableFake()
+    store = DynamoDbForecastStore("forecast-table", CEILING, cast("Any", table))
+    store.claim_slot(_claim("exec-1"))
+    result = store.claim_slot(_claim("exec-2", run_id="a1b2c3d4e5f6-other"))
+    assert (result.claimed, result.holder_run_id) == (False, "a1b2c3d4e5f6-slot")
+    (marker,) = table.items.values()
+    assert marker["execution_name"] == {"S": "exec-1"}
+    assert table.gets[-1]["ConsistentRead"] is True
+
+
+def test_the_same_execution_re_claiming_still_holds_the_slot() -> None:
+    table = ForecastTableFake()
+    store = DynamoDbForecastStore("forecast-table", CEILING, cast("Any", table))
+    store.claim_slot(_claim("exec-1"))
+    assert store.claim_slot(_claim("exec-1")).claimed is True
+    assert len(table.items) == 1
+
+
+def test_a_throttled_claim_raises_the_typed_throttle_and_writes_nothing() -> None:
+    table = ForecastTableFake(throttle_puts=True)
+    store = DynamoDbForecastStore("forecast-table", CEILING, cast("Any", table))
+    with pytest.raises(ForecastStoreThrottled):
+        store.claim_slot(_claim("exec-1"))
+    assert table.items == {}

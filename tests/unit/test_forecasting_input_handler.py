@@ -33,13 +33,14 @@ from adapters.outbound.commerce_identity import load_commerce_identity_bridge
 from adapters.outbound.demand_forecast_policy import load_policy
 from adapters.outbound.telemetry.demand_forecast_metrics import Datapoint
 from domain.forecasting.boundary import InputManifestV1, TitleMapV1
-from domain.forecasting.publish import CurrentPointer, ReceiptRecord
+from domain.forecasting.publish import CurrentPointer
 from domain.shared_kernel.values import DateRange
 from ports.outbound.forecast_history_selection import (
     ForecastHistorySelectionRequest,
     ForecastHistorySelectionResult,
     PinnedContractHistory,
 )
+from ports.outbound.forecast_store import SlotClaimRequest, SlotClaimResult
 from ports.outbound.publication_selection import PinnedPublication
 from ports.outbound.weekly_series_source import (
     RosterResult,
@@ -137,13 +138,13 @@ class FakeObjects:
 
 @dataclass
 class NoPointer:
-    """A forecast table before the first outcome: no CURRENT, no receipts."""
+    """A forecast table before the first outcome: no CURRENT and no slot marker."""
 
     def get_current(self, set_id: str) -> CurrentPointer | None:
         del set_id
 
-    def get_receipt(self, set_id: str, sk: str) -> ReceiptRecord | None:
-        del set_id, sk
+    def claim_slot(self, request: SlotClaimRequest) -> SlotClaimResult:
+        raise AssertionError(f"these tests never claim a slot ({request.slot_date})")
 
 
 @dataclass

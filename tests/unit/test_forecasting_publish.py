@@ -14,7 +14,7 @@ from __future__ import annotations
 import gzip
 import hashlib
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any, cast
@@ -54,6 +54,7 @@ from domain.forecasting.boundary import (
     RosterEntryV1,
     RunReportV1,
     TitleMapV1,
+    WeekStateCountsV1,
     boundary_schema_digests,
 )
 from domain.forecasting.identity import display_asin
@@ -1382,6 +1383,15 @@ def _stage(rig: _Rig, run_id: str = RUN, expected_fence: int = 0, **records: Any
         rig.objects.objects[prefix + REPORT_FILE] = report.model_dump_json().encode()
 
 
+def _restate_week_states(rig: _Rig, states: Mapping[int, dict[str, int]]) -> None:
+    """Rewrite each staged shard's run report with its declared week-state counts."""
+    for shard, counts in states.items():
+        key = f"runs/{RUN}/shards/{shard}/attempts/r0a0/candidate/{REPORT_FILE}"
+        report = RunReportV1.model_validate_json(rig.objects.objects[key])
+        changed = report.model_copy(update={"week_state_counts": WeekStateCountsV1(**counts)})
+        rig.objects.objects[key] = changed.model_dump_json().encode()
+
+
 def _shard_publish(shard: int, run_id: str = RUN) -> PublishShardRequest:
     return PublishShardRequest(
         run_id=run_id,
@@ -1426,8 +1436,37 @@ def test_a_three_shard_run_publishes_and_makes_its_generation_current() -> None:
     assert rig.metrics.points == [
         ("ForecastRunOutcome", (("outcome", "published"),), 1.0),
         ("LandingToPublishSeconds", (), LANDING_SECONDS),
+        ("InferredZeroWeekShare", (), 0.0),
     ]
     assert (committed.series_published, committed.series_withheld) == (24, 0)
+
+
+def test_the_published_generation_emits_its_set_wide_inferred_zero_share() -> None:
+    # 15 inferred-zero of 200 known weeks = 7.5 %; unknown weeks are outside the denominator.
+    rig = _Rig()
+    states = {
+        0: {"observed": 90, "inferred_zero": 10, "unknown": 4},
+        1: {"observed": 50, "inferred_zero": 0, "unknown": 0},
+        2: {"observed": 45, "inferred_zero": 5, "unknown": 9},
+    }
+    _stage(rig)
+    _restate_week_states(rig, states)
+    payloads = _publish_all(rig)
+    assert [(p["inferred_zero_weeks"], p["known_weeks"]) for p in payloads] == [
+        (10, 100),
+        (0, 50),
+        (5, 50),
+    ]
+    assert _commit_run(rig, payloads).outcome == "published"
+    assert ("InferredZeroWeekShare", (), 7.5) in rig.metrics.points
+
+
+def test_a_superseded_commit_emits_no_inferred_zero_share() -> None:
+    rig = _Rig()
+    _stage(rig, expected_fence=5)
+    committed = _commit_run(rig, _publish_all(rig))
+    assert committed.outcome == "superseded"
+    assert [name for name, _dims, _value in rig.metrics.points] == ["ForecastRunOutcome"]
 
 
 def test_a_replayed_shard_publish_and_commit_change_nothing_and_count_once() -> None:

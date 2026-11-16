@@ -88,28 +88,23 @@ from domain.forecasting.identity import ProductKeyError, display_map
 from domain.forecasting.models import CHRONOS2_MODEL_ID
 from domain.forecasting.publish import (
     CurrentPointer,
-    ReceiptKeyRequest,
-    ReceiptRecord,
-    RunOutcome,
     forecast_set_id,
     operator_reason_valid,
-    receipt_sk,
 )
 from domain.forecasting.selection import (
     SELECTION_DAYS,
-    SelectDecision,
     SelectDecisionRequest,
     SelectionWindowRequest,
     SelectOutcome,
     Trigger,
     WindowPin,
     WindowPins,
-    admits_new_input,
+    claims_slot,
     current_age_days,
-    pointer_consumes_slot,
-    previous_slot_date,
     scheduled_run_id,
     select_decision,
+    settle_slot,
+    slot_date,
     unknown_sales_days,
     window_pins,
 )
@@ -122,6 +117,7 @@ from ports.outbound.forecast_history_selection import (
     ForecastHistorySelectionResult,
     PinnedContractHistory,
 )
+from ports.outbound.forecast_store import SlotClaimRequest, SlotClaimResult
 from ports.outbound.weekly_series_source import (
     StatementStat,
     WeeklySeriesError,
@@ -162,14 +158,14 @@ def _root() -> Path:
 
 
 class PointerReads(Protocol):
-    """The two forecast-table reads `select` makes (`ForecastStorePort` satisfies it)."""
+    """The forecast-table calls `select` makes (`ForecastStorePort` satisfies it)."""
 
     def get_current(self, set_id: str) -> CurrentPointer | None:
         """Read the set's `CURRENT` item, strongly consistent."""
         ...
 
-    def get_receipt(self, set_id: str, sk: str) -> ReceiptRecord | None:
-        """Read one `RUN#` receipt, strongly consistent."""
+    def claim_slot(self, request: SlotClaimRequest) -> SlotClaimResult:
+        """Write the period's slot marker if absent, else name the run that holds it."""
         ...
 
 
@@ -353,25 +349,6 @@ def _run_id(builder: InputBuilder, request: SelectRequest, check_date: date) -> 
     return request.execution_name
 
 
-_SELECT_DECISIONS: Final = frozenset({RunOutcome.NO_OP_SAME_INPUT, RunOutcome.HELD_INPUT_NOT_READY})
-"""The `#select` receipts a select decision writes. A select failure's `failed` (or
-`superseded`) receipt under the same key does not consume the slot (R7-M2)."""
-
-
-def _slot_consumed(builder: InputBuilder, current: CurrentPointer | None, check_date: date) -> bool:
-    """Whether the latest slot run left a `#select` decision or a known fingerprint (OQ-S2-1).
-
-    `CURRENT` is already in hand, so the receipt GetItem happens only when it can still decide.
-    """
-    weekday = builder.policy.policy.retry.admission_weekday
-    slot_run = scheduled_run_id(builder.set_id, previous_slot_date(check_date, weekday))
-    if pointer_consumes_slot(current, slot_run):
-        return True
-    key = receipt_sk(ReceiptKeyRequest(slot_run, 0, "select"))
-    receipt = builder.store.get_receipt(builder.set_id, key)
-    return receipt is not None and receipt.outcome in _SELECT_DECISIONS
-
-
 @dataclass(frozen=True)
 class _Check:
     """One check's request, its UTC date and the `CURRENT` it read."""
@@ -381,20 +358,29 @@ class _Check:
     current: CurrentPointer | None
 
 
-def _decide(builder: InputBuilder, check: _Check, fingerprint: str) -> SelectDecision:
-    weekday = builder.policy.policy.retry.admission_weekday
-    trigger = check.request.trigger
-    off_slot = trigger is Trigger.SCHEDULED and not admits_new_input(check.check_date, weekday)
-    consumed = _slot_consumed(builder, check.current, check.check_date) if off_slot else None
-    return select_decision(
-        SelectDecisionRequest(
-            run_fingerprint=fingerprint,
-            current=check.current,
-            trigger=trigger,
-            check_date=check.check_date,
-            admission_weekday=weekday,
-            retry_failed=check.request.retry_failed,
-            slot_consumed=consumed,
+def _request(builder: InputBuilder, check: _Check, fingerprint: str) -> SelectDecisionRequest:
+    return SelectDecisionRequest(
+        run_fingerprint=fingerprint,
+        current=check.current,
+        trigger=check.request.trigger,
+        check_date=check.check_date,
+        admission_weekday=builder.policy.policy.retry.admission_weekday,
+        retry_failed=check.request.retry_failed,
+    )
+
+
+def _claim(builder: InputBuilder, check: _Check, run_id: str) -> SlotClaimResult:
+    """Claim this slot period's marker; a scheduled check always has its scheduled time."""
+    scheduled = check.request.scheduled_time
+    if scheduled is None:
+        raise InputBuildFailedError("REQUEST_INVALID")
+    return builder.store.claim_slot(
+        SlotClaimRequest(
+            set_id=builder.set_id,
+            slot_date=slot_date(check.check_date, builder.policy.policy.retry.admission_weekday),
+            run_id=run_id,
+            execution_name=check.request.execution_name,
+            scheduled_time=scheduled,
         )
     )
 
@@ -446,14 +432,23 @@ def select_input(builder: InputBuilder, request: SelectRequest) -> dict[str, obj
         }
     identity = _identity(builder, pins.input_fingerprint)
     fingerprint = run_fingerprint(identity)
-    decision = _decide(builder, check, fingerprint)
+    decision_request = _request(builder, check, fingerprint)
+    decision = select_decision(decision_request)
     metrics = _emit_check_metrics(builder, check, pins)
+    # The claim is the last write, after the metrics, so a select that fails leaves the slot free
+    # for a later day (R7-M2); only a check that returns its decision consumes it.
+    holder = None
+    if claims_slot(decision_request, decision):
+        claim = _claim(builder, check, run_id)
+        decision = settle_slot(decision_request, decision, claimed=claim.claimed)
+        holder = claim.holder_run_id
     result: dict[str, object] = {
         "outcome": decision.outcome.value,
         "category": None if decision.category is None else decision.category.value,
         "basis": decision.basis.value,
         **common,
         "run_fingerprint": fingerprint,
+        "slot_holder": holder,
         **metrics,
     }
     if decision.outcome is SelectOutcome.RUN:

@@ -52,6 +52,7 @@ from adapters.outbound.telemetry.bootstrap import configure_tracing, flushes_tra
 from adapters.outbound.telemetry.demand_forecast_metrics import (
     CloudWatchDemandForecastMetrics,
     Datapoint,
+    inferred_zero_share,
     landing_to_publish,
     run_outcome,
 )
@@ -88,6 +89,7 @@ from domain.forecasting.publish import (
     ShardPublishResult,
     forecast_set_id,
     generation_id,
+    inferred_zero_week_share,
     next_pointer,
     receipt_sk,
     retry_disposition,
@@ -232,6 +234,8 @@ class StepOutcome:
                 "item_count": result.item_count,
                 "roster_part_key": result.roster_part_key,
                 "roster_part_sha256": result.roster_part_sha256,
+                "inferred_zero_weeks": result.inferred_zero_weeks,
+                "known_weeks": result.known_weeks,
             }
         document: dict[str, object] = {
             "outcome": self.outcome,
@@ -422,6 +426,8 @@ def _publish_shard(publisher: Publisher, request: PublishShardRequest) -> StepOu
         item_count=len(records),
         roster_part_key=key,
         roster_part_sha256=_sha256(body),
+        inferred_zero_weeks=report.week_state_counts.inferred_zero,
+        known_weeks=report.week_state_counts.observed + report.week_state_counts.inferred_zero,
     )
     shown, withheld = _shown(records)
     return StepOutcome(
@@ -656,6 +662,9 @@ def _commit_publish(
         points = [run_outcome(outcome)]
         if outcome == RunOutcome.PUBLISHED:
             points.append(landing_to_publish(landing))
+            share = inferred_zero_week_share(meta.attempts)
+            if share is not None:
+                points.append(inferred_zero_share(share))
         _emit(publisher, points, now)
     return _Committed(outcome, result.retry_attempts)
 
@@ -1024,6 +1033,8 @@ def commit_request(event: Mapping[str, Any]) -> CommitRequest:
                         item_count=_int(item, "item_count"),
                         roster_part_key=_text(item, "roster_part_key"),
                         roster_part_sha256=_text(item, "roster_part_sha256"),
+                        inferred_zero_weeks=_int(item, "inferred_zero_weeks"),
+                        known_weeks=_int(item, "known_weeks"),
                     )
                 )
             else:

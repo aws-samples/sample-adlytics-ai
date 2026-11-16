@@ -42,6 +42,8 @@ from ports.outbound.forecast_store import (
     ListPage,
     OutcomeCommitRequest,
     OutcomeCommitResult,
+    SlotClaimRequest,
+    SlotClaimResult,
     StoreWriteResult,
 )
 
@@ -264,6 +266,9 @@ class _Store:
     def get_receipt(self, set_id: str, sk: str) -> ReceiptRecord | None:
         assert set_id == SET
         return self.receipts.get(sk)
+
+    def claim_slot(self, request: SlotClaimRequest) -> SlotClaimResult:
+        raise AssertionError(f"a rollback never claims a slot ({request.slot_date})")
 
     def commit_outcome(self, request: OutcomeCommitRequest) -> OutcomeCommitResult:
         sk = request.receipt.sk
