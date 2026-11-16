@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, time, timedelta
@@ -42,6 +43,7 @@ from domain.forecasting.publish import (
     Disposition,
     LastAttempt,
     PointerAdvanceRequest,
+    PointerDecision,
     PublishedGeneration,
     ReceiptRecord,
     RollbackRequest,
@@ -58,6 +60,7 @@ from ports.outbound.forecast_store import (
     OutcomeCommitRequest,
     RunReceipt,
     SlotClaimRequest,
+    superseded_receipt,
 )
 
 pytestmark = pytest.mark.integration
@@ -100,7 +103,10 @@ def probe(request: pytest.FixtureRequest) -> Iterator[Probe]:
             raise
         pytest.skip(f"integration tier needs the deployed {ENV_NAME} forecast table")
     name = str(parameter.get("Value", ""))
-    digest = hashlib.sha256(pytest_node_id(request).encode()).hexdigest()[:12]
+    # A fresh set per run: the store's ClientRequestToken derives from the receipt key, so a set
+    # reused within DynamoDB's 10-minute token window would refuse the rerun's new parameters.
+    digest = hashlib.sha256(f"{pytest_node_id(request)}:{uuid.uuid4().hex}".encode()).hexdigest()
+    digest = digest[:12]
     found = Probe(DynamoDbForecastStore(name, ITEM_MAX_BYTES), name, f"{PROBE_PREFIX}-{digest}")
     yield found
     client = boto3.client("dynamodb")
@@ -172,10 +178,31 @@ def _meta(probe: Probe, run: str, fingerprint: str) -> GenerationMeta:
     return meta
 
 
+@dataclass(frozen=True)
+class Prepared:
+    """What the publisher's commit read before committing: CURRENT, and the manifest's fence."""
+
+    current: CurrentPointer | None
+    expected_fence: int
+
+
 def _publish(probe: Probe, meta: GenerationMeta, expected_fence: int) -> CommitDisposition:
-    """Commit `meta` as `published` on `expected_fence`, as the publisher's commit does."""
+    """Commit `meta` as `published` on `expected_fence`, reading CURRENT now."""
+    return _commit_published(
+        probe, meta, Prepared(probe.store.get_current(probe.set_id), expected_fence)
+    )
+
+
+def _commit_published(probe: Probe, meta: GenerationMeta, read: Prepared) -> CommitDisposition:
+    """Commit `meta` as `published`, built exactly as the publisher's `_commit_publish` builds it.
+
+    A stale-fence probe passes the read from before another commit moved the fence: the
+    publisher then sends a pointer, and the service's fence condition refuses it (the race the
+    fence guards). On a fresh read the domain decides `superseded` itself and the publisher sends
+    the receipt alone, which this helper sends too; it never builds a request the publisher can't.
+    """
+    current, expected_fence = read.current, read.expected_fence
     now = datetime.now(UTC)
-    current = probe.store.get_current(probe.set_id)
     attempt = LastAttempt(
         run_id=meta.run_id,
         attempt_id=None,
@@ -197,9 +224,14 @@ def _publish(probe: Probe, meta: GenerationMeta, expected_fence: int) -> CommitD
         retry_disposition=Disposition.SUPPRESS,
         run_fingerprint=meta.run_fingerprint,
     )
-    request = OutcomeCommitRequest(
-        probe.set_id, expected_fence, receipt, advance.pointer, meta.series_sha256
-    )
+    if advance.decision is PointerDecision.ALREADY_CURRENT:
+        return CommitDisposition.ALREADY_CURRENT
+    if advance.decision is PointerDecision.SUPERSEDED:
+        request = OutcomeCommitRequest(probe.set_id, expected_fence, superseded_receipt(receipt))
+    else:
+        request = OutcomeCommitRequest(
+            probe.set_id, expected_fence, receipt, advance.pointer, meta.series_sha256
+        )
     probe.written |= {(set_key(probe.set_id), CURRENT_SK), (set_key(probe.set_id), receipt.sk)}
     return probe.store.commit_outcome(request).disposition
 
@@ -215,7 +247,8 @@ def test_a_fenced_publish_advances_current_and_a_stale_fence_is_superseded(probe
     assert _publish(probe, first, expected_fence=0) is CommitDisposition.APPLIED
     assert (_current(probe).generation_id, _current(probe).fence) == (first.generation_id, 1)
     stale = _meta(probe, "run-b", "2" * 64)
-    assert _publish(probe, stale, expected_fence=0) is CommitDisposition.SUPERSEDED
+    # Prepared from the empty table, before `first` moved the fence to 1.
+    assert _commit_published(probe, stale, Prepared(None, 0)) is CommitDisposition.SUPERSEDED
     current = _current(probe)
     assert (current.generation_id, current.fence) == (first.generation_id, 1)
     receipt = probe.store.get_receipt(probe.set_id, stale.receipt_sk)
@@ -242,7 +275,7 @@ def test_a_commit_under_a_key_holding_another_generations_receipt_is_a_conflict(
     assert other.receipt_sk == first.receipt_sk
     assert other.generation_id != first.generation_id
     with pytest.raises(ForecastStoreConflictError, match="the receipt names another generation"):
-        _publish(probe, other, expected_fence=0)
+        _commit_published(probe, other, Prepared(None, 0))
     receipt = probe.store.get_receipt(probe.set_id, first.receipt_sk)
     assert receipt is not None
     assert (receipt.outcome, receipt.generation_id) == (RunOutcome.PUBLISHED, first.generation_id)
