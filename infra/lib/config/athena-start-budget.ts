@@ -19,6 +19,8 @@ export const BAKER_RESERVED_CONCURRENCY: number = BAKE_TASKS.lanes;
 export const INGESTION_LOAD_RESERVED_CONCURRENCY = 2;
 export const PROVIDER_ATTEMPT_RECONCILER_RESERVED_CONCURRENCY = 1;
 export const INSIGHT_PRECOMPUTE_RESERVED_CONCURRENCY = 2;
+/** The demand-forecast input builder: one invocation at a time, its three statements in turn. */
+export const DEMAND_FORECAST_INPUT_RESERVED_CONCURRENCY = 1;
 /** Each operator row is one process at a time per environment, by the runbook rule (F5). */
 export const OPERATOR_PROCESSES_PER_ROW = 1;
 /** A sequential caller drives one execution to terminal before starting the next (S3 census). */
@@ -33,6 +35,7 @@ export const ATHENA_START_BUDGET_ROW_IDS = [
   'ingest_operator',
   'reprocess_operator',
   'insight_precompute',
+  'demand_forecast_input',
 ] as const;
 export type AthenaStartBudgetRowId = (typeof ATHENA_START_BUDGET_ROW_IDS)[number];
 
@@ -76,7 +79,7 @@ export type AthenaStartBudgetVerdict =
       readonly limit: number | string | null;
     };
 
-/** The seven S1 rows at their configured maximum (the load row is its active-state value). */
+/** The eight rows at their configured maximum (the load row is its active-state value). */
 export function athenaStartBudgetRows(config: AppConfig): readonly AthenaStartBudgetRow[] {
   const sequential = (rowId: AthenaStartBudgetRowId, reservedConcurrency: number) => ({
     rowId,
@@ -99,6 +102,7 @@ export function athenaStartBudgetRows(config: AppConfig): readonly AthenaStartBu
       reservedConcurrency: INSIGHT_PRECOMPUTE_RESERVED_CONCURRENCY,
       startCap: config.athenaStartBudget.insightStartCap,
     },
+    sequential('demand_forecast_input', DEMAND_FORECAST_INPUT_RESERVED_CONCURRENCY),
   ];
 }
 

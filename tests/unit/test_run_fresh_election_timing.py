@@ -161,7 +161,7 @@ def test_one_sample_seeds_rehearses_activates_once_and_returns_every_row() -> No
         for members in table.transactions
         if len(members) > 1 and any("SERVING_TRANSITION#" in str(member) for member in members)
     ]
-    assert len(final) == 1 and len(final[0]) == 51
+    assert len(final) == 1 and len(final[0]) == 52
     disposition = sample["disposition"]
     assert isinstance(disposition, dict)
     assert disposition["remaining"] == 0 and disposition["removed"] > 0
@@ -172,14 +172,74 @@ def test_one_sample_seeds_rehearses_activates_once_and_returns_every_row() -> No
     )
 
 
-def test_a_colliding_probe_row_is_refused_and_only_the_seeded_rows_are_returned() -> None:
+@pytest.mark.covers("ADR-162")
+def test_a_pre_staged_sample_commits_from_its_pages_reading_no_successor_again() -> None:
+    """AGG-R2-2: the guard must be measured on the pass that commits a fully staged roster.
+
+    A successor read during that pass would time the unstaged path instead, so the sample
+    counts them and the control shows the count sees an unstaged world's reads.
+    """
+    table = _ProbeTable()
+    inputs = timing.SampleInputs(
+        table, "probe", _MAX_REDECIDE, 60_000, clock=_clock(), staged_successors=6
+    )
+
+    sample = timing.run_sample(1, inputs)
+
+    world = cast("dict[str, Any]", sample["world"])
+    assert (world["b_size"], world["staged_successors"]) == (6, 6)
+    assert world["stage_pages"] == 1  # six candidates fit one ELECTION# page
+    assert world["successor_candidate_reads"] == 0
+    assert sample["outcome"] == "elected"
+    attempts = cast("list[dict[str, Any]]", sample["attempts"])
+    assert [item["injected_conflict"] for item in attempts] == [True] * _MAX_REDECIDE + [False]
+    final = [
+        members
+        for members in table.transactions
+        if len(members) > 1 and any("SERVING_TRANSITION#" in str(member) for member in members)
+    ]
+    assert len(final) == 1 and len(final[0]) == 52
+    assert table.items == {}  # the pages were seeded rows and are disposed of with the rest
+    # Control: today's unstaged world reads its successors in every attempt.
+    control = timing.run_sample(1, _inputs(_ProbeTable()))
+    unstaged = cast("dict[str, Any]", control["world"])
+    assert (unstaged["stage_pages"], unstaged["successor_candidate_reads"]) == (
+        0,
+        2 * (_MAX_REDECIDE + 1),
+    )
+
+
+@pytest.mark.covers("ADR-162")
+def test_a_staged_guard_above_what_every_arm_pass_keeps_is_refused() -> None:
+    from adapters.jobs.execution_graph.budget import PROMOTE_RESERVE_MS  # noqa: PLC0415
+
+    assert timing.STAGED_GUARD_MAX_MS == PROMOTE_RESERVE_MS == 40_000
+    whole = [True] * _MAX_REDECIDE + [False]
+    staged = _identity(staged_successors=3502)
+    accepted = timing.timing_document(staged, [_sample(whole, total=20_000.0)])
+    assert accepted["next_election_min_remaining_ms"] == 40_000
+    with pytest.raises(timing.TimingError, match="exceeds the 40000 ms an arm pass keeps"):
+        timing.timing_document(staged, [_sample(whole, total=20_000.5)])
+    # Control: the unstaged rehearsal keeps only the Promoter-timeout refusal.
+    unstaged = timing.timing_document(_identity(), [_sample(whole, total=20_000.5)])
+    assert unstaged["next_election_min_remaining_ms"] == 40_001
+
+
+@pytest.mark.parametrize("write_concurrency", [1, 8])
+def test_a_colliding_probe_row_is_refused_and_only_the_seeded_rows_are_returned(
+    write_concurrency: int,
+) -> None:
+    """With puts in flight at the collision, each one that landed must still be disposed of."""
     table = _ProbeTable()
     foreign_key = (f"SERVING_DOMAIN#{INGESTION_RELEASE_DOMAIN}", "HEAD")
     foreign = {"pk": {"S": foreign_key[0]}, "sk": {"S": foreign_key[1]}, "owner": {"S": "other"}}
     table.items[foreign_key] = copy.deepcopy(foreign)
+    inputs = timing.SampleInputs(
+        table, "probe", _MAX_REDECIDE, 60_000, clock=_clock(), write_concurrency=write_concurrency
+    )
 
     with pytest.raises(timing.TimingError, match="already holds SERVING_DOMAIN#"):
-        timing.run_sample(1, _inputs(table))
+        timing.run_sample(1, inputs)
 
     assert table.items == {foreign_key: foreign}  # the foreign row is untouched, ours are gone
 
@@ -337,13 +397,69 @@ def test_a_seeding_failure_is_not_reported_as_a_collision() -> None:
 def test_foreign_obligations_in_the_probe_due_shards_are_found() -> None:
     table = _ProbeTable()
     assert timing.foreign_obligations(table, "probe", due_shards()) == []
-    for sk in ("ARM#run-1", "COMPLETE#run-2", "COALESCE#cohort", "RELEASE#run-3"):
+    for sk in (
+        "ARM#run-1",
+        "COMPLETE#run-2",
+        "COALESCE#cohort",
+        "ELECTION#ingestion#stage#000000",
+        "RELEASE#run-3",
+    ):
         table.items[("DUE#3", sk)] = {"pk": {"S": "DUE#3"}, "sk": {"S": sk}}
     assert timing.foreign_obligations(table, "probe", due_shards()) == [
         ("DUE#3", "ARM#run-1"),
         ("DUE#3", "COALESCE#cohort"),
         ("DUE#3", "COMPLETE#run-2"),
+        ("DUE#3", "ELECTION#ingestion#stage#000000"),
     ]
+
+
+def _foreign_dead_stage_page() -> tuple[tuple[str, str], dict[str, Any]]:
+    """Return a page another rehearsal left under a stage id no head of this world derives."""
+    from adapters.outbound.dynamodb import execution_graph_release as adapter  # noqa: PLC0415
+    from ports.outbound.execution_graph_release import ServingStagePage  # noqa: PLC0415
+
+    page = ServingStagePage(INGESTION_RELEASE_DOMAIN, "another-rehearsals-stage", 0, ())
+    item = adapter._stage_item(page)  # pyright: ignore[reportPrivateUsage]
+    return timing._key_of(item), item  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.covers("ADR-162")
+def test_a_foreign_dead_stage_page_is_refused_and_left_byte_identical() -> None:
+    """AGG-R3-1: the election deletes every dead-stage page, so a foreign one must refuse.
+
+    Without the refusal the sample passes after deleting a row it never created, and the
+    derivation that sets `next_election_min_remaining_ms` rests on altered shared state.
+    """
+    table = _ProbeTable()
+    key, item = _foreign_dead_stage_page()
+    table.items[key] = copy.deepcopy(item)
+
+    with pytest.raises(timing.TimingError, match=r"ForeignRowError: refusing to delete DUE#"):
+        timing.run_sample(1, _inputs(table))
+
+    assert table.items == {key: item}  # unchanged; every row the sample seeded is gone
+    assert timing.foreign_obligations(table, "probe", due_shards()) == [key]  # and run-level
+
+
+def test_the_recording_client_deletes_only_a_row_the_sample_seeded_or_owns() -> None:
+    table = _ProbeTable()
+    for name in ("SEEDED", "OWNED", "FOREIGN"):
+        table.items[(f"P#{name}", "S")] = {"pk": {"S": f"P#{name}"}, "sk": {"S": "S"}}
+    recording = timing.RecordingClient(table, "probe", frozenset({("P#SEEDED", "S")}))
+    recording.owned.add(("P#OWNED", "S"))
+
+    def delete(name: str) -> dict[str, Any]:
+        return {"Delete": {"TableName": "probe", "Key": {"pk": {"S": name}, "sk": {"S": "S"}}}}
+
+    recording.transact_write_items(TransactItems=[delete("P#SEEDED")])
+    recording.delete_item(TableName="probe", Key={"pk": {"S": "P#OWNED"}, "sk": {"S": "S"}})
+    assert set(table.items) == {("P#FOREIGN", "S")}  # control: the sample's own rows go
+    with pytest.raises(timing.ForeignRowError, match="refusing to delete P#FOREIGN/S"):
+        recording.transact_write_items(TransactItems=[delete("P#FOREIGN")])
+    with pytest.raises(timing.ForeignRowError, match="refusing to delete P#ABSENT/S"):
+        recording.delete_item(TableName="probe", Key={"pk": {"S": "P#ABSENT"}, "sk": {"S": "S"}})
+    assert set(table.items) == {("P#FOREIGN", "S")}
+    assert recording.refused == [("P#FOREIGN", "S"), ("P#ABSENT", "S")]
 
 
 class _Session:
@@ -415,6 +531,66 @@ def test_the_live_mode_must_be_held_graph_revision_12(monkeypatch: pytest.Monkey
     for mode in ({**held, "hold": {"BOOL": False}}, {**held, "revision": {"N": "13"}}, None):
         with pytest.raises(timing.TimingError, match="not held GRAPH revision 12"):
             timing._held_mode(_Session(mode=mode), "dev", "store")  # pyright: ignore[reportPrivateUsage]
+
+
+def test_concurrent_seeding_puts_every_row_and_returns_them_in_key_order() -> None:
+    items = {
+        (f"RUN#{index:03d}", "RUN"): {"pk": {"S": f"RUN#{index:03d}"}, "sk": {"S": "RUN"}}
+        for index in range(40)
+    }
+    table = _ProbeTable()
+    seeded = timing.seed_world(table, "probe", items, concurrency=8)
+    assert seeded == sorted(items) and set(table.items) == set(items)
+    disposition = timing.dispose(table, "probe", seeded, concurrency=8)
+    assert (disposition["removed"], disposition["remaining"]) == (40, 0)
+    assert table.items == {}
+
+
+def test_a_write_concurrency_below_one_is_refused() -> None:
+    assert timing._write_concurrency(None) == 10  # pyright: ignore[reportPrivateUsage]
+    assert timing._write_concurrency(3) == 3  # pyright: ignore[reportPrivateUsage]
+    with pytest.raises(timing.TimingError, match="at least 1"):
+        timing._write_concurrency(0)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_the_probe_client_re_assumes_the_role_before_its_credentials_expire() -> None:
+    from datetime import UTC, datetime, timedelta  # noqa: PLC0415
+
+    issued: list[datetime] = []
+
+    class _Sts:
+        def assume_role(self, **kwargs: Any) -> dict[str, Any]:
+            assert kwargs["RoleArn"].endswith(":role/adlytics-dev-execution-graph-probe")
+            # The first session is already inside botocore's mandatory refresh window.
+            expiry = datetime.now(UTC) + timedelta(minutes=5 if not issued else 60)
+            issued.append(expiry)
+            return {
+                "Credentials": {
+                    "AccessKeyId": f"AKIAFICTION{len(issued)}",
+                    # pragma: allowlist nextline secret (A-TEST-LITERALS-001)
+                    "SecretAccessKey": "fictional",
+                    "SessionToken": "fictional",
+                    "Expiration": expiry,
+                }
+            }
+
+    class _StsSession:
+        def client(self, name: str) -> _Sts:
+            assert name == "sts"
+            return _Sts()
+
+    client = timing._assumed_probe_client(_StsSession(), "000000000000", "dev", "us-east-1", 4)  # pyright: ignore[reportPrivateUsage]
+    frozen = client._request_signer._credentials.get_frozen_credentials()  # pyright: ignore[reportPrivateUsage]
+    assert len(issued) == 2 and frozen.access_key == "AKIAFICTION2"
+    assert client.meta.config.max_pool_connections == 4
+
+
+def test_each_finished_sample_is_appended_as_one_line(tmp_path: pathlib.Path) -> None:
+    sidecar = tmp_path / "timing.json.samples.jsonl"
+    timing.record_sample(sidecar, {"sample": 1, "attempts": []})
+    timing.record_sample(sidecar, {"sample": 2, "attempts": []})
+    assert [line[:12] for line in sidecar.read_text().splitlines()] == ['{"attempts":'] * 2
+    assert '"sample": 2' in sidecar.read_text().splitlines()[1]
 
 
 def test_the_mode_row_is_never_seeded() -> None:

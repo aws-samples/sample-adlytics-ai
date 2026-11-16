@@ -519,8 +519,8 @@ def test_fixed_member_profiles_pass_the_independent_checker_with_exact_action_co
     for fixture in branches.values():
         check_fixed_member_fixture(fixture)
     counts = {name: branch["expected"]["action_count"] for name, branch in branches.items()}
-    assert counts == {"maximum": 51, "candidates-98": 51, "no-eligible-98": 42, "one-beyond": 101}
-    assert branches["maximum"]["typed_input"]["b_candidates"] == 512
+    assert counts == {"maximum": 52, "candidates-98": 52, "no-eligible-98": 42, "one-beyond": 101}
+    assert branches["maximum"]["typed_input"]["b_candidates"] == 5417
     assert branches["candidates-98"]["typed_input"]["b_candidates"] == 98
 
 
@@ -547,7 +547,7 @@ def test_fixed_member_oracle_reproduces_every_frozen_total_within_every_limit(
 def test_fixed_member_98_profiles_reproduce_from_the_production_builder(
     fixture_tree: dict[str, dict[str, dict[str, Any]]],
 ) -> None:
-    # The 512 profile runs the same builder with longer rosters; its drift check is the
+    # The 5,417 profile runs the same builder with longer rosters; its drift check is the
     # committed generator's `--check` mode (`fixed_member_byte_fixture_support.py`).
     for branch in ("candidates-98", "no-eligible-98"):
         rebuilt = fixed_member_support.fixture_text(fixed_member_support.fixture(branch))
@@ -616,7 +616,7 @@ def test_fixed_member_aggregate_one_byte_beyond_4000000_refuses_with_no_split_fa
         TransactionEnvelopeRequest(tuple(_grown_to_aggregate(actions, 4_000_000)))
     )
     assert at_limit.aggregate_upper_bound == 4_000_000
-    assert at_limit.action_count == 51
+    assert at_limit.action_count == 52
     with pytest.raises(ValidationError) as refusal:
         ORACLE.validate_envelope(
             TransactionEnvelopeRequest(tuple(_grown_to_aggregate(actions, 4_000_001)))

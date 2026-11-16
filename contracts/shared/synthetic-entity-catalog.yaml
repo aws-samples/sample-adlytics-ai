@@ -186,13 +186,66 @@ campaigns:
   - {key: campaign:northstar-sponsored-29, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_sponsored_products, ad_product: sponsored_products, scenario: sustained_decline, source_aliases: {amc.sponsored.campaign_id_string: A0SYNTHETIC00000029}, names: [{value: Northstar Sponsored | Flight 29, valid_from: 2025-01-01}]}
   - {key: campaign:northstar-sponsored-30, advertiser: advertiser:northstar, marketplace: amazon_us, platform: amazon_ads, channel: amazon_sponsored_products, ad_product: sponsored_products, scenario: coverage_gap, source_aliases: {amc.sponsored.campaign_id_string: A0SYNTHETIC00000030}, names: [{value: Northstar Sponsored | Flight 30, valid_from: 2025-01-01}]}
 products:
-  - {asin: B0FIXTUR00, parent_asin: B0PARENT00, brand: brand:northstar-home, title: Northstar Home Product 0, roles: [advertised, converted], scenario: stable_growth}
-  - {asin: B0FIXTUR01, parent_asin: B0PARENT00, brand: brand:northstar-home, title: Northstar Home Product 1, roles: [advertised, converted], scenario: stable_growth}
-  - {asin: B0FIXTUR02, parent_asin: B0PARENT00, brand: brand:northstar-home, title: Northstar Home Product 2, roles: [advertised, converted], scenario: stable_growth}
-  - {asin: B0FIXTUR03, parent_asin: B0PARENT01, brand: brand:northstar-home, title: Northstar Home Product 3, roles: [converted, halo], scenario: returns_pressure}
-  - {asin: B0FIXTUR04, parent_asin: B0PARENT01, brand: brand:northstar-home, title: Northstar Home Product 4, roles: [advertised], scenario: stable_growth}
-  - {asin: B0FIXTUR05, parent_asin: B0PARENT01, brand: brand:northstar-home, title: Northstar Home Product 5, roles: [converted, halo], scenario: stable_growth}
-  - {asin: B0FIXTUR06, parent_asin: B0PARENT02, brand: brand:northstar-home, title: Northstar Home Product 6, roles: [converted], scenario: stable_growth}
+  - {asin: B0FIXTUR00, parent_asin: B0PARENT00, brand: brand:northstar-home, title: Northstar Home Product 0, roles: [advertised, converted], scenario: stable_growth, forecast_shape: regular}
+  - {asin: B0FIXTUR01, parent_asin: B0PARENT00, brand: brand:northstar-home, title: Northstar Home Product 1, roles: [advertised, converted], scenario: stable_growth, forecast_shape: regular}
+  - {asin: B0FIXTUR02, parent_asin: B0PARENT00, brand: brand:northstar-home, title: Northstar Home Product 2, roles: [advertised, converted], scenario: stable_growth, forecast_shape: regular}
+  - {asin: B0FIXTUR03, parent_asin: B0PARENT01, brand: brand:northstar-home, title: Northstar Home Product 3, roles: [converted, halo], scenario: returns_pressure, forecast_shape: regular}
+  - {asin: B0FIXTUR04, parent_asin: B0PARENT01, brand: brand:northstar-home, title: Northstar Home Product 4, roles: [advertised], scenario: stable_growth, forecast_shape: regular}
+  - {asin: B0FIXTUR05, parent_asin: B0PARENT01, brand: brand:northstar-home, title: Northstar Home Product 5, roles: [converted, halo], scenario: stable_growth, forecast_shape: regular}
+  - {asin: B0FIXTUR06, parent_asin: B0PARENT02, brand: brand:northstar-home, title: Northstar Home Product 6, roles: [converted], scenario: stable_growth, forecast_shape: regular}
+  - {asin: B0FIXTUR07, parent_asin: B0PARENT03, brand: brand:northstar-home, title: Northstar Home Product 7, roles: [], scenario: stable_growth, forecast_shape: regular}
+  - {asin: B0FIXTUR08, parent_asin: B0PARENT03, brand: brand:northstar-home, title: Northstar Home Product 8, roles: [], scenario: stable_growth, forecast_shape: regular}
+  - {asin: B0FIXTUR09, parent_asin: B0PARENT03, brand: brand:northstar-home, title: Northstar Home Product 9, roles: [], scenario: stable_growth, forecast_shape: regular}
+  - {asin: B0FIXTUR10, parent_asin: B0PARENT03, brand: brand:northstar-home, title: Northstar Home Product 10, roles: [], scenario: stable_growth, forecast_shape: regular}
+  - {asin: B0FIXTUR11, parent_asin: B0PARENT03, brand: brand:northstar-home, title: Northstar Home Product 11, roles: [], scenario: stable_growth, forecast_shape: regular}
+  - {asin: B0FIXTUR12, parent_asin: B0PARENT04, brand: brand:northstar-home, title: Northstar Home Product 12, roles: [], scenario: stable_growth, forecast_shape: regular}
+  - {asin: B0FIXTUR13, parent_asin: B0PARENT04, brand: brand:northstar-home, title: Northstar Home Product 13, roles: [], scenario: stable_growth, forecast_shape: regular}
+  - {asin: B0FIXTUR14, parent_asin: B0PARENT04, brand: brand:northstar-home, title: Northstar Home Product 14, roles: [], scenario: stable_growth, forecast_shape: regular}
+  - {asin: B0FIXTUR15, parent_asin: B0PARENT04, brand: brand:northstar-home, title: Northstar Home Product 15, roles: [], scenario: stable_growth, forecast_shape: regular}
+  - {asin: B0FIXTUR16, parent_asin: B0PARENT04, brand: brand:northstar-home, title: Northstar Home Product 16, roles: [], scenario: stable_growth, forecast_shape: regular}
+  - {asin: B0FIXTUR17, parent_asin: B0PARENT05, brand: brand:northstar-home, title: Northstar Home Product 17, roles: [], scenario: stable_growth, forecast_shape: regular}
+  - {asin: B0FIXTUR18, parent_asin: B0PARENT05, brand: brand:northstar-home, title: Northstar Home Product 18, roles: [], scenario: stable_growth, forecast_shape: regular}
+  - {asin: B0FIXTUR19, parent_asin: B0PARENT05, brand: brand:northstar-home, title: Northstar Home Product 19, roles: [], scenario: stable_growth, forecast_shape: regular}
+  - {asin: B0FIXTUR20, parent_asin: B0PARENT05, brand: brand:northstar-home, title: Northstar Home Product 20, roles: [], scenario: stable_growth, forecast_shape: regular}
+  - {asin: B0FIXTUR21, parent_asin: B0PARENT05, brand: brand:northstar-home, title: Northstar Home Product 21, roles: [], scenario: stable_growth, forecast_shape: regular}
+  - {asin: B0FIXTUR22, parent_asin: B0PARENT06, brand: brand:northstar-home, title: Northstar Home Product 22, roles: [], scenario: stable_growth, forecast_shape: regular}
+  - {asin: B0FIXTUR23, parent_asin: B0PARENT06, brand: brand:northstar-home, title: Northstar Home Product 23, roles: [], scenario: stable_growth, forecast_shape: regular}
+  - {asin: B0FIXTUR24, parent_asin: B0PARENT06, brand: brand:northstar-home, title: Northstar Home Product 24, roles: [], scenario: stable_growth, forecast_shape: regular}
+  - {asin: B0FIXTUR25, parent_asin: B0PARENT06, brand: brand:northstar-home, title: Northstar Home Product 25, roles: [], scenario: stable_growth, forecast_shape: regular}
+  - {asin: B0FIXTUR26, parent_asin: B0PARENT06, brand: brand:northstar-home, title: Northstar Home Product 26, roles: [], scenario: stable_growth, forecast_shape: regular}
+  - {asin: B0FIXTUR27, parent_asin: B0PARENT07, brand: brand:northstar-home, title: Northstar Home Product 27, roles: [], scenario: returns_pressure, forecast_shape: trend_seasonal}
+  - {asin: B0FIXTUR28, parent_asin: B0PARENT07, brand: brand:northstar-home, title: Northstar Home Product 28, roles: [], scenario: returns_pressure, forecast_shape: trend_seasonal}
+  - {asin: B0FIXTUR29, parent_asin: B0PARENT07, brand: brand:northstar-home, title: Northstar Home Product 29, roles: [], scenario: returns_pressure, forecast_shape: trend_seasonal}
+  - {asin: B0FIXTUR30, parent_asin: B0PARENT07, brand: brand:northstar-home, title: Northstar Home Product 30, roles: [], scenario: returns_pressure, forecast_shape: trend_seasonal}
+  - {asin: B0FIXTUR31, parent_asin: B0PARENT07, brand: brand:northstar-home, title: Northstar Home Product 31, roles: [], scenario: stable_growth, forecast_shape: trend_seasonal}
+  - {asin: B0FIXTUR32, parent_asin: B0PARENT08, brand: brand:northstar-home, title: Northstar Home Product 32, roles: [], scenario: stable_growth, forecast_shape: trend_seasonal}
+  - {asin: B0FIXTUR33, parent_asin: B0PARENT08, brand: brand:northstar-home, title: Northstar Home Product 33, roles: [], scenario: stable_growth, forecast_shape: trend_seasonal}
+  - {asin: B0FIXTUR34, parent_asin: B0PARENT08, brand: brand:northstar-home, title: Northstar Home Product 34, roles: [], scenario: stable_growth, forecast_shape: trend_seasonal}
+  - {asin: B0FIXTUR35, parent_asin: B0PARENT08, brand: brand:northstar-home, title: Northstar Home Product 35, roles: [], scenario: stable_growth, forecast_shape: trend_seasonal}
+  - {asin: B0FIXTUR36, parent_asin: B0PARENT08, brand: brand:northstar-home, title: Northstar Home Product 36, roles: [], scenario: stable_growth, forecast_shape: trend_seasonal}
+  - {asin: B0FIXTUR37, parent_asin: B0PARENT09, brand: brand:northstar-home, title: Northstar Home Product 37, roles: [], scenario: stable_growth, forecast_shape: trend_seasonal}
+  - {asin: B0FIXTUR38, parent_asin: B0PARENT09, brand: brand:northstar-home, title: Northstar Home Product 38, roles: [], scenario: stable_growth, forecast_shape: trend_seasonal}
+  - {asin: B0FIXTUR39, parent_asin: B0PARENT09, brand: brand:northstar-home, title: Northstar Home Product 39, roles: [], scenario: stable_growth, forecast_shape: low_volume}
+  - {asin: B0FIXTUR40, parent_asin: B0PARENT09, brand: brand:northstar-home, title: Northstar Home Product 40, roles: [], scenario: stable_growth, forecast_shape: low_volume}
+  - {asin: B0FIXTUR41, parent_asin: B0PARENT09, brand: brand:northstar-home, title: Northstar Home Product 41, roles: [], scenario: stable_growth, forecast_shape: low_volume}
+  - {asin: B0FIXTUR42, parent_asin: B0PARENT10, brand: brand:northstar-home, title: Northstar Home Product 42, roles: [], scenario: stable_growth, forecast_shape: low_volume}
+  - {asin: B0FIXTUR43, parent_asin: B0PARENT10, brand: brand:northstar-home, title: Northstar Home Product 43, roles: [], scenario: stable_growth, forecast_shape: low_volume}
+  - {asin: B0FIXTUR44, parent_asin: B0PARENT10, brand: brand:northstar-home, title: Northstar Home Product 44, roles: [], scenario: stable_growth, forecast_shape: low_volume}
+  - {asin: B0FIXTUR45, parent_asin: B0PARENT10, brand: brand:northstar-home, title: Northstar Home Product 45, roles: [], scenario: stable_growth, forecast_shape: intermittent}
+  - {asin: B0FIXTUR46, parent_asin: B0PARENT10, brand: brand:northstar-home, title: Northstar Home Product 46, roles: [], scenario: stable_growth, forecast_shape: intermittent}
+  - {asin: B0FIXTUR47, parent_asin: B0PARENT11, brand: brand:northstar-home, title: Northstar Home Product 47, roles: [], scenario: stable_growth, forecast_shape: intermittent}
+  - {asin: B0FIXTUR48, parent_asin: B0PARENT11, brand: brand:northstar-home, title: Northstar Home Product 48, roles: [], scenario: stable_growth, forecast_shape: intermittent}
+  - {asin: B0FIXTUR49, parent_asin: B0PARENT11, brand: brand:northstar-home, title: Northstar Home Product 49, roles: [], scenario: stable_growth, forecast_shape: intermittent}
+  - {asin: B0FIXTUR50, parent_asin: B0PARENT11, brand: brand:northstar-home, title: Northstar Home Product 50, roles: [], scenario: stable_growth, forecast_shape: intermittent}
+  - {asin: B0FIXTUR51, parent_asin: B0PARENT11, brand: brand:northstar-home, title: Northstar Home Product 51, roles: [], scenario: stable_growth, forecast_shape: stockout}
+  - {asin: B0FIXTUR52, parent_asin: B0PARENT12, brand: brand:northstar-home, title: Northstar Home Product 52, roles: [], scenario: stable_growth, forecast_shape: stockout}
+  - {asin: B0FIXTUR53, parent_asin: B0PARENT12, brand: brand:northstar-home, title: Northstar Home Product 53, roles: [], scenario: stable_growth, forecast_shape: stockout}
+  - {asin: B0FIXTUR54, parent_asin: B0PARENT12, brand: brand:northstar-home, title: Northstar Home Product 54, roles: [], scenario: stable_growth, forecast_shape: stockout}
+  - {asin: B0FIXTUR55, parent_asin: B0PARENT12, brand: brand:northstar-home, title: Northstar Home Product 55, roles: [], scenario: stable_growth, forecast_shape: launch}
+  - {asin: B0FIXTUR56, parent_asin: B0PARENT12, brand: brand:northstar-home, title: Northstar Home Product 56, roles: [], scenario: stable_growth, forecast_shape: launch}
+  - {asin: B0FIXTUR57, parent_asin: B0PARENT13, brand: brand:northstar-home, title: Northstar Home Product 57, roles: [], scenario: stable_growth, forecast_shape: launch}
+  - {asin: B0FIXTUR58, parent_asin: B0PARENT13, brand: brand:northstar-home, title: Northstar Home Product 58, roles: [], scenario: stable_growth, forecast_shape: delisted}
+  - {asin: B0FIXTUR59, parent_asin: B0PARENT13, brand: brand:northstar-home, title: Northstar Home Product 59, roles: [], scenario: stable_growth, forecast_shape: delisted}
 evidence:
   amc_campaign_identifier_forms: docs/sources/amc.md#4-identifiers
   amc_names_outputtable: docs/sources/amc.md#4-identifiers
@@ -205,9 +258,9 @@ evidence:
 # Campaign names are valid from 2025-01-01 so every named campaign has a name on first_day.
 shape:
   seed: adlytics-dev-shape-2026-10-04-r1   # r1: the -10-04 seed breached window_roas_band at +7 days (evidence/proj_r9_seed_search.out); never widen a band
-  fixture_span: {first_day: "2025-07-01", last_day: "2026-10-06"}   # about 15 months (owner: at least 13); last_day is a literal per landing commit
-  shape_anchor: "2026-10-06"           # long-run trend, story, slope, conversion shape, spike, launch; never moved after the first landing
-  event_anchor: "2026-10-06"           # the ten short events below; the only date that moves
+  fixture_span: {first_day: "2025-07-01", last_day: "2026-11-12"}   # about 16 months (owner: at least 13); last_day is a literal per landing commit
+  shape_anchor: "2026-11-12"           # long-run trend, story, slope, conversion shape, spike, launch; never moved after the first landing
+  event_anchor: "2026-11-12"           # the ten short events below; the only date that moves
   event_anchor_slack_days: 2           # shape_anchor <= event_anchor <= last_day <= event_anchor + 2
   story_days: 56
   launch: {campaign: campaign:northstar-dsp-29, first_delivery_offset: -10}
@@ -400,3 +453,16 @@ shape:
   # a landed key is immutable, so the corrected runs land 16 retrieval seconds higher on each run.
   deduplicated_retrieval_generation: 1
   seal_generation: 2                   # 1: tail seal lost to the missing ReportBatchItemFailures (O-SEMANTIC-WRITE-ACK-001); 2: 600 s guard stopped before a 960 s redelivery (both 2026-10-06); the dimension seal's offset generation; a re-land after a diagnosed failure uses + 1
+  # Demand forecast (approval K-4). Each product's `forecast_shape` reads these. Offsets are from
+  # shape_anchor, except the unlanded day, which is from fixture_span.first_day so it never moves.
+  # The generated Vendor fixtures start at vendor_history_start, before the AMC span, and have no
+  # report on the unlanded day; the landing admits those older days as historical (ADR-161).
+  forecast:
+    vendor_history_start: "2024-10-08"   # = fixture_span.first_day - 266 days: at least 104 weeks to last_day
+    vendor_day_unlanded: {first_day_offset: -14}   # no Vendor delivery that day: a set gap for every ASIN
+    low_volume: {units_scale: "0.05"}
+    intermittent: {units_scale: "0.20", presence: "0.35"}   # a row only on days whose draw is below presence
+    trend_seasonal: {annual_growth_pct: "30", month_gain: "1.0"}   # month factor deviation x gain
+    stockout: {first_offset: -49, last_offset: -29, shipped_share: "0.62"}   # shipped = share x demand; ordered keeps demand (0.62 keeps the Gate-1 band, test_gate1_admission_band.py)
+    launch: {first_offset: -280}         # first Vendor day, 40 weeks before shape_anchor
+    delisted: {last_offset: -141}        # last Vendor day: no rows in the last 20 weeks

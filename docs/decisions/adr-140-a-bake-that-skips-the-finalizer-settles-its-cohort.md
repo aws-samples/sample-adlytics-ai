@@ -32,10 +32,19 @@ On 2026-10-16 (UTC) a winner with zero publications took this path and no dev pa
    Baker version wrote them: a cohort wedged before the deploy, or elected during it, settles on the
    new Release's next pass.
 2. **Eligibility is the cohort's.** A `NO_ELIGIBLE` direct binding becomes every loser's alias. The
-   shared consumer's step 3 therefore asks whether any cohort member advanced curation. It reads each
-   other member's frozen `publish` effect on that member's own grant, and only when the winner's own
-   effect is not eligible. An unverifiable member is `GRAPH_POST_GRANT/8`, a consumer invariant
-   (U2). Bake and precompute share the step, so they agree.
+   shared consumer's step 3 therefore asks whether any cohort member advanced curation, only when
+   the winner's own effect is not eligible. Bake and precompute share the step, so they agree.
+   Amended 2026-11-14 ([ADR-162](adr-162-bound-each-graph-worker-pass-by-its-invocations-remaining-time.md)
+   §10): the step no longer reads each member's `publish` effect. The election verifies every
+   member's effect (re-hash) and stamps on the winner's bake node the sum of the verified ones,
+   how many did not verify and the first such member in grant order. It never refuses the
+   election for one: that stalled every later election in the domain (review round 2,
+   AGG-R2-3). The step decides from the verified sum. When neither the winner's effect nor the
+   sum is eligible and a member did not verify, it raises `GRAPH_POST_GRANT/8` (U2) naming that
+   member, for this cohort alone: the bake fails `post_grant_invariant`, the cohort settles
+   withheld, `GraphPostGrantInvariant` pages, and the next election runs. Operator action: read
+   the named member's `NODE#publish` effect record and digest. A winner elected before §10 has
+   no recorded sum, so the step reads its members' effects as it did before (at most 512).
 3. **A stale precompute settles withheld.** A precompute member whose digest or roster does not
    match the readiness no longer raises in the finalizer. The finalizer logs WARNING
    `finalize stale_precompute`, records `withheld_bake_contribution` (every roster key

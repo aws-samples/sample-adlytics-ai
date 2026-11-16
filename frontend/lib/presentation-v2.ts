@@ -1137,7 +1137,7 @@ export function retailHealthPresentationV2(result: PresentationResultV2): Retail
   if (
     page.page_id !== 'retail-health' || page.route !== '/retail-health/' || page.actions.length !== 0 ||
     page.parent_revision !== undefined || page.kind !== 'retail_health' || page.artifact_id !== 'retail_health' ||
-    page.artifact_type !== 'RetailHealthArtifact' || page.artifact_version !== 2 || 'product_ads' in page
+    page.artifact_type !== 'RetailHealthArtifact' || page.artifact_version !== 3 || 'product_ads' in page
   ) return fail();
   let artifact: RetailHealthArtifact;
   try { artifact = parseRetailHealthArtifact(page.artifact); } catch { return fail(); }

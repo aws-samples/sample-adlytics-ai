@@ -531,6 +531,49 @@ tiers:
       - tests/unit/test_probe_evaluation_custody.py
       - tests/unit/test_quality_review_client.py
       - tests/unit/test_record_family_stores.py
+    - unit: src/domain/forecasting/artifact_roster.py
+      tests:
+      - tests/unit/test_forecasting_artifact_roster.py
+    - unit: src/domain/forecasting/batching.py
+      tests:
+      - tests/unit/test_forecasting_batching.py
+    - unit: src/domain/forecasting/boundary.py
+      tests:
+      - tests/unit/test_forecasting_boundary.py
+    - unit: src/domain/forecasting/checks.py
+      tests:
+      - tests/unit/test_forecasting_checks.py
+    - unit: src/domain/forecasting/fingerprint.py
+      tests:
+      - tests/unit/test_forecasting_fingerprint.py
+    - unit: src/domain/forecasting/identity.py
+      tests:
+      - tests/unit/test_forecasting_identity.py
+    - unit: src/domain/forecasting/models.py
+      tests:
+      - tests/unit/test_forecasting_run.py
+    - unit: src/domain/forecasting/numeric.py
+      tests:
+      - tests/unit/test_forecasting_numeric.py
+    - unit: src/domain/forecasting/policy.py
+      tests:
+      - tests/unit/test_forecasting_boundary.py
+      - tests/unit/test_forecasting_run.py
+    - unit: src/domain/forecasting/run.py
+      tests:
+      - tests/unit/test_forecasting_run.py
+    - unit: src/domain/forecasting/scoring.py
+      tests:
+      - tests/unit/test_forecasting_scoring.py
+    - unit: src/domain/forecasting/selection.py
+      tests:
+      - tests/unit/test_forecasting_selection.py
+    - unit: src/domain/forecasting/shards.py
+      tests:
+      - tests/unit/test_forecasting_shards.py
+    - unit: src/domain/forecasting/weekly_series.py
+      tests:
+      - tests/unit/test_forecasting_weekly_series.py
     - unit: src/domain/identity/authorization.py
       tests:
       - tests/unit/test_auth_handler_tracing.py

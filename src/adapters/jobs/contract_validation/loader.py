@@ -494,6 +494,8 @@ def load_contracts(root: Path) -> list[tuple[Path, DataContract]]:
             or path.is_relative_to(contracts_root / "operations")
             # The governed alert rules (ADR-108) have their own loader and validator.
             or path.is_relative_to(contracts_root / "alerts")
+            # The demand-forecast policy has its own validator (forecast_policy.py).
+            or path.is_relative_to(contracts_root / "forecasting")
         ):
             continue
         raw = _load_yaml_mapping(path)

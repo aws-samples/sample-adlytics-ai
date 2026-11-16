@@ -91,8 +91,8 @@ HEADER = (
     "currency_iso_code,time_window_start,time_window_end,distinct_user_count,"
     "suppression_reason,rows_suppressed"
 )
-WINDOW = "2025-07-01T00:00:00.000Z,2026-10-07T00:00:00.000Z"
-KEPT = f"2025-07-01,910000000000000001,US,2971,21607830,USD,{WINDOW},2,,false"
+WINDOW = "2025-07-01T00:00:00.000Z,2026-11-13T00:00:00.000Z"
+KEPT = f"2025-07-01,910000000000000001,US,2998,21727210,USD,{WINDOW},2,,false"
 WITHHELD = f",,,457,139400,,{WINDOW},1,1 dsp_impressions users < 2 required,true"
 """A suppressed row as AMC delivered one live: source keys NULL, measures kept, count = reason."""
 
@@ -289,12 +289,12 @@ def test_a_column_the_registry_does_not_list_is_refused() -> None:
 
 
 def test_a_value_outside_the_registry_type_is_refused() -> None:
-    row = KEPT.replace(",2971,", ",2971.5,")
+    row = KEPT.replace(",2998,", ",2998.5,")
     assert _check(_csv(HEADER, row)).findings == (
         Finding(
             "FIXTURE_TYPE_MISMATCH",
             FIXTURE,
-            "impressions is LONG; 1 row(s), first at data row 1: '2971.5'.",
+            "impressions is LONG; 1 row(s), first at data row 1: '2998.5'.",
         ),
     )
 
@@ -683,7 +683,7 @@ def test_each_periodic_delivery_is_checked_on_its_own_window() -> None:
     assert check_generated(_periodic(text), _sources(), _base().declaration).findings == ()
     # Positive control: the same two windows on a daily pack's fixture are inconsistent.
     daily = _check(
-        _csv(HEADER, KEPT, KEPT.replace("2026-10-07T00:00:00.000Z", "2026-10-08T00:00:00.000Z"))
+        _csv(HEADER, KEPT, KEPT.replace("2026-11-13T00:00:00.000Z", "2026-11-14T00:00:00.000Z"))
     )
     assert (
         Finding(
@@ -917,13 +917,13 @@ def test_a_reach_window_wider_than_its_day_is_refused() -> None:
 
 
 def test_only_the_declared_day_s_delivery_is_refused() -> None:
-    """The committed fixture refuses 2026-10-03 alone; the generator's declaration says so."""
+    """The committed fixture refuses 2026-11-09 alone; the generator's declaration says so."""
     committed = _committed()
-    assert committed.refused_days == {REACH: frozenset({date(2026, 10, 3)})}
+    assert committed.refused_days == {REACH: frozenset({date(2026, 11, 9)})}
     text = committed.generated[f"{REACH}.csv"]
     lines = text.splitlines()
     assert [line for line in lines if line.endswith(",true")] == [
-        ",,,1,2026-10-03T00:00:00.000Z,2026-10-04T00:00:00.000Z,1,"
+        ",,,1,2026-11-09T00:00:00.000Z,2026-11-10T00:00:00.000Z,1,"
         "1 dsp_impressions users < 2 required,true"
     ]
     assert run_conformance(committed).findings == ()
@@ -935,13 +935,13 @@ def test_only_the_declared_day_s_delivery_is_refused() -> None:
         Finding(
             "FIXTURE_REFUSAL_MISSING",
             f"{REACH}.csv",
-            "the delivery for 2026-10-03 is declared refused, and no suppressed row refuses it.",
+            "the delivery for 2026-11-09 is declared refused, and no suppressed row refuses it.",
         ),
     )
     # Drifted: a suppressed row on an undeclared day refuses that delivery too.
     moved = text.replace(
-        "2026-10-03T00:00:00.000Z,2026-10-04T00:00:00.000Z,1,",
-        "2026-10-04T00:00:00.000Z,2026-10-05T00:00:00.000Z,1,",
+        "2026-11-09T00:00:00.000Z,2026-11-10T00:00:00.000Z,1,",
+        "2026-11-10T00:00:00.000Z,2026-11-11T00:00:00.000Z,1,",
     )
     findings = run_conformance(
         dataclasses.replace(committed, generated={**committed.generated, f"{REACH}.csv": moved})
@@ -955,7 +955,7 @@ def test_only_the_declared_day_s_delivery_is_refused() -> None:
         Finding(
             "FIXTURE_REFUSAL_MISSING",
             f"{REACH}.csv",
-            "the delivery for 2026-10-03 is declared refused, and no suppressed row refuses it.",
+            "the delivery for 2026-11-09 is declared refused, and no suppressed row refuses it.",
         ),
     )
 
@@ -1086,11 +1086,11 @@ def test_the_audience_fixtures_carry_their_declared_shapes() -> None:
     }
     # The late segment's first month comes back withheld; its name arrives the month after.
     late = [row for row in names if row["behavior_segment_id"] == "41004"]
-    assert late[0]["time_window_start"] == "2025-10-01T00:00:00.000Z"
+    assert late[0]["time_window_start"] == "2025-11-01T00:00:00.000Z"
     withheld = [row for row in names if row["rows_suppressed"] == "true"]
-    assert [row["time_window_start"] for row in withheld] == ["2025-09-01T00:00:00.000Z"]
-    # One roster segment missing this month: September's row for Northstar Home's 41004 is
-    # withheld per path, though August returned it.
+    assert [row["time_window_start"] for row in withheld] == ["2025-10-01T00:00:00.000Z"]
+    # One roster segment missing this month: October's row for Northstar Home's 41004 is
+    # withheld per path, though September returned it.
     campaign = "910000000000000001"
 
     def returned(month: str) -> set[str]:
@@ -1100,12 +1100,12 @@ def test_the_audience_fixtures_carry_their_declared_shapes() -> None:
             if row["time_window_start"] == month and row["campaign_id_string"] == campaign
         }
 
-    assert "41004" in returned("2026-08-01T00:00:00.000Z")
-    assert "41004" not in returned("2026-09-01T00:00:00.000Z")
+    assert "41004" in returned("2026-09-01T00:00:00.000Z")
+    assert "41004" not in returned("2026-10-01T00:00:00.000Z")
     gap = [
         row
         for row in performance
-        if row["rows_suppressed"] == "true" and row["time_window_start"].startswith("2026-09")
+        if row["rows_suppressed"] == "true" and row["time_window_start"].startswith("2026-10")
     ]
     assert [row["suppression_reason"] for row in gap] == [
         "1 'amazon_attributed_events_by_conversion_time' (path 2 of 2) users < 2 required"

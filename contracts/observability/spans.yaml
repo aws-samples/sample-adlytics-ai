@@ -1148,3 +1148,17 @@ spans:
     allowed_attributes: [aws_request_id, domain, cohort_revision, outcome, error_type, error_class, error_code, alarms]
     propagation: lexical
     purpose: Trace one isolated attempted cohort and its closed election or drain outcome.
+  - constant: DEMAND_FORECAST_SELECT
+    name: demand_forecast.input.select
+    parent: root
+    required_attributes: [operation]
+    allowed_attributes: [operation, outcome, weeks_ready, unknown_days, error_type, error_class, error_code, alarms]
+    propagation: remote_boundary
+    purpose: Trace one demand-forecast readiness and selection check by outcome, without pins, values or ASINs.
+  - constant: DEMAND_FORECAST_BUILD
+    name: demand_forecast.input.build
+    parent: root
+    required_attributes: [operation]
+    allowed_attributes: [operation, outcome, series_count, duration_ms, error_type, error_class, error_code, alarms]
+    propagation: remote_boundary
+    purpose: Trace one demand-forecast input build (roster, two UNLOADs, manifest) by size and duration, without values or ASINs.

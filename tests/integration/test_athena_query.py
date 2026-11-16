@@ -23,6 +23,7 @@ the budget.
 
 from __future__ import annotations
 
+import json
 import pathlib
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime
@@ -310,7 +311,22 @@ class TestAthenaAcceptsWhatWeCompose:
 
         result = adapter.run(QueryRequest(plan=_bind(selector, views), max_rows=10))
         assert result.rows
-        assert {row[AGGREGATE_COLUMN] for row in result.rows} == {Decimal("170")}
+        # Pinned to the generated delivery dev lands (D2 re-seed): each product's glance views
+        # on the day, as a count with no currency. A wrong aggregation or grain moves a value.
+        generated = json.loads(
+            (ROOT / "tests/fixtures/generated/vendor-traffic-by-asin.json").read_text("utf-8")
+        )
+        day = WEEK.start.isoformat()
+        # Curation keys a product by its namespaced, lower-cased identity (`amazon_asin:b0…`),
+        # not by the raw report ASIN, so the expected map is keyed the way the rows are.
+        expected = {
+            f"amazon_asin:{item['asin'].lower()}": Decimal(item["glanceViews"])
+            for item in generated["trafficByAsin"]
+            if item["startDate"] == day == item["endDate"]
+        }
+        served = {str(row["amazon_asin"]): row[AGGREGATE_COLUMN] for row in result.rows}
+        assert set(served) <= set(expected)
+        assert served == {key: expected[key] for key in served}
 
 
 class TestTheWindowPredicateIsPushedDown:

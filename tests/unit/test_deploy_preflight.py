@@ -182,9 +182,9 @@ def test_every_value_at_its_minimum_passes_and_is_printed(world: World) -> None:
         f"preflight: ok Lambda concurrent executions ({EDGE_REGION}): read 1000, minimum 102"
         in (lines)
     )
-    # The contract's batch_athena_budget 41 + chat_reserve_active_dml 20.
+    # The contract's batch_athena_budget 42 + chat_reserve_active_dml 20.
     assert (
-        f"preflight: ok Athena active DML queries L-FC5F6546 ({APP_REGION}): read 200, minimum 61"
+        f"preflight: ok Athena active DML queries L-FC5F6546 ({APP_REGION}): read 200, minimum 62"
         in lines
     )
     # The inference profile resolves to one foundation model; two IDs name it, checked once.
@@ -219,13 +219,13 @@ def test_a_lambda_limit_one_below_its_minimum_refuses_with_the_increase_command(
     assert "preflight: nothing was diffed or deployed" in result.stdout
 
 
-def test_an_athena_quota_below_61_refuses(world: World) -> None:
+def test_an_athena_quota_below_62_refuses(world: World) -> None:
     world.answer("service-quotas-get-service-quota-athena-" + APP_REGION, _quota(60.0))
     result = world.run()
     assert result.returncode == 1
     assert _refusals(result) == [
         f"preflight: REFUSED Athena active DML queries L-FC5F6546 ({APP_REGION}): read 60, "
-        "minimum 61"
+        "minimum 62"
     ]
 
 

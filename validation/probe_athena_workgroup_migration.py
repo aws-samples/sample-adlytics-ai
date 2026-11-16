@@ -79,6 +79,7 @@ BUDGETED_FUNCTIONS: Final = {
     "inline_ingestion": "IngestionFunction",
     "provider_attempt_reconciler": "ProviderAttemptReconciler",
     "insight_precompute": "InsightPrecompute",
+    "demand_forecast_input": "DemandForecastInput",
 }
 """Each Lambda budget row and its function, `adlytics-<env>-<name>`."""
 CAPPED_ROWS: Final = frozenset({"baker", "insight_precompute"})

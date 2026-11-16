@@ -34,6 +34,11 @@ displayed monetary figure comes from it.**
    through the ADR-070 render format instead (campaign 4 → 5, retail 3 → 4), because a page
    schema version bump would refuse every retained body until a rebake. `MetricFocus` moves
    v2 → v3: it is computed per request, so it versions cleanly with no dual decoding.
+   > **Amended 2026-11-15 (Retail health render format 13).** `RetailHealthArtifact` moves to 3:
+   > the retail trend and spark are daily series that state basis, grain, units and span once,
+   > and both decoders expand them into the same five-field points, still with no
+   > `display_value`. A retained format-12 body is served as unpublished until the re-bake, not
+   > refused as malformed ([Retail health LLD](../ui/retail-health/low-level-design.md)).
 5. **The browser formats and never rounds.** It checks that a currency `display_value` is a
    canonical two-place decimal and that every other value carries `null`, then groups digits and
    appends the ISO code. It never re-derives the rounding.

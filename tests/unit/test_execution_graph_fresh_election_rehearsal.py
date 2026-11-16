@@ -202,7 +202,7 @@ def test_the_seam_is_inert_in_every_runtime_path(monkeypatch: pytest.MonkeyPatch
 
     capture = capture_final_transaction(world)
 
-    assert capture is not None and len(capture.request["TransactItems"]) == 51
+    assert capture is not None and len(capture.request["TransactItems"]) == 52
     # No runtime entry point accepts a rehearsal, and the Lambda composition never names one.
     for entry in (arm_pass, coalesce_serving):
         assert "rehearsal" not in inspect.signature(entry).parameters

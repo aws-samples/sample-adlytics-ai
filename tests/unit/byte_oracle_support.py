@@ -197,7 +197,7 @@ def check_fixture(fixture: dict[str, Any]) -> None:
 
 _FIXED_MEMBER_SCHEMA: Final = "FixedMemberDrainActivationByteFixtureV1"
 _FRONTIER_SHARDS: Final = 32
-_ELECTED_ACTIONS: Final = 51
+_ELECTED_ACTIONS: Final = 52
 _NO_ELIGIBLE_ACTIONS: Final = 42
 
 
@@ -233,7 +233,7 @@ def check_fixed_member_fixture(fixture: dict[str, Any]) -> None:
     Beyond `check_fixture`'s totals: every target's frozen images carry its request member's
     key; the request starts with exactly the 32 live-frontier ConditionChecks and puts one
     `SERVING_TRANSITION#` record; an elected profile updates the domain head and puts a
-    successor `COALESCE#`; the action count is exactly 51 elected or 42 `NO_ELIGIBLE` plus any
+    successor `COALESCE#`; the action count is exactly 52 elected or 42 `NO_ELIGIBLE` plus any
     declared one-beyond growth; and the largest target upper bound is recomputed.
     """
     check_fixture(fixture)

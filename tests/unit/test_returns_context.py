@@ -56,7 +56,7 @@ from domain.presentation.retail_health import (
 )
 from domain.semantics.analytical_resolution import AuthorizedAnalyticalScope
 from domain.semantics.identity import CommerceScopeKey
-from domain.shared_kernel.values import DateRange
+from domain.shared_kernel.values import DateRange, Grain
 
 pytestmark = [pytest.mark.unit, pytest.mark.covers("ADR-076", "ADR-086")]
 ROOT = Path(__file__).resolve().parents[2]
@@ -134,7 +134,16 @@ def _product_rows() -> tuple[RetailProductRow, ...]:
                 comparison(metric, *(returns if metric == "customer_returns" else (100, 90)))
                 for metric in RETAIL_HEALTH_ROW_METRICS
             ),
-            (),
+            # One spark value per window day, as every bake densifies it (render format 13).
+            tuple(
+                RetailMetricValue(
+                    0,
+                    _units("retail_revenue_shipped"),
+                    DateRange(day, day),
+                    Grain(("date", "product", "marketplace")),
+                )
+                for day in (PERIOD.start + timedelta(days=offset) for offset in range(PERIOD.days))
+            ),
             ("Latest day is preliminary",) if index == 0 else (),
         )
         for index, returns in enumerate(_PRODUCT_RETURNS)

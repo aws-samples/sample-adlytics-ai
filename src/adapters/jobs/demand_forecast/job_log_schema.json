@@ -1,0 +1,83 @@
+{
+  "$comment": "Every JSON line the demand-forecast job writes (job_log.py). A line must match one entry exactly: the common fields plus that entry's fields and no others, each of its shape. No shape can hold a series value or an ASIN. Shapes: string, string_or_null, integer, boolean, integer_map, string_list (names only), error (an object of exactly code and cause). Each start line carries CapEff, CapPrm, CapBnd and NoNewPrivs from /proc/self/status verbatim, and privilege_error names the code when they could not be read (process_privileges.py).",
+  "schema_version": "1",
+  "common": {
+    "timestamp": "string",
+    "level": "string",
+    "service": "string",
+    "operation": "string",
+    "correlation_id": "string"
+  },
+  "lines": [
+    {
+      "operation": "self_check.start",
+      "level": "INFO",
+      "fields": {"uid": "integer", "model_id": "string", "cap_eff": "string_or_null", "cap_prm": "string_or_null", "cap_bnd": "string_or_null", "no_new_privs": "string_or_null", "privilege_error": "string_or_null"}
+    },
+    {
+      "operation": "self_check.artifact",
+      "level": "INFO",
+      "fields": {"artifact_digest": "string", "artifact_files": "integer"}
+    },
+    {
+      "operation": "self_check.model_loaded",
+      "level": "INFO",
+      "fields": {"duration_ms": "integer"}
+    },
+    {
+      "operation": "self_check.result",
+      "level": "INFO",
+      "fields": {
+        "is_passed": "boolean",
+        "series_count": "integer",
+        "passes_identical": "boolean",
+        "failure_codes": "string_list",
+        "watched_called": "string_list",
+        "durations_ms": "integer_map"
+      }
+    },
+    {
+      "operation": "forecast.start",
+      "level": "INFO",
+      "fields": {
+        "uid": "integer",
+        "model_id": "string",
+        "cap_eff": "string_or_null",
+        "cap_prm": "string_or_null",
+        "cap_bnd": "string_or_null",
+        "no_new_privs": "string_or_null",
+        "privilege_error": "string_or_null",
+        "shard": "integer",
+        "attempt_id": "string",
+        "input_attempt_id": "string"
+      }
+    },
+    {
+      "operation": "forecast.input",
+      "level": "INFO",
+      "fields": {"target_rows": "integer", "traffic_rows": "integer", "duration_ms": "integer"}
+    },
+    {
+      "operation": "forecast.artifact",
+      "level": "INFO",
+      "fields": {"artifact_digest": "string", "artifact_files": "integer"}
+    },
+    {
+      "operation": "forecast.result",
+      "level": "INFO",
+      "fields": {
+        "asin_count": "integer",
+        "counts_by_reason": "integer_map",
+        "model_calls": "integer",
+        "durations_ms": "integer_map",
+        "series_sha256": "string",
+        "peak_rss_bytes": "integer"
+      }
+    },
+    {
+      "operation": "job",
+      "level": "ERROR",
+      "fields": {"mode": "string", "duration_ms": "integer", "error": "error"}
+    }
+  ]
+}

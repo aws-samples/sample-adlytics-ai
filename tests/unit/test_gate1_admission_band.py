@@ -265,10 +265,14 @@ def test_every_aggregate_operand_row_admits_within_the_band(row: BandRow, days: 
 
 
 def test_the_band_check_catches_a_threshold_no_window_clears() -> None:
-    """Positive control: the previous percent rows (5 % at 7D) admitted no window end."""
+    """Positive control: a 10 % row at 7D admits no window end of the 2026-11-12 span.
+
+    It was 5 %, the value the earlier percent rows had, which cleared no end at the 2026-10-06
+    span; the 2026-11-12 span's 7D demand moves reach 8.6 %, so the control moved to 10 %.
+    """
     row = next(item for item in ROWS if item.slot is InsightSlotId.DEMAND_SHAPE)
     values = magnitudes(row, 7)
-    assert sum(value >= Decimal(5) for value in values) * 100 / len(values) < BAND[0]
+    assert sum(value >= Decimal(10) for value in values) * 100 / len(values) < BAND[0]
 
 
 def test_the_double_matches_the_served_portfolio_roas_at_the_run_date() -> None:

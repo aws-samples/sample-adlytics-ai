@@ -628,7 +628,10 @@ def _details(refusals: list[Any]) -> list[tuple[str, str]]:
 def test_pip_audit_ignores_exactly_the_reviewed_advisory_on_both_sides(
     gate: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    assert gate.PIP_AUDIT_REVIEWED == (("GHSA-xcq7-p3pf-p88h", "O-OTEL-TRACESTATE-001"),)
+    assert gate.PIP_AUDIT_REVIEWED == (
+        ("GHSA-xcq7-p3pf-p88h", "O-OTEL-TRACESTATE-001"),
+        ("GHSA-4j2p-28q2-5m79", "O-ACCELERATE-CHECKPOINT-001"),
+    )
     world = AuditWorld(tmp_path, "uv.lock")
 
     refusals, ctx = world.check(gate, monkeypatch)
@@ -643,7 +646,8 @@ def test_pip_audit_ignores_exactly_the_reviewed_advisory_on_both_sides(
     for audit in audits:
         assert "--strict" in audit
         assert [audit[i + 1] for i, arg in enumerate(audit) if arg == "--ignore-vuln"] == [
-            REVIEWED_VULN
+            REVIEWED_VULN,
+            "GHSA-4j2p-28q2-5m79",
         ]
 
 

@@ -69,6 +69,15 @@ global_settings:
     - path: tests/unit/golden/staged_value_text.json
       rule_id: SECRET-HEX-HIGH-ENTROPY-STRING
       reason: "A-ENTROPY-IDENTIFIER-001: base renderer git blob id, bound by test_ash_secret_suppression_scope"
+    # A-ENTROPY-IDENTIFIER-001: the demand-forecast boundary schema digests, which
+    # make generate-forecast-schemas writes, and the reviewed JumpStart artifact roster digest per
+    # Region (ADR-160). JSON cannot carry a marker.
+    - path: contracts/generated/demand-forecast-boundaries.json
+      rule_id: SECRET-HEX-HIGH-ENTROPY-STRING
+      reason: "A-ENTROPY-IDENTIFIER-001: generated boundary schema digests, bound by test_ash_secret_suppression_scope"
+    - path: contracts/forecasting/model-artifacts.json
+      rule_id: SECRET-HEX-HIGH-ENTROPY-STRING
+      reason: "A-ENTROPY-IDENTIFIER-001: reviewed artifact roster digests, bound by test_ash_secret_suppression_scope"
     # O-ASH-BANDIT-NOSEC-001: bandit tests outside the publication gate's reviewed nosec set
     # (scripts/check-publication-boundary.py REVIEWED_BANDIT_IDS), scoped to the one file each.
     - path: scripts/lambda_layer_packaging.py
@@ -91,6 +100,23 @@ global_settings:
     - path: frontend/package-lock.json
       rule_id: "@img/sharp-win32-*:Apache-2.0 AND LGPL-3.0-or-later"
       reason: "A-TRIVY-LGPL-001: licence classification of an unused optional sharp binary"
+    # O-ACCELERATE-CHECKPOINT-001: accelerate 1.10.1 (GHSA-4j2p-28q2-5m79, CVE-2026-69112) in the
+    # forecasting group; NOT AFFECTED, the job never calls the vulnerable checkpoint loaders. Grype
+    # names the advisory and package; trivy names the CVE. One ID each, nothing wider.
+    - path: uv.lock
+      rule_id: GHSA-4j2p-28q2-5m79-accelerate
+      reason: "O-ACCELERATE-CHECKPOINT-001: vulnerable loaders not in the forecast job's execute path"
+    - path: uv.lock
+      rule_id: CVE-2026-69112
+      reason: "O-ACCELERATE-CHECKPOINT-001: vulnerable loaders not in the forecast job's execute path"
+    # O-DF-JOB-ROOT-USER-001: the forecast job image's user is root only for the entrypoint, which
+    # drops to uid 10001 before any job code runs. One path, the two rule IDs, nothing wider.
+    - path: src/adapters/jobs/demand_forecast/Dockerfile
+      rule_id: DS-0002
+      reason: "O-DF-JOB-ROOT-USER-001: privileges drop to uid 10001 with no capabilities and no-new-privs in the entrypoint before any job code runs (ADR-160)"
+    - path: src/adapters/jobs/demand_forecast/Dockerfile
+      rule_id: CKV_DOCKER_3
+      reason: "O-DF-JOB-ROOT-USER-001: privileges drop to uid 10001 with no capabilities and no-new-privs in the entrypoint before any job code runs (ADR-160)"
     # O-ASH-LICENSE-INFO-001: informational permissive-licence notices from trivy, not findings.
     - path: "*package-lock.json"
       rule_id: "*:MIT"

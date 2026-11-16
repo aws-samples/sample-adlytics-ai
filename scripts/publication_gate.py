@@ -83,6 +83,8 @@ DENYLIST = "local-denylist.txt"
 PIP_AUDIT_REVIEWED = (
     # O-OTEL-TRACESTATE-001 (CVE-2026-114603): NOT AFFECTED, owner 2026-10-23.
     ("GHSA-xcq7-p3pf-p88h", "O-OTEL-TRACESTATE-001"),
+    # O-ACCELERATE-CHECKPOINT-001 (CVE-2026-69112, PYSEC-2026-3804): NOT AFFECTED, 2026-11-11.
+    ("GHSA-4j2p-28q2-5m79", "O-ACCELERATE-CHECKPOINT-001"),
 )
 # The public remote's main, which every push builds on (owner decision, 2026-10-20).
 DEFAULT_BASE = "public/main"

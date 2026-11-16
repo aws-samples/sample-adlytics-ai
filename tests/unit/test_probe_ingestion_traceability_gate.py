@@ -3484,7 +3484,7 @@ def _measurement(value: int) -> tuple[dict[str, object], bytes]:
 
 
 def test_d7_athena_admission_passes_only_at_explicit_8_or_a_proven_replacement() -> None:
-    assert sum(gate.ATHENA_STATIC_CALLER_ROWS.values()) == 41
+    assert sum(gate.ATHENA_STATIC_CALLER_ROWS.values()) == 42
     assert gate.athena_admission_config_verdict(_admission())["passed"] is True
     absent = gate.athena_admission_config_verdict(_admission(configured=None))
     assert absent["passed"] is False and "absent" in cast("list[str]", absent["reasons"])

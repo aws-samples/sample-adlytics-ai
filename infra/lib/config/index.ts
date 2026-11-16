@@ -14,6 +14,8 @@
  * committed literals were whichever values the last bring-up happened to leave.
  */
 
+import { readFileSync } from 'node:fs';
+import * as path from 'node:path';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import { SELECTED_ARMS } from '../generated/alarm-destinations';
 import { ATHENA_START_BUDGET, BAKE_TASKS } from '../generated/execution-graph-protocol';
@@ -1002,6 +1004,77 @@ export interface AppConfig {
    * evaluation review route receives it as `ADL_EVALUATION_RESULT_DEADLINE_SECONDS`.
    */
   readonly evaluationResultDeadlineSeconds: number;
+  /** The weekly Vendor demand forecast's one set, model artifact and job plan (design §3a, §4b). */
+  readonly demandForecast: DemandForecastConfig;
+}
+
+/**
+ * The demand forecast's typed configuration (approval I-2). Every value is required with no
+ * fallback: the run fingerprint and the IAM conditions read them, so a default would forecast
+ * against a set, an artifact or a job plan nobody chose. Absent, synth refuses naming each.
+ */
+export interface DemandForecastConfig {
+  /** The canonical marketplace of the one forecast set, for example `amazon_us`. */
+  readonly marketplaceKey: string;
+  /** The Region's reviewed JumpStart `pytorch-forecasting-chronos-2` prefix (`MODEL_ARTIFACTS_CONTRACT`). */
+  readonly modelArtifactUri: string;
+  /** That prefix's reviewed roster digest (`MODEL_ARTIFACTS_CONTRACT`). */
+  readonly modelArtifactDigest: string;
+  /** The Processing instance type; the state machine role may create jobs of this type only. */
+  readonly instanceType: string;
+  /** Each job's `MaxRuntimeInSeconds`; the role refuses a larger value. */
+  readonly maxRuntimeSeconds: number;
+  /** The `Forecast` map's `MaxConcurrency`; needs an applied Processing quota at least this large. */
+  readonly maxParallelJobs: number;
+}
+
+/**
+ * The committed, reviewed Chronos-2 artifact per Region (owner decision D7, ADR-160). A committed
+ * pin replaces the operator's digest step, and it stays a pin: the accelerate NOT AFFECTED
+ * disposition (O-ACCELERATE-CHECKPOINT-001) rests on the job loading only this digest.
+ */
+export const MODEL_ARTIFACTS_CONTRACT = path.join(
+  __dirname, '..', '..', '..', 'contracts', 'forecasting', 'model-artifacts.json',
+);
+
+/** One Region's reviewed artifact prefix and roster digest. */
+export interface ReviewedModelArtifact {
+  readonly uri: string;
+  readonly digest: string;
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * The reviewed artifact for `region`, or undefined when the contract holds no entry for it, which
+ * leaves both values UNSET so synth refuses naming them. A malformed contract throws: a pin that
+ * doesn't parse is not a pin.
+ */
+export function reviewedModelArtifact(
+  region: string,
+  file: string = MODEL_ARTIFACTS_CONTRACT,
+): ReviewedModelArtifact | undefined {
+  const parsed: unknown = JSON.parse(readFileSync(file, 'utf-8'));
+  if (!isPlainRecord(parsed) || parsed.schema_version !== 1 || !isPlainRecord(parsed.regions)) {
+    throw new Error(`${file} needs schema_version 1 and a regions object`);
+  }
+  if (!Object.prototype.hasOwnProperty.call(parsed.regions, region)) return undefined;
+  const entry = parsed.regions[region];
+  if (
+    !isPlainRecord(entry) ||
+    typeof entry.uri !== 'string' ||
+    !/^s3:\/\/[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]\/.+\/$/.test(entry.uri) ||
+    typeof entry.digest !== 'string' ||
+    !/^[0-9a-f]{64}$/.test(entry.digest)
+  ) {
+    throw new Error(
+      `${file}: the ${region} entry needs an s3:// prefix ending in / and a 64-character ` +
+        'lowercase hexadecimal digest',
+    );
+  }
+  return { uri: entry.uri, digest: entry.digest };
 }
 
 /**
@@ -1162,6 +1235,7 @@ function operationalStatusConfig(): OperationalStatusConfig {
 
 export function defaultConfig(envName: string): AppConfig {
   assertValidEnvName(envName);
+  const modelArtifact = reviewedModelArtifact(process.env.CDK_DEFAULT_REGION ?? UNSET);
 
   return {
     envName,
@@ -1393,6 +1467,19 @@ export function defaultConfig(envName: string): AppConfig {
     harnessRuntimeLogRetentionDays: logs.RetentionDays.THREE_MONTHS,
     // Thirty minutes. A deployment whose verdicts routinely arrive later raises it deliberately.
     evaluationResultDeadlineSeconds: 1800,
+    demandForecast: {
+      marketplaceKey: process.env.ADLYTICS_DEMAND_FORECAST_MARKETPLACE_KEY ?? UNSET,
+      // The deployment Region's committed pin (D7); no operator step and no environment override.
+      modelArtifactUri: modelArtifact?.uri ?? UNSET,
+      modelArtifactDigest: modelArtifact?.digest ?? UNSET,
+      instanceType: process.env.ADLYTICS_DEMAND_FORECAST_INSTANCE_TYPE ?? UNSET,
+      maxRuntimeSeconds: envRequiredWholeNumberInRange(
+        'ADLYTICS_DEMAND_FORECAST_MAX_RUNTIME_SECONDS',
+        60,
+        432_000,
+      ),
+      maxParallelJobs: envRequiredWholeNumberInRange('ADLYTICS_DEMAND_FORECAST_MAX_PARALLEL_JOBS', 1, 100),
+    },
   };
 }
 
@@ -1636,6 +1723,17 @@ export const PARAMS = {
   semanticV2PublicationsStreamArn: {
     area: 'data',
     name: 'v2/semantic-publications-stream-arn',
+    producedBy: 'DataV2Stack',
+  },
+  /** ENV=dev only: the streamless leases/publications pair the coordinator probes write. */
+  semanticV2ProbeLeasesTableName: {
+    area: 'data',
+    name: 'v2/semantic-leases-probe-table',
+    producedBy: 'DataV2Stack',
+  },
+  semanticV2ProbePublicationsTableName: {
+    area: 'data',
+    name: 'v2/semantic-publications-probe-table',
     producedBy: 'DataV2Stack',
   },
   semanticV2SourceDatabase: {
@@ -2700,6 +2798,8 @@ export const DEPLOY_ORDER = [
   'ControlPlaneAuthorityStoreStack',
   // Retained preset artifacts and pointers are independent of their disposable bake transport.
   'PublisherArtifactStoreStack',
+  // The retained demand-forecast processing bucket, before DemandForecastStack writes to it.
+  'DemandForecastDataStack',
   // The updated writer follows its retained target before any canonical reader. For an existing
   // deployment, retained evidence must be reprocessed and its publications validated manually
   // after this stack and before AgentStack or ApiStack; this stack-only list cannot enforce that
@@ -2759,6 +2859,7 @@ export const DEPLOY_ORDER = [
   // Moved after InsightContinuationStack 2026-09-22 for exactly that read; nothing between the
   // old and new positions consumes a PublisherStack-produced parameter.
   'PublisherStack',
+  'DemandForecastStack',
   'ApiStack',
   'InsightPrecomputeStack',
   // The evaluation gate. It binds its family's owned group and asserts the ingress filter above.
@@ -2828,6 +2929,21 @@ const UNSET_HINTS: Readonly<Record<string, string>> = {
   'auth.wafRateLimitPerFiveMinutes':
     'comes from ADLYTICS_USER_POOL_WAF_RATE_LIMIT_PER_FIVE_MINUTES; per-source-IP requests per ' +
     'five minutes the user pool web ACL admits (ADR-078), with no default',
+  'demandForecast.marketplaceKey':
+    'comes from ADLYTICS_DEMAND_FORECAST_MARKETPLACE_KEY; the one forecast set, e.g. amazon_us',
+  'demandForecast.modelArtifactUri':
+    'comes from contracts/forecasting/model-artifacts.json for the deployment Region, which has ' +
+    'no reviewed Chronos-2 entry there',
+  'demandForecast.modelArtifactDigest':
+    'comes from contracts/forecasting/model-artifacts.json for the deployment Region; review a new ' +
+    'entry with make demand-forecast-artifact-digest PROFILE=<profile> ENV=<env> REGION=<region> URI=<prefix>',
+  'demandForecast.instanceType':
+    'comes from ADLYTICS_DEMAND_FORECAST_INSTANCE_TYPE; the Processing instance type, e.g. ml.m5.xlarge',
+  'demandForecast.maxRuntimeSeconds':
+    'comes from ADLYTICS_DEMAND_FORECAST_MAX_RUNTIME_SECONDS; each job\'s runtime limit, with no default',
+  'demandForecast.maxParallelJobs':
+    'comes from ADLYTICS_DEMAND_FORECAST_MAX_PARALLEL_JOBS; jobs at a time, at most the applied ' +
+    'Processing quota, with no default',
   account: 'comes from CDK_DEFAULT_ACCOUNT, i.e. the profile passed to the CLI',
   region: 'comes from CDK_DEFAULT_REGION, i.e. the profile passed to the CLI',
 };

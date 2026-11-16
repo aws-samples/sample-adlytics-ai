@@ -88,6 +88,8 @@ export class DataV2Stack extends cdk.Stack {
   public readonly attemptsTable: dynamodb.Table;
   public readonly leasesTable: dynamodb.Table;
   public readonly publicationsTable: dynamodb.Table;
+  /** ENV=dev only: the streamless [leases, publications] probe pair; empty elsewhere. */
+  public readonly probeStateTables: dynamodb.Table[] = [];
 
   constructor(scope: Construct, id: string, props: DataV2StackProps) {
     super(scope, id, props);
@@ -198,11 +200,19 @@ export class DataV2Stack extends cdk.Stack {
     this.attemptsTable = this.stateTable(config, 'attempts');
     this.leasesTable = this.stateTable(config, 'leases');
     this.publicationsTable = this.stateTable(config, 'publications');
+    // ENV=dev only: a streamless copy of the leases/publications pair for the coordinator
+    // probes, so a probe's outbox items never reach the live stream consumers (serve-rca §6).
+    // No Lambda is granted it; the probe runs under the operator profile.
+    if (config.envName === 'dev') {
+      const probeLeases = this.stateTable(config, 'leases', { probe: true });
+      const probePublications = this.stateTable(config, 'publications', { probe: true });
+      this.probeStateTables = [probeLeases, probePublications];
+    }
     // DynamoDB accepts one GSI creation or deletion per table update, and this table is
     // RETAIN, so on an existing deployment each new index below must land in its own
     // deploy (append one entry, deploy, read the index back ACTIVE, repeat). A first
     // deployment creates every index at once. Verified against the service 2026-09-21.
-    for (const index of [
+    const publicationIndexes = [
       {
         indexName: 'scope-current',
         partitionKey: 'coverage_scope',
@@ -223,13 +233,17 @@ export class DataV2Stack extends cdk.Stack {
         partitionKey: 'outbox_status',
         sortKey: 'outbox_order',
       },
-    ] as const) {
-      this.publicationsTable.addGlobalSecondaryIndex({
-        indexName: index.indexName,
-        partitionKey: { name: index.partitionKey, type: dynamodb.AttributeType.STRING },
-        sortKey: { name: index.sortKey, type: dynamodb.AttributeType.STRING },
-        projectionType: dynamodb.ProjectionType.KEYS_ONLY,
-      });
+    ] as const;
+    const publicationTables = [this.publicationsTable, ...this.probeStateTables.slice(1)];
+    for (const table of publicationTables) {
+      for (const index of publicationIndexes) {
+        table.addGlobalSecondaryIndex({
+          indexName: index.indexName,
+          partitionKey: { name: index.partitionKey, type: dynamodb.AttributeType.STRING },
+          sortKey: { name: index.sortKey, type: dynamodb.AttributeType.STRING },
+          projectionType: dynamodb.ProjectionType.KEYS_ONLY,
+        });
+      }
     }
 
     applyStandardTags(this, config);
@@ -309,18 +323,23 @@ export class DataV2Stack extends cdk.Stack {
     });
   }
 
-  private stateTable(config: AppConfig, kind: SemanticStateTableKind): dynamodb.Table {
+  private stateTable(
+    config: AppConfig,
+    kind: SemanticStateTableKind,
+    options: { probe?: boolean } = {},
+  ): dynamodb.Table {
     const keys: Record<SemanticStateTableKind, { partition: string; sort?: string }> = {
       attempts: { partition: 'attempt_id', sort: 'event_key' },
       leases: { partition: 'partition_key' },
       publications: { partition: 'partition_key', sort: 'record_key' },
     };
     const key = keys[kind];
+    const probe = options.probe === true;
     return new dynamodb.Table(
       this,
-      `SemanticV2${kind.charAt(0).toUpperCase()}${kind.slice(1)}Table`,
+      `SemanticV2${kind.charAt(0).toUpperCase()}${kind.slice(1)}${probe ? 'Probe' : ''}Table`,
       {
-        tableName: semanticV2StateTableName(config.envName, kind),
+        tableName: `${semanticV2StateTableName(config.envName, kind)}${probe ? '-probe' : ''}`,
         partitionKey: { name: key.partition, type: dynamodb.AttributeType.STRING },
         ...(key.sort === undefined
           ? {}
@@ -328,7 +347,7 @@ export class DataV2Stack extends cdk.Stack {
         billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
         pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
         encryption: dynamodb.TableEncryption.AWS_MANAGED,
-        ...(kind === 'attempts' || kind === 'publications'
+        ...(!probe && (kind === 'attempts' || kind === 'publications')
           ? { stream: dynamodb.StreamViewType.NEW_IMAGE }
           : {}),
         removalPolicy: cdk.RemovalPolicy.RETAIN,
@@ -416,7 +435,19 @@ export class DataV2Stack extends cdk.Stack {
         semanticV2StagingDatabaseName(config.envName),
       ],
     ];
-    for (const [logicalId, key, value] of values) {
+    const [probeLeases, probePublications] = this.probeStateTables;
+    const probeValues: readonly [string, Parameters<typeof paramPath>[1], string][] =
+      probeLeases === undefined || probePublications === undefined
+        ? []
+        : [
+            ['ParamV2ProbeLeasesTable', 'semanticV2ProbeLeasesTableName', probeLeases.tableName],
+            [
+              'ParamV2ProbePublicationsTable',
+              'semanticV2ProbePublicationsTableName',
+              probePublications.tableName,
+            ],
+          ];
+    for (const [logicalId, key, value] of [...values, ...probeValues]) {
       new ssm.StringParameter(this, logicalId, {
         parameterName: paramPath(config.envName, key),
         stringValue: value,

@@ -28,6 +28,12 @@ function metricValue(metric: string, window: { end: string; start: string }, val
   const currency = CURRENCY_METRICS.has(metric);
   return { basis: 'retail_actual', grain: ['date', 'marketplace'], period: window, units: { currency_code: currency ? 'USD' : null, kind: currency ? 'currency' : RATIO_METRICS.has(metric) ? 'ratio' : 'count' }, value };
 }
+/** Render format 13: a daily series carries basis, grain, units and its span once, then one value per day. */
+function series(metric: string, start: string, values: readonly string[]): Record<string, unknown> {
+  const point = metricValue(metric, { end: start, start }, '0');
+  const end = new Date(Date.parse(`${start}T00:00:00Z`) + (values.length - 1) * 86_400_000).toISOString().slice(0, 10);
+  return { basis: point.basis, grain: point.grain, period: { end, start }, units: point.units, values: [...values] };
+}
 
 /** A displayed comparison value: whole fixture amounts carry the server's two-place display for currency (ADR-084). */
 function comparisonValue(metric: string, window: { end: string; start: string }, value: string): Record<string, unknown> {
@@ -62,16 +68,15 @@ function completePayload(revenue?: Record<string, unknown>): Record<string, unkn
       comparisons: ROW_METRICS.map((metric) => comparisonFixture(metric)),
       freshness_qualifiers: [],
       parent_asin: 'b0fictionp',
-      shipped_revenue_spark: [metricValue('retail_revenue_shipped', { end: '2026-08-15', start: '2026-08-15' }, '1')],
+      shipped_revenue_spark: series('retail_revenue_shipped', '2026-08-15', ['1']),
       title: 'Fictional product',
     }],
     total_count: 1,
     totals: FORMAT_8_TOTALS.map((metric) => metric === 'retail_revenue_shipped' && revenue !== undefined ? revenue : comparisonFixture(metric)),
-    trend: [{
-      current: TREND_METRICS.map((metric) => metricValue(metric, { end: '2026-08-15', start: '2026-08-15' }, '1')),
-      date: '2026-08-15',
-      prior: TREND_METRICS.map((metric) => metricValue(metric, { end: '2026-08-08', start: '2026-08-08' }, '1')),
-    }],
+    trend: {
+      current: TREND_METRICS.map((metric) => series(metric, '2026-08-15', ['1'])),
+      prior: TREND_METRICS.map((metric) => series(metric, '2026-08-08', ['1'])),
+    },
     truncation: null,
     evidence_status: completeRetailCoverage(FORMAT_8_TOTALS, period),
     ...FIXED,
@@ -418,7 +423,7 @@ test('an empty and an insufficient Retail health body each say what is missing a
   const { default: served } = await import('./fixtures/retail-health-v2.json');
   const body = (outcome: 'empty' | 'insufficient') => parseRetailHealthArtifact({
     ...(served as { page: { artifact: Record<string, unknown> } }).page.artifact,
-    evidence_status: null, absences: [], outcome, reconciliation: null, rows: [], total_count: 0, totals: [], trend: [], truncation: null,
+    evidence_status: null, absences: [], outcome, reconciliation: null, rows: [], total_count: 0, totals: [], trend: { current: [], prior: [] }, truncation: null,
   });
   const empty = render(<RetailHealthView artifact={body('empty')} />);
   assert.ok(screen.getByText('No retail movement in this period'));

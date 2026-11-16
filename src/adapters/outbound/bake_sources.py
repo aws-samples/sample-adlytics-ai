@@ -502,6 +502,28 @@ class BakeSourceReads:
     def _replayed(self, kind: str, key: tuple[str, ...]) -> PinnedRead | None:
         return cast("_Replay", self._replay).by_call.get((kind, key))
 
+    def _unpinned_scope(self, key: tuple[str, ...]) -> dict[str, object]:
+        """Name an unpinned scope read: its scope, horizon, key, and the horizons pinned for it.
+
+        `pinned_horizons` tells a scope pinned at another horizon from one never read in the pin.
+        """
+
+        def horizon(item: tuple[str, ...]) -> str:
+            return item[1] if len(item) > 1 else "unbounded"
+
+        pinned = sorted(
+            horizon(stored)
+            for kind, stored in cast("_Replay", self._replay).by_call
+            if kind == _SCOPE and stored[0] == key[0]
+        )
+        return {
+            "read_kind": _SCOPE,
+            "scope": key[0],
+            "horizon": horizon(key),
+            "read_key": list(key),
+            "pinned_horizons": pinned,
+        }
+
     def _replayed_slots(self, key: tuple[str, ...]) -> tuple[PinnedPublication | None, ...]:
         slots = cast("_Replay", self._replay).slots
         if any(partition not in slots for partition in key):
@@ -581,7 +603,9 @@ class BakeSourceReads:
         if self.mode is BakeReadMode.REPLAY:
             read = self._replayed(_SCOPE, key)
             if read is None:
-                raise DurableBakeSourceManifestInvalidError(f"an unpinned {_SCOPE} read")
+                raise DurableBakeSourceManifestInvalidError(
+                    f"an unpinned {_SCOPE} read", context=self._unpinned_scope(key)
+                )
             return tuple(
                 self._publication(cast("PinnedPublication", pin)) for pin in read.pins or ()
             )

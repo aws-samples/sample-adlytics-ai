@@ -10,10 +10,11 @@ proves the resolution the code applies cannot change what is current:
   the backfill is strictly the newest retrieval;
 - ADR-047's publication rule (`semantic_sidecar.py`, `_split_stale_stages`) orders candidates by
   source revision (the delivery's watermark), skipping a strictly older one and republishing an
-  equal one. In some cells the newest retrieval carries an older watermark than a phase-A
-  delivery, so that phase-A publication stays current; the test proves its rows equal the
-  newest retrieval's rows in every such cell, and that every candidate tied at the top
-  watermark carries the same rows, so arrival order never changes the current rows.
+  equal one. Where the newest retrieval carries an older watermark than a phase-A delivery,
+  that phase-A publication stays current; the test proves its rows equal the newest
+  retrieval's rows in every such cell, and that every candidate tied at the top watermark
+  carries the same rows, so arrival order never changes the current rows. At the 2026-11-12
+  span (cut 2026-09-17) no cell disagrees.
 """
 
 from __future__ import annotations
@@ -41,7 +42,7 @@ def test_pb1a_phase_b_overlaps_daily_restatement_windows_and_every_overlap_is_li
     assert {family(item) for items in cells.values() for item in items} <= set(
         AMC_DAILY_DATE_COLUMNS
     )
-    assert len([item for item in phase_b() if restating(item)]) == 2038
+    assert len([item for item in phase_b() if restating(item)]) == 2750
 
 
 def test_pb1a_a_periodic_backfill_is_its_own_cadence_delivery_so_it_never_restates() -> None:
@@ -57,7 +58,7 @@ def test_pb1a_a_periodic_backfill_is_its_own_cadence_delivery_so_it_never_restat
         and item.run_day <= policy.cut
     }
     assert {family(item) for item in periodic} == landable_periodic
-    assert len(periodic) == 250  # 153 NTB periods and 97 from packs 5-7
+    assert len(periodic) == 274  # 166 NTB periods and 108 from packs 5-7
     cadence = {
         item.manifest.manifest_key
         for item in planned
@@ -95,6 +96,7 @@ def test_pb1a_rows_are_equal_on_every_overlap_so_the_resolution_rule_keeps_the_n
         assert rows(newest, day), "an overlapping cell carries rows"
         if newest not in tied:
             disagreements += 1
-    # The watermark rule picks a different publication than the newest retrieval in a bounded
-    # number of cells; each is row-equal above. Recorded in the S4 evidence.
-    assert 0 < disagreements < len(overlaps())
+    # At the 2026-10-06 span the watermark rule picked a different publication than the newest
+    # retrieval in some cells (S4 evidence). With the cut at 2026-09-17 every newest retrieval
+    # carries the top watermark, so the rule and the newest retrieval agree in every cell.
+    assert overlaps() and disagreements == 0

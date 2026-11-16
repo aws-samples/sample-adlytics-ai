@@ -10,6 +10,7 @@ proof or ordinal raises `GraphGuardError(RELEASE_GRANT_RESERVATION_PROOF_REQUIRE
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
@@ -38,6 +39,7 @@ from domain.operations.execution_graph_release import (
     ServingBinding,
     ServingOutcome,
 )
+from domain.operations.publish_effect import CohortPublishEffect
 from domain.operations.status import canonical_authority_digest
 from domain.presentation.preset_artifacts import PresetArtifactPointer
 from ports.outbound.execution_graph_dispatch import (
@@ -86,10 +88,12 @@ __all__ = [
     "ServingElectionOutcome",
     "ServingExecutionContext",
     "ServingGraphReleaseStore",
+    "ServingMarkerCoordinate",
     "ServingMutationResult",
     "ServingOutcomeReconciliationRequest",
     "ServingOutcomeReconciliationResult",
     "ServingPromoterTransition",
+    "ServingStagePage",
     "SupersededGrant",
     "UnarmedPrecomputeSettlement",
 ]
@@ -223,21 +227,62 @@ class ServingDomainHead:
 
 
 @dataclass(frozen=True, slots=True)
+class ServingMarkerCoordinate:
+    """A settled marker's place on the live frontier: immutable once `SETTLED_ELIGIBLE`.
+
+    Read once with the candidate, so the final transition's coordinate proof does not read every
+    successor's marker a second time (ADR-162, staged election).
+    """
+
+    run_id: str
+    frontier_shard: int
+    eligible_coordinate: int
+
+
+@dataclass(frozen=True, slots=True)
 class ServingCandidateRead:
     """One fully verified settled publication and its immutable serving authority."""
 
     candidate: ServingCandidate
     identity: ServingAuthorityIdentity
     target_digest: str
+    coordinate: ServingMarkerCoordinate
+
+
+@dataclass(frozen=True, slots=True)
+class ServingStagePage:
+    """One durable page of a staged serving election (ADR-162).
+
+    An election whose candidates do not all fit in one pass keeps the candidates it has read
+    and validated in pages under `stage_id`, which names the head version it was read under.
+    Every staged fact is immutable while that version holds, so a later pass reads only the
+    candidates no page holds yet. A page under any other stage id is dead and is deleted.
+    """
+
+    domain: str
+    stage_id: str
+    page: int
+    reads: tuple[ServingCandidateRead, ...]
 
 
 @dataclass(frozen=True, slots=True)
 class ServingExecutionContext:
-    """The active cohort identity every winner contribution must match."""
+    """The active cohort identity every winner contribution must match.
+
+    ADR-162 §10: the election also records what the cohort's binding and eligibility need, so
+    no reader of this context reads a cohort member: the sorted contributor roots (from the
+    winner's `SERVING_ROSTER` item) and the cohort's publish effect (on its bake node).
+
+    Both are None for a legacy winner, elected before §10 by code that recorded neither. Its
+    two readers (`direct_binding`, `_cohort_eligible`) then read the members as that code did,
+    bounded by `LEGACY_SERVING_ROSTER_MAX`, so an in-flight cohort still bakes and binds.
+    """
 
     head: ServingDomainHead
     run_ids: tuple[str, ...]
     plan_digest: str
+    contributor_roots: tuple[str, ...] | None
+    cohort_effect: CohortPublishEffect | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -294,6 +339,8 @@ class ServingElectionOutcome(StrEnum):
     WAITING_LOWER_ORDINAL = "waiting_lower_ordinal"
     FRONTIER_RACE = "frontier_race"
     NO_ELIGIBLE = "no_eligible"
+    STAGED = "staged"
+    """ADR-162: the pass's budget ended before every candidate was read; the reads are staged."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -383,12 +430,18 @@ class DrainFinalAliasAndActivateNextRequest:
     successor_input_revision: str | None
     successor_plan_digest: str | None
     aws_request_id: str
+    successor_coordinates: tuple[ServingMarkerCoordinate, ...]
+    """Each successor's marker coordinate, in `successor_candidates` order (ADR-162)."""
 
     def __post_init__(self) -> None:
         if self.final_alias.direct_binding_id != self.direct.binding_id:
             raise ValueError("the final alias must reference its exact direct binding.")
         if bool(self.successor_winner) != bool(self.successor_cohort_revision):
             raise ValueError("successor winner and cohort revision are both present or absent.")
+        if tuple(item.run_id for item in self.successor_coordinates) != tuple(
+            item.run_id for item in self.successor_candidates
+        ):
+            raise ValueError("every successor carries exactly its own marker coordinate.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -489,6 +542,18 @@ class ServingGraphReleaseStore(Protocol):
         self, domain: str, drained_cohort_revision: str
     ) -> ServingPromoterTransition | None:
         """Strongly read the drained cohort's immutable transition record."""
+        ...
+
+    def read_serving_stage(self, domain: str) -> tuple[ServingStagePage, ...]:
+        """Strongly read every staged-election page of the domain, live or dead (ADR-162)."""
+        ...
+
+    def write_serving_stage(self, page: ServingStagePage) -> tuple[ServingStagePage, ...]:
+        """Create the page's reads as pages from `page.page` on, each within one item's size."""
+        ...
+
+    def delete_serving_stage(self, pages: Sequence[ServingStagePage]) -> None:
+        """Delete the given staged-election pages."""
         ...
 
     def reconcile_serving_outcome(

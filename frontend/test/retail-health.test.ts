@@ -12,7 +12,7 @@ const FIXED_STATUSES = {
   return_reasons: { reason: 'Fictional return-reasons absence.' },
 } as const;
 function artifact(): Record<string, unknown> {
-  return { kind: 'retail_health', outcome: 'empty', period, prior_period: prior, distributor_view: 'MANUFACTURING', totals: [], absences: [], insights: [['demand-shape', 'perspective', 'not-generated'], ['returns-pressure', 'perspective', 'not-generated'], ['ordered-vs-shipped', 'perspective', 'not-generated'], ['retail-movers', 'observed', 'deterministic-v1']].map(([id, output_class, prompt_version]) => ({ id, output_class, prompt_version, artifact_revision: 'unpublished', state: 'unavailable', text: null, evidence_line: null })), trend: [], rows: [], total_count: 0, truncation: null, reconciliation: null, boundary: 'Retail actuals do not establish advertising attribution.', evidence_status: null, ...FIXED_STATUSES };
+  return { kind: 'retail_health', outcome: 'empty', period, prior_period: prior, distributor_view: 'MANUFACTURING', totals: [], absences: [], insights: [['demand-shape', 'perspective', 'not-generated'], ['returns-pressure', 'perspective', 'not-generated'], ['ordered-vs-shipped', 'perspective', 'not-generated'], ['retail-movers', 'observed', 'deterministic-v1']].map(([id, output_class, prompt_version]) => ({ id, output_class, prompt_version, artifact_revision: 'unpublished', state: 'unavailable', text: null, evidence_line: null })), trend: { current: [], prior: [] }, rows: [], total_count: 0, truncation: null, reconciliation: null, boundary: 'Retail actuals do not establish advertising attribution.', evidence_status: null, ...FIXED_STATUSES };
 }
 test('Retail Health decoder accepts a typed closed state and rejects altered fields', () => {
   assert.equal(parseRetailHealthArtifact(artifact()).outcome, 'empty');
@@ -58,6 +58,12 @@ function metricValue(metric: string, window: { start: string; end: string }, val
   const currency = CURRENCY_METRICS.has(metric);
   return { basis: 'retail_actual', grain: ['date', 'marketplace'], period: window, units: { kind: currency ? 'currency' : RATIO_METRICS.has(metric) ? 'ratio' : 'count', currency_code: currency ? 'USD' : null }, value };
 }
+/** Render format 13: a daily series carries basis, grain, units and its span once, then one value per day. */
+function series(metric: string, start: string, values: readonly string[]): Record<string, unknown> {
+  const point = metricValue(metric, { start, end: start }, '0');
+  const end = new Date(Date.parse(`${start}T00:00:00Z`) + (values.length - 1) * 86_400_000).toISOString().slice(0, 10);
+  return { basis: point.basis, grain: point.grain, period: { start, end }, units: point.units, values: [...values] };
+}
 /** A displayed comparison value: whole fixture amounts carry the server's two-place display for currency (ADR-084). */
 function comparisonValue(metric: string, window: { start: string; end: string }, value: string): Record<string, unknown> {
   return { ...metricValue(metric, window, value), display_value: CURRENCY_METRICS.has(metric) ? `${value}.00` : null };
@@ -71,15 +77,14 @@ function completeArtifact(): Record<string, unknown> {
     ...base,
     outcome: 'complete',
     totals: TOTAL_METRICS.map((metric) => comparisonFixture(metric)),
-    trend: [{
-      date: '2026-08-15',
-      current: TREND_METRICS.map((metric) => metricValue(metric, { start: '2026-08-15', end: '2026-08-15' }, '1')),
-      prior: TREND_METRICS.map((metric) => metricValue(metric, { start: '2026-08-08', end: '2026-08-08' }, '1')),
-    }],
+    trend: {
+      current: TREND_METRICS.map((metric) => series(metric, '2026-08-15', ['1'])),
+      prior: TREND_METRICS.map((metric) => series(metric, '2026-08-08', ['1'])),
+    },
     rows: [{
       child_asin: 'b0fictional', parent_asin: 'b0fictionp', title: 'Fictional product',
       comparisons: ROW_METRICS.map((metric) => comparisonFixture(metric)),
-      shipped_revenue_spark: [metricValue('retail_revenue_shipped', { start: '2026-08-15', end: '2026-08-15' }, '1')],
+      shipped_revenue_spark: series('retail_revenue_shipped', '2026-08-15', ['1']),
       freshness_qualifiers: [],
     }],
     total_count: 1,
@@ -121,11 +126,37 @@ test('Retail Health decoder accepts a complete artifact whose trend rows carry p
   assert.equal(decoded.trend[0]?.current[0]?.period.start, '2026-08-15');
 });
 test('Retail Health decoder rejects a trend row whose prior day is not aligned to the prior window', () => {
-  const hostile = structuredClone(completeArtifact()) as { trend: { prior: { period: { start: string; end: string } }[] }[] };
-  hostile.trend[0]!.prior = hostile.trend[0]!.prior.map((value) => ({ ...value, period: { start: '2026-08-09', end: '2026-08-09' } }));
+  const hostile = structuredClone(completeArtifact()) as { trend: { prior: { period: { start: string; end: string } }[] } };
+  hostile.trend.prior = hostile.trend.prior.map((value) => ({ ...value, period: { start: '2026-08-09', end: '2026-08-09' } }));
   assert.throws(() => parseRetailHealthArtifact(hostile as unknown as Record<string, unknown>));
 });
-type DisplayFixture = { totals: { metric: string; current: Record<string, unknown> }[]; trend: { current: Record<string, unknown>[] }[]; rows: { shipped_revenue_spark: Record<string, unknown>[] }[] };
+test('Retail Health decoder expands each daily series into one five-field point per day', () => {
+  const body = completeArtifact();
+  body.trend = {
+    current: TREND_METRICS.map((metric, index) => series(metric, '2026-08-15', ['1', '2', String(3 + index)])),
+    prior: TREND_METRICS.map((metric) => series(metric, '2026-08-08', ['4', '5', '6'])),
+  };
+  (body.rows as Record<string, unknown>[])[0]!.shipped_revenue_spark = series('retail_revenue_shipped', '2026-08-15', ['7.5', '0', '9']);
+  const decoded = parseRetailHealthArtifact(body);
+  assert.deepEqual(decoded.trend.map((point) => point.date), ['2026-08-15', '2026-08-16', '2026-08-17']);
+  assert.deepEqual(decoded.trend[2]?.current.map((value) => value.value), ['3', '4', '5', '6']);
+  assert.deepEqual(decoded.trend[1]?.prior[3], { basis: 'retail_actual', grain: ['date', 'marketplace'], period: { start: '2026-08-09', end: '2026-08-09' }, units: { kind: 'count', currency_code: null }, value: '5' });
+  assert.deepEqual(decoded.rows[0]?.shipped_revenue_spark, ['7.5', '0', '9'].map((value, index) => ({ basis: 'retail_actual', grain: ['date', 'marketplace'], period: { start: `2026-08-1${5 + index}`, end: `2026-08-1${5 + index}` }, units: { kind: 'currency', currency_code: 'USD' }, value })));
+});
+test('Retail Health decoder refuses a format-12 per-point body and a series that does not fill its span', () => {
+  const format12 = completeArtifact();
+  format12.trend = [{ date: '2026-08-15', current: TREND_METRICS.map((metric) => metricValue(metric, { start: '2026-08-15', end: '2026-08-15' }, '1')), prior: TREND_METRICS.map((metric) => metricValue(metric, { start: '2026-08-08', end: '2026-08-08' }, '1')) }];
+  const pointSpark = completeArtifact();
+  (pointSpark.rows as Record<string, unknown>[])[0]!.shipped_revenue_spark = [metricValue('retail_revenue_shipped', { start: '2026-08-15', end: '2026-08-15' }, '1')];
+  const short = completeArtifact();
+  (short.rows as Record<string, unknown>[])[0]!.shipped_revenue_spark = { ...series('retail_revenue_shipped', '2026-08-15', ['1', '2']), values: ['1'] };
+  const ragged = completeArtifact();
+  (ragged.trend as { current: Record<string, unknown>[] }).current[0] = series('retail_revenue_shipped', '2026-08-15', ['1', '2']);
+  for (const hostile of [format12, pointSpark, short, ragged]) assert.throws(() => parseRetailHealthArtifact(hostile), /Retail Health artifact is malformed/);
+  // Paired: the same body in the series form decodes.
+  assert.equal(parseRetailHealthArtifact(completeArtifact()).outcome, 'complete');
+});
+type DisplayFixture = { totals: { metric: string; current: Record<string, unknown> }[]; trend: { current: Record<string, unknown>[] }; rows: { shipped_revenue_spark: Record<string, unknown> }[] };
 test('Retail Health comparisons carry the served display value; points and spark entries do not', () => {
   const decoded = parseRetailHealthArtifact(completeArtifact());
   // Shipped revenue of 4 USD displays as 4.00; shipped units (a count of 4) carry null.
@@ -138,8 +169,8 @@ test('Retail Health decoder refuses a missing or count comparison display value 
     (value) => { delete value.totals[0]!.current.display_value; },
     (value) => { value.totals[0]!.current.display_value = '4.000'; },
     (value) => { value.totals[1]!.current.display_value = '4.00'; },
-    (value) => { value.trend[0]!.current[0]!.display_value = '1.00'; },
-    (value) => { value.rows[0]!.shipped_revenue_spark[0]!.display_value = '1.00'; },
+    (value) => { value.trend.current[0]!.display_value = '1.00'; },
+    (value) => { value.rows[0]!.shipped_revenue_spark.display_value = '1.00'; },
   ];
   for (const mutate of hostilePayloads) {
     const hostile = structuredClone(completeArtifact()) as unknown as DisplayFixture;

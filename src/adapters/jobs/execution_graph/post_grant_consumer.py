@@ -44,7 +44,7 @@ from adapters.inbound.ingestion_handlers.graph_claim import (
     claim_graph_envelope,
     release_claim_lease,
 )
-from adapters.inbound.ingestion_handlers.graph_publish import PUBLISH_EFFECT_NAMESPACE, PUBLISH_NODE
+from adapters.inbound.ingestion_handlers.graph_publish import PUBLISH_NODE
 from adapters.jobs.execution_graph.node_verifier import UnreachablePostGrantFacts
 from adapters.jobs.execution_graph.release import ReleaseStore, contribute
 from adapters.outbound.telemetry.graph_metrics import emit_post_grant_invariant
@@ -61,6 +61,7 @@ from domain.operations.execution_graph_dispatch import (
     TERMINAL_NODE_STATES,
     GraphGuardError,
     NodeState,
+    require_legacy_serving_roster,
 )
 from domain.operations.execution_graph_release import (
     BAKE_BUDGET_EXHAUSTED,
@@ -74,9 +75,9 @@ from domain.operations.execution_graph_release import (
     settlement_for,
 )
 from domain.operations.generated_execution_graphs import BOUNDS, ROUTES
+from domain.operations.publish_effect import PublishEffect, publish_effect
 from domain.operations.queue_clocks import queue_attributes
 from domain.operations.run_request import RunState
-from domain.operations.status import canonical_authority_digest
 from domain.shared_kernel.errors import DependencyError, ErrorCode, InvariantError
 from ports.outbound.execution_graph_dispatch import (
     ClaimRecord,
@@ -226,14 +227,6 @@ def post_grant_envelope(
         sent_timestamp=sent if isinstance(sent, str) else None,
         first_receive_timestamp=first if isinstance(first, str) else None,
     )
-
-
-@dataclass(frozen=True, slots=True)
-class PublishEffect:
-    """The `publish` node's frozen counts (§2.6), which decide eligibility."""
-
-    advanced_count: int
-    advanced_curation_count: int
 
 
 @dataclass(slots=True)
@@ -451,23 +444,7 @@ def _publish_effect(nodes: tuple[NodeRecord, ...], grant_id: str) -> PublishEffe
     publish = next((node for node in nodes if node.name == PUBLISH_NODE), None)
     if publish is None or publish.state is not NodeState.SUCCEEDED:
         return None
-    record, digest = publish.effect_record, publish.effect_digest
-    if record is None or digest is None:
-        return None
-    if canonical_authority_digest([PUBLISH_EFFECT_NAMESPACE, record]) != digest:
-        return None
-    parsed: object = json.loads(record)
-    if not isinstance(parsed, dict):
-        return None
-    fields = cast("dict[str, object]", parsed)
-    advanced, curation = fields.get("advanced_count"), fields.get("advanced_curation_count")
-    if (
-        fields.get("grant_id") != grant_id
-        or not isinstance(advanced, int)
-        or not isinstance(curation, int)
-    ):
-        return None
-    return PublishEffect(advanced, curation)
+    return publish_effect(publish.effect_record, publish.effect_digest, grant_id)
 
 
 def _failure_reason(contribution: CohortContribution) -> str | None:
@@ -621,13 +598,48 @@ def _cohort_eligible(
     """ADR-140: whether any member of the winner's cohort advanced what this work consumes.
 
     A `NO_ELIGIBLE` direct binding becomes every loser's alias, so eligibility is the cohort's.
-    The winner's own effect is checked first (no read). Otherwise each other member's frozen
-    `publish` effect is read on that member's own grant, in cohort order, until one is eligible.
-    A member whose effect cannot be verified is a consumer invariant (U2), never a silent
-    `NO_ELIGIBLE`.
+    The winner's own effect is checked first. Otherwise the cohort's verified effect sum, which
+    the election stamped on the winner's bake node, decides: every consumer's eligibility is a
+    count above zero, so the sum is eligible exactly when a verified member is (ADR-162 §10). No
+    member is read, so the cohort's size never meets this envelope. When neither is eligible
+    and a member's effect did not verify, that member might have been: U2, a consumer invariant
+    for this cohort alone, never a silent `NO_ELIGIBLE` (ADR-140 §2).
     """
     if state.work.eligible(effect):
         return True
+    cohort = execution.cohort_effect
+    if cohort is None:
+        return _legacy_cohort_eligible(state, execution)
+    if state.work.eligible(cohort.verified):
+        return True
+    if cohort.unverified_count:
+        raise _unverified_member(cohort.first_unverified_run_id)
+    return False
+
+
+def _unverified_member(member_run_id: str | None) -> InvariantError:
+    return InvariantError(
+        ErrorCode("GRAPH_POST_GRANT", 8),
+        "a cohort member's publish node has no verifiable effect record.",
+        context={
+            "signal": POST_GRANT_INVARIANT,
+            "reason": "cohort_publish_effect",
+            "member_run_id": member_run_id,
+        },
+    )
+
+
+def _legacy_cohort_eligible(state: _Run, execution: ServingExecutionContext) -> bool:
+    """Decide a legacy winner's cohort (no recorded effect) by reading members, as pre-§10 code did.
+
+    Bounded by `LEGACY_SERVING_ROSTER_MAX`, the cap that election enforced (ADR-162 §10).
+    """
+    require_legacy_serving_roster(execution.run_ids)
+    _log(
+        (state.envelope, state.ports.logger),
+        "graph_legacy_serving_cohort",
+        members=len(execution.run_ids),
+    )
     store = state.ports.store
     for member_id in execution.run_ids:
         if member_id == state.envelope.run_id:
@@ -639,15 +651,7 @@ def _cohort_eligible(
             else _publish_effect(store.read_nodes(member_id), member.grant_id)
         )
         if found is None:
-            raise InvariantError(
-                ErrorCode("GRAPH_POST_GRANT", 8),
-                "a cohort member's publish node has no verifiable effect record.",
-                context={
-                    "signal": POST_GRANT_INVARIANT,
-                    "reason": "cohort_publish_effect",
-                    "member_run_id": member_id,
-                },
-            )
+            raise _unverified_member(member_id)
         if state.work.eligible(found):
             return True
     return False

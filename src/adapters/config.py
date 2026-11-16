@@ -178,6 +178,27 @@ class PresetArtifactBakeSettings:
 
 
 @dataclass(frozen=True, slots=True)
+class DemandForecastInputSettings:
+    """Everything the demand-forecast input builder reads at initialization (design §3c, §4b).
+
+    All required, no fallback (approval I-2): the run identity is computed from these values, so
+    a default would fingerprint a run against an artifact or image it never used.
+    """
+
+    semantic_publications_table: str
+    semantic_v2_bucket: str
+    athena_batch_workgroup: str
+    semantic_v2_current_database: str
+    processing_bucket: str
+    marketplace_key: str
+    model_artifact_digest: str
+    processor_code_identity: str
+    lock_digest: str
+    instance_type: str
+    max_runtime_seconds: int
+
+
+@dataclass(frozen=True, slots=True)
 class PresetArtifactBackfillSettings:
     """The declared FIFO target consumed only by the backfill custom resource."""
 
@@ -393,6 +414,55 @@ def preset_artifact_enqueue_settings() -> PresetArtifactEnqueueSettings:
         )
     return PresetArtifactEnqueueSettings(
         semantic_publications_table=table, bake_queue_url=queue_url
+    )
+
+
+_DEMAND_FORECAST_INPUT_ENV: tuple[tuple[str, str], ...] = (
+    ("semantic_publications_table", "SEMANTIC_PUBLICATIONS_TABLE"),
+    ("semantic_v2_bucket", "SEMANTIC_V2_BUCKET"),
+    ("athena_batch_workgroup", "SEMANTIC_V2_ATHENA_BATCH_WORKGROUP"),
+    ("semantic_v2_current_database", "SEMANTIC_V2_CURRENT_DATABASE"),
+    ("processing_bucket", "DEMAND_FORECAST_PROCESSING_BUCKET"),
+    ("marketplace_key", "DEMAND_FORECAST_MARKETPLACE_KEY"),
+    ("model_artifact_digest", "DEMAND_FORECAST_MODEL_ARTIFACT_DIGEST"),
+    ("processor_code_identity", "DEMAND_FORECAST_PROCESSOR_CODE_IDENTITY"),
+    ("lock_digest", "DEMAND_FORECAST_LOCK_DIGEST"),
+    ("instance_type", "DEMAND_FORECAST_INSTANCE_TYPE"),
+    ("max_runtime_seconds", "DEMAND_FORECAST_MAX_RUNTIME_SECONDS"),
+)
+
+
+def demand_forecast_input_settings(
+    source: Mapping[str, str] | None = None,
+) -> DemandForecastInputSettings:
+    """Resolve the input builder's settings; refuse, naming each, any missing or malformed value."""
+    values = source if source is not None else os.environ
+    found = {
+        field: values.get(f"{ENV_PREFIX}{name}", "").strip()
+        for field, name in _DEMAND_FORECAST_INPUT_ENV
+    }
+    missing = [field for field, value in found.items() if not value]
+    runtime = found["max_runtime_seconds"]
+    if runtime and (not runtime.isdigit() or int(runtime) < 1):
+        missing.append("max_runtime_seconds")
+    if missing:
+        raise InvariantError(
+            CONFIG_UNRESOLVED,
+            "Demand-forecast input builder configuration is incomplete.",
+            context={"missing": sorted(set(missing))},
+        )
+    return DemandForecastInputSettings(
+        semantic_publications_table=found["semantic_publications_table"],
+        semantic_v2_bucket=found["semantic_v2_bucket"],
+        athena_batch_workgroup=found["athena_batch_workgroup"],
+        semantic_v2_current_database=found["semantic_v2_current_database"],
+        processing_bucket=found["processing_bucket"],
+        marketplace_key=found["marketplace_key"],
+        model_artifact_digest=found["model_artifact_digest"],
+        processor_code_identity=found["processor_code_identity"],
+        lock_digest=found["lock_digest"],
+        instance_type=found["instance_type"],
+        max_runtime_seconds=int(runtime),
     )
 
 

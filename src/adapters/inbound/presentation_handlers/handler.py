@@ -468,6 +468,7 @@ from domain.presentation.retail_health import (
     RetailHealthSortField,
     retail_health_artifact_from_payload,
     retail_health_artifact_payload,
+    retail_health_artifact_superseded,
 )
 from domain.presentation.retail_health import (
     RetailProductRow as RetailHealthProductRow,
@@ -1601,6 +1602,8 @@ def _retail_metric_focus_response(
             selection=selection,
         )
     )
+    if retail_health_artifact_superseded(read.payload):
+        raise _retail_body_superseded()
     try:
         artifact = retail_health_artifact_from_payload(read.payload)
     except TypeError, ValueError:
@@ -1956,6 +1959,9 @@ def _retail_direction_extract(
     metric: str,
 ) -> Callable[[dict[str, object]], tuple[str, Decimal, Decimal | None] | None]:
     def extract(payload: dict[str, object]) -> tuple[str, Decimal, Decimal | None] | None:
+        if retail_health_artifact_superseded(payload):
+            # A sibling preset baked before render format 13 is unpublished: no direction.
+            return None
         try:
             artifact = retail_health_artifact_from_payload(payload)
         except TypeError, ValueError:
@@ -2002,6 +2008,8 @@ def _deep_parent_resolution(  # noqa: PLR0915 -- one ordered parent and sibling 
     filtered: _CampaignFilterParent | None = None
     if not retail and campaign_portfolio_artifact_superseded(read.payload):
         raise _campaign_body_superseded()
+    if retail and retail_health_artifact_superseded(read.payload):
+        raise _retail_body_superseded()
     try:
         if retail:
             artifact = retail_health_artifact_from_payload(read.payload)
@@ -3917,8 +3925,23 @@ def _v2_retail_health_preset_parent_response(
     _attest_campaign_preset_body(pointer, body)
     try:
         payload = json.loads(body.payload_json)
+    except json.JSONDecodeError:
+        raise _malformed_artifact() from None
+    if retail_health_artifact_superseded(payload):
+        # A body baked before render format 13 is this preset's not-yet-published absence, as a
+        # missing pointer is, until the page's next bake replaces it (never decoded, never 500).
+        # Products and ads and Overview read this route, so they serve the same absence.
+        unserved = PresetArtifactPointerRosterResult(
+            roster.request,
+            tuple(
+                None if candidate is not None and candidate.variant == variant else candidate
+                for candidate in roster.pointers
+            ),
+        )
+        return _retail_health_preset_unavailable(request, input_request.runtime, unserved)
+    try:
         artifact = retail_health_artifact_from_payload(payload)
-    except TypeError, ValueError, json.JSONDecodeError:
+    except TypeError, ValueError:
         raise _malformed_artifact() from None
     temporal = _retail_health_preset_temporal(request, artifact, roster)
     custody = _retail_health_custody(input_request.runtime, pointer, body, artifact)
@@ -7298,6 +7321,11 @@ def _selection_unavailable() -> ValidationError:
         PRESENTATION_REFUSED,
         "The requested campaign is not available.",
     )
+
+
+def _retail_body_superseded() -> DomainError:
+    """Refuse a read of a Retail health body baked before render format 13: it is unpublished."""
+    return DomainError(PRESENTATION_UNAVAILABLE, "No retail results are published for this period.")
 
 
 def _campaign_body_superseded() -> DomainError:

@@ -17,7 +17,7 @@ predicate:
       retail_window:
         per_unit:
           currency: {operational-pulse: "1000", tactical-review: "3000", pattern-confirmation: "10000"}
-          rate_pp: {operational-pulse: "0.32", tactical-review: "0.12", pattern-confirmation: "0.32"}
+          rate_pp: {operational-pulse: "0.32", tactical-review: "0.12", pattern-confirmation: "0.250"}
           percent: {operational-pulse: "3.4", tactical-review: "1.5", pattern-confirmation: "3.3"}
         per_metric:
           customer_returns: {operational-pulse: "3", tactical-review: "8", pattern-confirmation: "30"}

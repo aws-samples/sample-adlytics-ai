@@ -25,6 +25,7 @@ from domain.data_contracts.validation import (
 )
 from domain.presentation.insights import validate_insight_contracts
 
+from .forecast_policy import validate_forecast_policy
 from .insight_loader import load_insight_contracts
 from .loader import load_contracts, load_registry
 
@@ -35,6 +36,16 @@ def _repo_root() -> Path:
         if (candidate / "contracts").is_dir() and (candidate / "pyproject.toml").is_file():
             return candidate
     raise ContractError("could not locate the repository root from this module.")
+
+
+def _forecast_policy_valid(root: Path) -> bool:
+    """Report the demand-forecast policy's findings; True when it has none."""
+    findings = validate_forecast_policy(root)
+    for finding in findings:
+        print(f"  {finding}", file=sys.stderr)
+    if not findings:
+        print("  demand-forecast policy: OK")
+    return not findings
 
 
 def main() -> int:
@@ -63,6 +74,7 @@ def main() -> int:
     if insight_errors:
         for error in insight_errors:
             print(f"  {error}", file=sys.stderr)
+    if insight_errors or not _forecast_policy_valid(root):
         return 1
 
     if not contracts:

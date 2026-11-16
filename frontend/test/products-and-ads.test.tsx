@@ -58,7 +58,7 @@ test('the part is decoded only beside its own parent: same window, same rows in 
   for (const raw of [reordered, totalled, missing, nulled]) assert.throws(() => tab(raw));
   // Paired: an empty body with a null part decodes, so the tab shows the body's own empty state.
   const empty = clone(tabResponse) as { page: { artifact: Record<string, unknown>; product_ads: unknown } };
-  Object.assign(empty.page.artifact, { outcome: 'empty', totals: [], absences: [], trend: [], rows: [], total_count: 0, truncation: null, reconciliation: null, evidence_status: null });
+  Object.assign(empty.page.artifact, { outcome: 'empty', totals: [], absences: [], trend: { current: [], prior: [] }, rows: [], total_count: 0, truncation: null, reconciliation: null, evidence_status: null });
   empty.page.product_ads = null;
   const emptied = tab(empty);
   assert.equal(emptied.artifact.outcome, 'empty');

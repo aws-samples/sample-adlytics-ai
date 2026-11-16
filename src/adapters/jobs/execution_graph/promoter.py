@@ -33,11 +33,25 @@ grant ordinal blocks; a failed `COMPLETE#` shard read arms no serving node. `ARM
 the scope's last PENDING routed node (AGG4-1); a run that is not live deletes it alone.
 
 Slice 7 (1b, §2.2 "Batch arming"; D30-D33, D41): `units`-scope nodes are armed per table, not
-per node. The pass collects every OPEN run's eligible PENDING `write_unit` nodes across all
-`ARM#` items, groups them by `TABLE#<k>`, grants each table once through `take_grant` (oldest
-first, a solo node alone, at most `MAX_BATCH_MEMBERS`) and commits each grant with
+per node. The pass collects OPEN runs' eligible PENDING `write_unit` nodes from the units `ARM#`
+items, oldest run first, groups them by `TABLE#<k>`, grants each table once through `take_grant`
+(oldest first, a solo node alone, at most `MAX_BATCH_MEMBERS`) and commits each grant with
 `arm_unit_batch`. A `PAUSED` run's units wait (`paused_wait`). A run's `ARM#` is deleted in the
 group transaction that commits its last PENDING unit, decided from committed groups only (N6).
+
+ADR-162: every loop is bounded by the invocation's remaining time (`budget.py`). The waiter
+phase stops at `PROMOTE_RESERVE_MS`, units collection at `UNITS_COLLECT_RESERVE_MS`, and table
+grants and serving arming at `ITEM_RESERVE_MS`. Each domain's ACTIVE winner is armed before any
+other `ARM#` item, so a serving backlog never hides its finalizer. Collection is oldest first by
+the D41 key, so every run it does not reach is younger than every run it collected and each
+grant still takes its table's oldest unit. What a pass leaves is counted `deferred` and read
+again, strongly, by the next pass; nothing in memory crosses invocations.
+
+Serving (ADR-162 §7-8): an election reads its candidates in grant-ordinal order until
+`SERVING_STAGE_RESERVE_MS`; a roster that does not fit one pass is staged in `ELECTION#` pages
+under the head version and committed, with the same functions over the same complete roster,
+by the pass that reads its last candidate. A drain reads only the alias it drains next and
+repeats until the same reserve, so one pass drains many aliases.
 
 Deployed disabled with the dispatcher while the mode is not GRAPH.
 """
@@ -51,6 +65,16 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Final, Protocol
 
+from adapters.jobs.execution_graph.budget import (
+    CLOCK_INVALID,
+    ITEM_RESERVE_MS,
+    NO_DEADLINE,
+    PROMOTE_RESERVE_MS,
+    SERVING_STAGE_RESERVE_MS,
+    UNITS_COLLECT_RESERVE_MS,
+    PassBudget,
+    remaining_reader,
+)
 from adapters.jobs.execution_graph.instantiate import (
     InstantiateRequest,
     NodePlanner,
@@ -84,6 +108,7 @@ from domain.operations.execution_graph_dispatch import (
     arm_eligible,
     batch_id_for,
     decide_promotion,
+    grant_order_key,
     is_write_unit,
     newest_eligible_candidate,
     scope_pending,
@@ -129,9 +154,11 @@ from ports.outbound.execution_graph_release import (
     ServingAliasDrainRequest,
     ServingCandidateRead,
     ServingDomainElectionResult,
+    ServingDomainHead,
     ServingDomainReadResult,
     ServingElectionOutcome,
     ServingGraphReleaseStore,
+    ServingStagePage,
 )
 
 __all__ = [
@@ -170,7 +197,7 @@ _LIVE: Final = LIVE_RUN_STATES
 _ARM_INVARIANT: Final = ErrorCode("EXEC_GRAPH", 26)
 """An `ARM#` or `COMPLETE#` item that breaks the arming protocol: reported, never guessed."""
 _PROMOTER_CONTEXT_INVALID: Final = ErrorCode("EXEC_GRAPH", 34)
-_PROMOTER_CLOCK_INVALID: Final = ErrorCode("EXEC_GRAPH", 35)
+_PROMOTER_CLOCK_INVALID: Final = CLOCK_INVALID
 _NEXT_ELECTION_MIN_REMAINING_MS: Final = int(SERVING_COALESCING["next_election_min_remaining_ms"])
 _DOMAIN_FAILED: Final = "failed"
 """The promoter-domain child's closed outcome when its attempt raised; every other outcome is a
@@ -216,6 +243,8 @@ class PromotionCounts:
     instantiation_deferred: int = 0
     conflicts: int = 0
     failed: int = 0
+    deferred: int = 0
+    """ADR-162: units and instantiations this pass left unstarted because its budget stopped it."""
 
     def add(self, branch: PromoterBranch) -> None:
         """Count one decided branch."""
@@ -353,6 +382,17 @@ class ArmCounts:
     """Slice 7: `TABLE#<k>` grants committed (one `arm_unit_batch` each)."""
     batch_members: int = 0
     """Slice 7: units those grants armed."""
+    deferred: int = 0
+    """ADR-162: `ARM#` items this pass left unstarted because its budget stopped it."""
+    grants_deferred: int = 0
+    """ADR-162: `TABLE#<k>` grants this pass left unstarted because its budget stopped it."""
+    serving_staged: int = 0
+    """ADR-162: election candidates read and staged this pass for a later pass's commit."""
+    serving_unstaged: int = 0
+    """ADR-162: election candidates this pass's budget left unread; a later pass reads them."""
+    serving_legacy_winners: int = 0
+    """ADR-162 §10: serving arms of a winner elected before §10, with no `SERVING_ROSTER`; its
+    readers bind and decide eligibility by reading its members, as that election's code did."""
 
 
 def read_arms(context: PromoterContext, shards: Sequence[str], counts: ArmCounts) -> list[DueItem]:
@@ -395,6 +435,18 @@ def walk_complete(
     return tuple(found)
 
 
+def _is_serving_winner(store: PromoterStore, run: RunRecord, counts: ArmCounts) -> bool:
+    """Whether `run` is its cohort's elected winner; a pre-§10 (legacy) winner is counted."""
+    execution = (
+        None if run.grant_id is None else store.read_serving_execution(run.grant_id, run.run_id)
+    )
+    if execution is None or execution.head.winner_run_id != run.run_id:
+        return False
+    if execution.contributor_roots is None:
+        counts.serving_legacy_winners += 1
+    return True
+
+
 def arm_run(
     context: PromoterContext,
     item: DueItem,
@@ -427,12 +479,8 @@ def arm_run(
     remaining = len(scope_pending(scope, run.template, nodes))
     if remaining == 0:
         raise InvariantError(_ARM_INVARIANT, "an ARM# names a scope with no PENDING routed node.")
-    if scope is ArmScope.SERVING:
-        execution = (
-            None if run.grant_id is None else store.read_serving_execution(run.grant_id, run.run_id)
-        )
-        if execution is None or execution.head.winner_run_id != run.run_id:
-            return
+    if scope is ArmScope.SERVING and not _is_serving_winner(store, run, counts):
+        return
     eligible = arm_eligible(scope, run.template, nodes)
     if not eligible:
         counts.predecessor_wait += 1
@@ -592,17 +640,29 @@ def _arm_group(  # noqa: PLR0913, PLR0917 -- the pass context, one group, its co
     counts.guards += 1
 
 
-def arm_unit_groups(  # noqa: PLR0913, PLR0917 -- the pass context, its units, its counts
+def arm_unit_groups(  # noqa: PLR0913, PLR0917 -- the pass context, its units, its counts, budget
     context: PromoterContext,
     candidates: Sequence[UnitCandidate],
     pending: dict[str, int],
     counts: ArmCounts,
+    budget: PassBudget = NO_DEADLINE,
 ) -> None:
-    """Group the collected units by `TABLE#<k>` and grant each table once, each isolated."""
+    """Group the collected units by `TABLE#<k>` and grant each table once, each isolated.
+
+    Tables are granted in the order of their oldest member (D41 key, then the table), so a table
+    the budget does not reach this pass is the one with the youngest head, never a fixed one
+    (ADR-162). No grant starts below `ITEM_RESERVE_MS`; its units stay PENDING for the next pass.
+    """
     groups: dict[str, list[UnitCandidate]] = {}
     for candidate in candidates:
         groups.setdefault(candidate.node.lock_key, []).append(candidate)
-    for lock_key in sorted(groups):
+    order = sorted(
+        groups, key=lambda key: (min(grant_order_key(item) for item in groups[key]), key)
+    )
+    for index, lock_key in enumerate(order):
+        if not budget.allows(ITEM_RESERVE_MS):
+            counts.grants_deferred += len(order) - index
+            return
         result = isolated(
             lambda group=groups[lock_key]: _arm_group(context, group, pending, counts),
             context.on_failure,
@@ -611,16 +671,155 @@ def arm_unit_groups(  # noqa: PLR0913, PLR0917 -- the pass context, its units, i
         counts.failed += 0 if result.ok else 1
 
 
-def _candidate_reads(
-    store: PromoterStore, run_ids: Sequence[str]
-) -> tuple[ServingCandidateRead, ...]:
-    """Read and validate every eligible candidate without truncating a domain roster."""
-    reads = tuple(store.read_serving_candidate(run_id) for run_id in run_ids)
-    if any(item is None for item in reads):
-        return ()
-    typed = tuple(item for item in reads if item is not None)
-    validate_serving_candidates(tuple(item.candidate for item in typed))
-    return typed
+def _candidate_read(store: PromoterStore, run_id: str) -> ServingCandidateRead | None:
+    """Read and validate one candidate; None when it is not (yet) an eligible candidate."""
+    read = store.read_serving_candidate(run_id)
+    if read is not None:
+        validate_serving_candidates((read.candidate,))
+    return read
+
+
+def _stage_id(head: ServingDomainHead) -> str:
+    """Name the staged election by the head version every staged fact was read under.
+
+    Only this promoter's own serving transitions change a waiting candidate, and each one moves
+    the head version, so a page under another version is dead (ADR-162).
+    """
+    return canonical_authority_digest(
+        [
+            "graph-serving-stage/v1",
+            head.domain,
+            head.version,
+            head.cohort_revision or "",
+            head.elected_frontier_digest or "",
+        ]
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _ElectionInputs:
+    """What an election is decided from: the head and frontier, the roster ids and the walk."""
+
+    authority: ServingDomainReadResult
+    run_ids: tuple[str, ...]
+    walk: tuple[CompleteObligation, ...]
+
+    @property
+    def head(self) -> ServingDomainHead:
+        """The strongly read head; an election never runs without one."""
+        head = self.authority.head
+        if head is None or self.authority.frontier is None:
+            raise InvariantError(_ARM_INVARIANT, "fresh serving authority is incomplete.")
+        return head
+
+
+@dataclass(frozen=True, slots=True)
+class _Roster:
+    """A domain's election roster, or None while some candidate is still unread (ADR-162)."""
+
+    reads: tuple[ServingCandidateRead, ...] | None
+    pages: tuple[ServingStagePage, ...]
+    """The live stage pages, deleted once the election commits."""
+    fresh: tuple[ServingCandidateRead, ...] = ()
+    """The reads this pass made that no page holds yet."""
+
+
+def _staged_roster(  # noqa: PLR0913, PLR0917 -- the pass, its domain, inputs and carried reads
+    state: _DomainPass,
+    domain: str,
+    inputs: _ElectionInputs,
+    carried: Sequence[ServingCandidateRead] = (),
+) -> _Roster:
+    """Read every candidate of `run_ids` not already staged, while the pass's budget allows.
+
+    Candidates are read in grant-ordinal order, so each pass extends one prefix. When every
+    candidate is read, the roster is returned in `run_ids` order, exactly what one unpaged read
+    would return; otherwise this pass's reads are written as stage pages and None is returned.
+    An unreadable candidate empties the roster, as one unpaged read does. A page of a dead stage
+    is deleted. `carried` are this pass's earlier unwritten reads under the same stage.
+    """
+    store, counts = state.context.store, state.counts
+    run_ids, walk = inputs.run_ids, inputs.walk
+    stage = _stage_id(inputs.head)
+    pages = store.read_serving_stage(domain)
+    live = tuple(page for page in pages if page.stage_id == stage)
+    dead = tuple(page for page in pages if page.stage_id != stage)
+    if dead:
+        store.delete_serving_stage(dead)
+    known: dict[str, ServingCandidateRead] = {}
+    for read in (*(read for page in live for read in page.reads), *carried):
+        if read.candidate.run_id in known:
+            raise InvariantError(_ARM_INVARIANT, "a staged serving candidate is duplicated.")
+        known[read.candidate.run_id] = read
+    ordinals = {item.run_id: (item.grant_ordinal, item.grant_id) for item in walk}
+    unstaged = sorted(
+        (run_id for run_id in run_ids if run_id not in known),
+        key=lambda run_id: (*ordinals.get(run_id, (-1, "")), run_id),
+    )
+    fresh: list[ServingCandidateRead] = list(carried)
+    for index, member in enumerate(unstaged):
+        if not state.budget.allows(SERVING_STAGE_RESERVE_MS):
+            _keep(state, (domain, stage), _Roster(None, live, tuple(fresh)))
+            counts.serving_unstaged += len(unstaged) - index
+            return _Roster(None, live)
+        read = _candidate_read(store, member)
+        if read is None:
+            return _Roster((), live)
+        fresh.append(read)
+        known[member] = read
+    roster = tuple(known[member] for member in run_ids)
+    return _Roster(roster, live, tuple(fresh))
+
+
+def _spill(  # noqa: PLR0913, PLR0917 -- the store, the stage, its live pages and the new reads
+    store: PromoterStore,
+    stage: tuple[str, str],
+    live: Sequence[ServingStagePage],
+    fresh: Sequence[ServingCandidateRead],
+) -> tuple[ServingStagePage, ...]:
+    """Write this pass's reads as the stage's next pages, so no later pass reads them again."""
+    if not fresh:
+        return tuple(live)
+    domain, stage_id = stage
+    start = max((page.page for page in live), default=-1) + 1
+    written = store.write_serving_stage(ServingStagePage(domain, stage_id, start, tuple(fresh)))
+    return (*live, *written)
+
+
+def _keep(state: _DomainPass, stage: tuple[str, str], roster: _Roster) -> None:
+    """Write a roster's unwritten reads as stage pages and count them as staged."""
+    _spill(state.context.store, stage, roster.pages, roster.fresh)
+    state.counts.serving_staged += len(roster.fresh)
+
+
+def _settled_roster(  # noqa: PLR0913, PLR0917 -- the pass, its domain, first inputs, re-read
+    state: _DomainPass,
+    domain: str,
+    first: _ElectionInputs,
+    reread: Callable[[], _ElectionInputs],
+) -> tuple[_Roster, _ElectionInputs]:
+    """Complete the roster, then read the head, frontier and walk again before the commit.
+
+    ADR-162 §8: the commit ConditionChecks the frontier it read, so any publication that settles
+    between that read and the commit refuses it (about 22 a minute on dev). The first frontier
+    was read before every candidate read, the second after them, so only the second leaves the
+    commit exposed for the candidates that settled meanwhile alone; no cutoff decides it. The
+    reads stay in memory and are carried into the second roster, so a small election still
+    writes no page, and a refused commit writes nothing (only this pass's unwritten reads are
+    read again by the next pass).
+    """
+    roster = _staged_roster(state, domain, first)
+    if not roster.reads or not roster.fresh:
+        return roster, first
+    again = reread()
+    carried = roster.fresh if _stage_id(again.head) == _stage_id(first.head) else ()
+    return _staged_roster(state, domain, again, carried), again
+
+
+def _clear_stage(context: PromoterContext, pages: Sequence[ServingStagePage]) -> None:
+    """Delete a committed election's pages; one left behind is dead and goes next time."""
+    if pages:
+        isolated(lambda: context.store.delete_serving_stage(pages), context.on_failure)
 
 
 def _revisions(reads: Sequence[Any], frontier: Any) -> tuple[str, str]:
@@ -672,26 +871,8 @@ def _candidate_digest(candidates: Sequence[Any]) -> str:
     )
 
 
-def _remaining_reader(remaining_ms: Callable[[], object]) -> Callable[[], int]:
-    prior: int | None = None
-
-    def read() -> int:
-        nonlocal prior
-        # The Lambda callable is untrusted at runtime; validate the reading as an object.
-        value = remaining_ms()
-        if (
-            not isinstance(value, int)
-            or isinstance(value, bool)
-            or value <= 0
-            or (prior is not None and value > prior)
-        ):
-            raise InvariantError(
-                _PROMOTER_CLOCK_INVALID, "the promoter remaining clock is invalid."
-            )
-        prior = value
-        return value
-
-    return read
+_remaining_reader: Final = remaining_reader
+"""The promoter's validated Lambda clock, shared with the release (`budget.remaining_reader`)."""
 
 
 @trace_boundary(EXECUTION_GRAPH_PROMOTER_DOMAIN)
@@ -836,6 +1017,14 @@ class _DomainPass:
     walk: tuple[CompleteObligation, ...]
     arm_ids: frozenset[str]
     rehearsal: FreshElectionRehearsal | None = None
+    winners: set[str] = field(default_factory=set[str])
+    """ADR-162: each domain's ACTIVE winner as this pass read its head, for `arm_pass` to arm
+    first. A head this pass activates is not added: its winner's `ARM#` went with activation."""
+
+    @property
+    def budget(self) -> PassBudget:
+        """The pass's remaining time, through the same validated reader (ADR-162)."""
+        return PassBudget(self.read_remaining)
 
 
 def coalesce_serving(  # noqa: PLR0913, PLR0917
@@ -844,13 +1033,15 @@ def coalesce_serving(  # noqa: PLR0913, PLR0917
     counts: ArmCounts,
     remaining_ms: Callable[[], int],
     aws_request_id: str,
+    winners: set[str] | None = None,
 ) -> tuple[ServingDomainElectionResult, ...]:
     """Elect or drain each domain from wholly fresh rolling authority reads.
 
     Each domain is isolated: its failure marks its typed child, is reported once through the
     pass's failure sink, and the next domain is still decided. A conflict is not retried here,
     because only a wholly fresh iteration may retry it; the next invocation is that iteration. An
-    invalid Lambda clock is a pass failure and ends the pass.
+    invalid Lambda clock is a pass failure and ends the pass. Each ACTIVE head's winner is added
+    to `winners` when given (ADR-162), so the arm pass reaches it before any other serving item.
     """
     if not callable(remaining_ms) or not aws_request_id:
         raise InvariantError(_PROMOTER_CONTEXT_INVALID, "the promoter Lambda context is invalid.")
@@ -864,6 +1055,7 @@ def coalesce_serving(  # noqa: PLR0913, PLR0917
         aws_request_id,
         walk,
         frozenset(item.subject for item in arms if item.scope is ArmScope.SERVING),
+        winners=set() if winners is None else winners,
     )
     results: list[ServingDomainElectionResult] = []
     for domain in sorted({item.domain for item in walk}):
@@ -885,6 +1077,8 @@ def _coalesce_domain(state: _DomainPass, domain: str) -> ServingDomainElectionRe
     authority = state.context.store.read_serving_domain(domain)
     if authority.head is None or authority.frontier is None:
         return None
+    if authority.head.state == "ACTIVE" and authority.head.winner_run_id:
+        state.winners.add(authority.head.winner_run_id)
     if authority.head.state == "IDLE":
         return _elect_idle(state, domain, authority)
     if authority.head.state != "BOUND_DRAINING" or authority.head.direct_grant_id is None:
@@ -903,12 +1097,42 @@ def _coalesce_domain(state: _DomainPass, domain: str) -> ServingDomainElectionRe
 def _elect_idle(
     state: _DomainPass, domain: str, authority: ServingDomainReadResult
 ) -> ServingDomainElectionResult:
-    """Activate the newest eligible candidate on an IDLE head, or report why none can be."""
+    """Activate the newest eligible candidate on an IDLE head, or report why none can be.
+
+    The roster is read under the pass's budget and staged across passes when it does not fit
+    one (ADR-162); the commit evaluates the same functions over the same complete roster.
+    """
     context, head, frontier = state.context, authority.head, authority.frontier
     assert head is not None and frontier is not None  # noqa: S101 -- checked by the caller
     domain_walk = tuple(item for item in state.walk if item.domain == domain)
     run_ids = tuple(item.run_id for item in domain_walk if item.run_id in state.arm_ids)
-    reads = _candidate_reads(context.store, run_ids)
+    if not run_ids:
+        return ServingDomainElectionResult(domain, ServingElectionOutcome.NO_ELIGIBLE)
+
+    def reread() -> _ElectionInputs:
+        arms, walk = _read_serving_iteration(context, state.shards, state.counts)
+        fresh_walk = tuple(item for item in walk if item.domain == domain)
+        serving = {item.subject for item in arms if item.scope is ArmScope.SERVING}
+        return _ElectionInputs(
+            context.store.read_serving_domain(domain),
+            tuple(item.run_id for item in fresh_walk if item.run_id in serving),
+            fresh_walk,
+        )
+
+    roster, inputs = _settled_roster(
+        state, domain, _ElectionInputs(authority, run_ids, domain_walk), reread
+    )
+    if roster.reads is None:
+        # No cohort exists until every candidate is read, so the attempt is named by its stage.
+        with _promoter_domain(state.aws_request_id, domain, _stage_id(inputs.head)) as recording:
+            recording.record(outcome=ServingElectionOutcome.STAGED)
+        return ServingDomainElectionResult(domain, ServingElectionOutcome.STAGED)
+    reads = roster.reads
+    head, frontier, domain_walk = inputs.head, inputs.authority.frontier, inputs.walk
+    assert frontier is not None  # noqa: S101 -- `inputs.head` proved the frontier present
+    if head.state != "IDLE":
+        return ServingDomainElectionResult(domain, ServingElectionOutcome.NO_ELIGIBLE)
+    validate_serving_candidates(tuple(item.candidate for item in reads))
     candidates = tuple(item.candidate for item in reads)
     if not candidates:
         return ServingDomainElectionResult(domain, ServingElectionOutcome.NO_ELIGIBLE)
@@ -919,21 +1143,21 @@ def _elect_idle(
             return ServingDomainElectionResult(domain, ServingElectionOutcome.WAITING_LOWER_ORDINAL)
         winner = newest_eligible_candidate(candidates)
         assert winner is not None  # noqa: S101 -- nonempty validated candidates
-        context.store.activate_serving_winner(
-            ActivateServingWinnerRequest(
-                head,
-                frontier,
-                candidates,
-                winner,
-                cohort,
-                input_revision,
-                context.now().isoformat(),
-                SERVING_PLAN_DIGEST,
-            )
+        request = ActivateServingWinnerRequest(
+            head,
+            frontier,
+            candidates,
+            winner,
+            cohort,
+            input_revision,
+            context.now().isoformat(),
+            SERVING_PLAN_DIGEST,
         )
+        context.store.activate_serving_winner(request)
         state.counts.armed += 1
         state.counts.retired += 1
         recording.record(outcome=ServingElectionOutcome.ELECTED)
+        _clear_stage(context, roster.pages)
         return ServingDomainElectionResult(
             domain,
             ServingElectionOutcome.ELECTED,
@@ -941,16 +1165,32 @@ def _elect_idle(
         )
 
 
+def _newest_first(
+    run_ids: Sequence[str], walk: Sequence[CompleteObligation], domain: str
+) -> list[str]:
+    """Order a cohort newest grant first from the walk's `COMPLETE#` ordinals (no run reads).
+
+    A member the walk did not see sorts first, so its read (which finds no `COMPLETE#`) stops
+    the drain before any alias moves, as one unpaged read of the cohort does.
+    """
+    ordinals = {item.run_id: item.grant_ordinal for item in walk if item.domain == domain}
+    return sorted(
+        run_ids, key=lambda run_id: (run_id in ordinals, -ordinals.get(run_id, 0), run_id)
+    )
+
+
 def _drain_bound(
     state: _DomainPass, domain: str, authority: ServingDomainReadResult
 ) -> ServingDomainElectionResult | None:
-    """Alias the newest bound candidate, or drain the final alias and activate the successor."""
-    context, shards, counts, aws_request_id = (
-        state.context,
-        state.shards,
-        state.counts,
-        state.aws_request_id,
-    )
+    """Alias bound candidates newest first while the budget allows, then drain the final alias.
+
+    ADR-162: each alias reads only its own candidate, and aliases repeat within one pass until
+    `SERVING_STAGE_RESERVE_MS`; the first alias of a pass keeps today's election guard alone. A
+    non-final alias drain condition-checks the head and never moves it, so one head read serves
+    every drain of the pass. The final alias drains with the successor election in one
+    transaction, over a roster staged across passes when it does not fit one.
+    """
+    context, counts, aws_request_id = state.context, state.counts, state.aws_request_id
     head = authority.head
     assert head is not None and head.direct_grant_id is not None  # noqa: S101 -- caller checked
     direct = context.store.read_serving_binding(head.direct_grant_id)
@@ -958,20 +1198,14 @@ def _drain_bound(
         raise InvariantError(_ARM_INVARIANT, "a draining head has no direct binding.")
     obligations = tuple(
         item
-        for shard in shards
+        for shard in state.shards
         for item in context.store.read_due(shard, "COALESCE#")
         if item.subject == head.cohort_revision and item.run_ids
     )
     if len(obligations) != 1:
         raise InvariantError(_ARM_INVARIANT, "a draining head has no unique cohort obligation.")
     obligation = obligations[0]
-    reads = sorted(
-        _candidate_reads(context.store, obligation.run_ids),
-        key=lambda item: item.candidate.grant_ordinal,
-        reverse=True,
-    )
-    if not reads:
-        return None
+    order = _newest_first(obligation.run_ids, state.walk, domain)
     if state.read_remaining() < _NEXT_ELECTION_MIN_REMAINING_MS:
         return ServingDomainElectionResult(
             domain,
@@ -980,22 +1214,33 @@ def _drain_bound(
         )
     rehearsal = state.rehearsal
     if rehearsal is not None:
-        if len(reads) != 1:
+        if len(order) != 1:
             # The rehearsal times only A's final alias; it never writes a non-final drain.
             raise FreshElectionRehearsalRefusedError(
                 "the rehearsal domain is not at A's last alias."
             )
         rehearsal.guard_passed()
-    current = reads[0]
-    terminal_at = context.now()
-    alias = alias_serving(
-        direct,
-        current.candidate,
-        direct.cohort_revision or head.cohort_revision or "",
-        bound_at=terminal_at,
+    incomplete = ServingDomainElectionResult(
+        domain,
+        ServingElectionOutcome.DRAIN_INCOMPLETE,
+        drained_cohort_revision=head.cohort_revision,
     )
-    remaining = tuple(item.candidate.run_id for item in reads[1:])
-    if remaining:
+    drained = 0
+    while True:
+        if drained and not state.budget.allows(SERVING_STAGE_RESERVE_MS):
+            return incomplete
+        current = _candidate_read(context.store, order[0])
+        if current is None:
+            return incomplete if drained else None
+        terminal_at = context.now()
+        alias = alias_serving(
+            direct,
+            current.candidate,
+            direct.cohort_revision or head.cohort_revision or "",
+            bound_at=terminal_at,
+        )
+        if len(order) == 1:
+            break
         context.store.drain_alias_binding(
             ServingAliasDrainRequest(
                 head,
@@ -1004,31 +1249,54 @@ def _drain_bound(
                 current.candidate,
                 current.identity,
                 terminal_at.isoformat(),
-                remaining,
+                tuple(order[1:]),
                 aws_request_id,
             )
         )
         counts.coalesced += 1
+        drained += 1
+        order = order[1:]
+    return _drain_final(state, domain, (head, direct, obligation), (current, alias, terminal_at))
+
+
+def _drain_final(  # noqa: PLR0913, PLR0917 -- the pass, its domain, the bound cohort, the alias
+    state: _DomainPass,
+    domain: str,
+    bound: tuple[ServingDomainHead, ServingBinding, DueItem],
+    final: tuple[ServingCandidateRead, ServingBinding, datetime],
+) -> ServingDomainElectionResult:
+    """Drain the final alias and elect the successor from a complete (staged) roster."""
+    context, counts, rehearsal = state.context, state.counts, state.rehearsal
+    head, direct, obligation = bound
+    current, alias, terminal_at = final
+
+    def iteration() -> _ElectionInputs:
+        fresh_arms, fresh_walk = _read_serving_iteration(context, state.shards, counts, rehearsal)
+        fresh_authority = _timed(
+            rehearsal, "head_frontier_read", lambda: context.store.read_serving_domain(domain)
+        )
+        successor_ids = tuple(
+            item.subject
+            for item in fresh_arms
+            if item.scope is ArmScope.SERVING and item.subject != current.candidate.run_id
+        )
+        return _ElectionInputs(fresh_authority, successor_ids, fresh_walk)
+
+    first = iteration()
+    roster, inputs = _timed(
+        rehearsal, "candidate_read", lambda: _settled_roster(state, domain, first, iteration)
+    )
+    fresh_authority, fresh_head, fresh_walk = inputs.authority, inputs.head, inputs.walk
+    assert fresh_authority.frontier is not None  # noqa: S101 -- `inputs.head` proved it present
+    if roster.reads is None:
         return ServingDomainElectionResult(
             domain,
-            ServingElectionOutcome.DRAIN_INCOMPLETE,
+            ServingElectionOutcome.STAGED,
             drained_cohort_revision=head.cohort_revision,
         )
-    fresh_arms, fresh_walk = _read_serving_iteration(context, shards, counts, rehearsal)
-    successor_ids = tuple(
-        item.subject
-        for item in fresh_arms
-        if item.scope is ArmScope.SERVING and item.subject != current.candidate.run_id
-    )
-    successor_reads = _timed(
-        rehearsal, "candidate_read", lambda: _candidate_reads(context.store, successor_ids)
-    )
+    successor_reads = roster.reads
     successor_candidates = tuple(item.candidate for item in successor_reads)
-    fresh_authority = _timed(
-        rehearsal, "head_frontier_read", lambda: context.store.read_serving_domain(domain)
-    )
-    if fresh_authority.head is None or fresh_authority.frontier is None:
-        raise InvariantError(_ARM_INVARIANT, "fresh serving authority is incomplete.")
+    validate_serving_candidates(successor_candidates)
     successor = newest_eligible_candidate(successor_candidates)
     successor_cohort = None
     successor_input = None
@@ -1045,7 +1313,7 @@ def _drain_bound(
         successor_cohort, successor_input = _revisions(successor_reads, fresh_authority.frontier)
     candidate_digest = _candidate_digest(successor_candidates)
     request = DrainFinalAliasAndActivateNextRequest(
-        fresh_authority.head,
+        fresh_head,
         direct,
         alias,
         current.candidate,
@@ -1059,7 +1327,8 @@ def _drain_bound(
         successor_cohort,
         successor_input,
         SERVING_PLAN_DIGEST if successor is not None else None,
-        aws_request_id,
+        state.aws_request_id,
+        tuple(item.coordinate for item in successor_reads),
     )
 
     def activate() -> DrainFinalAliasAndActivateNextResult:
@@ -1069,6 +1338,7 @@ def _drain_bound(
 
     result = _timed(rehearsal, "activation", activate)
     counts.coalesced += 1
+    _clear_stage(context, roster.pages)
     return ServingDomainElectionResult(
         domain,
         result.outcome,
@@ -1169,46 +1439,132 @@ def arm_pass(  # noqa: PLR0913, PLR0917
     remaining_ms: Callable[[], int],
     aws_request_id: str,
 ) -> ArmCounts:
-    """Run one fresh rolling election/drain pass plus independent unit batching."""
+    """Run one fresh rolling election/drain pass plus independent unit batching (ADR-162).
+
+    After the election, the serving `ARM#` of each domain's ACTIVE winner is armed first, so a
+    winner's finalizer is reached whatever its shard. Then units `ARM#` items are collected
+    oldest first by the D41 key while at least `UNITS_COLLECT_RESERVE_MS` remains and granted
+    per table, then every other `ARM#` item is armed oldest first while `ITEM_RESERVE_MS`
+    remains. Every uncollected run is younger than every collected one, so each table's grant
+    still goes to its oldest PENDING unit. An item the budget leaves unstarted is counted
+    `deferred` and stays in its shard for the next pass.
+    """
     counts = ArmCounts()
-    coalesce_serving(context, shards, counts, remaining_ms, aws_request_id)
+    budget = PassBudget.of(remaining_ms)
+    winners: set[str] = set()
+    coalesce_serving(context, shards, counts, remaining_ms, aws_request_id, winners)
     arms = read_arms(context, shards, counts)
     walk = walk_complete(context, shards)
     if walk is None:
         counts.walk_failed += 1
-    else:
-        arms = unconsumed_arms(context, arms)
+
+    def oldest(item: DueItem) -> tuple[str, str]:
+        return (item.root_clock_started_at or "", item.subject)
+
+    def first(item: DueItem) -> bool:
+        return item.scope is ArmScope.SERVING and item.subject in winners
+
+    _arm_serving(context, [item for item in arms if first(item)], walk, counts, budget)
+    units = sorted((item for item in arms if item.scope is ArmScope.UNITS), key=oldest)
     candidates: list[UnitCandidate] = []
     pending: dict[str, int] = {}
-    for item in arms:
-        if item.scope is ArmScope.UNITS:
-            action = lambda item=item: collect_unit_candidates(  # noqa: E731
-                context, item, counts, (candidates, pending)
-            )
-        else:
-            action = lambda item=item: arm_run(context, item, walk, counts)  # noqa: E731
-        result = isolated(action, context.on_failure)
-        counts.conflicts += result.conflicts
-        counts.failed += 0 if result.ok else 1
-    arm_unit_groups(context, candidates, pending, counts)
+    for index, item in enumerate(units):
+        if not budget.allows(UNITS_COLLECT_RESERVE_MS):
+            counts.deferred += len(units) - index
+            break
+        _count_arm(
+            context,
+            lambda item=item: collect_unit_candidates(context, item, counts, (candidates, pending)),
+            counts,
+        )
+    arm_unit_groups(context, candidates, pending, counts, budget)
+    others = sorted(
+        (item for item in arms if item.scope is not ArmScope.UNITS and not first(item)),
+        key=oldest,
+    )
+    _arm_serving(context, others, walk, counts, budget)
     return counts
 
 
-def promote_shard(context: PromoterContext, shard: str) -> PromotionCounts:
-    """One promoter pass over a shard: every woken or waiting unit, then stale instantiations."""
+def _arm_serving(  # noqa: PLR0913, PLR0917 -- the pass context, its items, walk, counts, budget
+    context: PromoterContext,
+    items: Sequence[DueItem],
+    walk: tuple[CompleteObligation, ...] | None,
+    counts: ArmCounts,
+    budget: PassBudget,
+) -> None:
+    """Arm each serving `ARM#` item in order while `ITEM_RESERVE_MS` remains; count the rest."""
+    for index, item in enumerate(items):
+        if not budget.allows(ITEM_RESERVE_MS):
+            counts.deferred += len(items) - index
+            return
+        # TD-290: a serving item this pass's election consumed is not armed again.
+        if walk is not None and not unconsumed_arms(context, (item,)):
+            continue
+        _count_arm(context, lambda item=item: arm_run(context, item, walk, counts), counts)
+
+
+def _count_arm(context: PromoterContext, action: Callable[[], None], counts: ArmCounts) -> None:
+    result = isolated(action, context.on_failure)
+    counts.conflicts += result.conflicts
+    counts.failed += 0 if result.ok else 1
+
+
+def promote_shard(
+    context: PromoterContext, shard: str, budget: PassBudget = NO_DEADLINE
+) -> PromotionCounts:
+    """One promoter pass over a shard: every woken or waiting unit, then stale instantiations.
+
+    No unit or instantiation starts below `PROMOTE_RESERVE_MS`, so the arm pass after it keeps
+    its time (ADR-162). The shard is read even once the budget has stopped the pass, so every
+    unit and stale instantiation left unstarted, in this shard or a later one, is counted
+    `deferred`; each stays for the next pass.
+    """
     counts = PromotionCounts()
     store = context.store
+    stopped = not budget.allows(PROMOTE_RESERVE_MS)
     units = {item.subject for item in store.read_due(shard, "PROMOTE#")}
     units |= {item.subject for item in store.read_due(shard, "WAITER#")}
-    for unit in sorted(units):
-        _isolate(context, lambda unit=unit: _promote(context, unit, counts), counts)
+    stopped = _promote_while(
+        sorted(units),
+        stopped,
+        budget,
+        lambda unit: _isolate(context, lambda: _promote(context, unit, counts), counts),
+        counts,
+    )
     cutoff = context.now() - INSTANTIATE_GRACE
-    for item in store.read_due(shard, "INSTANTIATE#"):
-        due = None if item.due_at is None else datetime.fromisoformat(item.due_at)
-        if due is not None and due > cutoff:
-            continue
-        _isolate(context, lambda run=item.subject: _instantiate(context, run, counts), counts)
+    stale = [
+        item.subject
+        for item in store.read_due(shard, "INSTANTIATE#")
+        if item.due_at is None or datetime.fromisoformat(item.due_at) <= cutoff
+    ]
+    _promote_while(
+        stale,
+        stopped,
+        budget,
+        lambda run: _isolate(context, lambda: _instantiate(context, run, counts), counts),
+        counts,
+    )
     return counts
+
+
+def _promote_while(  # noqa: PLR0913, PLR0917 -- the subjects, the stop state, budget, action, counts
+    subjects: Sequence[str],
+    stopped: bool,
+    budget: PassBudget,
+    action: Callable[[str], None],
+    counts: PromotionCounts,
+) -> bool:
+    """Run `action` on each subject while `PROMOTE_RESERVE_MS` remains; count the rest.
+
+    Return whether the budget has stopped the pass. Once stopped, the clock is not read again.
+    """
+    for index, subject in enumerate(subjects):
+        if stopped or not budget.allows(PROMOTE_RESERVE_MS):
+            counts.deferred += len(subjects) - index
+            return True
+        action(subject)
+    return stopped
 
 
 def _promote(context: PromoterContext, unit: str, counts: PromotionCounts) -> None:

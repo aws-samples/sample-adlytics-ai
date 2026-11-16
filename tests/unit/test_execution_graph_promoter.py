@@ -48,6 +48,7 @@ from fixed_member_byte_fixture_support import (
 )
 
 from adapters.jobs.execution_graph import promoter as promoter_module
+from adapters.jobs.execution_graph.budget import PassBudget
 from adapters.jobs.execution_graph.fence_settler import due_shards, settle_shard
 from adapters.jobs.execution_graph.instantiate import ingestion_node_plan
 from adapters.jobs.execution_graph.promoter import (
@@ -179,6 +180,24 @@ def test_v20_a_crash_after_the_release_leaves_promote_and_the_next_pass_promotes
     again = promote_shard(_context(fake), SHARD)
     assert again.branches == {}
     assert _slot_run(fake) == promoted
+
+
+@pytest.mark.covers("ADR-162")
+def test_a_waiter_reached_under_the_40_s_promote_reserve_waits_for_the_next_pass() -> None:
+    fake = FakeDynamo()
+    run = _active(fake)
+    _seed_waiter(fake)
+    _release(fake, run)
+    readings = iter((40_000, 39_999))
+
+    held = promote_shard(_context(fake), SHARD, PassBudget.of(lambda: next(readings)))
+
+    assert (held.branches, held.deferred, held.instantiated) == ({}, 1, 0)
+    assert kinds(fake, "PROMOTE#") == [(SHARD, f"PROMOTE#{UNIT}")]
+    assert kinds(fake, "WAITER#") != []
+    # Control: the next pass, with its time, promotes the same waiter once.
+    counts = promote_shard(_context(fake), SHARD, PassBudget.of(lambda: 40_000))
+    assert (counts.branches, counts.deferred, counts.instantiated) == ({"promote_waiter": 1}, 0, 1)
 
 
 def test_retired_publish_wait_rows_are_not_read_by_the_final_promoter() -> None:
@@ -630,8 +649,10 @@ def test_agg4_14_every_arm_read_precedes_the_first_complete_shard_read_control_l
 
     arm_reads = [i for i, (_pk, prefix) in enumerate(fake.queries) if prefix == "ARM#"]
     walk_reads = [i for i, (_pk, prefix) in enumerate(fake.queries) if prefix == "COMPLETE#"]
-    assert len(arm_reads) == 32
-    assert len(walk_reads) == 32
+    # The pass-start iteration, the election's second iteration after its candidate reads
+    # (ADR-162 §8), and the arm pass: 16 shards each.
+    assert len(arm_reads) == 48
+    assert len(walk_reads) == 48
     assert max(arm_reads[:16]) < min(walk_reads)
     # Control: with L absent, X's `ARM#` was read before the walk and its `COMPLETE#` is in it.
     assert counts.armed == 1
@@ -803,12 +824,16 @@ def test_b_publishes_while_a_is_active_and_a_final_transaction_elects_b() -> Non
     assert _state(fake, b_runs[0], "bake") == "PENDING"
 
 
-_GUARD_MS = 10_493
-"""The measured guard (FreshElectionTimingV1, 2026-10-15), pinned so a contract change is seen."""
+_GUARD_MS = 18_666
+"""The measured guard (FreshElectionTimingV1, 2026-11-14), pinned so a contract change is seen."""
+
+
+_STAGE_RESERVE_MS = 35_000
+"""ADR-162's serving stage reserve, pinned: no successor candidate is read below it."""
 
 
 def test_below_the_election_guard_the_final_alias_waits_and_the_next_invocation_elects() -> None:
-    world = build_world(3, 2)
+    world = build_world(3, 0)
     fake = world.fake
     before = copy.deepcopy(fake.items)
 
@@ -816,8 +841,24 @@ def test_below_the_election_guard_the_final_alias_waits_and_the_next_invocation_
 
     assert waiting is None
     assert fake.items == before  # the final alias and its COALESCE# stay durable
-    elected = capture_final_transaction(world, "next-invocation", lambda: _GUARD_MS)
-    assert elected is not None and len(elected.request["TransactItems"]) == 51
+    # With no successor to read, the guard alone admits the final transaction.
+    drained = capture_final_transaction(world, "next-invocation", lambda: _GUARD_MS)
+    assert drained is not None and len(drained.request["TransactItems"]) == 42
+
+
+def test_successors_are_read_only_above_the_stage_reserve_and_then_elect_in_that_pass() -> None:
+    world = build_world(3, 2)
+    fake = world.fake
+    before = copy.deepcopy(fake.items)
+
+    for clock in (_GUARD_MS, _STAGE_RESERVE_MS - 1):
+        waiting = capture_final_transaction(world, f"low-{clock}", lambda clock=clock: clock)
+        assert waiting is None
+        assert fake.items == before  # nothing read, so nothing staged and nothing drained
+
+    elected = capture_final_transaction(world, "next-invocation", lambda: _STAGE_RESERVE_MS)
+    assert elected is not None and len(elected.request["TransactItems"]) == 52
+    assert not [key for key in fake.items if key[1].startswith("ELECTION#")]
 
 
 def test_a_publication_racing_the_final_transaction_fails_it_whole_and_joins_the_retry() -> None:
@@ -860,7 +901,7 @@ def test_a_publication_racing_the_final_transaction_fails_it_whole_and_joins_the
     assert fake.items.get((f"SERVING#{final_record.grant_id}", "BINDING")) == alias_before
     assert fake.items[obligation] == obligation_before
     retried = capture_final_transaction(world, "fresh-retry")
-    assert retried is not None and len(retried.request["TransactItems"]) == 51
+    assert retried is not None and len(retried.request["TransactItems"]) == 52
     head = release_store(fake).read_serving_domain(INGESTION_RELEASE_DOMAIN).head
     assert head is not None and set(head.elected_run_ids) == {*world.b_runs, late}
     assert head.winner_run_id == late

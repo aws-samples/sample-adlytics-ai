@@ -1,0 +1,37 @@
+{
+  "$comment": "The reviewed JumpStart Chronos-2 artifact per supported Region (ADR-160). Synth reads the deployment Region's entry into demandForecast.modelArtifactUri and modelArtifactDigest, and the job refuses any other digest before the model loads. The digest is domain.forecasting.artifact_roster.roster_digest over every file's path, size and SHA-256. Re-read an entry with make demand-forecast-artifact-digest PROFILE=<profile> ENV=<env> REGION=<region>; add a Region or a new artifact version only after the same review (O-ACCELERATE-CHECKPOINT-001 depends on this pin).",
+  "schema_version": 1,
+  "hub_content": {
+    "hub": "SageMakerPublicHub",
+    "name": "pytorch-forecasting-chronos-2",
+    "version": "2.1.0"
+  },
+  "reviewed_on": "2026-11-12",
+  "regions": {
+    "us-east-1": {
+      "uri": "s3://jumpstart-cache-prod-us-east-1/pytorch-forecasting/pytorch-forecasting-chronos-2/artifacts/inference-prepack/v1.2.0/",
+      "digest": "07e105dbb16a7a6247b9ea9f5b6043b49959406cf28176a25c59076fdd50c939",
+      "objects": 41
+    },
+    "us-east-2": {
+      "uri": "s3://jumpstart-cache-prod-us-east-2/pytorch-forecasting/pytorch-forecasting-chronos-2/artifacts/inference-prepack/v1.2.0/",
+      "digest": "07e105dbb16a7a6247b9ea9f5b6043b49959406cf28176a25c59076fdd50c939",
+      "objects": 41
+    },
+    "us-west-2": {
+      "uri": "s3://jumpstart-cache-prod-us-west-2/pytorch-forecasting/pytorch-forecasting-chronos-2/artifacts/inference-prepack/v1.2.0/",
+      "digest": "07e105dbb16a7a6247b9ea9f5b6043b49959406cf28176a25c59076fdd50c939",
+      "objects": 41
+    },
+    "eu-central-1": {
+      "uri": "s3://jumpstart-cache-prod-eu-central-1/pytorch-forecasting/pytorch-forecasting-chronos-2/artifacts/inference-prepack/v1.2.0/",
+      "digest": "07e105dbb16a7a6247b9ea9f5b6043b49959406cf28176a25c59076fdd50c939",
+      "objects": 41
+    },
+    "eu-west-1": {
+      "uri": "s3://jumpstart-cache-prod-eu-west-1/pytorch-forecasting/pytorch-forecasting-chronos-2/artifacts/inference-prepack/v1.2.0/",
+      "digest": "07e105dbb16a7a6247b9ea9f5b6043b49959406cf28176a25c59076fdd50c939",
+      "objects": 41
+    }
+  }
+}

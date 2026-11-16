@@ -82,10 +82,11 @@ Every non-CHAT Athena caller has a fixed maximum of concurrent executions: its L
 | `ingest_operator` | 1 process, by the runbook rule | 1 | 1 | One `ingest_delivery` run |
 | `reprocess_operator` | 1 process, by the runbook rule | 1 | 1 | One `reprocess_semantic_v2` run or one of the three BAKE validation probes |
 | `insight_precompute` | 2 | `athenaStartBudget.insightStartCap` = 4 | 8 | The precompute measurement fan-out |
-| **Total** | | | **41** | |
+| `demand_forecast_input` | 1 | 1 | 1 | The demand-forecast input builder's roster and two UNLOADs, one after another on `batch` |
+| **Total** | | | **42** | |
 
-The rule is `Σ(reserved × cap) ≤ batch_athena_budget ≤ active_dml_quota − chat_reserve_active_dml`, which at the initial values is 41 ≤ 41 ≤ 180. Every row is present exactly once, every value is an integer, a reserved concurrency of 0 is a quiesced row and an absent one (unreserved, unbounded) is refused, and the Baker cap may not fall below the certified query cap of 10 the bake budgets are proven at.
+The rule is `Σ(reserved × cap) ≤ batch_athena_budget ≤ active_dml_quota − chat_reserve_active_dml`, which at the initial values is 42 ≤ 42 ≤ 180. Every row is present exactly once, every value is an integer, a reserved concurrency of 0 is a quiesced row and an absent one (unreserved, unbounded) is refused, and the Baker cap may not fall below the certified query cap of 10 the bake budgets are proven at.
 
 The three limits live only in the `athena_start_budget` block of `contracts/operations/execution-graphs.yaml`: `active_dml_quota: 200` is this account's Active DML quota as read back on 2026-10-13 (the README's [prerequisites](../../../README.md#prerequisites) say how to read yours), and `chat_reserve_active_dml: 20` is design-proposed headroom for CHAT, not a service requirement. A customer with a different quota changes the contract constant. One rule is implemented twice: `cdk synth` runs `validateAthenaStartBudget` over the configured maximum each stack can render and throws on violation, and `validation/probe_athena_workgroup_migration.py` runs the Python twin over the deployed reserved concurrency, so console drift is caught. Neither accepts a configured or supplied limit that differs from the contract.
 
-Raising Q is a config change that also raises the contract budget. As projections, not certified values: Q16 makes the total 53 and Q24 makes it 69.
+Raising Q is a config change that also raises the contract budget. As projections, not certified values: Q16 makes the total 54 and Q24 makes it 70.

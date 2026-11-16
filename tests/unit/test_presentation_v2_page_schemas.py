@@ -359,7 +359,7 @@ def test_v2_declaration_preserves_exact_temporal_artifact_visual_and_action_cont
             ),
         ),
         "retail-health": (
-            ("retail_health", "RetailHealthArtifact", 2, ("complete", "empty", "insufficient")),
+            ("retail_health", "RetailHealthArtifact", 3, ("complete", "empty", "insufficient")),
             ("retail_product_detail", "RetailProductDetail", 1, ("selected", "insufficient")),
         ),
         "scorecard": (

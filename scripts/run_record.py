@@ -124,6 +124,20 @@ CANONICAL: dict[str, Canonical] = {
         ".",
         "pytest",
     ),
+    # The demand-forecast job's slow tier (make check-forecasting), run in .venv-forecasting.
+    "pytest-forecasting": Canonical(
+        (
+            sys.executable,
+            "-m",
+            "pytest",
+            "-m",
+            "forecasting",
+            f"--junitxml={STAGING}/junit.xml",
+            "tests/forecasting",
+        ),
+        ".",
+        "pytest",
+    ),
     "frontend-test": Canonical(
         (
             "npm",

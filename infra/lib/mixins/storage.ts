@@ -26,7 +26,8 @@ export type DataBucketPurpose =
   | 'v2-results'
   | 'semantic-v2'
   | 'semantic-v2-raw'
-  | 'v2-staging';
+  | 'v2-staging'
+  | 'demand-forecast';
 
 /**
  * S3's own limit. Asserted rather than trusted because the longest name this builds
@@ -248,6 +249,24 @@ export function publisherArtifactLifecycle(config: AppConfig): s3.LifecycleRule[
  * object listing, so on a bucket receiving automated writes the cost accrues with
  * nothing to see.
  */
+/**
+ * Lifecycle for the demand-forecast processing bucket (approval I-1): staged inputs and
+ * candidates under `runs/` expire after 90 days, current and noncurrent versions alike, so a
+ * versioned bucket keeps nothing forever. Slice 2's store generations get their own rule.
+ */
+export function demandForecastLifecycle(config: AppConfig): s3.LifecycleRule[] {
+  return [
+    {
+      id: 'expire-forecast-runs',
+      enabled: true,
+      prefix: 'runs/',
+      expiration: Duration.days(90),
+      noncurrentVersionExpiration: Duration.days(90),
+    },
+    abortIncompleteUploads(config),
+  ];
+}
+
 function abortIncompleteUploads(config: AppConfig): s3.LifecycleRule {
   return {
     id: 'abort-incomplete-multipart-uploads',

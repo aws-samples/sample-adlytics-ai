@@ -15,11 +15,11 @@ Every persona and view is listed in [who it is for](../../business-context.md#wh
 
 ## What you see
 
-The screenshots come from a development deployment with synthetic data, in the light theme, captured in October 2026. Campaign names and figures are fictional. To regenerate them, see [capturing screenshots](../../../validation/README.md#regenerating-readme-screenshots).
+The screenshots come from a development deployment with synthetic data, in the light theme, captured in November 2026. Campaign names and figures are fictional. To regenerate them, see [capturing screenshots](../../../validation/README.md#regenerating-readme-screenshots).
 
-![Campaigns page under the Performance hub, with its question Which campaigns should get more or less?, for all channels with 1 day, 7 days, 14 days and 30 days windows and a note that the data runs through Oct 6, 2026, an answer sentence saying 60 campaigns spent 240,337.56 USD, up 5.6%, ad spend and impressions tiles with prior values and changes, a line asking to pick a channel to see sales and return, three insight cards and the top of the daily ad spend chart, with the assistant docked on the right](../../images/campaign-portfolio.png)
+![Campaigns page under the Performance hub, with its question Which campaigns should get more or less?, for all channels with 1 day, 7 days, 14 days and 30 days windows and a note that the data runs through Nov 12, 2026, an answer sentence saying 60 campaigns spent 272,428.07 USD, up 6.2%, ad spend and impressions tiles with prior values and changes, a line asking to pick a channel to see sales and return, Highest return and Lowest return lists of five campaigns each with attributed ROAS and ad spend, one reading Name unavailable, and the Insights heading, with the assistant docked on the right](../../images/campaign-portfolio.png)
 
-**Portfolio.** 60 campaigns spent 240,337.56 USD in the week, up 5.6%. Under All channels the page shows only what can be totalled, spend and impressions, and asks for a channel before it shows sales and return, because one purchase can be credited to more than one channel. The Contribution and Exposure cards, tagged Reading, are written by an Amazon Bedrock model from the page's figures. The Largest changes card, tagged Fact, is a fixed rule that lists the largest changes, with no model involved. Only published windows can be chosen ([temporal control](../../ui/temporal-control-contract.md)). See [campaign portfolio](../../ui/campaign-portfolio/README.md).
+**Portfolio.** 60 campaigns spent 272,428.07 USD in the week, up 6.2%. Under All channels the tiles show only what can be totalled, spend and impressions, and ask for a channel before they show sales and return, because one purchase can be credited to more than one channel. Highest return and Lowest return list single campaigns by their own attributed ROAS; a campaign with no name in the data reads "Name unavailable". The Contribution and Exposure cards, tagged Reading, are written by an Amazon Bedrock model from the page's figures. The Largest changes card, tagged Fact, is a fixed rule that lists the largest changes, with no model involved. Only published windows can be chosen ([temporal control](../../ui/temporal-control-contract.md)). See [campaign portfolio](../../ui/campaign-portfolio/README.md).
 
 ![Campaign detail for a Sponsored Products campaign: its channel, marketplace and window, four insight cards (Trend shape reading Reading, Efficiency drift and Delivery and outcome reading Nothing noteworthy, Next check reading Idea to check), and tiles for attributed purchases, ROAS, ad spend, impressions, clicks, click-through rate, cost per click and cost per thousand impressions with prior values and changes, with the assistant docked on the right](../../images/campaign-detail.png)
 
@@ -27,9 +27,9 @@ The screenshots come from a development deployment with synthetic data, in the l
 
 ### Close-ups
 
-![Campaigns table sorted by ad spend: a Late data note that states how days are bucketed and then repeats the same staleness sentence once for each source load, a campaign search box, and the first three campaigns with ad spend, attributed ROAS, attributed purchases and click-through rate as a percentage, each with its change](../../images/portfolio-campaigns-table.png)
+![Campaigns table sorted by ad spend: a Late data note that states how days are bucketed with a See why link, a campaign search box, and the first three campaigns with ad spend, attributed ROAS, attributed purchases and click-through rate as a percentage, each with its change](../../images/portfolio-campaigns-table.png)
 
-**Campaigns table.** Every campaign, ranked by the column you choose, so a media buyer can sort by return to find the ones to fix; "Find a campaign" searches every channel. The Late data note warns that recent days may be incomplete. Here it repeats one sentence for each stale load, a known copy issue ("Read the staleness note above the Campaigns table at a glance" in [Known limits](../../../README.md#known-limits)).
+**Campaigns table.** Every campaign, ranked by the column you choose, so a media buyer can sort by return to find the ones to fix; "Find a campaign" searches every channel. The Late data note says how the source's days are bucketed, and See why opens the reason.
 
 ![Metric focus dialog for ad spend: the window total and change against the aligned prior, a daily chart, peak day, trough day, largest day move and window total, the largest per-campaign drivers, an interpretation, and a deep analysis with what stands out, three candidate readings and what would tell them apart](../../images/metric-focus-dialog.png)
 
@@ -37,9 +37,9 @@ The screenshots come from a development deployment with synthetic data, in the l
 
 ![Insight focus dialog for the portfolio's Contribution insight, marked Reading: a narration naming the campaigns with the largest spend gains and declines, then a deep analysis with what stands out, three candidate readings and what would tell them apart](../../images/insight-dialog.png)
 
-**Opening an insight card shows the full reading**, so a team can check the reasoning before it acts. The text reads only figures the page already shows, or values worked from them, such as a difference; here it also notes that the figures sit on stale loads. See [insight focus dialog](../../ui/insight-presentation-contract.md#3-clickable-cards-and-the-insight-focus-dialog).
+**Opening an insight card shows the full reading**, so a team can check the reasoning before it acts. The text reads only figures the page already shows, or values worked from them, such as a difference. See [insight focus dialog](../../ui/insight-presentation-contract.md#3-clickable-cards-and-the-insight-focus-dialog).
 
-![Daily ad spend chart for Sep 30 to Oct 6, 2026, with axis values from 0 USD, a note to choose a channel to see purchases and ROAS over time, and a Show exact values disclosure](../../images/portfolio-trend-chart.png)
+![Daily ad spend chart for Nov 6 to 12, 2026, with axis values from 0 USD, a note to choose a channel to see purchases and ROAS over time, and a Show exact values disclosure](../../images/portfolio-trend-chart.png)
 
 **Trend chart.** Daily spend plotted from zero, with the exact values one click away for anyone who needs to cite them.
 

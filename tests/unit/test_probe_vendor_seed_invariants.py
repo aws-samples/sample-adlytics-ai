@@ -6,6 +6,7 @@ from __future__ import annotations
 import functools
 import sys
 from dataclasses import replace
+from datetime import timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -28,12 +29,15 @@ def _expected() -> probe.VendorExpectations:
 
 
 def _key(index: int = 100) -> tuple[str, probe.date]:
-    return sorted(_expected().final)[index]
+    # The probe checks the catalog span; the Vendor history before it (K-4) isn't probed.
+    expected = _expected()
+    return sorted(key for key in expected.final if key[1] >= expected.span.start)[index]
 
 
 def test_the_committed_final_values_pass_with_full_denominators() -> None:
     expected = _expected()
-    assert len(expected.final) == len(expected.asins) * expected.span.days
+    days = [expected.span.start + timedelta(days=offset) for offset in range(expected.span.days)]
+    assert {(asin, day) for asin in expected.asins for day in days} <= expected.final.keys()
     for report in probe.reports(expected.final, expected):
         assert not report.failed, report.line()
 

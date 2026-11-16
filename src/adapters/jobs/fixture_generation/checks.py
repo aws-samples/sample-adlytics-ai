@@ -96,8 +96,11 @@ def _check_retail(catalog: SyntheticEntityCatalog) -> None:
     totals_units = [0] * len(span)
     totals_returns = [0] * len(span)
     for product in catalog.products:
+        present = [values.vendor_present(product.asin, day) for day in span]
         series = [values.product_day(product.asin, product.scenario, day) for day in span]
         for index, (day, item) in enumerate(zip(span, series, strict=True)):
+            if not present[index]:
+                continue
             label = f"{product.asin} {day}"
             if item.returns >= item.units_shipped:
                 raise SyntheticCatalogError(f"{label}: returns reach units shipped.")
@@ -117,8 +120,8 @@ def _check_retail(catalog: SyntheticEntityCatalog) -> None:
             totals_returns[index] += item.returns
         _check_windows(
             product.asin,
-            [item.units_shipped for item in series],
-            [item.returns for item in series],
+            [item.units_shipped if here else 0 for item, here in zip(series, present, strict=True)],
+            [item.returns if here else 0 for item, here in zip(series, present, strict=True)],
             span,
         )
     _check_windows("all products", totals_units, totals_returns, span)

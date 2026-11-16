@@ -45,6 +45,10 @@ const WRITER = roleOfHandler('IngestionStack', 'adapters.inbound.ingestion_handl
 const RECONCILER = roleOfHandler('IngestionStack', 'adapters.jobs.provider_attempt_reconciler.handler');
 const OPERATOR = roleNamed('IngestionStack', 'SemanticProjectionOperatorRole');
 const PRECOMPUTE = roleOfHandler('InsightPrecomputeStack', 'adapters.jobs.insight_precompute.handler.handler');
+const FORECAST_INPUT = roleOfHandler(
+  'DemandForecastStack',
+  'adapters.jobs.demand_forecast_input.handler.handler',
+);
 
 /** The closed role -> budget-row map per workgroup. */
 const ROSTER: Record<string, Record<string, readonly string[]>> = {
@@ -56,8 +60,12 @@ const ROSTER: Record<string, Record<string, readonly string[]>> = {
     [OPERATOR]: ['ingest_operator', 'reprocess_operator'],
   },
   [INSIGHT]: { [PRECOMPUTE]: ['insight_precompute'] },
-  // AGG-6 residual: only the reconciler, whose row also covers its starts here.
-  [BATCH]: { [RECONCILER]: ['provider_attempt_reconciler'] },
+  // AGG-6 residual: the reconciler, whose row also covers its starts here, and the demand-forecast
+  // input builder's own row.
+  [BATCH]: {
+    [RECONCILER]: ['provider_attempt_reconciler'],
+    [FORECAST_INPUT]: ['demand_forecast_input'],
+  },
 };
 
 const sorted = (values: Iterable<string>): string[] => [...values].sort();
@@ -86,7 +94,7 @@ describe('Athena start principals equal the static start-budget roster', () => {
     expect(sorted(athenaStartRoles(templates, workgroup))).toEqual(sorted(Object.keys(ROSTER[workgroup] ?? {})));
   });
 
-  it('maps the roster onto exactly the seven budget rows', () => {
+  it('maps the roster onto exactly the eight budget rows', () => {
     expect(mappedRows(ROSTER)).toEqual(sorted(athenaStartBudgetRows(TEST_CONFIG).map((row) => row.rowId)));
   });
 

@@ -56,7 +56,9 @@ EMAIL="${cli_email:-}"
 [ -n "$ENV_NAME" ] || fail "ENV is required: make deploy-all PROFILE=<profile> ENV=<env>"
 
 step "Checking local tools"
-for tool in node npm uv aws file; do
+# The demand-forecast job image is a CDK container asset, built by Docker or by the tool
+# CDK_DOCKER names (for example finch).
+for tool in node npm uv aws file "${CDK_DOCKER:-docker}"; do
   command -v "$tool" >/dev/null 2>&1 || fail "$tool is not installed (see README prerequisites)."
 done
 want_node="$(tr -d '[:space:]' < .nvmrc)"

@@ -4,7 +4,7 @@
 from typing import Any, Final
 
 CONTRACT_REVISION: Final = 3
-CONTRACT_DIGEST: Final = '8a589c8f0e134977eab39d81e51062e56ecc892e0591fb2e999b1ad3a8b36469'
+CONTRACT_DIGEST: Final = '7c093274fdbc4e8ceae2cd3a9974cc91720a64da2b7feb81b3a4607b5c5ff064'
 PROTOCOL_VERSION: Final = 'v1'
 AUTHORITY_EPOCHS: Final[Any] = (
 {'shadow': 0, 'graph': 1}
@@ -65,9 +65,9 @@ WRITE_UNIT_BATCHING: Final[Any] = (
 {'statement_allowance_ms': 44000}
 )
 SERVING_COALESCING: Final[Any] = (
-{'serving_candidate_roster_max': 512,
+{'serving_candidate_roster_max': 5417,
  'serving_frontier_shards': 32,
- 'next_election_min_remaining_ms': 10493,
+ 'next_election_min_remaining_ms': 18666,
  'binding_kinds': ('direct', 'alias')}
 )
 BAKE_TASKS: Final[Any] = (
@@ -197,7 +197,7 @@ BAKE_UNAVAILABLE_REASONS: Final[Any] = (
  'audiences': 'audiences_materialization_unavailable'}
 )
 ATHENA_START_BUDGET: Final[Any] = (
-{'active_dml_quota': 200, 'batch_athena_budget': 41, 'chat_reserve_active_dml': 20}
+{'active_dml_quota': 200, 'batch_athena_budget': 42, 'chat_reserve_active_dml': 20}
 )
 CALLER_REASONS: Final[Any] = (
 {'schedule': ('scheduled_cadence',),
@@ -368,14 +368,14 @@ ROOT_VOCABULARY: Final[Any] = (
  'root_clock_source': 'raw manifest version LastModified'}
 )
 HISTORICAL_POLICY: Final[Any] = (
-{'replay_base': '2026-10-06T00:00:00Z',
+{'replay_base': '2026-11-12T00:00:00Z',
  'first_day': '2025-07-01',
- 'paired_first_day': '2025-07-01',
- 'cut': '2026-08-11',
+ 'paired_first_day': '2024-10-08',
+ 'cut': '2026-09-17',
  'stride_seconds': 64,
- 'seal_slot_base': 463,
- 'backfill_slot_base': 527,
- 'probe_slot_base': 530,
+ 'seal_slot_base': 500,
+ 'backfill_slot_base': 564,
+ 'probe_slot_base': 567,
  'probe_slot_count': 64,
  'encodings': ({'source_system': 'amc',
                 'source_dataset': 'dsp_impressions',

@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from typing import Any, cast
@@ -91,13 +91,30 @@ class FixtureBuildOptions:
     campaign_population: CampaignFixturePopulation = CampaignFixturePopulation.VISIBLE
     result: ResultShape | None = None
     """With a result shape, a flat fixture is laid out as that governed pack's AMC result."""
+    history_start: date | None = None
+    """A first day before the span's, for a source whose history starts earlier (Vendor, K-4)."""
 
     @property
     def first_day(self) -> date:
-        """The first fixture day: the catalog's declared span start, or FIRST_DAY without one."""
+        """The first fixture day: the history start, the catalog's span start, or FIRST_DAY."""
+        if self.history_start is not None:
+            return self.history_start
         if self.entity_catalog is None:
             return FIRST_DAY
         return self.entity_catalog.shape.fixture_span.first_day
+
+    def for_vendor_history(self) -> FixtureBuildOptions:
+        """Return these options starting at the catalog's Vendor history start (K-4).
+
+        The rows grow by the days between that start and the span's first day, so the fixture
+        still ends on `last_day`.
+        """
+        if self.entity_catalog is None:
+            return self
+        shape = self.entity_catalog.shape
+        start = shape.forecast.vendor_history_start
+        extra = (shape.fixture_span.first_day - start).days
+        return replace(self, history_start=start, rows=self.rows + extra)
 
     def __post_init__(self) -> None:
         if self.rows < 1:
@@ -557,6 +574,7 @@ def build(
             contract=contract,
             catalog=selected.entity_catalog,
             population=selected.campaign_population,
+            first_day=selected.first_day,
         )
         if selected.entity_catalog is not None
         else None
@@ -569,6 +587,8 @@ def build(
             else rows
         )
         document = _build_document(in_document, physical_rows, provider)
+        if provider is not None and contract.source_system == "vendor_central":
+            _drop_absent_rows(document, physical_rows, provider)
         return Fixture(
             contract_id=contract.contract_id,
             source_format=contract.source_format,
@@ -594,6 +614,22 @@ def build(
         manifest=_declaration(contract, selected),
         rows=_result_rows(contract, rows_out, selected),
     )
+
+
+def _drop_absent_rows(document: dict[str, Any], rows: int, provider: GovernedValueProvider) -> None:
+    """Remove the Vendor rows a declared forecasting shape leaves out (K-4).
+
+    A real Vendor report has no row for an ASIN with nothing to report that day, and no report
+    at all on the declared unlanded day; the shape declares which days those are, so absence is
+    declared, never random.
+    """
+    keep = [row for row in range(rows) if provider.include_vendor_row(row)]
+    if len(keep) == rows:
+        return
+    for name, value in tuple(document.items()):
+        if isinstance(value, list) and len(cast("list[Any]", value)) == rows:
+            items = cast("list[Any]", value)
+            document[name] = [items[row] for row in keep]
 
 
 def declaration_for(contract: DataContract, options: FixtureBuildOptions) -> dict[str, Any]:

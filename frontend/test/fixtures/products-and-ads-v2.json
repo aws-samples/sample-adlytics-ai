@@ -207,7 +207,7 @@
         {
           "absence_class": "evaluated-quiet",
           "absence_reason": "No change in this view is large enough to call out.",
-          "artifact_revision": "sha256:0be03041acef764d9805840f72028b0b15d3b4b23973b83af25d42e763498697",
+          "artifact_revision": "sha256:7fa545b97b44a4d61d00ac9bb356d3e155154f29735eae81e46e7444eb4f7efa",
           "evidence_line": null,
           "id": "demand-shape",
           "output_class": "perspective",
@@ -218,7 +218,7 @@
         {
           "absence_class": "generation-pending",
           "absence_reason": "This insight could not be generated just now; it retries automatically and appears on a later view.",
-          "artifact_revision": "sha256:0be03041acef764d9805840f72028b0b15d3b4b23973b83af25d42e763498697",
+          "artifact_revision": "sha256:7fa545b97b44a4d61d00ac9bb356d3e155154f29735eae81e46e7444eb4f7efa",
           "evidence_line": null,
           "id": "returns-pressure",
           "output_class": "perspective",
@@ -229,7 +229,7 @@
         {
           "absence_class": "evaluated-quiet",
           "absence_reason": "No change in this view is large enough to call out.",
-          "artifact_revision": "sha256:0be03041acef764d9805840f72028b0b15d3b4b23973b83af25d42e763498697",
+          "artifact_revision": "sha256:7fa545b97b44a4d61d00ac9bb356d3e155154f29735eae81e46e7444eb4f7efa",
           "evidence_line": null,
           "id": "ordered-vs-shipped",
           "output_class": "perspective",
@@ -566,127 +566,31 @@
           "freshness_qualifiers": [],
           "parent_asin": "PARENT-FICTA",
           "selection_reference": "v2_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
-          "shipped_revenue_spark": [
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "product",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-13",
-                "start": "2026-08-13"
-              },
-              "units": {
-                "currency_code": "USD",
-                "kind": "currency"
-              },
-              "value": 1
+          "shipped_revenue_spark": {
+            "basis": "retail_actual",
+            "grain": [
+              "date",
+              "product",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-19",
+              "start": "2026-08-13"
             },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "product",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-14",
-                "start": "2026-08-14"
-              },
-              "units": {
-                "currency_code": "USD",
-                "kind": "currency"
-              },
-              "value": 1
+            "units": {
+              "currency_code": "USD",
+              "kind": "currency"
             },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "product",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-15",
-                "start": "2026-08-15"
-              },
-              "units": {
-                "currency_code": "USD",
-                "kind": "currency"
-              },
-              "value": 1
-            },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "product",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-16",
-                "start": "2026-08-16"
-              },
-              "units": {
-                "currency_code": "USD",
-                "kind": "currency"
-              },
-              "value": 1
-            },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "product",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-17",
-                "start": "2026-08-17"
-              },
-              "units": {
-                "currency_code": "USD",
-                "kind": "currency"
-              },
-              "value": 1
-            },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "product",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-18",
-                "start": "2026-08-18"
-              },
-              "units": {
-                "currency_code": "USD",
-                "kind": "currency"
-              },
-              "value": 1
-            },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "product",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-19",
-                "start": "2026-08-19"
-              },
-              "units": {
-                "currency_code": "USD",
-                "kind": "currency"
-              },
-              "value": 1
-            }
-          ],
+            "values": [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          },
           "title": "Fictional Product FICTA"
         },
         {
@@ -978,127 +882,31 @@
           "freshness_qualifiers": [],
           "parent_asin": "PARENT-FICTB",
           "selection_reference": "v2_CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
-          "shipped_revenue_spark": [
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "product",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-13",
-                "start": "2026-08-13"
-              },
-              "units": {
-                "currency_code": "USD",
-                "kind": "currency"
-              },
-              "value": 1
+          "shipped_revenue_spark": {
+            "basis": "retail_actual",
+            "grain": [
+              "date",
+              "product",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-19",
+              "start": "2026-08-13"
             },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "product",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-14",
-                "start": "2026-08-14"
-              },
-              "units": {
-                "currency_code": "USD",
-                "kind": "currency"
-              },
-              "value": 1
+            "units": {
+              "currency_code": "USD",
+              "kind": "currency"
             },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "product",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-15",
-                "start": "2026-08-15"
-              },
-              "units": {
-                "currency_code": "USD",
-                "kind": "currency"
-              },
-              "value": 1
-            },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "product",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-16",
-                "start": "2026-08-16"
-              },
-              "units": {
-                "currency_code": "USD",
-                "kind": "currency"
-              },
-              "value": 1
-            },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "product",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-17",
-                "start": "2026-08-17"
-              },
-              "units": {
-                "currency_code": "USD",
-                "kind": "currency"
-              },
-              "value": 1
-            },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "product",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-18",
-                "start": "2026-08-18"
-              },
-              "units": {
-                "currency_code": "USD",
-                "kind": "currency"
-              },
-              "value": 1
-            },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "product",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-19",
-                "start": "2026-08-19"
-              },
-              "units": {
-                "currency_code": "USD",
-                "kind": "currency"
-              },
-              "value": 1
-            }
-          ],
+            "values": [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          },
           "title": "Fictional Product FICTB"
         }
       ],
@@ -1735,959 +1543,210 @@
           }
         }
       ],
-      "trend": [
-        {
-          "current": [
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-13",
-                "start": "2026-08-13"
-              },
-              "units": {
-                "currency_code": "USD",
-                "kind": "currency"
-              },
-              "value": 2
+      "trend": {
+        "current": [
+          {
+            "basis": "retail_actual",
+            "grain": [
+              "date",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-19",
+              "start": "2026-08-13"
             },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-13",
-                "start": "2026-08-13"
-              },
-              "units": {
-                "currency_code": null,
-                "kind": "count"
-              },
-              "value": 2
+            "units": {
+              "currency_code": "USD",
+              "kind": "currency"
             },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-13",
-                "start": "2026-08-13"
-              },
-              "units": {
-                "currency_code": null,
-                "kind": "count"
-              },
-              "value": 2
+            "values": [
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2
+            ]
+          },
+          {
+            "basis": "retail_actual",
+            "grain": [
+              "date",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-19",
+              "start": "2026-08-13"
             },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-13",
-                "start": "2026-08-13"
-              },
-              "units": {
-                "currency_code": null,
-                "kind": "count"
-              },
-              "value": 2
-            }
-          ],
-          "date": "2026-08-13",
-          "prior": [
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-06",
-                "start": "2026-08-06"
-              },
-              "units": {
-                "currency_code": "USD",
-                "kind": "currency"
-              },
-              "value": 1
+            "units": {
+              "currency_code": null,
+              "kind": "count"
             },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-06",
-                "start": "2026-08-06"
-              },
-              "units": {
-                "currency_code": null,
-                "kind": "count"
-              },
-              "value": 1
+            "values": [
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2
+            ]
+          },
+          {
+            "basis": "retail_actual",
+            "grain": [
+              "date",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-19",
+              "start": "2026-08-13"
             },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-06",
-                "start": "2026-08-06"
-              },
-              "units": {
-                "currency_code": null,
-                "kind": "count"
-              },
-              "value": 1
+            "units": {
+              "currency_code": null,
+              "kind": "count"
             },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-06",
-                "start": "2026-08-06"
-              },
-              "units": {
-                "currency_code": null,
-                "kind": "count"
-              },
-              "value": 1
-            }
-          ]
-        },
-        {
-          "current": [
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-14",
-                "start": "2026-08-14"
-              },
-              "units": {
-                "currency_code": "USD",
-                "kind": "currency"
-              },
-              "value": 2
+            "values": [
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2
+            ]
+          },
+          {
+            "basis": "retail_actual",
+            "grain": [
+              "date",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-19",
+              "start": "2026-08-13"
             },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-14",
-                "start": "2026-08-14"
-              },
-              "units": {
-                "currency_code": null,
-                "kind": "count"
-              },
-              "value": 2
+            "units": {
+              "currency_code": null,
+              "kind": "count"
             },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-14",
-                "start": "2026-08-14"
-              },
-              "units": {
-                "currency_code": null,
-                "kind": "count"
-              },
-              "value": 2
+            "values": [
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2
+            ]
+          }
+        ],
+        "prior": [
+          {
+            "basis": "retail_actual",
+            "grain": [
+              "date",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-12",
+              "start": "2026-08-06"
             },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-14",
-                "start": "2026-08-14"
-              },
-              "units": {
-                "currency_code": null,
-                "kind": "count"
-              },
-              "value": 2
-            }
-          ],
-          "date": "2026-08-14",
-          "prior": [
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-07",
-                "start": "2026-08-07"
-              },
-              "units": {
-                "currency_code": "USD",
-                "kind": "currency"
-              },
-              "value": 1
+            "units": {
+              "currency_code": "USD",
+              "kind": "currency"
             },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-07",
-                "start": "2026-08-07"
-              },
-              "units": {
-                "currency_code": null,
-                "kind": "count"
-              },
-              "value": 1
+            "values": [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          },
+          {
+            "basis": "retail_actual",
+            "grain": [
+              "date",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-12",
+              "start": "2026-08-06"
             },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-07",
-                "start": "2026-08-07"
-              },
-              "units": {
-                "currency_code": null,
-                "kind": "count"
-              },
-              "value": 1
+            "units": {
+              "currency_code": null,
+              "kind": "count"
             },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-07",
-                "start": "2026-08-07"
-              },
-              "units": {
-                "currency_code": null,
-                "kind": "count"
-              },
-              "value": 1
-            }
-          ]
-        },
-        {
-          "current": [
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-15",
-                "start": "2026-08-15"
-              },
-              "units": {
-                "currency_code": "USD",
-                "kind": "currency"
-              },
-              "value": 2
+            "values": [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          },
+          {
+            "basis": "retail_actual",
+            "grain": [
+              "date",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-12",
+              "start": "2026-08-06"
             },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-15",
-                "start": "2026-08-15"
-              },
-              "units": {
-                "currency_code": null,
-                "kind": "count"
-              },
-              "value": 2
+            "units": {
+              "currency_code": null,
+              "kind": "count"
             },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-15",
-                "start": "2026-08-15"
-              },
-              "units": {
-                "currency_code": null,
-                "kind": "count"
-              },
-              "value": 2
+            "values": [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          },
+          {
+            "basis": "retail_actual",
+            "grain": [
+              "date",
+              "marketplace"
+            ],
+            "period": {
+              "end": "2026-08-12",
+              "start": "2026-08-06"
             },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-15",
-                "start": "2026-08-15"
-              },
-              "units": {
-                "currency_code": null,
-                "kind": "count"
-              },
-              "value": 2
-            }
-          ],
-          "date": "2026-08-15",
-          "prior": [
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-08",
-                "start": "2026-08-08"
-              },
-              "units": {
-                "currency_code": "USD",
-                "kind": "currency"
-              },
-              "value": 1
+            "units": {
+              "currency_code": null,
+              "kind": "count"
             },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-08",
-                "start": "2026-08-08"
-              },
-              "units": {
-                "currency_code": null,
-                "kind": "count"
-              },
-              "value": 1
-            },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-08",
-                "start": "2026-08-08"
-              },
-              "units": {
-                "currency_code": null,
-                "kind": "count"
-              },
-              "value": 1
-            },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-08",
-                "start": "2026-08-08"
-              },
-              "units": {
-                "currency_code": null,
-                "kind": "count"
-              },
-              "value": 1
-            }
-          ]
-        },
-        {
-          "current": [
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-16",
-                "start": "2026-08-16"
-              },
-              "units": {
-                "currency_code": "USD",
-                "kind": "currency"
-              },
-              "value": 2
-            },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-16",
-                "start": "2026-08-16"
-              },
-              "units": {
-                "currency_code": null,
-                "kind": "count"
-              },
-              "value": 2
-            },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-16",
-                "start": "2026-08-16"
-              },
-              "units": {
-                "currency_code": null,
-                "kind": "count"
-              },
-              "value": 2
-            },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-16",
-                "start": "2026-08-16"
-              },
-              "units": {
-                "currency_code": null,
-                "kind": "count"
-              },
-              "value": 2
-            }
-          ],
-          "date": "2026-08-16",
-          "prior": [
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-09",
-                "start": "2026-08-09"
-              },
-              "units": {
-                "currency_code": "USD",
-                "kind": "currency"
-              },
-              "value": 1
-            },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-09",
-                "start": "2026-08-09"
-              },
-              "units": {
-                "currency_code": null,
-                "kind": "count"
-              },
-              "value": 1
-            },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-09",
-                "start": "2026-08-09"
-              },
-              "units": {
-                "currency_code": null,
-                "kind": "count"
-              },
-              "value": 1
-            },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-09",
-                "start": "2026-08-09"
-              },
-              "units": {
-                "currency_code": null,
-                "kind": "count"
-              },
-              "value": 1
-            }
-          ]
-        },
-        {
-          "current": [
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-17",
-                "start": "2026-08-17"
-              },
-              "units": {
-                "currency_code": "USD",
-                "kind": "currency"
-              },
-              "value": 2
-            },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-17",
-                "start": "2026-08-17"
-              },
-              "units": {
-                "currency_code": null,
-                "kind": "count"
-              },
-              "value": 2
-            },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-17",
-                "start": "2026-08-17"
-              },
-              "units": {
-                "currency_code": null,
-                "kind": "count"
-              },
-              "value": 2
-            },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-17",
-                "start": "2026-08-17"
-              },
-              "units": {
-                "currency_code": null,
-                "kind": "count"
-              },
-              "value": 2
-            }
-          ],
-          "date": "2026-08-17",
-          "prior": [
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-10",
-                "start": "2026-08-10"
-              },
-              "units": {
-                "currency_code": "USD",
-                "kind": "currency"
-              },
-              "value": 1
-            },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-10",
-                "start": "2026-08-10"
-              },
-              "units": {
-                "currency_code": null,
-                "kind": "count"
-              },
-              "value": 1
-            },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-10",
-                "start": "2026-08-10"
-              },
-              "units": {
-                "currency_code": null,
-                "kind": "count"
-              },
-              "value": 1
-            },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-10",
-                "start": "2026-08-10"
-              },
-              "units": {
-                "currency_code": null,
-                "kind": "count"
-              },
-              "value": 1
-            }
-          ]
-        },
-        {
-          "current": [
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-18",
-                "start": "2026-08-18"
-              },
-              "units": {
-                "currency_code": "USD",
-                "kind": "currency"
-              },
-              "value": 2
-            },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-18",
-                "start": "2026-08-18"
-              },
-              "units": {
-                "currency_code": null,
-                "kind": "count"
-              },
-              "value": 2
-            },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-18",
-                "start": "2026-08-18"
-              },
-              "units": {
-                "currency_code": null,
-                "kind": "count"
-              },
-              "value": 2
-            },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-18",
-                "start": "2026-08-18"
-              },
-              "units": {
-                "currency_code": null,
-                "kind": "count"
-              },
-              "value": 2
-            }
-          ],
-          "date": "2026-08-18",
-          "prior": [
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-11",
-                "start": "2026-08-11"
-              },
-              "units": {
-                "currency_code": "USD",
-                "kind": "currency"
-              },
-              "value": 1
-            },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-11",
-                "start": "2026-08-11"
-              },
-              "units": {
-                "currency_code": null,
-                "kind": "count"
-              },
-              "value": 1
-            },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-11",
-                "start": "2026-08-11"
-              },
-              "units": {
-                "currency_code": null,
-                "kind": "count"
-              },
-              "value": 1
-            },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-11",
-                "start": "2026-08-11"
-              },
-              "units": {
-                "currency_code": null,
-                "kind": "count"
-              },
-              "value": 1
-            }
-          ]
-        },
-        {
-          "current": [
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-19",
-                "start": "2026-08-19"
-              },
-              "units": {
-                "currency_code": "USD",
-                "kind": "currency"
-              },
-              "value": 2
-            },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-19",
-                "start": "2026-08-19"
-              },
-              "units": {
-                "currency_code": null,
-                "kind": "count"
-              },
-              "value": 2
-            },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-19",
-                "start": "2026-08-19"
-              },
-              "units": {
-                "currency_code": null,
-                "kind": "count"
-              },
-              "value": 2
-            },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-19",
-                "start": "2026-08-19"
-              },
-              "units": {
-                "currency_code": null,
-                "kind": "count"
-              },
-              "value": 2
-            }
-          ],
-          "date": "2026-08-19",
-          "prior": [
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-12",
-                "start": "2026-08-12"
-              },
-              "units": {
-                "currency_code": "USD",
-                "kind": "currency"
-              },
-              "value": 1
-            },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-12",
-                "start": "2026-08-12"
-              },
-              "units": {
-                "currency_code": null,
-                "kind": "count"
-              },
-              "value": 1
-            },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-12",
-                "start": "2026-08-12"
-              },
-              "units": {
-                "currency_code": null,
-                "kind": "count"
-              },
-              "value": 1
-            },
-            {
-              "basis": "retail_actual",
-              "grain": [
-                "date",
-                "marketplace"
-              ],
-              "period": {
-                "end": "2026-08-12",
-                "start": "2026-08-12"
-              },
-              "units": {
-                "currency_code": null,
-                "kind": "count"
-              },
-              "value": 1
-            }
-          ]
-        }
-      ],
+            "values": [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          }
+        ]
+      },
       "truncation": null
     },
     "artifact_id": "retail_health",
     "artifact_revision": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
     "artifact_type": "RetailHealthArtifact",
-    "artifact_version": 2,
+    "artifact_version": 3,
     "kind": "retail_health",
     "page_context_expires_at": "2026-08-19T13:00:00+00:00",
     "page_context_label": "Retail health \u00b7 Aug 13\u201319, 2026",

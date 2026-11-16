@@ -214,9 +214,9 @@ def test_revision_2_generates_the_routes_and_each_node_route_to_both_projections
 
 def test_serving_coalescing_has_dedicated_closed_controls_without_moving_v1_bounds() -> None:
     assert SERVING_COALESCING == {
-        "serving_candidate_roster_max": 512,
+        "serving_candidate_roster_max": 5417,
         "serving_frontier_shards": 32,
-        "next_election_min_remaining_ms": 10493,
+        "next_election_min_remaining_ms": 18666,
         "binding_kinds": ("direct", "alias"),
     }
     assert "serving_candidate_roster_max" not in BOUNDS
@@ -421,12 +421,12 @@ def test_the_bake_roster_and_start_budget_are_generated_with_exact_values() -> N
     assert 10 + 4 * BAKE_TASKS["max_tasks"] <= BOUNDS["max_transaction_items"]
     assert ATHENA_START_BUDGET == {
         "active_dml_quota": 200,
-        "batch_athena_budget": 41,
+        "batch_athena_budget": 42,
         "chat_reserve_active_dml": 20,
     }
     typescript = (ROOT / generator.TYPESCRIPT_PATH).read_text()
     assert '"max_tasks": 21' in typescript
-    assert '"batch_athena_budget": 41' in typescript
+    assert '"batch_athena_budget": 42' in typescript
 
 
 _ROSTER_ROW = "    - {page: retail-health, variant: 14d}\n"
@@ -471,7 +471,7 @@ _BUDGET_ROW = '    "retail-health#14d": 240\n'
         ),
         (
             "ATHENA_START_BUDGET_INVALID",
-            "  batch_athena_budget: 41\n",
+            "  batch_athena_budget: 42\n",
             "  batch_athena_budget: 0\n",
         ),
     ],

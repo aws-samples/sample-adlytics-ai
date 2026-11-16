@@ -612,6 +612,10 @@ describe('the configuration', () => {
     ADLYTICS_ATHENA_QUERY_BATCH_MAX_CONCURRENCY: '8',
     ADLYTICS_EDGE_WAF_RATE_LIMIT_PER_FIVE_MINUTES: '2000',
     ADLYTICS_USER_POOL_WAF_RATE_LIMIT_PER_FIVE_MINUTES: '300',
+    ADLYTICS_DEMAND_FORECAST_MARKETPLACE_KEY: 'amazon_us',
+    ADLYTICS_DEMAND_FORECAST_INSTANCE_TYPE: 'ml.m5.xlarge',
+    ADLYTICS_DEMAND_FORECAST_MAX_RUNTIME_SECONDS: '3600',
+    ADLYTICS_DEMAND_FORECAST_MAX_PARALLEL_JOBS: '8',
   };
   function withEnv<T>(values: Record<string, string>, body: () => T): T {
     const saved = { ...process.env };

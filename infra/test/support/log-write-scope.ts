@@ -117,12 +117,15 @@ function logsArn(context: ScopeContext, groupName: string): string {
   return `arn:aws:logs:${context.region}:${context.account}:log-group:${groupName}`;
 }
 
-/** The four cross-template or pattern log grants, computed from the helpers the stacks use. */
+/** The five cross-template or pattern log grants, computed from the helpers the stacks use. */
 export function logWritePins(context: ScopeContext = DEFAULT_CONTEXT): readonly LogWritePin[] {
   const ssm = (path: string): string => `{ssm:${path}}`;
   const result = logsArn(context, ssm(paramPath(context.envName, RESULT_GROUP_PARAMETER.v4)));
   const input = logsArn(context, ssm(paramPath(context.envName, 'evaluationInputLogGroupName')));
   const runtimes = logsArn(context, '/aws/bedrock-agentcore/runtimes/*');
+  // SageMaker writes a Processing job's container logs to this service-named group as the job's
+  // execution role (design §6e); the group is SageMaker's, never one a stack declares.
+  const processing = logsArn(context, '/aws/sagemaker/ProcessingJobs');
   return [
     {
       name: 'GateV4ExecutionRole',
@@ -149,6 +152,12 @@ export function logWritePins(context: ScopeContext = DEFAULT_CONTEXT): readonly 
       resources: [
         logsArn(context, `/aws/bedrock-agentcore/runtimes/harness_${harnessName(context.envName)}-*`),
       ],
+    },
+    {
+      name: 'ForecastProcessingRole',
+      stack: 'DemandForecastStack',
+      role: /^ForecastProcessingRole[0-9A-F]{8}$/,
+      resources: [processing, `${processing}:*`],
     },
   ];
 }

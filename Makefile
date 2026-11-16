@@ -23,7 +23,7 @@ endef
         install lint format typecheck lint-boundaries validate-contracts validate-page-schemas test test-integration \
         check-lambda-layer-reproducibility verify verify-clean verify-clean-run gate-status publication-gate release-gate install-hooks uninstall-hooks publish pr merge-pr accept-ingestion-v2 accept-campaign-estate-local accept-evaluation-link print-deploy-flags accept-evaluation-custody regress-agent mutate mutate-next mutation-status mutation-verdict dead-code dead-code-allowlist build-lambdas build-frontend \
         generate-design-manifest generate-schemas check-schemas generate-fixtures check-fixtures \
-        generate-tool-schemas check-tool-schemas generate-trace-contract check-trace-contract generate-data-flow-registry check-data-flow-coverage generate-execution-graph-protocol check-execution-graph-protocol check-execution-graph-deployable generate-alarm-destinations check-alarm-destinations generate-producer-packs check-producer-packs \
+        generate-tool-schemas check-tool-schemas generate-forecast-lock check-forecast-lock check-forecasting generate-forecast-schemas check-forecast-schemas demand-forecast-artifact-digest demand-forecast-scale-probe generate-trace-contract check-trace-contract generate-data-flow-registry check-data-flow-coverage generate-execution-graph-protocol check-execution-graph-protocol check-execution-graph-deployable generate-alarm-destinations check-alarm-destinations generate-producer-packs check-producer-packs \
         generate-parameter-contract check-parameter-contract \
         frontend-typecheck frontend-test create-user provision-quality-review-users accept-quality-review backfill-record-expiry supersede-orphan-units migrate-review-groups rotate-origin-verify accept-edge accept-guardrail accept-managed-harness accept-reprocess-telemetry infra-typecheck infra-test check-alarm-coverage check-probe-resource-names synth diff deploy deploy-all destroy-all \
         dev-state check-alarm-window check-serving-refusals check-staged-tree diff-then-deploy deploy-all-locked check-source-key deploy-lock-force-release
@@ -36,7 +36,7 @@ help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
 		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
 
-check: check-links check-diagrams check-design-manifest check-insight-matrix check-model check-lineage check-schemas check-fixtures check-tool-schemas check-trace-contract check-data-flow-coverage check-execution-graph-protocol check-alarm-destinations check-producer-packs check-parameter-contract validate-page-schemas check-bakeability check-steering check-coverage-matrix check-config-access check-prompt-text check-conformed-columns check-construct-levels check-observability-bans check-exception-handling check-aws-pagination check-publication-boundary check-license-headers check-debt-markers check-run-record-coverage check-format ## Run every documentation check
+check: check-links check-diagrams check-design-manifest check-insight-matrix check-model check-lineage check-schemas check-fixtures check-tool-schemas check-forecast-lock check-forecast-schemas check-trace-contract check-data-flow-coverage check-execution-graph-protocol check-alarm-destinations check-producer-packs check-parameter-contract validate-page-schemas check-bakeability check-steering check-coverage-matrix check-config-access check-prompt-text check-conformed-columns check-construct-levels check-observability-bans check-exception-handling check-aws-pagination check-publication-boundary check-license-headers check-debt-markers check-run-record-coverage check-format ## Run every documentation check
 
 check-links: ## Validate internal links and heading anchors in every tracked markdown file (plus local working documents when present)
 	@uv run python scripts/check-links.py
@@ -146,6 +146,46 @@ generate-tool-schemas: ## Generate the Gateway tool definitions from the tool co
 	@uv run python -m adapters.jobs.tool_schema_generation
 check-tool-schemas: ## Fail if the generated tool definitions are stale against the contracts
 	@uv run python -m adapters.jobs.tool_schema_generation --check
+# The demand-forecast job image installs exactly this exported closure (approval D-1), never
+# T's base or dev set; check-forecast-lock refuses drift, a missing hash or any other package set.
+generate-forecast-lock: ## Export the forecasting dependency group to the job image's hashed lock
+	@uv export --frozen --only-group forecasting --no-emit-project --format requirements-txt -o src/adapters/jobs/demand_forecast/requirements.lock >/dev/null
+check-forecast-lock: ## Fail if the job image lock drifts from uv.lock or from the approved package set
+	@uv run python scripts/check_forecast_lock.py
+# The job adapter and its slow tests need torch and chronos, so they run in their own environment
+# (.venv-forecasting); the shared .venv stays exactly as make install locks it. Tests that need the
+# Chronos-2 artifact read FORECAST_MODEL_DIR (a local copy) and skip, naming it, when it is unset.
+check-forecasting: ## Type-check and run the forecasting job's slow tests in the forecasting group
+	@UV_PROJECT_ENVIRONMENT=.venv-forecasting uv sync --frozen --group forecasting --dev
+	@UV_PROJECT_ENVIRONMENT=.venv-forecasting uv run --frozen --group forecasting pyright -p src/adapters/jobs/demand_forecast/pyrightconfig.json
+	@UV_PROJECT_ENVIRONMENT=.venv-forecasting uv run --frozen --group forecasting python scripts/run_record.py run --kind pytest-forecasting
+# The boundary models between the input builder, the job and the publisher (design §4e).
+generate-forecast-schemas: ## Generate the demand-forecast boundary schemas and digests
+	@uv run python -m adapters.jobs.forecast_schema_generation
+check-forecast-schemas: ## Fail if the generated demand-forecast boundary schemas are stale
+	@uv run python -m adapters.jobs.forecast_schema_generation --check
+# Review tool, not a deploy step (design §4b, D7): synth reads the committed pin from
+# contracts/forecasting/model-artifacts.json. Read-only, writes no file; exits 1 when the Region's
+# prefix no longer matches its committed digest. URI= reads a prefix the contract doesn't hold yet.
+demand-forecast-artifact-digest: ## Re-read a Region's Chronos-2 artifact digest against the committed pin: PROFILE=... ENV=... REGION=... [URI=...]
+	$(require_profile)
+	$(require_env)
+	@test -n "$(REGION)" || { echo "REGION is required: the Region whose artifact to read"; exit 1; }
+	@uv run python -m adapters.jobs.demand_forecast_artifact_digest --profile "$(PROFILE)" \
+		--region "$(REGION)" $(if $(URI),--uri "$(URI)")
+demand-forecast-scale-probe: ## Dev only: stage N fictional ASINs and start a ProbeStart run: PROFILE=... ENV=dev ACCOUNT=... ASINS=... [REGION=...]
+	$(require_profile)
+	$(require_env)
+	@test "$(ENV)" = dev || { echo "demand-forecast-scale-probe runs only with ENV=dev"; exit 1; }
+	@test -n "$(ACCOUNT)" || { echo "ACCOUNT is required: the dev account the profile must resolve to"; exit 1; }
+	@test -n "$(ASINS)" || { echo "ASINS is required, for example ASINS=2000"; exit 1; }
+	@set -eu; $(load_deploy_env); \
+	uv run python -m adapters.jobs.demand_forecast_scale_fixture --profile "$(PROFILE)" --env "$(ENV)" \
+		--expected-account "$(ACCOUNT)" \
+		$(if $(REGION),--region "$(REGION)") --asins "$(ASINS)" \
+		--marketplace-key "$$ADLYTICS_DEMAND_FORECAST_MARKETPLACE_KEY" \
+		--instance-type "$$ADLYTICS_DEMAND_FORECAST_INSTANCE_TYPE" \
+		--max-runtime-seconds "$$ADLYTICS_DEMAND_FORECAST_MAX_RUNTIME_SECONDS"
 # Static business spans are declared once with a typed source marker, parent policy, and closed
 # metadata projection. The checker also enforces direct lifecycle-log and OTel import boundaries.
 generate-trace-contract: ## Generate static span constants from the observability contract
@@ -222,7 +262,7 @@ test: ## Unit tests on bounded parallel workers, recorded; PYTEST_WORKERS=0..4 o
 test-integration: ## Adapter tests against real AWS resources, recorded: make test-integration PROFILE=...
 	$(call require_profile)
 	@AWS_PROFILE=$(PROFILE) uv run python scripts/run_record.py run --kind $@ --format pytest -- \
-		python -m pytest -m integration '--junitxml={staging}/junit.xml'
+		python -m pytest -m integration tests/integration '--junitxml={staging}/junit.xml'
 
 verify: ## Everything that gates a merge on the backend, in order, stopping at the first failure; recorded
 	@uv run python scripts/run_record.py gate --kind verify
@@ -318,7 +358,8 @@ DEPLOY_FLAG_NAMES := ADLYTICS_ONLINE_EVALUATION_PROVISIONED ADLYTICS_ONLINE_EVAL
 	ADLYTICS_TRACE_SAMPLE_RATIO ADLYTICS_PRODUCER_ONBOARDING_ENABLED ADLYTICS_GATEWAY_GUARDRAILS \
 	ADLYTICS_QUALITY_REVIEW_VALIDATION_PASSWORD_AUTH ADLYTICS_RECEIPT_RETENTION_DAYS \
 	ADLYTICS_EDGE_WAF_RATE_LIMIT_PER_FIVE_MINUTES ADLYTICS_USER_POOL_WAF_RATE_LIMIT_PER_FIVE_MINUTES \
-	ADLYTICS_ATHENA_QUERY_BATCH_MAX_CONCURRENCY
+	ADLYTICS_ATHENA_QUERY_BATCH_MAX_CONCURRENCY ADLYTICS_DEMAND_FORECAST_MAX_RUNTIME_SECONDS \
+	ADLYTICS_DEMAND_FORECAST_MAX_PARALLEL_JOBS
 # The one configuration source for every deploy-shaped command: the shell, overlaid by .env
 # exactly as scripts/deploy-all.sh loads it.
 define load_deploy_env

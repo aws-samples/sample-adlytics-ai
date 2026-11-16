@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Shape of contracts/forecasting/demand-forecast.yaml. make validate-contracts checks the policy's keys against this schema's properties and required lists, then loads it through the typed policy, which owns the value rules.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "input", "missing_weeks", "eligibility", "engine", "numeric", "serving"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "facts", "product_metadata", "selectors", "week_starts_on", "targets", "covariates"],
+      "properties": {
+        "version": {"type": "integer", "minimum": 1},
+        "facts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sales", "traffic"],
+          "properties": {"sales": {"type": "string"}, "traffic": {"type": "string"}}
+        },
+        "product_metadata": {"type": "string"},
+        "selectors": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["distributor_view", "selling_program"],
+          "properties": {"distributor_view": {"type": "string"}, "selling_program": {"type": "string"}}
+        },
+        "week_starts_on": {"const": 6},
+        "targets": {"type": "array", "items": {"type": "string"}},
+        "covariates": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "missing_weeks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "activity_window_weeks", "max_unknown_run_weeks", "unknown_day_grace_days"],
+      "properties": {
+        "version": {"type": "integer", "minimum": 1},
+        "activity_window_weeks": {"type": "integer", "minimum": 1},
+        "max_unknown_run_weeks": {"type": "integer", "minimum": 0},
+        "unknown_day_grace_days": {"type": "integer", "minimum": 0}
+      }
+    },
+    "eligibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "min_context_weeks", "holdout_weeks", "min_scored_holdout_weeks", "horizon_weeks", "quantiles", "history_weeks_max", "ets_min_known_weeks", "min_seasonal_residuals"],
+      "properties": {
+        "version": {"type": "integer", "minimum": 1},
+        "min_context_weeks": {"type": "integer", "minimum": 1},
+        "holdout_weeks": {"type": "integer", "minimum": 1},
+        "min_scored_holdout_weeks": {"type": "integer", "minimum": 1},
+        "horizon_weeks": {"type": "integer", "minimum": 1},
+        "quantiles": {"type": "array", "items": {"type": "number"}},
+        "history_weeks_max": {"type": "integer", "minimum": 1},
+        "ets_min_known_weeks": {"type": "integer", "minimum": 1},
+        "min_seasonal_residuals": {"type": "integer", "minimum": 1}
+      }
+    },
+    "engine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "cross_learning", "batch_size", "batch_scope", "sort_key", "shard_max_asins"],
+      "properties": {
+        "version": {"type": "integer", "minimum": 1},
+        "cross_learning": {"type": "boolean"},
+        "batch_size": {"type": "integer", "minimum": 1},
+        "batch_scope": {"const": "one_target_one_origin"},
+        "sort_key": {"type": "array", "items": {"type": "string"}},
+        "shard_max_asins": {"enum": [2000, 1000, 500]}
+      }
+    },
+    "numeric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "stored_decimal_places", "stored_rounding", "check_order", "display"],
+      "properties": {
+        "version": {"type": "integer", "minimum": 1},
+        "stored_decimal_places": {"const": 4},
+        "stored_rounding": {"const": "half_even"},
+        "check_order": {"type": "array", "items": {"type": "string"}},
+        "display": {"const": "whole_half_away_from_zero"}
+      }
+    },
+    "serving": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "stale_after_days", "page_rows", "tool_list_max", "compare_max_asins", "views", "title_max_bytes", "item_max_bytes", "rank_by", "status_target", "search"],
+      "properties": {
+        "version": {"type": "integer", "minimum": 1},
+        "stale_after_days": {"type": "integer", "minimum": 1},
+        "page_rows": {"type": "integer", "minimum": 1},
+        "tool_list_max": {"type": "integer", "minimum": 1},
+        "compare_max_asins": {"type": "integer", "minimum": 1},
+        "views": {"type": "array", "items": {"type": "integer"}},
+        "title_max_bytes": {"type": "integer", "minimum": 1},
+        "item_max_bytes": {"type": "integer", "minimum": 1},
+        "rank_by": {"type": "string"},
+        "status_target": {"type": "string"},
+        "search": {"const": "exact_asin"}
+      }
+    }
+  }
+}

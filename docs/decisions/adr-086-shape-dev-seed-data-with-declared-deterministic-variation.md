@@ -134,6 +134,10 @@ the selection's latest `retrieved_at`.**
 16. **Product names (OQ-7).** The product hierarchy is a `system_first_observed` snapshot, so dev
     product names are valid only from the hierarchy's first dev observation, 2026-08-28 (read
     2026-10-05). Changing that needs a contract change outside this work.
+    **Amended 2026-11-14 (owner decision B-2):** the rule stands. A product first observed after a
+    window's end has no name in that window, and Retail health then shows it under its ASIN with
+    every figure, as New customers does, instead of withholding the page
+    (docs/ui/retail-health/operational-design.md §2).
 17. **Data is fixed before display (owner decision #8, 2026-10-05).** The 2026-10-04 UX review
     found returns above shipped units (F16), an implausibly small prior retail week (F11) and one
     CTR on every campaign (F24). They were artifacts of the earlier dev generation, and the page
@@ -150,7 +154,13 @@ the selection's latest `retrieved_at`.**
     `HIERARCHY_ROWS_PER_DELIVERY` (238) rows. Each chunk is still a `whole` delivery, with its
     rows' days as its window. 238 rows is 7 MERGE statements under the 900-parameter bound, a term
     of 8, and 34 whole cycles of the 7 products, so every chunk is a complete snapshot. A fixture
-    at or under the chunk size stays one delivery. The ingestion caps, Stage-1 and the writer are
+    at or under the chunk size stays one delivery. Amended 2026-11-12 (dev fixture bundling limit,
+    owner ratification pending): at the 500-day span with 60 products, 238-row chunks left a
+    24-row last chunk holding 24 products as the newest snapshot. The planner now splits into
+    `k = ceil(R / 238)` equal chunks (500 rows: 167/167/166) and refuses a split whose smallest
+    chunk, `floor(R / k)` rows, is below the product count N, naming the counts. Rows cycle the
+    products, so every chunk is complete exactly when `floor(R / k) >= N`, which holds on any span
+    up to 119 products. A larger catalogue needs N-row snapshots chunked by ASIN (open question). The ingestion caps, Stage-1 and the writer are
     unchanged. The plan tests prove every chunk fits the cap, that the unsplit fixture does not
     (the positive control), and that no ingestion module imports the planner. Rejected: skipping
     the hierarchy, because product validity on the new seed would then be unproven; and raising

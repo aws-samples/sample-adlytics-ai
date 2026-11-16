@@ -113,7 +113,7 @@ export class PublisherStack extends cdk.Stack {
     const pointerTableArn = read('publisherArtifactPointerTableArn');
     const deploymentGeneration = publisherDeploymentGeneration(props.publisherInputPath);
     const declaredInputGeneration = publisherDeclaredInputGeneration(props.publisherInputPath);
-    // S1: synth refuses a start budget over the contract (Baker 2 x Q among the seven rows).
+    // S1: synth refuses a start budget over the contract (Baker 2 x Q among the eight rows).
     validateAthenaStartBudget(config);
     // Observation-only companion emission: present only when the development status slice is
     // provisioned; an absent URL disables the producer entirely inside the workload.

@@ -4,6 +4,59 @@ Publication-safe conclusions from live source probes and deployed development ac
 account, entity, instance, user, resource, execution, workflow, and invalidation identifiers remain
 in ignored `RESULTS.local.md` and `findings/`; neither is publication content. A conclusion appears
 here only after its exact local evidence was read and folded into the owning contract or design doc.
+## Demand forecast slice 1: acceptance on landed history on dev — 2026-11-15
+Times are UTC. Synthetic data only. Dev had the 60-product catalogue landed through the real
+landing (104 weeks of Vendor history, last day 2026-11-12), after the full-history refusal was
+removed. Every criterion was judged on its original wording, on the lake path; only criterion 5
+uses a staged input, because its own wording asks for one. Every job ran on one `ml.m5.xlarge`
+with network isolation on, read back from the job.
+| Check | Verdict | What it showed |
+|---|---|---|
+| 1. Partitioned `UNLOAD` on the batch workgroup (OQ-17) | **PASS** | Roster `SELECT` and both `UNLOAD`s `SUCCEEDED` from the input builder's own role; one shard of 61 ASINs (the 60 catalogue products and one integration-test trap ASIN); manifest and title map validate; 1,456 bound publication IDs, all 44 characters long |
+| 2. Isolated self-check (OQ-2) | **PASS** | Exit 0 as uid 10001; weights loaded; finite, ordered bands with NaN context weeks; two passes identical; mounted-copy digest equal to the committed per-Region artifact pin |
+| 3. One execution to `Forecast` map success | **PASS** | `SUCCEEDED` on the extended dev data, one shard; 61 of 61 candidate records validate with 13 recent weeks; 58 series per target forecast by Chronos-2, 3 withheld `ASIN_INACTIVE` (2 delisted products and the trap ASIN) |
+| 4. Stop during `BuildInput`, then redrive (R2-14) | **PASS** | The redriven build wrote `r1a0` and kept every `r0a0` object; the job's run report names input attempt `r1a0` |
+| 5. Renamed Parquet column (R2-12) | **PASS** | Job-only run on a staged copy of criterion 3's input ended `failed`, exit message `INPUT_SCHEMA_MISMATCH`; the same input without the rename succeeded |
+| 6. Week states match the catalogue's declarations | **PASS** | The unlanded day's week is `unknown` for all 55 ASINs whose context covers it, and each non-delisted one still gets a Chronos-2 forecast; intermittent gaps are inferred zero; delisted tails lapse to unknown and are withheld; all 4 stock-out products are flagged; 60 of 60 titles equal the US hierarchy's |
+| 7. IAM simulation | **PASS** | State-machine role denied `CreateProcessingJob` with isolation false, isolation absent and another instance type, allowed with both conditions met; Processing role denied `PutObject` outside `candidate/`, allowed inside |
+| 8. P1-1 | **PASS** | 2,000 ASINs, one shard: 471.5 s from `CreateProcessingJob` to job end, Chronos-2 and backtest 336.7 s, peak RSS 2.55 GiB, inside 1,800 s, so `shard_max_asins` stays 2,000. Dev catalogue (61 ASINs): 115.7 s, Chronos-2 and backtest 11.2 s, peak RSS 1.08 GiB; 3.58, 30.97 and 12.39 bytes scanned per daily row for the roster, target and traffic statements |
+| 9. Processing quota | **PASS** | Applied quota 16, at least 8; no run was refused for quota, so the error name stays [unverified] |
+| 10. Catalogue extension in Retail health | **PASS** | Product count 7 → 58 on 7d and 14d (56 on 1d); window lengths and evidence status unchanged. Needed two fixes first: a product with no identity at window end is labelled by its ASIN, and the trend and spark series carry units, period and grain once, so the 14d body is 228,374 B under the 256,000 B cap. Screenshots regenerated, viewed and committed |
+**Observed, not a criterion:** the 2 delisted products have no rows in the last 20 weeks, so no
+window can count all 60; the target is 58. The 14d Retail health body has 10.8% headroom under the
+cap; a 90-day window would not fit [projection] (a slice 3 follow-up).
+## Demand forecast slice 1: engine and weekly input on dev — 2026-11-11 (superseded)
+**Superseded by the 2026-11-15 section above.** Kept as history: these runs used a STAGED input
+and amended criteria that were withdrawn on 2026-11-15.
+Times are UTC. Synthetic data only. Dev ran main plus one open change merged with the slice 1
+branch (two new stacks, `DemandForecastData` and `DemandForecast`), redeployed diff-first after
+each code change; the bake dead-letter queue read 0 and the finalizer-blocked alarm OK after every
+deploy. Criteria 1 to 6, 8 and 9 were re-run after the review fixes (traffic-less shards, no
+per-shard target-empty failure, the job's run-identity check, two more skip reasons); the rows
+show the final image's results. Every job ran on one `ml.m5.xlarge` with network isolation on, read back from the job.
+Acceptance 3, 5, 6 and 8 ran on a STAGED input built from the synthetic catalogue (60 products,
+104 weeks), because the fixture landing then refused Vendor history older than 56 days; that
+refusal has since been removed. The lake path was proven on dev's landed span (acceptance 1).
+| Check | Verdict | What it showed |
+|---|---|---|
+| 1. Partitioned `UNLOAD` on the batch workgroup (OQ-17) | **PASS** | Roster `SELECT` and both `UNLOAD`s `SUCCEEDED` from the input builder's own role; `shard=0/` and `shard=1/` objects for dev's 3,012 fictional ASINs; manifest and title map validate; 120 bound publication IDs, 44 characters long |
+| 2. Isolated self-check (OQ-2) | **PASS** | Exit 0 as uid 10001 on Python 3.14.10, chronos-forecasting 2.3.2, torch 2.14.1; weights loaded; 3 series × 13 weeks × 3 quantiles, finite and ordered with NaN context weeks; two passes identical; mounted-copy digest equal to the digest command's |
+| 3. One execution to `Forecast` map success | **PASS** | `SUCCEEDED`; one shard of 60; all 60 candidate records validate with 13 recent weeks; 58 of 60 series forecast by Chronos-2 per target, the 2 delisted products withheld `ASIN_INACTIVE`; the run report's seven schema digests equal the generated file's, and its image identity is the deployed image's |
+| 4. Stop during `BuildInput`, then redrive (R2-14) | **PASS** | Stopped while `BuildInput` ran, after its target `UNLOAD` wrote `r0a0`; the redriven build wrote `r1a0` and `r0a0` stayed; both redriven jobs wrote run reports naming input attempt `r1a0`, and the execution succeeded. Every lake series is withheld (dev's landed span holds about 8 weeks and a series needs 26), which no longer fails a shard |
+| 5. Renamed Parquet column (R2-12) | **PASS** | Job-only run ended `failed`; exit message `INPUT_SCHEMA_MISMATCH`, on two images |
+| 6. Week states match the catalogue's declarations | **PASS** | The unlanded day's week is `unknown` for all 55 products whose history covers it, and they still get a Chronos-2 forecast; the run report counts 11,264 inferred-zero days, 11,240 of them on the 6 intermittent products (local recomputation from the staged input, which reproduces every product's live counts); each delisted product's tail goes unknown once the 13-week activity window lapses, and the series is withheld `ASIN_INACTIVE`; all 4 stock-out products have 13 flagged weeks; all 60 titles equal the US hierarchy's |
+| 7. IAM simulation | **PASS** | State-machine role denied `CreateProcessingJob` with isolation false, isolation absent and another instance type, allowed with both conditions met; Processing role denied `PutObject` outside `candidate/`, allowed inside |
+| 8. P1-1 | **PASS** (amended criterion: dev-catalogue time and memory, Chronos-2 time from the staged runs) | 2,000 ASINs, one shard: 450 s, 479 s and 454 s from `CreateProcessingJob` to job end (Chronos-2 325 s, 335 s and 324 s), peak RSS up to 2.57 GiB. 60 ASINs: 122 s to 138 s, peak 1.08 GiB. `shard_max_asins` stays 2,000 (≤ 1,800 s). Dev catalogue: shards of 2,000 and 1,012 ASINs took 121 s and 114 s with peak RSS 0.62 and 0.74 GiB, but no series had enough history to reach Chronos-2; statements 2.6 s, 3.1 s and 4.0 s; 16.6 bytes scanned per daily sales row |
+| 9. Processing quota | **PASS** | Applied quota 16, at least 8, so no increase was requested; no run was refused for quota, so the error name stays [unverified] |
+| 10. Catalogue extension in Retail health | **PENDING** | Not landed: delivery keys collide with dev's existing deliveries and history older than 56 days is refused; screenshots unchanged |
+**Observed, not a criterion:** the stock-out flag (shipped below ordered) is set on all 13 recent
+weeks for every regular product too, because the synthetic catalogue ships slightly less than is
+ordered every week. On the 2,000-ASIN scale fixture, 239 series per target are withheld
+`FORECAST_NEGATIVE` and 82 `ASIN_INACTIVE`. The STAGED input equals the lake `UNLOAD` exactly on
+units and glance views over the 7 overlapping weeks; 70 of 98 money cells differ because dev holds
+the first, unrestated report CURRENT on some days. Each money cell equals the lake's when it takes
+each day's CURRENT report (245 of 245 cells), which is the equivalence rule the check uses. Dev's CloudWatch held no SageMaker Processing job metric, so the job records
+its own peak RSS.
 ## Baker Lambda write rate at width 8 and 23 on dev — 2026-10-28 to 2026-10-29
 Times are UTC. Synthetic data only. After an identity check, two trees were deployed to dev in
 turn: main (`b21521b7`) merged with the Audiences scale-test fixture and one unrelated open change,

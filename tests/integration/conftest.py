@@ -76,6 +76,11 @@ def _read_parameters() -> dict[str, str]:
         "semantic_attempts_table": f"/adlytics/{ENV_NAME}/data/v2/semantic-attempts-table",
         "semantic_leases_table": f"/adlytics/{ENV_NAME}/data/v2/semantic-leases-table",
         "semantic_publications_table": f"/adlytics/{ENV_NAME}/data/v2/semantic-publications-table",
+        # ENV=dev only: the streamless pair the coordinator probes write (serve-rca §6).
+        "semantic_probe_leases_table": f"/adlytics/{ENV_NAME}/data/v2/semantic-leases-probe-table",
+        "semantic_probe_publications_table": (
+            f"/adlytics/{ENV_NAME}/data/v2/semantic-publications-probe-table"
+        ),
         "semantic_v2_bucket": f"/adlytics/{ENV_NAME}/data/v2/bucket",
         "semantic_v2_workgroup_interactive": (
             f"/adlytics/{ENV_NAME}/data/v2/athena-workgroup-interactive"
@@ -172,6 +177,14 @@ def deployed_env() -> dict[str, str]:
             if "preset_artifact_bucket" in parameters
             else {}
         ),
+        **{
+            env: parameters[key]
+            for env, key in (
+                ("ADL_SEMANTIC_PROBE_LEASES_TABLE", "semantic_probe_leases_table"),
+                ("ADL_SEMANTIC_PROBE_PUBLICATIONS_TABLE", "semantic_probe_publications_table"),
+            )
+            if key in parameters
+        },
         "ADL_SEMANTIC_ATTEMPTS_TABLE": parameters["semantic_attempts_table"],
         "ADL_SEMANTIC_LEASES_TABLE": parameters["semantic_leases_table"],
         "ADL_SEMANTIC_PUBLICATIONS_TABLE": parameters["semantic_publications_table"],

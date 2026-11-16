@@ -68,7 +68,7 @@ _ROOT: Final = Path(__file__).resolve().parents[1]
 _BASE: Final = "1aca2df020eec4b44dc9b4533d0405eab9acf17b"
 """The implementation base of this plan; every changed-file set is measured from it."""
 FIXED_PROBE_DELIVERY: Final = (
-    "generated/amc-dsp-impressions.csv#daily-run=2026-10-06#chunk=2026-10-04"
+    "generated/amc-dsp-impressions.csv#daily-run=2026-11-12#chunk=2026-11-10"
 )
 """The one fixed phase-A delivery P0 copies; `test_probe_delivery_unrestated` pins it."""
 FIXED_PROBE_CONTRACT: Final = "amc-dsp-impressions"
@@ -4671,8 +4671,12 @@ RETIREMENT_MANDATORY_FILES: Final = (
     RETIREMENT_CALL_INVENTORY,
     *RETIREMENT_AUXILIARY_ROOTS,
 )
-_RETIREMENT_LISTED_SUFFIXES: Final = frozenset({".md", ".sh"})
-"""Tracked non-code files under a scanned root: listed in the receipt, never parsed."""
+_RETIREMENT_LISTED_SUFFIXES: Final = frozenset({".md", ".sh", ".json", ".txt", ".lock"})
+"""Tracked non-code files under a scanned root: listed in the receipt, never parsed.
+
+The JSON, text and lock suffixes and the `Dockerfile` name are the demand-forecast job image's data
+files (src/adapters/jobs/demand_forecast/): a schema, path and package lists, a hashed lock."""
+_RETIREMENT_LISTED_NAMES: Final = frozenset({".gitkeep", "Dockerfile"})
 _TS_TOKEN: Final = re.compile(
     r"//[^\n]*|/\*.*?\*/|'(?:\\.|[^'\\\n])*'|\"(?:\\.|[^\"\\\n])*\"|`(?:\\.|[^`\\])*`"
     r"|[A-Za-z_$][\w$]*",
@@ -4933,7 +4937,9 @@ def _retirement_files(root: Path) -> tuple[list[str], list[str], list[str]]:
             relative = path.relative_to(root).as_posix()
             if path.suffix == suffix and not path.is_symlink():
                 scanned.append(relative)
-            elif path.name == ".gitkeep" or path.suffix in _RETIREMENT_LISTED_SUFFIXES:
+            elif (
+                path.name in _RETIREMENT_LISTED_NAMES or path.suffix in _RETIREMENT_LISTED_SUFFIXES
+            ):
                 listed.append(relative)
             else:
                 unknown.append(relative)
@@ -5610,6 +5616,7 @@ ATHENA_STATIC_CALLER_ROWS: Final = {
     "ingest_operator": 1,
     "reprocess_operator": 1,
     "insight_precompute": 8,
+    "demand_forecast_input": 1,
 }
 ATHENA_ACTIVE_DML_QUOTA: Final = 200
 ATHENA_CHAT_RESERVE: Final = 20

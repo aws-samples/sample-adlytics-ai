@@ -34,17 +34,28 @@ back to idle, so no undefined state remains and clearing the block restores rele
 superseded or fenced run is never granted, so the units it completed leave no published pointer
 (V-16).
 
+ADR-162: one pass sweeps every due shard, `APPLY#` first, then `COMPLETE#` (each domain's
+ACTIVE winner first, the waiting runs only while `COMPLETE_RESERVE_MS` remains), then `RELEASE#`
+oldest first, and starts no item once less than `ITEM_RESERVE_MS` of the invocation remains
+(`release_pass`). Each item commits on its own, so what a pass leaves is taken by the next one.
+
 Deployed disabled with the other graph workers while the mode is not GRAPH.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import StrEnum
 from typing import Final, Literal, Protocol, cast
 
+from adapters.jobs.execution_graph.budget import (
+    COMPLETE_RESERVE_MS,
+    ITEM_RESERVE_MS,
+    NO_DEADLINE,
+    PassBudget,
+)
 from adapters.jobs.execution_graph.isolation import FailureSink, ignore_failure, isolated
 from adapters.outbound.telemetry.graph_metrics import emit_serving_withheld
 from adapters.outbound.telemetry.reporting import LogSeverity, OperationLog
@@ -58,6 +69,7 @@ from domain.operations.execution_graph_dispatch import (
     NodeState,
     ServingCandidate,
     ServingFrontierVector,
+    require_legacy_serving_roster,
 )
 from domain.operations.execution_graph_release import (
     CONFLICT_DOMAIN_BLOCKED,
@@ -100,6 +112,7 @@ from domain.operations.execution_graph_release import (
 from domain.operations.generated_execution_graphs import BOUNDS, SERVING_COALESCING, TEMPLATES
 from domain.operations.run_request import RunState
 from ports.outbound.execution_graph_dispatch import (
+    DueItem,
     GraphDispatchStore,
     GraphStoreUnavailableError,
     NodeRecord,
@@ -139,6 +152,7 @@ __all__ = [
     "issue_grant",
     "post_grant_specs",
     "record_contribution_once",
+    "release_pass",
     "release_run",
     "release_shard",
     "serving_binding_for",
@@ -219,6 +233,10 @@ class ReleaseCounts:
     """`COMPLETE#` items whose run is not yet terminal or bound; the next pass retries them."""
     unarmed_settled: int = 0
     """ADR-140: winners whose bake skipped the finalizer that this pass settled and bound."""
+    deferred: int = 0
+    """ADR-162: items this pass left unstarted because its budget stopped it."""
+    failed_shards: int = 0
+    """Shards with at least one failed due read this pass; their other phases still ran."""
 
     def add(self, outcome: ReleaseOutcome) -> None:
         """Count one outcome."""
@@ -741,7 +759,11 @@ def direct_binding(
     """Derive a settled cohort's direct binding from the winner's exact active authority.
 
     Shared by `serving_binding_for` (the finalizer and `contribute`) and the Release's unarmed
-    settlement (ADR-140), so every writer binds the same bytes.
+    settlement (ADR-140), so every writer binds the same bytes. The contributor roots come from
+    the roster the election recorded (ADR-162 §10), so no cohort member is read: the Release's
+    60 s pass and the precompute consumer's 30 s envelope never meet the cohort's size. A legacy
+    winner (elected before §10, no roster) reads its members' runs as that code did, at most
+    `LEGACY_SERVING_ROSTER_MAX` of them.
     """
     grant_id = settlement.grant_id
     execution = store.read_serving_execution(grant_id, run.run_id)
@@ -752,12 +774,13 @@ def direct_binding(
         or execution.head.serving_input_revision is None
     ):
         raise ValueError("a serving contribution has no exact active winner/cohort/day authority.")
-    cohort_runs = tuple(store.read_run(run_id) for run_id in execution.run_ids)
-    if any(candidate is None for candidate in cohort_runs):
-        raise ValueError("an active serving cohort names a missing candidate run.")
-    contributor_roots = tuple(
-        candidate.root_flow_id for candidate in cohort_runs if candidate is not None
+    contributor_roots = (
+        _legacy_contributor_roots(store, execution.run_ids)
+        if execution.contributor_roots is None
+        else execution.contributor_roots
     )
+    if run.root_flow_id not in contributor_roots:
+        raise ValueError("an active serving roster does not name its winner's root.")
     return bind_serving(
         settlement,
         conflict_unit=run.conflict_unit,
@@ -772,6 +795,15 @@ def direct_binding(
         winner_run_id=run.run_id,
         execution_attempts=1,
     )
+
+
+def _legacy_contributor_roots(store: ReleaseStore, run_ids: tuple[str, ...]) -> tuple[str, ...]:
+    """Read a legacy cohort's roots member by member, the pre-§10 path (ADR-162 §10)."""
+    require_legacy_serving_roster(run_ids)
+    cohort_runs = tuple(store.read_run(run_id) for run_id in run_ids)
+    if any(candidate is None for candidate in cohort_runs):
+        raise ValueError("an active serving cohort names a missing candidate run.")
+    return tuple(candidate.root_flow_id for candidate in cohort_runs if candidate is not None)
 
 
 def contribute(
@@ -817,21 +849,97 @@ def _complete(context: ReleaseContext, run_id: str, counts: ReleaseCounts) -> No
         counts.completion_pending += 1
 
 
-def release_shard(context: ReleaseContext, shard: str) -> ReleaseCounts:
-    """One release pass over a shard: `RELEASE#` triggers, `APPLY#` re-drives, `COMPLETE#`.
+def release_pass(
+    context: ReleaseContext, shards: Sequence[str], budget: PassBudget
+) -> ReleaseCounts:
+    """One release pass over every due shard: `APPLY#`, then `COMPLETE#`, then `RELEASE#`.
 
-    S6 §2.8 (AGG3-7): the third loop makes the release worker the run-completion writer. A
-    `COMPLETE#` stays until completion commits, so a failed completion is retried each pass.
+    ADR-162: committed grants are applied and granted runs completed before any trigger is
+    polled, and triggers run oldest first by root clock, so a backlog of `NOT_READY` triggers
+    never starves a later shard's apply or completion. Each phase reads its prefix in every shard
+    just before it runs. In `COMPLETE#` each domain's ACTIVE winner goes first, then the waiting
+    runs in grant-ordinal order, which stop at `COMPLETE_RESERVE_MS` so a `COMPLETE#` backlog
+    never takes the `RELEASE#` phase's time. No other item starts below `ITEM_RESERVE_MS`; the
+    rest are counted `deferred` and stay in their shards for the next pass. A shard whose read
+    fails is reported, counted in `failed_shards` and skipped (S3V-7).
+
+    S6 §2.8 (AGG3-7): the `COMPLETE#` phase makes the release worker the run-completion writer.
+    A `COMPLETE#` stays until completion commits, so a failed completion is retried each pass.
     """
     counts = ReleaseCounts()
-    store = context.store
-    for item in store.read_due(shard, "RELEASE#"):
-        _isolate(context, lambda run=item.subject: counts.add(release_run(context, run)), counts)
-    for item in store.read_due(shard, "APPLY#"):
-        _isolate(context, lambda run=item.subject: counts.add(apply_run(context, run)), counts)
-    for item in store.read_due(shard, "COMPLETE#"):
-        _isolate(context, lambda run=item.subject: _complete(context, run, counts), counts)
+    failed: set[str] = set()
+
+    def run(items: Sequence[DueItem], reserve_ms: int, action: Callable[[str], None]) -> None:
+        for index, item in enumerate(items):
+            if not budget.allows(reserve_ms):
+                counts.deferred += len(items) - index
+                return
+            _isolate(context, lambda subject=item.subject: action(subject), counts)
+
+    run(
+        _read_phase(context, shards, "APPLY#", failed),
+        ITEM_RESERVE_MS,
+        lambda subject: counts.add(apply_run(context, subject)),
+    )
+    complete = _read_phase(context, shards, "COMPLETE#", failed)
+    winners = _active_winners(context, complete, counts)
+    waiting = sorted(
+        (item for item in complete if item.subject not in winners),
+        key=lambda item: (item.grant_ordinal is None, item.grant_ordinal or 0, item.subject),
+    )
+
+    def finish(subject: str) -> None:
+        _complete(context, subject, counts)
+
+    run([item for item in complete if item.subject in winners], ITEM_RESERVE_MS, finish)
+    run(waiting, COMPLETE_RESERVE_MS, finish)
+    triggers = sorted(
+        _read_phase(context, shards, "RELEASE#", failed),
+        key=lambda item: (item.root_clock_started_at or "", item.subject),
+    )
+    run(triggers, ITEM_RESERVE_MS, lambda subject: counts.add(release_run(context, subject)))
+    counts.failed_shards = len(failed)
     return counts
+
+
+def _active_winners(
+    context: ReleaseContext, complete: Sequence[DueItem], counts: ReleaseCounts
+) -> frozenset[str]:
+    """Return each `COMPLETE#` domain's ACTIVE winner: the one completion that can move it.
+
+    One strong head read per domain. A failed read is reported and counted; that domain's winner
+    is then visited in ordinal order with the others.
+    """
+    winners: set[str] = set()
+    for domain in sorted({item.domain for item in complete if item.domain}):
+
+        def read(domain: str = domain) -> None:
+            head = context.store.read_serving_domain(domain).head
+            if head is not None and head.state == "ACTIVE" and head.winner_run_id:
+                winners.add(head.winner_run_id)
+
+        _isolate(context, read, counts)
+    return frozenset(winners)
+
+
+def _read_phase(  # noqa: PLR0913, PLR0917 -- one private phase reader
+    context: ReleaseContext, shards: Sequence[str], prefix: str, failed: set[str]
+) -> list[DueItem]:
+    """Read one prefix in every shard; a shard whose read fails is reported and skipped."""
+    items: list[DueItem] = []
+    for shard in shards:
+
+        def read(shard: str = shard) -> None:
+            items.extend(context.store.read_due(shard, prefix))
+
+        if not isolated(read, context.on_failure).ok:
+            failed.add(shard)
+    return items
+
+
+def release_shard(context: ReleaseContext, shard: str) -> ReleaseCounts:
+    """One release pass over one shard with no invocation deadline: the unit tests' sweep."""
+    return release_pass(context, (shard,), NO_DEADLINE)
 
 
 def _isolate(context: ReleaseContext, action: Callable[[], None], counts: ReleaseCounts) -> None:

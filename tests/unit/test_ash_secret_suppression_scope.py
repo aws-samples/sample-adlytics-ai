@@ -7,7 +7,8 @@ a secret rule, a glob or an absent rule_id included, is governed here. Outside t
 such an entry is allowed only when it names one exact file, never a glob, and every hex run in
 that file is accounted for by the file's own source (A-ENTROPY-IDENTIFIER-001): the digest of a
 committed file or of a contract (bound by value), a line of the deep-input registry's own shape
-(bound by shape), or a documented vector's own stated digest (bound by consistency). A pasted hex
+(bound by shape), or a documented vector's own stated digest or the one artifact pin every
+Region shares (bound by consistency). A pasted hex
 value in one of those files, a glob, or an unbound suppressed path fails this test before the
 scan can hide it.
 """
@@ -27,6 +28,7 @@ import yaml
 
 from adapters.deep_input_revision import DEEP_INPUT_REVISIONS
 from adapters.jobs.data_flow_registry import alarm_destinations, execution_graphs
+from domain.forecasting.boundary import BOUNDARY_MODELS, boundary_schema_digest
 from domain.operations.status import canonical_authority_bytes, canonical_authority_digest
 
 pytestmark = pytest.mark.unit
@@ -170,7 +172,37 @@ def _staged_value_golden(root: Path, text: str) -> set[str]:
     return derived
 
 
+def _boundary_schemas(_root: Path, _text: str) -> set[str]:
+    """Derive each boundary model's schema digest, the value the generator writes beside it."""
+    return {boundary_schema_digest(model) for model in BOUNDARY_MODELS}
+
+
+def _artifact_pins(_root: Path, text: str) -> set[str]:
+    """Each Region's `digest`, bound by consistency: every Region pins one reviewed value.
+
+    The roster digest is of S3 objects, so no committed file derives it. The pin is one reviewed
+    artifact for every Region (ADR-160), so a second value anywhere in the file binds nothing.
+    """
+    try:
+        document: object = json.loads(text)
+    except json.JSONDecodeError:
+        return set()
+    if not isinstance(document, dict):
+        return set()
+    regions = cast("dict[str, object]", document).get("regions")
+    if not isinstance(regions, dict):
+        return set()
+    digests = {
+        cast("dict[str, object]", entry).get("digest")
+        for entry in cast("dict[str, object]", regions).values()
+        if isinstance(entry, dict)
+    }
+    return {d for d in digests if isinstance(d, str)} if len(digests) == 1 else set()
+
+
 BOUND: dict[str, Verifier] = {
+    "contracts/forecasting/model-artifacts.json": _artifact_pins,
+    "contracts/generated/demand-forecast-boundaries.json": _boundary_schemas,
     "docs/ui/generated/design-manifest.json": _design_manifest,
     "src/adapters/deep_input_revision.py": _deep_input_revisions,
     str(alarm_destinations.TYPESCRIPT_PATH): _contract_digest(alarm_destinations.CONTRACT_PATH),

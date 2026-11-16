@@ -421,14 +421,15 @@ def _manifest(period_end: date) -> bytes:
             period_start=period_end,
             period_end=period_end,
             source_watermark=None,
-            retrieved_at=datetime(2026, 10, 7, 9, 0, tzinfo=UTC),
+            retrieved_at=datetime(2026, 11, 13, 9, 0, tzinfo=UTC),
             declared_columns=("asin", "orderedUnits"),
             objects=(LandedObject("data-0001.json", 2048, "sha256:abc123"),),
         )
     ).encode()
 
 
-# 2026-07-01 ends before the cut (2026-08-11): historical. 2026-10-01 is after it: cadence.
+# Retrieved past the probe slots after replay_base 2026-11-12, so the period decides.
+# 2026-07-01 ends before the cut (2026-09-17): historical. 2026-10-01 is after it: cadence.
 HISTORICAL_PERIOD = date(2026, 7, 1)
 CADENCE_PERIOD = date(2026, 10, 1)
 

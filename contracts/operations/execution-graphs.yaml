@@ -95,12 +95,28 @@ write_unit_batching:
 # GRAPH serving coalescing (design §§2-3): closed pure protocol vocabulary. These controls sit
 # outside `bounds`, so the pre-cutover v1 bounds digest and its route/ceiling controls do not move.
 serving_coalescing:
-  serving_candidate_roster_max: 512
+  # The DynamoDB item limit, the only limit on a roster (ADR-162 §9-10). No reader of an elected
+  # cohort reads its members: the election records the contributor roots (the winner's
+  # `SERVING_ROSTER`) and the summed publish effect (its bake node), so no worker's pass time
+  # depends on the roster. Five items carry one entry per member, about 73 conservative oracle
+  # bytes each: the head's `elected_run_ids`, `COALESCE#.run_ids`, the bake node's
+  # `serving_run_ids`, `SERVING_ROSTER` and the direct binding's `contributor_roots`. Derived
+  # 2026-11-14 (build-s1/evidence/graph-stall/serve-fix/r2/roster-bound.json, roster_bound.py):
+  # every state those items reach while the unit suites run every production writer (election,
+  # staging, drains, release, precompute, bake, finalizer, replays) is recorded, timestamps and
+  # request ids widened to production length and the binding's `unavailable` list set to every
+  # bake roster row; the largest N keeping every state, its list padded to N 64-character
+  # entries, within 400,000 oracle bytes is 5,417 (the binding binds, 399,937 bytes). A larger
+  # roster is refused, ADLY-EXEC_GRAPH-0045, and reported; no candidate is dropped. At about 22
+  # settled runs a minute it is reached only after about 4 h of held serving under a sustained
+  # backfill. Paging the lists (OQ-28) removes it.
+  serving_candidate_roster_max: 5417
   serving_frontier_shards: 32
   # Measured by FreshElectionTimingV1: ceil(2 * max(total_ms)) over every attempt of
-  # every sample. Evidence: .agents/tasks/ingestion-traceability/evidence/graph-bake-delivery/fresh-election-timing-v1.json
-  # SHA-256 3527fa724e03e32dad8f9a20a09ecf4207bf5a6732a45ba0ca908ea9cbb02e9a.
-  next_election_min_remaining_ms: 10493
+  # every sample. Evidence: .agents/tasks/demand-forecast/build-s1/evidence/graph-stall/serve-deploy/timing/fresh-election-timing-v1-staged-3502-attempt4.json
+  # SHA-256 6528463f412f75fb0f4d3cc59532727688fc65c08aae7143efff8f0fad18465a. The larger of the staged runs at N = 3,502 (18,666)
+  # and N = 5,417 (17,602, ...-staged-5417-attempt1.json), both at cf8a77a0.
+  next_election_min_remaining_ms: 18666
   binding_kinds: [direct, alias]
 
 # GRAPH bake stage 1 (plan 3.1, A1.1): the roster is data and every consumer reads it as N rows.
@@ -264,7 +280,7 @@ bake_v3:
 # quota changes it here. `chat_reserve_active_dml` is design-proposed headroom for CHAT.
 athena_start_budget:
   active_dml_quota: 200
-  batch_athena_budget: 41
+  batch_athena_budget: 42
   chat_reserve_active_dml: 20
 
 caller_kinds:
@@ -396,16 +412,16 @@ root_vocabulary:
 # output and pinned here so admission reads it from the contract. A unit test proves equality.
 # The class it derives is recorded on the receipt and logged, never refused (ADR-161).
 historical_policy:
-  replay_base: "2026-10-06T00:00:00Z"
+  replay_base: "2026-11-12T00:00:00Z"
   first_day: "2025-07-01"
   # The paired encoding's day 0: first_day, or the earliest Vendor day when a Vendor history
   # starts before the AMC span (FD-2). Each Vendor day then decodes to its own run day.
-  paired_first_day: "2025-07-01"
-  cut: "2026-08-11"
+  paired_first_day: "2024-10-08"
+  cut: "2026-09-17"
   stride_seconds: 64
-  seal_slot_base: 463
-  backfill_slot_base: 527
-  probe_slot_base: 530
+  seal_slot_base: 500
+  backfill_slot_base: 564
+  probe_slot_base: 567
   probe_slot_count: 64
   encodings:
     - {source_system: amc, source_dataset: dsp_impressions, encoding: strided}

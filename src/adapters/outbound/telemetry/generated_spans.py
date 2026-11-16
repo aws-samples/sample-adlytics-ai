@@ -20,6 +20,8 @@ __all__ = [
     "CATALOG_GATEWAY",
     "CONVERSATION_ROUTE_EXCHANGE",
     "CONVERSATION_TURN",
+    "DEMAND_FORECAST_BUILD",
+    "DEMAND_FORECAST_SELECT",
     "EVALUATION_GATE",
     "EVALUATION_OUTBOX_DISPATCH",
     "EVALUATION_RESULT_INGRESS",
@@ -150,3 +152,5 @@ BAKE_FINALIZE: Final = "bake.finalize"
 ARTIFACT_WRITE: Final = "artifact.write"
 EXECUTION_GRAPH_PROMOTER_PASS: Final = "execution_graph.promoter_pass"
 EXECUTION_GRAPH_PROMOTER_DOMAIN: Final = "execution_graph.promoter_domain"
+DEMAND_FORECAST_SELECT: Final = "demand_forecast.input.select"
+DEMAND_FORECAST_BUILD: Final = "demand_forecast.input.build"

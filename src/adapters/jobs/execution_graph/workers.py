@@ -17,7 +17,14 @@ only the dispatcher function carries them.
 
 A pass never ends on one item or one shard (S3V-7): every item failure and every shard whose
 read failed is reported once through `report_error` and counted, and the pass completes with
-outcome `completed_with_failures`. Each item is durable, so the next pass takes it again.
+outcome `completed_with_failures`.
+
+The promoter and the release are bounded by the invocation's remaining time (ADR-162): they read
+it from the Lambda context before each item and start none below a reserve, so a pass never runs
+into its timeout and every pass commits what it started. An item a pass leaves is still in its
+`DUE#` shard, and the terminal line counts it as `deferred`. Only committed state is durable:
+anything a pass collects in memory is lost if the invocation ends, which is why no pass may
+reach its timeout. The dispatcher, fence settler and node verifier are not yet bounded.
 """
 
 from __future__ import annotations
@@ -37,6 +44,7 @@ from adapters.config import (
     table_attempt_reconciler_settings,
     tracing_settings,
 )
+from adapters.jobs.execution_graph.budget import CLOCK_INVALID, PassBudget
 from adapters.jobs.execution_graph.dispatcher import (
     DispatchContext,
     DispatchCounts,
@@ -58,7 +66,7 @@ from adapters.jobs.execution_graph.promoter import (
     arm_pass,
     promote_shard,
 )
-from adapters.jobs.execution_graph.release import ReleaseContext, ReleaseCounts, release_shard
+from adapters.jobs.execution_graph.release import ReleaseContext, release_pass
 from adapters.outbound.dynamodb.execution_graph_dispatch import DynamoGraphDispatchStore
 from adapters.outbound.dynamodb.execution_graph_release import DynamoGraphReleaseStore
 from adapters.outbound.dynamodb.stage1_writer_authority import Stage1WriterAuthorityReader
@@ -183,20 +191,31 @@ def _run(operation: str, body: Callable[[], dict[str, object]]) -> dict[str, obj
     return result
 
 
-type _Counts = DispatchCounts | FenceCounts | VerifyCounts | PromotionCounts | ReleaseCounts
+type _Counts = DispatchCounts | FenceCounts | VerifyCounts | PromotionCounts
 
 
 def _shards[C: _Counts](operation: str, one: Callable[[str], C]) -> tuple[list[C], int]:
-    """Run one shard pass per due shard; a shard whose pass fails is reported and counted."""
+    """Run one shard pass per due shard; a shard whose pass fails is reported and counted.
+
+    An invalid remaining-time reading (ADR-162) is not a shard failure: it ends the pass.
+    """
     done: list[C] = []
     failed = 0
     for shard in due_shards():
+        clock: list[InvariantError] = []
 
-        def run(shard: str = shard) -> None:
-            done.append(one(shard))
+        def run(shard: str = shard, clock: list[InvariantError] = clock) -> None:
+            try:
+                done.append(one(shard))
+            except InvariantError as error:
+                if error.code != CLOCK_INVALID:
+                    raise
+                clock.append(error)
 
         if not isolated(run, partial(_report, operation)).ok:
             failed += 1
+        if clock:
+            raise clock[0]
     return done, failed
 
 
@@ -271,7 +290,10 @@ def promoter_handler(_event: dict[str, Any], lambda_context: object) -> dict[str
             lambda: datetime.now(UTC),
             on_failure=partial(_report, operation),
         )
-        passes, failed_shards = _shards(operation, partial(promote_shard, context))
+        budget = PassBudget.of(remaining_ms)
+        passes, failed_shards = _shards(
+            operation, lambda shard: promote_shard(context, shard, budget)
+        )
         # S6 §2.2: the arm pass runs beside instantiation, over every due shard at once, so
         # every `ARM#` read precedes the one `COMPLETE#` walk (AGG4-14).
         # `arm_pass` validates every reading (positive, integer, monotonic) before use.
@@ -287,6 +309,11 @@ def promoter_handler(_event: dict[str, Any], lambda_context: object) -> dict[str
             "serving_coalesced": arming.coalesced,
             "arm_predecessor_wait": arming.predecessor_wait,
             "arm_walk_failed": arming.walk_failed,
+            "deferred": sum(item.deferred for item in passes) + arming.deferred,
+            "grants_deferred": arming.grants_deferred,
+            "serving_staged": arming.serving_staged,
+            "serving_unstaged": arming.serving_unstaged,
+            "serving_legacy_winners": arming.serving_legacy_winners,
             "conflicts": sum(item.conflicts for item in passes) + arming.conflicts,
             "failed": sum(item.failed for item in passes) + arming.failed,
             "failed_shards": failed_shards + arming.failed_shards,
@@ -304,9 +331,12 @@ def promoter_handler(_event: dict[str, Any], lambda_context: object) -> dict[str
 
 @flushes_traces
 @flushes_metrics
-def release_handler(_event: dict[str, Any], _context: object) -> dict[str, object]:
-    """Issue grants and re-drive committed grants to apply (S4, BF-1, BF-8, V-28)."""
+def release_handler(_event: dict[str, Any], lambda_context: object) -> dict[str, object]:
+    """Issue grants and re-drive committed grants to apply (S4, BF-1, BF-8, V-28), bounded."""
     operation = "execution_graph.release"
+    remaining_ms = getattr(lambda_context, "get_remaining_time_in_millis", None)
+    if not callable(remaining_ms):
+        raise InvariantError(ErrorCode("EXEC_GRAPH", 34), "the release Lambda context is invalid.")
 
     def body() -> dict[str, object]:
         reader = Stage1WriterAuthorityReader(
@@ -319,19 +349,16 @@ def release_handler(_event: dict[str, Any], _context: object) -> dict[str, objec
             on_failure=partial(_report, operation),
             report=_report_line,
         )
-        passes, failed_shards = _shards(operation, partial(release_shard, context))
-        outcomes: dict[str, int] = {}
-        for item in passes:
-            for name, count in item.outcomes.items():
-                outcomes[name] = outcomes.get(name, 0) + count
+        counts = release_pass(context, due_shards(), PassBudget.of(remaining_ms))
         return {
-            **outcomes,
-            "conflicts": sum(item.conflicts for item in passes),
-            "failed": sum(item.failed for item in passes),
-            "completed": sum(item.completed for item in passes),
-            "completion_pending": sum(item.completion_pending for item in passes),
-            "unarmed_settled": sum(item.unarmed_settled for item in passes),
-            "failed_shards": failed_shards,
+            **counts.outcomes,
+            "conflicts": counts.conflicts,
+            "failed": counts.failed,
+            "completed": counts.completed,
+            "completion_pending": counts.completion_pending,
+            "unarmed_settled": counts.unarmed_settled,
+            "deferred": counts.deferred,
+            "failed_shards": counts.failed_shards,
         }
 
     return _run(operation, body)

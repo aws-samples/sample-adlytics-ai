@@ -1081,7 +1081,7 @@ def test_a_period_with_a_day_lacking_a_spend_publication_gives_no_roster(
 
 def test_the_fixture_has_one_rostered_ad_product_with_no_row_in_its_declared_week() -> None:
     rows = tuple(csv.DictReader(io.StringIO((FIXTURES / f"{PACK_ID}.csv").read_text())))
-    week = [row for row in rows if row["time_window_start"] == "2026-09-28T00:00:00.000Z"]
+    week = [row for row in rows if row["time_window_start"] == "2026-11-02T00:00:00.000Z"]
     assert [(row["ad_product_type"], row["rows_suppressed"]) for row in week] == [
         ("amazon_dsp", "false"),
         ("", "true"),
@@ -1092,14 +1092,14 @@ def test_the_fixture_has_one_rostered_ad_product_with_no_row_in_its_declared_wee
         Decimal(row["spend"])
         for row in csv.DictReader(io.StringIO((FIXTURES / "amc-reach-frequency.csv").read_text()))
         if row["ad_product_type"] == "sponsored_brands"
-        and "2026-09-28" <= row["event_date_utc"] <= "2026-10-04"
+        and "2026-11-02" <= row["event_date_utc"] <= "2026-11-08"
     )
     assert spend > 0
     # Control: the week before returns every ad product with a credited purchase.
     before = {
         row["ad_product_type"]
         for row in rows
-        if row["time_window_start"] == "2026-09-21T00:00:00.000Z"
+        if row["time_window_start"] == "2026-10-26T00:00:00.000Z"
     }
     assert before == {"amazon_dsp", "sponsored_brands", "sponsored_products"}
 

@@ -1066,8 +1066,12 @@ Stage-1 refuses a delivery whose unit needs more than 10 clean attempts, `M(u) +
 the unit's MERGE statements (`projection_feasibility.MAX_ACCEPTED_ATTEMPTS_PER_UNIT`). The
 source-aligned hierarchy table has 26 columns; under the then 900-parameter bound a statement
 held at most 34 rows, so 238 rows was 7 statements, `M + 1 = 8`, two attempts inside the cap.
-It is also 34 whole cycles of the 7 fixture products, so every chunk is a complete snapshot.
-On 2026-10-06 the unsplit 463-row delivery was refused live: "needs 14 clean attempts". The
+It is the most rows a chunk holds: the fixture splits into `k = ceil(R / 238)` equal chunks of
+`floor(R / k)` or `ceil(R / k)` rows (2026-11-12: a 500-row fixture is 167/167/166, not
+238/238/24). Rows cycle the N catalogue products, so a chunk is a complete snapshot exactly when
+`floor(R / k) >= N`; the planner refuses a split that breaks it. That holds for any span up to
+119 products, a dev fixture limit (ADR-086 amendment 2026-11-12). On 2026-10-06 the unsplit
+463-row delivery was refused live: "needs 14 clean attempts". The
 parameter bound was removed on 2026-10-10 (write-discipline §11): packing is now bounded only by
 statement envelope bytes, which fits more rows per MERGE, so the chunk stays inside the cap.
 """
@@ -1081,11 +1085,13 @@ CHUNKED_WHOLE_FIXTURES: Final = {
 def _whole_chunk_runs(
     request: _SourceRunsRequest,
 ) -> tuple[tuple[str, str, dict[str, object], date | None], ...]:
-    """Split a whole JSONL fixture into consecutive row chunks with their own day windows.
+    """Split a whole JSONL fixture into equal consecutive row chunks with their own day windows.
 
     Row `i` belongs to day `period_start + i`, as the generator writes one row per span day, so a
     chunk's window is its rows' days and every chunk gets its own raw prefix. A fixture at or under
-    the chunk size stays one delivery, byte-identical to before the split.
+    the chunk size stays one delivery, byte-identical to before the split. A split whose smallest
+    chunk has fewer rows than the fixture has products is refused: that chunk would land as an
+    incomplete newest snapshot.
     """
     size = CHUNKED_WHOLE_FIXTURES[request.fixture]
     lines = request.text.splitlines(keepends=True)
@@ -1098,9 +1104,19 @@ def _whole_chunk_runs(
         raise LandingError(f"{request.fixture}: its declared period is invalid.") from None
     if (last - first).days + 1 != len(lines):
         raise LandingError(f"{request.fixture}: its rows do not match its declared days.")
+    count = -(-len(lines) // size)
+    smallest, longer = divmod(len(lines), count)
+    products = len({json.loads(line)["asin"] for line in lines})
+    if smallest < products:
+        raise LandingError(
+            f"{request.fixture}: {products} products in {len(lines)} rows split into {count} "
+            f"chunks of at most {size} rows leave a {smallest}-row chunk, so it is not a complete "
+            f"snapshot (dev fixture limit: {smallest} products on this span, 119 on any)."
+        )
     runs: list[tuple[str, str, dict[str, object], date | None]] = []
-    for start in range(0, len(lines), size):
-        chunk = lines[start : start + size]
+    start = 0
+    for index in range(count):
+        chunk = lines[start : start + smallest + (1 if index < longer else 0)]
         chunk_first = first + timedelta(days=start)
         chunk_last = chunk_first + timedelta(days=len(chunk) - 1)
         runs.append(
@@ -1115,6 +1131,7 @@ def _whole_chunk_runs(
                 None,
             )
         )
+        start += len(chunk)
     return tuple(runs)
 
 

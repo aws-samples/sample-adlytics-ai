@@ -567,6 +567,9 @@ def _templates(general: int = 8) -> dict[str, dict[str, Any]]:
         },
         "Adlytics-Publisher-dev": {"Resources": {"BakerFixture": _function(2, 10)}},
         "Adlytics-InsightPrecompute-dev": {"Resources": {"Worker": _function(2, 4)}},
+        "Adlytics-DemandForecast-dev": {
+            "Resources": {"ForecastInputFunctionFixture": _function(1)}
+        },
     }
 
 

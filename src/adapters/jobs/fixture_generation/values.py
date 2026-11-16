@@ -130,6 +130,8 @@ class ShapeValues:
 
     shape: CatalogShape
     visible_campaigns: frozenset[str]
+    forecast_shapes: dict[str, str] = field(default_factory=dict[str, str])
+    """Each product's demand-forecast shape (K-4); a product absent here is `regular`."""
     _campaign_cache: dict[tuple[str, str, date], CampaignDayValues] = field(
         default_factory=dict[tuple[str, str, date], CampaignDayValues]
     )
@@ -387,25 +389,61 @@ class ShapeValues:
         pair = getattr(self.shape.retail, name)
         return self._band((pair.low, pair.high), product, f"retail.{name}")
 
-    def units_shipped(self, product: str, scenario: str, on: date) -> int:
-        """Return U(p, t); days before first_day evaluate the same pure function."""
+    def vendor_day_landed(self, on: date) -> bool:
+        """Whether Vendor delivers a report on `on`: no report on the declared unlanded day."""
+        return on != self.shape.forecast.vendor_day_unlanded
+
+    def vendor_present(self, product: str, on: date) -> bool:
+        """Whether the product has a Vendor row on `on`; its forecasting shape may say no (K-4)."""
+        forecast = self.shape.forecast
+        if not self.vendor_day_landed(on):
+            return False
+        kind = self.forecast_shapes.get(product, "regular")
+        if kind == "launch":
+            return on >= forecast.launch_first_day
+        if kind == "delisted":
+            return on <= forecast.delisted_last_day
+        if kind == "intermittent":
+            draw = band(self.shape.seed, Decimal(0), Decimal(1), product, f"forecast.presence.{on}")
+            return draw < forecast.intermittent_presence
+        return True
+
+    def units_demanded(self, product: str, scenario: str, on: date) -> int:
+        """Return the demand D(p, t): U(p, t) before any stock-out; 0 on a day with no row."""
         key = (product, scenario, on)
         cached = self._units_cache.get(key)
         if cached is not None:
             return cached
+        if not self.vendor_present(product, on):
+            self._units_cache[key] = 0
+            return 0
+        kind = self.forecast_shapes.get(product, "regular")
+        forecast = self.shape.forecast
         with decimal.localcontext(_context()):
-            growth = self.shape.retail.annual_growth_pct[scenario] / 100
+            growth = (
+                forecast.trend_seasonal_growth_pct
+                if kind == "trend_seasonal"
+                else self.shape.retail.annual_growth_pct[scenario]
+            ) / 100
             story_trend = self.shape.retail.story_trend_pct_per_day[scenario] / 100
             trend = (1 + growth * Decimal(self.position(on)) / Decimal(365)) * (
                 1 + story_trend * self.story(on)
             )
+            level = self._retail_band(product, "units_level")
+            if kind == "low_volume":
+                level *= forecast.low_volume_units_scale
+            elif kind == "intermittent":
+                level *= forecast.intermittent_units_scale
+            season = self.month_factor(product, on)
+            if kind == "trend_seasonal":
+                season = 1 + (season - 1) * forecast.trend_seasonal_month_gain
             units = max(
                 1,
                 rounded(
-                    self._retail_band(product, "units_level")
+                    level
                     * trend
                     * self.weekday_factor(product, on)
-                    * self.month_factor(product, on)
+                    * season
                     * self._jitter(
                         self.shape.retail.noise_pct / 100, product, on.isoformat(), "units"
                     )
@@ -413,6 +451,22 @@ class ShapeValues:
             )
         self._units_cache[key] = units
         return units
+
+    def units_shipped(self, product: str, scenario: str, on: date) -> int:
+        """Return U(p, t); days before first_day evaluate the same pure function.
+
+        A `stockout` product ships `shipped_share` of its demand inside the declared window.
+        """
+        demand = self.units_demanded(product, scenario, on)
+        forecast = self.shape.forecast
+        if (
+            demand
+            and self.forecast_shapes.get(product) == "stockout"
+            and forecast.stockout_first <= on <= forecast.stockout_last
+        ):
+            with decimal.localcontext(_context()):
+                return max(1, floored(demand * forecast.stockout_shipped_share))
+        return demand
 
     def return_rate(self, product: str, scenario: str, on: date) -> Decimal:
         """Return rr_p(t): the scenario rate, or the shift product's ramp, held after its end."""
@@ -465,7 +519,8 @@ class ShapeValues:
                 * self.price(product, on)
             )
             cost = rpu * self._retail_band(product, "cogs_ratio")
-            ordered = rounded(units * self.order_ratio(product, on))
+            demand = self.units_demanded(product, scenario, on)
+            ordered = rounded(demand * self.order_ratio(product, on))
             views = max(
                 1,
                 rounded(

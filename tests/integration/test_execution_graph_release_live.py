@@ -4,7 +4,9 @@
 Every graph write goes to `adlytics-<env>-execution-graph-probe` through the probe role. Each
 test works in its own fresh namespace: a random fingerprint, conflict unit and co-release
 domain (`ReleaseContext.domain_override`), so no run ever shares a release-order head, lineage
-or block with another run or with the live table. Fictional data only.
+or block with another run or with the live table. At teardown the file deletes the due
+obligations its namespaces created and asserts the probe due shards are left as found
+(probe_due.py). Fictional data only.
 
 The legacy-head tests also read, never write, the raw zone and the coordinator table under the
 operator profile, for the window of one retrieval whose legacy plan COMPLETED. `make
@@ -17,6 +19,7 @@ from __future__ import annotations
 
 import os
 import uuid
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -24,6 +27,7 @@ from typing import Any
 import boto3
 import pytest
 from botocore.exceptions import ClientError
+from probe_due import DueLedger
 
 from adapters.jobs.execution_graph.release import (
     ReleaseContext,
@@ -39,7 +43,12 @@ from adapters.outbound.dynamodb.stage1_writer_authority import Stage1WriterAutho
 from adapters.outbound.legacy_head import S3CoordinatorLegacyHead
 from domain.curation.landing import MANIFEST_NAME
 from domain.operations.execution_graph import AuthorityMode, graph_id, run_id
-from domain.operations.execution_graph_dispatch import NodePhase
+from domain.operations.execution_graph_dispatch import (
+    GraphGuardError,
+    NodePhase,
+    ServingAuthorityIdentity,
+    ServingCandidate,
+)
 from domain.operations.execution_graph_release import (
     RELEASE_GRANT_RESERVATION_PROOF_REQUIRED,
     ReleaseRefusedError,
@@ -49,6 +58,11 @@ from domain.operations.ingestion_root import RootRefusedError, window_identity
 from domain.operations.status import canonical_authority_digest
 from ports.outbound.execution_graph import ReceiptRecord
 from ports.outbound.execution_graph_dispatch import NodeSpec, PutNodesRequest
+from ports.outbound.execution_graph_release import (
+    ServingCandidateRead,
+    ServingMarkerCoordinate,
+    ServingStagePage,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -93,6 +107,20 @@ def client() -> Any:
     return dynamodb
 
 
+_LEDGER: list[DueLedger] = []
+
+
+@pytest.fixture(scope="module", autouse=True)
+def due_ledger(client: Any) -> Iterator[DueLedger]:
+    """Remove the due obligations this file's namespaces create, then prove the shards as found."""
+    ledger = DueLedger(client, PROBE)
+    _LEDGER.append(ledger)
+    yield ledger
+    _LEDGER.remove(ledger)
+    ledger.restore()
+    ledger.assert_as_found()
+
+
 @dataclass(frozen=True, slots=True)
 class Namespace:
     """One test's fresh identities."""
@@ -104,11 +132,14 @@ class Namespace:
 
 def _namespace() -> Namespace:
     token = uuid.uuid4().hex
-    return Namespace(
+    ns = Namespace(
         unit=canonical_authority_digest(["p4-unit", token]),
         domain=canonical_authority_digest(["p4-domain", token]),
         window=f"integration-probe/p4/{token}/",
     )
+    for ledger in _LEDGER:
+        ledger.claim(ns.unit, ns.domain)
+    return ns
 
 
 def _context(client: Any, ns: Namespace, legacy: Any = None) -> ReleaseContext:
@@ -435,3 +466,77 @@ def test_v28_an_injected_apply_time_refusal_blocks_only_the_probe_namespace(clie
     assert block is not None and block["block_reason"] == {"S": "lineage_failed_owner_review"}
     failed = _get(client, f"RUN#{name}", "RUN")
     assert failed is not None and failed["state"] == {"S": "FAILED"}
+
+
+def _staged_read(domain: str, index: int) -> ServingCandidateRead:
+    """One validated candidate as a staged page holds it; fictional digests only."""
+    run = canonical_authority_digest(["p4-stage-run", domain, index])
+    grant = canonical_authority_digest(["p4-stage-grant", domain, index])
+    candidate = ServingCandidate(
+        run_id=run,
+        grant_id=grant,
+        root_flow_id=canonical_authority_digest(["p4-stage-root", domain, index]),
+        domain=domain,
+        grant_ordinal=index + 1,
+        publication_effect_digest=canonical_authority_digest(["p4-stage-effect", index]),
+        root_clock_started_at=NOW.isoformat(),
+    )
+    return ServingCandidateRead(
+        candidate,
+        ServingAuthorityIdentity(run, grant, index + 1, domain),
+        canonical_authority_digest(["p4-stage-target", index]),
+        ServingMarkerCoordinate(run, index % 32, index + 1),
+    )
+
+
+def _stage_keys(client: Any, domain: str) -> list[dict[str, Any]]:
+    found = client.query(
+        TableName=PROBE,
+        KeyConditionExpression="pk = :pk AND begins_with(sk, :sk)",
+        ExpressionAttributeValues={
+            ":pk": write_text(due_shard(domain)),
+            ":sk": write_text(f"ELECTION#{domain}#"),
+        },
+        ConsistentRead=True,
+    )["Items"]
+    return [{"pk": item["pk"], "sk": item["sk"]} for item in found]
+
+
+@pytest.mark.covers("ADR-162")
+def test_adr162_stage_pages_split_read_back_in_order_are_created_once_and_deleted(
+    client: Any,
+) -> None:
+    """A resumed election trusts these pages as every candidate it has already read.
+
+    A lost, reordered or overwritten page would change the elected roster, and a page left behind
+    is a stale cache.
+    """
+    ns = _namespace()
+    store = DynamoGraphReleaseStore(PROBE, client)
+    stage = canonical_authority_digest(["p4-stage", ns.domain])
+    reads = tuple(_staged_read(ns.domain, index) for index in range(1_000))
+    try:
+        written = store.write_serving_stage(ServingStagePage(ns.domain, stage, 0, reads))
+        # 1,000 entries exceed one 400,000-byte item, so they halve into two consecutive pages.
+        assert [(page.page, len(page.reads)) for page in written] == [(0, 500), (1, 500)]
+        assert len(_stage_keys(client, ns.domain)) == 2
+
+        stored = store.read_serving_stage(ns.domain)
+        assert stored == written
+        assert tuple(read for page in stored for read in page.reads) == reads
+
+        with pytest.raises(GraphGuardError) as refused:
+            store.write_serving_stage(ServingStagePage(ns.domain, stage, 1, reads[:1]))
+        assert refused.value.signal == "SERVING_HEAD_CHANGED"
+        assert store.read_serving_stage(ns.domain) == written  # the refused create wrote nothing
+
+        store.delete_serving_stage(written)
+        assert store.read_serving_stage(ns.domain) == ()
+        assert _stage_keys(client, ns.domain) == []
+        with pytest.raises(GraphGuardError) as absent:
+            store.delete_serving_stage(written[:1])
+        assert absent.value.signal == "SERVING_HEAD_CHANGED"
+    finally:
+        for key in _stage_keys(client, ns.domain):
+            client.delete_item(TableName=PROBE, Key=key)
+    assert _stage_keys(client, ns.domain) == []

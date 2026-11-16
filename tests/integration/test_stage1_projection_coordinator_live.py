@@ -109,9 +109,16 @@ _TERMINAL_POLL_LIMIT = 60
 
 @pytest.fixture(scope="session")
 def probe_tables(deployed_env: dict[str, str]) -> Iterator[tuple[str, str]]:
-    """Sweep stray probe tokens from both retained tables before and after the session."""
-    publications = deployed_env["ADL_SEMANTIC_PUBLICATIONS_TABLE"]
-    leases = deployed_env["ADL_SEMANTIC_LEASES_TABLE"]
+    """Sweep stray probe tokens from the dev probe pair before and after the session.
+
+    The pair has no stream: probe outbox items written to the live publications table reached
+    the live LifecycleProducer, which IAM correctly denied on the probe partition and which
+    rewrote the probe's own items under its exact-replay asserts (serve-rca §6).
+    """
+    publications = deployed_env.get("ADL_SEMANTIC_PROBE_PUBLICATIONS_TABLE")
+    leases = deployed_env.get("ADL_SEMANTIC_PROBE_LEASES_TABLE")
+    if publications is None or leases is None:
+        pytest.skip("the ENV=dev streamless probe pair (data/v2/semantic-*-probe-table) is absent")
     dynamo = RecordingDynamo(boto3.client("dynamodb"), publications, leases)
     dynamo.sweep_probe_tokens()
     yield publications, leases

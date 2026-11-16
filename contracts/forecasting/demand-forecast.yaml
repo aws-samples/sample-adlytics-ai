@@ -1,0 +1,71 @@
+# The demand-forecast policy (design §3a). Baked into the job image, so the image identity covers
+# it; every run records each section's version and this file's SHA-256. Slice 1 holds the
+# sections the engine and weekly input need; `gate` and `retry` arrive with slice 2.
+# Validated by `make validate-contracts` against demand-forecast.schema.json and loaded by
+# src/adapters/outbound/demand_forecast_policy.py into src/domain/forecasting/policy.py.
+schema_version: 1
+
+input:
+  version: 1
+  facts:
+    sales: fct_retail_sales
+    traffic: fct_product_page_views
+  # Titles only.
+  product_metadata: dim_product
+  selectors:
+    distributor_view: MANUFACTURING
+    selling_program: RETAIL
+  # Sunday, in the date.weekday() convention (src/domain/semantics/time.py).
+  week_starts_on: 6
+  targets: [units_shipped, units_ordered, revenue_shipped, cogs_shipped]
+  covariates: [glance_views]
+
+missing_weeks:
+  version: 1
+  # The trailing window in which one observed day makes a product active (P-4).
+  activity_window_weeks: 13
+  # A product gap longer than this restarts that product's context (design §3d).
+  max_unknown_run_weeks: 2
+  # An uncovered day younger than this doesn't count as unknown yet (P-14).
+  unknown_day_grace_days: 7
+
+eligibility:
+  version: 1
+  min_context_weeks: 13
+  holdout_weeks: 13
+  min_scored_holdout_weeks: 10
+  horizon_weeks: 13
+  quantiles: [0.1, 0.5, 0.9]
+  history_weeks_max: 104
+  ets_min_known_weeks: 13
+  min_seasonal_residuals: 13
+
+engine:
+  version: 1
+  # Chronos-2 forecasts each batch jointly, so batch membership is policy (design §4c, P-12).
+  cross_learning: true
+  batch_size: 256
+  batch_scope: one_target_one_origin
+  sort_key: [target, origin, marketplace_key, distributor_view, selling_program, canonical_asin]
+  # The largest of 2,000, 1,000 or 500 whose measured shard time is at most 1,800 s (P-18).
+  shard_max_asins: 2000
+
+numeric:
+  version: 1
+  stored_decimal_places: 4
+  stored_rounding: half_even
+  check_order: [finite, band_unordered, negative]
+  display: whole_half_away_from_zero
+
+serving:
+  version: 1
+  stale_after_days: 16
+  page_rows: 50
+  tool_list_max: 50
+  compare_max_asins: 5
+  views: [4, 8, 13]
+  title_max_bytes: 400
+  item_max_bytes: 350000
+  rank_by: units_ordered_p50_13w
+  status_target: units_ordered
+  search: exact_asin

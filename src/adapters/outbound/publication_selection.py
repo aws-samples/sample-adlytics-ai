@@ -7,7 +7,7 @@ import json
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import date, timedelta
-from typing import Any, Final, cast
+from typing import Any, Final, NamedTuple, cast
 
 from aws_lambda_powertools import Logger
 
@@ -68,8 +68,14 @@ from domain.shared_kernel.errors import (
 )
 from domain.shared_kernel.provenance import FreshnessStatus
 from domain.shared_kernel.values import DateRange
+from ports.outbound.forecast_history_selection import (
+    ForecastHistorySelectionRequest,
+    ForecastHistorySelectionResult,
+    PinnedContractHistory,
+)
 from ports.outbound.pack_coverage import PackCoverageReadRequest
 from ports.outbound.publication_selection import (
+    PinnedPublication,
     PresentationEvidenceInspectionRequest,
     PresentationEvidenceInspectionResult,
     PresentationEvidenceInspectionSlot,
@@ -80,12 +86,14 @@ from ports.outbound.publication_selection import (
 from ports.outbound.semantic_state import (
     MAX_EXACT_CURRENT_PARTITIONS,
     CurrentPublicationInspectionPort,
+    ScopeHorizon,
     ScopeHorizonPolicy,
 )
 from ports.outbound.served_periods import ServedPeriods, ServedPeriodsRequest
 
 __all__ = [
     "MAX_PRESET_SNAPSHOT_PARTITIONS",
+    "ForecastHistorySelector",
     "PerPackPresentationEvidenceInspection",
     "PopulationCoverage",
     "PublicationScopeRequest",
@@ -1270,6 +1278,93 @@ class PerPackPresentationEvidenceInspection(PublicationSelector):
         for scope_identity in sorted(groups):
             by_partition.update(self._attest(tuple(groups[scope_identity])))
         return self._inspection_result(request, resolved, by_partition)
+
+
+# The demand-forecast selection (design §3c, R3-01): the by-ASIN sales and traffic contracts decide
+# completeness for the targets and the covariate; the product hierarchy gives titles only.
+FORECAST_SALES_CONTRACT: Final = "vendor-sales-by-asin"
+FORECAST_TRAFFIC_CONTRACT: Final = "vendor-traffic-by-asin"
+FORECAST_PRODUCTS_CONTRACT: Final = "vendor-product-hierarchy"
+
+
+class _ForecastHistoryRead(NamedTuple):
+    contract_id: str
+    filters: dict[str, str]
+    horizon: ScopeHorizon
+    window: DateRange
+
+
+@dataclass(frozen=True, slots=True)
+class ForecastHistorySelector:
+    """`ForecastHistorySelectionPort` over the publisher-identical scopes of three contracts.
+
+    Each contract scope is read in its own `current_for_scope` call: sales and traffic from the
+    window's first day (a 1,000-day window is at most 1,000 partitions per scope, the exact-read
+    bound), products newest-first (the hierarchy reader's horizon). A scope with no CURRENT
+    publication contributes no pins and no covered days. Each pin is built as the bake pins
+    are, with `publication_digest()`.
+    """
+
+    current: CurrentPublicationInspectionPort
+    packs: tuple[SourcePack, ...]
+    contracts: tuple[DataContract, ...]
+    bridge: CommerceIdentityBridge
+
+    def _history(self, read: _ForecastHistoryRead) -> PinnedContractHistory:
+        contract_id, filters, horizon, window = read
+        pack = next((item for item in self.packs if item.contract_id == contract_id), None)
+        contract = next((item for item in self.contracts if item.contract_id == contract_id), None)
+        if pack is None or contract is None:
+            raise ValueError(f"{contract_id}: no declared source pack and contract.")
+        found: dict[str, SuccessfulPublication] = {}
+        for scope in publication_scopes_for(
+            PublicationScopeRequest(pack, contract, self.bridge, filters)
+        ):
+            for publication in self.current.current_for_scope(scope, horizon=horizon):
+                bucket = publication.partition.bucket.window
+                if bucket.end <= window.end and bucket.start >= window.start:
+                    found[publication.partition.identity] = publication
+        ordered = sorted(
+            found.values(),
+            key=lambda item: (item.partition.bucket.window.start, item.partition.identity),
+        )
+        return PinnedContractHistory(
+            contract_id=contract_id,
+            pins=tuple(
+                PinnedPublication(
+                    item.partition.identity,
+                    item.publication_id.value,
+                    item.fencing_token,
+                    publication_digest(item),
+                )
+                for item in ordered
+            ),
+            buckets=tuple(item.partition.bucket.window for item in ordered),
+            covered=_normalize(tuple(item.partition.bucket.window for item in ordered)),
+            newest_published_at=max((item.published_at for item in ordered), default=None),
+        )
+
+    def select(self, request: ForecastHistorySelectionRequest) -> ForecastHistorySelectionResult:
+        """Return the window's sales and traffic pins and the latest product pins."""
+        marketplace = {"marketplace_key": request.marketplace_key}
+        since = ScopeHorizon(from_bucket_start=request.window.start)
+        sales_filters = {**marketplace, **dict(request.selectors)}
+        return ForecastHistorySelectionResult(
+            sales=self._history(
+                _ForecastHistoryRead(FORECAST_SALES_CONTRACT, sales_filters, since, request.window)
+            ),
+            traffic=self._history(
+                _ForecastHistoryRead(FORECAST_TRAFFIC_CONTRACT, marketplace, since, request.window)
+            ),
+            products=self._history(
+                _ForecastHistoryRead(
+                    FORECAST_PRODUCTS_CONTRACT,
+                    marketplace,
+                    ScopeHorizon(newest=1),
+                    DateRange(date.min, request.window.end),
+                )
+            ),
+        )
 
 
 def publication_digest(publication: SuccessfulPublication) -> str:

@@ -1,0 +1,14 @@
+{
+  "include": [
+    "../../../../src/adapters/jobs/demand_forecast",
+    "../../../../tests/forecasting"
+  ],
+  "extraPaths": [
+    "../../../../src"
+  ],
+  "pythonVersion": "3.14",
+  "typeCheckingMode": "strict",
+  "reportMissingTypeStubs": false,
+  "venvPath": "../../../..",
+  "venv": ".venv-forecasting"
+}

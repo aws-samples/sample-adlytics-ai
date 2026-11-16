@@ -1166,7 +1166,7 @@ def _month_outcome(month: str) -> tuple[object, tuple[dict[str, str], ...]]:
 
 def test_the_fixture_is_one_delivery_per_calendar_month() -> None:
     windows = {(row["time_window_start"], row["time_window_end"]) for row in _fixture_rows()}
-    assert len(windows) == 15
+    assert len(windows) == 16  # 2025-07..2026-10, the complete months to last_day 2026-11-12
     for start, end in windows:
         first = date.fromisoformat(start[:10])
         after = date.fromisoformat(end[:10])
@@ -1175,7 +1175,7 @@ def test_the_fixture_is_one_delivery_per_calendar_month() -> None:
 
 
 def test_the_withdrawn_fixture_month_loses_more_than_a_fifth_of_a_20_plus_roster() -> None:
-    outcome, rows = _month_outcome("2026-09")
+    outcome, rows = _month_outcome("2026-10")
     assert outcome.loss.expected >= 20  # type: ignore[attr-defined]
     assert outcome.loss.grade is LossGrade.WITHDRAWN  # type: ignore[attr-defined]
     assert outcome.off_roster == ()  # type: ignore[attr-defined]
@@ -1188,7 +1188,7 @@ def test_the_withdrawn_fixture_month_loses_more_than_a_fifth_of_a_20_plus_roster
 
 
 def test_the_graded_fixture_month_drops_only_the_declared_campaign() -> None:
-    outcome, rows = _month_outcome("2026-08")
+    outcome, rows = _month_outcome("2026-09")
     declared = next(
         item
         for item in load_synthetic_entity_catalog(ROOT).campaigns
@@ -1199,7 +1199,7 @@ def test_the_graded_fixture_month_drops_only_the_declared_campaign() -> None:
     assert alias in {entry.key for entry in outcome.absent}  # type: ignore[attr-defined]
     assert alias not in {row["campaign_id_string"] for row in rows}
     # Control: the month before returns every campaign with a credited purchase, none dropped.
-    july, july_rows = _month_outcome("2026-07")
+    july, july_rows = _month_outcome("2026-08")
     assert all(row["rows_suppressed"] == "false" for row in july_rows)
     assert alias in {row["campaign_id_string"] for row in july_rows}
     assert july.loss.grade is not LossGrade.WITHDRAWN  # type: ignore[attr-defined]

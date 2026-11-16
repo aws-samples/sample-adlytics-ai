@@ -74,7 +74,14 @@ export interface LineSuppression {
 const BASE64_ENTROPY_LIMIT = 4.5;
 
 /** Keys whose value is a SHA-256 digest of committed content (A-ENTROPY-IDENTIFIER-001). */
-const DIGEST_KEYS = new Set(['SpecDigest', 'contractDigest', 'ADL_PUBLISHER_DEPLOYMENT_GENERATION']);
+const DIGEST_KEYS = new Set([
+  'SpecDigest',
+  'contractDigest',
+  'ADL_PUBLISHER_DEPLOYMENT_GENERATION',
+  // The forecast job image's CDK asset hash and the SHA-256 of its committed requirements.lock.
+  'ADL_DEMAND_FORECAST_PROCESSOR_CODE_IDENTITY',
+  'ADL_DEMAND_FORECAST_LOCK_DIGEST',
+]);
 
 /** Template sections whose keys are CDK logical IDs. */
 const LOGICAL_ID_SECTIONS = ['Resources', 'Parameters', 'Outputs', 'Conditions', 'Mappings', 'Rules'];

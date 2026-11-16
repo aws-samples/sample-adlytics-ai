@@ -1127,13 +1127,21 @@ class DurableBakeEffectInvalidError(InvariantError):
 
 
 class DurableBakeSourceManifestInvalidError(InvariantError):
-    """DB21: a pinned manifest is malformed, misaligned or digest-mismatched; fatal."""
+    """DB21: a pinned manifest is malformed, misaligned or digest-mismatched; fatal.
 
-    def __init__(self, detail: str) -> None:
+    `context` adds the refused read's coordinates (an unpinned read's scope, horizon and key) to
+    the logged context; it never replaces the signal or the detail.
+    """
+
+    def __init__(self, detail: str, *, context: Mapping[str, object] | None = None) -> None:
         super().__init__(
             ErrorCode("GRAPH_BAKE_V3", 2),
             "a durable bake source manifest is not the exact pinned manifest.",
-            context={"signal": DURABLE_BAKE_SOURCE_MANIFEST_INVALID, "detail": detail},
+            context={
+                **(context or {}),
+                "signal": DURABLE_BAKE_SOURCE_MANIFEST_INVALID,
+                "detail": detail,
+            },
         )
         self.signal = DURABLE_BAKE_SOURCE_MANIFEST_INVALID
         self.detail = detail

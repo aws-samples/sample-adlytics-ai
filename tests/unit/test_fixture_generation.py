@@ -1663,9 +1663,9 @@ def test_2_events_move_their_campaigns_and_products_on_their_dates() -> None:
         if isinstance(event, Promotion):
             for key in event.campaigns:
                 for day in (event.first, event.last):
-                    neighbours = [
-                        traffic(key, day + timedelta(days=d)) for d in (-6, -5, -4, 4, 5, 6)
-                    ]
+                    # Same-weekday baselines, so the weekday factor cancels (owner ruling P1,
+                    # 2026-11-12): a promotion day beats both of its two prior weeks' same day.
+                    neighbours = [traffic(key, day + timedelta(days=d)) for d in (-14, -7)]
                     assert traffic(key, day) > max(neighbours), (key, day)
         elif isinstance(event, BudgetShift):
             before = event.on - timedelta(days=7)
@@ -1786,6 +1786,8 @@ def test_4_returns_follow_the_declared_lag_profile_and_never_exceed_shipments() 
     values = catalog.values
     for product in catalog.products:
         for day in _span_list()[::17]:
+            if not values.vendor_present(product.asin, day):
+                continue  # a forecasting shape's day with no row (K-4)
             item = values.product_day(product.asin, product.scenario, day)
             lagged = sum(
                 lag.share
@@ -1832,6 +1834,8 @@ def test_6_net_and_served_revenue_per_unit_stay_in_their_bands() -> None:
     days = _span_list()
     for product in catalog.products:
         for day in days:
+            if not values.vendor_present(product.asin, day):
+                continue  # a forecasting shape's day with no row (K-4)
             item = values.product_day(product.asin, product.scenario, day)
             net = item.revenue_per_unit / values.price(product.asin, day)
             assert retail.revenue_per_unit.low * Decimal("0.99") <= net
@@ -1901,7 +1905,13 @@ def test_7a_ctr_viewable_rate_frequency_and_retail_conversion_vary() -> None:
         assert len({Decimal(item.viewable) / item.measurable for item in live}) > 1
         assert len({Decimal(item.traffic) / item.reach for item in live}) > 1
     for product in catalog.products:
-        rows = [values.product_day(product.asin, product.scenario, day) for day in days]
+        rows = [
+            values.product_day(product.asin, product.scenario, day)
+            for day in days
+            if values.vendor_present(product.asin, day)
+        ]
+        if not rows:
+            continue  # a delisted product has no row in the last 20 weeks (K-4)
         assert len({Decimal(item.units_ordered) / item.glance_views for item in rows}) > 1
 
 
@@ -1915,182 +1925,182 @@ def test_7a_ctr_viewable_rate_frequency_and_retail_conversion_vary() -> None:
 # printed once by evidence/golden_values_helper.py and are not recomputed here. They move with
 # the anchors: the re-anchor commit regenerates the table ("anchor-driven").
 GOLDEN_VALUES: tuple[tuple[str, str, str, Decimal | int], ...] = (
-    ("campaign:northstar-dsp", "2026-10-06", "impressions", 13181),  # growth_ramp
-    ("campaign:northstar-dsp", "2026-10-06", "clicks", 785),  # growth_ramp
-    ("campaign:northstar-dsp", "2026-10-06", "purchases", 91),  # growth_ramp
-    ("campaign:northstar-dsp", "2026-10-06", "spend", Decimal("945.8893")),  # growth_ramp
+    ("campaign:northstar-dsp", "2026-11-12", "impressions", 15130),  # growth_ramp
+    ("campaign:northstar-dsp", "2026-11-12", "clicks", 902),  # growth_ramp
+    ("campaign:northstar-dsp", "2026-11-12", "purchases", 106),  # growth_ramp
+    ("campaign:northstar-dsp", "2026-11-12", "spend", Decimal("1065.0489")),  # growth_ramp
     (
         "campaign:northstar-dsp",
-        "2026-10-06",
+        "2026-11-12",
         "revenue_attributed",
-        Decimal("2777.8120"),
+        Decimal("3313.4037"),
     ),  # growth_ramp
-    ("campaign:northstar-dsp", "2026-10-06", "measurable_impressions", 10697),  # growth_ramp
-    ("campaign:northstar-dsp", "2026-10-06", "viewable_impressions", 8870),  # growth_ramp
-    ("campaign:northstar-dsp", "2026-10-06", "reach_users", 8294),  # growth_ramp
-    ("campaign:northstar-dsp", "2026-10-06", "distinct_user_count", 805),  # growth_ramp
-    ("campaign:harbor-dsp", "2026-10-06", "impressions", 1428),  # sustained_decline
-    ("campaign:harbor-dsp", "2026-10-06", "clicks", 88),  # sustained_decline
-    ("campaign:harbor-dsp", "2026-10-06", "purchases", 7),  # sustained_decline
-    ("campaign:harbor-dsp", "2026-10-06", "spend", Decimal("66.3137")),  # sustained_decline
+    ("campaign:northstar-dsp", "2026-11-12", "measurable_impressions", 12279),  # growth_ramp
+    ("campaign:northstar-dsp", "2026-11-12", "viewable_impressions", 9824),  # growth_ramp
+    ("campaign:northstar-dsp", "2026-11-12", "reach_users", 9202),  # growth_ramp
+    ("campaign:northstar-dsp", "2026-11-12", "distinct_user_count", 922),  # growth_ramp
+    ("campaign:harbor-dsp", "2026-11-12", "impressions", 1616),  # sustained_decline
+    ("campaign:harbor-dsp", "2026-11-12", "clicks", 100),  # sustained_decline
+    ("campaign:harbor-dsp", "2026-11-12", "purchases", 7),  # sustained_decline
+    ("campaign:harbor-dsp", "2026-11-12", "spend", Decimal("75.6773")),  # sustained_decline
     (
         "campaign:harbor-dsp",
-        "2026-10-06",
+        "2026-11-12",
         "revenue_attributed",
-        Decimal("193.3257"),
+        Decimal("196.0377"),
     ),  # sustained_decline
-    ("campaign:harbor-dsp", "2026-10-06", "measurable_impressions", 1193),  # sustained_decline
-    ("campaign:harbor-dsp", "2026-10-06", "viewable_impressions", 968),  # sustained_decline
-    ("campaign:harbor-dsp", "2026-10-06", "reach_users", 820),  # sustained_decline
-    ("campaign:harbor-dsp", "2026-10-06", "distinct_user_count", 108),  # sustained_decline
-    ("campaign:fieldwork-sponsored", "2026-10-06", "impressions", 8637),  # spike_and_fade
-    ("campaign:fieldwork-sponsored", "2026-10-06", "clicks", 863),  # spike_and_fade
-    ("campaign:fieldwork-sponsored", "2026-10-06", "purchases", 92),  # spike_and_fade
-    ("campaign:fieldwork-sponsored", "2026-10-06", "spend", Decimal("662.1907")),  # spike_and_fade
+    ("campaign:harbor-dsp", "2026-11-12", "measurable_impressions", 1350),  # sustained_decline
+    ("campaign:harbor-dsp", "2026-11-12", "viewable_impressions", 1089),  # sustained_decline
+    ("campaign:harbor-dsp", "2026-11-12", "reach_users", 945),  # sustained_decline
+    ("campaign:harbor-dsp", "2026-11-12", "distinct_user_count", 120),  # sustained_decline
+    ("campaign:fieldwork-sponsored", "2026-11-12", "impressions", 10042),  # spike_and_fade
+    ("campaign:fieldwork-sponsored", "2026-11-12", "clicks", 946),  # spike_and_fade
+    ("campaign:fieldwork-sponsored", "2026-11-12", "purchases", 101),  # spike_and_fade
+    ("campaign:fieldwork-sponsored", "2026-11-12", "spend", Decimal("703.4078")),  # spike_and_fade
     (
         "campaign:fieldwork-sponsored",
-        "2026-10-06",
+        "2026-11-12",
         "revenue_attributed",
-        Decimal("2295.0784"),
+        Decimal("2527.7561"),
     ),  # spike_and_fade
     (
         "campaign:fieldwork-sponsored",
-        "2026-10-06",
+        "2026-11-12",
         "measurable_impressions",
-        6505,
+        7564,
     ),  # spike_and_fade
-    ("campaign:fieldwork-sponsored", "2026-10-06", "viewable_impressions", 5321),  # spike_and_fade
-    ("campaign:fieldwork-sponsored", "2026-10-06", "reach_users", 4044),  # spike_and_fade
-    ("campaign:fieldwork-sponsored", "2026-10-06", "distinct_user_count", 883),  # spike_and_fade
+    ("campaign:fieldwork-sponsored", "2026-11-12", "viewable_impressions", 6086),  # spike_and_fade
+    ("campaign:fieldwork-sponsored", "2026-11-12", "reach_users", 4615),  # spike_and_fade
+    ("campaign:fieldwork-sponsored", "2026-11-12", "distinct_user_count", 966),  # spike_and_fade
     (
         "campaign:northstar-dsp-05",
-        "2026-10-06",
+        "2026-11-12",
         "impressions",
-        5668,
+        6926,
     ),  # flat_traffic_rising_conversion
-    ("campaign:northstar-dsp-05", "2026-10-06", "clicks", 326),  # flat_traffic_rising_conversion
-    ("campaign:northstar-dsp-05", "2026-10-06", "purchases", 55),  # flat_traffic_rising_conversion
+    ("campaign:northstar-dsp-05", "2026-11-12", "clicks", 410),  # flat_traffic_rising_conversion
+    ("campaign:northstar-dsp-05", "2026-11-12", "purchases", 68),  # flat_traffic_rising_conversion
     (
         "campaign:northstar-dsp-05",
-        "2026-10-06",
+        "2026-11-12",
         "spend",
-        Decimal("267.9693"),
+        Decimal("338.2439"),
     ),  # flat_traffic_rising_conversion
     (
         "campaign:northstar-dsp-05",
-        "2026-10-06",
+        "2026-11-12",
         "revenue_attributed",
-        Decimal("1786.5039"),
+        Decimal("2151.2098"),
     ),  # flat_traffic_rising_conversion
     (
         "campaign:northstar-dsp-05",
-        "2026-10-06",
+        "2026-11-12",
         "measurable_impressions",
-        4306,
+        5262,
     ),  # flat_traffic_rising_conversion
     (
         "campaign:northstar-dsp-05",
-        "2026-10-06",
+        "2026-11-12",
         "viewable_impressions",
-        3755,
+        4500,
     ),  # flat_traffic_rising_conversion
     (
         "campaign:northstar-dsp-05",
-        "2026-10-06",
+        "2026-11-12",
         "reach_users",
-        2677,
+        3096,
     ),  # flat_traffic_rising_conversion
     (
         "campaign:northstar-dsp-05",
-        "2026-10-06",
+        "2026-11-12",
         "distinct_user_count",
-        346,
+        430,
     ),  # flat_traffic_rising_conversion
-    ("campaign:northstar-dsp-24", "2026-10-06", "impressions", 30613),  # stable_growth
-    ("campaign:northstar-dsp-24", "2026-10-06", "clicks", 3032),  # stable_growth
-    ("campaign:northstar-dsp-24", "2026-10-06", "purchases", 237),  # stable_growth
-    ("campaign:northstar-dsp-24", "2026-10-06", "spend", Decimal("1950.1622")),  # stable_growth
+    ("campaign:northstar-dsp-24", "2026-11-12", "impressions", 38511),  # stable_growth
+    ("campaign:northstar-dsp-24", "2026-11-12", "clicks", 3652),  # stable_growth
+    ("campaign:northstar-dsp-24", "2026-11-12", "purchases", 281),  # stable_growth
+    ("campaign:northstar-dsp-24", "2026-11-12", "spend", Decimal("2368.5032")),  # stable_growth
     (
         "campaign:northstar-dsp-24",
-        "2026-10-06",
+        "2026-11-12",
         "revenue_attributed",
-        Decimal("6699.6809"),
+        Decimal("8278.0350"),
     ),  # stable_growth
-    ("campaign:northstar-dsp-24", "2026-10-06", "measurable_impressions", 24139),  # stable_growth
-    ("campaign:northstar-dsp-24", "2026-10-06", "viewable_impressions", 19552),  # stable_growth
-    ("campaign:northstar-dsp-24", "2026-10-06", "reach_users", 13933),  # stable_growth
-    ("campaign:northstar-dsp-24", "2026-10-06", "distinct_user_count", 3052),  # stable_growth
-    ("campaign:missing-name-sponsored", "2026-10-06", "impressions", 3482),  # zero_conversion
-    ("campaign:missing-name-sponsored", "2026-10-06", "clicks", 323),  # zero_conversion
-    ("campaign:missing-name-sponsored", "2026-10-06", "purchases", 0),  # zero_conversion
+    ("campaign:northstar-dsp-24", "2026-11-12", "measurable_impressions", 30367),  # stable_growth
+    ("campaign:northstar-dsp-24", "2026-11-12", "viewable_impressions", 24857),  # stable_growth
+    ("campaign:northstar-dsp-24", "2026-11-12", "reach_users", 18383),  # stable_growth
+    ("campaign:northstar-dsp-24", "2026-11-12", "distinct_user_count", 3672),  # stable_growth
+    ("campaign:missing-name-sponsored", "2026-11-12", "impressions", 4210),  # zero_conversion
+    ("campaign:missing-name-sponsored", "2026-11-12", "clicks", 440),  # zero_conversion
+    ("campaign:missing-name-sponsored", "2026-11-12", "purchases", 0),  # zero_conversion
     (
         "campaign:missing-name-sponsored",
-        "2026-10-06",
+        "2026-11-12",
         "spend",
-        Decimal("243.1463"),
+        Decimal("337.5282"),
     ),  # zero_conversion
     (
         "campaign:missing-name-sponsored",
-        "2026-10-06",
+        "2026-11-12",
         "revenue_attributed",
         Decimal("0.0000"),
     ),  # zero_conversion
     (
         "campaign:missing-name-sponsored",
-        "2026-10-06",
+        "2026-11-12",
         "measurable_impressions",
-        2737,
+        3309,
     ),  # zero_conversion
     (
         "campaign:missing-name-sponsored",
-        "2026-10-06",
+        "2026-11-12",
         "viewable_impressions",
-        2352,
+        2850,
     ),  # zero_conversion
-    ("campaign:missing-name-sponsored", "2026-10-06", "reach_users", 1478),  # zero_conversion
+    ("campaign:missing-name-sponsored", "2026-11-12", "reach_users", 1725),  # zero_conversion
     (
         "campaign:missing-name-sponsored",
-        "2026-10-06",
+        "2026-11-12",
         "distinct_user_count",
-        343,
+        460,
     ),  # zero_conversion
-    ("campaign:northstar-sponsored-30", "2026-09-26", "impressions", 9019),  # coverage_gap
-    ("campaign:northstar-sponsored-30", "2026-09-26", "purchases", 63),  # coverage_gap
-    ("campaign:northstar-sponsored-08", "2026-10-02", "impressions", 18293),  # promotion
-    ("campaign:northstar-dsp-07", "2026-10-02", "impressions", 605),  # budget_shift_down
-    ("campaign:northstar-dsp-11", "2026-10-02", "impressions", 29378),  # budget_shift_up
-    ("campaign:northstar-dsp-29", "2026-09-25", "impressions", 0),  # launch_before
-    ("campaign:northstar-dsp-29", "2026-09-25", "spend", Decimal("0")),  # launch_before
-    ("campaign:northstar-dsp-16", "2026-10-05", "impressions", 0),  # pause
-    ("campaign:northstar-dsp-16", "2026-10-05", "clicks", 0),  # pause
-    ("campaign:northstar-dsp", "2025-11-20", "impressions", 3248),  # long_run_minus_320
-    ("campaign:northstar-dsp", "2026-08-31", "impressions", 5128),  # month_boundary_2026-08-31
-    ("campaign:northstar-dsp", "2026-09-01", "impressions", 5685),  # month_boundary_2026-09-01
-    ("B0FIXTUR00", "2026-10-06", "units_shipped", 128),  # stable_growth
-    ("B0FIXTUR00", "2026-10-06", "customer_returns", 7),  # stable_growth
-    ("B0FIXTUR00", "2026-10-06", "revenue_shipped", Decimal("3653.4779")),  # stable_growth
-    ("B0FIXTUR00", "2026-10-06", "units_ordered", 133),  # stable_growth
-    ("B0FIXTUR00", "2026-10-06", "glance_views", 2350),  # stable_growth
-    ("B0FIXTUR03", "2026-10-06", "units_shipped", 146),  # returns_pressure
-    ("B0FIXTUR03", "2026-10-06", "customer_returns", 28),  # returns_pressure
-    ("B0FIXTUR03", "2026-10-06", "revenue_shipped", Decimal("4232.6956")),  # returns_pressure
-    ("B0FIXTUR03", "2026-10-06", "units_ordered", 155),  # returns_pressure
-    ("B0FIXTUR03", "2026-10-06", "glance_views", 2711),  # returns_pressure
-    ("B0FIXTUR02", "2026-10-03", "units_shipped", 63),  # divergence inside
-    ("B0FIXTUR02", "2026-10-03", "customer_returns", 4),  # divergence inside
-    ("B0FIXTUR02", "2026-10-03", "revenue_shipped", Decimal("2019.7169")),  # divergence inside
-    ("B0FIXTUR02", "2026-10-03", "units_ordered", 81),  # divergence inside
-    ("B0FIXTUR02", "2026-10-03", "glance_views", 1733),  # divergence inside
-    ("B0FIXTUR06", "2026-09-27", "units_shipped", 95),  # price before
-    ("B0FIXTUR06", "2026-09-27", "customer_returns", 6),  # price before
-    ("B0FIXTUR06", "2026-09-27", "revenue_shipped", Decimal("2546.1187")),  # price before
-    ("B0FIXTUR06", "2026-09-27", "units_ordered", 99),  # price before
-    ("B0FIXTUR06", "2026-09-27", "glance_views", 1649),  # price before
-    ("B0FIXTUR06", "2026-09-28", "units_shipped", 115),  # price first day
-    ("B0FIXTUR06", "2026-09-28", "customer_returns", 6),  # price first day
-    ("B0FIXTUR06", "2026-09-28", "revenue_shipped", Decimal("2817.7128")),  # price first day
-    ("B0FIXTUR06", "2026-09-28", "units_ordered", 120),  # price first day
-    ("B0FIXTUR06", "2026-09-28", "glance_views", 1967),  # price first day
+    ("campaign:northstar-sponsored-30", "2026-11-02", "impressions", 10535),  # coverage_gap
+    ("campaign:northstar-sponsored-30", "2026-11-02", "purchases", 75),  # coverage_gap
+    ("campaign:northstar-sponsored-08", "2026-11-08", "impressions", 19519),  # promotion
+    ("campaign:northstar-dsp-07", "2026-11-08", "impressions", 609),  # budget_shift_down
+    ("campaign:northstar-dsp-11", "2026-11-08", "impressions", 27857),  # budget_shift_up
+    ("campaign:northstar-dsp-29", "2026-11-01", "impressions", 0),  # launch_before
+    ("campaign:northstar-dsp-29", "2026-11-01", "spend", Decimal("0")),  # launch_before
+    ("campaign:northstar-dsp-16", "2026-11-11", "impressions", 0),  # pause
+    ("campaign:northstar-dsp-16", "2026-11-11", "clicks", 0),  # pause
+    ("campaign:northstar-dsp", "2025-12-27", "impressions", 2565),  # long_run_minus_320
+    ("campaign:northstar-dsp", "2026-08-31", "impressions", 2364),  # month_boundary_2026-08-31
+    ("campaign:northstar-dsp", "2026-09-01", "impressions", 2539),  # month_boundary_2026-09-01
+    ("B0FIXTUR00", "2026-11-12", "units_shipped", 165),  # stable_growth
+    ("B0FIXTUR00", "2026-11-12", "customer_returns", 9),  # stable_growth
+    ("B0FIXTUR00", "2026-11-12", "revenue_shipped", Decimal("4652.8818")),  # stable_growth
+    ("B0FIXTUR00", "2026-11-12", "units_ordered", 171),  # stable_growth
+    ("B0FIXTUR00", "2026-11-12", "glance_views", 3088),  # stable_growth
+    ("B0FIXTUR03", "2026-11-12", "units_shipped", 178),  # returns_pressure
+    ("B0FIXTUR03", "2026-11-12", "customer_returns", 34),  # returns_pressure
+    ("B0FIXTUR03", "2026-11-12", "revenue_shipped", Decimal("5260.3070")),  # returns_pressure
+    ("B0FIXTUR03", "2026-11-12", "units_ordered", 189),  # returns_pressure
+    ("B0FIXTUR03", "2026-11-12", "glance_views", 3561),  # returns_pressure
+    ("B0FIXTUR02", "2026-11-09", "units_shipped", 88),  # divergence inside
+    ("B0FIXTUR02", "2026-11-09", "customer_returns", 5),  # divergence inside
+    ("B0FIXTUR02", "2026-11-09", "revenue_shipped", Decimal("2873.2091")),  # divergence inside
+    ("B0FIXTUR02", "2026-11-09", "units_ordered", 113),  # divergence inside
+    ("B0FIXTUR02", "2026-11-09", "glance_views", 2463),  # divergence inside
+    ("B0FIXTUR06", "2026-11-03", "units_shipped", 127),  # price before
+    ("B0FIXTUR06", "2026-11-03", "customer_returns", 7),  # price before
+    ("B0FIXTUR06", "2026-11-03", "revenue_shipped", Decimal("3454.1617")),  # price before
+    ("B0FIXTUR06", "2026-11-03", "units_ordered", 133),  # price before
+    ("B0FIXTUR06", "2026-11-03", "glance_views", 2315),  # price before
+    ("B0FIXTUR06", "2026-11-04", "units_shipped", 128),  # price first day
+    ("B0FIXTUR06", "2026-11-04", "customer_returns", 7),  # price first day
+    ("B0FIXTUR06", "2026-11-04", "revenue_shipped", Decimal("3134.6518")),  # price first day
+    ("B0FIXTUR06", "2026-11-04", "units_ordered", 134),  # price first day
+    ("B0FIXTUR06", "2026-11-04", "glance_views", 2222),  # price first day
 )
 
 
@@ -2307,3 +2317,107 @@ def test_10_hash_inputs_are_injective_and_campaign_constants_are_independent(
             a, b = ranks(left), ranks(right)
             rho = 1 - 6 * sum((x - y) ** 2 for x, y in zip(a, b, strict=True)) / (n * (n * n - 1))
             assert abs(rho) <= 0.5, (left, right, rho)
+
+
+# --- Demand-forecast Vendor shapes (approval K-4) ---------------------------------------------
+
+
+@functools.cache
+def _sales_rows_by_asin() -> dict[str, dict[date, dict[str, Any]]]:
+    document = json.loads((ROOT / "tests/fixtures/generated/vendor-sales-by-asin.json").read_text())
+    found: dict[str, dict[date, dict[str, Any]]] = {}
+    for row in document["salesByAsin"]:
+        found.setdefault(row["asin"], {})[date.fromisoformat(row["startDate"])] = row
+    return found
+
+
+def _shape_asins(name: str) -> list[str]:
+    return [item.asin for item in _catalog().products if item.forecast_shape == name]
+
+
+@pytest.mark.parametrize(
+    "name", ["regular", "trend_seasonal", "low_volume", "stockout", "launch", "delisted"]
+)
+def test_a_forecasting_shape_has_a_vendor_row_exactly_on_its_declared_days(name: str) -> None:
+    """A shape's absence is declared (launch before, delisted after, unlanded day), never random.
+
+    The Vendor history runs from vendor_history_start to last_day (K-4).
+    """
+    shape = _catalog().shape
+    forecast = shape.forecast
+    first, last = forecast.vendor_history_start, shape.fixture_span.last_day
+    span = [
+        day
+        for day in (first + timedelta(days=offset) for offset in range((last - first).days + 1))
+        if day != forecast.vendor_day_unlanded
+    ]
+    for asin in _shape_asins(name):
+        rows = _sales_rows_by_asin()[asin]
+        expected = {
+            day
+            for day in span
+            if (name != "launch" or day >= forecast.launch_first_day)
+            and (name != "delisted" or day <= forecast.delisted_last_day)
+        }
+        assert set(rows) == expected, asin
+
+
+def test_an_intermittent_product_has_whole_weeks_with_no_row_while_it_sells_nearby() -> None:
+    """The precondition of an `inferred_zero` week: covered days, no row, active product."""
+    span = _span_list()
+    mondays = [day for day in span if day.weekday() == 0 and day + timedelta(days=6) <= span[-1]]
+    for asin in _shape_asins("intermittent"):
+        rows = _sales_rows_by_asin()[asin]
+        assert 0 < len(rows) < len(span), asin
+        empty = [
+            monday
+            for monday in mondays
+            if not any(monday + timedelta(days=offset) in rows for offset in range(7))
+            and any(monday - timedelta(days=offset) in rows for offset in range(1, 91))
+        ]
+        assert empty, asin
+
+
+def test_a_stockout_product_ships_below_its_orders_only_inside_the_declared_window() -> None:
+    forecast = _catalog().shape.forecast
+    for asin in _shape_asins("stockout"):
+        for day, row in _sales_rows_by_asin()[asin].items():
+            ratio = Decimal(row["shippedUnits"]) / Decimal(row["orderedUnits"])
+            if forecast.stockout_first <= day <= forecast.stockout_last:
+                assert ratio < Decimal("0.7"), (asin, day)
+            else:
+                assert ratio > Decimal("0.85"), (asin, day)
+
+
+def test_a_low_volume_product_sells_a_small_fraction_of_any_regular_product() -> None:
+    def mean_units(asin: str) -> Decimal:
+        rows = _sales_rows_by_asin()[asin].values()
+        return Decimal(sum(row["shippedUnits"] for row in rows)) / len(rows)
+
+    smallest_regular = min(mean_units(asin) for asin in _shape_asins("regular"))
+    assert all(mean_units(asin) * 5 < smallest_regular for asin in _shape_asins("low_volume"))
+
+
+def test_amc_fixtures_name_only_the_products_with_an_amc_role() -> None:
+    """The forecasting products carry `roles: []`, so every AMC fixture keeps its bytes."""
+    catalog = _catalog()
+    assert len(catalog.products) == 60
+    assert {item.asin for item in catalog.amc_products} == {f"B0FIXTUR0{n}" for n in range(7)}
+
+
+def test_the_vendor_history_start_must_be_266_days_before_the_first_day(
+    tmp_path: pathlib.Path,
+) -> None:
+    text = (ROOT / CATALOG_PATH).read_text()
+    assert load_synthetic_entity_catalog(ROOT).shape.forecast.vendor_history_start == date(
+        2024, 10, 8
+    )
+    drifted = tmp_path / CATALOG_PATH
+    drifted.parent.mkdir(parents=True)
+    drifted.write_text(
+        text.replace('vendor_history_start: "2024-10-08"', 'vendor_history_start: "2024-10-09"')
+    )
+    with pytest.raises(
+        SyntheticCatalogError, match=r"vendor_history_start: must be fixture_span\.first_day - 266"
+    ):
+        load_synthetic_entity_catalog(tmp_path)

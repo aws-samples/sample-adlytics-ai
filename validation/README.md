@@ -60,6 +60,7 @@ requires an explicit target environment.
 | Ingestion drain observation | `probe_ingestion_drain.py` | Read-only exact-stack queue/lifecycle/performance observer with fail-closed error and DLQ detection; raw samples and aggregate output stay under ignored `evidence/` |
 | Isolated ingestion latency diagnostic | `probe_ingestion_end_to_end_latency.py` | Dev-only single-delivery measurement from empty ingestion queue through exact semantic `CURRENT`, followed by explicitly non-authoritative bake-queue observation; raw cutover output stays under ignored `evidence/` |
 | Deployed acceptance | `probe_ingestion_cutover.py` | V2-only synthetic ingestion acceptance: immutable landing, exact attempt success, exact `CURRENT` advancement, and unchanged DLQ depth |
+| Demand-forecast scale probe | `make demand-forecast-scale-probe PROFILE= ENV=dev ACCOUNT= ASINS=` (`src/adapters/jobs/demand_forecast_scale_fixture`) | Dev only: stages a weekly input for N fictional ASINs in the processing bucket and starts the state machine at `Forecast` through its dev-only `ProbeStart` entry, to measure shard time at size; refused for any other environment and for a profile outside `ACCOUNT`. The manifest carries the deployed input builder's processor-code identity, which the job checks. The module's `--source catalogue` (no `ASINS`) stages the synthetic catalogue's 104-week Vendor history instead, labelled STAGED ([dev seeding](../docs/concepts/dev-seeding.md)) |
 | README screenshots | `capture_screenshots.mjs` | Drives a deployment loaded with synthetic data as a logged-in user in the light theme and writes the images the solution READMEs under `docs/solutions/` embed to `docs/images/`. Every chat image is a scripted fixture served in the browser, so no question reaches the deployed agent. Never mutates the deployment; fails on a missing surface or past the 6 MiB image budget; prints image names and sizes only |
 
 As of 2026-10-19, two strings in the validation tooling cite operator-local files that aren't
@@ -1651,6 +1652,15 @@ before the shot. The other images are still the 2026-10-23 capture.
   tier 3 didn't change those surfaces. The operator agent viewed each committed image: synthetic
   data only, no email address, host name or token, and no error or skeleton state beyond the
   designed absences the README captions. `docs/images/` totals 5,751,459 bytes within budget.
+- **Recapture, 2026-11-15.** Every image the script writes, captured 08:53 to 08:55 UTC with the
+  same command, persona `probe-a` and `ADL_CAPTURE_SKIP=prompt-administration`, against the dev
+  website origin holding synthetic data: a 60-product catalogue with 104 weeks of history, of which
+  Retail health shows 58 products that sold in the window. Exit 2 for the same two Prompt
+  administration images, which are still from 2026-10-19. 32 images were written; 29 changed and
+  `chat-answer-trace.png`, `reach-caveat.png` and `retention-curve.png` came out byte-identical.
+  `docs/images/` totals 5,601,013 bytes within the 6 MiB budget. The operator agent viewed every
+  image: synthetic data only, no email address, account number, host name or token. The solution
+  READMEs' captions and prose were updated to the new windows and figures.
 - `reach-absence-light.png` and `reach-absence-dark.png` belong to
   [page absence copy](../docs/ui/page-absence-copy.md), not the README, and this script does not
   write them.

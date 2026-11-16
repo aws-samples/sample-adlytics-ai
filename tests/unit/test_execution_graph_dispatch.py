@@ -1460,13 +1460,11 @@ def test_serving_authority_identity_equality_refuses_each_mutation(
         require_serving_authority_identity(expected, actual)
 
 
-def test_serving_candidates_refuse_malformed_duplicate_and_oversize_rosters() -> None:
+def test_serving_candidates_refuse_malformed_and_duplicate_rosters() -> None:
     with pytest.raises(ValueError, match="identity"):
         validate_serving_candidates((_serving_candidate(1, run_id=""),))
     with pytest.raises(ValueError, match="unique"):
         validate_serving_candidates((_serving_candidate(1), _serving_candidate(1, run_id="other")))
-    with pytest.raises(ValueError, match="dedicated protocol bound"):
-        validate_serving_candidates(tuple(_serving_candidate(index) for index in range(513)))
     with pytest.raises(ValueError, match="worker nodes"):
         validate_serving_candidates((_serving_candidate(1, bake_state=NodeState.READY),))
 
@@ -1501,7 +1499,7 @@ def test_election_transactions_have_fixed_final_member_counts() -> None:
         (97, *(0 for _ in range(31))),
     )
     assert len(vector.digest) == 64
-    assert election_transaction_member_count() == 51
+    assert election_transaction_member_count() == 52
     assert election_transaction_member_count(successor=False) == 42
 
 
@@ -1538,9 +1536,17 @@ def test_a_frontier_vector_accepts_eligible_below_visible_and_refuses_eligible_a
         _vector(visible=(1, *(0,) * 31), eligible=(2, *(0,) * 31))
 
 
-def test_a_full_512_candidate_roster_is_accepted_at_its_bound() -> None:
-    roster = tuple(_serving_candidate(index) for index in range(512))
-    assert len(validate_serving_candidates(roster)) == 512
+def test_a_full_5417_candidate_roster_is_accepted_at_its_derived_bound() -> None:
+    roster = tuple(_serving_candidate(index) for index in range(5417))
+    assert len(validate_serving_candidates(roster)) == 5417
+
+
+def test_one_candidate_beyond_the_derived_bound_is_refused_with_its_named_code() -> None:
+    roster = tuple(_serving_candidate(index) for index in range(5418))
+    with pytest.raises(InvariantError) as refused:
+        validate_serving_candidates(roster)
+    assert str(refused.value.code) == "ADLY-EXEC_GRAPH-0045"
+    assert refused.value.context == {"roster": 5418, "bound": 5417}
 
 
 def test_a_roster_spanning_two_domains_is_refused() -> None:

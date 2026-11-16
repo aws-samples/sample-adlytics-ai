@@ -3,7 +3,8 @@
 
     uv run python validation/run_fresh_election_timing.py --profile <profile> --environment dev \
         --region <region> --expected-account <account> --graph-store-stack <store-stack> \
-        --output <evidence-dir>/fresh-election-timing-v1.json [--samples 5] [--write-contract]
+        --output <evidence-dir>/fresh-election-timing-v1.json [--samples 5] [--write-contract] \
+        [--staged-successors 3502]
 
 A non-clearing rehearsal of the held final runtime's fresh election, dev only. It runs the
 promoter code at this worktree's clean HEAD from the operator host against the dev probe table
@@ -11,8 +12,8 @@ promoter code at this worktree's clean HEAD from the operator host against the d
 
 1. Strongly read the live `MODE#ingestion` (GRAPH revision 12 with the hold set, or refuse), the
    deployed Promoter's timeout (it must equal the contract's `worker_pass_seconds`), and every
-   probe due shard (any serving `ARM#`, `COMPLETE#` or `COALESCE#` row there refuses the run, so
-   the rehearsal can never elect or drain a row it did not seed).
+   probe due shard (any serving `ARM#`, `COMPLETE#`, `COALESCE#` or `ELECTION#` row there refuses
+   the run, so the rehearsal can never elect, drain or delete a row it did not seed).
 2. Per sample, build the production rolling world over `FakeDynamo` (A drained to its final
    alias, B published while A was ACTIVE), seed its rows into the probe table with
    `attribute_not_exists` puts, and run `promoter.rehearse_fresh_election` with a real
@@ -21,12 +22,24 @@ promoter code at this worktree's clean HEAD from the operator host against the d
    head/frontier read, activation, conflict retry and guarded total.
 3. Dispose of every row the sample owns, and strongly prove each one absent. It owns a row it
    seeded, or one a write created after a strong preflight read found it absent and the write
-   is known to have landed (`RecordingClient`); a row it does not own is never deleted. A
-   collision, an occupied write target, a refused or failed attempt, an unresolved ambiguous
-   write, or an incomplete disposal is fatal.
+   is known to have landed (`RecordingClient`); a row it does not own is never deleted, by the
+   disposal or by the rehearsal (a delete of any other key is refused before it is sent). A
+   collision, an occupied write target, a refused delete, a refused or failed attempt, an
+   unresolved ambiguous write, or an incomplete disposal is fatal.
 
 The guard is exactly `ceil(2 * max(total_ms))` over every attempt of every sample. An empty
 sample set, or a guard at or above the Promoter timeout, is refused and writes no derivation.
+
+`--staged-successors N` (ADR-162 §7) measures the pass that commits a fully staged final
+election: B holds N successors, and before seeding every one is read through the production
+store and written as `ELECTION#` pages under the head's stage id, as earlier staging passes
+would leave them. Every attempt then reads the pages, the iteration and the head, and commits
+the 52-member transaction; a successor candidate read during the rehearsal means the world was
+not fully staged and refuses the sample. A derived guard above `PROMOTE_RESERVE_MS`
+(40,000 ms), the least an arm pass keeps at its start, is refused. That is an upper refusal
+only: the guard is checked after the pass's own iteration, so a guard just under 40,000 ms is
+accepted here yet would not pass while a waiter backlog persists. Run it at N=3,502 (dev's
+roster on 2026-11-13) and at `serving_candidate_roster_max`; the contract takes the larger guard.
 `--write-contract` then rewrites only the contract's `next_election_min_remaining_ms` line and
 its comment with the value, the artifact path and its SHA-256; regenerate both projections next.
 """
@@ -34,6 +47,8 @@ its comment with the value, the artifact path and its SHA-256; regenerate both p
 from __future__ import annotations
 
 import argparse
+import copy
+import functools
 import hashlib
 import json
 import math
@@ -43,6 +58,7 @@ import sys
 import time
 import uuid
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -57,13 +73,21 @@ SCHEMA: Final = "fresh-election-timing-v1"
 DERIVATION: Final = "ceil(2 * max(total_ms))"
 CONTRACT_PATH: Final = _ROOT / "contracts" / "operations" / "execution-graphs.yaml"
 DEFAULT_SAMPLES: Final = 5
+STAGED_GUARD_MAX_MS: Final = 40_000
+"""An upper refusal only: `PROMOTE_RESERVE_MS`, the least an arm pass keeps at its start
+(budget.py); a test pins the two. The guard is read after the pass's own iteration (about 0.8 s
+at N = 3,502), so a guard at this ceiling would not pass while a waiter backlog persists; the
+measured guard, not this ceiling, sets serving freshness."""
 WORLD_A_SIZE: Final = 3
 WORLD_B_SIZE: Final = 2
 EXPECTED_MODE_REVISION: Final = 12
 _ACCOUNT: Final = re.compile(r"^\d{12}$")
 _SKIPPED_KEYS: Final = frozenset({("MODE#ingestion", "MODE")})
 """World rows never seeded: the rehearsal path reads no mode row, and the probe table owns its own."""
-_OBLIGATION_PREFIXES: Final = ("ARM#", "COMPLETE#", "COALESCE#")
+_OBLIGATION_PREFIXES: Final = ("ARM#", "COMPLETE#", "COALESCE#", "ELECTION#")
+"""Serving rows in a due shard the rehearsal could elect, drain or delete (AGG-R3-1).
+
+`ELECTION#` pages are included because the election deletes every page of a dead stage."""
 _GUARD_LINE: Final = re.compile(
     r"^(?P<comment>(?:  #[^\n]*\n)+)  next_election_min_remaining_ms: \d+\n", re.MULTILINE
 )
@@ -107,6 +131,15 @@ def attempt_document(attempt: Any) -> dict[str, object]:
     }
 
 
+def accept_staged_guard(guard: int, staged_successors: int) -> int:
+    """Refuse a fully staged commit's guard above what every arm pass keeps (ADR-162 §7)."""
+    if staged_successors and guard > STAGED_GUARD_MAX_MS:
+        raise TimingError(
+            f"the staged guard {guard} ms exceeds the {STAGED_GUARD_MAX_MS} ms an arm pass keeps"
+        )
+    return guard
+
+
 def validate_samples(samples: Sequence[Mapping[str, object]], max_redecide: int) -> list[float]:
     """Require each sample to be the whole envelope; return every attempt total."""
     if not samples:
@@ -137,7 +170,8 @@ def timing_document(
     max_redecide = int(cast("int", identity["max_redecide"]))
     timeout = int(cast("int", identity["promoter_timeout_ms"]))
     totals = validate_samples(samples, max_redecide)
-    guard = derive_guard(totals, timeout)
+    staged = int(cast("int", identity.get("staged_successors", 0)))
+    guard = accept_staged_guard(derive_guard(totals, timeout), staged)
     return {
         "schema_version": SCHEMA,
         **identity,
@@ -195,19 +229,19 @@ class _Write:
 
 
 def _writes(members: Iterable[Mapping[str, Any]]) -> list[_Write]:
-    """Return a transaction's put and update targets (checks and deletes create no row)."""
+    """Return a transaction's put, update and delete targets (a condition check changes none)."""
     found: list[_Write] = []
     for member in members:
         ((kind, body),) = member.items()
         if kind == "Put":
             found.append(_Write(kind, _key_of(body["Item"]), cast("Item", body["Item"])))
-        elif kind == "Update":
+        elif kind in {"Update", "Delete"}:
             found.append(_Write(kind, _key_of(body["Key"]), None))
     return found
 
 
 class ForeignRowError(TimingError):
-    """A write would land on a probe row this rehearsal neither seeded nor created."""
+    """A write or delete would touch a probe row this rehearsal neither seeded nor created."""
 
 
 @dataclass(slots=True)
@@ -217,7 +251,9 @@ class RecordingClient:
     Ownership is separate from intent. Before each write, every put or update target that the
     sample neither seeded nor already owns is strongly read; an occupied one refuses the request
     before it is sent (`ForeignRowError`), so the rehearsal never writes over a row it did not
-    create. A target becomes owned only after the request succeeds. A definite refusal
+    create. A delete whose key the sample neither seeded nor owns refuses the request the same
+    way, whether or not the row exists, so the rehearsal never deletes a row it did not create
+    (AGG-R3-1). A target becomes owned only after the request succeeds. A definite refusal
     (`_DEFINITE_REFUSALS`) owns nothing. Any other failure is ambiguous, so each target is read
     back: absent stays unowned, a put whose stored image equals the exact image it sent is owned,
     and anything else is `unresolved` and is never deleted.
@@ -229,6 +265,15 @@ class RecordingClient:
     owned: set[Key] = field(default_factory=set[Key])
     unresolved: set[Key] = field(default_factory=set[Key])
     refused: list[Key] = field(default_factory=list[Key])
+    watched: frozenset[Key] = frozenset()
+    """Keys whose reads are counted: a staged sample's successor publish nodes."""
+    watched_reads: int = 0
+
+    def get_item(self, **kwargs: Any) -> Any:
+        """Read through, counting a read of a watched key."""
+        if _key_of(kwargs["Key"]) in self.watched:
+            self.watched_reads += 1
+        return self.client.get_item(**kwargs)
 
     def transact_write_items(self, **kwargs: Any) -> Any:
         """Preflight the transaction's new targets, then own them only after it commits."""
@@ -246,10 +291,21 @@ class RecordingClient:
         write = _Write("Update", _key_of(kwargs["Key"]), None)
         return self._write([write], lambda: self.client.update_item(**kwargs))
 
+    def delete_item(self, **kwargs: Any) -> Any:
+        """Send one delete only if its key is the sample's own."""
+        write = _Write("Delete", _key_of(kwargs["Key"]), None)
+        return self._write([write], lambda: self.client.delete_item(**kwargs))
+
     def _write(self, writes: Sequence[_Write], send: Callable[[], Any]) -> Any:
         from botocore.exceptions import ClientError
 
-        fresh = [item for item in writes if item.key not in self.seeded | self.owned]
+        mine = self.seeded | self.owned
+        foreign = [item.key for item in writes if item.kind == "Delete" and item.key not in mine]
+        if foreign:
+            self.refused.extend(foreign)
+            where = ", ".join(f"{key[0]}/{key[1]}" for key in foreign)
+            raise ForeignRowError(f"refusing to delete {where}, which this sample does not own")
+        fresh = [item for item in writes if item.kind != "Delete" and item.key not in mine]
         occupied = [item.key for item in fresh if _strong_get(self.client, self.table, item.key)]
         if occupied:
             self.refused.extend(occupied)
@@ -310,23 +366,51 @@ def foreign_obligations(client: Any, table: str, shards: Iterable[str]) -> list[
     return sorted(found)
 
 
-def seed_world(client: Any, table: str, items: Mapping[Key, Item]) -> list[Key]:
-    """Put each world row absent-conditioned; a collision stops and returns what was seeded."""
+def seed_world(
+    client: Any, table: str, items: Mapping[Key, Item], *, concurrency: int = 1
+) -> list[Key]:
+    """Put each world row absent-conditioned, at most `concurrency` puts in flight.
+
+    The first failure stops new puts; every put already in flight finishes, and the collision
+    carries exactly the rows that landed (sorted), so the disposal returns all of them.
+    """
     from botocore.exceptions import ClientError
 
+    def put(key: Key) -> None:
+        client.put_item(
+            TableName=table, Item=items[key], ConditionExpression="attribute_not_exists(pk)"
+        )
+
+    pending = iter(key for key in sorted(items) if key not in _SKIPPED_KEYS)
     seeded: list[Key] = []
-    for key in sorted(items):
-        if key in _SKIPPED_KEYS:
-            continue
-        try:
-            client.put_item(
-                TableName=table, Item=items[key], ConditionExpression="attribute_not_exists(pk)"
-            )
-        except ClientError as error:
-            code = str(error.response.get("Error", {}).get("Code"))
-            raise _Collision(seeded, key, code) from None
-        seeded.append(key)
-    return seeded
+    failure: tuple[Key, BaseException] | None = None
+    with ThreadPoolExecutor(max_workers=concurrency) as pool:
+        inflight: dict[Future[None], Key] = {}
+        while True:
+            while failure is None and len(inflight) < concurrency:
+                key = next(pending, None)
+                if key is None:
+                    break
+                inflight[pool.submit(put, key)] = key
+            if not inflight:
+                break
+            done, _ = wait(inflight, return_when=FIRST_COMPLETED)
+            for future in done:
+                key = inflight.pop(future)
+                error = future.exception()
+                if error is None:
+                    seeded.append(key)
+                elif failure is None:
+                    failure = (key, error)
+    if failure is not None:
+        key, error = failure
+        code = (
+            str(error.response.get("Error", {}).get("Code"))
+            if isinstance(error, ClientError)
+            else type(error).__name__
+        )
+        raise _Collision(sorted(seeded), key, code) from None
+    return sorted(seeded)
 
 
 class _Collision(TimingError):
@@ -342,12 +426,22 @@ class _Collision(TimingError):
         self.seeded = seeded
 
 
-def dispose(client: Any, table: str, keys: Iterable[Key]) -> dict[str, object]:
-    """Delete every recorded key, then strongly prove each one absent."""
+def dispose(
+    client: Any, table: str, keys: Iterable[Key], *, concurrency: int = 1
+) -> dict[str, object]:
+    """Delete every recorded key, then strongly prove each one absent (bounded concurrency)."""
     ordered = sorted(set(keys))
-    for key in ordered:
+
+    def delete(key: Key) -> None:
         client.delete_item(TableName=table, Key={"pk": {"S": key[0]}, "sk": {"S": key[1]}})
-    remaining = [key for key in ordered if _strong_get(client, table, key) is not None]
+
+    def present(key: Key) -> bool:
+        return _strong_get(client, table, key) is not None
+
+    with ThreadPoolExecutor(max_workers=concurrency) as pool:
+        list(pool.map(delete, ordered))
+        found = list(pool.map(present, ordered))
+    remaining = [key for key, here in zip(ordered, found, strict=True) if here]
     digest = hashlib.sha256(json.dumps(ordered, separators=(",", ":")).encode()).hexdigest()
     return {
         "removed": len(ordered) - len(remaining),
@@ -366,6 +460,53 @@ class SampleInputs:
     max_redecide: int
     remaining_ms: int
     clock: Callable[[], float] = time.perf_counter
+    staged_successors: int = 0
+    """0: today's world (B of 2, no page). N: B of N, every successor pre-staged (ADR-162 §7)."""
+    write_concurrency: int = 1
+    """Seeding and disposal puts/deletes in flight; the rehearsal itself stays sequential."""
+
+
+def pre_stage(fake: Any, successors: Sequence[str]) -> int:
+    """Write every successor as the domain's `ELECTION#` pages; return how many pages.
+
+    The reads are the production store's own (`read_serving_candidate`), in grant order, under
+    the stage id the promoter derives from the head, so the rehearsal's commit pass reads the
+    pages exactly as it would after earlier staging passes and reads no successor again.
+    """
+    from execution_graph_release_support import release_store
+
+    from adapters.jobs.execution_graph.promoter import (
+        _stage_id,  # pyright: ignore[reportPrivateUsage]
+    )
+    from domain.operations.execution_graph_release import INGESTION_RELEASE_DOMAIN
+    from ports.outbound.execution_graph_release import ServingStagePage
+
+    store = release_store(fake)
+    head = store.read_serving_domain(INGESTION_RELEASE_DOMAIN).head
+    if head is None:
+        raise TimingError("the staged world has no serving head")
+    reads = [store.read_serving_candidate(run_id) for run_id in successors]
+    if any(read is None for read in reads):
+        raise TimingError("a staged successor is not an eligible serving candidate")
+    ordered = sorted(
+        (read for read in reads if read is not None),
+        key=lambda read: (
+            read.candidate.grant_ordinal,
+            read.candidate.grant_id,
+            read.candidate.run_id,
+        ),
+    )
+    page = ServingStagePage(INGESTION_RELEASE_DOMAIN, _stage_id(head), 0, tuple(ordered))
+    return len(store.write_serving_stage(page))
+
+
+@functools.cache
+def _staged_world(successors: int) -> tuple[Any, int]:
+    """Build the pre-staged world once per size; each sample seeds a deep copy."""
+    from fixed_member_byte_fixture_support import build_world
+
+    world = build_world(WORLD_A_SIZE, successors)
+    return world, pre_stage(world.fake, world.b_runs)
 
 
 def run_sample(index: int, inputs: SampleInputs) -> dict[str, object]:
@@ -382,8 +523,17 @@ def run_sample(index: int, inputs: SampleInputs) -> dict[str, object]:
     from adapters.outbound.dynamodb.execution_graph_release import DynamoGraphReleaseStore
     from domain.operations.execution_graph_release import INGESTION_RELEASE_DOMAIN
 
-    world = build_world(WORLD_A_SIZE, WORLD_B_SIZE)
-    recording = RecordingClient(inputs.client, inputs.table)
+    staged = inputs.staged_successors
+    if staged:
+        built, pages = _staged_world(staged)
+        world = copy.deepcopy(built)
+    else:
+        world, pages = build_world(WORLD_A_SIZE, WORLD_B_SIZE), 0
+    recording = RecordingClient(
+        inputs.client,
+        inputs.table,
+        watched=frozenset((f"RUN#{run_id}", "NODE#publish") for run_id in world.b_runs),
+    )
     seeded: list[Key] = []
     rehearsal = FreshElectionRehearsal(conflicts=inputs.max_redecide, clock=inputs.clock)
     request_id = f"fresh-election-timing-{uuid.uuid4().hex[:16]}"
@@ -391,7 +541,9 @@ def run_sample(index: int, inputs: SampleInputs) -> dict[str, object]:
     failure: BaseException | None = None
     result: Any = None
     try:
-        seeded = seed_world(inputs.client, inputs.table, world.fake.items)
+        seeded = seed_world(
+            inputs.client, inputs.table, world.fake.items, concurrency=inputs.write_concurrency
+        )
         recording.seeded = frozenset(seeded)
         store = DynamoGraphReleaseStore(inputs.table, recording)
         remaining = inputs.remaining_ms
@@ -407,9 +559,18 @@ def run_sample(index: int, inputs: SampleInputs) -> dict[str, object]:
         seeded, failure = collision.seeded, collision
     except Exception as error:  # noqa: BLE001 -- disposed first, then re-raised below
         failure = error
-    disposition = dispose(inputs.client, inputs.table, [*seeded, *recording.owned])
+    disposition = dispose(
+        inputs.client,
+        inputs.table,
+        [*seeded, *recording.owned],
+        concurrency=inputs.write_concurrency,
+    )
     if failure is None and (recording.refused or recording.unresolved):
         failure = TimingError("a rehearsal write met a probe row it does not own")
+    if failure is None and staged and recording.watched_reads:
+        failure = TimingError(
+            f"the staged commit read {recording.watched_reads} successor candidates again"
+        )
     unowned = sorted({*recording.refused, *recording.unresolved})
     disposition["unowned_kept"] = [list(key) for key in unowned]
     if failure is not None:
@@ -425,7 +586,10 @@ def run_sample(index: int, inputs: SampleInputs) -> dict[str, object]:
         "aws_request_id": request_id,
         "world": {
             "a_size": WORLD_A_SIZE,
-            "b_size": WORLD_B_SIZE,
+            "b_size": len(world.b_runs),
+            "staged_successors": staged,
+            "stage_pages": pages,
+            "successor_candidate_reads": recording.watched_reads,
             "a_run_ids": list(world.a_runs),
             "b_run_ids": list(world.b_runs),
             "final_alias_run_id": world.final_alias,
@@ -457,7 +621,24 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--samples", type=int, default=DEFAULT_SAMPLES)
     parser.add_argument("--write-contract", action="store_true")
+    parser.add_argument("--staged-successors", type=int, default=0)
+    parser.add_argument(
+        "--write-concurrency",
+        type=int,
+        default=None,
+        help="seeding and disposal writes in flight (default: botocore's connection pool size)",
+    )
     return parser
+
+
+def _write_concurrency(requested: int | None) -> int:
+    """Return the bound, defaulting to the client's own connection pool size."""
+    from botocore.config import Config
+
+    value = int(Config().max_pool_connections) if requested is None else requested
+    if value < 1:
+        raise TimingError("--write-concurrency must be at least 1")
+    return value
 
 
 def _git(*arguments: str) -> str:
@@ -472,20 +653,55 @@ def _clean_head() -> str:
     return _git("rev-parse", "HEAD")
 
 
-def _assumed_probe_client(session: Any, account: str, environment: str, region: str) -> Any:
+def _assumed_probe_client(  # noqa: PLR0917 -- the five target inputs, each explicit
+    session: Any, account: str, environment: str, region: str, pool: int
+) -> Any:
+    """Return a probe-role client whose credentials re-assume the role before they expire.
+
+    A staged run outlasts one role session (attempt 3 at N = 3,502 lost its disposal to
+    ExpiredTokenException on 2026-11-14). A refresh adds one STS call to whichever request
+    meets it, so it can only lengthen an attempt, never shorten the guard.
+    """
     import boto3
+    import botocore.session
+    from botocore.config import Config
+    from botocore.credentials import RefreshableCredentials
 
     role = f"arn:aws:iam::{account}:role/adlytics-{environment}-execution-graph-probe"
-    credentials = session.client("sts").assume_role(
-        RoleArn=role, RoleSessionName="fresh-election-timing"
-    )["Credentials"]
-    return boto3.client(
-        "dynamodb",
-        region_name=region,
-        aws_access_key_id=credentials["AccessKeyId"],
-        aws_secret_access_key=credentials["SecretAccessKey"],
-        aws_session_token=credentials["SessionToken"],
+    sts = session.client("sts")
+
+    def assume() -> dict[str, str]:
+        found = sts.assume_role(RoleArn=role, RoleSessionName="fresh-election-timing")
+        credentials = found["Credentials"]
+        return {
+            "access_key": credentials["AccessKeyId"],
+            "secret_key": credentials["SecretAccessKey"],
+            "token": credentials["SessionToken"],
+            "expiry_time": credentials["Expiration"].isoformat(),
+        }
+
+    core = botocore.session.get_session()
+    core._credentials = RefreshableCredentials.create_from_metadata(  # pyright: ignore[reportPrivateUsage]
+        metadata=assume(), refresh_using=assume, method="sts-assume-role"
     )
+    return boto3.Session(botocore_session=core, region_name=region).client(
+        "dynamodb", config=Config(max_pool_connections=pool)
+    )
+
+
+def _fresh_sidecar(output: Path) -> Path:
+    """Name the per-sample sidecar of `output`; refuse when either file already exists."""
+    sidecar = output.with_name(f"{output.name}.samples.jsonl")
+    for path in (output, sidecar):
+        if path.exists():
+            raise TimingError(f"refusing to overwrite {path}")
+    return sidecar
+
+
+def record_sample(path: Path, sample: Mapping[str, object]) -> None:
+    """Append one finished sample, so a later failure never loses an attempt already timed."""
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(sample, sort_keys=True) + "\n")
 
 
 def _held_mode(session: Any, environment: str, store_stack: str) -> dict[str, object]:
@@ -556,9 +772,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise TimingError("--expected-account must be a 12-digit account id")
         if arguments.samples < 1:
             raise TimingError("--samples must be at least 1")
+        if arguments.staged_successors < 0 or arguments.staged_successors == 1:
+            raise TimingError("--staged-successors must be 0 or at least 2")
+        concurrency = _write_concurrency(arguments.write_concurrency)
         output = Path(arguments.output).resolve()
-        if output.exists():
-            raise TimingError(f"refusing to overwrite {output}")
+        sidecar = _fresh_sidecar(output)
         repository_relative(output)
         code_sha = _clean_head()
         import boto3
@@ -582,20 +800,29 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         table = f"adlytics-{environment}-execution-graph-probe"
         client = _assumed_probe_client(
-            session, str(arguments.expected_account), environment, str(arguments.region)
+            session,
+            str(arguments.expected_account),
+            environment,
+            str(arguments.region),
+            concurrency,
         )
         foreign = foreign_obligations(client, table, due_shards())
         if foreign:
             raise TimingError(f"the probe due shards hold {len(foreign)} foreign obligations")
         max_redecide = int(BOUNDS["max_redecide"])
         sample_started = datetime.now(UTC).isoformat()
-        samples = [
-            run_sample(
-                index,
-                SampleInputs(client, table, max_redecide, int(cast("int", promoter["timeout_ms"]))),
-            )
-            for index in range(1, arguments.samples + 1)
-        ]
+        inputs = SampleInputs(
+            client,
+            table,
+            max_redecide,
+            int(cast("int", promoter["timeout_ms"])),
+            staged_successors=int(arguments.staged_successors),
+            write_concurrency=concurrency,
+        )
+        samples: list[dict[str, object]] = []
+        for index in range(1, arguments.samples + 1):
+            samples.append(run_sample(index, inputs))
+            record_sample(sidecar, samples[-1])
         identity: dict[str, object] = {
             "contract_revision": int(CONTRACT_REVISION),
             "protocol_version": PROTOCOL_VERSION,
@@ -611,6 +838,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             "promoter_timeout_ms": promoter["timeout_ms"],
             "max_redecide": max_redecide,
             "conflicts_per_sample": max_redecide,
+            "staged_successors": int(arguments.staged_successors),
+            "write_concurrency": concurrency,
             "current_contract_guard_ms": int(SERVING_COALESCING["next_election_min_remaining_ms"]),
             "sample_started_at": sample_started,
             "sample_ended_at": datetime.now(UTC).isoformat(),
