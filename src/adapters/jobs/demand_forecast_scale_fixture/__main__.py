@@ -3,14 +3,16 @@
 
 Writes, under `runs/<run_id>/input/r0a0/` of the dev processing bucket, both `UNLOAD`-shaped
 Parquet kinds partitioned by shard (`target/shard=<k>/`, `traffic/shard=<k>/`), an
-`InputManifestV1` with the newest complete Saturday as `input_end` and `expected_fence` 0, and a
-`TitleMapV1`; then starts the deployed state machine with the `ProbeStart` input, so the run
-enters at `Forecast` (design §10, "Scale fixtures"). Refuses every environment but `dev`, a
-profile whose account isn't `--expected-account` (checked before any other AWS call) and an
-existing run prefix. The manifest's processor-code identity is the deployed input builder's, so
-the job's run-identity check holds the staged input to the image that runs it. Products come
-from `fixture_generation.scale`, so nothing here is a customer value. Prints the run ID, the
-shard count and the execution ARN's name only.
+`InputManifestV1` with the newest complete Saturday as `input_end` and the set's `CURRENT`
+fence as `expected_fence` (0 before the first outcome), and a `TitleMapV1`; then starts the
+deployed state machine with the `ProbeStart` input, so the run enters at `Forecast` (design
+§10, "Scale fixtures"). The probe's commit is fenced like a real run's: if anything moves
+`CURRENT` between staging and commit, the probe ends `superseded`. Refuses every environment
+but `dev`, a profile whose account isn't `--expected-account` (checked before any other AWS
+call) and an existing run prefix. The manifest's processor-code identity is the deployed input
+builder's, so the job's run-identity check holds the staged input to the image that runs it.
+Products come from `fixture_generation.scale`, so nothing here is a customer value. Prints the
+run ID, the shard count and the execution ARN's name only.
 
 `--source catalogue` stages the synthetic catalogue's 104-week Vendor history instead
 (`fixture_generation.forecast_history`), in the same format, under a `staged-catalogue-` run ID.
@@ -31,7 +33,7 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 import boto3
 import pyarrow as pa
@@ -51,7 +53,13 @@ from adapters.jobs.fixture_generation.scale import (
     scale_products,
 )
 from adapters.outbound.demand_forecast_policy import load_policy
+from adapters.outbound.dynamodb.demand_forecast_store import (
+    STORE_CLIENT_CONFIG,
+    DynamoDbForecastStore,
+    forecast_table_name,
+)
 from domain.forecasting.boundary import (
+    ForecastSetV1,
     InputManifestV1,
     TitleMapV1,
     boundary_schema_digests,
@@ -60,10 +68,13 @@ from domain.forecasting.fingerprint import RunIdentity, run_fingerprint, run_has
 from domain.forecasting.identity import display_asin
 from domain.forecasting.models import CHRONOS2_MODEL_ID
 from domain.forecasting.policy import MONEY_TARGETS, TARGETS
+from domain.forecasting.publish import forecast_set_id
 from domain.forecasting.shards import ShardPlanRequest, plan_shards
 
 if TYPE_CHECKING:
     from types_boto3_s3.client import S3Client
+
+    from domain.forecasting.publish import CurrentPointer
 
 ROOT = Path(__file__).resolve().parents[4]
 POLICY = ROOT / "contracts/forecasting/demand-forecast.yaml"
@@ -161,6 +172,8 @@ class ScaleStageRequest:
     max_runtime_seconds: int
     processor_code_identity: str
     """The deployed image asset hash (the input builder's `PROCESSOR_CODE_IDENTITY`)."""
+    expected_fence: int
+    """The set's `CURRENT` fence when staged (§10), so the commit is fenced like a real run's."""
 
 
 @dataclass(frozen=True)
@@ -340,7 +353,7 @@ def _assemble(assembly: _Assembly) -> StagedInput:
                 "selling_program": policy.input.selling_program,
             },
             "input_end": request.input_end.isoformat(),
-            "expected_fence": 0,
+            "expected_fence": request.expected_fence,
             "input_fingerprint": input_fingerprint,
             "run_fingerprint": run_fingerprint(identity),
             "run_identity": {
@@ -381,6 +394,37 @@ def _assemble(assembly: _Assembly) -> StagedInput:
         }
     }
     return StagedInput(objects, probe)
+
+
+class CurrentReader(Protocol):
+    """The one store read the probe makes."""
+
+    def get_current(self, set_id: str) -> CurrentPointer | None:
+        """Read the set's `CURRENT`, or None before its first outcome."""
+        ...
+
+
+def staged_fence(store: CurrentReader, set_id: str) -> int:
+    """Return the set's `CURRENT` fence, or 0 before its first outcome (one GetItem)."""
+    current = store.get_current(set_id)
+    return 0 if current is None else current.fence
+
+
+def _deployed_fence(session: boto3.Session, env: str, marketplace_key: str) -> int:
+    policy = load_policy(POLICY)
+    set_id = forecast_set_id(
+        ForecastSetV1(
+            marketplace_key=marketplace_key,
+            distributor_view=policy.policy.input.distributor_view,
+            selling_program=policy.policy.input.selling_program,
+        )
+    )
+    store = DynamoDbForecastStore(
+        forecast_table_name(env),
+        policy.policy.serving.item_max_bytes,
+        session.client("dynamodb", config=STORE_CLIENT_CONFIG),
+    )
+    return staged_fence(store, set_id)
 
 
 def _prefix_empty(client: S3Client, bucket: str, prefix: str) -> bool:
@@ -469,6 +513,7 @@ def main(argv: list[str]) -> int:
         instance_type=args.instance_type,
         max_runtime_seconds=args.max_runtime_seconds,
         processor_code_identity=processor,
+        expected_fence=_deployed_fence(session, args.env, args.marketplace_key),
     )
     staged = (
         stage(request)

@@ -99,6 +99,11 @@ def _attempt_id(attempt_id: str) -> None:
         raise ValueError(f"an attempt_id is r<redrive>a<retry>, got {attempt_id!r}")
 
 
+def operator_reason_valid(reason: str) -> bool:
+    """Whether `reason` is an operator `REASON`: 1 to 200 printable characters (§6c, §6d)."""
+    return 1 <= len(reason) <= OPERATOR_REASON_MAX_CHARS and reason.isprintable()
+
+
 def _shard_index(shard: int) -> None:
     if isinstance(shard, bool) or not 0 <= shard < MAX_SHARDS:
         raise ValueError(f"a shard index is 0 to {MAX_SHARDS - 1}, got {shard!r}")
@@ -738,7 +743,7 @@ class RollbackRequest:
             raise ValueError("a rollback names its set and target generation")
         if self.expected_fence < 0:
             raise ValueError("expected_fence is never negative")
-        if not 1 <= len(self.reason) <= OPERATOR_REASON_MAX_CHARS or not self.reason.isprintable():
+        if not operator_reason_valid(self.reason):
             raise ValueError(f"REASON is 1 to {OPERATOR_REASON_MAX_CHARS} printable characters")
 
 

@@ -87,12 +87,12 @@ from domain.forecasting.fingerprint import RunIdentity, run_fingerprint, run_has
 from domain.forecasting.identity import ProductKeyError, display_map
 from domain.forecasting.models import CHRONOS2_MODEL_ID
 from domain.forecasting.publish import (
-    OPERATOR_REASON_MAX_CHARS,
     CurrentPointer,
     ReceiptKeyRequest,
     ReceiptRecord,
     RunOutcome,
     forecast_set_id,
+    operator_reason_valid,
     receipt_sk,
 )
 from domain.forecasting.selection import (
@@ -262,7 +262,7 @@ class SelectRequest:
             if self.retry_failed:
                 raise InputBuildFailedError("OPERATOR_REASON_INVALID")
             return
-        if not 1 <= len(reason) <= OPERATOR_REASON_MAX_CHARS or not reason.isprintable():
+        if not operator_reason_valid(reason):
             raise InputBuildFailedError("OPERATOR_REASON_INVALID")
 
     @property

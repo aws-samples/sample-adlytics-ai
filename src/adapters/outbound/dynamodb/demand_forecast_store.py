@@ -84,6 +84,12 @@ WRITE_LANES: Final = 4
 STORE_CLIENT_CONFIG: Final = Config(retries={"mode": "adaptive", "max_attempts": 10})
 """Adaptive client retries (§6b); a throttle past them raises `ForecastStoreThrottled`."""
 
+
+def forecast_table_name(env: str) -> str:
+    """Return the deployment's forecast table name, `adlytics-<env>-demand-forecast`."""
+    return f"adlytics-{env}-demand-forecast"
+
+
 TOKEN_HEX_CHARS: Final = 36
 """`ClientRequestToken`'s maximum length (API_TransactWriteItems)."""
 
