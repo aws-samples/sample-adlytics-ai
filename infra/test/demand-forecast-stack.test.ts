@@ -399,6 +399,25 @@ describe('DemandForecastStack', () => {
     }
   });
 
+  test('every state name is unique across the machine, map iterations included', () => {
+    // Step Functions refuses a definition that reuses a name at any depth (DUPLICATE_STATE_NAME),
+    // which failed the first dev deploy of the Publish map; synth alone does not check it.
+    const names: string[] = [];
+    const walk = (states: Record<string, Record<string, unknown>>): void => {
+      for (const [name, state] of Object.entries(states)) {
+        names.push(name);
+        const inner = (state.ItemProcessor ?? state.Iterator) as Record<string, unknown> | undefined;
+        if (inner !== undefined) walk(inner.States as Record<string, Record<string, unknown>>);
+        for (const branch of (state.Branches ?? []) as Array<Record<string, unknown>>) {
+          walk(branch.States as Record<string, Record<string, unknown>>);
+        }
+      }
+    };
+    walk(definition(template).States as Record<string, Record<string, unknown>>);
+    expect(names.filter((name, index) => names.indexOf(name) !== index)).toEqual([]);
+    expect(names).toEqual(expect.arrayContaining(['RunShardFailed', 'PublishShardFailed']));
+  });
+
   test('a select no-op or hold passes its run identity to its RecordOutcome receipt', () => {
     // R1-12: acceptance 2 reads the unchanged input fingerprint from both daily no-op receipts.
     const states = definition(template).States as Record<string, Record<string, unknown>>;

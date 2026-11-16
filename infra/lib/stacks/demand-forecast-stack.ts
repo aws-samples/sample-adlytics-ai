@@ -525,13 +525,17 @@ export class DemandForecastStack extends cdk.Stack {
       },
     ];
     // A map iteration's failure names its shard and attempt (receipt step `s<k>-<attempt_id>`):
-    // the iteration catches its own error and fails with it, wrapped, as `ShardFailed`.
+    // the iteration catches its own error and fails with it, wrapped, as error `ShardFailed`.
+    // State names are unique across the whole machine, map iterations included, so each map's
+    // Fail state has its own name (`DUPLICATE_STATE_NAME` refused the first dev deploy).
     const SHARD_FAILED = 'ShardFailed';
-    const shardCatch = (attemptExpression: string): unknown[] => [
+    const RUN_SHARD_FAILED = 'RunShardFailed';
+    const PUBLISH_SHARD_FAILED = 'PublishShardFailed';
+    const shardCatch = (attemptExpression: string, failState: string): unknown[] => [
       {
         ErrorEquals: ['States.ALL'],
         Output: `{% {'shard': $states.input.shard, 'attempt_id': ${attemptExpression}, 'error': $states.errorOutput} %}`,
-        Next: SHARD_FAILED,
+        Next: failState,
       },
     ];
     const shardFailed = {
@@ -625,7 +629,7 @@ export class DemandForecastStack extends cdk.Stack {
           JitterStrategy: 'FULL',
         },
       ],
-      Catch: shardCatch(attempt),
+      Catch: shardCatch(attempt, RUN_SHARD_FAILED),
       End: true,
     };
     const shardItem =
@@ -640,7 +644,7 @@ export class DemandForecastStack extends cdk.Stack {
       // Only the ~300-byte shard result (R5-15).
       Output: '{% $states.result.Payload %}',
       Retry: [...lambdaRetry, STORE_RETRY],
-      Catch: shardCatch('$states.input.attempt_id'),
+      Catch: shardCatch('$states.input.attempt_id', PUBLISH_SHARD_FAILED),
       End: true,
     };
     const states: Record<string, unknown> = {
@@ -729,7 +733,7 @@ export class DemandForecastStack extends cdk.Stack {
         ItemProcessor: {
           ProcessorConfig: { Mode: 'INLINE' },
           StartAt: 'RunShard',
-          States: { RunShard: runShard, [SHARD_FAILED]: shardFailed },
+          States: { RunShard: runShard, [RUN_SHARD_FAILED]: shardFailed },
         },
         // Every shard's bound attempt, which each publish_shard and the commit receive.
         Assign: { attempts: '{% $states.result %}' },
@@ -745,7 +749,7 @@ export class DemandForecastStack extends cdk.Stack {
         ItemProcessor: {
           ProcessorConfig: { Mode: 'INLINE' },
           StartAt: 'PublishShard',
-          States: { PublishShard: publishShard, [SHARD_FAILED]: shardFailed },
+          States: { PublishShard: publishShard, [PUBLISH_SHARD_FAILED]: shardFailed },
         },
         Catch: mapCatch('publish'),
         Next: 'Commit',
