@@ -798,7 +798,8 @@ def build_unavailable_list(
     )
 
 
-def _page_entries(source: ListSource) -> tuple[RosterEntryV1, ...]:
+def page_entries(source: ListSource) -> tuple[RosterEntryV1, ...]:
+    """Return the stored entries of the requested page, checked against `META`."""
     request, generation, rows = source.request, source.generation, source.serving.page_rows
     counts = generation.pages.get(request.filter)
     if counts is None:
@@ -825,7 +826,7 @@ def build_list(source: ListSource, now: datetime) -> DemandForecastListV1:
     pointer, generation, request = source.pointer, source.generation, source.request
     if pointer.generation_id != generation.generation_id:
         raise _incomplete("META", "it names another generation than CURRENT")
-    entries = _page_entries(source)
+    entries = page_entries(source)
     counts = generation.pages[request.filter]
     try:
         shaped = tuple(_list_entry(entry) for entry in entries)

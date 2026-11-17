@@ -21,6 +21,7 @@ from adapters.config import (
     TokenServiceSettings,
     agent_quality_processor_settings,
     authorizer_public_client_id,
+    demand_forecast_reader,
     evaluation_outbox_dispatcher_settings,
     evaluation_result_ingress_settings,
     evaluation_result_persister_settings,
@@ -594,6 +595,44 @@ class TestQualityReviewRecordTables:
         assert resolved.evaluation is not None
         assert resolved.evaluation.verdicts_table == "adlytics-test-evaluation-verdicts"
         assert resolved.evaluation.result_deadline_seconds == 3600
+
+
+_READER = {
+    "ADL_DEMAND_FORECAST_TABLE": "adlytics-test-demand-forecast",
+    "ADL_DEMAND_FORECAST_MARKETPLACE_KEY": "fictional-marketplace",
+    "ADL_DEMAND_FORECAST_CHECK_SCHEDULE": "cron(0 13 * * ? *)",
+}
+
+
+@pytest.mark.covers("ADR-163")
+class TestDemandForecastReader:
+    """A partial or malformed reader set would serve the wrong set or wrong next-check times."""
+
+    def test_the_three_reader_settings_resolve_together(self) -> None:
+        resolved = demand_forecast_reader(_load(**_READER))
+        assert (resolved.forecast_table, resolved.marketplace_key) == (
+            "adlytics-test-demand-forecast",
+            "fictional-marketplace",
+        )
+        assert (resolved.check_schedule.hour, resolved.check_schedule.minute) == (13, 0)
+
+    def test_a_partial_reader_set_refuses_to_resolve(self) -> None:
+        partial = {k: v for k, v in _READER.items() if k != "ADL_DEMAND_FORECAST_CHECK_SCHEDULE"}
+        with pytest.raises(InvariantError) as caught:
+            _load(**partial)
+        assert caught.value.code == CONFIG_UNRESOLVED
+        assert "configured together" in str(caught.value.context)
+
+    def test_a_schedule_that_is_not_one_daily_time_refuses_to_resolve(self) -> None:
+        with pytest.raises(InvariantError) as caught:
+            _load(**{**_READER, "ADL_DEMAND_FORECAST_CHECK_SCHEDULE": "rate(1 day)"})
+        assert caught.value.code == CONFIG_UNRESOLVED
+
+    def test_a_blank_reader_set_resolves_but_the_reader_accessor_refuses(self) -> None:
+        with pytest.raises(InvariantError) as caught:
+            demand_forecast_reader(_load())
+        assert caught.value.code == CONFIG_UNRESOLVED
+        assert "ADL_DEMAND_FORECAST_TABLE" in caught.value.context["problems"][0]
 
 
 @pytest.mark.covers("ADR-078")
