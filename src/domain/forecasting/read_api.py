@@ -202,7 +202,7 @@ def _check_target(  # noqa: PLR0913 -- one target's shape rule over its keyword 
 ) -> None:
     if (chosen_model is None) == (withheld_reason is None):
         raise ValueError(f"{target}: exactly one of chosen_model and withheld_reason is set")
-    if {str(view) for view in p50_totals} != VIEW_KEYS:
+    if frozenset(str(view) for view in p50_totals) != VIEW_KEYS:
         raise ValueError(f"{target}: p50_totals keys are exactly 4, 8 and 13")
     shown = chosen_model is not None
     totals = [total for total in p50_totals.values() if total is not None]
