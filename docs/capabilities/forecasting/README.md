@@ -55,3 +55,5 @@ them through a purpose-built forecast page and governed read interface.
 - [Low-level design](low-level-design.md) owns forecast targets, eligibility, artifact fields, horizons,
   refresh, quality gates, and serving constraints.
 - [ADR-001](../../decisions/adr-001-chronos-deployment.md) owns the offline-batch decision rationale.
+- [Slice 3 delivery plan](slice-3-delivery-plan.md) owns the read API and page build order and its
+  departures from the reviewed design.

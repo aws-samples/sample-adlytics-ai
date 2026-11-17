@@ -17,6 +17,16 @@ artifact; neither invokes a model.
 > **Takeaway.** A daily run can fail or be held without changing the last accepted forecast; a page
 > response and governed tool response each use an attested immutable generation through a narrow role.
 
+### Read layer
+
+The weekly retail demand forecast is read through one service behind two `GET` routes on the
+authenticated HTTP API (`/api/demand-forecast` and `/api/demand-forecast/status`) and four
+`forecast_` Gateway tools. The page calls the routes; the tools run the same service in their own
+Lambda. Both functions may only `GetItem` the `SET#` and `GEN#` keys of the forecast table, and
+every item a request reads is keyed by the one `CURRENT` read. Writes stay operator commands.
+Decided by [ADR-163](../../decisions/adr-163-serve-demand-forecasts-and-status-through-a-read-api.md);
+the contract is in the [low-level design](low-level-design.md#read-api).
+
 ### Stack and lifecycle boundaries
 
 | Stack/boundary | Resources | Lifecycle and responsibility |
