@@ -243,7 +243,7 @@
           "id": "retail-movers",
           "next_step": {
             "kind": "open_product_detail",
-            "label": "Open Fictional Product FICTA",
+            "label": "Open product detail",
             "reason": "It changed shipped revenue more than any other product.",
             "target": {
               "selection_reference": "v2_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"

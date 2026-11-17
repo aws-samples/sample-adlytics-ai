@@ -429,6 +429,14 @@ certified iff resident(row) <= 0.5 x the Baker's memory
 
 A held slot's width is read from the batch the source builds: its fixed axes' own bound (days, marketplaces and media-taxonomy terms), its ranked bound (50 rows, 3 movers, 10 per ad product), or `BAKE_MAX_ROWS` for a population read. `resident` is affine in that ceiling, so the ceiling is derived, not chosen: `BAKE_MAX_ROWS = floor((0.5 x memory − BAKE_FIXED_BYTES) / BAKE_BYTES_PER_ROW)`, the binding row's intercept and slope (`domain/operations/bake_memory.py`). The gate recomputes both from the real batches and fails on any difference, and prints the ceiling at 1,024, 2,048, 4,096 and 10,240 MiB. The per-row byte terms are the row-ceiling probe's (`validation/probe_bake_row_ceiling.py`), recorded with their date in `BAKE_MEMORY_TERMS`; `B_record` is the real Campaigns bake's traced peak per campaign. The Baker's memory has one home, `bake_tasks.baker_memory_mib` in `contracts/operations/execution-graphs.yaml`: the stack sizes the function from it and the model derives the ceiling from it. Bodies stream, so `W` is the only body term; it grows with the write width, which the [scale envelope](#scale-envelope) derives from this model.
 
+**The body cap.** Every parent body, custody manifest and sibling body is at most `MAX_PRESET_ARTIFACT_BYTES` (256,000 B), the per-write size in `W`. A body under the cap always serves:
+
+- The serve path adds at most G = 22,799 B to a Retail health parent: 50 row references (3,400 B), three prompted slots at their text and evidence byte bounds (19,180 B) and the movers step, whose label is static copy (219 B). `test_retail_health_product.py` pins each term.
+- So the served page bound `MAX_ARTIFACT_BYTES` is 279,000 B (256,000 + G, rounded up to 1,000).
+- The platform limit is DynamoDB's 400,000 B item. The parent-item check counts UTF-8 bytes, as DynamoDB does [verified [item sizes](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/CapacityUnitCalculations.html), read 2026-11-17]. A 50-row parent's item adds 37,109 B of record framing and escapes, so the item allows a body of about 340,000 B.
+- The cap stays at 256,000 B under that ceiling, because it bounds `W` and dev's measured Retail health bodies fit it (largest 228,374 B, 2026-11).
+- Known limit: the item check measures the record's escapes twice, so a body much heavier in quotes than today's could be refused below the 340,000 B ceiling. It still fails closed, never silently.
+
 ## Scale envelope
 The one home of each page's own-absence thresholds at publish time. The README's [sizing table](../../README.md#sizing-for-large-catalogs) links here.
 

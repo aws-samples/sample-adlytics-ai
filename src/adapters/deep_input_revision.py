@@ -170,6 +170,10 @@ DEEP_INPUT_REVISIONS: Final[tuple[tuple[str, str], ...]] = (
     # FORECAST_GATEWAY span with its tool entry point; deep inputs are unchanged. Deploys with
     # 2026-11-17.1, so deep insights regenerate once.
     ("2026-11-17.2", "754ae339f9af6c1463f4bc79ac10b8f4a3e27267c9ba558dbbe127c26e50b0be"),
+    # Demand forecast slice 3 (OQ-29): MAX_ARTIFACT_BYTES rises to the served bound and the
+    # bake cap gains its derivation; deep inputs are unchanged. Deploys with 2026-11-17.1 and
+    # .2, so deep insights regenerate once.
+    ("2026-11-17.3", "6953230c482b6931442c4131a101fedf0fe725f612aa65d873488c134f679203"),
 )
 DEEP_INPUT_REVISION: Final[str] = DEEP_INPUT_REVISIONS[-1][0]
 """The revision every deep cache key carries (``#DEEPINPUT#<revision>``)."""

@@ -639,6 +639,17 @@ def test_parent_capability_transaction_applies_explicit_item_and_encoded_byte_bo
     assert not parent_capability_transaction_fits(cast("Any", oversized))
 
 
+def test_parent_capability_transaction_counts_a_2_byte_character_as_its_2_utf8_bytes() -> None:
+    """DynamoDB sizes a string by its UTF-8 bytes (OQ-29), so `é` counts 2 bytes, never 6."""
+    fits = ({"payload": {"S": "\u00e9" * 150_000}},)
+    over = ({"payload": {"S": "\u00e9" * 200_000}},)
+
+    assert len(fits[0]["payload"]["S"].encode("utf-8")) == 300_000
+    assert len(over[0]["payload"]["S"].encode("utf-8")) == 400_000
+    assert parent_capability_transaction_fits(cast("Any", fits))
+    assert not parent_capability_transaction_fits(cast("Any", over))
+
+
 # ADR-120: the `page#` record a v2 parent serve writes before its transaction -----------------
 
 LABELS = PageContextLabels(

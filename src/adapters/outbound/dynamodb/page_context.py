@@ -143,9 +143,21 @@ TRANSACTION_CONDITIONAL = "ConditionalCheckFailed"
 def parent_capability_transaction_fits(
     items: tuple[dict[str, AttributeValueTypeDef], ...],
 ) -> bool:
-    """Conservatively enforce DynamoDB's explicit item and transaction byte bounds."""
+    """Conservatively enforce DynamoDB's explicit item and transaction byte bounds.
+
+    DynamoDB sizes a string attribute as its name's UTF-8 bytes plus its value's UTF-8 bytes
+    [verified https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/CapacityUnitCalculations.html,
+    read 2026-11-17]. So each item is measured as its compact JSON in UTF-8, unescaped: the JSON
+    framing and escapes only add bytes, so the measure stays an upper bound. ASCII escaping counted
+    a 2-byte character as 6 bytes and refused items DynamoDB accepts (OQ-29).
+    """
     encoded = tuple(
-        len(json.dumps(item, separators=(",", ":"), sort_keys=True).encode()) for item in items
+        len(
+            json.dumps(item, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode(
+                "utf-8"
+            )
+        )
+        for item in items
     )
     return (
         len(items) <= MAX_PARENT_CAPABILITY_TRANSACTION_ITEMS

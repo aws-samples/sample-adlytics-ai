@@ -36,7 +36,18 @@ from domain.shared_kernel.values import DateRange
 _ARTIFACT_TYPE = re.compile(r"^[A-Z][A-Za-z0-9]{2,80}$")
 _MODEL_ID = re.compile(r"^[a-z][a-z0-9_]{1,80}$")
 _VISUAL_ID = re.compile(r"^[a-z][a-z0-9-]{1,80}$")
-MAX_ARTIFACT_BYTES = 256_000
+MAX_ARTIFACT_BYTES = 279_000
+"""The served page bound: the bake cap plus the most the serve path adds (OQ-29).
+
+
+A served Retail health parent is its baked body (at most ``MAX_PRESET_ARTIFACT_BYTES``,
+256,000 B) plus G = 22,799 B: 50 row references (3,400 B), three prompted slots at their text
+and evidence byte bounds (19,180 B) and the movers step's static copy (219 B). Every term is an
+enforced bound or fixed framing (``test_retail_health_product.py`` pins G). 256,000 + G rounds
+up to 279,000. The stored record still fits one 400,000 B DynamoDB item, measured by UTF-8
+bytes (``page_context.parent_capability_transaction_fits``). The derivation's doc home is
+``docs/ui/preset-artifact-publisher.md``, "The body cap".
+"""
 MAX_SAFE_SCOPE_LABEL_LENGTH = 256
 
 
