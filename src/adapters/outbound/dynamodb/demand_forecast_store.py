@@ -44,8 +44,8 @@ from pydantic import ValidationError
 
 from adapters.outbound.dynamodb.byte_oracle import Stage1DynamoByteOracle
 from adapters.outbound.dynamodb.items import ItemError, read_int, read_text
-from domain.forecasting.boundary import RunIdentityV1
-from domain.forecasting.list_pages import ListPage
+from domain.forecasting.boundary import CandidateSeriesV1, RosterEntryV1, RunIdentityV1
+from domain.forecasting.list_pages import CLOSED_FILTERS, MAX_LIST_PAGE, FilterPages, ListPage
 from domain.forecasting.publish import (
     CurrentPointer,
     Disposition,
@@ -58,17 +58,22 @@ from domain.forecasting.publish import (
     replay_basis,
     replay_mismatch,
 )
+from domain.forecasting.read_api import AsinItemView, GenerationView
 from ports.outbound.forecast_store import (
     Attestation,
     CommitDisposition,
     ForecastItemTooLargeError,
+    ForecastReaderPort,
     ForecastStoreConflictError,
+    ForecastStoreIncomplete,
     ForecastStorePort,
     ForecastStoreThrottled,
     GenerationMeta,
     GenerationSeries,
     OutcomeCommitRequest,
     OutcomeCommitResult,
+    ReadListPageRequest,
+    ReadListPageResult,
     RunReceipt,
     SlotClaimRequest,
     SlotClaimResult,
@@ -87,13 +92,21 @@ META_SK: Final = "META"
 ITEM_SK: Final = "ITEM"
 ITEM_SHA256: Final = "item_sha256"
 PAGE_DIGITS: Final = 5
-MAX_PAGE: Final = 10**PAGE_DIGITS - 1
+MAX_PAGE: Final = MAX_LIST_PAGE
 
 WRITE_LANES: Final = 4
 """INTERIM (RB-1): parallel conditional puts per call; limits throughput, refuses no data."""
 
 STORE_CLIENT_CONFIG: Final = Config(retries={"mode": "adaptive", "max_attempts": 10})
 """Adaptive client retries (§6b); a throttle past them raises `ForecastStoreThrottled`."""
+
+READER_CLIENT_CONFIG: Final = Config(
+    connect_timeout=0.5,
+    read_timeout=1.0,
+    retries={"mode": "standard", "total_max_attempts": 1},
+)
+"""The read API's client (ADR-163): one attempt, at most 1.5 s per `GetItem`, so two rounds fit
+the HTTP function's 10 s timeout; a throttle is not retried and returns 503 to the caller."""
 
 
 def forecast_table_name(env: str) -> str:
@@ -169,7 +182,7 @@ def _sealed(item: dict[str, object]) -> dict[str, object]:
 
 
 def asin_item(generation: str, series: GenerationSeries) -> dict[str, object]:
-    """Return one product's `ASIN#` item: its candidate and display title."""
+    """Return one product's `ASIN#` item: its candidate, display title and stored list row."""
     candidate = series.candidate
     return _sealed(
         {
@@ -180,6 +193,7 @@ def asin_item(generation: str, series: GenerationSeries) -> dict[str, object]:
             "title": series.title,
             "title_truncated": series.title_truncated,
             "series": candidate.model_dump(mode="json"),
+            "roster": series.roster.model_dump(mode="json"),
         }
     )
 
@@ -441,6 +455,44 @@ def _read_current(item: Item) -> CurrentPointer:
         raise ItemError(f"CURRENT: {error}") from error
 
 
+def _map(item: Item, name: str) -> dict[str, object]:
+    found = item.get(name)
+    if found is None or "M" not in found:
+        raise ItemError(f"{name} is not a map.")
+    return cast("dict[str, object]", _plain(_DESERIALIZER.deserialize(found)))
+
+
+def _whole(value: object, name: str) -> int:
+    inner = cast("dict[str, object]", value).get(name) if isinstance(value, dict) else None
+    if isinstance(inner, bool) or not isinstance(inner, int) or inner < 0:
+        raise ItemError(f"{name} is not a whole number.")
+    return inner
+
+
+def _strings(item: Item, name: str) -> list[str]:
+    found = item.get(name)
+    listed = None if found is None else _plain(_DESERIALIZER.deserialize(found))
+    if not isinstance(listed, list):
+        raise ItemError(f"{name} is not a list of strings.")
+    values = cast("list[object]", listed)
+    if not all(isinstance(value, str) for value in values):
+        raise ItemError(f"{name} is not a list of strings.")
+    return cast("list[str]", values)
+
+
+def _counts(item: Item, name: str) -> dict[str, int]:
+    counts = _map(item, name)
+    return {key: _whole(counts, key) for key in counts}
+
+
+def _entries(item: Item, name: str) -> tuple[RosterEntryV1, ...]:
+    found = item.get(name)
+    listed = None if found is None else _plain(_DESERIALIZER.deserialize(found))
+    if not isinstance(listed, list):
+        raise ItemError(f"{name} is not a list.")
+    return tuple(RosterEntryV1.model_validate(entry) for entry in cast("list[object]", listed))
+
+
 # --- Errors ----------------------------------------------------------------------------------
 
 
@@ -492,7 +544,7 @@ class _Pending:
 # --- The store -------------------------------------------------------------------------------
 
 
-class DynamoDbForecastStore(ForecastStorePort):
+class DynamoDbForecastStore(ForecastStorePort, ForecastReaderPort):
     """`ForecastStorePort` over one DynamoDB table with `PK` and `SK` string keys."""
 
     def __init__(
@@ -618,6 +670,81 @@ class DynamoDbForecastStore(ForecastStorePort):
             run_fingerprint=read_text(stored, "run_fingerprint"),
             attempts=_read_attempts(stored),
         )
+
+    # Reads for the read API (ADR-163)
+
+    def read_generation(self, generation_id: str) -> GenerationView | None:
+        """Read and validate `META`: its counts, every closed filter's pages and page 1 of all."""
+        stored = self._get(meta_key(generation_id), META_SK)
+        if stored is None:
+            return None
+        key = meta_key(generation_id)
+        try:
+            pages = _map(stored, "pages")
+            missing = [name for name in CLOSED_FILTERS if name not in pages]
+            if missing:
+                raise ItemError(f"pages misses {missing[0]}")
+            return GenerationView(
+                generation_id=read_text(stored, "generation_id"),
+                input_end=date.fromisoformat(read_text(stored, "input_end")),
+                first_forecast_week=date.fromisoformat(read_text(stored, "first_forecast_week")),
+                item_count=read_int(stored, "item_count"),
+                currency_codes=tuple(_strings(stored, "currency_codes")),
+                counts_by_reason=_counts(stored, "counts_by_reason"),
+                counts_by_model=_counts(stored, "counts_by_model"),
+                pages={
+                    name: FilterPages(
+                        page_count=_whole(pages[name], "page_count"),
+                        entry_count=_whole(pages[name], "entry_count"),
+                    )
+                    for name in CLOSED_FILTERS
+                },
+                first_page=_entries(stored, "first_page"),
+            )
+        except (ItemError, ValueError, ValidationError) as error:
+            raise ForecastStoreIncomplete(key, type(error).__name__) from error
+
+    def read_list_page(self, request: ReadListPageRequest) -> ReadListPageResult:
+        """Read and validate one `PAGE#` item; None entries when it doesn't exist."""
+        key = page_key(request.generation_id, request.filter, request.page)
+        stored = self._get(key, ITEM_SK)
+        if stored is None:
+            return ReadListPageResult(entries=None)
+        try:
+            if read_text(stored, "filter") != request.filter or read_int(stored, "page") != (
+                request.page
+            ):
+                raise ItemError("the item names another filter or page")
+            return ReadListPageResult(entries=_entries(stored, "entries"))
+        except (ItemError, ValueError, ValidationError) as error:
+            raise ForecastStoreIncomplete(key, type(error).__name__) from error
+
+    def read_asin(self, generation_id: str, display_asin: str) -> AsinItemView | None:
+        """Read and validate one `ASIN#` item; an item with no stored list row is refused."""
+        key = asin_key(generation_id, display_asin)
+        stored = self._get(key, ITEM_SK)
+        if stored is None:
+            return None
+        try:
+            if "roster" not in stored:
+                raise ItemError("the item has no stored list row (published before slice 3)")
+            roster = RosterEntryV1.model_validate(
+                _plain(_DESERIALIZER.deserialize(stored["roster"]))
+            )
+            candidate = CandidateSeriesV1.model_validate(
+                _plain(_DESERIALIZER.deserialize(stored["series"]))
+            )
+            truncated = _DESERIALIZER.deserialize(stored["title_truncated"])
+            if not isinstance(truncated, bool):
+                raise ItemError("title_truncated is not a boolean")
+            return AsinItemView(
+                candidate=candidate,
+                title=_optional_text(stored, "title"),
+                title_truncated=truncated,
+                roster=roster,
+            )
+        except (ItemError, ValueError, ValidationError, KeyError) as error:
+            raise ForecastStoreIncomplete(key, type(error).__name__) from error
 
     # Internals: generation puts
 

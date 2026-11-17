@@ -20,6 +20,7 @@ from datetime import UTC, date, datetime, time, timedelta
 from typing import Any, cast
 
 import pytest
+from boto3.dynamodb.types import TypeDeserializer
 from botocore.exceptions import ClientError, ReadTimeoutError
 from forecast_series_support import INPUT_END, asin, policy
 from forecast_store_support import ForecastTableFake, LambdaCrashed
@@ -1506,6 +1507,30 @@ def test_a_replayed_shard_publish_and_commit_change_nothing_and_count_once() -> 
     assert current is not None
     assert current.fence == 1
     assert rig.metrics.outcomes() == ["published"]
+
+
+@pytest.mark.covers("ADR-163")
+def test_each_shard_asin_item_stores_the_same_list_row_as_its_roster_part_line() -> None:
+    """The read API serves the item's row as stored; a second build could drift from the part."""
+    rig = _Rig()
+    _stage(rig)
+    payloads = _publish_all(rig)
+    deserializer = TypeDeserializer()
+    stored = {
+        key[0].rsplit("#", 1)[1]: json.loads(
+            json.dumps(deserializer.deserialize(item["roster"]), default=int)
+        )
+        for key, item in rig.table.items.items()
+        if "#ASIN#" in key[0]
+    }
+    lines = [
+        json.loads(line)
+        for shard in range(len(payloads))
+        for line in _part_lines(rig, payloads, shard)
+    ]
+    assert len(stored) == len(lines) == 6
+    assert {line["display_asin"]: line for line in lines} == stored
+    assert all(line["rank"] is None for line in lines)
 
 
 def _with_part(rig: _Rig, key: object, body: bytes) -> None:

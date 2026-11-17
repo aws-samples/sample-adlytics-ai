@@ -12,7 +12,9 @@ Callers may rely on:
 - a throttle that outlasts the client's retries raises `ForecastStoreThrottled`, the error name
   the state machine retries.
 
-Slice 3 adds the readers (`read_list_page`, `read_generation_item`).
+`ForecastReaderPort` is the read API's own port (ADR-163): it has no write method, and the same
+adapter implements both. Each reader validates what it parses and raises `ForecastStoreIncomplete`
+on an item that fails; a missing `ASIN#` or `PAGE#` item is None, a designed state.
 """
 
 from __future__ import annotations
@@ -23,8 +25,8 @@ from datetime import date, datetime, timedelta
 from enum import StrEnum
 from typing import Protocol
 
-from domain.forecasting.boundary import CandidateSeriesV1, RunIdentityV1
-from domain.forecasting.list_pages import ListPage, ListPages
+from domain.forecasting.boundary import CandidateSeriesV1, RosterEntryV1, RunIdentityV1
+from domain.forecasting.list_pages import CLOSED_FILTERS, MAX_LIST_PAGE, ListPage, ListPages
 from domain.forecasting.policy import MAX_SHARDS
 from domain.forecasting.publish import (
     CurrentPointer,
@@ -40,6 +42,8 @@ from domain.forecasting.publish import (
     generation_id,
     generation_series_sha256,
 )
+from domain.forecasting.read_api import AsinItemView, GenerationView
+from domain.forecasting.summaries import roster_entry
 
 _GENERATION_OUTCOMES = frozenset({RunOutcome.PUBLISHED, RunOutcome.ROLLED_BACK})
 
@@ -78,6 +82,11 @@ class GenerationSeries:
     candidate: CandidateSeriesV1
     title: str | None
     title_truncated: bool
+
+    @property
+    def roster(self) -> RosterEntryV1:
+        """The unranked list row the roster part and the `ASIN#` item both store (ADR-163)."""
+        return roster_entry(self.candidate, self.title, title_truncated=self.title_truncated)
 
 
 @dataclass(frozen=True)
@@ -351,4 +360,55 @@ class ForecastStorePort(Protocol):
 
     def get_generation(self, generation: str) -> GenerationRecord | None:
         """Read what a rollback needs of a generation's `META`."""
+        ...
+
+
+class ForecastStoreIncomplete(Exception):  # noqa: N818 - names the store state, as the code does
+    """A stored item fails validation, or one the generation must hold is missing."""
+
+    def __init__(self, key: str, detail: str) -> None:
+        super().__init__(f"{key}: {detail}")
+        self.key = key
+        self.detail = detail
+
+
+@dataclass(frozen=True)
+class ReadListPageRequest:
+    """One `PAGE#` read: a generation, a closed filter and a page from 1 to `MAX_LIST_PAGE`."""
+
+    generation_id: str
+    filter: str
+    page: int
+
+    def __post_init__(self) -> None:
+        if self.filter not in CLOSED_FILTERS:
+            raise ValueError(f"{self.filter!r} is not a closed list filter")
+        if isinstance(self.page, bool) or not 1 <= self.page <= MAX_LIST_PAGE:
+            raise ValueError(f"page {self.page} is outside 1 to {MAX_LIST_PAGE}")
+
+
+@dataclass(frozen=True)
+class ReadListPageResult:
+    """The page's stored entries, or None when the item doesn't exist."""
+
+    entries: tuple[RosterEntryV1, ...] | None
+
+
+class ForecastReaderPort(Protocol):
+    """Strongly consistent reads of `CURRENT` and one generation's items; no write method."""
+
+    def get_current(self, set_id: str) -> CurrentPointer | None:
+        """Read the set's `CURRENT` item, or None before the first outcome."""
+        ...
+
+    def read_generation(self, generation_id: str) -> GenerationView | None:
+        """Read and validate the generation's `META`, or None when it is absent."""
+        ...
+
+    def read_list_page(self, request: ReadListPageRequest) -> ReadListPageResult:
+        """Read and validate one `PAGE#` item."""
+        ...
+
+    def read_asin(self, generation_id: str, display_asin: str) -> AsinItemView | None:
+        """Read and validate one product's `ASIN#` item, or None when it is absent."""
         ...

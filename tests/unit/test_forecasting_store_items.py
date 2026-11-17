@@ -211,6 +211,17 @@ def test_an_asin_item_with_a_capped_title_is_under_the_ceiling() -> None:
     assert item_size(item) < CEILING
 
 
+@pytest.mark.covers("ADR-163")
+def test_an_asin_item_stores_its_unranked_list_row_with_the_capped_title() -> None:
+    capped = cap_title(WIDE * 1_000, TITLE_MAX)
+    series = GenerationSeries(_candidate(1), capped.title, capped.truncated)
+    row = cast("dict[str, Any]", asin_item(GENERATION, series)["roster"])
+    expected = roster_entry(_candidate(1), capped.title, title_truncated=True)
+    assert row == expected.model_dump(mode="json")
+    assert (row["rank"], row["title_truncated"]) == (None, True)
+    assert row["targets"]["units_ordered"]["p50_totals"]["13"] == "160493.8257"
+
+
 def test_every_asin_and_page_item_has_its_own_partition_key() -> None:
     first, second = (
         asin_item(GENERATION, GenerationSeries(_candidate(n), None, False)) for n in (1, 2)

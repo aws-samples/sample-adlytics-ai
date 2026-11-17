@@ -102,7 +102,7 @@ from domain.forecasting.publish import (
     validate_commit,
     validate_shard_candidate,
 )
-from domain.forecasting.summaries import cap_title, roster_entry
+from domain.forecasting.summaries import cap_title
 from ports.outbound.forecast_store import (
     Attestation,
     CommitDisposition,
@@ -420,10 +420,7 @@ def _publish_shard(publisher: Publisher, request: PublishShardRequest) -> StepOu
     )
     generation = generation_id(request.run_id, request.attempts)
     written = _stored(lambda: publisher.store.put_generation_items(generation, series))
-    entries = [
-        roster_entry(record, title.title, title_truncated=title.truncated)
-        for record, title in zip(ordered, capped, strict=True)
-    ]
+    entries = [item.roster for item in series]
     body = roster_part_bytes(entries)
     key = roster_part_key(request.run_id, request.shard, request.attempt_id)
     if not objects.put_if_absent(key, body) and _sha256(
