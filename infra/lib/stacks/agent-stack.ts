@@ -26,6 +26,10 @@ import {
 import { loadGeneratedTools } from '../constructs/agent/generated-tools';
 import { attachGatewayPolicyEngine } from '../constructs/agent/gateway-policy';
 import { routeGuardrail } from '../constructs/agent/route-guardrail';
+import {
+  demandForecastReaderEnvironment,
+  grantDemandForecastRead,
+} from '../mixins/demand-forecast-reader';
 import { grantOwnLogWrites, lambdaRole } from '../mixins/logging';
 import { dataBucketName } from '../mixins/storage';
 import { staffedAlarmAction } from '../constructs/observability/async-failure';
@@ -88,6 +92,8 @@ export class AgentStack extends cdk.Stack {
 
   /** Answers what can be asked at all. Reads no business data; writes transient grounding. */
   public readonly catalogFunction: lambda.Function;
+  /** Answers the demand forecast tools from the forecast table's published items (ADR-163). */
+  public readonly forecastFunction: lambda.Function;
 
   /**
    * The Gateway REQUEST interceptor (ADR-077 §5). Forwards the caller's bearer to the target and
@@ -222,6 +228,18 @@ export class AgentStack extends cdk.Stack {
     });
 
 
+    this.forecastFunction = this.pythonFunction('ForecastTool', {
+      config,
+      dependencies,
+      sourceAssetPath: props.sourceAssetPath,
+      handler: 'adapters.inbound.tool_handlers.forecast_entrypoint.handler',
+      environment: { ...environment, ...demandForecastReaderEnvironment(this, config) },
+      // 1024 MB, the platform's uniform size: CPU scales with memory, and a user is waiting.
+      memoryMb: 1024,
+      // Two bounded rounds of strongly consistent GetItem calls, each one attempt of at most
+      // 1.5 s (READER_CLIENT_CONFIG), plus init. A user is waiting in the chat, as for catalog.
+      timeoutSeconds: 15,
+    });
     this.interceptorFunction = this.pythonFunction('GatewayInterceptor', {
       config,
       dependencies,
@@ -240,6 +258,7 @@ export class AgentStack extends cdk.Stack {
     for (const fn of [
       this.measurementFunction,
       this.catalogFunction,
+      this.forecastFunction,
       this.interceptorFunction,
     ]) {
       grantSpanExport(fn);
@@ -248,7 +267,7 @@ export class AgentStack extends cdk.Stack {
     // The verification key is read from KMS at the tool's first call, never from the public issuer
     // (ADR-077 §5), so each tool role may read the public half of exactly the signing key. The key
     // policy denies only kms:Sign to other principals, so this identity grant is sufficient.
-    for (const fn of [this.measurementFunction, this.catalogFunction]) {
+    for (const fn of [this.measurementFunction, this.catalogFunction, this.forecastFunction]) {
       fn.addToRolePolicy(
         new iam.PolicyStatement({
           sid: 'ReadCallerVerificationKey',
@@ -259,6 +278,7 @@ export class AgentStack extends cdk.Stack {
     }
 
     this.grantCuratedRead(config, this.measurementFunction);
+    grantDemandForecastRead(this.forecastFunction, this, config);
     this.measurementFunction.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ['dynamodb:GetItem'],
@@ -534,6 +554,13 @@ export class AgentStack extends cdk.Stack {
       description: 'Figures from the curated lake, with everything that qualifies them.',
       lambdaFunction: this.measurementFunction,
       toolSchema: agentcore.ToolSchema.fromInline(tools.measurement),
+    });
+    agentcore.GatewayTarget.forLambda(this, 'ForecastTarget', {
+      gateway,
+      gatewayTargetName: 'forecast',
+      description: 'Published demand forecasts and their status. Reads only the forecast table.',
+      lambdaFunction: this.forecastFunction,
+      toolSchema: agentcore.ToolSchema.fromInline(tools.forecast),
     });
 
 
