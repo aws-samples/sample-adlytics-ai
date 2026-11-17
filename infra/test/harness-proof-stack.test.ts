@@ -326,6 +326,10 @@ describe('HarnessStack', () => {
       '@adlytics/measurement___measurement_metric_by_grain',
       '@adlytics/measurement___measurement_compare_windows',
       '@adlytics/measurement___measurement_top_n',
+      '@adlytics/forecast___forecast_list_asins',
+      '@adlytics/forecast___forecast_query_asins',
+      '@adlytics/forecast___forecast_summarize_asin',
+      '@adlytics/forecast___forecast_compare_asins',
     ]);
     // ADR-083: the answer streams as text, so the retired finalizer is no tool the Harness allows.
     expect(JSON.stringify(spec.allowedTools)).not.toContain('presentation');

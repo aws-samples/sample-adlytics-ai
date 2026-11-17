@@ -131,6 +131,7 @@ export class HarnessStack extends cdk.Stack {
     const allowedTools = [
       ...generated.catalog.map((tool) => `@adlytics/catalog___${tool.name}`),
       ...generated.measurement.map((tool) => `@adlytics/measurement___${tool.name}`),
+      ...generated.forecast.map((tool) => `@adlytics/forecast___${tool.name}`),
     ];
 
     const role = new iam.Role(this, 'ExecutionRole', {
