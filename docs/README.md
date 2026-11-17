@@ -13,7 +13,7 @@ This is the entry point for the current design. It contains navigation only: eac
 | Building conversation | [Conversational Runtime](capabilities/conversational-runtime/README.md) → [Agent Quality Loop](capabilities/agent-quality-loop/README.md) |
 | Building analytical experiences | [Analytics Discovery](capabilities/analytics-discovery/README.md) → [UI page contracts](ui/README.md) |
 | Building evaluation | [Agent Quality Loop](capabilities/agent-quality-loop/README.md) → [Protected Quality Review API](capabilities/protected-quality-review-api/README.md) |
-| Planned, not served: forecasting (weekly demand engine in dev only) and saturation | [Forecasting](capabilities/forecasting/README.md) → [ADR-160](decisions/adr-160-mount-the-jumpstart-chronos-2-artifact-and-enforce-isolation-in-iam.md) → [Saturation](capabilities/saturation/README.md) |
+| Planned, not served: forecasting (weekly demand engine in dev only) and saturation | [Demand forecast solution](solutions/demand-forecast/README.md) → [Forecasting](capabilities/forecasting/README.md) → [ADR-160](decisions/adr-160-mount-the-jumpstart-chronos-2-artifact-and-enforce-isolation-in-iam.md) → [Saturation](capabilities/saturation/README.md) |
 | Operating a deployment | [Repository README](../README.md) → [Sizing for large catalogs](../README.md#sizing-for-large-catalogs) → [Operator tools](capabilities/operational-data-flow-status/operator-tools.md) → [Validation results](../validation/RESULTS.md) |
 | Working with an AI assistant | [Build with an AI assistant](kiro.md) → [AGENTS.md](../AGENTS.md) |
 
