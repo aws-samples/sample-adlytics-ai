@@ -28,6 +28,10 @@ _ALLOWED_TOOLS = frozenset(
         "measurement_metric_by_grain",
         "measurement_compare_windows",
         "measurement_top_n",
+        "forecast_list_asins",
+        "forecast_query_asins",
+        "forecast_summarize_asin",
+        "forecast_compare_asins",
     }
 )
 

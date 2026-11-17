@@ -456,13 +456,20 @@ def test_a_receipt_that_is_not_the_streamed_shape_is_refused(
     assert harness.streamed_receipt_mismatch(_streamed(**overrides), _ANSWER) == reason
 
 
-@pytest.mark.covers("ADR-083")
-def test_the_declared_tools_are_catalog_and_measurement_only() -> None:
+@pytest.mark.covers("ADR-083", "ADR-163")
+def test_the_declared_tools_are_catalog_measurement_and_forecast_only() -> None:
     names = harness._tool_contract()  # pyright: ignore[reportPrivateUsage]
     assert set(names) == set(harness._DIRECT_QUESTIONS)  # pyright: ignore[reportPrivateUsage]
-    assert {harness._tool_family(name) for name in names} == {"catalog", "measurement"}  # pyright: ignore[reportPrivateUsage]
+    assert {harness._tool_family(name) for name in names} == {  # pyright: ignore[reportPrivateUsage]
+        "catalog",
+        "measurement",
+        "forecast",
+    }
     assert harness._qualified_tool("catalog_list_metrics") == (  # pyright: ignore[reportPrivateUsage]
         "@adlytics/catalog___catalog_list_metrics"
+    )
+    assert harness._qualified_tool("forecast_list_asins") == (  # pyright: ignore[reportPrivateUsage]
+        "@adlytics/forecast___forecast_list_asins"
     )
     with pytest.raises(harness._StageError) as error:  # pyright: ignore[reportPrivateUsage]
         harness._tool_family("presentation_publish")  # pyright: ignore[reportPrivateUsage]

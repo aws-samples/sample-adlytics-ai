@@ -340,5 +340,8 @@ test('every governed tool has its plain trace step, keyed by its declared name (
   const catalog = JSON.parse(readFileSync(join(__dirname, '..', '..', 'contracts', 'generated', 'tools.json'), 'utf8')) as { tools: Array<{ name: string }> };
   assert.deepEqual(Object.keys(TOOL_STEP_LABELS).sort(), catalog.tools.map((tool) => tool.name).sort());
   assert.equal(toolStepLabel('measurement_top_n'), 'Ranked a metric');
+  assert.equal(toolStepLabel('forecast_list_asins'), 'Listed the products in the demand forecast');
+  // DF-S3-PLAN-012: the chat has no horizon payload, so the step names no period.
+  assert.equal(toolStepLabel('forecast_query_asins'), "Read products' demand forecasts");
   assert.equal(toolStepLabel('an_undeclared_tool'), 'Read governed data');
 });

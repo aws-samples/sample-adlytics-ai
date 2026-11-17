@@ -350,7 +350,24 @@ def test_the_committed_v2_set_carries_v1_unchanged_plus_two_primed_questions() -
         runner.FixturePrecondition("fct_new_to_brand_buyers", "month", date(2026, 9, 1)),
     ]
     assert [q.expected for q in primed] == [_PRIMED_EXPECTED, _PRIMED_EXPECTED]
-    assert runner._DEFAULT_SET == "validation/agent-regression-v2.json"  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.covers("ADR-163")
+def test_the_committed_v3_set_carries_v2_unchanged_plus_seven_forecast_questions() -> None:
+    v2 = runner.load_question_set((_ROOT / "validation/agent-regression-v2.json").read_text())
+    v3 = runner.load_question_set((_ROOT / "validation/agent-regression-v3.json").read_text())
+    assert v3.set_version == 3
+    assert v3.questions[: len(v2.questions)] == v2.questions
+    assert [q.name for q in v3.questions[len(v2.questions) :]] == [
+        "forecast_weekly_demand",
+        "forecast_accuracy",
+        "forecast_product_by_asin",
+        "forecast_withheld_product",
+        "forecast_freshness",
+        "forecast_causal_question",
+        "forecast_six_product_comparison",
+    ]
+    assert runner._DEFAULT_SET == "validation/agent-regression-v3.json"  # pyright: ignore[reportPrivateUsage]
 
 
 def _primed_question(**overrides: object) -> dict[str, object]:

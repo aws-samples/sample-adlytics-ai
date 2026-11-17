@@ -29,7 +29,7 @@ const RECALLED_MEMORY_RULE =
   'remembered figure.';
 /** The digest of the complete canonical prompt; change it only together with the prompt. */
 const CANONICAL_PROMPT_DIGEST =
-  'sha256:686630c614baf2d81714a57a1f500ad90903dad332407e6fafa95a449f51ab16';
+  'sha256:3733e812b4641605d6cd4c278f7441bd28b1ac5187ac6a3b0557862bedc5c349';
 
 const template = everyTemplate().HarnessStack as Json;
 const resources = (template.Resources ?? {}) as Record<string, Json>;
@@ -414,7 +414,11 @@ describe('HarnessStack', () => {
       .toStrictEqual([['text']]);
     expect(prompt).toContain('The user reads your answer as you write it');
     expect(prompt).toContain(
-      'Use the governed catalog or measurement tools for every claim about this platform',
+      'Use the governed catalog, measurement or forecast tools for every claim about this platform',
+    );
+    expect(prompt).toContain(
+      'A forecast figure is stated only as a forecast tool returned it; never total, extend, ' +
+        'average or re-derive forecast figures',
     );
     expect(prompt).toContain('write a concise natural-language answer');
     expect(prompt).toContain('You own the wording, explanation, transitions, and presentation');

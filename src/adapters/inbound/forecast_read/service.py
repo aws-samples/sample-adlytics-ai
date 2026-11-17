@@ -165,6 +165,11 @@ class ForecastReadService:
         )
 
     @property
+    def policy(self) -> DemandForecastPolicy:
+        """The declared policy the service reads with."""
+        return self._policy
+
+    @property
     def set_id(self) -> str:
         """The forecast set this service reads, composed as the publisher composes it."""
         return self._set_id

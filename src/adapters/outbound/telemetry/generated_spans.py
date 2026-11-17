@@ -31,6 +31,7 @@ __all__ = [
     "EVALUATION_WRITER",
     "EXECUTION_GRAPH_PROMOTER_DOMAIN",
     "EXECUTION_GRAPH_PROMOTER_PASS",
+    "FORECAST_GATEWAY",
     "GATEWAY_INTERCEPTOR",
     "GRAPH_PUBLISH",
     "INGEST_DELIVERY",
@@ -158,3 +159,4 @@ DEMAND_FORECAST_SELECT: Final = "demand_forecast.input.select"
 DEMAND_FORECAST_BUILD: Final = "demand_forecast.input.build"
 DEMAND_FORECAST_PUBLISH: Final = "demand_forecast.publish"
 DEMAND_FORECAST_READ: Final = "demand_forecast.read"
+FORECAST_GATEWAY: Final = "tool.forecast_gateway"

@@ -147,6 +147,8 @@ export interface GeneratedTools {
   readonly catalog: ToolDefinition[];
   /** Tools whose name begins `measurement_`. Answered by the measurement function. */
   readonly measurement: ToolDefinition[];
+  /** Tools whose name begins `forecast_`. Answered by the forecast function (ADR-163). */
+  readonly forecast: ToolDefinition[];
 }
 
 /**
@@ -179,19 +181,23 @@ export function loadGeneratedTools(filePath: string): GeneratedTools {
 
   const catalog = tools.filter((tool) => tool.name.startsWith('catalog_'));
   const measurement = tools.filter((tool) => tool.name.startsWith('measurement_'));
+  const forecast = tools.filter((tool) => tool.name.startsWith('forecast_'));
 
-  const unclaimed = tools.filter((tool) => !catalog.includes(tool) && !measurement.includes(tool));
+  const unclaimed = tools.filter(
+    (tool) => !catalog.includes(tool) && !measurement.includes(tool) && !forecast.includes(tool),
+  );
   if (unclaimed.length > 0) {
     // A tool no function answers is a Gateway target pointing nowhere, which presents to a user as
     // a tool that exists and always fails.
     throw new GeneratedToolsError(
       `No function answers ${unclaimed.map((t) => t.name).join(', ')}. ` +
-        'A tool name must begin `catalog_` or `measurement_`.',
+        'A tool name must begin `catalog_`, `measurement_` or `forecast_`.',
     );
   }
 
   return {
     catalog: catalog.map((tool) => tool.definition),
     measurement: measurement.map((tool) => tool.definition),
+    forecast: forecast.map((tool) => tool.definition),
   };
 }

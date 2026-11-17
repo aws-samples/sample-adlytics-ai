@@ -83,6 +83,10 @@ export function friendlyChatProgress(stage: ChatActivityEvent['stage']): string 
 export const TOOL_STEP_LABELS: Readonly<Record<string, string>> = {
   catalog_describe_metric: 'Looked up how a metric is defined',
   catalog_list_metrics: 'Listed the metrics this workspace defines',
+  forecast_compare_asins: 'Compared demand forecasts across products',
+  forecast_list_asins: 'Listed the products in the demand forecast',
+  forecast_query_asins: "Read products' demand forecasts",
+  forecast_summarize_asin: "Read one product's forecast beside its recent sales",
   measurement_compare_windows: 'Compared a metric across two windows',
   measurement_metric_by_grain: "Read a metric's breakdown or trend",
   measurement_top_n: 'Ranked a metric',

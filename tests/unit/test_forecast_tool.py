@@ -1,0 +1,378 @@
+# SPDX-License-Identifier: MIT-0
+"""The four demand forecast tools: envelopes, arguments and refusals (ADR-163, ADR-084).
+
+A tool envelope at the wrong scale or grain lets the agent state a figure the publisher never
+stored; a missing forecast qualifier lets a forecast read as observed; a silent truncation lets a
+page read as the whole roster; a failure without a code reaches the agent as a raise. Each test
+builds the real `ShapedResponse` from the shared fake reader's stored views.
+"""
+
+from __future__ import annotations
+
+import json
+import time as time_module
+from datetime import UTC, date, datetime, time
+from decimal import Decimal
+from typing import Any
+
+import pytest
+from forecast_read_support import (
+    NOW,
+    VALUES,
+    FakeReader,
+    attempt,
+    fake_reader,
+    generation,
+    item,
+    pointer,
+    ranked,
+)
+from forecast_series_support import policy
+from test_config import VALID
+from tool_caller_support import import_tool_entrypoint, with_bearer
+
+from adapters.inbound.forecast_read.service import ForecastReadService, ReadContext
+from adapters.inbound.tool_handlers.forecast import (
+    FORECAST_RENDERING,
+    MIXED_RENDERING,
+    ForecastTool,
+    ForecastToolRequest,
+    handle,
+)
+from adapters.inbound.tool_handlers.schemas import contract_for
+from domain.forecasting import summaries
+from domain.forecasting.publish import RunOutcome
+from domain.narrative.publication import QualifierKind
+from domain.narrative.shaped_response import ShapedResponse, UnitKind, Units
+from domain.shared_kernel.errors import AdlyticsError
+from domain.shared_kernel.provenance import FreshnessStatus, MeasurementBasis
+
+pytestmark = [pytest.mark.unit, pytest.mark.covers("ADR-163")]
+
+READER_ENV = {
+    **VALID,
+    "ADL_DEMAND_FORECAST_TABLE": "adlytics-test-demand-forecast",
+    "ADL_DEMAND_FORECAST_MARKETPLACE_KEY": "fictional-marketplace",
+    "ADL_DEMAND_FORECAST_CHECK_SCHEDULE": "cron(0 13 * * ? *)",
+    "AWS_DEFAULT_REGION": "us-east-1",
+}
+
+
+def _answer(
+    tool: ForecastTool, reader: FakeReader | None = None, **arguments: Any
+) -> ShapedResponse:
+    service = ForecastReadService(reader or fake_reader(), VALUES, policy())
+    request = ForecastToolRequest(tool, arguments, NOW, "c" * 32)
+    return handle(request, service, ReadContext(NOW, time_module.monotonic() + 60))
+
+
+def _refusal(
+    tool: ForecastTool, reader: FakeReader | None = None, **arguments: Any
+) -> AdlyticsError:
+    with pytest.raises(AdlyticsError) as refused:
+        _answer(tool, reader, **arguments)
+    return refused.value
+
+
+def _qualifiers(answer: ShapedResponse) -> list[QualifierKind]:
+    return [qualifier.kind for qualifier in answer.metadata.qualifiers]
+
+
+def test_the_list_carries_stored_unit_totals_by_asin_with_its_forecast_qualifier() -> None:
+    answer = _answer(ForecastTool.LIST)
+    assert answer.data.grain.dimensions == ("asin",)
+    assert answer.data.units == Units(UnitKind.COUNT)
+    first = answer.data.values[0]
+    assert (first["asin"], first["rank"], first["p50_total_4w"], first["p50_total_13w"]) == (
+        "B0FIXTUR02",
+        1,
+        80,
+        260,
+    )
+    assert [field.units for field in answer.data.claim_fields][:3] == [Units(UnitKind.COUNT)] * 3
+    assert answer.data.values[2]["withheld_reason"] == "INSUFFICIENT_CONTEXT"
+    assert answer.data.values[2]["p50_total_4w"] is None
+    assert _qualifiers(answer) == [QualifierKind.FORECAST]
+    assert answer.narrative.count(FORECAST_RENDERING) == 1
+    assert answer.metadata.measurement_basis == (MeasurementBasis.MODELLED,)
+    assert answer.metadata.suppression.rows_suppressed is False
+    assert answer.metadata.coverage_start == datetime(2026, 11, 8, tzinfo=UTC)
+    assert answer.metadata.coverage_end == datetime.combine(date(2027, 2, 6), time.max, tzinfo=UTC)
+    assert answer.data.additivity is not None and answer.data.additivity.across == ("asin",)
+    assert answer.data.population_total is None
+    assert answer.metadata.truncated is False
+
+
+@pytest.mark.covers("ADR-084")
+def test_a_money_list_carries_two_place_figures_in_their_currency() -> None:
+    answer = _answer(ForecastTool.LIST, target="revenue_shipped")
+    assert answer.data.units == Units(UnitKind.CURRENCY, "USD")
+    assert answer.data.values[0]["p50_total_4w"] == Decimal("4938.00")
+    assert answer.data.values[0]["p50_total_13w"] == Decimal("16048.50")
+
+
+def test_an_exact_asin_lookup_returns_its_stored_row_unranked() -> None:
+    answer = _answer(ForecastTool.LIST, asin="b0fixtur02")
+    assert [row["asin"] for row in answer.data.values] == ["B0FIXTUR02"]
+    assert answer.data.values[0]["rank"] is None
+    absent = _answer(ForecastTool.LIST, asin="B0FIXTUR09")
+    assert (absent.data.values, absent.data.units) == ((), None)
+    assert "B0FIXTUR09 is not in this forecast." in absent.narrative
+
+
+def test_a_filter_with_more_matches_than_one_page_is_labelled_truncated() -> None:
+    views = [item(n) for n in range(1, 52)]
+    entries = ranked(views)
+    meta = generation(entries)
+    reader = FakeReader(current=pointer(), meta=meta)
+    answer = _answer(ForecastTool.LIST, reader)
+    assert (len(answer.data.values), answer.metadata.truncated) == (50, True)
+    line = next(text for text in answer.narrative if "truncated" in text)
+    assert "top 50 of 51 matching products (page 1 of 2)" in line
+    assert QualifierKind.TRUNCATED in _qualifiers(answer)
+
+
+@pytest.mark.covers("ADR-084")
+def test_query_carries_weekly_bands_at_the_target_scale_with_week_grain() -> None:
+    units = _answer(ForecastTool.QUERY, asins=["B0FIXTUR01"], target="units_ordered", view_weeks=4)
+    assert units.data.grain.dimensions == ("asin", "week_start")
+    assert [
+        (row["week_start"], row["p10"], row["p50"], row["p90"]) for row in units.data.values
+    ] == [
+        ("2026-11-08", 10, 11, 12),
+        ("2026-11-15", 10, 11, 12),
+        ("2026-11-22", 10, 11, 12),
+        ("2026-11-29", 10, 11, 12),
+    ]
+    money = _answer(ForecastTool.QUERY, asins=["B0FIXTUR01"], target="cogs_shipped")
+    assert money.data.units == Units(UnitKind.CURRENCY, "USD")
+    assert money.data.values[0]["p50"] == Decimal("1234.50")
+    assert len(money.data.values) == 13
+    claim = money.narrative[money.data.claim_narrative_indices[0]]
+    assert claim.endswith("over the next 13 weeks: 16,048.50 USD.")
+
+
+def test_summarize_pairs_the_forecast_with_observed_recent_weeks_under_mixed_basis() -> None:
+    answer = _answer(
+        ForecastTool.SUMMARIZE, asin="B0FIXTUR01", target="units_shipped", view_weeks=8
+    )
+    assert answer.data.grain.dimensions == ("asin", "week_start", "series")
+    series = [row["series"] for row in answer.data.values]
+    assert (series.count("recent_actual"), series.count("forecast")) == (13, 8)
+    recent = answer.data.values[0]
+    assert (recent["actual"], recent["p50"], recent["measurement_basis"]) == (
+        9,
+        None,
+        "retail_actual",
+    )
+    assert answer.metadata.measurement_basis == (
+        MeasurementBasis.MODELLED,
+        MeasurementBasis.RETAIL_ACTUAL,
+    )
+    assert _qualifiers(answer) == [QualifierKind.FORECAST, QualifierKind.MIXED_BASIS]
+    assert answer.narrative.count(MIXED_RENDERING) == 1
+    assert answer.metadata.coverage_start == datetime(2026, 8, 9, tzinfo=UTC)
+    claims = [answer.narrative[i] for i in answer.data.claim_narrative_indices]
+    assert claims == [
+        "Stored forecast total (p50) of shipped units for B0FIXTUR01 over the next 8 weeks: 84.",
+        "In backtest for B0FIXTUR01, the actual was inside the range in 9 of 13 test weeks; "
+        "MASE 0.8123.",
+    ]
+    assert answer.data.additivity is not None
+    assert answer.data.additivity.across == ("asin", "week_start")
+
+
+def test_compare_names_a_withheld_and_an_absent_product_without_rows() -> None:
+    answer = _answer(
+        ForecastTool.COMPARE,
+        asins=["B0FIXTUR01", "B0FIXTUR03", "B0FIXTUR09"],
+        target="units_ordered",
+    )
+    assert {row["asin"] for row in answer.data.values} == {"B0FIXTUR01"}
+    assert (
+        "B0FIXTUR03 isn't forecast for demand (ordered units): too little history."
+        in answer.narrative
+    )
+    assert "B0FIXTUR09 is not in this forecast." in answer.narrative
+
+
+def test_a_stale_forecast_carries_the_stale_qualifier_with_its_cause() -> None:
+    reader = fake_reader()
+    reader.current = pointer(last_attempt=attempt(RunOutcome.HELD_QUALITY, "item_too_large"))
+    answer = _answer(ForecastTool.QUERY, reader, asins=["B0FIXTUR01"], target="units_ordered")
+    assert answer.metadata.freshness_status is FreshnessStatus.STALE
+    assert "This forecast is stale: a quality check held the last forecast run." in answer.narrative
+    assert QualifierKind.STALE in _qualifiers(answer)
+
+
+def test_a_money_comparison_over_two_currencies_is_refused_and_units_answer() -> None:
+    reader = fake_reader()
+    reader.items["B0FIXTUR02"] = item(2, currency="EUR")
+    refused = _refusal(
+        ForecastTool.COMPARE, reader, asins=["B0FIXTUR01", "B0FIXTUR02"], target="revenue_shipped"
+    )
+    assert str(refused.code) == "ADLY-FORECAST_READ-0006"
+    units = _answer(
+        ForecastTool.COMPARE, reader, asins=["B0FIXTUR01", "B0FIXTUR02"], target="units_ordered"
+    )
+    assert units.data.units == Units(UnitKind.COUNT)
+
+
+@pytest.mark.parametrize(
+    ("tool", "arguments", "rule"),
+    [
+        (ForecastTool.QUERY, {"asins": ["B0FIXTUR0"], "target": "units_ordered"}, "asin_format"),
+        (
+            ForecastTool.QUERY,
+            {"asins": [f"B0FIXTUR0{n}" for n in range(1, 7)], "target": "units_ordered"},
+            "asins_count",
+        ),
+        (ForecastTool.COMPARE, {"asins": ["B0FIXTUR01"], "target": "units_ordered"}, "asins_count"),
+        (
+            ForecastTool.QUERY,
+            {"asins": ["B0FIXTUR01", "b0fixtur01"], "target": "units_ordered"},
+            "asins_unique",
+        ),
+        (ForecastTool.QUERY, {"asins": ["B0FIXTUR01"], "target": "revenue"}, "target_unknown"),
+        (
+            ForecastTool.QUERY,
+            {"asins": ["B0FIXTUR01"], "target": "units_ordered", "view_weeks": 5},
+            "view_unknown",
+        ),
+        (ForecastTool.LIST, {"status": "everything"}, "status_unknown"),
+        (ForecastTool.LIST, {"asin": "B0FIXTUR01", "status": "shown"}, "asin_with_status"),
+        (ForecastTool.LIST, {"page": 2}, "unknown_argument"),
+    ],
+)
+def test_each_argument_rule_is_refused_before_any_read(
+    tool: ForecastTool, arguments: dict[str, Any], rule: str
+) -> None:
+    reader = fake_reader()
+    refused = _refusal(tool, reader, **arguments)
+    assert (str(refused.code), refused.context) == ("ADLY-FORECAST_READ-0005", {"rule": rule})
+    assert reader.calls == []
+
+
+def test_store_incomplete_and_unpublished_are_coded_refusals() -> None:
+    reader = fake_reader()
+    reader.meta = None
+    assert str(_refusal(ForecastTool.LIST, reader).code) == "ADLY-FORECAST_READ-0008"
+    empty = FakeReader(current=None)
+    assert str(
+        _refusal(ForecastTool.QUERY, empty, asins=["B0FIXTUR01"], target="units_ordered").code
+    ) == ("ADLY-FORECAST_READ-0007")
+
+
+def test_the_read_path_never_builds_a_list_row(monkeypatch: pytest.MonkeyPatch) -> None:
+    """R17: the stored row is served; a read-time sum would be a figure computed in the API."""
+    reader = fake_reader()
+
+    def refuse(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("roster_entry called on the read path")
+
+    monkeypatch.setattr(summaries, "roster_entry", refuse)
+    for tool, arguments in (
+        (ForecastTool.LIST, {}),
+        (ForecastTool.SUMMARIZE, {"asin": "B0FIXTUR01", "target": "units_ordered"}),
+    ):
+        assert _answer(tool, reader, **arguments).data.values
+
+
+# --- The entry point ---------------------------------------------------------------------------
+
+entrypoint = import_tool_entrypoint(
+    "adapters.inbound.tool_handlers.forecast_entrypoint", extra_env=READER_ENV
+)
+
+
+class _ClientContext:
+    def __init__(self, custom: dict[str, Any]) -> None:
+        self.custom = custom
+
+
+class _LambdaContext:
+    function_name = "adlytics-forecast"
+    function_version = "$LATEST"
+    invoked_function_arn = "arn:aws:lambda:us-east-1:000000000000:function:adlytics-forecast"
+    memory_limit_in_mb = 1024
+    aws_request_id = "00000000-0000-4000-8000-000000000000"
+
+    def __init__(self, tool: str, remaining_ms: int = 15_000) -> None:
+        self.client_context = _ClientContext(
+            with_bearer(
+                {
+                    "bedrockAgentCoreToolName": tool,
+                    "bedrockAgentCoreMcpMessageId": "mcp-message-under-test",
+                    "bedrockAgentCoreGatewayId": "gw-under-test",
+                    "bedrockAgentCoreTargetId": "tgt-under-test",
+                }
+            )
+        )
+        self.remaining_ms = remaining_ms
+
+    def get_remaining_time_in_millis(self) -> int:
+        return self.remaining_ms
+
+
+def _invoke(  # noqa: PLR0913 -- one Gateway call with keyword overrides
+    monkeypatch: pytest.MonkeyPatch,
+    tool: str,
+    arguments: dict[str, Any] | None = None,
+    *,
+    reader: FakeReader | None = None,
+) -> dict[str, Any]:
+    monkeypatch.setattr(
+        entrypoint, "SERVICE", ForecastReadService(reader or fake_reader(), VALUES, policy())
+    )
+    result = entrypoint.handler(dict(arguments or {}), _LambdaContext(f"forecast___{tool}"))
+    json.dumps(result)
+    return result
+
+
+_SAMPLES: dict[str, object] = {
+    "asin": "B0FIXTUR01",
+    "asins": ["B0FIXTUR01", "B0FIXTUR02"],
+    "target": "units_ordered",
+    "view_weeks": 4,
+}
+
+
+@pytest.mark.parametrize("tool", [member.value for member in ForecastTool])
+def test_an_event_built_from_each_declaration_drives_the_real_handler(
+    monkeypatch: pytest.MonkeyPatch, tool: str
+) -> None:
+    arguments = {name: _SAMPLES[name] for name in contract_for(tool).required}
+    answer = _invoke(monkeypatch, tool, arguments)
+    assert answer.get("refused") is not True, answer.get("reason")
+    assert answer["data"]["values"]
+
+
+def test_an_unknown_tool_and_a_malformed_invocation_return_typed_refusals(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    unknown = _invoke(monkeypatch, "forecast_page_two")
+    assert (unknown["refused"], unknown["code"]) == (True, "ADLY-GATEWAY-0001")
+    monkeypatch.setattr(entrypoint, "SERVICE", ForecastReadService(fake_reader(), VALUES, policy()))
+    malformed = entrypoint.handler({}, _LambdaContext("no-target-prefix"))
+    assert (malformed["refused"], malformed["code"]) == (True, "ADLY-GATEWAY-0001")
+
+
+def test_a_store_deadline_and_an_unexpected_error_return_their_codes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reader = fake_reader()
+    reader.fail = RuntimeError("provider text")
+    failed = _invoke(
+        monkeypatch,
+        "forecast_query_asins",
+        {"asins": ["B0FIXTUR01"], "target": "units_ordered"},
+        reader=reader,
+    )
+    assert (failed["refused"], failed["code"]) == (True, "ADLY-FORECAST_READ-0011")
+    assert "provider text" not in json.dumps(failed)
+    monkeypatch.setattr(entrypoint, "SERVICE", ForecastReadService(fake_reader(), VALUES, policy()))
+    late = entrypoint.handler(
+        {"asins": ["B0FIXTUR01"], "target": "units_ordered"},
+        _LambdaContext("forecast___forecast_query_asins", remaining_ms=500),
+    )
+    assert (late["refused"], late["code"]) == (True, "ADLY-FORECAST_READ-0009")

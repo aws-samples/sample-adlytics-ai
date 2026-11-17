@@ -1,0 +1,284 @@
+{
+  "schema_version": "AgentRegressionSet.v2",
+  "set_version": 3,
+  "description": "Fictional question families spanning platform, customer, derived, general, ambiguous, and unsupported intent, answered against the synthetic fixture. As of 2026-10-18: week of 5–11 Oct 2026 not landed; fct_new_to_brand_buyers empty. Set 3 (2026-11-17) adds seven demand forecast questions on fictional B0FIXTUR ASINs (ADR-163).",
+  "questions": [
+    {
+      "name": "platform_metric_inventory",
+      "intent": "platform",
+      "question": "Which metrics can this fictional workspace report?",
+      "expected": {
+        "grounded_correctness": [
+          "Grounded"
+        ],
+        "internal_consistency": [
+          "Consistent"
+        ],
+        "helpfulness": [
+          "Excellent",
+          "Good"
+        ]
+      }
+    },
+    {
+      "name": "customer_breakdown",
+      "intent": "customer",
+      "question": "Report retail_revenue_shipped by product in the United States marketplace on August 11, 2026.",
+      "expected": {
+        "grounded_correctness": [
+          "Grounded"
+        ],
+        "internal_consistency": [
+          "Consistent"
+        ],
+        "helpfulness": [
+          "Excellent",
+          "Good"
+        ]
+      }
+    },
+    {
+      "name": "derived_percentage_change",
+      "intent": "derived",
+      "question": "By what percentage did total retail_revenue_shipped change in the United States marketplace from August 10, 2026 to August 11, 2026?",
+      "expected": {
+        "grounded_correctness": [
+          "Grounded"
+        ],
+        "internal_consistency": [
+          "Consistent"
+        ],
+        "helpfulness": [
+          "Excellent",
+          "Good"
+        ]
+      }
+    },
+    {
+      "name": "ranking",
+      "intent": "customer",
+      "question": "Rank the top five products by retail_revenue_shipped in the United States marketplace on August 11, 2026.",
+      "expected": {
+        "grounded_correctness": [
+          "Grounded"
+        ],
+        "internal_consistency": [
+          "Consistent"
+        ],
+        "helpfulness": [
+          "Excellent",
+          "Good"
+        ]
+      }
+    },
+    {
+      "name": "general_concept",
+      "intent": "general",
+      "question": "In general terms, what does return on ad spend measure?",
+      "expected": {
+        "grounded_correctness": [
+          "Not Applicable",
+          "Grounded"
+        ],
+        "internal_consistency": [
+          "Consistent"
+        ],
+        "helpfulness": [
+          "Excellent",
+          "Good"
+        ]
+      }
+    },
+    {
+      "name": "ambiguous_reference",
+      "intent": "ambiguous",
+      "question": "How does it compare with the earlier one?",
+      "expected": {
+        "grounded_correctness": [
+          "Not Applicable"
+        ],
+        "helpfulness": [
+          "Excellent",
+          "Good"
+        ]
+      }
+    },
+    {
+      "name": "undeclared_metric",
+      "intent": "unsupported",
+      "question": "Explain the fictional undeclared metric lunar basket affinity.",
+      "expected": {
+        "grounded_correctness": [
+          "Grounded",
+          "Not Applicable"
+        ],
+        "helpfulness": [
+          "Excellent",
+          "Good"
+        ]
+      }
+    },
+    {
+      "name": "remembered_figure_after_refusal",
+      "intent": "remembered_figure",
+      "prime": {
+        "question": "For context, I'm preparing the fictional {marker} planning memo. How many shoppers did we reach in the week of 28 Sep–4 Oct 2026, by exposure group and ID type?",
+        "expected": {
+          "grounded_correctness": [
+            "Grounded"
+          ]
+        }
+      },
+      "precondition": {
+        "fact": "fct_exposure_group_outcome",
+        "time_grain": "week",
+        "period_start": "2026-10-05"
+      },
+      "question": "How many shoppers did we reach in the week of 5–11 Oct 2026, by exposure group and ID type?",
+      "expected": {
+        "grounded_correctness": [
+          "Grounded",
+          "Not Applicable"
+        ],
+        "internal_consistency": [
+          "Consistent"
+        ],
+        "helpfulness": [
+          "Excellent",
+          "Good"
+        ]
+      }
+    },
+    {
+      "name": "remembered_figure_when_metric_has_no_data",
+      "intent": "remembered_figure",
+      "prime": {
+        "question": "For context, I'm preparing the fictional {marker} planning memo. How many new-to-brand purchases did we have in September 2026?",
+        "expected": {
+          "grounded_correctness": [
+            "Grounded"
+          ]
+        }
+      },
+      "precondition": {
+        "fact": "fct_new_to_brand_buyers",
+        "time_grain": "month",
+        "period_start": "2026-09-01"
+      },
+      "question": "How many new-to-brand customers did we acquire in September 2026?",
+      "expected": {
+        "grounded_correctness": [
+          "Grounded",
+          "Not Applicable"
+        ],
+        "internal_consistency": [
+          "Consistent"
+        ],
+        "helpfulness": [
+          "Excellent",
+          "Good"
+        ]
+      }
+    },
+    {
+      "name": "forecast_weekly_demand",
+      "intent": "forecast",
+      "question": "What is the 13-week ordered units forecast for the fictional product B0FIXTUR01?",
+      "expected": {
+        "grounded_correctness": [
+          "Grounded"
+        ],
+        "helpfulness": [
+          "Excellent",
+          "Good"
+        ]
+      }
+    },
+    {
+      "name": "forecast_accuracy",
+      "intent": "forecast",
+      "question": "How accurate was the backtest of the demand forecast for B0FIXTUR01?",
+      "expected": {
+        "grounded_correctness": [
+          "Grounded"
+        ],
+        "helpfulness": [
+          "Excellent",
+          "Good"
+        ]
+      }
+    },
+    {
+      "name": "forecast_product_by_asin",
+      "intent": "forecast",
+      "question": "Find the fictional product B0FIXTUR77 in the demand forecast and give its 4-week forecast total.",
+      "expected": {
+        "grounded_correctness": [
+          "Grounded"
+        ],
+        "helpfulness": [
+          "Excellent",
+          "Good"
+        ]
+      }
+    },
+    {
+      "name": "forecast_withheld_product",
+      "intent": "forecast",
+      "question": "Why is there no demand forecast for B0FIXTUR03?",
+      "expected": {
+        "grounded_correctness": [
+          "Grounded"
+        ],
+        "helpfulness": [
+          "Excellent",
+          "Good"
+        ]
+      }
+    },
+    {
+      "name": "forecast_freshness",
+      "intent": "forecast",
+      "question": "How current is the demand forecast?",
+      "expected": {
+        "grounded_correctness": [
+          "Grounded"
+        ],
+        "helpfulness": [
+          "Excellent",
+          "Good"
+        ]
+      }
+    },
+    {
+      "name": "forecast_causal_question",
+      "intent": "unsupported",
+      "question": "If I double the ad budget for B0FIXTUR01, how much will its forecast demand rise?",
+      "expected": {
+        "grounded_correctness": [
+          "Grounded",
+          "Not Applicable"
+        ],
+        "helpfulness": [
+          "Excellent",
+          "Good"
+        ]
+      }
+    },
+    {
+      "name": "forecast_six_product_comparison",
+      "intent": "unsupported",
+      "question": "Compare the ordered units forecasts of B0FIXTUR01, B0FIXTUR02, B0FIXTUR03, B0FIXTUR04, B0FIXTUR05 and B0FIXTUR06.",
+      "expected": {
+        "grounded_correctness": [
+          "Grounded",
+          "Not Applicable"
+        ],
+        "helpfulness": [
+          "Excellent",
+          "Good"
+        ]
+      }
+    }
+  ]
+}
