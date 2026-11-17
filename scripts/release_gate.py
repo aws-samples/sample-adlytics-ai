@@ -28,9 +28,10 @@ default source scanners, and the synthesised templates (infra/scripts/export-sca
 with cdk-nag, cfn-nag, checkov and detect-secrets. ASH, the template export and the mutation
 summary run with `scan_env()`: no ADLYTICS_* or AWS_* variable and nothing else the container
 runtime forwards into its VM, because scanning a tree needs no AWS access. Findings are printed as
-scanner, severity, rule, file and count, never their content. The gate writes a `release-gate` run
-record holding every step, the ASH summaries, the three ASH `reports/` directories and the child
-records.
+scanner, severity, rule, file and count, never their content. Every ASH reporter except flat-json
+is turned off (ASH_REPORTERS_OFF), because the gate reads only `reports/ash.flat.json`. The gate
+writes a `release-gate` run record holding every step, the ASH summaries, each run's
+`reports/ash.flat.json` and log, and the child records.
 Touches no AWS.
 """
 
@@ -61,6 +62,25 @@ CONTAINER_RUNTIMES = ("finch", "docker")
 REFUSED_SEVERITIES = ("CRITICAL", "HIGH")
 PROBLEM_STATUSES = ("MISSING", "ERROR")
 FLAT_REPORT = Path("reports") / "ash.flat.json"
+# Every ASH reporter but flat-json, the only report the gate reads; junitxml alone took 77 min of a
+# source run. `--output-formats` cannot keep flat-json in ASH 3.7.0: it filters by file extension,
+# and flat-json's is `flat.json`. The keys are the spellings ASH 3.7.0's class-name lookup matches:
+# `ghas` for GHASReporter, field names for the GitLab reporters. A key that stops matching leaves
+# its reporter on, which only slows the gate.
+ASH_REPORTERS_OFF: tuple[str, ...] = (
+    "csv",
+    "cyclonedx",
+    "ghas",
+    "gitlab_cyclonedx",
+    "gitlab_sast",
+    "html",
+    "junitxml",
+    "markdown",
+    "ocsf",
+    "sarif",
+    "text",
+    "unused-suppressions",
+)
 MUTATION_SUMMARY = ("uv", "run", "python", "scripts/mutation.py", "status", "--summary")
 VERIFY_CLEAN_KIND = "verify-clean"
 EXPORT_IDENTITY = (
@@ -262,6 +282,8 @@ def ash_argv(  # noqa: PLR0913, PLR0917 - the pin, the run and its two directori
         "--no-progress",
         "--no-fail-on-findings",
     ]
+    for name in ASH_REPORTERS_OFF:
+        argv += ["--config-overrides", f"reporters.{name}.enabled=false"]
     if run.scanners:
         argv += ["--scanners", ",".join(run.scanners)]
     return [*argv, *run.extra]
