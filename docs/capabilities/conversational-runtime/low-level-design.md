@@ -19,7 +19,7 @@ Retired by [ADR-083](../../decisions/adr-083-stream-the-agent-answer-and-govern-
 ### Harness lifecycle
 
 1. The adapter forwards every assistant text delta as the Harness delivers it, including text written before and between tool calls. When a later assistant message starts with text after earlier text was sent, a paragraph break (`\n\n`) precedes it, so the released text reads as written. Reasoning content is dropped and never leaves the adapter.
-2. Catalog and measurement tool inputs remain private and are discarded.
+2. Catalog, measurement and forecast tool inputs remain private and are discarded.
 3. A governed tool result is decoded when its result message closes: success strictly as `ShapedResponse`, a typed refusal as its bounded reason and grounded refusal projection. Raw result transport is not logged or publicly serialized. Each call yields `requested` and `completed` tool events and one trajectory step.
 4. An error-status governed result is a recoverable tool-attempt failure, not a typed refusal and not evidence. The adapter bounds and discards its raw content, appends an `errored` trajectory step with no result reference, and continues reading while the model recovers in its own loop.
 5. Every stream event is checked against the Converse message grammar: one message at a time, blocks opened before their deltas, and a stop reason that matches the message content. A grammar violation, a service error event, released text past 64 KiB, or a stream that closes before `end_turn` or with an unanswered tool call is a dependency failure. Text already sent stays on screen, and the receipt keeps the trajectory reached so far.

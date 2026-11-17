@@ -9,6 +9,14 @@
 
 > **Proposed amendments, 2026-10-07.** [ADR-092](adr-092-forecast-the-chronos-2-baseline-with-known-in-advance-covariates.md) (Proposed) would add an internal `pacing_spend` target and store a quantile grid with a daily mean per series and day. [ADR-090](adr-090-evaluate-budget-scenarios-at-request-time-over-stored-draws.md) (Proposed) would answer arbitrary scenario inputs at request time, by arithmetic over stored draws, which this decision's review trigger names. [ADR-114](adr-114-run-curve-and-forecast-jobs-as-execution-graph-workloads.md) (Proposed) would run the daily job under the execution-graph control plane. The offline decision stands, and this decision stays in force, unchanged, until they are accepted.
 
+> **Amended 2026-11-17: weekly retail demand on the Vendor basis.** The forecasting scope also covers
+> a weekly retail demand forecast: ordered and shipped units, shipped revenue and cost of goods
+> shipped, 13 weeks ahead, from Vendor Central history, offline and retained as this decision says
+> ([ADR-156](adr-156-classify-forecast-weeks-as-observed-inferred-zero-or-unknown.md) to
+> [ADR-160](adr-160-mount-the-jumpstart-chronos-2-artifact-and-enforce-isolation-in-iam.md),
+> [ADR-163](adr-163-serve-demand-forecasts-and-status-through-a-read-api.md)). Built; not yet deployed
+> outside dev or live-accepted. The ad-attributed targets above are unchanged.
+
 ## Context
 
 Forecast inputs refresh through governed daily curation rather than a streaming path. A request-time

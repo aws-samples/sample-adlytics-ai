@@ -19,9 +19,11 @@ artifact; neither invokes a model.
 
 ### Read layer
 
-The weekly retail demand forecast is read through one service behind two `GET` routes on the
+The weekly retail demand forecast is read through one service
+([`forecast_read/service.py`](../../../src/adapters/inbound/forecast_read/service.py)) behind two `GET` routes on the
 authenticated HTTP API (`/api/demand-forecast` and `/api/demand-forecast/status`) and four
-`forecast_` Gateway tools. The page calls the routes; the tools run the same service in their own
+`forecast_` Gateway tools ([`forecast.py`](../../../src/adapters/inbound/tool_handlers/forecast.py)). The page
+([`DemandForecastView.tsx`](../../../frontend/components/DemandForecastView.tsx)) calls the routes; the tools run the same service in their own
 Lambda. Both functions may only `GetItem` the `SET#` and `GEN#` keys of the forecast table, and
 every item a request reads is keyed by the one `CURRENT` read. Writes stay operator commands.
 Decided by [ADR-163](../../decisions/adr-163-serve-demand-forecasts-and-status-through-a-read-api.md);

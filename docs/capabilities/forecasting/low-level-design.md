@@ -136,8 +136,8 @@ conclusions and typed outcome counts.
 Decided by [ADR-163](../../decisions/adr-163-serve-demand-forecasts-and-status-through-a-read-api.md)
 (2026-11-17). The weekly retail demand forecast is served by two read-only routes on the
 authenticated HTTP API. The page and the four chat tools run one read service; it computes no
-figure. The contract is `src/domain/forecasting/read_api.py`; its JSON Schema, route keys and closed
-enums are generated into `contracts/generated/demand-forecast-api.json` by
+figure. The contract is [`read_api.py`](../../../src/domain/forecasting/read_api.py); its JSON Schema, route keys and closed
+enums are generated into [`demand-forecast-api.json`](../../../contracts/generated/demand-forecast-api.json) by
 `make generate-forecast-schemas`.
 
 | Route | Query | Response |

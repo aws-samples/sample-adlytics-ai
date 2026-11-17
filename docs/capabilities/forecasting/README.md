@@ -3,9 +3,15 @@
 | | |
 |---|---|
 | **Level** | L2 — capability overview |
-| **Status** | Proposed — review required before implementation |
-| **Owns** | Offline baseline forecast artifacts for ad-attributed purchases and ad-attributed revenue, their serving contract, freshness, uncertainty, and quality gates. |
+| **Status** | Weekly retail demand forecast: built, not yet deployed outside dev or live-accepted. Ad-attributed baseline: proposed, review required before implementation |
+| **Owns** | The weekly retail demand forecast and its read API; offline baseline forecast artifacts for ad-attributed purchases and ad-attributed revenue. For both: the serving contract, freshness, uncertainty, and quality gates. |
 | **Conventions** | [Documentation conventions](../../conventions.md) |
+
+> **Revision, 2026-11-17: the read API, page and tools are built.** Slice 3 serves the weekly retail
+> demand forecast through two read-only routes on the authenticated API, the Retail hub's Demand
+> forecast page and four chat tools, all over one read service that computes no figure
+> ([ADR-163](../../decisions/adr-163-serve-demand-forecasts-and-status-through-a-read-api.md)). Not
+> yet deployed or live-accepted; deploy and dev acceptance follow slice 2's merge.
 
 > **Revision, 2026-11-16: weekly retail demand forecast gated and stored in dev, not shown.**
 > Slice 1 added a weekly Vendor demand engine (Chronos-2 on ordered and shipped units, shipped
@@ -20,7 +26,15 @@
 
 ## 1. Purpose and scope
 
-Forecasting gives a practitioner an evidence-backed expectation of future ad-attributed purchases and
+The **weekly retail demand forecast** gives a supply planner each product's expected demand on the
+Vendor Central basis: ordered units, shipped units, shipped revenue and cost of goods shipped, 13
+weeks ahead, with p10, p50 and p90 for every week. It runs offline, shows Chronos-2 only where it
+beats both simple models on a backtest, and keeps the last good generation when a run fails or is
+held ([ADR-156](../../decisions/adr-156-classify-forecast-weeks-as-observed-inferred-zero-or-unknown.md)
+to [ADR-160](../../decisions/adr-160-mount-the-jumpstart-chronos-2-artifact-and-enforce-isolation-in-iam.md)).
+It is read through the [read API](low-level-design.md#read-api) only.
+
+The proposed **ad-attributed baseline** is a separate capability. Forecasting gives a practitioner an evidence-backed expectation of future ad-attributed purchases and
 ad-attributed revenue under continuation of observed conditions. It publishes daily p10/p50/p90 paths
 for fixed 7-, 30-, and 90-day views after governed historical input passes eligibility and backtesting
 gates.
@@ -43,9 +57,9 @@ them through a purpose-built forecast page and governed read interface.
 
 | | |
 |---|---|
-| **Responsibility** | Build and validate baseline forecast paths offline; retain the last valid generation; serve typed forecast artifacts by exact governed series identity. |
+| **Responsibility** | Build and validate forecasts offline; retain the last valid generation; serve them by exact governed identity. Weekly retail demand: one fenced `CURRENT` per forecast set, read through two `GET` routes, the Demand forecast page and four `forecast_` chat tools. |
 | **Inbound** | Selected daily canonical history, metric/basis/grain identity, coverage/suppression/restatement state, and model configuration. |
-| **Outbound** | Exact forecast artifact with daily p10/p50/p90 path, input coverage end, generation time, model version, quality/backtest state, and typed unavailable/stale state. |
+| **Outbound** | Weekly retail demand: per product and target, 13 weekly p10/p50/p90, the shown model and its backtest accuracy or the reason none is shown, recent weeks, and the generation's freshness and status. Ad-attributed (proposed): a daily p10/p50/p90 path with coverage end, generation time, model version and quality state. Both carry a typed unavailable or stale state. |
 | **Owner** | Offline forecast job, forecast-artifact store, read adapter, and dedicated forecast page. |
 | **Guarantee** | The product distinguishes forecast from observed evidence, attributes every path to a governed historical series, and never represents a baseline as causal budget advice. |
 
@@ -55,5 +69,14 @@ them through a purpose-built forecast page and governed read interface.
 - [Low-level design](low-level-design.md) owns forecast targets, eligibility, artifact fields, horizons,
   refresh, quality gates, and serving constraints.
 - [ADR-001](../../decisions/adr-001-chronos-deployment.md) owns the offline-batch decision rationale.
+- [Read API](low-level-design.md#read-api) and [Demand forecast page](low-level-design.md#demand-forecast-page)
+  in the low-level design own the weekly forecast's routes, error codes, deadlines and page copy.
+- Weekly retail demand decisions: [ADR-156](../../decisions/adr-156-classify-forecast-weeks-as-observed-inferred-zero-or-unknown.md)
+  (missing weeks), [ADR-157](../../decisions/adr-157-show-chronos-2-only-where-it-beats-both-simple-models.md)
+  (model shown), [ADR-158](../../decisions/adr-158-store-demand-forecasts-as-immutable-generations-under-one-fenced-current.md)
+  (store and pointer), [ADR-159](../../decisions/adr-159-orchestrate-the-demand-forecast-with-step-functions-until-adr-114.md)
+  (orchestration), [ADR-160](../../decisions/adr-160-mount-the-jumpstart-chronos-2-artifact-and-enforce-isolation-in-iam.md)
+  (model artifact and isolation) and [ADR-163](../../decisions/adr-163-serve-demand-forecasts-and-status-through-a-read-api.md)
+  (read API).
 - [Slice 3 delivery plan](slice-3-delivery-plan.md) owns the read API and page build order and its
   departures from the reviewed design.

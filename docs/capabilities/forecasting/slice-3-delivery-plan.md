@@ -14,7 +14,7 @@
 - **One commit per part**, after the part's gate passes. `make check` is green after every part.
 - **No figure computed at read time.** Readers return stored values; the only arithmetic is server
   display rounding of one stored value (ADR-084).
-- **Every failure path has a specific code** from `ADLY-FORECAST_READ-0001` to `-0011`.
+- **Every failure path has a specific code** from `ADLY-FORECAST_READ-0001` to `-0012`.
 - **No AWS call in the build.** Deploy, live denial checks and dev acceptance run after slice 2
   merges.
 
