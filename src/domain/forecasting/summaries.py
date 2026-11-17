@@ -1,18 +1,21 @@
 # SPDX-License-Identifier: MIT-0
 """Forecast summaries for the page and tools, one implementation for both (design §4a).
 
-Slice 2 holds `roster_entry()`, the one function that builds a list row (`publish_shard` uses
-it for roster parts and the readers for an exact-ASIN search), and `cap_title()`, the display
-rule for titles over `serving.title_max_bytes`. The p50 totals are sums of
-the stored four-place values (§4d), so they are exact and stay stored values; rounding for
-display happens later, once. `accuracy_class` is null until `classify_accuracy()` lands
-(slice 3).
+`roster_entry()` is the one function that builds a list row. Only the publisher calls it: the
+row is stored in the roster part and in each product's `ASIN#` item, so readers never sum
+(ADR-163). `cap_title()` is the display rule for titles over `serving.title_max_bytes`. The p50
+totals are sums of the stored four-place values (§4d), so they are exact and stay stored values;
+rounding for display happens later, once, on the server. The stored `accuracy_class` stays null:
+`classify_accuracy()` labels the chosen model's stored score at read time and never changes
+published bytes. `require_shared_currency()` refuses a money answer over two currencies.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from decimal import Decimal
+from typing import Final, Literal
 
 from domain.forecasting.boundary import (
     CandidateSeriesV1,
@@ -20,13 +23,21 @@ from domain.forecasting.boundary import (
     RosterTargetV1,
     TargetCandidateV1,
 )
+from domain.forecasting.models import AccuracyGap
 from domain.forecasting.numeric import stored_text
 from domain.forecasting.policy import MONEY_TARGETS, TARGETS
+from domain.shared_kernel.errors import DomainError, ErrorCode
 
 P50_VIEWS: tuple[str, ...] = ("4", "8", "13")
 """The list row's p50 totals: the first 4, 8 and 13 forecast weeks (`serving.views`)."""
 
 TRUNCATION_MARK = "…"
+
+AccuracyClass = Literal["beat_naive", "not_beat_naive", "history_unchanging", "scale_unknown"]
+"""A label for the chosen model's stored backtest score; never a figure (ADR-163)."""
+
+CURRENCY_MISMATCH: Final = ErrorCode("FORECAST_READ", 6)
+"""A money answer would carry more than one currency; `context.currencies` lists them."""
 
 
 @dataclass(frozen=True)
@@ -89,3 +100,45 @@ def roster_entry(
         accuracy_class=None,
         stockout_weeks_last_13=candidate.stockout_weeks_last_13,
     )
+
+
+def classify_accuracy(candidate: TargetCandidateV1) -> AccuracyClass | None:
+    """Label the chosen model's stored score, or None when withheld or unscored.
+
+    MASE below 1 beat repeating the naive value; at or above 1 it did not. A valid backtest with
+    no MASE carries its reason instead. This compares a stored value with 1; it makes no figure.
+    """
+    if candidate.chosen_model is None:
+        return None
+    score = next(
+        (e.backtest_score for e in candidate.evaluations if e.model is candidate.chosen_model),
+        None,
+    )
+    if score is None:
+        return None
+    if score.mase is not None:
+        return "beat_naive" if Decimal(score.mase) < 1 else "not_beat_naive"
+    if score.mase_gap is AccuracyGap.HISTORY_UNCHANGING:
+        return "history_unchanging"
+    if score.mase_gap is AccuracyGap.MASE_SCALE_UNKNOWN:
+        return "scale_unknown"
+    return None
+
+
+def require_shared_currency(target: str, rows: Iterable[RosterTargetV1]) -> None:
+    """Refuse a money target whose shown rows carry more than one currency (M2).
+
+    A withheld row carries no figure, so its currency never counts. Unit targets never refuse.
+    """
+    if target not in MONEY_TARGETS:
+        return
+    codes = sorted(
+        {row.currency_code for row in rows if row.chosen_model is not None and row.currency_code}
+    )
+    if len(codes) > 1:
+        raise DomainError(
+            CURRENCY_MISMATCH,
+            "These products are forecast in different currencies, so they can't be answered "
+            "together. Ask about one currency at a time.",
+            context={"currencies": codes},
+        )

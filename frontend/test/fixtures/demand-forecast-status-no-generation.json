@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "generation": null,
+  "freshness": {
+    "state": "unavailable",
+    "age_days": null,
+    "stale_after_days": 16,
+    "causes": []
+  },
+  "last_run": null,
+  "hold": "none",
+  "rollback_active": false,
+  "rolled_back_from": null,
+  "next_check_at": "2026-11-17T13:00:00Z",
+  "next_new_input_check_at": "2026-11-19T13:00:00Z"
+}

@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "generation": {
+    "generation_id": "run-1-0123456789ab",
+    "published_at": "2026-10-31T09:30:00Z",
+    "input_end": "2026-11-07"
+  },
+  "freshness": {
+    "state": "stale",
+    "age_days": 17,
+    "stale_after_days": 16,
+    "causes": [
+      "age_over_limit",
+      "last_run_held"
+    ]
+  },
+  "last_run": {
+    "outcome": "held_quality",
+    "failure_category": "item_too_large",
+    "failure_family": "quality_check",
+    "retry_disposition": "suppress",
+    "transient_retries": 0,
+    "at": "2026-11-08T14:05:09Z"
+  },
+  "hold": "quality",
+  "rollback_active": false,
+  "rolled_back_from": null,
+  "next_check_at": "2026-11-17T13:00:00Z",
+  "next_new_input_check_at": "2026-11-19T13:00:00Z"
+}
