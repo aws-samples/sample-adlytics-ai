@@ -67,6 +67,8 @@ FORECAST_STORE_INCOMPLETE: Final = ErrorCode("FORECAST_READ", 8)
 FORECAST_STORE_UNAVAILABLE: Final = ErrorCode("FORECAST_READ", 9)
 ROUTE_UNKNOWN: Final = ErrorCode("FORECAST_READ", 10)
 FORECAST_READ_FAILED: Final = ErrorCode("FORECAST_READ", 11)
+IDENTITY_REQUIRED: Final = ErrorCode("FORECAST_READ", 12)
+"""The authorizer projected no session subject; identity errors carry no code of their own."""
 
 
 class ForecastReadRefusal(StrEnum):
@@ -98,8 +100,9 @@ REFUSAL_BY_CODE: Final[Mapping[str, ForecastReadRefusal]] = {
     str(FORECAST_STORE_UNAVAILABLE): ForecastReadRefusal.FORECAST_STORE_UNAVAILABLE,
     str(ROUTE_UNKNOWN): ForecastReadRefusal.ROUTE_UNKNOWN,
     str(FORECAST_READ_FAILED): ForecastReadRefusal.FORECAST_READ_FAILED,
+    str(IDENTITY_REQUIRED): ForecastReadRefusal.IDENTITY_REQUIRED,
 }
-"""Every forecast read code by its string; any other code is `IDENTITY_REQUIRED` or a defect."""
+"""Every forecast read code by its string."""
 
 # --- Shared types ---------------------------------------------------------------------------
 
@@ -478,7 +481,7 @@ class DemandForecastRefusalV1(_Api):
 
     schema_version: SchemaVersion
     refused: ForecastReadRefusal
-    code: Annotated[str, StringConstraints(pattern=r"^ADLY-[A-Z_]+-[0-9]{4}$")]
+    code: Annotated[str, StringConstraints(pattern=r"^ADLY-FORECAST_READ-[0-9]{4}$")]
     detail: NonEmpty
 
 
@@ -1032,11 +1035,9 @@ def build_status(source: StatusSource, now: datetime) -> DemandForecastStatusV1:
     )
 
 
-def refusal_body(
-    error: AdlyticsError, refused: ForecastReadRefusal | None = None
-) -> DemandForecastRefusalV1:
-    """Build the refusal body for a coded error; `refused` names a code from outside this module."""
-    name = refused or REFUSAL_BY_CODE.get(str(error.code))
+def refusal_body(error: AdlyticsError) -> DemandForecastRefusalV1:
+    """Build the refusal body for a coded forecast read error."""
+    name = REFUSAL_BY_CODE.get(str(error.code))
     if name is None:
         raise ValueError(f"{error.code} is not a forecast read refusal")
     return DemandForecastRefusalV1(

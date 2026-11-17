@@ -163,6 +163,9 @@ DEEP_INPUT_REVISIONS: Final[tuple[tuple[str, str], ...]] = (
     # Demand forecast slice 2 (A7): the generated spans and the tracing re-export gain the
     # DEMAND_FORECAST_PUBLISH span; deep inputs are unchanged.
     ("2026-11-16.2", "e0aa8e36ac9ba4cef4a307807b683ad21e6c95e8431580ebf63364b278d7cae5"),
+    # Demand forecast slice 3 (ADR-163): the generated spans and the tracing re-export gain the
+    # DEMAND_FORECAST_READ span, and QualifierKind gains FORECAST; deep inputs are unchanged.
+    ("2026-11-17.1", "0afcff5a52980fa57c35e375fa0bcd38aa597785a123e81d155540545e1ee2b2"),
 )
 DEEP_INPUT_REVISION: Final[str] = DEEP_INPUT_REVISIONS[-1][0]
 """The revision every deep cache key carries (``#DEEPINPUT#<revision>``)."""

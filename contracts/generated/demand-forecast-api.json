@@ -1281,7 +1281,7 @@
       "description": "Every refusal body: the closed name, its code and the user-visible description.",
       "properties": {
         "code": {
-          "pattern": "^ADLY-[A-Z_]+-[0-9]{4}$",
+          "pattern": "^ADLY-FORECAST_READ-[0-9]{4}$",
           "title": "Code",
           "type": "string"
         },

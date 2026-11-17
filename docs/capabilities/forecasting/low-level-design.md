@@ -192,10 +192,10 @@ one `CURRENT` read. Round 2 runs concurrently and joins by key.
 | ADLY-FORECAST_READ-0009 | `FORECAST_STORE_UNAVAILABLE` | 503 | a DynamoDB client, connection or throttle error, or the request deadline (`context.cause`) |
 | ADLY-FORECAST_READ-0010 | `ROUTE_UNKNOWN` | 404 | a route key this function doesn't serve |
 | ADLY-FORECAST_READ-0011 | `FORECAST_READ_FAILED` | 500 | any other exception; `context.error_type` carries only the class name |
+| ADLY-FORECAST_READ-0012 | `IDENTITY_REQUIRED` | 403 | the authorizer projected no session subject |
 
-A missing session is the existing `IDENTITY_REQUIRED` (403); a missing reader setting is
-`CONFIG_UNRESOLVED` at init. Store faults and `FORECAST_READ_FAILED` page through the error
-catch-all alarm; validation refusals do not.
+A missing reader setting is `CONFIG_UNRESOLVED` at init. Store faults and `FORECAST_READ_FAILED`
+page through the error catch-all alarm; validation refusals do not.
 
 **Deadlines.** Each request's deadline is the function's remaining time less a 1 s response
 reserve. Each round runs in its own short-lived thread pool, shut down without waiting on every

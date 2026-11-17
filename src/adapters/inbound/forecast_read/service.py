@@ -298,13 +298,13 @@ def _item(found: object) -> AsinItemView | None:
 
 def _round(reads: Mapping[str, Callable[[], object]], context: ReadContext) -> dict[str, object]:
     """Run one round concurrently until the deadline; map every store failure to its code."""
+    if context.deadline <= time.monotonic():
+        raise _unavailable("deadline")
     executor = ThreadPoolExecutor(max_workers=len(reads))
     try:
         futures = {key: executor.submit(read) for key, read in reads.items()}
         remaining = context.deadline - time.monotonic()
-        if remaining <= 0:
-            raise ForecastReadDeadline
-        _done, pending = wait(futures.values(), timeout=remaining)
+        _done, pending = wait(futures.values(), timeout=max(0.0, remaining))
         if pending:
             raise ForecastReadDeadline
         return {key: future.result() for key, future in futures.items()}

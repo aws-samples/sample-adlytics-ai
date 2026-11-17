@@ -12,7 +12,7 @@ from __future__ import annotations
 import threading
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field, replace
+from dataclasses import replace
 from typing import Any
 
 import pytest
@@ -22,15 +22,15 @@ from forecast_read_support import (
     GENERATION,
     NOW,
     SERVING,
+    VALUES,
+    FakeReader,
+    fake_reader,
     generation,
     item,
-    pages,
     pointer,
-    ranked,
 )
 from forecast_series_support import policy
 
-from adapters.config import DemandForecastReaderValues
 from adapters.inbound.forecast_read.service import (
     AsinRowsRequest,
     ForecastReadService,
@@ -39,81 +39,22 @@ from adapters.inbound.forecast_read.service import (
     ReadResult,
 )
 from adapters.outbound.dynamodb.items import ItemError
-from domain.forecasting import list_pages, read_api
-from domain.forecasting.boundary import ForecastSetV1, RosterEntryV1
+from domain.forecasting import list_pages
+from domain.forecasting.boundary import ForecastSetV1
 from domain.forecasting.list_pages import FilterPages
 from domain.forecasting.publish import CurrentPointer, forecast_set_id
-from domain.forecasting.read_api import AsinItemView, GenerationView, ListRequest
+from domain.forecasting.read_api import ListRequest
 from domain.shared_kernel.errors import AdlyticsError, DependencyError, DomainError, InvariantError
 from ports.outbound.forecast_store import (
     ForecastStoreIncomplete,
     ForecastStoreThrottled,
-    ReadListPageRequest,
-    ReadListPageResult,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.covers("ADR-163")]
 
-VALUES = DemandForecastReaderValues(
-    forecast_table="adlytics-test-demand-forecast",
-    marketplace_key="fictional-marketplace",
-    check_schedule=read_api.parse_daily_schedule("cron(0 13 * * ? *)"),
-)
-
-
-@dataclass
-class FakeReader:
-    """The reader port over in-memory stored views; every call is one `GetItem`."""
-
-    current: CurrentPointer | None
-    meta: GenerationView | None = None
-    stored_pages: dict[tuple[str, int], tuple[RosterEntryV1, ...]] = field(
-        default_factory=dict[tuple[str, int], tuple[RosterEntryV1, ...]]
-    )
-    items: dict[str, AsinItemView] = field(default_factory=dict[str, AsinItemView])
-    calls: list[tuple[str, str]] = field(default_factory=list[tuple[str, str]])
-    fail: Exception | None = None
-    block: threading.Event | None = None
-    _lock: threading.Lock = field(default_factory=threading.Lock)
-
-    def _call(self, kind: str, key: str) -> None:
-        with self._lock:
-            self.calls.append((kind, key))
-        if self.block is not None and kind == "asin":
-            self.block.wait(30)
-        if self.fail is not None and kind != "current":
-            raise self.fail
-
-    def get_current(self, set_id: str) -> CurrentPointer | None:
-        self._call("current", set_id)
-        return self.current
-
-    def read_generation(self, generation_id: str) -> GenerationView | None:
-        self._call("meta", generation_id)
-        return self.meta if self.meta and self.meta.generation_id == generation_id else None
-
-    def read_list_page(self, request: ReadListPageRequest) -> ReadListPageResult:
-        self._call("page", f"{request.generation_id}#{request.filter}#{request.page}")
-        return ReadListPageResult(self.stored_pages.get((request.filter, request.page)))
-
-    def read_asin(self, generation_id: str, display_asin: str) -> AsinItemView | None:
-        self._call("asin", f"{generation_id}#{display_asin}")
-        return self.items.get(display_asin) if generation_id == GENERATION else None
-
 
 def _context(seconds: float = 5.0) -> ReadContext:
     return ReadContext(NOW, time.monotonic() + seconds)
-
-
-def _reader() -> FakeReader:
-    views = [item(1), item(2, p50="20.0000"), item(3, shown=False)]
-    entries = ranked(views)
-    return FakeReader(
-        current=pointer(),
-        meta=generation(entries),
-        stored_pages=pages(entries),
-        items={view.candidate.display_asin: view for view in views},
-    )
 
 
 def _service(reader: FakeReader) -> ForecastReadService:
@@ -129,7 +70,7 @@ def test_the_set_id_is_composed_as_the_publisher_composes_it() -> None:
             selling_program=declared.selling_program,
         )
     )
-    assert _service(_reader()).set_id == expected
+    assert _service(fake_reader()).set_id == expected
     assert len(expected) == 12
 
 
@@ -168,13 +109,13 @@ def _run(plan: str, service: ForecastReadService, context: ReadContext) -> int:
     ],
 )
 def test_each_plan_reads_the_items_its_read_plan_row_names(plan: str, items: int) -> None:
-    reader = _reader()
+    reader = fake_reader()
     assert _run(plan, _service(reader), _context()) == items
     assert len(reader.calls) == items
 
 
 def test_a_later_page_reads_meta_and_its_page_item_concurrently() -> None:
-    reader = _reader()
+    reader = fake_reader()
     with pytest.raises(AdlyticsError) as refused:
         _service(reader).list_page(ListRequest("all", 2), _context())
     assert str(refused.value.code) == "ADLY-FORECAST_READ-0003"
@@ -211,7 +152,7 @@ def test_page_1000_of_a_50000_product_generation_reads_exactly_three_items() -> 
 
 
 def test_round_two_reads_the_generation_round_one_named_after_a_publish() -> None:
-    reader = _reader()
+    reader = fake_reader()
     service = _service(reader)
     original = reader.get_current
 
@@ -229,7 +170,7 @@ def test_round_two_reads_the_generation_round_one_named_after_a_publish() -> Non
 
 def test_a_read_blocked_past_the_deadline_is_unavailable_and_never_holds_the_next_request() -> None:
     """H3: a warm function reuses the service, so a blocked thread must not delay the next call."""
-    blocked = _reader()
+    blocked = fake_reader()
     gate = threading.Event()
     blocked.block = gate
     service = _service(blocked)
@@ -276,7 +217,7 @@ def test_a_read_blocked_past_the_deadline_is_unavailable_and_never_holds_the_nex
 def test_each_store_failure_leaves_with_its_forecast_code(
     failure: Exception, code: str, cause: str | None
 ) -> None:
-    reader = _reader()
+    reader = fake_reader()
     reader.fail = failure
     with pytest.raises(AdlyticsError) as refused:
         _service(reader).asin_detail("B0FIXTUR01", _context())
@@ -288,7 +229,7 @@ def test_each_store_failure_leaves_with_its_forecast_code(
 
 
 def test_a_meta_the_pointer_names_but_the_table_lacks_is_store_incomplete() -> None:
-    reader = _reader()
+    reader = fake_reader()
     reader.meta = None
     with pytest.raises(InvariantError) as refused:
         _service(reader).list_page(ListRequest("all", 1), _context())
@@ -296,7 +237,7 @@ def test_a_meta_the_pointer_names_but_the_table_lacks_is_store_incomplete() -> N
 
 
 def test_a_money_answer_over_two_shown_currencies_is_refused_and_units_answer() -> None:
-    reader = _reader()
+    reader = fake_reader()
     reader.items["B0FIXTUR02"] = item(2, currency="EUR")
     reader.items["B0FIXTUR04"] = item(4, currency="EUR", shown=False)
     service = _service(reader)

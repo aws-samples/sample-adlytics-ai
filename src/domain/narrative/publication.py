@@ -66,6 +66,8 @@ class QualifierKind(StrEnum):
     SOURCE_TIMEZONE = "source_timezone"
     ASSOCIATION_ONLY = "association_only"
     """A `causal: false` metric (ADR-102): the answer says "association, not cause"."""
+    FORECAST = "forecast"
+    """A forecast figure (ADR-163): not observed, not causal, and excludes promotions."""
 
 
 @dataclass(frozen=True, slots=True)

@@ -1169,3 +1169,10 @@ spans:
     allowed_attributes: [operation, outcome, series_published, series_withheld, held_category, error_type, error_class, error_code, alarms]
     propagation: remote_boundary
     purpose: Trace one demand-forecast shard publish, generation commit or outcome record by outcome and series counts, without values or ASINs.
+  - constant: DEMAND_FORECAST_READ
+    name: demand_forecast.read
+    parent: root
+    required_attributes: [operation]
+    allowed_attributes: [operation, route, outcome, freshness, items_read, error_type, error_class, error_code, alarms]
+    propagation: remote_boundary
+    purpose: Trace one demand-forecast read request by route, outcome and items read, without ASINs or values.

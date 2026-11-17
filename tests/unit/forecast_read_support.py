@@ -8,15 +8,19 @@ read builders and the real `ShapedResponse` construction.
 
 from __future__ import annotations
 
+import threading
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from domain.forecasting import list_pages
+from adapters.config import DemandForecastReaderValues
+from domain.forecasting import list_pages, read_api
 from domain.forecasting.boundary import CandidateSeriesV1, RosterEntryV1
 from domain.forecasting.policy import MONEY_TARGETS, TARGETS, ServingPolicy
 from domain.forecasting.publish import CurrentPointer, Disposition, LastAttempt, RunOutcome
 from domain.forecasting.read_api import AsinItemView, GenerationView
 from domain.forecasting.summaries import roster_entry
+from ports.outbound.forecast_store import ReadListPageRequest, ReadListPageResult
 
 INPUT_END = date(2026, 11, 7)
 """A Saturday."""
@@ -196,3 +200,61 @@ def pointer(
 
 
 EMPTY_POINTER = CurrentPointer(fence=0)
+
+
+VALUES = DemandForecastReaderValues(
+    forecast_table="adlytics-test-demand-forecast",
+    marketplace_key="fictional-marketplace",
+    check_schedule=read_api.parse_daily_schedule("cron(0 13 * * ? *)"),
+)
+
+
+@dataclass
+class FakeReader:
+    """The reader port over in-memory stored views; every call is one `GetItem`."""
+
+    current: CurrentPointer | None
+    meta: GenerationView | None = None
+    stored_pages: dict[tuple[str, int], tuple[RosterEntryV1, ...]] = field(
+        default_factory=dict[tuple[str, int], tuple[RosterEntryV1, ...]]
+    )
+    items: dict[str, AsinItemView] = field(default_factory=dict[str, AsinItemView])
+    calls: list[tuple[str, str]] = field(default_factory=list[tuple[str, str]])
+    fail: Exception | None = None
+    block: threading.Event | None = None
+    _lock: threading.Lock = field(default_factory=threading.Lock)
+
+    def _call(self, kind: str, key: str) -> None:
+        with self._lock:
+            self.calls.append((kind, key))
+        if self.block is not None and kind == "asin":
+            self.block.wait(30)
+        if self.fail is not None and kind != "current":
+            raise self.fail
+
+    def get_current(self, set_id: str) -> CurrentPointer | None:
+        self._call("current", set_id)
+        return self.current
+
+    def read_generation(self, generation_id: str) -> GenerationView | None:
+        self._call("meta", generation_id)
+        return self.meta if self.meta and self.meta.generation_id == generation_id else None
+
+    def read_list_page(self, request: ReadListPageRequest) -> ReadListPageResult:
+        self._call("page", f"{request.generation_id}#{request.filter}#{request.page}")
+        return ReadListPageResult(self.stored_pages.get((request.filter, request.page)))
+
+    def read_asin(self, generation_id: str, display_asin: str) -> AsinItemView | None:
+        self._call("asin", f"{generation_id}#{display_asin}")
+        return self.items.get(display_asin) if generation_id == GENERATION else None
+
+
+def fake_reader() -> FakeReader:
+    views = [item(1), item(2, p50="20.0000"), item(3, shown=False)]
+    entries = ranked(views)
+    return FakeReader(
+        current=pointer(),
+        meta=generation(entries),
+        stored_pages=pages(entries),
+        items={view.candidate.display_asin: view for view in views},
+    )
