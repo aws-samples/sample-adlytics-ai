@@ -5,6 +5,7 @@
     "/admin/prompts/",
     "/audiences/",
     "/campaigns/",
+    "/demand-forecast/",
     "/new-customers/",
     "/products-and-ads/",
     "/reach/",

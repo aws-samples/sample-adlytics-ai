@@ -21,11 +21,13 @@ export type SessionEntitlements = Readonly<Partial<Record<SessionField, boolean>
 /** ADR-151: the composed tabs this frontend renders, each over its sources' served presentations. */
 export const composedTabIds = ['overview', 'products-and-ads'] as const;
 export type ComposedTabId = typeof composedTabIds[number];
+/** ADR-163: the customer tabs this frontend renders over a read API. */
+export const apiTabIds = ['demand-forecast'] as const;
 
 export interface ManifestTab {
   readonly description: string;
   readonly entitlement: { readonly group: string; readonly session_field: SessionField } | null;
-  readonly kind: 'composed' | 'page' | 'static';
+  readonly kind: 'api' | 'composed' | 'page' | 'static';
   readonly label: string;
   readonly order: number;
   /** UI refresh 3.8: the customer question the tab answers, or null. */
@@ -84,7 +86,7 @@ function route(value: unknown, context: string): string {
 
 function parseTab(value: unknown, audience: ManifestHub['audience']): ManifestTab {
   const tab = record(value, ['description', 'entitlement', 'kind', 'label', 'order', 'question', 'route', 'tab_id'], 'manifest tab');
-  const kind = oneOf(tab.kind, ['composed', 'page', 'static'] as const, 'manifest tab kind');
+  const kind = oneOf(tab.kind, ['api', 'composed', 'page', 'static'] as const, 'manifest tab kind');
   let entitlement: ManifestTab['entitlement'] = null;
   if (tab.entitlement !== null) {
     const raw = record(tab.entitlement, ['group', 'session_field'], 'manifest tab entitlement');
@@ -110,6 +112,9 @@ function parseTab(value: unknown, audience: ManifestHub['audience']): ManifestTa
   }
   if (kind === 'composed' && !(composedTabIds as readonly string[]).includes(tabId)) {
     throw new TypeError('Manifest composed tab is not a rendered view.');
+  }
+  if (kind === 'api' && !(apiTabIds as readonly string[]).includes(tabId)) {
+    throw new TypeError('Manifest api tab is not a rendered view.');
   }
   if (!Number.isSafeInteger(tab.order) || (tab.order as number) < 1) {
     throw new TypeError('Manifest tab order must be a positive integer.');

@@ -63,7 +63,7 @@ class NavigationTab:
     """
 
     tab_id: str
-    kind: Literal["page", "composed", "static"]
+    kind: Literal["page", "composed", "static", "api"]
     hub_id: str
     route: str
     label: str
@@ -189,6 +189,36 @@ def _composed_tabs(value: object, where: str) -> tuple[NavigationTab, ...]:
     return tuple(tabs)
 
 
+def _api_tabs(value: object, where: str) -> tuple[NavigationTab, ...]:
+    """ADR-163: customer tabs whose page calls a read API; no page entry, artifact or sources."""
+    tabs: list[NavigationTab] = []
+    for index, item in enumerate(_sequence(value, where)):
+        context = f"{where}[{index}]"
+        raw = _mapping(item, context)
+        _exact(
+            raw,
+            {"route", "hub_id", "tab_id", "tab_label", "tab_description", "order"}
+            | ({"question"} & set(raw)),
+            context,
+        )
+        tabs.append(
+            NavigationTab(
+                tab_id=_nonblank(raw["tab_id"], f"{context}.tab_id"),
+                kind="api",
+                hub_id=_nonblank(raw["hub_id"], f"{context}.hub_id"),
+                route=_canonical_route(raw["route"], f"{context}.route"),
+                label=_nonblank(raw["tab_label"], f"{context}.tab_label"),
+                description=_nonblank(raw["tab_description"], f"{context}.tab_description"),
+                order=_positive_integer(raw["order"], f"{context}.order"),
+                entitlement=None,
+                question=(
+                    _nonblank(raw["question"], f"{context}.question") if "question" in raw else None
+                ),
+            )
+        )
+    return tuple(tabs)
+
+
 def _not_found_outputs(value: object, where: str) -> tuple[str, ...]:
     outputs = tuple(_nonblank(item, f"{where}[]") for item in _sequence(value, where))
     if len(set(outputs)) != len(outputs) or NOT_FOUND_PAGE not in outputs:
@@ -234,7 +264,9 @@ def load_navigation(root: Path) -> Navigation:
     path = root / NAVIGATION_PATH
     raw = _load_yaml_mapping(path)
     _exact(
-        raw, {"version", "hubs", "composed_routes", "static_routes", "not_found_outputs"}, str(path)
+        raw,
+        {"version", "hubs", "composed_routes", "api_routes", "static_routes", "not_found_outputs"},
+        str(path),
     )
     if raw["version"] != 1:
         raise PageSchemaError(f"{path}.version: expected 1.")
@@ -242,7 +274,8 @@ def load_navigation(root: Path) -> Navigation:
     pages = load_v2_page_schemas(root)
     page_tabs = _page_tabs(pages)
     composed = _composed_tabs(raw["composed_routes"], f"{path}.composed_routes")
-    tabs = page_tabs + composed + _static_tabs(raw["static_routes"], f"{path}.static_routes")
+    api = _api_tabs(raw["api_routes"], f"{path}.api_routes")
+    tabs = page_tabs + composed + api + _static_tabs(raw["static_routes"], f"{path}.static_routes")
     audiences = {hub.hub_id: hub.audience for hub in hubs}
     # ADR-151: a composed tab is a customer tab, and every source is a routed v2 page tab, so
     # each figure it shows has a drill-down tab serving the same presentation.
@@ -255,6 +288,9 @@ def load_navigation(root: Path) -> Navigation:
             raise PageSchemaError(
                 f"{tab.tab_id}: composed sources must be routed v2 page tabs, not {unknown!r}."
             )
+    for tab in api:
+        if audiences.get(tab.hub_id) == "operator":
+            raise PageSchemaError(f"{tab.tab_id}: an api tab belongs to a customer hub.")
     for tab in tabs:
         audience = audiences.get(tab.hub_id)
         if audience is None:
@@ -263,7 +299,7 @@ def load_navigation(root: Path) -> Navigation:
         if (audience == "operator") != (tab.entitlement is not None):
             raise PageSchemaError(
                 f"{tab.tab_id}: an operator hub lists only entitled static routes, "
-                "and a customer hub only presentation pages and composed tabs."
+                "and a customer hub only presentation pages, composed and api tabs."
             )
     for label, values in (
         ("tab ids", tuple(tab.tab_id for tab in tabs)),

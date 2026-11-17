@@ -88,6 +88,7 @@ def test_only_hubs_with_a_shipped_tab_are_listed_in_navigation_order() -> None:
         "/retention/",
         "/retail-health/",
         "/products-and-ads/",
+        "/demand-forecast/",
         "/admin/prompts/",
     ]
     assert manifest["root"] == {"route": "/", "tab_id": "overview"}
@@ -194,7 +195,7 @@ def test_two_root_owners_are_refused(tmp_path: Path) -> None:
     order: 1
     sources: [scorecard]
 """
-    anchor = "static_routes:\n"
+    anchor = "# Customer tabs served by a read API (ADR-163)"
     text = _navigation_text()
     assert text.count(anchor) == 1
     root = _workspace(tmp_path, navigation=text.replace(anchor, second + anchor))
@@ -233,6 +234,7 @@ def test_a_page_without_a_navigation_block_is_not_routed() -> None:
             "/admin/prompts/",
             "/audiences/",
             "/campaigns/",
+            "/demand-forecast/",
             "/new-customers/",
             "/products-and-ads/",
             "/reach/",
@@ -353,3 +355,30 @@ def test_data_pipeline_status_is_dark_until_its_navigation_entry_is_added(tmp_pa
             {"group": "operations-status-read", "session_field": "can_read_operational_status"},
         ),
     ]
+
+
+@pytest.mark.covers("ADR-163")
+def test_an_api_tab_is_a_customer_tab_with_its_own_manifest_kind(tmp_path: Path) -> None:
+    navigation = load_navigation(_workspace(tmp_path))
+    tab = next(tab for tab in navigation.tabs if tab.tab_id == "demand-forecast")
+    assert (tab.kind, tab.hub_id, tab.route, tab.order, tab.entitlement) == (
+        "api",
+        "retail",
+        "/demand-forecast/",
+        3,
+        None,
+    )
+
+
+@pytest.mark.covers("ADR-163")
+def test_an_api_tab_cannot_sit_in_the_operator_group(tmp_path: Path) -> None:
+    root = _workspace(
+        tmp_path,
+        navigation=_navigation_text().replace(
+            "    hub_id: retail\n    tab_id: demand-forecast",
+            "    hub_id: operations\n    tab_id: demand-forecast",
+        ),
+    )
+
+    with pytest.raises(PageSchemaError, match="api tab belongs to a customer hub"):
+        load_navigation(root)
