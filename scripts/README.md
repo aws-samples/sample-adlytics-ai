@@ -433,8 +433,11 @@ lives under the run-record root (`.runs/.staging/`, removed afterwards) because 
 runtime VM may share only the home directory. ASH, the template export and the mutation summary
 run without any `ADLYTICS_*` or `AWS_*` variable and without the other variables Finch forwards
 into its VM (`CONTAINER_FORWARDED`), because scanning a tree needs no AWS access; the ASH command
-mounts only the export and the output directory, never `~/.aws`. Every run writes a `release-gate` run record with
-each step, the ASH summaries, the three ASH `reports/` directories and the child records.
+mounts only the export and the output directory, never `~/.aws`. ASH runs with every reporter
+except flat-json turned off (`ASH_REPORTERS_OFF`), because the gate reads only
+`reports/ash.flat.json`; the scanners and suppressions are unchanged. Every run writes a
+`release-gate` run record with each step, the ASH summaries, each ASH run's flat report and log,
+and the child records.
 
 ## pr_flow.py
 
