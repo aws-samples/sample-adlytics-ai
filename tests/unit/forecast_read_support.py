@@ -96,18 +96,25 @@ def candidate(  # noqa: PLR0913 -- one fictional product with keyword overrides
     currency: str | None = "USD",
     p50: str = "10.5000",
     money_p50: str = "1234.5000",
+    week_states: tuple[str, ...] = (),
 ) -> CandidateSeriesV1:
-    """Return one fictional product's candidate; withheld products withhold every target."""
+    """Return one fictional product's candidate; withheld products withhold every target.
+
+    `week_states` sets the state of the first recent weeks for every target; the rest are
+    observed.
+    """
     targets = {
         t: _target(shown=shown, p50=money_p50 if t in MONEY_TARGETS else p50) for t in TARGETS
     }
+    states = [*week_states, *["observed"] * (13 - len(week_states))]
+    stored_value = {"observed": "9.0000", "inferred_zero": "0.0000", "unknown": None}
     weeks = [
         {
             "week_start": (INPUT_END - timedelta(days=6) - timedelta(weeks=12 - k)).isoformat(),
-            "targets": {t: {"state": "observed", "value": "9.0000"} for t in TARGETS},
-            "stockout": k == 12,
+            "targets": {t: {"state": state, "value": stored_value[state]} for t in TARGETS},
+            "stockout": k == 12 if state == "observed" else None,
         }
-        for k in range(13)
+        for k, state in enumerate(states)
     ]
     return CandidateSeriesV1.model_validate(
         {

@@ -91,7 +91,8 @@ FORECAST_RENDERING: Final = (
     "excludes promotions."
 )
 MIXED_RENDERING: Final = (
-    "These figures span forecasts and observed retail sales; the recent weeks are observed."
+    "These figures span forecasts and recent retail history; each recent week's state says "
+    "whether its value was observed, inferred as zero or is unknown."
 )
 
 
@@ -305,14 +306,14 @@ def _respond(  # noqa: PLR0913 -- one envelope from its typed parts
             AnswerQualifier(QualifierKind.TRUNCATED, truncated_line, ("metadata.truncated",))
         )
     narrative = [*draft.narrative, *(qualifier.rendering for qualifier in qualifiers)]
-    units = claim_fields[0].units if draft.values else None
+    units = claim_fields[0].units if claim_fields else None
     across = tuple(name for name in grain.dimensions if name != "series")
     return ShapedResponse(
         data=ResponseData(
             values=tuple(draft.values),
             units=units,
             grain=grain,
-            claim_fields=claim_fields if draft.values else (),
+            claim_fields=claim_fields,
             descriptor_fields=tuple(DescriptorField(name) for name in descriptors)
             if draft.values
             else (),
@@ -401,13 +402,22 @@ def _list(call: _Call, service: ForecastReadService) -> ShapedResponse:
         if counts is not None and counts.entry_count == 0:
             draft.narrative.append("No product in this forecast matches that status.")
     currency = _currency([entry.targets[target] for entry in entries], target)  # pyright: ignore[reportArgumentType]
-    draft.values.extend(_list_row(entry, target, ranked=asin is None) for entry in entries)
+    for entry in entries:
+        row: RosterTargetV1 = entry.targets[target]  # pyright: ignore[reportAssignmentType]
+        if target in MONEY_TARGETS and row.chosen_model is None:
+            # A withheld money row has no figure and so no currency to state; it is named instead.
+            draft.narrative.append(
+                f"{entry.display_asin} isn't forecast for {_TARGET_WORDS[target]}: "
+                f"{_reason(row.withheld_reason)}."
+            )
+            continue
+        draft.values.append(_list_row(entry, target, ranked=asin is None))
     week = frame.first_week
     return _respond(
         frame,
         draft,
         grain=Grain(("asin",)),
-        claim_fields=_total_fields(target, currency),
+        claim_fields=_total_fields(target, currency) if draft.values else (),
         descriptors=("asin", "title", "model_shown", "withheld_reason", "rank"),
         coverage=(week, week + timedelta(weeks=13, days=-1)),
         truncated_line=truncated,
@@ -421,7 +431,11 @@ def _band_fields(target: str, currency: str | None, *, recent: bool) -> tuple[Cl
         ClaimField("p50", units, "Forecast (p50)"),
         ClaimField("p90", units, "Forecast high (p90)"),
     )
-    return (*fields, ClaimField("actual", units, "Observed")) if recent else fields
+    return (
+        (*fields, ClaimField("actual", units, "Recent week value (state in week_state)"))
+        if recent
+        else fields
+    )
 
 
 def _absent(draft: _Draft, found: tuple[str, AsinItemView | None], target: str) -> bool:
@@ -533,7 +547,7 @@ def _rows(call: _Call, service: ForecastReadService) -> ShapedResponse:
         frame,
         draft,
         grain=grain,
-        claim_fields=_band_fields(target, currency, recent=recent),
+        claim_fields=_band_fields(target, currency, recent=recent) if draft.values else (),
         descriptors=descriptors,
         coverage=(start, end),
     )

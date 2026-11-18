@@ -109,6 +109,45 @@ def test_a_money_list_carries_two_place_figures_in_their_currency() -> None:
     assert answer.data.units == Units(UnitKind.CURRENCY, "USD")
     assert answer.data.values[0]["p50_total_4w"] == Decimal("4938.00")
     assert answer.data.values[0]["p50_total_13w"] == Decimal("16048.50")
+    assert [row["asin"] for row in answer.data.values] == ["B0FIXTUR02", "B0FIXTUR01"]
+    assert "B0FIXTUR03 isn't forecast for shipped revenue: too little history." in (
+        answer.narrative
+    )
+
+
+_WITHHELD_REVENUE = "B0FIXTUR03 isn't forecast for shipped revenue: too little history."
+_WITHHELD_COGS = "B0FIXTUR03 isn't forecast for shipped cost of goods sold: too little history."
+_ABSENT = "B0FIXTUR09 is not in this forecast."
+
+
+@pytest.mark.parametrize(
+    ("tool", "arguments", "lines"),
+    [
+        (ForecastTool.LIST, {"asin": "B0FIXTUR09"}, [_ABSENT]),
+        (ForecastTool.LIST, {"asin": "B0FIXTUR03"}, [_WITHHELD_REVENUE]),
+        (ForecastTool.LIST, {"status": "INSUFFICIENT_CONTEXT"}, [_WITHHELD_REVENUE]),
+        (ForecastTool.QUERY, {"asins": ["B0FIXTUR09"]}, [_ABSENT]),
+        (ForecastTool.QUERY, {"asins": ["B0FIXTUR03"], "target": "cogs_shipped"}, [_WITHHELD_COGS]),
+        (ForecastTool.SUMMARIZE, {"asin": "B0FIXTUR03"}, [_WITHHELD_REVENUE]),
+        (ForecastTool.SUMMARIZE, {"asin": "B0FIXTUR09"}, [_ABSENT]),
+        (
+            ForecastTool.COMPARE,
+            {"asins": ["B0FIXTUR03", "B0FIXTUR09"]},
+            [_WITHHELD_REVENUE, _ABSENT],
+        ),
+    ],
+)
+@pytest.mark.covers("ADR-084")
+def test_a_money_target_with_no_shown_row_is_the_valid_empty_answer_without_a_currency(
+    tool: ForecastTool, arguments: dict[str, Any], lines: list[str]
+) -> None:
+    """A money figure's currency comes from a shown row; with none, inventing one is the defect."""
+    called: dict[str, Any] = {"target": "revenue_shipped", **arguments}
+    answer = _answer(tool, **called)
+    assert (answer.data.values, answer.data.units, answer.data.claim_fields) == ((), None, ())
+    assert answer.metadata.row_count == 0
+    assert all(line in answer.narrative for line in lines)
+    assert QualifierKind.FORECAST not in _qualifiers(answer)
 
 
 def test_an_exact_asin_lookup_returns_its_stored_row_unranked() -> None:
@@ -180,6 +219,41 @@ def test_summarize_pairs_the_forecast_with_observed_recent_weeks_under_mixed_bas
     ]
     assert answer.data.additivity is not None
     assert answer.data.additivity.across == ("asin", "week_start")
+
+
+@pytest.mark.parametrize(
+    ("tool", "arguments"),
+    [
+        (ForecastTool.SUMMARIZE, {"asin": "B0FIXTUR01"}),
+        (ForecastTool.COMPARE, {"asins": ["B0FIXTUR01", "B0FIXTUR02"]}),
+    ],
+)
+def test_recent_history_carries_each_week_state_and_is_never_called_all_observed(
+    tool: ForecastTool, arguments: dict[str, Any]
+) -> None:
+    """An inferred zero or an unknown week stated as observed sales is a wrong figure."""
+    reader = fake_reader()
+    reader.items["B0FIXTUR01"] = item(1, week_states=("inferred_zero", "unknown"))
+    answer = _answer(tool, reader, target="units_ordered", view_weeks=4, **arguments)
+    recent = [
+        (row["week_state"], row["actual"], row["stockout"])
+        for row in answer.data.values
+        if row["asin"] == "B0FIXTUR01" and row["series"] == "recent_actual"
+    ]
+    assert recent[:3] == [
+        ("inferred_zero", 0, None),
+        ("unknown", None, None),
+        ("observed", 9, "false"),
+    ]
+    assert answer.data.units == Units(UnitKind.COUNT)
+    assert MIXED_RENDERING == (
+        "These figures span forecasts and recent retail history; each recent week's state says "
+        "whether its value was observed, inferred as zero or is unknown."
+    )
+    assert answer.narrative.count(MIXED_RENDERING) == 1
+    assert not any("recent weeks are observed" in line for line in answer.narrative)
+    actual = next(field for field in answer.data.claim_fields if field.name == "actual")
+    assert actual.label == "Recent week value (state in week_state)"
 
 
 def test_compare_names_a_withheld_and_an_absent_product_without_rows() -> None:
