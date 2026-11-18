@@ -559,8 +559,8 @@ TOOL_CONTRACTS: tuple[ToolContract, ...] = (
         name="forecast_summarize_asin",
         description=(
             "Published weekly demand forecasts and their accuracy, by exact ASIN: one product's "
-            "stored forecast of one target beside its observed recent weeks, with its stored "
-            "forecast total and backtest accuracy."
+            "stored forecast of one target beside its recent history, each week marked observed, "
+            "inferred-zero or unknown, with its stored forecast total and backtest accuracy."
         ),
         arguments=(
             Argument(
@@ -576,8 +576,8 @@ TOOL_CONTRACTS: tuple[ToolContract, ...] = (
         name="forecast_compare_asins",
         description=(
             "Published weekly demand forecasts and their accuracy, by exact ASIN: two to five "
-            "products' stored forecasts of one target side by side, each beside its observed "
-            "recent weeks."
+            "products' stored forecasts of one target side by side, each beside its recent "
+            "history, each week marked observed, inferred-zero or unknown."
         ),
         arguments=(_FORECAST_ASINS, _FORECAST_TARGET, _FORECAST_VIEW),
     ),

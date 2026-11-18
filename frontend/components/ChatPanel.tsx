@@ -86,7 +86,7 @@ export const TOOL_STEP_LABELS: Readonly<Record<string, string>> = {
   forecast_compare_asins: 'Compared demand forecasts across products',
   forecast_list_asins: 'Listed the products in the demand forecast',
   forecast_query_asins: "Read products' demand forecasts",
-  forecast_summarize_asin: "Read one product's forecast beside its recent sales",
+  forecast_summarize_asin: "Read one product's forecast beside its recent weeks",
   measurement_compare_windows: 'Compared a metric across two windows',
   measurement_metric_by_grain: "Read a metric's breakdown or trend",
   measurement_top_n: 'Ranked a metric',

@@ -167,8 +167,21 @@ def test_a_filter_with_more_matches_than_one_page_is_labelled_truncated() -> Non
     answer = _answer(ForecastTool.LIST, reader)
     assert (len(answer.data.values), answer.metadata.truncated) == (50, True)
     line = next(text for text in answer.narrative if "truncated" in text)
-    assert "top 50 of 51 matching products (page 1 of 2)" in line
+    assert "top 50 of 51 matching products (page 1 of 2);" in line
     assert QualifierKind.TRUNCATED in _qualifiers(answer)
+
+
+def test_a_truncated_money_list_counts_only_the_rows_it_shows() -> None:
+    """A withheld money row is named, not shown, so the line must not count it as shown."""
+    # Withheld rows rank last, so of these two the first ends page 1 and the second opens page 2.
+    views = [item(n, shown=n > 2) for n in range(1, 52)]
+    reader = FakeReader(current=pointer(), meta=generation(ranked(views)))
+    answer = _answer(ForecastTool.LIST, reader, target="revenue_shipped")
+    assert len(answer.data.values) == 49
+    line = next(text for text in answer.narrative if "truncated" in text)
+    assert (
+        "top 50 of 51 matching products (page 1 of 2), 49 shown and 1 named as not forecast;"
+    ) in line
 
 
 @pytest.mark.covers("ADR-084")
@@ -191,7 +204,7 @@ def test_query_carries_weekly_bands_at_the_target_scale_with_week_grain() -> Non
     assert claim.endswith("over the next 13 weeks: 16,048.50 USD.")
 
 
-def test_summarize_pairs_the_forecast_with_observed_recent_weeks_under_mixed_basis() -> None:
+def test_summarize_pairs_the_forecast_with_recent_weeks_under_mixed_basis() -> None:
     answer = _answer(
         ForecastTool.SUMMARIZE, asin="B0FIXTUR01", target="units_shipped", view_weeks=8
     )

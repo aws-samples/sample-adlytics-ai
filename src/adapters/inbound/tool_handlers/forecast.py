@@ -394,10 +394,18 @@ def _list(call: _Call, service: ForecastReadService) -> ShapedResponse:
         entries = lookup.entries
         counts = None if lookup.generation is None else lookup.generation.pages[arguments.filter]
         if counts is not None and counts.entry_count > len(entries):
+            # A withheld money row is named in the narrative, not shown as a row (DF-S3-OPUS-L1).
+            named = sum(
+                target in MONEY_TARGETS and entry.targets[target].chosen_model is None  # pyright: ignore[reportAttributeAccessIssue]
+                for entry in entries
+            )
+            split = (
+                f", {len(entries) - named} shown and {named} named as not forecast" if named else ""
+            )
             truncated = (
-                f"This list is truncated: it shows the top {len(entries)} of "
-                f"{counts.entry_count:,} matching products (page 1 of {counts.page_count:,}); "
-                "ask about any other product by its ASIN."
+                f"This list is truncated: it covers the top {len(entries)} of "
+                f"{counts.entry_count:,} matching products (page 1 of {counts.page_count:,})"
+                f"{split}; ask about any other product by its ASIN."
             )
         if counts is not None and counts.entry_count == 0:
             draft.narrative.append("No product in this forecast matches that status.")

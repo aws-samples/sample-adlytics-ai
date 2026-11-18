@@ -335,6 +335,20 @@ class TestTheRenderedDefinitions:
         assert "source_reference" in description
         assert "general advertising or retail concept" in description
 
+    @pytest.mark.parametrize("tool", ["forecast_summarize_asin", "forecast_compare_asins"])
+    def test_a_forecast_history_description_names_every_week_state(self, tool: str) -> None:
+        """Recent history holds inferred-zero and unknown weeks; calling it observed misleads.
+
+        Read from the generated file the Gateway serves (DF-S3-GPT-005).
+        """
+        from pathlib import Path  # noqa: PLC0415
+
+        root = Path(__file__).resolve().parents[2]
+        generated = json.loads((root / "contracts/generated/tools.json").read_text())
+        description = next(d for d in generated["tools"] if d["name"] == tool)["description"]
+        assert "observed recent" not in description
+        assert "each week marked observed, inferred-zero or unknown" in description
+
     def test_an_array_carries_its_element_type(self) -> None:
         rendered = {d["name"]: d for d in as_tool_definitions()}
         grains = rendered["measurement_metric_by_grain"]["inputSchema"]["properties"]["grains"]
