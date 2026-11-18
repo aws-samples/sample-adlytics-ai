@@ -1036,10 +1036,11 @@ class _Tool:
 # Target names are AgentStack's `gatewayTargetName`s; tool names are the handlers' enums. The
 # refusal operation is the terminal record's `operation`: both name the fixed `unverified_caller`
 # dimension, because nothing of an unverified call is read (reporting.py). ADR-083 retired the
-# `presentation` finalizer tool, so catalog and measurement are the only Gateway tools.
+# `presentation` finalizer tool; the demand forecast tool (ADR-163) is the third Gateway target.
 _TOOLS: tuple[_Tool, ...] = (
     _Tool("catalog", "CatalogTool", "catalog_list_metrics", {}, "unverified_caller"),
     _Tool("measurement", "MeasurementTool", "measurement_metric_by_grain", {}, "unverified_caller"),
+    _Tool("forecast", "ForecastTool", "forecast_list_asins", {}, "unverified_caller"),
 )
 _INTERCEPTOR = "GatewayInterceptor"
 _ISSUER = "TokenIssuer"
@@ -1064,11 +1065,11 @@ _CALLER_UNVERIFIED_REASON = re.compile(
 _SECRET_DENY = _ExpectedRefusal(
     "AccessDeniedException", re.compile(r"explicit deny in a resource-based policy")
 )
-# The route's multi-tool question from accept_managed_harness: one turn that reaches catalog and
-# measurement, so every tool's negatives follow a verified call to that tool.
+# The route's multi-tool question from accept_managed_harness, plus a forecast list: one turn that
+# reaches every tool, so every tool's negatives follow a verified call to that tool.
 TOOL_QUESTION = (
     "First explain retail_revenue_shipped, then report retail_revenue_shipped by product in the "
-    "United States marketplace on August 11, 2026."
+    "United States marketplace on August 11, 2026, then list the products in the demand forecast."
 )
 
 
@@ -1641,9 +1642,11 @@ def _direct_expected(tool: _Tool, what: str) -> str:
 # context instead of the Gateway's) and then the bearer's key. A `/token` request with a Cognito
 # subject and the correct client secret is covered only by unit tests with real cryptography:
 # the secret is unreadable to the operator by design (S5-12), so no live request can present it.
+# Catalog and measurement keep S5-6 to S5-9; tools added later take ids after S5-13.
+_DIRECT_IDS = ("S5-6", "S5-7", "S5-8", "S5-9", "S5-14", "S5-15")
 _DIRECT_CASES: tuple[Case, ...] = tuple(
     Case(
-        f"S5-{6 + 2 * index + offset}",
+        _DIRECT_IDS[2 * index + offset],
         _direct_expected(
             tool,
             "a propagated bearer carrying every Gateway-token claim and the published kid, "
@@ -1661,8 +1664,8 @@ S5_CASES: tuple[Case, ...] = (
     Case(
         "S5-1",
         "probe-a /api/chat tool turn: done; every tool terminal record in the turn window has "
-        "caller_verified true and does not contain probe-a's sub, and catalog and measurement "
-        "each have at least one such record; the issuer logged at least one "
+        "caller_verified true and does not contain probe-a's sub, and catalog, measurement and "
+        "forecast each have at least one such record; the issuer logged at least one "
         "/token exchange issued; the Gateway interceptor logged at least one terminal record "
         "ending forwarded (a tools/call it passed on with the bearer); and the turn's audit "
         "receipt is a managed-harness.v3 receipt whose principal is probe-a's own sub, with at "
