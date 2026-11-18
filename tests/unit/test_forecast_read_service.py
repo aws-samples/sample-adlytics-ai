@@ -228,6 +228,16 @@ def test_each_store_failure_leaves_with_its_forecast_code(
         assert refused.value.context == {"cause": cause}
 
 
+def test_a_store_incomplete_key_reaches_the_error_with_its_asin_redacted() -> None:
+    reader = fake_reader()
+    reader.fail = ForecastStoreIncomplete("GEN#x#ASIN#B0FIXTUR01", "ValidationError")
+    with pytest.raises(InvariantError) as refused:
+        _service(reader).asin_detail("B0FIXTUR01", _context())
+    assert str(refused.value.code) == "ADLY-FORECAST_READ-0008"
+    assert refused.value.context == {"key": "GEN#x#ASIN#<redacted>"}
+    assert "B0FIXTUR01" not in str(refused.value)
+
+
 def test_a_meta_the_pointer_names_but_the_table_lacks_is_store_incomplete() -> None:
     reader = fake_reader()
     reader.meta = None

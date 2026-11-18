@@ -104,9 +104,17 @@ def _query_invalid() -> ValidationError:
     )
 
 
-def _dispatch(event: dict[str, Any], context: ReadContext) -> tuple[dict[str, object], int, str]:
+def _route(event: dict[str, Any]) -> str:
+    try:
+        return events.route_key(event)
+    except IdentityError:
+        raise InvariantError(read_api.ROUTE_UNKNOWN, "The event carried no route key.") from None
+
+
+def _dispatch(
+    event: dict[str, Any], context: ReadContext, route: str
+) -> tuple[dict[str, object], int, str]:
     """Serve the route; return the body, the items read and the freshness state."""
-    route = events.route_key(event)
     query = events.query(event)
     if route == read_api.STATUS_ROUTE:
         if query:
@@ -141,10 +149,12 @@ def _report(error: BaseException) -> None:
 @LOGGER.inject_lambda_context
 def handler(event: dict[str, Any], context: _Clock) -> dict[str, Any]:
     """Serve one demand forecast read route; every failure returns its coded refusal."""
-    route = events.route_key(event)
-    with span(DEMAND_FORECAST_READ, operation=_OPERATION, route=route) as process_span:
+    with span(DEMAND_FORECAST_READ, operation=_OPERATION) as process_span:
         items_read = 0
+        route: str | None = None
         try:
+            route = _route(event)
+            process_span.record(route=route)
             try:
                 events.authorizer_subject(event)
             except IdentityError:
@@ -154,7 +164,7 @@ def handler(event: dict[str, Any], context: _Clock) -> dict[str, Any]:
             read = ReadContext.for_invocation(
                 datetime.now(UTC), context.get_remaining_time_in_millis()
             )
-            body, items_read, freshness = _dispatch(event, read)
+            body, items_read, freshness = _dispatch(event, read, route)
             result = _response(200, body)
             process_span.record(outcome="completed", items_read=items_read, freshness=freshness)
             outcome = "completed"

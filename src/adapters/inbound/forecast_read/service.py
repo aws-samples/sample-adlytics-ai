@@ -15,6 +15,7 @@ Callers may rely on:
 
 from __future__ import annotations
 
+import re
 import time
 from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor, wait
@@ -136,11 +137,16 @@ def _unavailable(cause: str) -> DependencyError:
     )
 
 
+_ASIN_SEGMENT: Final = re.compile(r"#ASIN#[^#]*")
+
+
 def _incomplete(key: str) -> InvariantError:
+    """Refuse with the key, its ASIN redacted: the error is logged and no ASIN reaches a log."""
+    shown = _ASIN_SEGMENT.sub("#ASIN#<redacted>", key)
     return InvariantError(
         read_api.FORECAST_STORE_INCOMPLETE,
-        f"The demand forecast store is incomplete at {key}.",
-        context={"key": key},
+        f"The demand forecast store is incomplete at {shown}.",
+        context={"key": shown},
     )
 
 

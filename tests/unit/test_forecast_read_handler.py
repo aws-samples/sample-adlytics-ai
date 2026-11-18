@@ -153,6 +153,16 @@ def test_a_route_this_function_does_not_serve_is_404(
     assert (status, body["refused"]) == (404, "ROUTE_UNKNOWN")
 
 
+def test_an_event_without_a_route_key_is_a_coded_404(
+    module: ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(module, "SERVICE", ForecastReadService(fake_reader(), VALUES, policy()))
+    event = {"rawPath": "/api/demand-forecast", "requestContext": {"http": {"method": "GET"}}}
+    response = module.handler(event, _context())
+    body = json.loads(response["body"])
+    assert (int(response["statusCode"]), body["refused"]) == (404, "ROUTE_UNKNOWN")
+
+
 def test_a_read_timeout_is_503_store_unavailable(
     module: ModuleType, monkeypatch: pytest.MonkeyPatch
 ) -> None:
