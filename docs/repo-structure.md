@@ -25,7 +25,7 @@ adlytics-ai/
 └── scripts/                # development and operational scripts
 ```
 
-`docs/solutions/<solution>/README.md` is the README for one solution: `performance`, `campaigns`, `reach-and-audiences`, `new-customers-and-retention`, `retail-health`, `demand-forecast` (in development, not yet available), `analytics-assistant` and `platform`. Each keeps its diagrams in a `diagrams/` folder beside it and embeds screenshots from `docs/images/`. The root README's [Solutions](../README.md#solutions) table lists them.
+`docs/solutions/<solution>/README.md` is the README for one solution: `performance`, `campaigns`, `reach-and-audiences`, `new-customers-and-retention`, `retail-health`, `demand-forecast`, `analytics-assistant` and `platform`. Each keeps its diagrams in a `diagrams/` folder beside it and embeds screenshots from `docs/images/`. The root README's [Solutions](../README.md#solutions) table lists them.
 
 `src/` and `infra/` do not import from each other. Governed declarations under `contracts/` and deployed resource names are their integration boundary.
 
