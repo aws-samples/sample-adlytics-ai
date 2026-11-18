@@ -77,7 +77,8 @@ The policy, including how much history a product needs and how gaps are treated,
 
 - **Start the scheduled path yourself.** Start the state machine `adlytics-<env>-demand-forecast` with the input `{"scheduled_time": "<UTC time>"}`, for example `2026-11-19T13:00:00Z`. The run takes its check date and run ID from that time, exactly as a Scheduler delivery does.
 - **A future time is allowed.** It runs that day's check now, including the Thursday slot. The input build re-selects with today's date and refuses `SELECTION_MOVED` if the input differs, so nothing is published from data that isn't landed yet.
-- **It claims that week's slot.** On the same input, the real Thursday delivery should then end `no_op_same_input`; on a new input it holds with `slot_already_consumed`.
+- **It takes that date's run ID, receipts and slot.** If the manual start published, the real Thursday delivery should then end `no_op_same_input` on the same input, or hold with `slot_already_consumed` on a new one.
+- **A manual start that didn't publish can fail that date's real delivery.** If it ended `no_op_same_input` and the input then changes, the real delivery conflicts with its receipt, fails and raises `DemandForecastRunFailed`.
 - **The real delivery still proves the eventing.** A manual start proves the run; only a Scheduler delivery proves the schedule, its role and its input. Read one delivery's execution after deploying.
 - **`make demand-forecast-run` is different.** It starts an operator run for today, carries no `scheduled_time`, and isn't bound by the slot.
 
