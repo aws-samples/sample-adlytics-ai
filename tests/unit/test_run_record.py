@@ -660,7 +660,7 @@ def test_each_recorded_pytest_tier_outside_unit_registers_the_report_writer(
     ran reads the same as one that passed (D1 live store check, R1-6).
     """
     tier_dir = Path(run_record_report.__file__).resolve().parents[1] / tier
-    monkeypatch.syspath_prepend(str(tier_dir))
+    monkeypatch.setattr(sys, "path", [str(tier_dir), *sys.path])
     spec = importlib.util.spec_from_file_location(f"_{tier}_conftest", tier_dir / "conftest.py")
     assert spec is not None
     assert spec.loader is not None
