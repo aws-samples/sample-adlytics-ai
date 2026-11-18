@@ -17,6 +17,9 @@ predicate:
       retail_window:
         per_unit:
           currency: {operational-pulse: "1000", tactical-review: "3000", pattern-confirmation: "10000"}
+          # pattern-confirmation 0.250 (14- and 30-day windows): owner decision OQ-31, 2026-11-17.
+          # A 0.25 pp return-rate move over 14 or 30 days is a real, small move worth surfacing
+          # to a vendor, not noise, so 0.25 is kept rather than the earlier 0.32.
           rate_pp: {operational-pulse: "0.32", tactical-review: "0.12", pattern-confirmation: "0.250"}
           percent: {operational-pulse: "3.4", tactical-review: "1.5", pattern-confirmation: "3.3"}
         per_metric:

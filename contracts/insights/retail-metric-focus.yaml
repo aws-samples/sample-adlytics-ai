@@ -25,6 +25,8 @@ predicate:
       retail_window:
         per_unit:
           currency: {operational-pulse: "1000", tactical-review: "3000", pattern-confirmation: "10000"}
+          # pattern-confirmation 0.250: owner decision OQ-31, 2026-11-17; the basis is beside the
+          # same cell in retail-returns-pressure.yaml.
           rate_pp: {operational-pulse: "0.32", tactical-review: "0.12", pattern-confirmation: "0.250"}
           percent: {operational-pulse: "5.4", tactical-review: "2.2", pattern-confirmation: "4.2"}
         per_metric:
