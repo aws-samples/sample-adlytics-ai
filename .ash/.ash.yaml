@@ -117,6 +117,183 @@ global_settings:
     - path: src/adapters/jobs/demand_forecast/Dockerfile
       rule_id: CKV_DOCKER_3
       reason: "O-DF-JOB-ROOT-USER-001: privileges drop to uid 10001 with no capabilities and no-new-privs in the entrypoint before any job code runs (ADR-160)"
+    # A-CVE-PICOMATCH-DEV-001: picomatch 2.3.2, 4.0.5 and 4.0.7 (GHSA-fc5q-39xc-vjpf,
+    # CVE-2026-112366; no patched release) in dev and test tooling only; NOT AFFECTED, owner
+    # approval 2026-11-18. npm-audit names the advisory on picomatch and a transitive row on each
+    # parent. One exact rule and path each; a new advisory still refuses on its own GHSA row. The
+    # expiry brings the finding back so the decision is reviewed.
+    - path: node_modules/anymatch/picomatch/package.json
+      rule_id: "GHSA-fc5q-39xc-vjpf"
+      reason: "A-CVE-PICOMATCH-DEV-001: dev-only picomatch, globs from repository config only"
+      expiration: "2027-02-15"
+    - path: node_modules/picomatch/package.json
+      rule_id: "GHSA-fc5q-39xc-vjpf"
+      reason: "A-CVE-PICOMATCH-DEV-001: dev-only picomatch, globs from repository config only"
+      expiration: "2027-02-15"
+    - path: node_modules/@jest/console/package.json
+      rule_id: "npm-audit-transitive-@jest/console"
+      reason: "A-CVE-PICOMATCH-DEV-001: dev-only picomatch, globs from repository config only"
+      expiration: "2027-02-15"
+    - path: node_modules/@jest/core/package.json
+      rule_id: "npm-audit-transitive-@jest/core"
+      reason: "A-CVE-PICOMATCH-DEV-001: dev-only picomatch, globs from repository config only"
+      expiration: "2027-02-15"
+    - path: node_modules/@jest/environment/package.json
+      rule_id: "npm-audit-transitive-@jest/environment"
+      reason: "A-CVE-PICOMATCH-DEV-001: dev-only picomatch, globs from repository config only"
+      expiration: "2027-02-15"
+    - path: node_modules/@jest/expect/package.json
+      rule_id: "npm-audit-transitive-@jest/expect"
+      reason: "A-CVE-PICOMATCH-DEV-001: dev-only picomatch, globs from repository config only"
+      expiration: "2027-02-15"
+    - path: node_modules/@jest/fake-timers/package.json
+      rule_id: "npm-audit-transitive-@jest/fake-timers"
+      reason: "A-CVE-PICOMATCH-DEV-001: dev-only picomatch, globs from repository config only"
+      expiration: "2027-02-15"
+    - path: node_modules/@jest/globals/package.json
+      rule_id: "npm-audit-transitive-@jest/globals"
+      reason: "A-CVE-PICOMATCH-DEV-001: dev-only picomatch, globs from repository config only"
+      expiration: "2027-02-15"
+    - path: node_modules/@jest/reporters/package.json
+      rule_id: "npm-audit-transitive-@jest/reporters"
+      reason: "A-CVE-PICOMATCH-DEV-001: dev-only picomatch, globs from repository config only"
+      expiration: "2027-02-15"
+    - path: node_modules/@jest/test-result/package.json
+      rule_id: "npm-audit-transitive-@jest/test-result"
+      reason: "A-CVE-PICOMATCH-DEV-001: dev-only picomatch, globs from repository config only"
+      expiration: "2027-02-15"
+    - path: node_modules/@jest/test-sequencer/package.json
+      rule_id: "npm-audit-transitive-@jest/test-sequencer"
+      reason: "A-CVE-PICOMATCH-DEV-001: dev-only picomatch, globs from repository config only"
+      expiration: "2027-02-15"
+    - path: node_modules/@jest/transform/package.json
+      rule_id: "npm-audit-transitive-@jest/transform"
+      reason: "A-CVE-PICOMATCH-DEV-001: dev-only picomatch, globs from repository config only"
+      expiration: "2027-02-15"
+    - path: node_modules/@types/jest/package.json
+      rule_id: "npm-audit-transitive-@types/jest"
+      reason: "A-CVE-PICOMATCH-DEV-001: dev-only picomatch, globs from repository config only"
+      expiration: "2027-02-15"
+    - path: node_modules/@typescript-eslint/typescript-estree/package.json
+      rule_id: "npm-audit-transitive-@typescript-eslint/typescript-estree"
+      reason: "A-CVE-PICOMATCH-DEV-001: dev-only picomatch, globs from repository config only"
+      expiration: "2027-02-15"
+    - path: node_modules/anymatch/package.json
+      rule_id: "npm-audit-transitive-anymatch"
+      reason: "A-CVE-PICOMATCH-DEV-001: dev-only picomatch, globs from repository config only"
+      expiration: "2027-02-15"
+    - path: node_modules/babel-jest/package.json
+      rule_id: "npm-audit-transitive-babel-jest"
+      reason: "A-CVE-PICOMATCH-DEV-001: dev-only picomatch, globs from repository config only"
+      expiration: "2027-02-15"
+    - path: node_modules/eslint-config-next/eslint-import-resolver-typescript/package.json
+      rule_id: "npm-audit-transitive-eslint-import-resolver-typescript"
+      reason: "A-CVE-PICOMATCH-DEV-001: dev-only picomatch, globs from repository config only"
+      expiration: "2027-02-15"
+    - path: node_modules/expect/package.json
+      rule_id: "npm-audit-transitive-expect"
+      reason: "A-CVE-PICOMATCH-DEV-001: dev-only picomatch, globs from repository config only"
+      expiration: "2027-02-15"
+    - path: node_modules/@next/eslint-plugin-next/fdir/package.json
+      rule_id: "npm-audit-transitive-fdir"
+      reason: "A-CVE-PICOMATCH-DEV-001: dev-only picomatch, globs from repository config only"
+      expiration: "2027-02-15"
+    - path: node_modules/tinyglobby/fdir/package.json
+      rule_id: "npm-audit-transitive-fdir"
+      reason: "A-CVE-PICOMATCH-DEV-001: dev-only picomatch, globs from repository config only"
+      expiration: "2027-02-15"
+    - path: node_modules/jest/package.json
+      rule_id: "npm-audit-transitive-jest"
+      reason: "A-CVE-PICOMATCH-DEV-001: dev-only picomatch, globs from repository config only"
+      expiration: "2027-02-15"
+    - path: node_modules/jest-changed-files/package.json
+      rule_id: "npm-audit-transitive-jest-changed-files"
+      reason: "A-CVE-PICOMATCH-DEV-001: dev-only picomatch, globs from repository config only"
+      expiration: "2027-02-15"
+    - path: node_modules/jest-circus/package.json
+      rule_id: "npm-audit-transitive-jest-circus"
+      reason: "A-CVE-PICOMATCH-DEV-001: dev-only picomatch, globs from repository config only"
+      expiration: "2027-02-15"
+    - path: node_modules/jest-cli/package.json
+      rule_id: "npm-audit-transitive-jest-cli"
+      reason: "A-CVE-PICOMATCH-DEV-001: dev-only picomatch, globs from repository config only"
+      expiration: "2027-02-15"
+    - path: node_modules/jest-config/package.json
+      rule_id: "npm-audit-transitive-jest-config"
+      reason: "A-CVE-PICOMATCH-DEV-001: dev-only picomatch, globs from repository config only"
+      expiration: "2027-02-15"
+    - path: node_modules/jest-each/package.json
+      rule_id: "npm-audit-transitive-jest-each"
+      reason: "A-CVE-PICOMATCH-DEV-001: dev-only picomatch, globs from repository config only"
+      expiration: "2027-02-15"
+    - path: node_modules/jest-environment-node/package.json
+      rule_id: "npm-audit-transitive-jest-environment-node"
+      reason: "A-CVE-PICOMATCH-DEV-001: dev-only picomatch, globs from repository config only"
+      expiration: "2027-02-15"
+    - path: node_modules/jest-haste-map/package.json
+      rule_id: "npm-audit-transitive-jest-haste-map"
+      reason: "A-CVE-PICOMATCH-DEV-001: dev-only picomatch, globs from repository config only"
+      expiration: "2027-02-15"
+    - path: node_modules/jest-message-util/package.json
+      rule_id: "npm-audit-transitive-jest-message-util"
+      reason: "A-CVE-PICOMATCH-DEV-001: dev-only picomatch, globs from repository config only"
+      expiration: "2027-02-15"
+    - path: node_modules/jest-mock/package.json
+      rule_id: "npm-audit-transitive-jest-mock"
+      reason: "A-CVE-PICOMATCH-DEV-001: dev-only picomatch, globs from repository config only"
+      expiration: "2027-02-15"
+    - path: node_modules/jest-resolve/package.json
+      rule_id: "npm-audit-transitive-jest-resolve"
+      reason: "A-CVE-PICOMATCH-DEV-001: dev-only picomatch, globs from repository config only"
+      expiration: "2027-02-15"
+    - path: node_modules/jest-resolve-dependencies/package.json
+      rule_id: "npm-audit-transitive-jest-resolve-dependencies"
+      reason: "A-CVE-PICOMATCH-DEV-001: dev-only picomatch, globs from repository config only"
+      expiration: "2027-02-15"
+    - path: node_modules/jest-runner/package.json
+      rule_id: "npm-audit-transitive-jest-runner"
+      reason: "A-CVE-PICOMATCH-DEV-001: dev-only picomatch, globs from repository config only"
+      expiration: "2027-02-15"
+    - path: node_modules/jest-runtime/package.json
+      rule_id: "npm-audit-transitive-jest-runtime"
+      reason: "A-CVE-PICOMATCH-DEV-001: dev-only picomatch, globs from repository config only"
+      expiration: "2027-02-15"
+    - path: node_modules/jest-snapshot/package.json
+      rule_id: "npm-audit-transitive-jest-snapshot"
+      reason: "A-CVE-PICOMATCH-DEV-001: dev-only picomatch, globs from repository config only"
+      expiration: "2027-02-15"
+    - path: node_modules/jest-util/package.json
+      rule_id: "npm-audit-transitive-jest-util"
+      reason: "A-CVE-PICOMATCH-DEV-001: dev-only picomatch, globs from repository config only"
+      expiration: "2027-02-15"
+    - path: node_modules/jest-watcher/package.json
+      rule_id: "npm-audit-transitive-jest-watcher"
+      reason: "A-CVE-PICOMATCH-DEV-001: dev-only picomatch, globs from repository config only"
+      expiration: "2027-02-15"
+    - path: node_modules/jest-worker/package.json
+      rule_id: "npm-audit-transitive-jest-worker"
+      reason: "A-CVE-PICOMATCH-DEV-001: dev-only picomatch, globs from repository config only"
+      expiration: "2027-02-15"
+    - path: node_modules/@next/eslint-plugin-next/fast-glob/package.json
+      rule_id: "npm-audit-transitive-tinyglobby"
+      reason: "A-CVE-PICOMATCH-DEV-001: dev-only picomatch, globs from repository config only"
+      expiration: "2027-02-15"
+    - path: node_modules/tinyglobby/package.json
+      rule_id: "npm-audit-transitive-tinyglobby"
+      reason: "A-CVE-PICOMATCH-DEV-001: dev-only picomatch, globs from repository config only"
+      expiration: "2027-02-15"
+    - path: node_modules/ts-jest/package.json
+      rule_id: "npm-audit-transitive-ts-jest"
+      reason: "A-CVE-PICOMATCH-DEV-001: dev-only picomatch, globs from repository config only"
+      expiration: "2027-02-15"
+    - path: node_modules/vite/package.json
+      rule_id: "npm-audit-transitive-vite"
+      reason: "A-CVE-PICOMATCH-DEV-001: dev-only picomatch, globs from repository config only"
+      expiration: "2027-02-15"
+    - path: node_modules/vitest/package.json
+      rule_id: "npm-audit-transitive-vitest"
+      reason: "A-CVE-PICOMATCH-DEV-001: dev-only picomatch, globs from repository config only"
+      expiration: "2027-02-15"
     # O-ASH-LICENSE-INFO-001: informational permissive-licence notices from trivy, not findings.
     - path: "*package-lock.json"
       rule_id: "*:MIT"
