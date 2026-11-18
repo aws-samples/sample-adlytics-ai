@@ -1447,6 +1447,7 @@ class TestLoadingIsStrict:
             + "inventory_categories:\n  - id: test_metrics\n    label: Test metrics\n"
             "    display_order: 1\n    metric_ids: [thing]\n"
             "deferred: []\n"
+            "operational_metrics: {}\n"
         )
         return tmp_path
 

@@ -1,9 +1,14 @@
 # Metric dictionary — the single definition of every metric.
 #
-# Three consumers read this file: the curation pipeline decides what to
-# precompute, tools compute figures at query time, and the Context Engine tells
-# the model what a metric means. Without one declaration those three drift, and
-# the drift is invisible because every number still looks plausible.
+# Three consumers read this file's business metrics: the curation pipeline decides
+# what to precompute, tools compute figures at query time, and the Context Engine
+# tells the model what a metric means. Without one declaration those three drift,
+# and the drift is invisible because every number still looks plausible.
+#
+# A fourth consumer reads only the operational_metrics section at the end:
+# make generate-operational-metrics projects it to the CloudWatch emitters and
+# alarms. load_catalog() validates that section and never puts it into Catalog,
+# so the other three never see an operational counter.
 #
 # Formula, grain, basis, and interpretation semantics are owned by docs/canonical-model.md
 # section 5. This file is their machine-readable projection and owns the exact bounded
@@ -3291,3 +3296,66 @@ deferred:
     label: Saturation marginal return
     kind: ratio
     unit: ratio
+# CloudWatch metrics the demand forecast and the Vendor Central producer emit
+# (demand-forecast design section 9). They are operational signals, not business
+# metrics: load_catalog() never returns them. Each entry is keyed by its metric
+# name and declares the namespace, the CloudWatch unit, the statistic its alarm
+# reads, its closed dimensions with every allowed value, and a one-line meaning.
+# make generate-operational-metrics writes the Python, CDK and connector
+# projections, each carrying this section's digest; make check-operational-metrics
+# fails a stale one.
+operational_metrics:
+  ForecastRunOutcome:
+    namespace: Adlytics/DemandForecast
+    unit: Count
+    statistic: Sum
+    dimensions:
+      outcome:
+        - published
+        - no_op_same_input
+        - held_input_not_ready
+        - held_quality
+        - failed
+        - superseded
+        - rolled_back
+    meaning: One per finished forecast run or rollback, by its outcome.
+  ForecastCurrentAgeDays:
+    namespace: Adlytics/DemandForecast
+    unit: Count
+    statistic: Maximum
+    dimensions: {}
+    meaning: Whole days since the current forecast generation was published, emitted by every daily input check.
+  InferredZeroWeekShare:
+    namespace: Adlytics/DemandForecast
+    unit: Percent
+    statistic: Maximum
+    dimensions: {}
+    meaning: >-
+      Inferred-zero weeks as a percent (0 to 100) of known weeks over every
+      series' context in one generation; 5 means 5%, and the alarm fires above 5.
+  UnknownSalesDays:
+    namespace: Adlytics/DemandForecast
+    unit: Count
+    statistic: Maximum
+    dimensions: {}
+    meaning: >-
+      Days in the input window not covered for sales, past the grace days and on
+      or after the window's first covered day; the alarm reads its daily rise.
+  LandingToPublishSeconds:
+    namespace: Adlytics/DemandForecast
+    unit: Seconds
+    statistic: Maximum
+    dimensions: {}
+    meaning: Seconds from the input's latest landing to the publication of its generation.
+  ProducerOutcome:
+    namespace: Adlytics/VendorProducer
+    unit: Count
+    statistic: Sum
+    dimensions:
+      class:
+        - landed
+        - credentials
+        - transport
+        - terminal
+        - transient
+    meaning: One per connector tick outcome, by its alarm class; the outcome name goes to the log.

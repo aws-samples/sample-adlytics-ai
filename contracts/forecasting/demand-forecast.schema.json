@@ -3,7 +3,7 @@
   "$comment": "Shape of contracts/forecasting/demand-forecast.yaml. make validate-contracts checks the policy's keys against this schema's properties and required lists, then loads it through the typed policy, which owns the value rules.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "input", "missing_weeks", "eligibility", "engine", "numeric", "serving"],
+  "required": ["schema_version", "input", "missing_weeks", "eligibility", "engine", "numeric", "gate", "serving", "retry"],
   "properties": {
     "schema_version": {"const": 1},
     "input": {
@@ -82,6 +82,21 @@
         "display": {"const": "whole_half_away_from_zero"}
       }
     },
+    "gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "metric", "margin", "simplicity_order", "comparator_fallback", "no_valid_simple_model", "comparator_quantiles", "not_publishable"],
+      "properties": {
+        "version": {"type": "integer", "minimum": 1},
+        "metric": {"const": "wql"},
+        "margin": {"type": "number", "minimum": 0, "exclusiveMaximum": 1},
+        "simplicity_order": {"type": "array", "items": {"enum": ["seasonal_naive", "ets", "chronos2"]}},
+        "comparator_fallback": {"const": "require_all"},
+        "no_valid_simple_model": {"const": "withhold"},
+        "comparator_quantiles": {"const": "censor_at_zero"},
+        "not_publishable": {"const": "next_in_order"}
+      }
+    },
     "serving": {
       "type": "object",
       "additionalProperties": false,
@@ -98,6 +113,17 @@
         "rank_by": {"type": "string"},
         "status_target": {"type": "string"},
         "search": {"const": "exact_asin"}
+      }
+    },
+    "retry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "suppressed_outcomes", "max_transient_retries", "admission_weekday"],
+      "properties": {
+        "version": {"type": "integer", "minimum": 1},
+        "suppressed_outcomes": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}},
+        "max_transient_retries": {"type": "integer", "minimum": 0},
+        "admission_weekday": {"enum": ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]}
       }
     }
   }

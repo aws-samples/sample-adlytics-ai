@@ -190,12 +190,22 @@ class DemandForecastInputSettings:
     athena_batch_workgroup: str
     semantic_v2_current_database: str
     processing_bucket: str
+    forecast_table: str
     marketplace_key: str
     model_artifact_digest: str
     processor_code_identity: str
     lock_digest: str
     instance_type: str
     max_runtime_seconds: int
+
+
+@dataclass(frozen=True, slots=True)
+class DemandForecastPublisherSettings:
+    """The demand-forecast publisher's bucket, table and set (design §6c). All required."""
+
+    processing_bucket: str
+    forecast_table: str
+    marketplace_key: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -423,6 +433,7 @@ _DEMAND_FORECAST_INPUT_ENV: tuple[tuple[str, str], ...] = (
     ("athena_batch_workgroup", "SEMANTIC_V2_ATHENA_BATCH_WORKGROUP"),
     ("semantic_v2_current_database", "SEMANTIC_V2_CURRENT_DATABASE"),
     ("processing_bucket", "DEMAND_FORECAST_PROCESSING_BUCKET"),
+    ("forecast_table", "DEMAND_FORECAST_TABLE"),
     ("marketplace_key", "DEMAND_FORECAST_MARKETPLACE_KEY"),
     ("model_artifact_digest", "DEMAND_FORECAST_MODEL_ARTIFACT_DIGEST"),
     ("processor_code_identity", "DEMAND_FORECAST_PROCESSOR_CODE_IDENTITY"),
@@ -457,6 +468,7 @@ def demand_forecast_input_settings(
         athena_batch_workgroup=found["athena_batch_workgroup"],
         semantic_v2_current_database=found["semantic_v2_current_database"],
         processing_bucket=found["processing_bucket"],
+        forecast_table=found["forecast_table"],
         marketplace_key=found["marketplace_key"],
         model_artifact_digest=found["model_artifact_digest"],
         processor_code_identity=found["processor_code_identity"],
@@ -464,6 +476,32 @@ def demand_forecast_input_settings(
         instance_type=found["instance_type"],
         max_runtime_seconds=int(runtime),
     )
+
+
+_DEMAND_FORECAST_PUBLISHER_ENV: tuple[tuple[str, str], ...] = (
+    ("processing_bucket", "DEMAND_FORECAST_PROCESSING_BUCKET"),
+    ("forecast_table", "DEMAND_FORECAST_TABLE"),
+    ("marketplace_key", "DEMAND_FORECAST_MARKETPLACE_KEY"),
+)
+
+
+def demand_forecast_publisher_settings(
+    source: Mapping[str, str] | None = None,
+) -> DemandForecastPublisherSettings:
+    """Resolve the publisher's settings; refuse, naming each, any missing value."""
+    values = source if source is not None else os.environ
+    found = {
+        field: values.get(f"{ENV_PREFIX}{name}", "").strip()
+        for field, name in _DEMAND_FORECAST_PUBLISHER_ENV
+    }
+    missing = sorted(field for field, value in found.items() if not value)
+    if missing:
+        raise InvariantError(
+            CONFIG_UNRESOLVED,
+            "Demand-forecast publisher configuration is incomplete.",
+            context={"missing": missing},
+        )
+    return DemandForecastPublisherSettings(**found)
 
 
 @lru_cache(maxsize=1)

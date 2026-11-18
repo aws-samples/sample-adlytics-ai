@@ -7,10 +7,32 @@ to the `FORECAST_MODEL_DIR` environment variable, and skip, naming the option, w
 
 from __future__ import annotations
 
+import importlib.util
 import os
+import sys
 from pathlib import Path
 
 import pytest
+
+_REPORT_MODULE = "run_record_report"
+_REPORT_PATH = Path(__file__).resolve().parents[1] / "unit" / f"{_REPORT_MODULE}.py"
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Register the run recorder's per-test report, as `tests/unit/conftest.py` does.
+
+    This tier never puts `tests/unit` on the import path, so the plugin is loaded from its file;
+    without it `make check-forecasting` seals a record with no report (R1-6).
+    """
+    module = sys.modules.get(_REPORT_MODULE)
+    if module is None:
+        spec = importlib.util.spec_from_file_location(_REPORT_MODULE, _REPORT_PATH)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"cannot load the run-record report plugin from {_REPORT_PATH}")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[_REPORT_MODULE] = module
+        spec.loader.exec_module(module)
+    module.register(config)
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:

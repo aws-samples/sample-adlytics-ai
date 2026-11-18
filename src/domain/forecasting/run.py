@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: MIT-0
-"""One shard's forecast run: Chronos-2 forecast and backtest per target, no gate (slice 1).
+"""One shard's forecast run: three models per target, the backtest, then the gate (§4a, §5).
 
 Adapted from the source engine's forecast run; its contract-keyed suppliers and lake staging are
-replaced by the boundary records (design §4e), and comparators and the gate arrive in slice 2.
+replaced by the boundary records (design §4e).
 
 Per target, in order:
 
@@ -11,21 +11,27 @@ Per target, in order:
    is `CURRENCY_MIXED`; fewer than `min_context_weeks + holdout_weeks` known weeks, or fewer than
    `min_context_weeks` known weeks before the holdout, is `TARGET_VALUE_MISSING` when the
    target's history holds a declared-null value and `INSUFFICIENT_CONTEXT` otherwise; fewer than
-   `min_scored_holdout_weeks` known holdout actuals is `HOLDOUT_UNKNOWN`.
-2. Backtest: Chronos-2 forecasts the holdout from the weeks before it, in the declared batches
-   (design §4c). A bad shape or a non-finite value, an unordered scored week or an all-zero
-   holdout makes Chronos-2 not valid (design §5b).
-3. Forecast origin: every valid series is forecast 13 weeks from `input_end` and stored under the
-   numeric policy; shape, finiteness, an unordered band, then a negative value make it not
-   publishable (design §4d).
-4. Candidate (slice 1 rule): `chronos2` when valid and publishable, else withheld with
-   Chronos-2's own reason; `seasonal_naive` and `ets` are recorded `MODEL_NOT_RUN`.
+   `min_scored_holdout_weeks` known holdout actuals is `HOLDOUT_UNKNOWN`. Every model carries the
+   reason and the series is withheld with it.
+2. Backtest (design §5b): Chronos-2 forecasts the holdout from the weeks before it, in the
+   declared batches (design §4c); SeasonalNaive and ETS forecast it one series at a time (§5a),
+   their bands censored at zero. ETS needs `ets_min_known_weeks` known weeks before the origin.
+3. One scored week set per series (design §3d): the known holdout actuals and, while
+   SeasonalNaive has a holdout band, its known lags. If those lags leave fewer than
+   `min_scored_holdout_weeks` weeks, SeasonalNaive is `SEASONAL_LAG_UNKNOWN` and the others are
+   scored on the known actuals. A bad shape, a non-finite scored value, an unordered scored week
+   or an all-zero holdout makes a model not valid.
+4. Forecast origin: every valid model forecasts the 13 weeks after `input_end` from the full
+   context, stored under the numeric policy; shape, finiteness, an unordered band, then a negative
+   value make it not publishable (design §4d). SeasonalNaive with an unknown lag in those weeks
+   is `SEASONAL_LAG_UNKNOWN_AT_ORIGIN`; an ETS fit that fails there is `ETS_FIT_FAILED`.
+5. The gate (`gate.choose_model`, design §5c) picks the shown model from the three evaluations.
 
 A target whose every series in this shard is withheld still gives a candidate: one shard can't
 decide coverage, so the commit step checks that every target has a shown series across all shards
-(design §6c, `held_quality(target_empty)`, slice 2). The model is reached through
-`BatchForecaster`, which the job binds to its model adapter; domain code never imports a port or
-a model library.
+(design §6c, `held_quality(target_empty)`). The models are reached through `BatchForecaster` and
+`EtsForecaster`, which the job binds to its model adapters; domain code never imports a port or a
+model library.
 """
 
 from __future__ import annotations
@@ -53,6 +59,14 @@ from domain.forecasting.checks import (
     first_negative_week,
     first_unordered_week,
 )
+from domain.forecasting.comparators import (
+    EtsRequest,
+    EtsResult,
+    SeasonalNaiveRequest,
+    censor_at_zero,
+    seasonal_naive,
+)
+from domain.forecasting.gate import GateRequest, choose_model
 from domain.forecasting.identity import display_map
 from domain.forecasting.models import (
     ForecastBatchRequest,
@@ -65,7 +79,12 @@ from domain.forecasting.models import (
 )
 from domain.forecasting.numeric import stored_text, stored_value
 from domain.forecasting.policy import MONEY_TARGETS, TARGETS, DemandForecastPolicy
-from domain.forecasting.scoring import BacktestScoreRequest, score_backtest, scored_week_set
+from domain.forecasting.scoring import (
+    BacktestOutcome,
+    BacktestScoreRequest,
+    score_backtest,
+    scored_week_set,
+)
 from domain.forecasting.weekly_series import (
     SeriesWeeks,
     TargetWeeks,
@@ -86,6 +105,14 @@ class BatchForecaster(Protocol):
         ...
 
 
+class EtsForecaster(Protocol):
+    """One ETS fit and forecast of one series (the job binds this to its ETS adapter)."""
+
+    def __call__(self, request: EtsRequest, /) -> EtsResult:
+        """Return the uncensored forecast, or `ETS_FIT_FAILED` for an unconverged fit."""
+        ...
+
+
 class ForecastRunError(Exception):
     """The shard can't produce a candidate; `code` is the job's failure category."""
 
@@ -97,13 +124,14 @@ class ForecastRunError(Exception):
 
 @dataclass(frozen=True)
 class ForecastRunRequest:
-    """One shard's classified series, the policy, the set and the model to call."""
+    """One shard's classified series, the policy, the set and the models to call."""
 
     shard_index: int
     forecast_set: ForecastSetV1
     series: WeeklySeriesResult
     policy: DemandForecastPolicy
     forecaster: BatchForecaster
+    ets: EtsForecaster
 
     def __post_init__(self) -> None:
         if not self.series.series:
@@ -133,9 +161,9 @@ class _Answers:
 
 @dataclass(frozen=True)
 class _TargetRun:
-    """One target's Chronos-2 outcome per ASIN and the model calls it made."""
+    """One target's candidate per ASIN and the Chronos-2 calls it made."""
 
-    outcome: dict[str, _Chronos]
+    candidates: dict[str, TargetCandidateV1]
     calls: int
 
 
@@ -147,13 +175,53 @@ class _Bands:
 
 
 @dataclass(frozen=True)
-class _Chronos:
-    """Chronos-2's evaluation of one series and target, and its forecast when publishable."""
+class _Eligible:
+    history: SeriesHistory
+    context: SeriesHistory
+    actuals: tuple[float | None, ...]
+    known: tuple[int, ...]
 
-    evaluation: ModelEvaluationV1
+
+@dataclass(frozen=True)
+class _Holdout:
+    """A model's holdout band, or why it has none at the backtest origin."""
+
+    forecast: QuantileForecast | None
     reason: SkipReason | None
-    bands: BandsV1 | None
+    lag_known: tuple[bool, ...] | None = None
+
+
+@dataclass(frozen=True)
+class _ScoredSet:
+    """One eligible series and the holdout positions every model is scored on."""
+
+    item: _Eligible
+    weeks: tuple[int, ...]
+
+
+@dataclass(frozen=True)
+class _Judged:
+    """One series and target's three evaluations, the valid models' origins, the scored weeks."""
+
+    evaluations: tuple[ModelEvaluationV1, ...]
+    origins: dict[ModelName, _Origin]
     scored_weeks: int
+
+
+@dataclass(frozen=True)
+class _Scored:
+    """One series' backtest per model on the common scored week set."""
+
+    outcomes: dict[ModelName, BacktestScoreV1 | SkipReason]
+    scored_weeks: int
+
+
+@dataclass(frozen=True)
+class _Origin:
+    """A valid model's origin result: its stored bands, or the check it failed."""
+
+    bands: _Bands | None
+    failure: SkipReason | None
 
 
 def _values(cells: Sequence[WeekCell]) -> tuple[float | None, ...]:
@@ -206,37 +274,29 @@ def _stored(forecast: QuantileForecast) -> _Bands:
     )
 
 
-def _not_run(model: ModelName) -> ModelEvaluationV1:
+def _evaluation(
+    model: ModelName,
+    outcome: BacktestScoreV1 | SkipReason,
+    origin: _Origin | None = None,
+) -> ModelEvaluationV1:
+    if isinstance(outcome, SkipReason):
+        return ModelEvaluationV1(
+            model=model,
+            backtest_score=None,
+            validity_reason=outcome,
+            origin_status="not_attempted",
+            origin_failure=None,
+        )
+    if origin is None:
+        raise ValueError(f"{model}: a valid model is forecast at the origin")
+    failure = origin.failure
     return ModelEvaluationV1(
         model=model,
-        backtest_score=None,
-        validity_reason=SkipReason.MODEL_NOT_RUN,
-        origin_status="not_attempted",
-        origin_failure=None,
+        backtest_score=outcome,
+        validity_reason=None,
+        origin_status="publishable" if failure is None else "not_publishable",
+        origin_failure=None if failure is None else failure.value,
     )
-
-
-def _chronos(
-    reason: SkipReason | None,
-    score: BacktestScoreV1 | None = None,
-    origin: tuple[str, str | None] = ("not_attempted", None),
-) -> ModelEvaluationV1:
-    status, failure = origin
-    return ModelEvaluationV1(
-        model=ModelName.CHRONOS2,
-        backtest_score=score,
-        validity_reason=reason,
-        origin_status=status,  # pyright: ignore[reportArgumentType]
-        origin_failure=failure,
-    )
-
-
-@dataclass(frozen=True)
-class _Eligible:
-    history: SeriesHistory
-    context: SeriesHistory
-    actuals: tuple[float | None, ...]
-    scored: tuple[int, ...]
 
 
 def _eligibility(
@@ -268,109 +328,189 @@ def _eligibility(
         history=SeriesHistory(asin, weeks.target, values[:-holdout], covariate[:-holdout]),
         context=SeriesHistory(asin, weeks.target, values, covariate),
         actuals=actuals,
-        scored=scored,
+        known=scored,
     )
 
 
-def _origin_failure(
-    forecast: QuantileForecast, horizon: int
-) -> tuple[SkipReason | None, _Bands | None]:
+def _seasonal(request: ForecastRunRequest, series: SeriesHistory, horizon: int) -> _Holdout:
+    result = seasonal_naive(
+        SeasonalNaiveRequest(series, horizon, request.policy.eligibility.min_seasonal_residuals)
+    )
+    if result.forecast is None:
+        return _Holdout(None, result.unavailable_reason)
+    return _Holdout(censor_at_zero(result.forecast), None, result.lag_known)
+
+
+def _ets(request: ForecastRunRequest, series: SeriesHistory, horizon: int) -> _Holdout:
+    known = sum(1 for value in series.values if value is not None)
+    if known < request.policy.eligibility.ets_min_known_weeks:
+        return _Holdout(None, SkipReason.ETS_INSUFFICIENT_KNOWN)
+    result = request.ets(EtsRequest(series, horizon))
+    if result.forecast is None:
+        return _Holdout(None, result.failure)
+    return _Holdout(censor_at_zero(result.forecast), None)
+
+
+def _score(
+    request: ForecastRunRequest, on: _ScoredSet, holdout: _Holdout
+) -> BacktestScoreV1 | SkipReason:
+    """Score one model's holdout band on the scored weeks; only those weeks must be finite."""
+    if holdout.forecast is None:
+        return holdout.reason or SkipReason.FORECAST_SHAPE_INVALID
+    item, scored = on.item, on.weeks
+    forecast = holdout.forecast
+    weeks = request.policy.eligibility.holdout_weeks
+    if any(len(band) != weeks for band in (forecast.p10, forecast.p50, forecast.p90)):
+        return SkipReason.FORECAST_SHAPE_INVALID
+    picked = QuantileForecast(
+        forecast.canonical_asin,
+        forecast.target,
+        tuple(forecast.p10[week] for week in scored),
+        tuple(forecast.p50[week] for week in scored),
+        tuple(forecast.p90[week] for week in scored),
+    )
+    shape = check_forecast_shape(picked, len(scored))
+    if shape.reason is not None:
+        return shape.reason
+    bands = _stored(picked)
+    outcome: BacktestOutcome = score_backtest(
+        BacktestScoreRequest(
+            history=item.history.values,
+            actuals=tuple(item.actuals[week] for week in scored),
+            p10=bands.p10,
+            p50=bands.p50,
+            p90=bands.p90,
+            scored_weeks=tuple(range(len(scored))),
+            min_scale_pairs=request.policy.eligibility.min_context_weeks - 1,
+        )
+    )
+    if outcome.score is None:
+        return outcome.invalid_reason or SkipReason.BACKTEST_BAND_UNORDERED
+    return outcome.score
+
+
+def _backtest(request: ForecastRunRequest, item: _Eligible, chronos: QuantileForecast) -> _Scored:
+    """Design §3d and §5b: the common scored week set, then each model's score on it."""
+    horizon = request.policy.eligibility.holdout_weeks
+    holdouts = {
+        ModelName.CHRONOS2: _Holdout(chronos, None),
+        ModelName.SEASONAL_NAIVE: _seasonal(request, item.history, horizon),
+        ModelName.ETS: _ets(request, item.history, horizon),
+    }
+    full = check_forecast_shape(chronos, horizon)
+    outcomes: dict[ModelName, BacktestScoreV1 | SkipReason] = {}
+    if full.reason is not None:
+        outcomes[ModelName.CHRONOS2] = full.reason
+    scored = item.known
+    lags = holdouts[ModelName.SEASONAL_NAIVE].lag_known
+    if lags is not None:
+        with_lags = scored_week_set(item.actuals, lags)
+        if len(with_lags) >= request.policy.eligibility.min_scored_holdout_weeks:
+            scored = with_lags
+        else:
+            outcomes[ModelName.SEASONAL_NAIVE] = SkipReason.SEASONAL_LAG_UNKNOWN
+    for model, holdout in holdouts.items():
+        if model not in outcomes:
+            outcomes[model] = _score(request, _ScoredSet(item, scored), holdout)
+    return _Scored(outcomes, len(scored))
+
+
+def _origin_failure(forecast: QuantileForecast, horizon: int) -> _Origin:
     shape = check_forecast_shape(forecast, horizon)
     if shape.reason is not None:
-        return shape.reason, None
+        return _Origin(None, shape.reason)
     bands = _stored(forecast)
     if first_unordered_week(bands.p10, bands.p50, bands.p90) is not None:
-        return SkipReason.FORECAST_BAND_UNORDERED, None
+        return _Origin(None, SkipReason.FORECAST_BAND_UNORDERED)
     if first_negative_week(bands.p10, bands.p50, bands.p90) is not None:
-        return SkipReason.FORECAST_NEGATIVE, None
-    return None, bands
+        return _Origin(None, SkipReason.FORECAST_NEGATIVE)
+    return _Origin(bands, None)
 
 
-def _run_target(request: ForecastRunRequest, target: str) -> _TargetRun:
-    eligibility = request.policy.eligibility
-    outcome: dict[str, _Chronos] = {}
-    eligible: dict[str, _Eligible] = {}
-    for item in request.series.series:
-        checked = _eligibility(request, item, item.targets[target])
-        if isinstance(checked, SkipReason):
-            outcome[item.canonical_asin] = _Chronos(_chronos(checked), checked, None, 0)
-        else:
-            eligible[item.canonical_asin] = checked
-    holdout = eligibility.holdout_weeks
-    backtests = _forecast(
-        request,
-        target=target,
-        origin=Origin.BACKTEST,
-        histories={asin: e.history for asin, e in eligible.items()},
-        horizon=holdout,
-    )
-    valid: dict[str, BacktestScoreV1] = {}
-    for asin, item in eligible.items():
-        forecast = backtests.forecasts[asin]
-        shape = check_forecast_shape(forecast, holdout)
-        if shape.reason is not None:
-            outcome[asin] = _Chronos(_chronos(shape.reason), shape.reason, None, len(item.scored))
-            continue
-        bands = _stored(forecast)
-        scored = score_backtest(
-            BacktestScoreRequest(
-                history=item.history.values,
-                actuals=item.actuals,
-                p10=bands.p10,
-                p50=bands.p50,
-                p90=bands.p90,
-                scored_weeks=item.scored,
-                min_scale_pairs=eligibility.min_context_weeks - 1,
-            )
-        )
-        if scored.score is None:
-            reason = scored.invalid_reason
-            outcome[asin] = _Chronos(_chronos(reason), reason, None, len(item.scored))
-            continue
-        valid[asin] = scored.score
-    horizon = eligibility.horizon_weeks
-    origins = _forecast(
-        request,
-        target=target,
-        origin=Origin.FORECAST,
-        histories={asin: eligible[asin].context for asin in valid},
-        horizon=horizon,
-    )
-    for asin, score in valid.items():
-        reason, bands = _origin_failure(origins.forecasts[asin], horizon)
-        scored_weeks = len(eligible[asin].scored)
-        if reason is not None or bands is None:
-            evaluation = _chronos(
-                None, score, ("not_publishable", reason.value if reason else None)
-            )
-            outcome[asin] = _Chronos(evaluation, reason, None, scored_weeks)
-            continue
+def _comparator_origin(
+    request: ForecastRunRequest, model: ModelName, context: SeriesHistory
+) -> _Origin:
+    horizon = request.policy.eligibility.horizon_weeks
+    if model is ModelName.SEASONAL_NAIVE:
+        forecast = _seasonal(request, context, horizon)
+        if forecast.lag_known is not None and not all(forecast.lag_known):
+            return _Origin(None, SkipReason.SEASONAL_LAG_UNKNOWN_AT_ORIGIN)
+    else:
+        forecast = _ets(request, context, horizon)
+    if forecast.forecast is None:
+        return _Origin(None, forecast.reason)
+    return _origin_failure(forecast.forecast, horizon)
+
+
+def _decide(request: ForecastRunRequest, judged: _Judged) -> TargetCandidateV1:
+    evaluations = judged.evaluations
+    decision = choose_model(GateRequest(evaluations, request.policy.gate.margin))
+    shown: BandsV1 | None = None
+    if decision.chosen_model is not None:
+        bands = judged.origins[decision.chosen_model].bands
+        if bands is None:
+            raise ValueError(f"{decision.chosen_model}: the gate chose an unpublishable model")
         shown = BandsV1(
             p10=tuple(stored_text(v) for v in bands.p10),
             p50=tuple(stored_text(v) for v in bands.p50),
             p90=tuple(stored_text(v) for v in bands.p90),
         )
-        outcome[asin] = _Chronos(
-            _chronos(None, score, ("publishable", None)), None, shown, scored_weeks
-        )
-    return _TargetRun(outcome, backtests.calls + origins.calls)
-
-
-def _target_candidate(chronos: _Chronos) -> TargetCandidateV1:
-    evaluations = (
-        chronos.evaluation,
-        _not_run(ModelName.SEASONAL_NAIVE),
-        _not_run(ModelName.ETS),
-    )
-    shown = chronos.bands is not None
     return TargetCandidateV1(
-        chosen_model=ModelName.CHRONOS2 if shown else None,
-        withheld_reason=None if shown else chronos.reason,
-        chosen_forecast=chronos.bands,
-        gate_reason=None,
-        scored_weeks=chronos.scored_weeks,
+        chosen_model=decision.chosen_model,
+        withheld_reason=decision.withheld_reason,
+        chosen_forecast=shown,
+        gate_reason=decision.gate_reason,
+        scored_weeks=judged.scored_weeks,
         evaluations=evaluations,
     )
+
+
+def _run_target(request: ForecastRunRequest, target: str) -> _TargetRun:
+    candidates: dict[str, TargetCandidateV1] = {}
+    eligible: dict[str, _Eligible] = {}
+    for item in request.series.series:
+        checked = _eligibility(request, item, item.targets[target])
+        if isinstance(checked, SkipReason):
+            evaluations = tuple(_evaluation(model, checked) for model in ModelName)
+            candidates[item.canonical_asin] = _decide(request, _Judged(evaluations, {}, 0))
+        else:
+            eligible[item.canonical_asin] = checked
+    eligibility = request.policy.eligibility
+    backtests = _forecast(
+        request,
+        target=target,
+        origin=Origin.BACKTEST,
+        histories={asin: e.history for asin, e in eligible.items()},
+        horizon=eligibility.holdout_weeks,
+    )
+    scored = {
+        asin: _backtest(request, e, backtests.forecasts[asin]) for asin, e in eligible.items()
+    }
+    chronos_valid = {
+        asin: eligible[asin].context
+        for asin, s in scored.items()
+        if isinstance(s.outcomes[ModelName.CHRONOS2], BacktestScoreV1)
+    }
+    horizon = eligibility.horizon_weeks
+    chronos_origins = _forecast(
+        request, target=target, origin=Origin.FORECAST, histories=chronos_valid, horizon=horizon
+    )
+    for asin, series_scores in scored.items():
+        origins: dict[ModelName, _Origin] = {}
+        for model, outcome in series_scores.outcomes.items():
+            if not isinstance(outcome, BacktestScoreV1):
+                continue
+            if model is ModelName.CHRONOS2:
+                origins[model] = _origin_failure(chronos_origins.forecasts[asin], horizon)
+            else:
+                origins[model] = _comparator_origin(request, model, eligible[asin].context)
+        evaluations = tuple(
+            _evaluation(model, series_scores.outcomes[model], origins.get(model))
+            for model in ModelName
+        )
+        judged = _Judged(evaluations, origins, series_scores.scored_weeks)
+        candidates[asin] = _decide(request, judged)
+    return _TargetRun(candidates, backtests.calls + chronos_origins.calls)
 
 
 def _recent_weeks(request: ForecastRunRequest, item: SeriesWeeks) -> tuple[RecentWeekV1, ...]:
@@ -408,14 +548,14 @@ def run_forecast(request: ForecastRunRequest) -> ForecastRunResult:
     """Forecast and backtest every target of the shard; return its candidates and counts."""
     displays = display_map(item.canonical_asin for item in request.series.series).by_canonical
     runs = {target: _run_target(request, target) for target in TARGETS}
-    per_target = {target: run.outcome for target, run in runs.items()}
+    per_target = {target: run.candidates for target, run in runs.items()}
     reasons: Counter[str] = Counter()
     for target, outcome in per_target.items():
-        for chronos in outcome.values():
-            if chronos.bands is not None:
-                reasons[f"{target}.chosen.{ModelName.CHRONOS2.value}"] += 1
-            elif chronos.reason is not None:
-                reasons[f"{target}.withheld.{chronos.reason.value}"] += 1
+        for candidate in outcome.values():
+            if candidate.chosen_model is not None:
+                reasons[f"{target}.chosen.{candidate.chosen_model.value}"] += 1
+            elif candidate.withheld_reason is not None:
+                reasons[f"{target}.withheld.{candidate.withheld_reason.value}"] += 1
     candidates: list[CandidateSeriesV1] = []
     totals: Counter[WeekState] = Counter()
     inferred_days = 0
@@ -432,8 +572,7 @@ def run_forecast(request: ForecastRunRequest) -> ForecastRunResult:
                 display_asin=displays[item.canonical_asin],
                 shard_index=request.shard_index,
                 targets={  # pyright: ignore[reportArgumentType]
-                    target: _target_candidate(per_target[target][item.canonical_asin])
-                    for target in TARGETS
+                    target: per_target[target][item.canonical_asin] for target in TARGETS
                 },
                 recent_weeks=recent,
                 week_state_counts=_state_counts(counts),

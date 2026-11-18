@@ -1,6 +1,5 @@
 # The demand-forecast policy (design §3a). Baked into the job image, so the image identity covers
-# it; every run records each section's version and this file's SHA-256. Slice 1 holds the
-# sections the engine and weekly input need; `gate` and `retry` arrive with slice 2.
+# it; every run records each section's version and this file's SHA-256.
 # Validated by `make validate-contracts` against demand-forecast.schema.json and loaded by
 # src/adapters/outbound/demand_forecast_policy.py into src/domain/forecasting/policy.py.
 schema_version: 1
@@ -57,6 +56,25 @@ numeric:
   check_order: [finite, band_unordered, negative]
   display: whole_half_away_from_zero
 
+# Owner decision 4: show Chronos-2 only where it beats SeasonalNaive and ETS on the backtest,
+# otherwise the simpler model (design §5c, ADR-157; P-1, P-2, P-10).
+gate:
+  version: 1
+  # WQL decides; MASE is reported only.
+  metric: wql
+  # Chronos-2 shows only when WQL_chronos < (1 - margin) x min(WQL_seasonal_naive, WQL_ets).
+  margin: 0.0
+  # On equal WQL the simpler model is shown.
+  simplicity_order: [seasonal_naive, ets, chronos2]
+  # Chronos-2 is eligible only when both comparators are valid (COMPARATOR_UNAVAILABLE).
+  comparator_fallback: require_all
+  # No valid simple model shows nothing (ACCURACY_NOT_TESTABLE).
+  no_valid_simple_model: withhold
+  # Comparator bands are censored at zero (design §5a).
+  comparator_quantiles: censor_at_zero
+  # A model whose origin forecast fails design §4d steps 1 to 3 is skipped for the next in order.
+  not_publishable: next_in_order
+
 serving:
   version: 1
   stale_after_days: 16
@@ -69,3 +87,26 @@ serving:
   rank_by: units_ordered_p50_13w
   status_target: units_ordered
   search: exact_asin
+
+# When a failed or held run re-runs, and when a new input is admitted (design §6d; P-6, P-17).
+retry:
+  version: 1
+  # Deterministic outcomes: the same input gives the same result, so the next check no-ops.
+  # Every other failure gets `retry`.
+  suppressed_outcomes:
+    - held_quality
+    - failed(target_empty)
+    - failed(job:MODEL_ARTIFACT_MISMATCH)
+    - failed(job:RUN_IDENTITY_MISMATCH)
+    - failed(job:INPUT_SCHEMA_MISMATCH)
+    - failed(job:INPUT_SHARD_MISMATCH)
+    - failed(input_build:MARKETPLACE_UNKNOWN)
+    - failed(input_build:statement_too_large)
+    - failed(input_build:SHARD_PLAN_MISMATCH)
+    - failed(input_build:ROSTER_TOO_LARGE)
+    - rolled_back
+  # Daily re-runs of one fingerprint after a transient failure; the next failure suppresses
+  # (`retry_exhausted`).
+  max_transient_retries: 3
+  # The UTC weekday whose scheduled check admits a new run fingerprint (the weekly slot).
+  admission_weekday: thursday

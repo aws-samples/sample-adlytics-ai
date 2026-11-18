@@ -35,8 +35,18 @@ class SkipReason(StrEnum):
     HOLDOUT_ALL_ZERO = "HOLDOUT_ALL_ZERO"
     BACKTEST_BAND_UNORDERED = "BACKTEST_BAND_UNORDERED"
     SEASONAL_LAG_UNKNOWN = "SEASONAL_LAG_UNKNOWN"
+    SEASONAL_LAG_UNKNOWN_AT_ORIGIN = "SEASONAL_LAG_UNKNOWN_AT_ORIGIN"
+    """A forecast week's `y[t - 52]` is unknown, so SeasonalNaive is not publishable (§5c)."""
     SEASONAL_RESIDUALS_TOO_FEW = "SEASONAL_RESIDUALS_TOO_FEW"
+    HISTORY_TOO_SHORT_FOR_SEASON = "HISTORY_TOO_SHORT_FOR_SEASON"
+    """Fewer weeks than one season plus `min_seasonal_residuals`, known or not (§5a)."""
     ETS_INSUFFICIENT_KNOWN = "ETS_INSUFFICIENT_KNOWN"
+    ETS_FIT_FAILED = "ETS_FIT_FAILED"
+    """The state-space ETS fit raised a `ConvergenceWarning`; it is never scored or shown (§5a)."""
+    ACCURACY_NOT_TESTABLE = "ACCURACY_NOT_TESTABLE"
+    """No simple model is valid, so nothing is shown (gate `no_valid_simple_model`, §5c)."""
+    FORECAST_NOT_PUBLISHABLE = "FORECAST_NOT_PUBLISHABLE"
+    """A simple model is valid but none is publishable; `gate_reason` names the check (§5c)."""
     FORECAST_SHAPE_INVALID = "FORECAST_SHAPE_INVALID"
     FORECAST_NOT_FINITE = "FORECAST_NOT_FINITE"
     FORECAST_BAND_UNORDERED = "FORECAST_BAND_UNORDERED"
@@ -44,8 +54,6 @@ class SkipReason(StrEnum):
     PRODUCT_KEY_INVALID = "PRODUCT_KEY_INVALID"
     DISPLAY_ASIN_COLLISION = "DISPLAY_ASIN_COLLISION"
     CURRENCY_MIXED = "CURRENCY_MIXED"
-    MODEL_NOT_RUN = "MODEL_NOT_RUN"
-    """Slice 1 only: the comparators are not run until slice 2's gate; retired with it."""
 
 
 class AccuracyGap(StrEnum):

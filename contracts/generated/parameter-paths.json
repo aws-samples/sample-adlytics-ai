@@ -366,6 +366,16 @@
       "name": "cache-table",
       "producedBy": "InsightCacheStack"
     },
+    "demandForecastTableName": {
+      "area": "data",
+      "name": "demand-forecast-table-name",
+      "producedBy": "DemandForecastDataStack"
+    },
+    "demandForecastProcessingBucketName": {
+      "area": "data",
+      "name": "demand-forecast-processing-bucket-name",
+      "producedBy": "DemandForecastDataStack"
+    },
     "insightCacheTableArn": {
       "area": "insight",
       "name": "cache-table-arn",

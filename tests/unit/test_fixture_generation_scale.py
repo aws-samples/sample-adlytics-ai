@@ -13,6 +13,7 @@ import io
 import tracemalloc
 from collections import Counter
 from datetime import date
+from typing import cast
 
 import pyarrow.parquet as pq
 import pytest
@@ -24,6 +25,7 @@ from adapters.jobs.demand_forecast_scale_fixture.__main__ import (
     main,
     newest_complete_saturday,
     stage,
+    staged_fence,
 )
 from adapters.jobs.fixture_generation.scale import ScaleFixtureRequest, scale_products
 from domain.forecasting.boundary import (
@@ -31,6 +33,7 @@ from domain.forecasting.boundary import (
     WeeklyTargetAggregateRowV1,
     WeeklyTrafficAggregateRowV1,
 )
+from domain.forecasting.publish import CurrentPointer
 
 pytestmark = pytest.mark.unit
 
@@ -88,18 +91,39 @@ def test_a_staged_input_carries_a_valid_manifest_and_the_jobs_exact_parquet_sche
             instance_type="ml.m5.xlarge",
             max_runtime_seconds=3600,
             processor_code_identity="b" * 64,
+            expected_fence=3,
         )
     )
     base = "runs/scale-3-test/input/r0a0"
     manifest = InputManifestV1.model_validate_json(staged.objects[f"{base}/manifest.json"])
     assert [s.asin_count for s in manifest.shards] == [3]
+    # The probe's commit is fenced on the CURRENT it staged against, never on 0 (§10).
+    assert manifest.expected_fence == 3
     for kind, model in (
         ("target", WeeklyTargetAggregateRowV1),
         ("traffic", WeeklyTrafficAggregateRowV1),
     ):
         part = pq.ParquetFile(io.BytesIO(staged.objects[f"{base}/{kind}/shard=0/part-0"]))
         assert part.schema_arrow.equals(arrow_schema(model), check_metadata=False)
-    assert staged.probe["probe"]["shards"] == [{"shard": 0}]  # pyright: ignore[reportIndexIssue]
+    probe = cast("dict[str, object]", staged.probe["probe"])
+    assert probe["shards"] == [{"shard": 0}]
+    # A probe failure is recorded against the staged run and fence (ruling 2026-11-16 R1-1).
+    assert (probe["run_fingerprint"], probe["expected_fence"]) == (manifest.run_fingerprint, 3)
+
+
+@pytest.mark.parametrize(("current", "fence"), [(None, 0), (CurrentPointer(fence=4), 4)])
+def test_the_probe_stages_the_sets_current_fence_or_0_before_any_outcome(
+    current: CurrentPointer | None, fence: int
+) -> None:
+    reads: list[str] = []
+
+    class Store:
+        def get_current(self, set_id: str) -> CurrentPointer | None:
+            reads.append(set_id)
+            return current
+
+    assert staged_fence(Store(), "0123456789ab") == fence
+    assert reads == ["0123456789ab"]
 
 
 def test_the_newest_complete_saturday_precedes_today() -> None:

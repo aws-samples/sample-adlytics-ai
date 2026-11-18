@@ -11,9 +11,11 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from enum import StrEnum
 
+from domain.forecasting.policy import WEEKDAYS
+from domain.forecasting.publish import CurrentPointer, Disposition
 from domain.shared_kernel.values import DateRange
 
 WINDOW_DAYS = 728
@@ -24,10 +26,13 @@ SATURDAY = 5
 
 
 class HeldCategory(StrEnum):
-    """Why `select_input()` holds instead of running (design §6d step 1)."""
+    """Why `select_input()` holds instead of running (design §6d steps 1 and 4)."""
 
     NO_COMPLETE_WEEK = "no_complete_week"
     INPUT_END_TOO_OLD = "input_end_too_old"
+    WEEKLY_SLOT_NOT_DUE = "weekly_slot_not_due"
+    SLOT_ALREADY_CONSUMED = "slot_already_consumed"
+    """On the slot day, another scheduled execution already holds the week's slot marker."""
 
 
 @dataclass(frozen=True)
@@ -72,6 +77,196 @@ class WindowPins:
 
 def _held(category: HeldCategory, input_end: date | None) -> WindowPins:
     return WindowPins(category, input_end, None, (), (), (), (), None)
+
+
+def admits_new_input(check_date: date, admission_weekday: str) -> bool:
+    """Whether a scheduled check on UTC `check_date` is the weekly slot (design §6d step 4).
+
+    Only the slot admits a new run fingerprint; the caller passes the date it already reads for
+    the selection window, so the domain reads no clock.
+    """
+    if admission_weekday not in WEEKDAYS:
+        raise ValueError(f"admission_weekday must be one of {list(WEEKDAYS)}")
+    return WEEKDAYS[check_date.weekday()] == admission_weekday
+
+
+def slot_date(check_date: date, admission_weekday: str) -> date:
+    """Return the newest `admission_weekday` on or before `check_date` (0 to 6 days back).
+
+    A slot period runs from that day to the day before the next one; its slot marker is keyed by
+    this date, so each period admits at most one scheduled run (F-A8 ruling, 2026-11-16).
+    """
+    if admission_weekday not in WEEKDAYS:
+        raise ValueError(f"admission_weekday must be one of {list(WEEKDAYS)}")
+    back = (check_date.weekday() - WEEKDAYS.index(admission_weekday)) % 7
+    return check_date - timedelta(days=back)
+
+
+def scheduled_run_id(set_id: str, check_date: date) -> str:
+    """Return a scheduled check's run ID, `<set hash 12>-<UTC date>` (design §6d "Trigger").
+
+    The execution itself is named by Scheduler (OQ-S2-3), so the run ID, and with it every
+    receipt key of the run, comes from the scheduled time's UTC date.
+    """
+    if not set_id or "#" in set_id:
+        raise ValueError("set_id is non-empty and has no '#'")
+    return f"{set_id}-{check_date.isoformat()}"
+
+
+class Trigger(StrEnum):
+    """Who started the execution: the daily schedule or an operator (design §6d)."""
+
+    SCHEDULED = "scheduled"
+    OPERATOR = "operator"
+
+
+class SelectOutcome(StrEnum):
+    """`SelectInput`'s decision."""
+
+    RUN = "run"
+    NO_OP_SAME_INPUT = "no_op_same_input"
+    HELD_INPUT_NOT_READY = "held_input_not_ready"
+
+
+class SelectBasis(StrEnum):
+    """Which §6d step decided, for the log line and the tests."""
+
+    SAME_AS_CURRENT = "same_as_current"
+    """Step 2: the fingerprint is CURRENT's."""
+    LAST_ATTEMPT_SUPPRESSED = "last_attempt_suppressed"
+    """Step 3: `last_attempt` has this fingerprint with `suppress`."""
+    LAST_ATTEMPT_RETRY = "last_attempt_retry"
+    """Step 3: `last_attempt` has this fingerprint with `retry`; a retry runs on any day."""
+    OPERATOR_START = "operator_start"
+    """Step 4 skipped: an operator start runs a new fingerprint on any day."""
+    SLOT_CLAIM_REQUIRED = "slot_claim_required"
+    """Step 4, unsettled: a scheduled check with a new fingerprint must claim the slot marker."""
+    WEEKLY_SLOT = "weekly_slot"
+    """Step 4: the check claimed the slot marker on the slot weekday."""
+    SLOT_MISSED = "slot_missed"
+    """Step 4, R7-M2: no scheduled check claimed this period's slot before today."""
+    SLOT_NOT_DUE = "slot_not_due"
+    """Step 4: the period's slot marker is held and today is not the slot weekday."""
+    SLOT_ALREADY_CONSUMED = "slot_already_consumed"
+    """Step 4: on the slot weekday, another execution holds the marker (a duplicate start)."""
+
+
+@dataclass(frozen=True)
+class SelectDecisionRequest:
+    """Steps 2 to 5 of §6d for one check whose window holds a complete week."""
+
+    run_fingerprint: str
+    current: CurrentPointer | None
+    trigger: Trigger
+    check_date: date
+    admission_weekday: str
+    retry_failed: bool = False
+
+    def __post_init__(self) -> None:
+        if not self.run_fingerprint:
+            raise ValueError("a decision needs the run fingerprint")
+        if self.retry_failed and self.trigger is not Trigger.OPERATOR:
+            raise ValueError("only an operator start carries RETRY_FAILED")
+
+
+@dataclass(frozen=True)
+class SelectDecision:
+    """The outcome, the held category (a slot category only) and the deciding step."""
+
+    outcome: SelectOutcome
+    category: HeldCategory | None
+    basis: SelectBasis
+
+
+def select_decision(request: SelectDecisionRequest) -> SelectDecision:
+    """Apply §6d steps 2 to 5 in order; the first that applies wins."""
+    current = request.current
+    if current is not None and current.run_fingerprint == request.run_fingerprint:
+        return SelectDecision(SelectOutcome.NO_OP_SAME_INPUT, None, SelectBasis.SAME_AS_CURRENT)
+    last = None if current is None else current.last_attempt
+    if (
+        last is not None
+        and last.run_fingerprint == request.run_fingerprint
+        and not request.retry_failed
+    ):
+        if last.retry_disposition is Disposition.SUPPRESS:
+            return SelectDecision(
+                SelectOutcome.NO_OP_SAME_INPUT, None, SelectBasis.LAST_ATTEMPT_SUPPRESSED
+            )
+        return SelectDecision(SelectOutcome.RUN, None, SelectBasis.LAST_ATTEMPT_RETRY)
+    return _slot_decision(request)
+
+
+def _slot_decision(request: SelectDecisionRequest) -> SelectDecision:
+    """Step 4: an operator start skips it; a scheduled check must claim the slot marker."""
+    if request.trigger is Trigger.OPERATOR:
+        return SelectDecision(SelectOutcome.RUN, None, SelectBasis.OPERATOR_START)
+    return SelectDecision(SelectOutcome.RUN, None, SelectBasis.SLOT_CLAIM_REQUIRED)
+
+
+def claims_slot(request: SelectDecisionRequest, decision: SelectDecision) -> bool:
+    """Whether this check writes the period's slot marker (F-A8 ruling, 2026-11-16).
+
+    A scheduled check claims it to admit a new fingerprint, and on the slot weekday also when it
+    no-ops, so the slot check that found nothing new still consumes its week (OQ-S2-1). Operator
+    starts and `retry` re-runs neither read nor write it.
+    """
+    if request.trigger is not Trigger.SCHEDULED:
+        return False
+    if decision.basis is SelectBasis.SLOT_CLAIM_REQUIRED:
+        return True
+    return decision.outcome is SelectOutcome.NO_OP_SAME_INPUT and admits_new_input(
+        request.check_date, request.admission_weekday
+    )
+
+
+def settle_slot(
+    request: SelectDecisionRequest, decision: SelectDecision, *, claimed: bool
+) -> SelectDecision:
+    """Turn a `SLOT_CLAIM_REQUIRED` decision into the run or hold the claim gave."""
+    if decision.basis is not SelectBasis.SLOT_CLAIM_REQUIRED:
+        return decision
+    on_slot = admits_new_input(request.check_date, request.admission_weekday)
+    if claimed:
+        basis = SelectBasis.WEEKLY_SLOT if on_slot else SelectBasis.SLOT_MISSED
+        return SelectDecision(SelectOutcome.RUN, None, basis)
+    if on_slot:
+        return SelectDecision(
+            SelectOutcome.HELD_INPUT_NOT_READY,
+            HeldCategory.SLOT_ALREADY_CONSUMED,
+            SelectBasis.SLOT_ALREADY_CONSUMED,
+        )
+    return SelectDecision(
+        SelectOutcome.HELD_INPUT_NOT_READY,
+        HeldCategory.WEEKLY_SLOT_NOT_DUE,
+        SelectBasis.SLOT_NOT_DUE,
+    )
+
+
+def current_age_days(published_at: datetime, now: datetime) -> int:
+    """Whole days since CURRENT's generation was published (`ForecastCurrentAgeDays`, §9)."""
+    if published_at.tzinfo is None or now.tzinfo is None:
+        raise ValueError("both instants are timezone-aware")
+    return max(0, (now - published_at) // timedelta(days=1))
+
+
+def unknown_sales_days(pins: WindowPins, check_date: date, grace_days: int) -> int:
+    """Count the window's unknown sales days (`UnknownSalesDays`, round 7 definition, R5C2-13).
+
+    Over `[window_start, input_end]` only: a day not covered for sales, more than `grace_days`
+    before `check_date`, and on or after the window's first day with a sales pin, so a backfill
+    in progress doesn't count. A check with no window (held at step 1) counts none.
+    """
+    if grace_days < 0:
+        raise ValueError("grace_days is never negative")
+    if pins.window is None or pins.input_end is None or not pins.sales:
+        return 0
+    first = max(pins.window.start, min(pin.bucket.start for pin in pins.sales))
+    covered = _covered_days(pins.covered_sales)
+    cutoff = check_date - timedelta(days=grace_days)
+    span = (pins.input_end - first).days + 1
+    days = (first + timedelta(days=n) for n in range(span))
+    return sum(1 for day in days if day not in covered and day < cutoff)
 
 
 def _covered_days(intervals: tuple[DateRange, ...]) -> set[date]:

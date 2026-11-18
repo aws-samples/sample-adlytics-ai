@@ -39,7 +39,7 @@ def _evaluations() -> list[dict[str, Any]]:
         {
             "model": model,
             "backtest_score": None,
-            "validity_reason": "MODEL_NOT_RUN",
+            "validity_reason": "INSUFFICIENT_CONTEXT",
             "origin_status": "not_attempted",
             "origin_failure": None,
         }

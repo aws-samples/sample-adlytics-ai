@@ -1931,6 +1931,17 @@ export const PARAMS = {
     name: 'cache-table',
     producedBy: 'InsightCacheStack',
   },
+  // Demand forecast (design §6b): DemandForecastStack reads both at deploy.
+  demandForecastTableName: {
+    area: 'data',
+    name: 'demand-forecast-table-name',
+    producedBy: 'DemandForecastDataStack',
+  },
+  demandForecastProcessingBucketName: {
+    area: 'data',
+    name: 'demand-forecast-processing-bucket-name',
+    producedBy: 'DemandForecastDataStack',
+  },
   insightCacheTableArn: {
     area: 'insight',
     name: 'cache-table-arn',
@@ -2277,6 +2288,11 @@ export function insightPromptRegistryTableName(envName: string): string {
   return `adlytics-${envName}-insight-prompt-registry`;
 }
 
+/** The retained demand-forecast store: pointer, receipts, slot markers and generations (§6b). */
+export function demandForecastTableName(envName: string): string {
+  assertValidEnvName(envName);
+  return `adlytics-${envName}-demand-forecast`;
+}
 /** Retained revision-keyed presentation insight cache isolated from disposable consumers. */
 export function insightCacheTableName(envName: string): string {
   assertValidEnvName(envName);

@@ -1,6 +1,6 @@
 # Demand forecast
 
-> **In development: not yet available in a deployment.** No deployment publishes or shows a forecast yet. The engine runs in the dev environment on synthetic data; the page, chat tools and API come in a later slice. See [Status](#status).
+> **In development: not yet available in a deployment.** No deployment shows a forecast yet. In the dev environment, on synthetic data, the engine runs and publishes gated forecasts to a store that nothing reads yet; the page, chat tools and API come in a later slice. See [Status](#status).
 
 See how much each product will sell over the next 13 weeks, from its Vendor Central history, with a range around every week.
 
@@ -38,7 +38,7 @@ As of 2026-11-17. Each slice ships on its own.
 | Slice | What it adds | Status |
 |---|---|---|
 | 1 | The forecast engine and its weekly input | Merged. Accepted in dev on synthetic data on 2026-11-15 ([dated result](../../../validation/RESULTS.md#demand-forecast-slice-1-acceptance-on-landed-history-on-dev--2026-11-15)) |
-| 2 | The publish gate, the forecast store, a weekly schedule, and an operator run and rollback | In dev acceptance; not merged |
+| 2 | The publish gate, the forecast store, a weekly schedule, and an operator run and rollback | Merged. Accepted in dev on synthetic data on 2026-11-18 |
 | 3 | The forecast page, chat tools, and a read-only forecast and forecast-status API | Next |
 | 4 | A Vendor Central data connector (Selling Partner API, SP-API), so a customer deployment can load the history the forecast needs | Later |
 
@@ -61,7 +61,7 @@ The policy, including how much history a product needs and how gaps are treated,
 
 ## Known limits
 
-- **Nothing is shown yet.** No deployment publishes or serves a forecast until slices 2 and 3 are merged.
+- **Nothing is shown yet.** A deployment stores gated forecasts, but no page, tool or API reads them until slice 3 is merged.
 - **A customer deployment has no Vendor Central history to forecast.** It can't load Vendor Central reports yet; see **Load Vendor Central reports** in the hub's [Known limits](../../../README.md#known-limits). Until slice 4, only the dev environment, with synthetic data, has that history.
 - **Some products get no forecast.** A product with too little weekly history, or no Vendor Central data in recent weeks, is withheld with a reason.
 - **One product's forecast can change when another joins or leaves the catalog.** Chronos-2 forecasts products in batches, jointly ([ADR-160](../../decisions/adr-160-mount-the-jumpstart-chronos-2-artifact-and-enforce-isolation-in-iam.md)).
@@ -69,9 +69,18 @@ The policy, including how much history a product needs and how gaps are treated,
 
 ## Deploy it
 
-- **The engine already deploys with the full sample.** `make deploy-all` creates its two stacks; they run nothing on a schedule until slice 2. Follow the hub's [Quickstart](../../../README.md#quickstart) and [Deploy](../../../README.md#deploy).
+- **It deploys with the full sample.** `make deploy-all` creates its two stacks. An EventBridge Scheduler schedule checks every day at 13:00 UTC; only the Thursday check admits a new weekly input, and a run starts SageMaker Processing jobs. Follow the hub's [Quickstart](../../../README.md#quickstart) and [Deploy](../../../README.md#deploy).
 - **It needs a SageMaker Processing quota,** whose default is 0; see [Prerequisites](../../../README.md#prerequisites).
-- **Its processing bucket is retained** on teardown; see [Clean up](../../../README.md#clean-up).
+- **Its processing bucket and forecast table are retained** on teardown; see [Clean up](../../../README.md#clean-up).
+
+### Test the weekly schedule without waiting
+
+- **Start the scheduled path yourself.** Start the state machine `adlytics-<env>-demand-forecast` with the input `{"scheduled_time": "<UTC time>"}`, for example `2026-11-19T13:00:00Z`. The run takes its check date and run ID from that time, exactly as a Scheduler delivery does.
+- **A future time is allowed.** It runs that day's check now, including the Thursday slot. The input build re-selects with today's date and refuses `SELECTION_MOVED` if the input differs, so nothing is published from data that isn't landed yet.
+- **It takes that date's run ID, receipts and slot.** If the manual start published, the real Thursday delivery should then end `no_op_same_input` on the same input, or hold with `slot_already_consumed` on a new one.
+- **A manual start that didn't publish can fail that date's real delivery.** If it ended `no_op_same_input` and the input then changes, the real delivery conflicts with its receipt, fails and raises `DemandForecastRunFailed`.
+- **The real delivery still proves the eventing.** A manual start proves the run; only a Scheduler delivery proves the schedule, its role and its input. Read one delivery's execution after deploying.
+- **`make demand-forecast-run` is different.** It starts an operator run for today, carries no `scheduled_time`, and isn't bound by the slot.
 
 ## Learn more
 

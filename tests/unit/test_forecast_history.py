@@ -72,6 +72,7 @@ def _staged() -> StagedInput:
         instance_type="ml.m5.xlarge",
         max_runtime_seconds=3600,
         processor_code_identity="b" * 64,
+        expected_fence=0,
     )
     return stage_catalogue(request, _history())
 

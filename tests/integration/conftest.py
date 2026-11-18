@@ -16,9 +16,12 @@ Run with `make test-integration PROFILE=<aws-profile>`.
 
 from __future__ import annotations
 
+import importlib.util
 import os
+import sys
 from collections.abc import Iterator
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import boto3
@@ -44,6 +47,27 @@ from adapters.outbound.dynamodb.semantic_state import (
 from domain.shared_kernel.errors import InvariantError
 
 ENV_NAME = os.environ.get("ADL_TEST_ENV", "dev")
+
+_REPORT_MODULE = "run_record_report"
+_REPORT_PATH = Path(__file__).resolve().parents[1] / "unit" / f"{_REPORT_MODULE}.py"
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Register the run recorder's per-test report, as `tests/unit/conftest.py` does.
+
+    `make test-integration` runs `pytest tests/integration`, which never loads the unit tier's
+    conftest, so without this the record has no tests.json and a live probe that never ran
+    can't be told from one that passed.
+    """
+    module = sys.modules.get(_REPORT_MODULE)
+    if module is None:
+        spec = importlib.util.spec_from_file_location(_REPORT_MODULE, _REPORT_PATH)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"cannot load the run-record report plugin from {_REPORT_PATH}")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[_REPORT_MODULE] = module
+        spec.loader.exec_module(module)
+    module.register(config)
 
 
 # Not published by any stack: a test harness value, and nothing here asserts on it.

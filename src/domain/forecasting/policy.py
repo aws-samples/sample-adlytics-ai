@@ -8,7 +8,11 @@ section carries its own version; the loader records them with the file's SHA-256
 
 from __future__ import annotations
 
+import math
+import re
 from dataclasses import dataclass
+
+from domain.forecasting.models import ModelName
 
 TARGETS: tuple[str, ...] = ("units_shipped", "units_ordered", "revenue_shipped", "cogs_shipped")
 """The four forecast targets, in their declared order."""
@@ -28,6 +32,22 @@ MAX_SHARDS = 100
 """Athena `UNLOAD` writes at most 100 partitions, so a roster holds at most 100 shards."""
 SHARD_LADDER: tuple[int, ...] = (2000, 1000, 500)
 """The approved `shard_max_asins` values (design §4b shard ladder, P-18)."""
+SIMPLICITY_ORDER: tuple[str, ...] = (ModelName.SEASONAL_NAIVE, ModelName.ETS, ModelName.CHRONOS2)
+"""The gate's order, simplest first: on equal WQL the simpler model is shown (design §5c)."""
+WEEKDAYS: tuple[str, ...] = (
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+)
+"""Weekday names in `date.weekday()` order, the values `retry.admission_weekday` may take."""
+_SUPPRESSED = re.compile(
+    r"(?P<outcome>held_quality|failed|rolled_back)(\((?P<category>[a-z_]+(:[A-Za-z0-9_]+)?)\))?"
+)
+"""`<outcome>` or `<outcome>(<category>)`: the outcomes that set `last_attempt` (design §6d)."""
 
 
 def _positive(name: str, value: int, minimum: int = 1) -> None:
@@ -196,8 +216,77 @@ class ServingPolicy:
 
 
 @dataclass(frozen=True)
+class GatePolicy:
+    """Which model a series shows (`gate` v1, design §5c; owner decision 4, ADR-157).
+
+    Only the approved rule is accepted (P-1, P-2, P-10); any other value is a new approval and a
+    new section version, never a silent change to what planners see.
+    """
+
+    version: int
+    metric: str
+    margin: float
+    simplicity_order: tuple[str, ...]
+    comparator_fallback: str
+    no_valid_simple_model: str
+    comparator_quantiles: str
+    not_publishable: str
+
+    def __post_init__(self) -> None:
+        _positive("gate.version", self.version)
+        if self.metric != "wql":
+            raise ValueError("gate.metric must be wql")
+        if (
+            isinstance(self.margin, bool)
+            or not math.isfinite(self.margin)
+            or not 0 <= self.margin < 1
+        ):
+            raise ValueError(f"gate.margin must be at least 0 and below 1, got {self.margin!r}")
+        if self.simplicity_order != SIMPLICITY_ORDER:
+            raise ValueError(f"gate.simplicity_order must be {list(SIMPLICITY_ORDER)}")
+        for name, allowed in (
+            ("comparator_fallback", "require_all"),
+            ("no_valid_simple_model", "withhold"),
+            ("comparator_quantiles", "censor_at_zero"),
+            ("not_publishable", "next_in_order"),
+        ):
+            if getattr(self, name) != allowed:
+                raise ValueError(f"gate.{name} must be {allowed}")
+
+
+@dataclass(frozen=True)
+class RetryPolicy:
+    """Which outcomes re-run, how often, and the weekly slot (`retry` v1, design §6d; P-6, P-17)."""
+
+    version: int
+    suppressed_outcomes: tuple[str, ...]
+    max_transient_retries: int
+    admission_weekday: str
+
+    def __post_init__(self) -> None:
+        _positive("retry.version", self.version)
+        _positive("retry.max_transient_retries", self.max_transient_retries, 0)
+        if self.admission_weekday not in WEEKDAYS:
+            raise ValueError(f"retry.admission_weekday must be one of {list(WEEKDAYS)}")
+        if not self.suppressed_outcomes:
+            raise ValueError("retry.suppressed_outcomes must be non-empty")
+        if len(set(self.suppressed_outcomes)) != len(self.suppressed_outcomes):
+            raise ValueError("retry.suppressed_outcomes must not repeat an outcome")
+        for outcome in self.suppressed_outcomes:
+            match = _SUPPRESSED.fullmatch(outcome)
+            if match is None:
+                raise ValueError(
+                    "retry.suppressed_outcomes: "
+                    f"{outcome!r} is not held_quality, failed or rolled_back[(<category>)]"
+                )
+            # A bare `failed` would suppress every failure, so no transient failure would retry.
+            if match["outcome"] == "failed" and match["category"] is None:
+                raise ValueError("retry.suppressed_outcomes: failed needs its (<category>)")
+
+
+@dataclass(frozen=True)
 class DemandForecastPolicy:
-    """Every slice 1 section of the policy, each validated on construction."""
+    """Every section of the policy, each validated on construction."""
 
     schema_version: int
     input: InputPolicy
@@ -205,7 +294,9 @@ class DemandForecastPolicy:
     eligibility: EligibilityPolicy
     engine: EnginePolicy
     numeric: NumericPolicy
+    gate: GatePolicy
     serving: ServingPolicy
+    retry: RetryPolicy
 
     def __post_init__(self) -> None:
         if self.schema_version != 1:
@@ -222,5 +313,7 @@ class DemandForecastPolicy:
             "eligibility": self.eligibility.version,
             "engine": self.engine.version,
             "numeric": self.numeric.version,
+            "gate": self.gate.version,
             "serving": self.serving.version,
+            "retry": self.retry.version,
         }

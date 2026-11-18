@@ -23,7 +23,7 @@ endef
         install lint format typecheck lint-boundaries validate-contracts validate-page-schemas test test-integration \
         check-lambda-layer-reproducibility verify verify-clean verify-clean-run gate-status publication-gate release-gate install-hooks uninstall-hooks publish pr merge-pr accept-ingestion-v2 accept-campaign-estate-local accept-evaluation-link print-deploy-flags accept-evaluation-custody regress-agent mutate mutate-next mutation-status mutation-verdict dead-code dead-code-allowlist build-lambdas build-frontend \
         generate-design-manifest generate-schemas check-schemas generate-fixtures check-fixtures \
-        generate-tool-schemas check-tool-schemas generate-forecast-lock check-forecast-lock check-forecasting generate-forecast-schemas check-forecast-schemas demand-forecast-artifact-digest demand-forecast-scale-probe generate-trace-contract check-trace-contract generate-data-flow-registry check-data-flow-coverage generate-execution-graph-protocol check-execution-graph-protocol check-execution-graph-deployable generate-alarm-destinations check-alarm-destinations generate-producer-packs check-producer-packs \
+        generate-tool-schemas check-tool-schemas generate-forecast-lock check-forecast-lock check-forecasting generate-forecast-schemas check-forecast-schemas demand-forecast-artifact-digest demand-forecast-scale-probe demand-forecast-run demand-forecast-rollback generate-trace-contract check-trace-contract generate-data-flow-registry check-data-flow-coverage generate-execution-graph-protocol check-execution-graph-protocol check-execution-graph-deployable generate-alarm-destinations check-alarm-destinations generate-operational-metrics check-operational-metrics generate-producer-packs check-producer-packs \
         generate-parameter-contract check-parameter-contract \
         frontend-typecheck frontend-test create-user provision-quality-review-users accept-quality-review backfill-record-expiry supersede-orphan-units migrate-review-groups rotate-origin-verify accept-edge accept-guardrail accept-managed-harness accept-reprocess-telemetry infra-typecheck infra-test check-alarm-coverage check-probe-resource-names synth diff deploy deploy-all destroy-all \
         dev-state check-alarm-window check-serving-refusals check-staged-tree diff-then-deploy deploy-all-locked check-source-key deploy-lock-force-release
@@ -36,7 +36,7 @@ help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
 		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
 
-check: check-links check-diagrams check-design-manifest check-insight-matrix check-model check-lineage check-schemas check-fixtures check-tool-schemas check-forecast-lock check-forecast-schemas check-trace-contract check-data-flow-coverage check-execution-graph-protocol check-alarm-destinations check-producer-packs check-parameter-contract validate-page-schemas check-bakeability check-steering check-coverage-matrix check-config-access check-prompt-text check-conformed-columns check-construct-levels check-observability-bans check-exception-handling check-aws-pagination check-publication-boundary check-license-headers check-debt-markers check-run-record-coverage check-format ## Run every documentation check
+check: check-links check-diagrams check-design-manifest check-insight-matrix check-model check-lineage check-schemas check-fixtures check-tool-schemas check-forecast-lock check-forecast-schemas check-trace-contract check-data-flow-coverage check-execution-graph-protocol check-alarm-destinations check-operational-metrics check-producer-packs check-parameter-contract validate-page-schemas check-bakeability check-steering check-coverage-matrix check-config-access check-prompt-text check-conformed-columns check-construct-levels check-observability-bans check-exception-handling check-aws-pagination check-publication-boundary check-license-headers check-debt-markers check-run-record-coverage check-format ## Run every documentation check
 
 check-links: ## Validate internal links and heading anchors in every tracked markdown file (plus local working documents when present)
 	@uv run python scripts/check-links.py
@@ -186,6 +186,29 @@ demand-forecast-scale-probe: ## Dev only: stage N fictional ASINs and start a Pr
 		--marketplace-key "$$ADLYTICS_DEMAND_FORECAST_MARKETPLACE_KEY" \
 		--instance-type "$$ADLYTICS_DEMAND_FORECAST_INSTANCE_TYPE" \
 		--max-runtime-seconds "$$ADLYTICS_DEMAND_FORECAST_MAX_RUNTIME_SECONDS"
+# Operator commands (design §6c, §6d). REASON and GENERATION reach the script through the
+# recipe's environment, never interpolated into the shell line. A refusal exits 2, nothing written.
+demand-forecast-run: ## Start a forecast run now (-op-<n>): PROFILE=... ENV=... ACCOUNT=... [REGION=...] [RETRY_FAILED=1 REASON=...]
+	$(require_profile)
+	$(require_env)
+	@test -n "$(ACCOUNT)" || { echo "ACCOUNT is required: the account the profile must resolve to"; exit 1; }
+	@case "$(RETRY_FAILED)" in ""|1) ;; *) echo "RETRY_FAILED may only be 1" >&2; exit 1;; esac
+	@set -eu; $(load_deploy_env); \
+	uv run python scripts/demand_forecast_operator.py run --profile "$(PROFILE)" --env "$(ENV)" \
+		--expected-account "$(ACCOUNT)" $(if $(REGION),--region "$(REGION)") \
+		--marketplace-key "$$ADLYTICS_DEMAND_FORECAST_MARKETPLACE_KEY" \
+		$(if $(RETRY_FAILED),--retry-failed) $(if $(REASON),--reason "$$REASON")
+demand-forecast-rollback: ## Point CURRENT back at a once-published generation: PROFILE=... ENV=... ACCOUNT=... GENERATION=<id> REASON=... [REGION=...]
+	$(require_profile)
+	$(require_env)
+	@test -n "$(ACCOUNT)" || { echo "ACCOUNT is required: the account the profile must resolve to"; exit 1; }
+	@test -n "$$GENERATION" || { echo "GENERATION is required: the generation_id to restore"; exit 1; }
+	@test -n "$$REASON" || { echo "REASON is required: 1 to 200 printable characters"; exit 1; }
+	@set -eu; $(load_deploy_env); \
+	uv run python scripts/demand_forecast_operator.py rollback --profile "$(PROFILE)" --env "$(ENV)" \
+		--expected-account "$(ACCOUNT)" $(if $(REGION),--region "$(REGION)") \
+		--marketplace-key "$$ADLYTICS_DEMAND_FORECAST_MARKETPLACE_KEY" \
+		--generation "$$GENERATION" --reason "$$REASON"
 # Static business spans are declared once with a typed source marker, parent policy, and closed
 # metadata projection. The checker also enforces direct lifecycle-log and OTel import boundaries.
 generate-trace-contract: ## Generate static span constants from the observability contract
@@ -214,6 +237,10 @@ generate-alarm-destinations: ## Generate the staffed alarm destination projectio
 	@uv run python -m adapters.jobs.data_flow_registry.alarm_destinations
 check-alarm-destinations: ## Fail if the alarm destination projections are stale or the policy is incomplete
 	@uv run python -m adapters.jobs.data_flow_registry.alarm_destinations --check
+generate-operational-metrics: ## Generate the operational-metric projections from the metric dictionary's operational_metrics section
+	@uv run python -m adapters.jobs.operational_metrics
+check-operational-metrics: ## Fail if an operational-metric projection is stale or the section is malformed
+	@uv run python -m adapters.jobs.operational_metrics --check
 # Producer packs bind hand-authored SQL to the exact data contract and Semantic V2 source pack.
 # The generated registry is the distributable projection; any source change must rotate its digest.
 generate-producer-packs: ## Generate the governed AMC producer-pack registry

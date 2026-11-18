@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal
 from functools import cache
@@ -14,6 +15,14 @@ from domain.forecasting.boundary import (
     IntervalV1,
     WeeklyTargetAggregateRowV1,
     WeeklyTrafficAggregateRowV1,
+)
+from domain.forecasting.comparators import EtsRequest, EtsResult
+from domain.forecasting.models import (
+    ForecastBatchRequest,
+    ForecastBatchResult,
+    QuantileForecast,
+    SeriesHistory,
+    SkipReason,
 )
 from domain.forecasting.policy import MONEY_TARGETS, TARGETS, DemandForecastPolicy
 from domain.forecasting.weekly_series import (
@@ -118,3 +127,64 @@ def without_day(day: date) -> tuple[IntervalV1, ...]:
         IntervalV1(start=STARTS[0], end=day - timedelta(days=1)),
         IntervalV1(start=day + timedelta(days=1), end=INPUT_END),
     )
+
+
+def _flat(item: SeriesHistory, horizon: int, band: tuple[float, float]) -> QuantileForecast:
+    level, spread = band
+    return QuantileForecast(
+        item.canonical_asin,
+        item.target,
+        (level - spread,) * horizon,
+        (level,) * horizon,
+        (level + spread,) * horizon,
+    )
+
+
+def _mean(item: SeriesHistory) -> float:
+    known = [v for v in item.values if v is not None]
+    return sum(known) / len(known)
+
+
+@dataclass
+class FakeModel:
+    """Chronos-2 stand-in: each series flat at its mean known value, p10 and p90 two units off.
+
+    `shift(asin, context_weeks)` moves one series' level, so a test can move only the forecast
+    origin (104 context weeks) and leave the backtest (91) alone.
+    """
+
+    shift: Callable[[str, int], float] = lambda _asin, _weeks: 0.0
+    calls: list[tuple[int, int]] = field(default_factory=list[tuple[int, int]])
+
+    def __call__(self, request: ForecastBatchRequest, /) -> ForecastBatchResult:
+        self.calls.append((len(request.series), request.horizon_weeks))
+        return ForecastBatchResult(
+            tuple(
+                _flat(
+                    item,
+                    request.horizon_weeks,
+                    (_mean(item) + self.shift(item.canonical_asin, len(item.values)), 2.0),
+                )
+                for item in request.series
+            )
+        )
+
+
+@dataclass
+class FakeEts:
+    """ETS stand-in: flat at the mean known value, p10 and p90 `spread` units off.
+
+    The band is wider than FakeModel's, so on the same level Chronos-2 has the lower WQL. Series
+    in `unconverged` return `ETS_FIT_FAILED`, as the adapter does on a `ConvergenceWarning`.
+    """
+
+    spread: float = 5.0
+    unconverged: frozenset[str] = frozenset()
+    shift: Callable[[str, int], float] = lambda _asin, _weeks: 0.0
+
+    def __call__(self, request: EtsRequest, /) -> EtsResult:
+        item = request.series
+        if item.canonical_asin in self.unconverged:
+            return EtsResult(None, SkipReason.ETS_FIT_FAILED)
+        level = _mean(item) + self.shift(item.canonical_asin, len(item.values))
+        return EtsResult(_flat(item, request.horizon_weeks, (level, self.spread)), None)
