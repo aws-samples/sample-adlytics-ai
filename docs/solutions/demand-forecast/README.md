@@ -62,6 +62,12 @@ The policy, including how much history a product needs and how gaps are treated,
 
 ## How it works
 
+**Call-flow diagram — how the Demand forecast page and chat tools get their figures.**
+
+![Call-flow diagram: how the Demand forecast page and chat tools get their figures. Vendor Central sales and traffic history in the governed data lake feeds the weekly input, which a daily EventBridge Scheduler check starts and Step Functions and AWS Lambda stage per product; a customer deployment can't land Vendor Central reports yet, and the dev environment holds synthetic ones. SageMaker Processing jobs with no network access backtest and forecast each shard with Chronos-2, ETS and SeasonalNaive. The quality gate and publisher, on AWS Lambda, show Chronos-2 only where it beats both simple models, withhold the rest with a reason, and publish one immutable generation to the forecast store in Amazon DynamoDB under one CURRENT pointer. The forecast read function serves stored values through two GET routes on the HTTP API, behind the session authorizer, to the Demand forecast page in the signed-in user's browser. The forecast tool function runs the same read service behind AgentCore Gateway, which carries the user's identity, and returns the stored figures to the Amazon Bedrock AgentCore agent, whose answer appears in chat beside the page. Nothing is computed at read time; display rounding is the only arithmetic.](diagrams/demand-forecast.svg)
+
+> **Takeaway.** Every forecast figure is computed once by the weekly run and gated before it is stored; the page and the assistant only read what was stored.
+
 - **Weekly input.** A Lambda function reads the published sales and traffic from the data lake and stages each product's weekly history.
 - **Forecast.** A Step Functions state machine starts SageMaker Processing jobs that run Chronos-2 with no network access, on model weights checked against a reviewed digest ([ADR-160](../../decisions/adr-160-mount-the-jumpstart-chronos-2-artifact-and-enforce-isolation-in-iam.md)). The same input and policy give the same forecast.
 - **Gate (slice 2).** Each method forecasts a product's most recent weeks from the weeks before them. Chronos-2 is kept only where it beats SeasonalNaive and ETS.

@@ -1,0 +1,143 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1300 840" role="img" focusable="false" aria-labelledby="df-title df-desc">
+  <title id="df-title">Call-flow diagram: how the Demand forecast page and chat tools get their figures</title>
+  <desc id="df-desc">Vendor Central sales and traffic history in the governed data lake feeds the weekly input, which a daily EventBridge Scheduler check starts and Step Functions and AWS Lambda stage per product; a customer deployment can't land Vendor Central reports yet, and the dev environment holds synthetic ones. SageMaker Processing jobs with no network access backtest and forecast each shard with Chronos-2, ETS and SeasonalNaive. The quality gate and publisher, on AWS Lambda, show Chronos-2 only where it beats both simple models, withhold the rest with a reason, and publish one immutable generation to the forecast store in Amazon DynamoDB under one CURRENT pointer. The forecast read function serves stored values through two GET routes on the HTTP API, behind the session authorizer, to the Demand forecast page in the signed-in user's browser. The forecast tool function runs the same read service behind AgentCore Gateway, which carries the user's identity, and returns the stored figures to the Amazon Bedrock AgentCore agent, whose answer appears in chat beside the page. Nothing is computed at read time; display rounding is the only arithmetic.</desc>
+  <defs>
+    <marker id="df-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#536275"/></marker>
+  </defs>
+  <rect x="0" y="0" width="1300" height="840" fill="#ffffff"/>
+  <g stroke-width="2">
+    <path d="M30 74 V156 A105 14 0 0 0 240 156 V74" fill="#f2f8fe" stroke="#2f6fb2"/>
+    <ellipse cx="135" cy="74" rx="105" ry="14" fill="#f2f8fe" stroke="#2f6fb2"/>
+    <rect x="373" y="60" width="210" height="110" rx="10" fill="#fff4e0" stroke="#c77700"/>
+    <rect x="717" y="60" width="210" height="110" rx="10" fill="#f3fbf6" stroke="#2e7d4f"/>
+    <rect x="1060" y="60" width="210" height="110" rx="10" fill="#fff4e0" stroke="#c77700"/>
+    <path d="M30 314 V396 A105 14 0 0 0 240 396 V314" fill="#f2f8fe" stroke="#2f6fb2"/>
+    <ellipse cx="135" cy="314" rx="105" ry="14" fill="#f2f8fe" stroke="#2f6fb2"/>
+    <rect x="373" y="300" width="210" height="110" rx="10" fill="#f3fbf6" stroke="#2e7d4f"/>
+    <rect x="717" y="300" width="210" height="110" rx="10" fill="#fff7f2" stroke="#b54545"/>
+    <rect x="1060" y="300" width="210" height="110" rx="10" fill="#ffffff" stroke="#9aa8bb" stroke-width="3"/>
+    <rect x="373" y="480" width="210" height="110" rx="10" fill="#f3fbf6" stroke="#2e7d4f"/>
+    <rect x="717" y="480" width="210" height="110" rx="10" fill="#fff7f2" stroke="#b54545"/>
+    <rect x="1060" y="480" width="210" height="110" rx="10" fill="#f8f5ff" stroke="#6b4fbb"/>
+  </g>
+  <g fill="none" stroke="#536275" stroke-width="2" marker-end="url(#df-arrow)">
+    <line x1="240" y1="130" x2="371" y2="130"/>
+    <line x1="583" y1="130" x2="715" y2="130"/>
+    <line x1="927" y1="130" x2="1058" y2="130"/>
+    <path d="M1165 170 V235 H135 V298"/>
+    <line x1="240" y1="370" x2="371" y2="370"/>
+    <line x1="583" y1="370" x2="715" y2="370"/>
+    <line x1="927" y1="370" x2="1058" y2="370"/>
+    <path d="M135 410 V535 H371"/>
+    <line x1="583" y1="535" x2="715" y2="535"/>
+    <line x1="927" y1="535" x2="1058" y2="535"/>
+    <line x1="1165" y1="480" x2="1165" y2="412"/>
+  </g>
+  <g font-family="Arial, sans-serif" fill="#172033" text-anchor="middle">
+    <g font-size="16" font-weight="bold">
+      <text x="135" y="108">Governed data lake</text>
+      <text x="478" y="94">Weekly input</text>
+      <text x="822" y="94">Forecast jobs</text>
+      <text x="1165" y="88">Quality gate and</text>
+      <text x="1165" y="106">publisher</text>
+      <text x="135" y="346">Forecast store</text>
+      <text x="478" y="328">Forecast read</text>
+      <text x="478" y="346">function</text>
+      <text x="822" y="334">HTTP API</text>
+      <text x="1165" y="328">Demand forecast</text>
+      <text x="1165" y="346">page</text>
+      <text x="478" y="508">Forecast tool</text>
+      <text x="478" y="526">function</text>
+      <text x="822" y="514">AgentCore Gateway</text>
+      <text x="1165" y="514">Assistant</text>
+    </g>
+    <g font-size="14" fill="#536275">
+      <text x="135" y="130">Amazon S3, AWS Glue,</text>
+      <text x="135" y="145">Amazon Athena tables;</text>
+      <text x="135" y="160">Vendor Central history</text>
+      <text x="478" y="116">Daily EventBridge Scheduler</text>
+      <text x="478" y="131">check; Step Functions and</text>
+      <text x="478" y="146">AWS Lambda stage each</text>
+      <text x="478" y="161">product's weekly history</text>
+      <text x="822" y="116">SageMaker Processing, no</text>
+      <text x="822" y="131">network: Chronos-2, ETS</text>
+      <text x="822" y="146">and SeasonalNaive</text>
+      <text x="822" y="161">backtest and forecast</text>
+      <text x="1165" y="128">AWS Lambda; Chronos-2 only</text>
+      <text x="1165" y="143">where it beats both simple</text>
+      <text x="1165" y="158">models, else withheld</text>
+      <text x="135" y="368">Amazon DynamoDB:</text>
+      <text x="135" y="383">immutable generations,</text>
+      <text x="135" y="398">one CURRENT pointer</text>
+      <text x="478" y="368">AWS Lambda; GetItem only;</text>
+      <text x="478" y="383">returns stored values</text>
+      <text x="822" y="356">Amazon API Gateway;</text>
+      <text x="822" y="371">session authorizer;</text>
+      <text x="822" y="386">any signed-in user</text>
+      <text x="1165" y="368">Retail hub tab in the</text>
+      <text x="1165" y="384">signed-in user's browser</text>
+      <text x="478" y="548">AWS Lambda; the same</text>
+      <text x="478" y="563">read service; verifies</text>
+      <text x="478" y="578">the caller's identity</text>
+      <text x="822" y="536">CUSTOM_JWT; each call</text>
+      <text x="822" y="551">carries the user's</text>
+      <text x="822" y="566">identity</text>
+      <text x="1165" y="536">Amazon Bedrock AgentCore</text>
+      <text x="1165" y="551">agent; explains the</text>
+      <text x="1165" y="566">figures, never computes one</text>
+    </g>
+    <g font-size="14">
+      <text x="306" y="86">published</text>
+      <text x="306" y="101">Vendor sales</text>
+      <text x="306" y="116">and traffic</text>
+      <text x="650" y="101">weekly history</text>
+      <text x="650" y="116">in shards</text>
+      <text x="993" y="101">backtests and</text>
+      <text x="993" y="116">13-week forecasts</text>
+      <text x="650" y="226">publishes one gated generation and advances CURRENT</text>
+      <text x="306" y="341">stored pages</text>
+      <text x="306" y="356">and product items</text>
+      <text x="650" y="341">stored values</text>
+      <text x="650" y="356">as JSON</text>
+      <text x="993" y="341">two GET</text>
+      <text x="993" y="356">routes</text>
+      <text x="250" y="560">the same</text>
+      <text x="250" y="575">stored items</text>
+      <text x="650" y="506">stored figures or</text>
+      <text x="650" y="521">a typed refusal</text>
+      <text x="993" y="521">tool results</text>
+      <text x="1155" y="450" text-anchor="end">answer in chat beside the page</text>
+    </g>
+    <g font-size="14" text-anchor="start">
+      <text x="30" y="640" font-size="15" font-weight="bold">Nothing computed at read time</text>
+      <text x="30" y="662">The page, the API and the tools serve only the figures</text>
+      <text x="30" y="680">the forecast run stored; display rounding is the only arithmetic.</text>
+      <text x="717" y="640" font-size="15" font-weight="bold">Vendor Central history</text>
+      <text x="717" y="662">A customer deployment can't land Vendor Central reports yet.</text>
+      <text x="717" y="680">In the dev environment, synthetic ones fill the data lake.</text>
+    </g>
+  </g>
+  <g font-family="Arial, sans-serif" font-size="14" fill="#172033">
+    <line x1="30" y1="710" x2="1270" y2="710" stroke="#9aa8bb" stroke-width="1"/>
+    <text x="30" y="736" font-size="14" font-weight="bold">Legend</text>
+    <rect x="30" y="750" width="26" height="16" rx="3" fill="#ffffff" stroke="#9aa8bb" stroke-width="2"/>
+    <text x="64" y="763">User-facing surface</text>
+    <rect x="340" y="750" width="26" height="16" rx="3" fill="#f2f8fe" stroke="#2f6fb2" stroke-width="2"/>
+    <text x="374" y="763">Data and the pipeline that fills it</text>
+    <rect x="680" y="750" width="26" height="16" rx="3" fill="#f3fbf6" stroke="#2e7d4f" stroke-width="2"/>
+    <text x="714" y="763">Deterministic compute</text>
+    <rect x="960" y="750" width="26" height="16" rx="3" fill="#fff4e0" stroke="#c77700" stroke-width="2"/>
+    <text x="994" y="763">Quality gate or scheduled work</text>
+    <rect x="30" y="785" width="26" height="16" rx="3" fill="#fff7f2" stroke="#b54545" stroke-width="2"/>
+    <text x="64" y="798">Access control</text>
+    <rect x="340" y="785" width="26" height="16" rx="3" fill="#f8f5ff" stroke="#6b4fbb" stroke-width="2"/>
+    <text x="374" y="798">Agent, non-deterministic</text>
+    <rect x="680" y="785" width="26" height="16" rx="3" fill="#ffffff" stroke="#9aa8bb" stroke-width="3"/>
+    <text x="714" y="798">The page this solution adds</text>
+    <path d="M960 789 V801 A13 4 0 0 0 986 801 V789" fill="#f2f8fe" stroke="#2f6fb2" stroke-width="2"/>
+    <ellipse cx="973" cy="789" rx="13" ry="4" fill="#f2f8fe" stroke="#2f6fb2" stroke-width="2"/>
+    <text x="994" y="798">Data store</text>
+    <line x1="30" y1="822" x2="64" y2="822" stroke="#536275" stroke-width="2" marker-end="url(#df-arrow)"/>
+    <text x="74" y="827">Data or request, labelled</text>
+  </g>
+</svg>
