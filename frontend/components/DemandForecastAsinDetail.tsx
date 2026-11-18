@@ -8,6 +8,7 @@ import {
   skipReasonCopy,
   targetCopy,
   targets,
+  weekStateCopy,
   type DemandForecastDetail,
   type ViewKey,
 } from '@/lib/demand-forecast';
@@ -77,15 +78,16 @@ export function DemandForecastAsinDetail({ detail, viewWeeks }: {
               </tbody>
             </table>
             <table>
-              <caption>{targetCopy[target]}, recent {grain}s observed</caption>
-              <thead><tr><th scope="col">{grain} starting</th><th scope="col">Observed</th><th scope="col">Shipped below ordered</th></tr></thead>
+              <caption>{targetCopy[target]}, recent history by {grain}</caption>
+              <thead><tr><th scope="col">{grain} starting</th><th scope="col">Value</th><th scope="col">How it is known</th><th scope="col">Shipped below ordered</th></tr></thead>
               <tbody>
                 {(detail.recent_weeks ?? []).map((week) => {
-                  const observed = week.targets[target];
+                  const recent = week.targets[target];
                   return (
                     <tr key={week.week_start}>
                       <th scope="row">{formatIsoDate(week.week_start)}</th>
-                      <td>{observed.value === null ? 'Not known' : figureText(observed.value, target, row.currency_code)}</td>
+                      <td>{recent.value === null ? 'Not known' : figureText(recent.value, target, row.currency_code)}</td>
+                      <td>{weekStateCopy[recent.state]}</td>
                       <td>{week.stockout === null ? 'Not known' : week.stockout ? 'Yes' : 'No'}</td>
                     </tr>
                   );

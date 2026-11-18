@@ -2,11 +2,13 @@
 /**
  * The Demand forecast tab over the shared wire fixtures (ADR-163): the ready list with its view
  * control from the server horizon, the filter, the pager, in-place detail, the PAGE_INVALID reset,
- * Try again on a service failure and the no-generation state. A wrong state shows a planner a
- * stale or partial list as current, or an outage where the page only cancelled a request.
+ * Try again on a service failure, the no-generation state, a publish between requests and the
+ * recent-week states. A wrong state shows a planner a stale or partial list as current, detail
+ * from another generation, an inferred zero as observed, or an outage where the page only
+ * cancelled a request.
  */
 import assert from 'node:assert/strict';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, test } from 'vitest';
 import { DemandForecastView } from '@/components/DemandForecastView';
@@ -146,4 +148,78 @@ test('unmounting aborts the in-flight requests without an error panel', async ()
   view.unmount();
   await new Promise((resolve) => setTimeout(resolve, 0));
   assert.deepEqual(aborted.sort(), ['/api/demand-forecast', '/api/demand-forecast/status']);
+});
+
+const republished = { generation_id: 'run-2-0123456789ab', published_at: '2026-11-15T14:05:09Z' };
+const detailOfNextGeneration = {
+  ...structuredClone(detail),
+  provenance: { ...structuredClone(detail).provenance, ...republished },
+};
+const statusOfNextGeneration = {
+  ...structuredClone(stale),
+  generation: { ...structuredClone(stale).generation, ...republished },
+};
+
+test('a publish between the list and the detail renders neither until the latest is refetched', async () => {
+  let published = false;
+  const seen = serve((url) => {
+    if (url.endsWith('/status')) return [200, stale];
+    if (url.includes('asin=')) return [200, published ? detail : detailOfNextGeneration];
+    return [200, listed];
+  });
+  render(<DemandForecastView/>);
+  await userEvent.click(await screen.findByRole('button', { name: 'B0FIXTUR01' }));
+  assert.ok(await screen.findByText('A new forecast was published while this page loaded.'));
+  assert.equal(screen.queryByRole('heading', { name: /B0FIXTUR01: Fictional product 1/ }), null);
+  assert.equal(screen.queryByRole('table', { name: /Forecast totals/ }), null);
+  assert.equal(screen.queryByText('Last forecast run'), null);
+  published = true;
+  const before = seen.length;
+  await userEvent.click(screen.getByRole('button', { name: 'Show the latest forecast' }));
+  assert.ok(await screen.findByRole('heading', { name: /B0FIXTUR01: Fictional product 1/ }));
+  assert.deepEqual(seen.slice(before).sort(), [
+    '/api/demand-forecast',
+    '/api/demand-forecast/status',
+    '/api/demand-forecast?asin=B0FIXTUR01',
+  ]);
+});
+
+test('a publish between the list and the status renders neither until the latest is refetched', async () => {
+  let published = false;
+  serve((url) => (url.endsWith('/status') ? [200, published ? stale : statusOfNextGeneration] : [200, listed]));
+  render(<DemandForecastView/>);
+  assert.ok(await screen.findByText('A new forecast was published while this page loaded.'));
+  assert.equal(screen.queryByRole('table', { name: /Forecast totals/ }), null);
+  assert.equal(screen.queryByText('Last forecast run'), null);
+  published = true;
+  await userEvent.click(screen.getByRole('button', { name: 'Show the latest forecast' }));
+  assert.ok(await screen.findByRole('table', { name: /Forecast totals/ }));
+  assert.ok(screen.getByText('Last forecast run'));
+});
+
+test('recent history names each week as observed, inferred zero or not known', async () => {
+  const states = structuredClone(detail);
+  const zero = (target: string) => ({ value: '0.0000', display: target.endsWith('_shipped') && !target.startsWith('units') ? '0.00' : '0' });
+  states.recent_weeks.forEach((week, index) => {
+    const state = (['inferred_zero', 'unknown'] as const)[index];
+    if (state === undefined) return;
+    for (const target of Object.keys(week.targets) as (keyof typeof week.targets)[]) {
+      week.targets[target] = { state, value: state === 'unknown' ? null : zero(target) } as never;
+    }
+    week.stockout = null as never;
+  });
+  serve((url) => {
+    if (url.endsWith('/status')) return [200, stale];
+    return url.includes('asin=') ? [200, states] : [200, listed];
+  });
+  render(<DemandForecastView/>);
+  await userEvent.click(await screen.findByRole('button', { name: 'B0FIXTUR01' }));
+  const table = await screen.findByRole('table', { name: 'Demand (ordered units), recent history by week' });
+  const rows = within(table).getAllByRole('row').slice(1, 4).map((row) => Array.from(row.children, (cell) => cell.textContent));
+  assert.deepEqual(rows, [
+    ['Aug 9, 2026', '0 units ordered', 'No sales reported, counted as zero', 'Not known'],
+    ['Aug 16, 2026', 'Not known', "Not known: the week's sales data is missing", 'Not known'],
+    ['Aug 23, 2026', '9 units ordered', 'Reported by Vendor Central', 'No'],
+  ]);
+  assert.equal(within(table).queryByText('Observed'), null);
 });

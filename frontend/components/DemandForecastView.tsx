@@ -30,7 +30,9 @@ import { DemandForecastAsinDetail } from './DemandForecastAsinDetail';
  * The Demand forecast tab (ADR-163; forecasting LLD "Demand forecast page"). The list and status
  * requests start together and each renders when ready. A publish that changes the page count
  * returns the list to page 1 once; a service failure offers Try again; an aborted request is
- * not an error.
+ * not an error. The list, status and detail each name the generation they read; when a publish
+ * lands between requests and they disagree, none of them renders, and Show the latest forecast
+ * refetches all three together.
  */
 
 interface Keyed<T> { readonly key: string; readonly loaded: Loaded<T> }
@@ -41,6 +43,19 @@ const ASIN = /^[A-Za-z0-9]{10}$/;
 
 function isAbort(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError';
+}
+
+/** The generation each ready result read, `null` for none published; mixed results disagree. */
+function mixedGenerations(
+  list: Loaded<DemandForecastList>,
+  status: Loaded<DemandForecastStatus>,
+  detail: Loaded<DemandForecastDetail | null> | null,
+): boolean {
+  const read = new Set<string | null>();
+  if (list.state === 'ready') read.add(list.value.provenance?.generation_id ?? null);
+  if (status.state === 'ready') read.add(status.value.generation?.generation_id ?? null);
+  if (detail?.state === 'ready' && detail.value !== null) read.add(detail.value.provenance?.generation_id ?? null);
+  return read.size > 1;
 }
 
 function settle<T>(result: FetchResult<T>): Loaded<T> {
@@ -112,6 +127,7 @@ export function DemandForecastView() {
     : detailResult?.key === detailKey ? detailResult.loaded : { state: 'loading' };
 
   const retry = useCallback(() => setAttempt((value) => value + 1), []);
+  const mixed = mixedGenerations(list, status, detail);
 
   const onSearch = (event: FormEvent) => {
     event.preventDefault();
@@ -131,11 +147,11 @@ export function DemandForecastView() {
   return (
     <div className="page demand-forecast">
       <h1 id={PAGE_HEADING_ID} tabIndex={-1}>Demand forecast</h1>
-      <StatusPanel status={status} onRetry={retry}/>
+      {mixed ? <Updated onRetry={retry}/> : <StatusPanel status={status} onRetry={retry}/>}
       {list.state === 'loading' ? <div className="skeleton" aria-busy="true" aria-label="Loading the forecast" style={{ minHeight: '24rem' }}/> : null}
       {list.state === 'failed' ? <Unavailable onRetry={retry}/> : null}
-      {ready && ready.outcome === 'unavailable' ? <NoForecast status={status}/> : null}
-      {ready && ready.outcome === 'complete' && ready.provenance && horizon && weeks !== null && key !== null ? (
+      {!mixed && ready && ready.outcome === 'unavailable' ? <NoForecast status={status}/> : null}
+      {!mixed && ready && ready.outcome === 'complete' && ready.provenance && horizon && weeks !== null && key !== null ? (
         <>
           <p>Forecast from data through {formatIsoDate(ready.provenance.input_end)}, published {formatIsoInstant(ready.provenance.published_at)}.</p>
           {ready.freshness.state === 'stale' ? (
@@ -179,6 +195,15 @@ export function DemandForecastView() {
           {detail?.state === 'ready' && detail.value !== null ? <DemandForecastAsinDetail detail={detail.value} viewWeeks={weeks}/> : null}
         </>
       ) : null}
+    </div>
+  );
+}
+
+function Updated({ onRetry }: { readonly onRetry: () => void }) {
+  return (
+    <div role="alert">
+      <p>A new forecast was published while this page loaded.</p>
+      <button type="button" className="btn" onClick={onRetry}>Show the latest forecast</button>
     </div>
   );
 }

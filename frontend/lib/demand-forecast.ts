@@ -481,6 +481,12 @@ export const accuracyClassCopy: Readonly<Record<AccuracyClass, string>> = {
   history_unchanging: 'History never changed, so there is no baseline to beat',
   scale_unknown: 'Too few complete weeks to measure the baseline',
 };
+/** How a recent week's value is known (ADR-156): an inferred zero is never shown as observed. */
+export const weekStateCopy: Readonly<Record<WeekState, string>> = {
+  observed: 'Reported by Vendor Central',
+  inferred_zero: 'No sales reported, counted as zero',
+  unknown: "Not known: the week's sales data is missing",
+};
 export const holdCopy: Readonly<Record<Hold, string>> = {
   none: 'No hold',
   quality: 'Held by a quality check; the last good forecast is still shown',
