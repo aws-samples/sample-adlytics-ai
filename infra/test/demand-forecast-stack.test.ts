@@ -431,6 +431,16 @@ describe('DemandForecastStack', () => {
     );
   });
 
+  test('the commit passes the operator reason select assigned, for its receipt', () => {
+    // Dev loop, criterion 8: an operator RETRY_FAILED run published with no reason on its receipt.
+    const states = definition(template).States as Record<string, Record<string, unknown>>;
+    const payload = (states.Commit?.Arguments as Record<string, Record<string, unknown>>).Payload;
+    expect(payload?.operator_reason).toBe('{% $operator_reason %}');
+    expect(
+      (states.SelectInput?.Assign as Record<string, unknown> | undefined)?.operator_reason,
+    ).toBe('{% $states.result.Payload.operator_reason %}');
+  });
+
   test('the dev probe continues from Forecast into Publish and Commit', () => {
     const states = definition(template).States as Record<string, Record<string, unknown>>;
     const probe = (states.ProbeStart?.Choices as Array<Record<string, unknown>>)[0];

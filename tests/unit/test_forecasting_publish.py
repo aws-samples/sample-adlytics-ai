@@ -1428,12 +1428,16 @@ def _publish_all(rig: _Rig, run_id: str = RUN) -> list[dict[str, object]]:
     return [publish_shard(rig.publisher, _shard_publish(k, run_id)).payload() for k in range(3)]
 
 
-def _commit_run(rig: _Rig, payloads: list[dict[str, object]], run_id: str = RUN) -> StepOutcome:
-    event = {
+def _commit_run(
+    rig: _Rig, payloads: list[dict[str, object]], run_id: str = RUN, **fields: object
+) -> StepOutcome:
+    """`fields` adds Commit payload fields, e.g. `operator_reason=`."""
+    event: dict[str, object] = {
         "run_id": run_id,
         "redrive_count": 0,
         "manifest_key": f"runs/{run_id}/input/r0a0/manifest.json",
         "shard_results": payloads,
+        **fields,
     }
     return commit_generation(rig.publisher, commit_request(event))
 
@@ -1748,6 +1752,49 @@ def test_a_commit_whose_fence_moved_writes_only_a_superseded_receipt() -> None:
     assert current.generation_id.startswith("run-2-")
     assert rig.receipts()["RUN#run-3#r0#commit"] == "superseded"
     assert rig.metrics.outcomes() == ["published", "superseded"]
+
+
+# --- Dev loop, criterion 8: an operator RETRY_FAILED run's REASON is on its commit receipt ----
+
+
+def test_an_operator_reason_is_recorded_on_the_published_commit_receipt() -> None:
+    # Design §6d step 3: a RETRY_FAILED start's receipt records the reason. The dev run
+    # 471f4b9397d2-2026-11-18-op-5 published with no reason on its commit receipt.
+    rig = _Rig()
+    _stage(rig)
+    committed = _commit_run(rig, _publish_all(rig), operator_reason="retry after the failed job")
+    assert committed.outcome == "published"
+    receipt = rig.table.items[(f"SET#{PUBLISH_SET}", f"RUN#{RUN}#r0#commit")]
+    assert receipt["operator_reason"] == {"S": "retry after the failed job"}
+
+
+def test_an_operator_reason_stays_on_a_superseded_commit_receipt() -> None:
+    rig = _Rig()
+    _stage(rig, run_id="run-2")
+    _stage(rig, run_id="run-3")
+    _commit_run(rig, _publish_all(rig, "run-2"), "run-2")
+    late = _commit_run(rig, _publish_all(rig, "run-3"), "run-3", operator_reason="operator retry")
+    assert late.outcome == "superseded"
+    receipt = rig.table.items[(f"SET#{PUBLISH_SET}", "RUN#run-3#r0#commit")]
+    assert receipt["operator_reason"] == {"S": "operator retry"}
+
+
+def test_a_commit_without_an_operator_reason_stores_none() -> None:
+    rig = _Rig()
+    _stage(rig)
+    assert _commit_run(rig, _publish_all(rig)).outcome == "published"
+    assert "operator_reason" not in rig.table.items[(f"SET#{PUBLISH_SET}", f"RUN#{RUN}#r0#commit")]
+
+
+@pytest.mark.parametrize("reason", ["", "x" * 201, "line\nbreak"], ids=["empty", "201", "control"])
+def test_a_commit_with_an_invalid_operator_reason_is_refused_before_any_write(reason: str) -> None:
+    rig = _Rig()
+    _stage(rig)
+    payloads = _publish_all(rig)
+    with pytest.raises(PublishFailedError, match=f"^{REQUEST_INVALID}$"):
+        _commit_run(rig, payloads, operator_reason=reason)
+    assert rig.current() is None
+    assert rig.receipts() == {}
 
 
 def test_a_rollback_restores_the_earlier_generation_and_counts_rolled_back() -> None:

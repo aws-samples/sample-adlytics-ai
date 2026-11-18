@@ -765,6 +765,8 @@ export class DemandForecastStack extends cdk.Stack {
             redrive_count: `{% ${redrive} %}`,
             manifest_key: '{% $manifest_key %}',
             shard_results: '{% $states.input %}',
+            // An operator RETRY_FAILED start's REASON goes on its commit receipt (§6d step 3).
+            operator_reason: '{% $operator_reason %}',
           },
         },
         Output: '{% $states.result.Payload %}',

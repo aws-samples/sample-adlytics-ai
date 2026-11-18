@@ -95,6 +95,7 @@ from domain.forecasting.publish import (
     inferred_zero_week_share,
     late_attempt,
     next_pointer,
+    operator_reason_valid,
     receipt_sk,
     retry_disposition,
     rollback_pointer,
@@ -487,12 +488,17 @@ class CommitRequest:
     manifest_key: str
     published: tuple[ShardPublishResult, ...]
     held: tuple[HeldShard, ...] = ()
+    operator_reason: str | None = None
+    """An operator `RETRY_FAILED` start's `REASON`; its commit receipt records it (§6d step 3)."""
 
     def __post_init__(self) -> None:
         if (
             _RUN_ID.fullmatch(self.run_id) is None
             or self.redrive_count < 0
             or not 1 <= len(self.published) + len(self.held) <= MAX_SHARDS
+            or (
+                self.operator_reason is not None and not operator_reason_valid(self.operator_reason)
+            )
         ):
             raise PublishFailedError(REQUEST_INVALID)
 
@@ -611,7 +617,7 @@ def _commit_generation(publisher: Publisher, request: CommitRequest) -> StepOutc
         raise _held(HeldCheck.IDENTITY_MISMATCH, f"META of {generation} differs on re-read")
     shown = sum(validation.counts_by_model.values())
     withheld = sum(validation.counts_by_reason.values())
-    committed = _commit_publish(publisher, manifest, meta)
+    committed = _commit_publish(publisher, _PublishCommit(manifest, meta, request.operator_reason))
     return StepOutcome(
         outcome=committed.outcome,
         step="commit",
@@ -637,12 +643,18 @@ def _recorded(result: OutcomeCommitResult) -> str:
     return result.recorded_outcome.value
 
 
-def _commit_publish(
-    publisher: Publisher,
-    manifest: InputManifestV1,
-    meta: GenerationMeta,
-) -> _Committed:
+@dataclass(frozen=True)
+class _PublishCommit:
+    """The manifest, attested META and operator `REASON` (§6d step 3) one commit records."""
+
+    manifest: InputManifestV1
+    meta: GenerationMeta
+    operator_reason: str | None = None
+
+
+def _commit_publish(publisher: Publisher, commit_input: _PublishCommit) -> _Committed:
     """Advance `CURRENT` to the attested generation, or record `superseded` (§6b)."""
+    manifest, meta = commit_input.manifest, commit_input.meta
     store, now = publisher.store, publisher.now()
     current = store.get_current(publisher.set_id)
     fingerprint = manifest.run_fingerprint
@@ -683,6 +695,7 @@ def _commit_publish(
         run_identity=manifest.run_identity,
         counts_by_reason=meta.counts_by_reason,
         landing_to_publish_seconds=landing,
+        operator_reason=commit_input.operator_reason,
     )
     if advance.decision is PointerDecision.SUPERSEDED:
         # The store's derivation too, so either path records one receipt (§6b replay rule).
@@ -1113,6 +1126,7 @@ def commit_request(event: Mapping[str, Any]) -> CommitRequest:
         manifest_key=_text(event, "manifest_key"),
         published=tuple(published),
         held=tuple(held),
+        operator_reason=_optional_text(event, "operator_reason"),
     )
 
 
