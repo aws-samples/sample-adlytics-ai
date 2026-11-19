@@ -211,7 +211,7 @@
     {
       "name": "forecast_product_by_asin",
       "intent": "forecast",
-      "question": "Find the fictional product B0FIXTUR77 in the demand forecast and give its 4-week forecast total.",
+      "question": "Find the fictional product B0FIXTUR42 in the demand forecast and give its 4-week forecast total.",
       "expected": {
         "grounded_correctness": [
           "Grounded"
@@ -225,7 +225,7 @@
     {
       "name": "forecast_withheld_product",
       "intent": "forecast",
-      "question": "Why is there no demand forecast for B0FIXTUR03?",
+      "question": "Why is there no demand forecast for B0FIXTUR58?",
       "expected": {
         "grounded_correctness": [
           "Grounded"
