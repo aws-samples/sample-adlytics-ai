@@ -46,7 +46,13 @@ from adapters.outbound.telemetry.reporting import (
     report_invocation,
     report_lifecycle,
 )
-from adapters.outbound.telemetry.tracing import FORECAST_GATEWAY, span, tool_span, trace_boundary
+from adapters.outbound.telemetry.tracing import (
+    FORECAST_GATEWAY,
+    Recording,
+    span,
+    tool_span,
+    trace_boundary,
+)
 from domain.forecasting import read_api
 from domain.narrative.publication import grounded_refusal
 from domain.shared_kernel.errors import AdlyticsError, InvariantError, ValidationError
@@ -94,8 +100,11 @@ def _terminal(
     )
 
 
-def _handle(event: dict[str, Any], context: Any) -> dict[str, Any]:
-    """Answer one forecast tool call, or return its typed refusal; the caller is verified first."""
+def _handle(event: dict[str, Any], context: Any, process_span: Recording) -> dict[str, Any]:
+    """Answer one forecast tool call, or return its typed refusal; the caller is verified first.
+
+    An answer records its plan's `items_read` on the process span (`tool.forecast_gateway`).
+    """
     message_ref = gateway.gateway_message_ref(context)
     channel = gateway.channel_keys(event, context)
     caller_report = Report(
@@ -185,7 +194,7 @@ def _handle(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 computed_at=read.now,
                 correlation_id=response_correlation_id,
             )
-            answer = handle(request, SERVICE, read)
+            result = handle(request, SERVICE, read)
         except AdlyticsError as error:
             report_error(error, report)
             report_invocation(report, Outcome.REFUSED)
@@ -207,7 +216,9 @@ def _handle(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 selected.value, Outcome.FAILED, GatewayResultClass.UNEXPECTED_FAILURE, **where
             )
             return _refusal_response(failed, response_correlation_id)
+        answer = result.response
         recording.record(rows_returned=answer.metadata.row_count)
+        process_span.record(items_read=result.items_read)
         report_invocation(report, Outcome.ANSWERED)
         _terminal(
             selected.value,
@@ -260,6 +271,6 @@ def _tool(name: str) -> ForecastTool:
 def handler(event: dict[str, Any], context: _Clock) -> dict[str, Any]:
     """Bound invocation parsing and the selected forecast tool's span."""
     with span(FORECAST_GATEWAY, operation=FORECAST_GATEWAY) as process_span:
-        result = _handle(event, context)
+        result = _handle(event, context, process_span)
         process_span.record(outcome="completed")
         return result

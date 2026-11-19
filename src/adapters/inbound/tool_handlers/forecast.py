@@ -28,6 +28,7 @@ from adapters.inbound.forecast_read.service import (
     ForecastReadService,
     ListLookupRequest,
     ReadContext,
+    ReadResult,
 )
 from domain.forecasting import list_pages, read_api
 from domain.forecasting.boundary import CandidateSeriesV1, RosterEntryV1, RosterTargetV1, Target
@@ -376,13 +377,12 @@ def _currency(rows: list[RosterTargetV1], target: str) -> str | None:
     return codes[0] if codes else None
 
 
-def _list(call: _Call, service: ForecastReadService) -> ShapedResponse:
+def _list(call: _Call, service: ForecastReadService) -> ReadResult[ShapedResponse]:
     arguments = call.arguments
     target = arguments.target
     asin = arguments.asins[0] if arguments.asins else None
-    lookup = service.list_lookup(
-        ListLookupRequest(arguments.filter, target, asin), call.context
-    ).response
+    read = service.list_lookup(ListLookupRequest(arguments.filter, target, asin), call.context)
+    lookup = read.response
     frame = call.frame(lookup.pointer)
     draft = _Draft([frame.provenance()], [], [])
     truncated = None
@@ -421,7 +421,7 @@ def _list(call: _Call, service: ForecastReadService) -> ShapedResponse:
             continue
         draft.values.append(_list_row(entry, target, ranked=asin is None))
     week = frame.first_week
-    return _respond(
+    answer = _respond(
         frame,
         draft,
         grain=Grain(("asin",)),
@@ -430,6 +430,7 @@ def _list(call: _Call, service: ForecastReadService) -> ShapedResponse:
         coverage=(week, week + timedelta(weeks=13, days=-1)),
         truncated_line=truncated,
     )
+    return ReadResult(answer, read.items_read)
 
 
 def _band_fields(target: str, currency: str | None, *, recent: bool) -> tuple[ClaimField, ...]:
@@ -486,10 +487,11 @@ def _claims(draft: _Draft, view: AsinItemView, arguments: _Arguments) -> None:
         )
 
 
-def _rows(call: _Call, service: ForecastReadService) -> ShapedResponse:
+def _rows(call: _Call, service: ForecastReadService) -> ReadResult[ShapedResponse]:
     arguments, tool = call.arguments, call.request.tool
     target, weeks = arguments.target, arguments.view_weeks
-    rows = service.asin_rows(AsinRowsRequest(arguments.asins, target), call.context).response
+    read = service.asin_rows(AsinRowsRequest(arguments.asins, target), call.context)
+    rows = read.response
     frame = call.frame(rows.pointer)
     recent = tool is not ForecastTool.QUERY
     draft = _Draft([frame.provenance()], [], [])
@@ -551,7 +553,7 @@ def _rows(call: _Call, service: ForecastReadService) -> ShapedResponse:
     if recent:
         descriptors = (*descriptors, "series", "week_state", "stockout", "measurement_basis")
         grain = Grain(("asin", "week_start", "series"))
-    return _respond(
+    answer = _respond(
         frame,
         draft,
         grain=grain,
@@ -559,12 +561,13 @@ def _rows(call: _Call, service: ForecastReadService) -> ShapedResponse:
         descriptors=descriptors,
         coverage=(start, end),
     )
+    return ReadResult(answer, read.items_read)
 
 
 def handle(
     request: ForecastToolRequest, service: ForecastReadService, context: ReadContext
-) -> ShapedResponse:
-    """Answer one forecast tool call from stored figures only."""
+) -> ReadResult[ShapedResponse]:
+    """Answer one forecast tool call from stored figures only, with its plan's `items_read`."""
     policy = service.policy
     call = _Call(request, _parse(request.tool, request.arguments, policy), policy, context)
     if request.tool is ForecastTool.LIST:

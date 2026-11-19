@@ -28,6 +28,9 @@ from forecast_read_support import (
     ranked,
 )
 from forecast_series_support import policy
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from test_config import VALID
 from tool_caller_support import import_tool_entrypoint, with_bearer
 
@@ -40,6 +43,8 @@ from adapters.inbound.tool_handlers.forecast import (
     handle,
 )
 from adapters.inbound.tool_handlers.schemas import contract_for
+from adapters.outbound.telemetry import tracing
+from adapters.outbound.telemetry.tracing import FORECAST_GATEWAY
 from domain.forecasting import summaries
 from domain.forecasting.publish import RunOutcome
 from domain.narrative.publication import QualifierKind
@@ -63,7 +68,7 @@ def _answer(
 ) -> ShapedResponse:
     service = ForecastReadService(reader or fake_reader(), VALUES, policy())
     request = ForecastToolRequest(tool, arguments, NOW, "c" * 32)
-    return handle(request, service, ReadContext(NOW, time_module.monotonic() + 60))
+    return handle(request, service, ReadContext(NOW, time_module.monotonic() + 60)).response
 
 
 def _refusal(
@@ -432,6 +437,39 @@ def test_an_event_built_from_each_declaration_drives_the_real_handler(
     answer = _invoke(monkeypatch, tool, arguments)
     assert answer.get("refused") is not True, answer.get("reason")
     assert answer["data"]["values"]
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        ("forecast_list_asins", {"target": "units_ordered"}, 2),
+        ("forecast_list_asins", {"asin": "B0FIXTUR02", "target": "units_ordered"}, 2),
+        (
+            "forecast_query_asins",
+            {"asins": ["B0FIXTUR01", "B0FIXTUR02"], "target": "units_ordered"},
+            3,
+        ),
+        (
+            "forecast_compare_asins",
+            {"asins": ["B0FIXTUR01", "B0FIXTUR02"], "target": "revenue_shipped"},
+            3,
+        ),
+        ("forecast_summarize_asin", {"asin": "B0FIXTUR01", "target": "units_ordered"}, 2),
+    ],
+)
+def test_an_answer_records_its_plans_items_read_on_the_gateway_span(
+    monkeypatch: pytest.MonkeyPatch, case: tuple[str, dict[str, Any], int]
+) -> None:
+    """Without `items_read` on `tool.forecast_gateway`, a tool's read count can't be seen live."""
+    tool, arguments, items = case
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    monkeypatch.setattr(tracing, "TRACER", provider.get_tracer("test"))
+    answer = _invoke(monkeypatch, tool, arguments)
+    assert answer.get("refused") is not True, answer.get("reason")
+    (gateway_span,) = [s for s in exporter.get_finished_spans() if s.name == FORECAST_GATEWAY]
+    assert (gateway_span.attributes or {})["items_read"] == items
 
 
 def test_an_unknown_tool_and_a_malformed_invocation_return_typed_refusals(
