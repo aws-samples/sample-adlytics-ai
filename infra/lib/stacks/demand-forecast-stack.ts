@@ -37,8 +37,8 @@ const INPUT_HANDLER = 'adapters.jobs.demand_forecast_input.handler.handler';
 const INPUT_MEMORY_MIB = 1024;
 const INPUT_TIMEOUT_SECONDS = 900;
 const PUBLISHER_HANDLER = 'adapters.jobs.demand_forecast_publisher.handler.handler';
-/** Interim by design (plan bounds table): moves at P2-2 along the §10 measured-value ladder. */
-const PUBLISHER_MEMORY_MIB = 2048;
+/** The §10 ladder rung at least 1.5 × the 1,783 MB commit peak measured at 50,000 ASINs on dev (P3-1, 2026-11-19). */
+const PUBLISHER_MEMORY_MIB = 3072;
 /** The Lambda maximum. */
 const PUBLISHER_TIMEOUT_SECONDS = 900;
 /** Interim, removal item RB-1: the store's write lanes, re-derived from P2-2's throttle counts. */
