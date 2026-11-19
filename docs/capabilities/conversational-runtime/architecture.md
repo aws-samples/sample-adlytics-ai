@@ -4,7 +4,7 @@
 
 The Conversation API is the trusted ingress and audit boundary. It verifies identity, applies the inbound Guardrail, invokes the managed Harness, validates its lifecycle, relays the agent's answer as it is written, and emits only a closed `ConversationStream.v4` stream. The agent owns the natural-language answer and its Markdown format; governed tools own data and figure authority.
 
-Harness receives the verified conversation session and question, dynamically chooses globally attached catalog and measurement tools, and iterates over their typed results. Tool servers resolve semantic candidates through server-owned metric, grain, period, coverage, currency, and scope contracts before executing trusted plans. They return `ShapedResponse` or typed limitations. The model does not supply identity, scope authority, SQL, query plans, or execution budgets. Under [ADR-077](../../decisions/adr-077-carry-the-end-user-identity-to-every-hop-through-token-exchange.md), each tool receives the user's exchanged bearer token and verifies it before it reads the call; the verified user is attribution, and analytical scope stays deployment-wide.
+Harness receives the verified conversation session and question, dynamically chooses globally attached catalog, measurement and forecast tools, and iterates over their typed results. Tool servers resolve semantic candidates through server-owned metric, grain, period, coverage, currency, and scope contracts before executing trusted plans. They return `ShapedResponse` or typed limitations. The model does not supply identity, scope authority, SQL, query plans, or execution budgets. Under [ADR-077](../../decisions/adr-077-carry-the-end-user-identity-to-every-hop-through-token-exchange.md), each tool receives the user's exchanged bearer token and verifies it before it reads the call; the verified user is attribution, and analytical scope stays deployment-wide.
 
 Harness writes its answer as assistant text in GitHub-flavoured Markdown, choosing the format that fits: paragraphs, headings, lists, tables, emphasis, inline code, quotes, and links. It may write before, between, and after tool calls. The answer may state governed figures and ones validly derived from them; no check reads it before the user sees it. What it says is governed by the prompt and measured by evaluation and audit ([ADR-082](../../decisions/adr-082-govern-the-agent-by-evaluation-and-audit-not-text-heuristics.md), [ADR-083](../../decisions/adr-083-stream-the-agent-answer-and-govern-it-by-audit-and-evaluation.md)). A turn is one Harness invocation: there is no finalizer tool, no presentation plan, and no server repair round, and the model recovers from a failed tool call inside its own loop.
 
@@ -40,7 +40,7 @@ sequenceDiagram
             A-->>U: text event, forwarded as it arrives
         end
         opt governed information is needed
-            H->>G: selected catalog or measurement tool
+            H->>G: selected catalog, measurement or forecast tool
             A-->>U: retrieving_governed_data activity and named tool events
             G->>T: semantic request carrying the user's exchanged bearer, verified by the tool
             T-->>H: typed result, limitation, or error-status result
@@ -100,7 +100,7 @@ This flow is deployed. Endpoints, claims, and each hop's validation are owned by
 
 ### Purpose-built tools
 
-The data-tool inventory remains generated from repository contracts. `catalog_list_metrics` and `catalog_describe_metric` answer declared capability questions; description resolves the same customer-facing surfaces the measurement resolver reads — canonical names, labels, and governed aliases, for computable and deferred metrics alike — so a deferred metric's label or alias refuses as not-yet-computable rather than unknown. `measurement_metric_by_grain`, `measurement_compare_windows`, and `measurement_top_n` execute trusted analytical operations. There is no presentation or finalizer tool.
+The data-tool inventory remains generated from repository contracts. `catalog_list_metrics` and `catalog_describe_metric` answer declared capability questions; description resolves the same customer-facing surfaces the measurement resolver reads — canonical names, labels, and governed aliases, for computable and deferred metrics alike — so a deferred metric's label or alias refuses as not-yet-computable rather than unknown. `measurement_metric_by_grain`, `measurement_compare_windows`, and `measurement_top_n` execute trusted analytical operations. The four forecast tools read the published weekly demand forecast through the read service of [ADR-163](../../decisions/adr-163-serve-demand-forecasts-and-status-through-a-read-api.md) and compute nothing: `forecast_list_asins` lists the current forecast's products, top first, or finds one by exact ASIN; `forecast_query_asins` returns one to five products' weekly p10, p50 and p90; `forecast_summarize_asin` sets one product's forecast beside its recent weeks with its backtest accuracy; `forecast_compare_asins` sets two to five products side by side. There is no presentation or finalizer tool.
 
 ### Release semantics
 

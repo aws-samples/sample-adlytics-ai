@@ -80,6 +80,15 @@ _PRODUCT_REF = re.compile(r"^[a-f0-9]{32}$")
 _FILTER_IDENTIFIER = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 MAX_PRESET_SIBLING_SEGMENT_INDEX = 10_000
 MAX_PRESET_ARTIFACT_BYTES = 256_000
+"""The bake cap on a parent body, custody manifest or sibling body (OQ-29).
+
+
+It is at most ``artifacts.MAX_ARTIFACT_BYTES`` minus the serve growth G (22,799 B), so a body
+under it always serves. The platform limit behind it is DynamoDB's 400,000 B item: a 50-row
+served parent's item adds 37,109 B of framing and escapes, so the item allows a body of about
+340,000 B. 256,000 B is kept under that ceiling because it also bounds the bake write buffer W
+(``bake_memory.py``), and dev's measured bodies fit it (largest 228,374 B, 2026-11).
+"""
 MAX_PRESET_POINTER_ROSTER = 4
 PRESET_ARTIFACT_POINTER_CONFLICT = ErrorCode("PRESET_ARTIFACT", 1)
 RETAIL_BODY_CEILING = "retail_body_ceiling"

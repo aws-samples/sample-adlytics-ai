@@ -307,7 +307,9 @@ misaligned body leaves the pointer unchanged or makes serving fail closed. Canon
 reads no sibling. Every other request follows pointer → parent/custody index → one sibling pair,
 re-attests revision, ordering, pagination, digests, signatures, and mints no more than the 50
 served-row capabilities. Every public, custody, and served page body is independently bounded at
-256,000 encoded bytes. **Amended by [ADR-145](../../decisions/adr-145-serve-ten-thousand-campaigns-with-a-sharded-roster-and-streamed-writes.md)
+256,000 encoded bytes. **Amended 2026-11-17 ([the body cap](../preset-artifact-publisher.md#bake-width-and-the-memory-model)):**
+public and custody bodies stay at 256,000 B; a served page body is bounded by `MAX_ARTIFACT_BYTES`,
+derived as the cap plus the most the serve path adds. **Amended by [ADR-145](../../decisions/adr-145-serve-ten-thousand-campaigns-with-a-sharded-roster-and-streamed-writes.md)
 (render format 12):** no Campaigns custody lists siblings inline. Parent custody carries canonical
 segment zero's rows and the stage's sharded sibling index, which binds every segment and channel
 filter sibling; a request reads pointer → parent custody → covering index shard → one sibling pair

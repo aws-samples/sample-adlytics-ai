@@ -218,7 +218,7 @@ test('the movers card opens the product it names, through that row\'s capability
   vi.spyOn(window.history, 'back').mockImplementation(() => undefined);
   const user = userEvent.setup();
   render(<Page />);
-  await user.click(await screen.findByRole('button', { name: 'Open Fictional Product FICTA' }));
+  await user.click(await screen.findByRole('button', { name: 'Open product detail' }));
   await screen.findByRole('button', { name: 'Back to Retail health' });
   assert.equal(childFetch.mock.calls[0]?.[1], parentResponse.page.artifact.rows[0]!.selection_reference);
 });

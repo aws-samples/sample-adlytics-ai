@@ -36,32 +36,41 @@ from test_presentation_handler import (
 )
 
 from adapters.jobs.preset_artifact_publisher.retail_source import retail_channel_labels
+from adapters.outbound.dynamodb import page_context
 from adapters.outbound.media_taxonomy import load_media_taxonomy
 from adapters.outbound.s3.preset_artifacts import PRESET_ARTIFACT_BODY_CONFLICT
 from domain.narrative.shaped_response import UnitKind, Units
 from domain.presentation.artifacts import (
+    MAX_ARTIFACT_BYTES,
     PageArtifactReadRequest,
     ParentCapabilityIssuanceRequest,
     ParentCapabilityIssuanceResult,
     ProductSelectionCapabilityReadRequest,
     ProductSelectionCapabilityRecord,
     ProductSelectionCapabilityValidationResult,
+    canonical_artifact_json,
     validate_page_artifact,
     validate_product_selection_capability,
 )
 from domain.presentation.compared_metrics import presentation_labels
 from domain.presentation.insights import (
+    MAX_INSIGHT_EVIDENCE_BYTES,
+    MAX_INSIGHT_SLOT_TEXT_BYTES,
+    InsightNextStep,
     InsightNextStepKind,
     InsightOutputClass,
     InsightSlot,
     InsightSlotId,
     InsightSlotState,
+    insight_slots_payload,
     next_step_from_payload,
 )
 from domain.presentation.next_steps import ProductRefTarget, next_step_target_payload
 from domain.presentation.preset_artifacts import (
     MAX_PRESET_ARTIFACT_BYTES,
+    RETAIL_BODY_CEILING,
     PresetArtifactBody,
+    PresetArtifactBodyCeilingError,
     PresetArtifactCustodyManifest,
     PresetArtifactIndexShardIdentity,
     PresetArtifactPage,
@@ -310,21 +319,44 @@ def _filled_movers(parent: RetailHealthArtifact) -> RetailHealthArtifact:
     return replace(parent, insights=(*parent.insights[:-1], movers))
 
 
-def _publication(  # noqa: PLR0913 -- one bake and its four fixture switches
+def _parent(rows: int | None, title_fill: str) -> RetailHealthArtifact:
+    """Return the fixture parent, or `rows` copies of its first row with fictional ASINs."""
+    parent: RetailHealthArtifact = _retail_health_artifact()
+    if rows is None:
+        return parent
+    base = parent.rows[0]
+    return replace(
+        parent,
+        rows=tuple(
+            replace(
+                base,
+                child_asin=f"B0FIXT{index:04d}",
+                title=f"Fictional Product {index:04d}{title_fill}",
+            )
+            for index in range(rows)
+        ),
+        total_count=rows,
+    )
+
+
+def _publication(  # noqa: PLR0913 -- one bake and its six fixture switches
     identity: str = "publication-1",
     *,
     movers: bool = False,
     ads: bool = False,
     first_title: str | None = None,
     product_ads: bool = True,
+    rows: int | None = None,
+    title_fill: str = "",
 ) -> _Publication:
     """Bake one fictional publication at the current render format.
 
     `movers` fills the movers card naming the first row; `ads` gives that row's child ads;
     `first_title` is the first child's catalog title, as a long Vendor Central title would be;
-    `product_ads=False` bakes it as render format 11 did, with no Products and ads part.
+    `product_ads=False` bakes it as render format 11 did, with no Products and ads part;
+    `rows` bakes that many copies of the first row, each title padded with `title_fill`.
     """
-    parent: RetailHealthArtifact = _retail_health_artifact()
+    parent = _parent(rows, title_fill)
     if first_title is not None:
         parent = replace(
             parent, rows=(replace(parent.rows[0], title=first_title), *parent.rows[1:])
@@ -521,6 +553,8 @@ class _ProductPages(RecordingPages):
 
 
 _TOKENS = tuple(f"{letter * 43}" for letter in "ABCDEFGHIJKLMN")
+_MANY_TOKENS = tuple(f"{'T' * 41}{index:02d}" for index in range(60))
+"""60 distinct 43-character tokens: a 50-row serve mints 51 (50 rows and the page record)."""
 
 
 def _runtime(  # noqa: PLR0913 -- the stores and one attest switch
@@ -904,7 +938,7 @@ def test_a_filled_movers_card_is_served_with_its_rows_open_product_detail_step(
     assert movers["state"] == "filled"
     assert movers["next_step"] == {
         "kind": "open_product_detail",
-        "label": f"Open {artifact['rows'][0]['title']}",
+        "label": "Open product detail",
         "reason": "It changed shipped revenue more than any other product.",
         "target": {"selection_reference": by_asin["FICTA"]},
     }
@@ -972,6 +1006,136 @@ def test_open_product_detail_is_a_served_step_never_a_cached_one() -> None:
             },
             cached=True,
         )
+
+
+# --- OQ-29: a body under the bake cap always serves --------------------------------------------
+
+_RETAIL_PROMPTED_SLOTS = (
+    InsightSlotId.DEMAND_SHAPE,
+    InsightSlotId.RETURNS_PRESSURE,
+    InsightSlotId.ORDERED_VS_SHIPPED,
+)
+_SERVED_REFERENCE = "v2_" + "R" * 40
+"""A served row capability: `v2_` and 40 of a `secrets.token_urlsafe(32)` token's 43 characters."""
+
+
+def _encoded(artifact: RetailHealthArtifact) -> int:
+    return len(canonical_artifact_json(retail_health_artifact_payload(artifact)).encode())
+
+
+def _slot_bytes(slot: InsightSlot) -> int:
+    """One slot's canonical bytes inside the insights list, with its separating comma."""
+    return len(canonical_artifact_json(insight_slots_payload((slot,))[0]).encode()) + 1
+
+
+@pytest.mark.covers("ADR-125")
+def test_the_served_retail_health_growth_is_bounded_by_enforced_constants_only(
+    presentation_module: _PresentationModule,  # noqa: F811
+) -> None:
+    """G is what the serve path can add to a baked body; `MAX_ARTIFACT_BYTES` covers 256,000 + G.
+
+    Each term is fixed framing or an enforced bound: 50 rows, a fixed-length reference, three
+    prompted slots at their text and evidence byte bounds with provenance stamps at their
+    widest stored form, and the movers step's static label and reason. The retail prompted
+    contracts declare no next-step kinds, so a served prompted slot never carries a step.
+    """
+    module = presentation_module.module
+    contracts = module.INSIGHT_CONTRACTS
+    assert all(not contracts[slot].next_step_kinds for slot in _RETAIL_PROMPTED_SLOTS)
+    assert RETAIL_HEALTH_MAX_ROWS == 50
+    baked = _filled_movers(_parent(50, ""))
+    with_refs = replace(
+        baked,
+        rows=tuple(replace(row, selection_reference=_SERVED_REFERENCE) for row in baked.rows),
+    )
+    references = _encoded(with_refs) - _encoded(baked)
+    classes = {slot.id: slot.output_class for slot in baked.insights}
+    widest = tuple(
+        InsightSlot(
+            slot,
+            classes[slot],
+            InsightSlotState.FILLED,
+            "\u00e9" * 2_047,
+            "\u00e9" * 1_023,
+            "sha256:" + "f" * 64,
+            "v" + "9" * 38,
+        )
+        for slot in _RETAIL_PROMPTED_SLOTS
+    )
+    assert all(
+        len(json.dumps(slot.text, ensure_ascii=False).encode()) == MAX_INSIGHT_SLOT_TEXT_BYTES
+        and len(json.dumps(slot.evidence_line, ensure_ascii=False).encode())
+        == MAX_INSIGHT_EVIDENCE_BYTES
+        for slot in widest
+    )
+    movers = baked.insights[-1]
+    step = InsightNextStep(
+        InsightNextStepKind.OPEN_PRODUCT_DETAIL,
+        ProductRefTarget(_SERVED_REFERENCE),
+        module.RETAIL_PRODUCT_STEP_LABEL,
+        module.RETAIL_PRODUCT_STEP_REASON,
+    )
+    step_bytes = _slot_bytes(replace(movers, next_step=step)) - _slot_bytes(movers)
+    growth = references + sum(_slot_bytes(slot) for slot in widest) + step_bytes
+    served = replace(with_refs, insights=(*widest, replace(movers, next_step=step)))
+
+    assert (references, step_bytes, growth) == (3_400, 219, 22_799)
+    # The baked prompted slots the serve replaces are not subtracted, so G is an upper bound.
+    assert _encoded(served) - _encoded(baked) == 21_994
+    assert MAX_PRESET_ARTIFACT_BYTES == 256_000
+    assert MAX_ARTIFACT_BYTES == 279_000
+    assert 256_000 + growth <= MAX_ARTIFACT_BYTES
+
+
+def _padded_publication(body_bytes: int) -> _Publication:
+    """Bake 50 `é`-padded movers rows to exactly `body_bytes`; the mover title takes the rest."""
+    fill = "\u00e9" * 100
+    trial = _publication(movers=True, rows=50, title_fill=fill)
+    missing = body_bytes - len(trial.body.payload_json.encode())
+    pad = "\u00e9" * (missing // 2) + "x" * (missing % 2)
+    first = f"Fictional Product 0000{fill}{pad}"
+    return _publication(movers=True, rows=50, title_fill=fill, first_title=first)
+
+
+@pytest.mark.covers("ADR-125")
+def test_a_255000_byte_body_with_a_long_mover_title_serves_and_fits_one_dynamodb_item(
+    presentation_module: _PresentationModule,  # noqa: F811
+) -> None:
+    """Before OQ-29 this body failed at serve: over 256,000 B served, and 6 bytes per `é`."""
+    publication = _padded_publication(255_000)
+    assert len(publication.body.payload_json.encode()) == 255_000
+    pages = _ProductPages(tokens=_MANY_TOKENS)
+
+    payload = _serve_parent(presentation_module, pages, publication)
+
+    artifact = payload["page"]["artifact"]
+    movers = next(slot for slot in artifact["insights"] if slot["id"] == "retail-movers")
+    assert movers["next_step"]["label"] == "Open product detail"
+    assert len(artifact["rows"]) == 50
+    (request,) = pages.parent_capability_requests
+    assert request.parent in pages.artifact_records
+    items = (
+        page_context._artifact_item(request.parent),  # pyright: ignore[reportPrivateUsage]
+        *(
+            page_context._issuance_capability_item(record)  # pyright: ignore[reportPrivateUsage]
+            for record in request.capabilities
+        ),
+    )
+    served_bytes = len(request.parent.artifact.payload_json.encode())
+    item_bytes = len(
+        json.dumps(items[0], ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()
+    )
+    # The parent item adds 37,109 B of record framing and escapes over the served bytes, so a
+    # 50-row item reaches 400,000 B only at a served artifact of 362,891 B (a body of 340,092 B).
+    assert (served_bytes, item_bytes) == (258_891, 296_000)
+    assert page_context.parent_capability_transaction_fits(items)
+
+
+def test_a_256001_byte_retail_health_body_is_refused_at_bake() -> None:
+    with pytest.raises(PresetArtifactBodyCeilingError) as refused:
+        _padded_publication(256_001)
+    assert refused.value.reason == RETAIL_BODY_CEILING
+    assert refused.value.observed_bytes == 256_001
 
 
 # --- Products and ads: one baked part for every served row (render format 12) ----------------

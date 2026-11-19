@@ -27,6 +27,7 @@ import pytest
 from tool_caller_support import import_tool_entrypoint, with_bearer
 
 from adapters.inbound.tool_handlers.catalog import CatalogTool
+from adapters.inbound.tool_handlers.forecast import ForecastTool
 from adapters.inbound.tool_handlers.measurement import MeasurementTool
 from adapters.inbound.tool_handlers.schemas import (
     TOOL_CONTRACTS,
@@ -137,9 +138,11 @@ class TestTheDeclarationMatchesTheHandler:
         a hard-coded set, which meant adding a tool required editing this test to say the same
         thing twice — and a test that has to be updated to keep passing is not asserting anything.
         """
-        implemented = {member.value for member in CatalogTool} | {
-            member.value for member in MeasurementTool
-        }
+        implemented = (
+            {member.value for member in CatalogTool}
+            | {member.value for member in MeasurementTool}
+            | {member.value for member in ForecastTool}
+        )
         declared = tuple(contract.name for contract in TOOL_CONTRACTS)
         assert set(declared) == implemented
         assert declared == (
@@ -148,6 +151,10 @@ class TestTheDeclarationMatchesTheHandler:
             "measurement_metric_by_grain",
             "measurement_compare_windows",
             "measurement_top_n",
+            "forecast_list_asins",
+            "forecast_query_asins",
+            "forecast_summarize_asin",
+            "forecast_compare_asins",
         )
 
     def test_the_retired_finalizer_is_not_declared(self) -> None:
@@ -327,6 +334,20 @@ class TestTheRenderedDefinitions:
         assert "inventory of metrics this platform declares" in description
         assert "source_reference" in description
         assert "general advertising or retail concept" in description
+
+    @pytest.mark.parametrize("tool", ["forecast_summarize_asin", "forecast_compare_asins"])
+    def test_a_forecast_history_description_names_every_week_state(self, tool: str) -> None:
+        """Recent history holds inferred-zero and unknown weeks; calling it observed misleads.
+
+        Read from the generated file the Gateway serves (DF-S3-GPT-005).
+        """
+        from pathlib import Path  # noqa: PLC0415
+
+        root = Path(__file__).resolve().parents[2]
+        generated = json.loads((root / "contracts/generated/tools.json").read_text())
+        description = next(d for d in generated["tools"] if d["name"] == tool)["description"]
+        assert "observed recent" not in description
+        assert "each week marked observed, inferred-zero or unknown" in description
 
     def test_an_array_carries_its_element_type(self) -> None:
         rendered = {d["name"]: d for d in as_tool_definitions()}

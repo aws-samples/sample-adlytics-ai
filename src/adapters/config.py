@@ -25,6 +25,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from adapters.inbound.auth_handlers.routing import API_PREFIX
 from domain.conversation.audit import MAX_RECORD_RETENTION_DAYS
+from domain.forecasting.read_api import DailySchedule, parse_daily_schedule
 from domain.identity.cookies import CookiePolicy, CookieScope
 from domain.identity.session import IdentityError
 from domain.shared_kernel.errors import ErrorCode, InvariantError
@@ -1721,6 +1722,10 @@ class Settings(BaseSettings):
     """ADR-149: blank by default; only the table writer and delivery runtimes require it."""
     registration_status_table: str = ""
     raw_bucket: str = ""
+    demand_forecast_table: str = ""
+    """ADR-163: blank by default; only the forecast read functions require the three."""
+    demand_forecast_marketplace_key: str = ""
+    demand_forecast_check_schedule: str = ""
     athena_result_reuse_max_age_minutes: int = Field(ge=0, le=MAX_RESULT_REUSE_MINUTES)
     athena_query_batch_max_concurrency: int = Field(ge=1)
 
@@ -1764,6 +1769,24 @@ class Settings(BaseSettings):
         )
         if any(evaluation) and not all(evaluation):
             raise ValueError("the evaluation record tables must be configured together")
+        return self
+
+    @model_validator(mode="after")
+    def _demand_forecast_reader_must_be_complete(self) -> Settings:
+        """Require the forecast reader's table, set key and check schedule as one set (M7).
+
+        Only the read functions set them; a partial set means a deployment read the wrong
+        parameters. The schedule must be the daily `cron(<m> <h> * * ? *)` status reports from.
+        """
+        reader = (
+            self.demand_forecast_table,
+            self.demand_forecast_marketplace_key,
+            self.demand_forecast_check_schedule,
+        )
+        if any(reader) and not all(reader):
+            raise ValueError("the demand forecast reader settings must be configured together")
+        if self.demand_forecast_check_schedule:
+            parse_daily_schedule(self.demand_forecast_check_schedule)
         return self
 
     @property
@@ -1943,6 +1966,39 @@ def authorizer_public_client_id() -> str:
             context={"problems": [f"{ENV_PREFIX}COGNITO_PUBLIC_CLIENT_ID is required"]},
         )
     return client_id
+
+
+@dataclass(frozen=True, slots=True)
+class DemandForecastReaderValues:
+    """What the forecast read service needs from configuration (ADR-163)."""
+
+    forecast_table: str
+    marketplace_key: str
+    check_schedule: DailySchedule
+
+
+def demand_forecast_reader(value: Settings) -> DemandForecastReaderValues:
+    """Return the forecast reader's values, refusing to start on a blank set.
+
+    Required by the read functions alone, so it is resolved here rather than of every container.
+    """
+    if not value.demand_forecast_table:
+        raise InvariantError(
+            CONFIG_UNRESOLVED,
+            "Configuration did not resolve.",
+            context={
+                "problems": [
+                    f"{ENV_PREFIX}DEMAND_FORECAST_TABLE, "
+                    f"{ENV_PREFIX}DEMAND_FORECAST_MARKETPLACE_KEY and "
+                    f"{ENV_PREFIX}DEMAND_FORECAST_CHECK_SCHEDULE are required"
+                ]
+            },
+        )
+    return DemandForecastReaderValues(
+        forecast_table=value.demand_forecast_table,
+        marketplace_key=value.demand_forecast_marketplace_key,
+        check_schedule=parse_daily_schedule(value.demand_forecast_check_schedule),
+    )
 
 
 @dataclass(frozen=True, slots=True)

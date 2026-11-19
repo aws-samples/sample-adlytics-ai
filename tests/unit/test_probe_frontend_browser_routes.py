@@ -25,8 +25,8 @@ _MODULE = _ROOT / "validation" / "roster_routes.mjs"
 _ALLOWLIST = _ROOT / "contracts" / "generated" / "route-allowlist.json"
 _IN_DEPTH = {"/campaigns/", "/retail-health/"}
 """The roster pages the browser probe's earlier blocks walk in depth."""
-_NOT_ROSTER_PAGES = {"/", "/admin/prompts/", "/products-and-ads/"}
-"""Allowlisted routes that are not roster pages: the composed tabs and the prompt admin."""
+_NOT_ROSTER_PAGES = {"/", "/admin/prompts/", "/products-and-ads/", "/demand-forecast/"}
+"""Allowlisted routes that are not roster pages: composed tabs, prompt admin and the API tab."""
 
 
 def _derive(routes: list[str]) -> subprocess.CompletedProcess[str]:
@@ -71,11 +71,25 @@ def test_the_browser_walks_every_roster_page_route_not_walked_in_depth() -> None
     ("routes", "message"),
     [
         (
-            ["/", "/admin/prompts/", "/products-and-ads/", "/campaigns/", "/retail-health/"],
+            [
+                "/",
+                "/admin/prompts/",
+                "/products-and-ads/",
+                "/demand-forecast/",
+                "/campaigns/",
+                "/retail-health/",
+            ],
             "leaves no page",
         ),
         (
-            ["/", "/admin/prompts/", "/products-and-ads/", "/campaigns/", "/reach/"],
+            [
+                "/",
+                "/admin/prompts/",
+                "/products-and-ads/",
+                "/demand-forecast/",
+                "/campaigns/",
+                "/reach/",
+            ],
             "no longer carries /retail-health/",
         ),
         ([], "no longer carries /"),

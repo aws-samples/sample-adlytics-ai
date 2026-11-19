@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "refused": "PAGE_INVALID",
+  "code": "ADLY-FORECAST_READ-0003",
+  "detail": "That page of the forecast doesn't exist."
+}

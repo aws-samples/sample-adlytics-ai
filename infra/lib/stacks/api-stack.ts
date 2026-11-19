@@ -40,6 +40,10 @@ import {
 } from '../config';
 import { guardrailProfileArns } from '../constructs/agent/route-guardrail';
 import { executionGraphAuthority } from './execution-graph-authority';
+import {
+  demandForecastReaderEnvironment,
+  grantDemandForecastRead,
+} from '../mixins/demand-forecast-reader';
 import { grantOwnLogWrites, lambdaRole } from '../mixins/logging';
 import { dataBucketName } from '../mixins/storage';
 import { staffedAlarmAction } from '../constructs/observability/async-failure';
@@ -52,6 +56,16 @@ import {
 import { buildServingRefusalAlarm } from '../constructs/observability/serving-refusal-alarm';
 import { applyFunctionErrorAlarms } from '../mixins/function-error-alarms';
 import { applyStandardTags } from '../mixins/tagging';
+
+
+/**
+ * ADR-163: the demand forecast read routes, equal to `routes` in
+ * contracts/generated/demand-forecast-api.json (demand-forecast-route.test.ts gates drift).
+ */
+export const DEMAND_FORECAST_ROUTES = [
+  'GET /api/demand-forecast',
+  'GET /api/demand-forecast/status',
+] as const;
 
 /**
  * HTTP API, the auth Lambda, and the REQUEST authorizer in front of it.
@@ -457,6 +471,19 @@ export class ApiStack extends cdk.Stack {
       evaluationTables,
     );
 
+    // ADR-163: the demand forecast read routes. GetItem on the forecast table's SET# and GEN#
+    // keys only; no S3, no write. Two bounded rounds of one-attempt reads fit the 10 s timeout.
+    const demandForecastReadFunction = this.pythonFunction('DemandForecastReadFunction', {
+      config,
+      dependencies,
+      sourceAssetPath: props.sourceAssetPath,
+      handler: 'adapters.inbound.forecast_read.handler.handler',
+      environment: { ...baseEnvironment, ...demandForecastReaderEnvironment(this, config) },
+      memoryMb: 1024,
+      timeoutSeconds: 10,
+    });
+    grantDemandForecastRead(demandForecastReadFunction, this, config);
+
     const promptCalibrationEnqueueEnvironment: Record<string, string> = {
       ...baseEnvironment,
       ADL_INSIGHT_PROMPT_REGISTRY_TABLE: insightPromptRegistryTable,
@@ -693,6 +720,7 @@ export class ApiStack extends cdk.Stack {
       promptAdminFunctions.versions,
       ...(operationalStatusFunction === undefined ? [] : [operationalStatusFunction]),
       ...(runRequestsFunction === undefined ? [] : [runRequestsFunction]),
+      demandForecastReadFunction,
     ]) {
       grantSpanExport(fn);
     }
@@ -717,6 +745,7 @@ export class ApiStack extends cdk.Stack {
     if (runRequestsFunction !== undefined) {
       this.addRunRequestRoutes(runRequestsFunction, config);
     }
+    this.addDemandForecastRoutes(demandForecastReadFunction);
     this.publishParameters(config, publicOrigin, conversationUrl);
     this.publishOutputs(authFunction, authorizerFunction);
     const staffed = staffedAlarmAction(this, config);
@@ -1370,6 +1399,19 @@ export class ApiStack extends cdk.Stack {
       throw new Error('The session authorizer is created by addRoutes, before any other route.');
     }
     return this.routeAuthorizer;
+  }
+
+  /** ADR-163: the two read-only demand forecast routes behind the existing session authorizer. */
+  private addDemandForecastRoutes(fn: lambda.Function): void {
+    const integration = new integrations.HttpLambdaIntegration('DemandForecastIntegration', fn);
+    for (const route of DEMAND_FORECAST_ROUTES) {
+      this.api.addRoutes({
+        path: route.split(' ')[1] as string,
+        methods: [apigwv2.HttpMethod.GET],
+        integration,
+        authorizer: this.requireRouteAuthorizer(),
+      });
+    }
   }
 
   /** `POST` and `GET` run-request routes behind the existing session authorizer. */

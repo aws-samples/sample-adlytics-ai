@@ -1,6 +1,10 @@
 # ADR-092: Forecast the Chronos-2 baseline with known-in-advance covariates and a pacing-spend target
 Date: 2026-10-07
 Status: Proposed. Not accepted or implemented; acceptance waits on the hosted run-time test. On 2026-10-07 the owner accepted the recommendation to keep scenario rows when only the baseline level fails. Weekly-anchored backtests were chosen on the owner's behalf the same day, under authority the owner delegated, and the rest of the design was approved the same way; the owner hasn't reviewed the final design yet. It would amend [ADR-001](adr-001-chronos-deployment.md)'s target set and the forecasting low-level design's artifact contract; both stay in force until this is accepted. ADR-001's offline decision stands. The design is summarised in [Response curves and budget simulation](../concepts/response-curves-and-budget-simulation.md).
+
+> **Status note, 2026-11-17.** Still Proposed. The weekly retail demand forecast does not use this
+> decision: its model choice is [ADR-157](adr-157-show-chronos-2-only-where-it-beats-both-simple-models.md),
+> which replaces point 5 for that solution only.
 ## Context
 The simulator adds a curve's modelled change to a baseline: what each campaign spends and earns over the next 90 days if nothing changes. ADR-001 already decides an offline daily Chronos forecast of two ad-attributed outcomes. The simulator needs three more things:
 - **Expected spend under the current budget,** to turn a budget into spend.

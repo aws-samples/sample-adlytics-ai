@@ -11,6 +11,9 @@ owner objection. Not implemented. The proposed design is in
 > `navigation.yaml` also lists composed customer tabs (`composed_routes`), and the composed Overview
 > owns `/`.
 
+> **Amended 2026-11-17 by [ADR-163](adr-163-serve-demand-forecasts-and-status-through-a-read-api.md):**
+> `navigation.yaml` also lists customer tabs served by a read API (`api_routes`), with no artifact.
+
 ## Context
 
 The app has three rendered pages, Campaign portfolio, Retail health and Prompt administration, and

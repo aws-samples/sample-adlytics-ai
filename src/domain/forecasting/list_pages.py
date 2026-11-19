@@ -17,6 +17,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
+from typing import Final
 
 from domain.forecasting.boundary import RosterEntryV1
 from domain.forecasting.models import SkipReason
@@ -31,8 +32,13 @@ CLOSED_FILTERS: tuple[str, ...] = (
     *(f"{WITHHELD_PREFIX}{reason.value}" for reason in SkipReason),
 )
 """Every list filter a request may name, in `META.pages` order."""
+
+MAX_LIST_PAGE: Final = 10**5 - 1
+"""The highest page a request may name: the store's five-digit page key."""
 RANK_BY_UNITS_ORDERED_13W = "units_ordered_p50_13w"
 _RANK_TARGET, _RANK_VIEW = "units_ordered", "13"
+RANK_VIEW_WEEKS: Final = int(_RANK_VIEW)
+"""The view the roster is ranked by, so a reader's default view is the ranked one."""
 
 
 def filter_of(entry: RosterEntryV1, status_target: str) -> str:

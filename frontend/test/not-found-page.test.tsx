@@ -141,7 +141,7 @@ test('the brief signed-out shell below 881 px: the menu sheet offers Sign in ins
   await user.click(screen.getByRole('button', { name: 'Menu' }));
   const sheet = screen.getByRole('dialog', { name: 'Menu' });
   assert.equal(within(sheet).queryByRole('button', { name: 'Sign out' }), null);
-  assert.deepEqual(within(within(sheet).getByRole('navigation', { name: 'Hubs' })).getAllByRole('link').map((link) => link.textContent), ['Overview', 'Performance', 'Scorecard', 'Campaigns', 'Reach and audiences', 'Reach and funnel', 'Audiences', 'Customers', 'New customers', 'Retention', 'Retail health', 'Retail health', 'Products and ads']);
+  assert.deepEqual(within(within(sheet).getByRole('navigation', { name: 'Hubs' })).getAllByRole('link').map((link) => link.textContent), ['Overview', 'Performance', 'Scorecard', 'Campaigns', 'Reach and audiences', 'Reach and funnel', 'Audiences', 'Customers', 'New customers', 'Retention', 'Retail health', 'Retail health', 'Products and ads', 'Demand forecast']);
   // No path heads the sheet: the page isn't in any hub.
   assert.equal(sheet.querySelector('.path'), null);
   await user.click(within(sheet).getByRole('button', { name: 'Sign in' }));

@@ -394,6 +394,25 @@ _SEMANTIC_QUALIFIERS = (
     _MAX_ROWS,
 )
 
+_FORECAST_TARGET_TEXT = (
+    "One forecast target: units_ordered (demand), units_shipped, revenue_shipped or cogs_shipped."
+)
+_FORECAST_TARGET = Argument(
+    name="target", type=ArgumentType.STRING, description=_FORECAST_TARGET_TEXT
+)
+_FORECAST_ASINS = Argument(
+    name="asins",
+    type=ArgumentType.ARRAY,
+    items=ArgumentType.STRING,
+    description="Exact ASINs, each 10 letters or digits, each once; at most five.",
+)
+_FORECAST_VIEW = Argument(
+    name="view_weeks",
+    type=ArgumentType.INTEGER,
+    description="How many forecast weeks to return: 4, 8 or 13. Defaults to 13.",
+    required=False,
+)
+
 TOOL_CONTRACTS: tuple[ToolContract, ...] = (
     ToolContract(
         name="catalog_list_metrics",
@@ -494,6 +513,73 @@ TOOL_CONTRACTS: tuple[ToolContract, ...] = (
             _PRIOR_PERIOD_END_CANDIDATE,
             *_SEMANTIC_QUALIFIERS,
         ),
+    ),
+    ToolContract(
+        name="forecast_list_asins",
+        description=(
+            "Published weekly demand forecasts and their accuracy, by exact ASIN: list the "
+            "products in the current forecast, top first by forecast demand, with each product's "
+            "stored 4-, 8- and 13-week forecast totals for one target, how many products match "
+            "and how many pages that is, or find one product by its exact ASIN. Returns at most "
+            "one page; ask about any other product by its ASIN."
+        ),
+        arguments=(
+            Argument(
+                name="asin",
+                type=ArgumentType.STRING,
+                description="One exact ASIN, 10 letters or digits, to find that product only.",
+                required=False,
+            ),
+            Argument(
+                name="status",
+                type=ArgumentType.STRING,
+                description=(
+                    "Only products whose demand is forecast ('shown'), or only those withheld "
+                    "for one reason, such as INSUFFICIENT_CONTEXT. Not with asin."
+                ),
+                required=False,
+            ),
+            Argument(
+                name="target",
+                type=ArgumentType.STRING,
+                description=_FORECAST_TARGET_TEXT + " Defaults to units_ordered.",
+                required=False,
+            ),
+        ),
+    ),
+    ToolContract(
+        name="forecast_query_asins",
+        description=(
+            "Published weekly demand forecasts and their accuracy, by exact ASIN: the stored "
+            "weekly p10, p50 and p90 forecast of one target for one to five products."
+        ),
+        arguments=(_FORECAST_ASINS, _FORECAST_TARGET, _FORECAST_VIEW),
+    ),
+    ToolContract(
+        name="forecast_summarize_asin",
+        description=(
+            "Published weekly demand forecasts and their accuracy, by exact ASIN: one product's "
+            "stored forecast of one target beside its recent history, each week marked observed, "
+            "inferred-zero or unknown, with its stored forecast total and backtest accuracy."
+        ),
+        arguments=(
+            Argument(
+                name="asin",
+                type=ArgumentType.STRING,
+                description="One exact ASIN, 10 letters or digits.",
+            ),
+            _FORECAST_TARGET,
+            _FORECAST_VIEW,
+        ),
+    ),
+    ToolContract(
+        name="forecast_compare_asins",
+        description=(
+            "Published weekly demand forecasts and their accuracy, by exact ASIN: two to five "
+            "products' stored forecasts of one target side by side, each beside its recent "
+            "history, each week marked observed, inferred-zero or unknown."
+        ),
+        arguments=(_FORECAST_ASINS, _FORECAST_TARGET, _FORECAST_VIEW),
     ),
 )
 """Every tool this platform exposes, in the order a caller meets them.

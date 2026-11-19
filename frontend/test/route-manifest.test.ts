@@ -91,3 +91,17 @@ test('the decoder refuses a hub without an icon, a mismatched entitlement and an
   extra.unexpected = true;
   assert.throws(() => parseRouteManifest(extra), /invalid fields/);
 });
+
+test('the Demand forecast api tab decodes in the Retail hub, and an unrendered api tab is refused', () => {
+  const retail = visibleHubs({}).find((hub) => hub.hub_id === 'retail');
+  const tab = retail?.tabs.find((candidate) => candidate.tab_id === 'demand-forecast');
+  assert.deepEqual(tab && { kind: tab.kind, route: tab.route, order: tab.order, question: tab.question }, {
+    kind: 'api', route: '/demand-forecast/', order: 3, question: 'What demand should I plan for?',
+  });
+  const manifest = copy();
+  const hub = manifest.hubs.find((candidate) => candidate.hub_id === 'retail');
+  const api = hub?.tabs.find((candidate) => candidate.tab_id === 'demand-forecast');
+  assert.ok(api);
+  api.tab_id = 'unrendered-forecast';
+  assert.throws(() => parseRouteManifest(manifest), /api tab is not a rendered view/);
+});

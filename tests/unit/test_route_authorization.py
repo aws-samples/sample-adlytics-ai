@@ -240,6 +240,9 @@ class TestRouteEntitlement:
             ),
             (NON_REVIEW_ROUTE, None),
             ("GET /api/me", None),
+            # ADR-163 R6: any verified session reads the demand forecast and its status.
+            ("GET /api/demand-forecast", None),
+            ("GET /api/demand-forecast/status", None),
         ],
     )
     def test_the_required_level_comes_from_the_route_key(
@@ -258,6 +261,7 @@ class TestRouteEntitlement:
             "POST /api/prompt-registry/delete",
             "GET /api/operations/secrets",
             "ANY /api/operations/{proxy+}",
+            "GET /api/operations/demand-forecast/status",
         ],
     )
     def test_an_unmapped_route_under_a_protected_prefix_is_denied(

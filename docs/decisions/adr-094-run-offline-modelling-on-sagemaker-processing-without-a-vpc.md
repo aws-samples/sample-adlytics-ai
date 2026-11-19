@@ -1,6 +1,11 @@
 # ADR-094: Run offline modelling on SageMaker Processing, x86_64, without a VPC
 Date: 2026-10-07
 Status: Proposed. Not accepted or implemented. **Acceptance waits on the hosted run-time test.** The owner chose the host on 2026-10-06 and accepted the retained image stack on 2026-10-07. The rest of the design was approved on the owner's behalf on 2026-10-07, under authority the owner delegated; the owner hasn't reviewed the final design yet. It would record an exception to [ADR-005](adr-005-compute-runtime-baseline.md)'s Graviton rule; ADR-005 stays in force, unchanged, until this is accepted. The design is summarised in [Response curves and budget simulation](../concepts/response-curves-and-budget-simulation.md).
+
+> **Status note, 2026-11-17.** Still Proposed. The weekly retail demand forecast takes the parts it
+> needs (Processing, x86_64, no VPC) through
+> [ADR-160](adr-160-mount-the-jumpstart-chronos-2-artifact-and-enforce-isolation-in-iam.md), which
+> replaces point 3 (weights baked into the image) for that solution.
 ## Context
 Curve fits ([ADR-112](adr-112-fit-campaign-response-curves-with-a-hierarchical-adstock-and-hill-model.md)) and Chronos-2 forecasts ([ADR-092](adr-092-forecast-the-chronos-2-baseline-with-known-in-advance-covariates.md)) are offline batch work. They need minutes to tens of minutes of CPU and a few gigabytes of memory. The forecasting architecture already names a SageMaker Processing job. The repository has no VPC today.
 ADR-005 puts compute on ARM64 Graviton, but SageMaker Processing offers no Graviton instance type in us-east-1. AWS Batch on Fargate runs ARM64, but it needs subnets, and so the repository's first VPC, with endpoints that cost money every hour.

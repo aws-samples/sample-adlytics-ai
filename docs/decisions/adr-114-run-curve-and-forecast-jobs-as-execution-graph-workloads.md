@@ -1,6 +1,10 @@
 # ADR-114: Run curve and forecast jobs as execution-graph workloads
 Date: 2026-10-07
 Status: Proposed. Not accepted or implemented. The owner set the requirements in Context on 2026-10-07. The rollback default below, and the rest of the design, were approved on the owner's behalf the same day, under authority the owner delegated; the owner hasn't reviewed the final design yet. It depends on an execution-graph control plane that isn't in the repository yet. **The service-level proposals stay observation-only until the owner accepts them.** The design is summarised in [Response curves and budget simulation](../concepts/response-curves-and-budget-simulation.md).
+
+> **Status note, 2026-11-17.** Still Proposed. Until it is accepted and deployable outside dev, the
+> weekly retail demand forecast runs on Step Functions
+> ([ADR-159](adr-159-orchestrate-the-demand-forecast-with-step-functions-until-adr-114.md)).
 ## Context
 A weekly curve refit or a daily forecast is several steps:
 - check inputs are ready;

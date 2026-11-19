@@ -158,7 +158,7 @@ test('landmarks come in order and the h1 is the tab name, focused on a route cha
     ['Retail health'],
   );
   const strip = screen.getByRole('navigation', { name: 'Sections of Retail health' });
-  assert.deepEqual(within(strip).getAllByRole('link').map((link) => link.textContent), ['Retail healthAre my products selling?', 'Products and ads']);
+  assert.deepEqual(within(strip).getAllByRole('link').map((link) => link.textContent), ['Retail healthAre my products selling?', 'Products and ads', 'Demand forecastWhat demand should I plan for?']);
   assert.ok(within(strip).getByRole('link', { name: 'Retail health' }));
 });
 
@@ -242,7 +242,7 @@ test('below 881 px the menu button opens a modal sheet with hubs, Theme and Sign
   assert.ok(within(sheet).getByText('Performance / Campaigns'));
   const hubs = within(sheet).getByRole('navigation', { name: 'Hubs' });
   // The current hub lists its tabs under it in the sheet.
-  assert.deepEqual(within(hubs).getAllByRole('link').map((link) => link.textContent), ['Overview', 'Performance', 'Scorecard', 'Campaigns', 'Reach and audiences', 'Reach and funnel', 'Audiences', 'Customers', 'New customers', 'Retention', 'Retail health', 'Retail health', 'Products and ads', 'Operations']);
+  assert.deepEqual(within(hubs).getAllByRole('link').map((link) => link.textContent), ['Overview', 'Performance', 'Scorecard', 'Campaigns', 'Reach and audiences', 'Reach and funnel', 'Audiences', 'Customers', 'New customers', 'Retention', 'Retail health', 'Retail health', 'Products and ads', 'Demand forecast', 'Operations']);
   assert.equal(document.getElementById('app-root')?.inert, true);
   await user.click(within(sheet).getByRole('radio', { name: 'Light' }));
   assert.equal(document.documentElement.dataset.theme, 'light');

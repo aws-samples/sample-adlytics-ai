@@ -283,6 +283,108 @@
         "type": "object"
       },
       "name": "measurement_top_n"
+    },
+    {
+      "description": "Published weekly demand forecasts and their accuracy, by exact ASIN: list the products in the current forecast, top first by forecast demand, with each product's stored 4-, 8- and 13-week forecast totals for one target, how many products match and how many pages that is, or find one product by its exact ASIN. Returns at most one page; ask about any other product by its ASIN.",
+      "inputSchema": {
+        "properties": {
+          "asin": {
+            "description": "One exact ASIN, 10 letters or digits, to find that product only.",
+            "type": "string"
+          },
+          "status": {
+            "description": "Only products whose demand is forecast ('shown'), or only those withheld for one reason, such as INSUFFICIENT_CONTEXT. Not with asin.",
+            "type": "string"
+          },
+          "target": {
+            "description": "One forecast target: units_ordered (demand), units_shipped, revenue_shipped or cogs_shipped. Defaults to units_ordered.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "forecast_list_asins"
+    },
+    {
+      "description": "Published weekly demand forecasts and their accuracy, by exact ASIN: the stored weekly p10, p50 and p90 forecast of one target for one to five products.",
+      "inputSchema": {
+        "properties": {
+          "asins": {
+            "description": "Exact ASINs, each 10 letters or digits, each once; at most five.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "target": {
+            "description": "One forecast target: units_ordered (demand), units_shipped, revenue_shipped or cogs_shipped.",
+            "type": "string"
+          },
+          "view_weeks": {
+            "description": "How many forecast weeks to return: 4, 8 or 13. Defaults to 13.",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "asins",
+          "target"
+        ],
+        "type": "object"
+      },
+      "name": "forecast_query_asins"
+    },
+    {
+      "description": "Published weekly demand forecasts and their accuracy, by exact ASIN: one product's stored forecast of one target beside its recent history, each week marked observed, inferred-zero or unknown, with its stored forecast total and backtest accuracy.",
+      "inputSchema": {
+        "properties": {
+          "asin": {
+            "description": "One exact ASIN, 10 letters or digits.",
+            "type": "string"
+          },
+          "target": {
+            "description": "One forecast target: units_ordered (demand), units_shipped, revenue_shipped or cogs_shipped.",
+            "type": "string"
+          },
+          "view_weeks": {
+            "description": "How many forecast weeks to return: 4, 8 or 13. Defaults to 13.",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "asin",
+          "target"
+        ],
+        "type": "object"
+      },
+      "name": "forecast_summarize_asin"
+    },
+    {
+      "description": "Published weekly demand forecasts and their accuracy, by exact ASIN: two to five products' stored forecasts of one target side by side, each beside its recent history, each week marked observed, inferred-zero or unknown.",
+      "inputSchema": {
+        "properties": {
+          "asins": {
+            "description": "Exact ASINs, each 10 letters or digits, each once; at most five.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "target": {
+            "description": "One forecast target: units_ordered (demand), units_shipped, revenue_shipped or cogs_shipped.",
+            "type": "string"
+          },
+          "view_weeks": {
+            "description": "How many forecast weeks to return: 4, 8 or 13. Defaults to 13.",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "asins",
+          "target"
+        ],
+        "type": "object"
+      },
+      "name": "forecast_compare_asins"
     }
   ]
 }

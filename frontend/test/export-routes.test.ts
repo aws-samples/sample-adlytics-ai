@@ -13,6 +13,8 @@ const listing = [
   'admin/prompts/index.html',
   'audiences/index.html',
   'campaigns/index.html',
+  // ADR-163: the Retail hub's Demand forecast tab, served by the read API.
+  'demand-forecast/index.html',
   'index.html',
   // Slice 9 New customers: the Customers hub's first tab.
   'new-customers/index.html',

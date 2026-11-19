@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "outcome": "complete",
+  "provenance": {
+    "generation_id": "run-1-0123456789ab",
+    "published_at": "2026-11-08T14:05:09Z",
+    "input_end": "2026-11-07",
+    "first_forecast_week": "2026-11-08"
+  },
+  "freshness": {
+    "state": "fresh",
+    "age_days": 8,
+    "stale_after_days": 16,
+    "causes": []
+  },
+  "horizon": {
+    "grain": "week",
+    "week_starts_on": "sunday",
+    "weeks": [
+      "2026-11-08",
+      "2026-11-15",
+      "2026-11-22",
+      "2026-11-29",
+      "2026-12-06",
+      "2026-12-13",
+      "2026-12-20",
+      "2026-12-27",
+      "2027-01-03",
+      "2027-01-10",
+      "2027-01-17",
+      "2027-01-24",
+      "2027-01-31"
+    ],
+    "views": [
+      4,
+      8,
+      13
+    ],
+    "default_view_weeks": 13
+  },
+  "query": {
+    "status": "ASIN_INACTIVE",
+    "page": 1
+  },
+  "page": 1,
+  "page_count": 1,
+  "match_count": 0,
+  "page_rows": 50,
+  "entries": [],
+  "item_count": 3,
+  "counts_by_reason": {
+    "units_shipped": {},
+    "units_ordered": {
+      "INSUFFICIENT_CONTEXT": 1
+    },
+    "revenue_shipped": {},
+    "cogs_shipped": {}
+  },
+  "counts_by_model": {
+    "units_shipped": {},
+    "units_ordered": {
+      "chronos2": 2
+    },
+    "revenue_shipped": {},
+    "cogs_shipped": {}
+  },
+  "currency_codes": [
+    "USD"
+  ],
+  "status_target": "units_ordered"
+}

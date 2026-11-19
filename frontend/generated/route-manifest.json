@@ -127,6 +127,16 @@
           "question": null,
           "route": "/products-and-ads/",
           "tab_id": "products-and-ads"
+        },
+        {
+          "description": "Each product's demand outlook, with a range",
+          "entitlement": null,
+          "kind": "api",
+          "label": "Demand forecast",
+          "order": 3,
+          "question": "What demand should I plan for?",
+          "route": "/demand-forecast/",
+          "tab_id": "demand-forecast"
         }
       ]
     },

@@ -21,7 +21,7 @@
         },
         {
           "path": "docs/ui/campaign-portfolio/low-level-design.md",
-          "sha256": "475f34f80d22d7adffa1aef2869c00c126532431aff8e7716640e3928ece0a69"
+          "sha256": "a24204b54c955a5e71505f90a4e7851a05cf9dde2bb36fdd5658c8065d14806b"
         },
         {
           "path": "docs/ui/campaign-portfolio/mockup.html",
@@ -442,7 +442,7 @@
     "implementation_decision_date": "2026-10-07",
     "implementation_disposition": "approved_for_implementation",
     "path": "docs/ui/README.md",
-    "sha256": "5db669064cdbcd87d3832cce123004322522cbafe36dfb5fdcda816a757848eb",
+    "sha256": "4f3be9b503662cffcbd2111d0ad75b66e7d7e9c5ef4c5f5979d6683ae322742f",
     "status": "Approved for implementation at manifest revision `2026-10-09.2` ([`design-manifest.yaml`](design-manifest.yaml)). The UI refresh added the Overview › Growth check and Retail health › Products and ads composed tabs ([ADR-151](../decisions/adr-151-compose-a-customer-tab-from-served-page-presentations.md)) and the shared answer-sentence and ratio-display rules in §8. Owner ratification of revisions `2026-10-09.1` and `2026-10-09.2` is pending. Earlier revisions are in this file's history."
   },
   "revision": "2026-10-09.2",

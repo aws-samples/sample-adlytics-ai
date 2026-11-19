@@ -1,0 +1,544 @@
+{
+  "schema_version": 1,
+  "outcome": "not_forecast",
+  "asin": "B0FIXTUR03",
+  "provenance": {
+    "generation_id": "run-1-0123456789ab",
+    "published_at": "2026-11-08T14:05:09Z",
+    "input_end": "2026-11-07",
+    "first_forecast_week": "2026-11-08"
+  },
+  "freshness": {
+    "state": "fresh",
+    "age_days": 8,
+    "stale_after_days": 16,
+    "causes": []
+  },
+  "horizon": {
+    "grain": "week",
+    "week_starts_on": "sunday",
+    "weeks": [
+      "2026-11-08",
+      "2026-11-15",
+      "2026-11-22",
+      "2026-11-29",
+      "2026-12-06",
+      "2026-12-13",
+      "2026-12-20",
+      "2026-12-27",
+      "2027-01-03",
+      "2027-01-10",
+      "2027-01-17",
+      "2027-01-24",
+      "2027-01-31"
+    ],
+    "views": [
+      4,
+      8,
+      13
+    ],
+    "default_view_weeks": 13
+  },
+  "title": "Fictional product 3",
+  "title_truncated": false,
+  "targets": {
+    "units_shipped": {
+      "chosen_model": null,
+      "withheld_reason": "INSUFFICIENT_CONTEXT",
+      "currency_code": null,
+      "bands": null,
+      "p50_totals": {
+        "4": null,
+        "8": null,
+        "13": null
+      },
+      "accuracy": null
+    },
+    "units_ordered": {
+      "chosen_model": null,
+      "withheld_reason": "INSUFFICIENT_CONTEXT",
+      "currency_code": null,
+      "bands": null,
+      "p50_totals": {
+        "4": null,
+        "8": null,
+        "13": null
+      },
+      "accuracy": null
+    },
+    "revenue_shipped": {
+      "chosen_model": null,
+      "withheld_reason": "INSUFFICIENT_CONTEXT",
+      "currency_code": "USD",
+      "bands": null,
+      "p50_totals": {
+        "4": null,
+        "8": null,
+        "13": null
+      },
+      "accuracy": null
+    },
+    "cogs_shipped": {
+      "chosen_model": null,
+      "withheld_reason": "INSUFFICIENT_CONTEXT",
+      "currency_code": "USD",
+      "bands": null,
+      "p50_totals": {
+        "4": null,
+        "8": null,
+        "13": null
+      },
+      "accuracy": null
+    }
+  },
+  "recent_weeks": [
+    {
+      "week_start": "2026-08-09",
+      "targets": {
+        "units_shipped": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9"
+          }
+        },
+        "units_ordered": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9"
+          }
+        },
+        "revenue_shipped": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9.00"
+          }
+        },
+        "cogs_shipped": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9.00"
+          }
+        }
+      },
+      "stockout": false
+    },
+    {
+      "week_start": "2026-08-16",
+      "targets": {
+        "units_shipped": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9"
+          }
+        },
+        "units_ordered": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9"
+          }
+        },
+        "revenue_shipped": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9.00"
+          }
+        },
+        "cogs_shipped": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9.00"
+          }
+        }
+      },
+      "stockout": false
+    },
+    {
+      "week_start": "2026-08-23",
+      "targets": {
+        "units_shipped": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9"
+          }
+        },
+        "units_ordered": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9"
+          }
+        },
+        "revenue_shipped": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9.00"
+          }
+        },
+        "cogs_shipped": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9.00"
+          }
+        }
+      },
+      "stockout": false
+    },
+    {
+      "week_start": "2026-08-30",
+      "targets": {
+        "units_shipped": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9"
+          }
+        },
+        "units_ordered": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9"
+          }
+        },
+        "revenue_shipped": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9.00"
+          }
+        },
+        "cogs_shipped": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9.00"
+          }
+        }
+      },
+      "stockout": false
+    },
+    {
+      "week_start": "2026-09-06",
+      "targets": {
+        "units_shipped": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9"
+          }
+        },
+        "units_ordered": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9"
+          }
+        },
+        "revenue_shipped": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9.00"
+          }
+        },
+        "cogs_shipped": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9.00"
+          }
+        }
+      },
+      "stockout": false
+    },
+    {
+      "week_start": "2026-09-13",
+      "targets": {
+        "units_shipped": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9"
+          }
+        },
+        "units_ordered": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9"
+          }
+        },
+        "revenue_shipped": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9.00"
+          }
+        },
+        "cogs_shipped": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9.00"
+          }
+        }
+      },
+      "stockout": false
+    },
+    {
+      "week_start": "2026-09-20",
+      "targets": {
+        "units_shipped": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9"
+          }
+        },
+        "units_ordered": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9"
+          }
+        },
+        "revenue_shipped": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9.00"
+          }
+        },
+        "cogs_shipped": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9.00"
+          }
+        }
+      },
+      "stockout": false
+    },
+    {
+      "week_start": "2026-09-27",
+      "targets": {
+        "units_shipped": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9"
+          }
+        },
+        "units_ordered": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9"
+          }
+        },
+        "revenue_shipped": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9.00"
+          }
+        },
+        "cogs_shipped": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9.00"
+          }
+        }
+      },
+      "stockout": false
+    },
+    {
+      "week_start": "2026-10-04",
+      "targets": {
+        "units_shipped": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9"
+          }
+        },
+        "units_ordered": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9"
+          }
+        },
+        "revenue_shipped": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9.00"
+          }
+        },
+        "cogs_shipped": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9.00"
+          }
+        }
+      },
+      "stockout": false
+    },
+    {
+      "week_start": "2026-10-11",
+      "targets": {
+        "units_shipped": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9"
+          }
+        },
+        "units_ordered": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9"
+          }
+        },
+        "revenue_shipped": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9.00"
+          }
+        },
+        "cogs_shipped": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9.00"
+          }
+        }
+      },
+      "stockout": false
+    },
+    {
+      "week_start": "2026-10-18",
+      "targets": {
+        "units_shipped": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9"
+          }
+        },
+        "units_ordered": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9"
+          }
+        },
+        "revenue_shipped": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9.00"
+          }
+        },
+        "cogs_shipped": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9.00"
+          }
+        }
+      },
+      "stockout": false
+    },
+    {
+      "week_start": "2026-10-25",
+      "targets": {
+        "units_shipped": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9"
+          }
+        },
+        "units_ordered": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9"
+          }
+        },
+        "revenue_shipped": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9.00"
+          }
+        },
+        "cogs_shipped": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9.00"
+          }
+        }
+      },
+      "stockout": false
+    },
+    {
+      "week_start": "2026-11-01",
+      "targets": {
+        "units_shipped": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9"
+          }
+        },
+        "units_ordered": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9"
+          }
+        },
+        "revenue_shipped": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9.00"
+          }
+        },
+        "cogs_shipped": {
+          "state": "observed",
+          "value": {
+            "value": "9.0000",
+            "display": "9.00"
+          }
+        }
+      },
+      "stockout": true
+    }
+  ],
+  "stockout_weeks_last_13": 1,
+  "week_state_counts": {
+    "observed": 104,
+    "inferred_zero": 0,
+    "unknown": 0
+  }
+}

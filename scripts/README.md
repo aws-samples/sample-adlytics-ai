@@ -435,7 +435,10 @@ run without any `ADLYTICS_*` or `AWS_*` variable and without the other variables
 into its VM (`CONTAINER_FORWARDED`), because scanning a tree needs no AWS access; the ASH command
 mounts only the export and the output directory, never `~/.aws`. ASH runs with every reporter
 except flat-json turned off (`ASH_REPORTERS_OFF`), because the gate reads only
-`reports/ash.flat.json`; the scanners and suppressions are unchanged. Every run writes a
+`reports/ash.flat.json`. Turning the reporters off changes no scanner and no suppression. The
+suppressions are the committed `.ash/` files, each with its disposition in
+`docs/security-dispositions.md`; they include the dev-only picomatch rows
+(A-CVE-PICOMATCH-DEV-001). Every run writes a
 `release-gate` run record with each step, the ASH summaries, each ASH run's flat report and log,
 and the child records.
 

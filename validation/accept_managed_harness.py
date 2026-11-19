@@ -164,6 +164,12 @@ _DIRECT_QUESTIONS = {
         "Rank the top five products by retail_revenue_shipped in the United States marketplace on "
         "August 11, 2026."
     ),
+    "forecast_list_asins": "List the products in the current demand forecast.",
+    "forecast_query_asins": "Show the weekly ordered units forecast for B0FIXTUR01.",
+    "forecast_summarize_asin": (
+        "Summarize the shipped units forecast for B0FIXTUR02 beside its recent weeks."
+    ),
+    "forecast_compare_asins": "Compare the ordered units forecasts of B0FIXTUR01 and B0FIXTUR03.",
 }
 _REFUSAL_QUESTION = "Explain the fictional undeclared metric lunar basket affinity."
 _MULTI_TOOL_QUESTION = (
@@ -464,8 +470,9 @@ def _tool_contract() -> tuple[str, ...]:
         if not isinstance(tool.get("name"), str):
             raise _StageError("direct_tool_coverage", "tool_contract_malformed")
         names.append(cast("str", tool["name"]))
-    # ADR-083: the declared tools are the governed catalog and measurement tools only; the
-    # retired finalizer is no longer declared, so its reappearance is an inventory mismatch.
+    # ADR-083, ADR-163: the declared tools are the governed catalog, measurement and forecast
+    # tools only; the retired finalizer is no longer declared, so its reappearance is an
+    # inventory mismatch.
     if len(names) != len(set(names)) or set(names) != set(_DIRECT_QUESTIONS):
         raise _StageError("direct_tool_coverage", "scenario_inventory_mismatch")
     return tuple(names)
@@ -476,6 +483,8 @@ def _tool_family(name: str) -> str:
         return "catalog"
     if name.startswith("measurement_"):
         return "measurement"
+    if name.startswith("forecast_"):
+        return "forecast"
     raise _StageError("direct_tool_coverage", "unknown_tool_family")
 
 

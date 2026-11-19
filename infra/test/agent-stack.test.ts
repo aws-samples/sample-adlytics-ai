@@ -193,15 +193,39 @@ function policyActions(template: Template): string[] {
 }
 
 describe('the two tool functions', () => {
-  it('declares exactly two isolated domains and the Gateway interceptor', () => {
+  it('declares exactly three isolated domains and the Gateway interceptor', () => {
     // ADR-083 retired the presentation finalizer: the answer streams as text, so no Lambda
-    // publishes it.
-    synth().resourceCountIs('AWS::Lambda::Function', 3);
+    // publishes it. ADR-163 adds the forecast tool function.
+    synth().resourceCountIs('AWS::Lambda::Function', 4);
+  });
+
+  it('lets the forecast tool only GetItem the forecast set and generation keys (ADR-163)', () => {
+    const template = synth();
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      Handler: 'adapters.inbound.tool_handlers.forecast_entrypoint.handler',
+      MemorySize: 1024,
+      Timeout: 15,
+      Environment: {
+        Variables: Match.objectLike({
+          ADL_DEMAND_FORECAST_CHECK_SCHEDULE: 'cron(0 13 * * ? *)',
+        }),
+      },
+    });
+    const reads = allStatements(template).filter(
+      (statement) => (statement as { Sid?: string }).Sid === 'ReadDemandForecast',
+    );
+    expect(reads).toHaveLength(1);
+    const [read] = reads;
+    expect(read?.Action).toBe('dynamodb:GetItem');
+    expect(read?.Condition).toEqual({
+      'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': ['SET#*', 'GEN#*'] },
+    });
   });
 
   it('names them from the environment', () => {
     expect(Object.keys(functionsByName(synth())).sort()).toEqual([
       'adlytics-dev-CatalogTool',
+      'adlytics-dev-ForecastTool',
       'adlytics-dev-GatewayInterceptor',
       'adlytics-dev-MeasurementTool',
     ]);
@@ -279,7 +303,11 @@ describe('the retired evidence receipt channel', () => {
 describe('log groups', () => {
   it('declares one per function with retention from config', () => {
     const template = synth();
-    template.resourceCountIs('AWS::Logs::LogGroup', 3);
+    template.resourceCountIs('AWS::Logs::LogGroup', 4);
+    template.hasResourceProperties('AWS::Logs::LogGroup', {
+      LogGroupName: '/aws/lambda/adlytics-dev-ForecastTool',
+      RetentionInDays: 14,
+    });
     template.hasResourceProperties('AWS::Logs::LogGroup', {
       LogGroupName: '/aws/lambda/adlytics-dev-GatewayInterceptor',
       RetentionInDays: 14,
@@ -454,7 +482,7 @@ describe('tool caller verification (ADR-077 §5)', () => {
     ]);
   });
 
-  it('grants kms:GetPublicKey to no role but the two tools', () => {
+  it('grants kms:GetPublicKey to no role but the three tools', () => {
     const template = synth();
     expect(statementsForRole(template, 'GatewayInterceptor').flatMap(statementActions)).not.toContain(
       'kms:GetPublicKey',
@@ -466,7 +494,7 @@ describe('tool caller verification (ADR-077 §5)', () => {
       .flatMap((resource) => ((resource.Properties ?? {}).Roles as { Ref: string }[]) ?? [])
       .map((role) => role.Ref.replace(/ServiceRole.*$/, ''))
       .sort();
-    expect(holders).toEqual(['CatalogTool', 'MeasurementTool']);
+    expect(holders).toEqual(['CatalogTool', 'ForecastTool', 'MeasurementTool']);
   });
 });
 
@@ -750,7 +778,7 @@ describe('the gateway and its targets', () => {
     // and the function dispatches on what is left, so five tools reach two targets.
     const template = synth();
     template.resourceCountIs('AWS::BedrockAgentCore::Gateway', 1);
-    template.resourceCountIs('AWS::BedrockAgentCore::GatewayTarget', 2);
+    template.resourceCountIs('AWS::BedrockAgentCore::GatewayTarget', 3);
   });
 
   it('names each target the prefix the handler strips', () => {
@@ -764,7 +792,7 @@ describe('the gateway and its targets', () => {
     const names = Object.values(resources(synth()))
       .filter((resource) => resource.Type === 'AWS::BedrockAgentCore::GatewayTarget')
       .map((resource) => String((resource.Properties ?? {}).Name));
-    expect(names.sort()).toEqual(['catalog', 'measurement']);
+    expect(names.sort()).toEqual(['catalog', 'forecast', 'measurement']);
   });
 
   it('carries every generated tool definition, split by domain', () => {
@@ -784,9 +812,12 @@ describe('the gateway and its targets', () => {
 
     expect(declared.length).toBeGreaterThan(0);
     expect(declared.filter((name) => name.startsWith('measurement_')).length).toBeGreaterThan(0);
-    // ADR-083: the finalizer is retired, so every declared tool is catalog or measurement.
+    // ADR-083: the finalizer is retired, so every declared tool is catalog, measurement or
+    // forecast (ADR-163).
     expect(
-      declared.filter((name) => !name.startsWith('catalog_') && !name.startsWith('measurement_')),
+      declared.filter(
+        (name) => !['catalog_', 'measurement_', 'forecast_'].some((prefix) => name.startsWith(prefix)),
+      ),
     ).toEqual([]);
     expect(rendered).not.toContain('presentation_publish');
     for (const tool of declared) {
@@ -1266,6 +1297,7 @@ describe('the route Guardrail intervention alarm', () => {
     // The route alarm, and one function-errors alarm per function (alarm-coverage.test.ts).
     expect(found.map((properties) => properties.AlarmName).sort()).toEqual([
       'adlytics-dev-CatalogTool-function-errors',
+      'adlytics-dev-ForecastTool-function-errors',
       'adlytics-dev-GatewayInterceptor-function-errors',
       'adlytics-dev-MeasurementTool-function-errors',
       'adlytics-dev-guardrail-intervention-rate',

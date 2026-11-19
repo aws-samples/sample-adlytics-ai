@@ -5328,6 +5328,8 @@ def _retail_health_custody(  # noqa: PLR0913, PLR0917 -- one pointer-bound read
     return manifest, index
 
 
+RETAIL_PRODUCT_STEP_LABEL = "Open product detail"
+"""The served ``open_product_detail`` step's label: static copy keeps serve growth bounded."""
 RETAIL_PRODUCT_STEP_REASON = "It changed shipped revenue more than any other product."
 """The served ``open_product_detail`` step's reason; the movers ranking is the server's own."""
 
@@ -5406,7 +5408,9 @@ def _with_movers_product_step(  # noqa: PLR0913, PLR0917 -- served, custody, ref
     step = InsightNextStep(
         InsightNextStepKind.OPEN_PRODUCT_DETAIL,
         ProductRefTarget(reference),
-        f"Open {row.title}",
+        # Static copy (OQ-29): no rule bounds a row title, so a label repeating it could push
+        # a body under the bake cap past MAX_ARTIFACT_BYTES at serve.
+        RETAIL_PRODUCT_STEP_LABEL,
         RETAIL_PRODUCT_STEP_REASON,
     )
     return replace(
