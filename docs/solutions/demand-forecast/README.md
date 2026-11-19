@@ -82,6 +82,7 @@ The policy, including how much history a product needs and how gaps are treated,
 - **Products are found by exact ASIN only.** There is no search by product name.
 - **Chat doesn't page through the catalog.** `forecast_list_asins` returns the top page and finds any other product by its ASIN; the page and the API page through every product.
 - **Weekly only.** There is no daily forecast.
+- **A large catalog takes over an hour, and one run forecasts at most 200,000 products.** A 50,000-product run on dev with synthetic data published 81 min after its forecast jobs started, about 91 min with the input build's 600 s allowance [measured, dev, 2026-11-19]. Sizes and what happens past them: [Weekly demand forecast](../../../README.md#weekly-demand-forecast).
 
 ## Deploy it
 
