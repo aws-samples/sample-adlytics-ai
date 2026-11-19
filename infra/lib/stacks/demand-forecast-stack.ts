@@ -37,8 +37,12 @@ const INPUT_HANDLER = 'adapters.jobs.demand_forecast_input.handler.handler';
 const INPUT_MEMORY_MIB = 1024;
 const INPUT_TIMEOUT_SECONDS = 900;
 const PUBLISHER_HANDLER = 'adapters.jobs.demand_forecast_publisher.handler.handler';
-/** The §10 ladder rung at least 1.5 × the 1,783 MB commit peak measured at 50,000 ASINs on dev (P3-1, 2026-11-19). */
-const PUBLISHER_MEMORY_MIB = 3072;
+/**
+ * Design §10: the smallest ladder rung at least 1.5 × the larger of P2-2's 10,000-ASIN commit peak
+ * scaled to 50,000 (671 MB × 5 = 3,355 MB) and P3-1's measured 50,000-ASIN commit peak (1,783 MB),
+ * both on dev. 1.5 × 3,355 MB = 5,033 MB, so 6,144 MiB.
+ */
+const PUBLISHER_MEMORY_MIB = 6144;
 /** The Lambda maximum. */
 const PUBLISHER_TIMEOUT_SECONDS = 900;
 /** Interim, removal item RB-1: the store's write lanes, re-derived from P2-2's throttle counts. */

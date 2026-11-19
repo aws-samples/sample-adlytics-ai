@@ -329,7 +329,7 @@ describe('DemandForecastStack', () => {
         Properties: { FunctionName: 'adlytics-dev-DemandForecastPublisher' },
       }),
     )[0];
-    expect(fn?.Properties.MemorySize).toBe(3072);
+    expect(fn?.Properties.MemorySize).toBe(6144);
     expect(fn?.Properties.Timeout).toBe(900);
   });
 
