@@ -41,13 +41,13 @@ What it won't do:
 
 ## Status
 
-As of 2026-11-18. Each slice ships on its own.
+As of 2026-11-19. Each slice ships on its own.
 
 | Slice | What it adds | Status |
 |---|---|---|
 | 1 | The forecast engine and its weekly input | Merged. Accepted in dev on synthetic data on 2026-11-15 ([dated result](../../../validation/RESULTS.md#demand-forecast-slice-1-acceptance-on-landed-history-on-dev--2026-11-15)) |
 | 2 | The publish gate, the forecast store, a weekly schedule, and an operator run and rollback | Merged. Accepted in dev on synthetic data on 2026-11-18 |
-| 3 | The forecast page, chat tools, and a read-only forecast and forecast-status API | Built. Dev acceptance on synthetic data pending |
+| 3 | The forecast page, chat tools, and a read-only forecast and forecast-status API | Merged. Accepted in dev on synthetic data on 2026-11-19 |
 | 4 | A Vendor Central data connector (Selling Partner API, SP-API), so a customer deployment can load the history the forecast needs | Next |
 
 ## Data it uses

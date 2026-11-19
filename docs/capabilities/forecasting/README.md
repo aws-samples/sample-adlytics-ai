@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Level** | L2 — capability overview |
-| **Status** | Weekly retail demand forecast: built, not yet deployed outside dev or live-accepted. Ad-attributed baseline: proposed, review required before implementation |
+| **Status** | Weekly retail demand forecast: built, and accepted in dev on synthetic data on 2026-11-19; not yet deployed outside dev. Ad-attributed baseline: proposed, review required before implementation |
 | **Owns** | The weekly retail demand forecast and its read API; offline baseline forecast artifacts for ad-attributed purchases and ad-attributed revenue. For both: the serving contract, freshness, uncertainty, and quality gates. |
 | **Conventions** | [Documentation conventions](../../conventions.md) |
 
@@ -11,7 +11,7 @@
 > demand forecast through two read-only routes on the authenticated API, the Retail hub's Demand
 > forecast page and four chat tools, all over one read service that computes no figure
 > ([ADR-163](../../decisions/adr-163-serve-demand-forecasts-and-status-through-a-read-api.md)). Not
-> yet deployed or live-accepted; deploy and dev acceptance follow slice 2's merge.
+> deployed outside dev; accepted in dev on synthetic data on 2026-11-19.
 
 > **Revision, 2026-11-16: weekly retail demand forecast gated and stored in dev, not shown.**
 > Slice 1 added a weekly Vendor demand engine (Chronos-2 on ordered and shipped units, shipped

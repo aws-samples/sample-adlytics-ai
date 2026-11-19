@@ -2,8 +2,8 @@
 
 Date: 2026-11-17
 
-Status: Accepted (2026-11-17), owner decision OQ-30. Built by slice 3 of the demand forecast; not yet
-deployed or live-accepted. Amends [ADR-115](adr-115-organise-the-app-into-customer-question-hubs-from-one-navigation-file.md)
+Status: Accepted (2026-11-17), owner decision OQ-30. Built by slice 3 of the demand forecast; accepted
+in dev on synthetic data on 2026-11-19. Amends [ADR-115](adr-115-organise-the-app-into-customer-question-hubs-from-one-navigation-file.md)
 (a customer tab served by a read API).
 
 ## Context
