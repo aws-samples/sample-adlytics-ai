@@ -930,8 +930,14 @@ export class DemandForecastStack extends cdk.Stack {
       evaluationPeriods: 1,
       treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
     });
+    // FILL gives every day a datapoint, so the alarm clears a day after the last hold; a plain
+    // sparse metric keeps CloudWatch re-reading its last real datapoint and never clears.
     alarm('DemandForecastHeld', 'A demand-forecast run was held by a quality check.', {
-      metric: outcome('held_quality'),
+      metric: new cloudwatch.MathExpression({
+        expression: 'FILL(held, 0)',
+        usingMetrics: { held: outcome('held_quality') },
+        period: day,
+      }),
       threshold: 1,
       comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
       evaluationPeriods: 1,
@@ -960,9 +966,15 @@ export class DemandForecastStack extends cdk.Stack {
       datapointsToAlarm: 2,
       treatMissingData: cloudwatch.TreatMissingData.BREACHING,
     });
-    // Emitted once per published generation; between publications the alarm stays OK.
+    // Emitted once per published generation. FILL gives every day a datapoint, so the alarm clears
+    // a day after the last breaching generation. Without it, CloudWatch keeps re-reading the last
+    // real datapoint in its evaluation range and never applies notBreaching.
     alarm('DemandForecastInferredZeroShare', 'Over 5% of known context weeks were filled as inferred zero.', {
-      metric: metric(OPERATIONAL_METRICS.InferredZeroWeekShare),
+      metric: new cloudwatch.MathExpression({
+        expression: 'FILL(share, 0)',
+        usingMetrics: { share: metric(OPERATIONAL_METRICS.InferredZeroWeekShare) },
+        period: day,
+      }),
       threshold: INFERRED_ZERO_SHARE_PERCENT,
       comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
       evaluationPeriods: 1,
