@@ -34,7 +34,7 @@
       "js-yaml": "4.3.2"
     },
     "typed-rest-client": {
-      "qs": "6.16.0"
+      "qs": "6.16.1"
     }
   },
   "//pins": {
@@ -45,6 +45,6 @@
     "aws-cdk-lib 2.273.0": "First release checked that bundles brace-expansion 5.0.12, the first patched version for GHSA-qhr7-859c-m2p7, GHSA-6j4f-fj2g-mc7p and GHSA-q2hr-2g5m-vwhr (A-CVE-CDK-BUNDLED-001). A bundled dependency cannot be overridden, so the library version is the fix.",
     "overrides": "handlebars 4.7.10 is the first patched version for GHSA-8r5x-fm3f-whwj, GHSA-p8wg-vrv2-v86f and GHSA-xw65-4hp5-5hc7 (O-ASH-CVE-HANDLEBARS-001). It reaches the tree only through ts-jest (handlebars@^4.7.9), so this is test-time only. @istanbuljs/load-nyc-config's js-yaml 3 is lifted to 4.3.2, whose argparse 2 has no dependencies, so sprintf-js 1.0.3 (GHSA-hp3w-g68c-fv3c, no patched release) leaves the lockfile (O-ASH-SPRINTF-JS-001). The package calls only js-yaml's load(), which 4.x keeps with the safe schema as its default.",
     "node": "Engine pinned to the Node 24 LTS line, enforced by engine-strict in .npmrc so a wrong runtime fails the install rather than warning. 26.x is Current, not LTS, and infra-style-cdk bans targeting it. 20.x is end-of-life.",
-    "@stryker-mutator/core, @stryker-mutator/jest-runner": "10.0.0, owner-approved 2026-10-19 for mutation testing (ADR-013); `make mutate` runs them. typed-rest-client 2.3.1 (Stryker's dashboard client, unused here) pins qs 6.15.1 (GHSA-q8mj-m7cp-5q26, GHSA-x5fp-wj9c-mxmx, GHSA-4mjr-xmp4-gh2g), so qs is lifted to 6.16.0, the first patched release, under it. Drop the override once Stryker depends on a typed-rest-client that resolves a patched qs on its own."
+    "@stryker-mutator/core, @stryker-mutator/jest-runner": "10.0.0, owner-approved 2026-10-19 for mutation testing (ADR-013); `make mutate` runs them. typed-rest-client 2.3.1 (Stryker's dashboard client, unused here) pins qs 6.15.1 (GHSA-q8mj-m7cp-5q26, GHSA-x5fp-wj9c-mxmx, GHSA-4mjr-xmp4-gh2g), so qs is lifted to 6.16.1 under it: 6.16.0 is the first patched release for those three, and 6.16.1 the first for GHSA-6pq8-jhm2-2vcw. Drop the override once Stryker depends on a typed-rest-client that resolves a patched qs on its own."
   }
 }
