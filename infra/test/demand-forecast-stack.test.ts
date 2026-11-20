@@ -509,15 +509,34 @@ describe('DemandForecastStack', () => {
       Namespace: entry.namespace,
       MetricName: entry.name,
     });
-    const single = (suffix: string, entry: { namespace: string; name: string; statistic: string }) => {
-      const props = byName(suffix);
-      expect(props).toMatchObject({ ...generated(entry), Statistic: entry.statistic, Period: 86_400 });
-      return props;
+    const metrics = (suffix: string) =>
+      byName(suffix).Metrics as Array<{ Id: string; Expression?: string; MetricStat?: Record<string, unknown> }>;
+    // A sparse metric is read through FILL(id, 0), so every day has a datapoint and the alarm
+    // clears the day after its last breach.
+    const filled = (
+      suffix: string,
+      id: string,
+      entry: { namespace: string; name: string; statistic: string },
+      dimensions: Record<string, unknown> = {},
+    ) => {
+      const list = metrics(suffix);
+      expect(list).toHaveLength(2);
+      expect(list.find((item) => item.Expression !== undefined)?.Expression).toBe(`FILL(${id}, 0)`);
+      expect(list.find((item) => item.Id === id)?.MetricStat).toMatchObject({
+        Metric: { ...generated(entry), ...dimensions },
+        Stat: entry.statistic,
+        Period: 86_400,
+      });
+      return byName(suffix);
     };
-    expect(single('DemandForecastHeld', OPERATIONAL_METRICS.ForecastRunOutcome)).toMatchObject({
-      Dimensions: [{ Name: 'outcome', Value: 'held_quality' }],
+    expect(
+      filled('DemandForecastHeld', 'held', OPERATIONAL_METRICS.ForecastRunOutcome, {
+        Dimensions: [{ Name: 'outcome', Value: 'held_quality' }],
+      }),
+    ).toMatchObject({
       Threshold: 1,
       ComparisonOperator: 'GreaterThanOrEqualToThreshold',
+      EvaluationPeriods: 1,
       TreatMissingData: 'notBreaching',
     });
     expect(byName('DemandForecastStale')).toMatchObject({
@@ -527,13 +546,12 @@ describe('DemandForecastStack', () => {
       DatapointsToAlarm: 2,
       TreatMissingData: 'breaching',
     });
-    expect(single('DemandForecastInferredZeroShare', OPERATIONAL_METRICS.InferredZeroWeekShare)).toMatchObject({
+    expect(filled('DemandForecastInferredZeroShare', 'share', OPERATIONAL_METRICS.InferredZeroWeekShare)).toMatchObject({
       Threshold: 5,
       ComparisonOperator: 'GreaterThanThreshold',
+      EvaluationPeriods: 1,
       TreatMissingData: 'notBreaching',
     });
-    const metrics = (suffix: string) =>
-      byName(suffix).Metrics as Array<{ Id: string; Expression?: string; MetricStat?: Record<string, unknown> }>;
     const failed = metrics('DemandForecastRunFailed');
     expect(failed.find((item) => item.Expression !== undefined)?.Expression).toBe(
       'FILL(failed, 0) + FILL(executionsFailed, 0) + FILL(executionsTimedOut, 0) + FILL(executionsAborted, 0)',
@@ -592,6 +610,29 @@ describe('DemandForecastStack', () => {
     });
     const expression = alarm.Metrics.find((item) => item.Expression !== undefined)?.Expression ?? '';
     expect(evaluateMath(expression, day) > alarm.Threshold).toBe(breaching);
+  });
+
+  // A plain sparse metric keeps a 1-of-1 alarm on its last real datapoint, because CloudWatch
+  // evaluates the most recent real datapoints in its evaluation range and skips notBreaching.
+  // Through FILL, a day with no datapoint reads 0, so the alarm clears a day after the breach.
+  test.each([
+    ['DemandForecastHeld', 'no hold', {}, false],
+    ['DemandForecastHeld', 'a held run', { held: 1 }, true],
+    ['DemandForecastInferredZeroShare', 'no published generation', {}, false],
+    ['DemandForecastInferredZeroShare', 'a generation over 5% inferred zero', { share: 5.96 }, true],
+    ['DemandForecastInferredZeroShare', 'a generation under 5% inferred zero', { share: 0.45 }, false],
+  ] as const)('%s on a day with %s', (name, _case, day: Record<string, number>, breaching) => {
+    const alarm = Object.values(template.findResources('AWS::CloudWatch::Alarm')).find(
+      (found) => found.Properties.AlarmName === `adlytics-dev-${name}`,
+    )?.Properties as { Metrics?: Array<{ Expression?: string }>; Threshold: number; ComparisonOperator: string };
+    const expression = alarm.Metrics?.find((item) => item.Expression !== undefined)?.Expression;
+    expect(expression).toBeDefined();
+    const value = evaluateMath(expression ?? '', day);
+    const breaches: Record<string, (value: number, threshold: number) => boolean> = {
+      GreaterThanOrEqualToThreshold: (v, t) => v >= t,
+      GreaterThanThreshold: (v, t) => v > t,
+    };
+    expect(breaches[alarm.ComparisonOperator]?.(value, alarm.Threshold)).toBe(breaching);
   });
 
   test('the Stale threshold is the contract stale_after_days', () => {
