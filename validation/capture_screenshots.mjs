@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT-0
-/** Regenerate the README screenshot gallery from a synthetic-data deployment without printing page or credential values. */
+/** Regenerate the README screenshot gallery, or chosen captures into another folder, from a synthetic-data deployment without printing page or credential values. */
 
 import { createHash, randomBytes } from 'node:crypto';
 import { mkdir, readdir, stat, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const require = createRequire(new URL('../frontend/package.json', import.meta.url));
 const { chromium } = require('@playwright/test');
@@ -28,7 +30,14 @@ for (const item of SKIP) {
   if (!SKIPPABLE.has(item)) throw new Error(`ADL_CAPTURE_SKIP names an unknown capture: ${item}.`);
 }
 
-const OUT = new URL('../docs/images/', import.meta.url);
+// The default run writes the README gallery. ADL_CAPTURE_ONLY names the captures to run instead
+// (CAPTURES below, comma-separated); ADL_CAPTURE_OUT writes to another folder, which is not held
+// to the gallery's size budget. An unknown capture name fails the run before the browser starts.
+const ONLY = (process.env.ADL_CAPTURE_ONLY ?? '').split(',').map((item) => item.trim()).filter(Boolean);
+const GALLERY = new URL('../docs/images/', import.meta.url);
+const OUT_DIR = process.env.ADL_CAPTURE_OUT?.trim() ?? '';
+const OUT = OUT_DIR ? pathToFileURL(`${resolve(OUT_DIR)}/`) : GALLERY;
+const IS_GALLERY = OUT.href === GALLERY.href;
 // 1440 wide shows the full sidebar beside the docked assistant (ADR-118 decision 2). 1000 tall, the
 // height the capture plan set, fits the portfolio's tiles and cards with the chart heading
 // in one page shot; the chart and the campaigns table get close-ups of their own.
@@ -621,18 +630,21 @@ async function captureRosterPage(page, { path, title, image, closeups }) {
 
 const ROSTER_PAGES = [
   {
+    name: 'scorecard',
     path: '/scorecard/',
     title: 'Scorecard',
     image: 'scorecard.png',
     closeups: [{ heading: 'What each channel does for you', image: 'scorecard-by-channel.png' }],
   },
   {
+    name: 'new-customers',
     path: '/new-customers/',
     title: 'New customers',
     image: 'new-customers.png',
     closeups: [{ heading: 'Gateway products', image: 'new-customers-gateway.png' }],
   },
   {
+    name: 'reach',
     path: '/reach/',
     title: 'Reach and funnel',
     image: 'reach.png',
@@ -644,12 +656,14 @@ const ROSTER_PAGES = [
     ],
   },
   {
+    name: 'retention',
     path: '/retention/',
     title: 'Retention',
     image: 'retention.png',
     closeups: [{ selector: 'section.retention-curve', image: 'retention-curve.png' }],
   },
   {
+    name: 'audiences',
     path: '/audiences/',
     title: 'Audiences',
     image: 'audiences.png',
@@ -686,6 +700,45 @@ async function captureProductsAndAds(page) {
   await setAssistant(page, true);
   await scrollTop(page);
   await shotViewport(page, 'products-and-ads.png', 'css');
+}
+
+/**
+ * Demand forecast (ADR-163), opt-in through ADL_CAPTURE_ONLY: the page with its forecast list,
+ * then one product's stored forecast, both with the assistant docked. The product is the first
+ * list row with a total for every target, or the first row when none has.
+ */
+async function captureDemandForecast(page) {
+  await page.goto(`${BASE_URL}/demand-forecast/`, { waitUntil: 'domcontentloaded' });
+  await assertLight(page);
+  // First match: dev on 2026-11-20 renders this page's heading twice.
+  await page.getByRole('heading', { name: 'Demand forecast', level: 1 }).first().waitFor({ timeout: 60_000 });
+  await settled(page, page.locator('main'));
+  const table = page.locator('main table', { has: page.locator('caption', { hasText: 'Forecast totals (p50)' }) });
+  if (await table.count() === 0) {
+    for (const name of ['demand-forecast.png', 'demand-forecast-product.png']) {
+      skipped.push(`${name}: the target shows no published forecast list`);
+    }
+    return;
+  }
+  await setAssistant(page, true);
+  await shotViewport(page, 'demand-forecast.png', 'css');
+  const rows = table.locator('tbody tr');
+  const forecast = rows.filter({ hasNotText: 'Not forecast' });
+  const row = await forecast.count() > 0 ? forecast.first() : rows.first();
+  await row.locator('th[scope="row"] button').click();
+  const detail = page.locator('section[aria-labelledby="forecast-detail-heading"]');
+  await detail.waitFor({ timeout: 60_000 });
+  await settled(page, page.locator('main'));
+  // The detail opens under the list and is taller than any viewport, so the shot is the viewport
+  // a user sees with its heading brought to the top, clear of the sticky top bar.
+  await detail.evaluate((node) => {
+    node.scrollIntoView({ block: 'start' });
+    const scroller = node.closest('main, .main');
+    if (scroller !== null && scroller.scrollHeight > scroller.clientHeight) scroller.scrollTop -= 96;
+    else window.scrollBy(0, -96);
+  });
+  await quiet(page);
+  await save('demand-forecast-product.png', await page.screenshot({ ...SHOT, scale: 'css' }));
 }
 
 async function pushFrames(page, events) {
@@ -741,6 +794,58 @@ async function captureChat(page, refusals) {
     throw new Error(`Chat fixtures served unexpectedly: stream=${served}, refusal=${refusals.count}.`);
   }
 }
+
+/** The Campaigns portfolio, its close-ups and its focus and insight dialogs. */
+async function capturePortfolio(page) {
+  await openPortfolio(page);
+  // A no-op after the Growth check; a selected run without it docks the assistant the same way.
+  await setAssistant(page, true);
+  // B4 ordering check (ADR-084): a four-place ad spend tile means the deploy or the frontend
+  // publish has not landed, so the capture stops before it writes any portfolio image.
+  const spendTileText = (await page.locator('.tiles').first().locator('.tile', {
+    has: page.locator('.ask', { hasText: 'Open the focus view for ad spend' }),
+  }).locator('p.v').innerText()).trim();
+  if (!/^-?[\d,]+\.\d{2} [A-Z]{3}$/.test(spendTileText)) {
+    throw new Error(`campaign-portfolio.png: the ad spend tile is not a two-place amount: ${JSON.stringify(spendTileText)}.`);
+  }
+  await shotViewport(page, 'campaign-portfolio.png', 'css');
+  const radios = page.getByRole('radiogroup', { name: 'Available reporting periods' });
+  await page.locator('[role="radiogroup"][aria-busy="false"]').first().waitFor({ timeout: 30_000 });
+  // The title band that holds the period control and its server-written notes.
+  const band = page.locator('*:has(> [role="radiogroup"][aria-label="Available reporting periods"]):has(> p.win-note)');
+  if (await radios.count() !== 1) throw new Error('time-window-control.png: the period control is missing.');
+  await shotPadded(page, 'time-window-control.png', band, 'device');
+  // The answer sentence, the tiles under it and, under All channels, the line that asks for a
+  // channel in place of the purchases and ROAS tiles.
+  const answer = page.locator('main [data-slot="answer"]').first();
+  const tiles = page.locator('.tiles').first();
+  if (await answer.count() === 0) throw new Error('metric-tiles.png: the portfolio shows no answer sentence.');
+  if (await tiles.locator('.tile').count() < 2) throw new Error('metric-tiles.png: the portfolio shows fewer than two tiles.');
+  await scrollTop(page);
+  await shotUnion(page, 'metric-tiles.png', [answer, tiles, page.getByText('Pick a channel to see its sales and return.', { exact: true })], 'device');
+  await capturePortfolioEvidence(page);
+  await captureMetricFocus(page);
+  await captureInsightDialogs(page);
+}
+
+// Every capture in run order. `default: false` keeps a capture out of the README gallery run.
+const CAPTURES = [
+  { name: 'growth-check', run: captureGrowthCheck },
+  { name: 'portfolio', run: capturePortfolio },
+  { name: 'campaign-detail', run: captureCampaignDetail },
+  { name: 'retail-health', run: captureRetail },
+  { name: 'retail-product', run: captureRetailProduct },
+  { name: 'products-and-ads', run: captureProductsAndAds },
+  ...ROSTER_PAGES.map((rosterPage) => ({ name: rosterPage.name, run: (page) => captureRosterPage(page, rosterPage) })),
+  { name: 'prompt-administration', run: capturePromptAdministration },
+  { name: 'chat', run: (page, refusals) => captureChat(page, refusals) },
+  { name: 'demand-forecast', run: captureDemandForecast, default: false },
+];
+const KNOWN = new Set(CAPTURES.map((capture) => capture.name));
+for (const item of ONLY) {
+  if (!KNOWN.has(item)) throw new Error(`ADL_CAPTURE_ONLY names an unknown capture: ${item}. Known: ${[...KNOWN].join(', ')}.`);
+}
+const SELECTED = CAPTURES.filter((capture) => (ONLY.length > 0 ? ONLY.includes(capture.name) : capture.default !== false));
 
 await mkdir(OUT, { recursive: true });
 const browser = await chromium.launch({ headless: true });
@@ -812,41 +917,7 @@ try {
     }
   });
 
-  await captureGrowthCheck(page);
-  await openPortfolio(page);
-  // B4 ordering check (ADR-084): a four-place ad spend tile means the deploy or the frontend
-  // publish has not landed, so the capture stops before it writes any image.
-  const spendTileText = (await page.locator('.tiles').first().locator('.tile', {
-    has: page.locator('.ask', { hasText: 'Open the focus view for ad spend' }),
-  }).locator('p.v').innerText()).trim();
-  if (!/^-?[\d,]+\.\d{2} [A-Z]{3}$/.test(spendTileText)) {
-    throw new Error(`campaign-portfolio.png: the ad spend tile is not a two-place amount: ${JSON.stringify(spendTileText)}.`);
-  }
-  await shotViewport(page, 'campaign-portfolio.png', 'css');
-  const radios = page.getByRole('radiogroup', { name: 'Available reporting periods' });
-  await page.locator('[role="radiogroup"][aria-busy="false"]').first().waitFor({ timeout: 30_000 });
-  // The title band that holds the period control and its server-written notes.
-  const band = page.locator('*:has(> [role="radiogroup"][aria-label="Available reporting periods"]):has(> p.win-note)');
-  if (await radios.count() !== 1) throw new Error('time-window-control.png: the period control is missing.');
-  await shotPadded(page, 'time-window-control.png', band, 'device');
-  // The answer sentence, the tiles under it and, under All channels, the line that asks for a
-  // channel in place of the purchases and ROAS tiles.
-  const answer = page.locator('main [data-slot="answer"]').first();
-  const tiles = page.locator('.tiles').first();
-  if (await answer.count() === 0) throw new Error('metric-tiles.png: the portfolio shows no answer sentence.');
-  if (await tiles.locator('.tile').count() < 2) throw new Error('metric-tiles.png: the portfolio shows fewer than two tiles.');
-  await scrollTop(page);
-  await shotUnion(page, 'metric-tiles.png', [answer, tiles, page.getByText('Pick a channel to see its sales and return.', { exact: true })], 'device');
-  await capturePortfolioEvidence(page);
-  await captureMetricFocus(page);
-  await captureInsightDialogs(page);
-  await captureCampaignDetail(page);
-  await captureRetail(page);
-  await captureRetailProduct(page);
-  await captureProductsAndAds(page);
-  for (const rosterPage of ROSTER_PAGES) await captureRosterPage(page, rosterPage);
-  await capturePromptAdministration(page);
-  await captureChat(page, refusals);
+  for (const capture of SELECTED) await capture.run(page, refusals);
 
   if (failures.length > 0) throw new Error(`Browser failures during capture: ${failures.join('|')}`);
 } finally {
@@ -859,6 +930,10 @@ for (const entry of await readdir(OUT)) {
 }
 for (const item of results) console.log(`${item.name} ${item.width}x${item.height} ${item.bytes}`);
 for (const line of skipped) console.log(`SKIPPED ${line}`);
-console.log(`total docs/images ${total} bytes (budget ${BUDGET_BYTES})`);
-if (total > BUDGET_BYTES) throw new Error('docs/images exceeds its size budget.');
+if (IS_GALLERY) {
+  console.log(`total docs/images ${total} bytes (budget ${BUDGET_BYTES})`);
+  if (total > BUDGET_BYTES) throw new Error('docs/images exceeds its size budget.');
+} else {
+  console.log(`total ADL_CAPTURE_OUT ${total} bytes`);
+}
 if (skipped.length > 0) process.exitCode = 2;
