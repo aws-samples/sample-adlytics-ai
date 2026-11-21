@@ -879,17 +879,17 @@ test('/demand-forecast/ lays out wide, stacks with the assistant open and never 
   await expect(table).toBeVisible();
   await expect(page.locator('h1')).toHaveCount(1);
   // Wide: the header row shows its pop-ups, the caption's stacked-form copies are hidden.
-  expect(await page.evaluate(() => document.querySelector('.main')?.clientWidth ?? 0)).toBeGreaterThanOrEqual(960);
+  expect(await page.evaluate(() => document.querySelector('.demand-forecast')?.clientWidth ?? 0)).toBeGreaterThanOrEqual(912);
   await expect(page.locator('.df-list thead button[aria-label="About rank"]')).toBeVisible();
   await expect(page.locator('.df-table-tips .stack-tips')).toBeHidden();
   await page.locator('h1').focus();
   expect(await tabTo(page, '.df-list thead', 'About rank')).toBe(true);
   await noSidewaysOverflow(page);
   await axeClean(page);
-  // The assistant open at its default width narrows the column below 960 px: the rows stack.
+  // The assistant open at its default width narrows the forecast container below 912 px: the rows stack.
   await page.locator('html').evaluate((element) => { element.dataset.theme = 'light'; });
   await page.getByRole('button', { name: 'Assistant', exact: true }).click();
-  await expect.poll(() => page.evaluate(() => document.querySelector('.main')?.clientWidth ?? 0)).toBeLessThan(960);
+  await expect.poll(() => page.evaluate(() => document.querySelector('.demand-forecast')?.clientWidth ?? 0)).toBeLessThan(912);
   await expect(page.locator('.df-table-tips .stack-tips')).toBeVisible();
   await expect(page.locator('.df-list thead button[aria-label="About rank"]')).toBeHidden();
   await page.locator('h1').focus();
@@ -898,7 +898,7 @@ test('/demand-forecast/ lays out wide, stacks with the assistant open and never 
   await axeClean(page);
   // 390 px: nothing scrolls sideways on the list or on the product without a forecast.
   await page.getByRole('button', { name: 'Assistant', exact: true }).click();
-  await expect.poll(() => page.evaluate(() => document.querySelector('.main')?.clientWidth ?? 0)).toBeGreaterThanOrEqual(960);
+  await expect.poll(() => page.evaluate(() => document.querySelector('.demand-forecast')?.clientWidth ?? 0)).toBeGreaterThanOrEqual(912);
   await page.setViewportSize({ height: 844, width: 390 });
   await page.reload();
   await expect(table).toBeVisible();

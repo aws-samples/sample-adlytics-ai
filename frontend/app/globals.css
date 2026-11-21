@@ -1480,7 +1480,12 @@ textarea.prompt-text:focus-visible { outline: 2px solid var(--ai); outline-offse
 .legend i.df-likely { border-top-style: dashed; border-top-color: var(--df-likely); }
 .legend i.df-range { height: 10px; border: 1px solid var(--df-range-edge); background: var(--df-range); }
 .legend i.df-zero { width: 10px; height: 10px; border: 2px solid var(--df-zero); border-radius: 50%; }
-/* The list and product views. Layout follows the page column (.main), never the viewport. */
+/* The page column is up to 1180 px wide on this page (the mockup's width), so the forecast
+   surface is 1132 px at 1440 px with the assistant closed and 800 px with it open at 360 px.
+   Layout follows the forecast container's own width, never the viewport. */
+.content:has(> .demand-forecast) { max-width: 1180px; }
+.demand-forecast { container: demand-forecast / inline-size; }
+/* The list and product views. */
 .demand-forecast .df-line { display: block; }
 .demand-forecast .df-scope { flex-direction: column; align-items: stretch; gap: 12px; margin-top: 4px; }
 .demand-forecast .df-pills { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
@@ -1515,10 +1520,11 @@ textarea.prompt-text:focus-visible { outline: 2px solid var(--ai); outline-offse
 .demand-forecast .df-skeleton .df-skel-seg { height: 30px; width: 220px; border-radius: 10px; }
 .demand-forecast .df-skeleton .skel.h-label { width: 110px; height: 22px; border-radius: 999px; }
 .demand-forecast .df-skeleton > .skel.h-line { height: 24px; margin: 18px 0 6px; width: 70%; }
-/* The list stacks below a 960 px column, so it stacks at 1440 px with the assistant open (G-03).
+/* The list stacks below a 912 px forecast container, so it stacks at 1440 px with the assistant
+   open (G-03). 912 px is the surface inside a 960 px page column.
    The rules repeat DataTable's own stacked form, scoped to this page. The clipped header row holds
    no focusable control; its pop-ups move into the caption (G-04). */
-@container main (max-width: 959px) {
+@container demand-forecast (max-width: 911px) {
   .demand-forecast .dt-wrap.stackable { overflow: visible; border: 0; background: none; margin-top: 16px; }
   .demand-forecast .dt-wrap.stackable table.dt, .demand-forecast .dt-wrap.stackable table.dt tbody, .demand-forecast .dt-wrap.stackable table.dt tr { display: block; }
   .demand-forecast .dt-wrap.stackable table.dt thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); }
@@ -1535,7 +1541,7 @@ textarea.prompt-text:focus-visible { outline: 2px solid var(--ai); outline-offse
   .demand-forecast .stack-tips > span { display: inline-flex; align-items: center; }
   .demand-forecast .df-table-tips + .dt-wrap.stackable { margin-top: 6px; }
 }
-@container main (max-width: 559px) {
+@container demand-forecast (max-width: 559px) {
   .demand-forecast .df-tools { flex-direction: column; align-items: stretch; }
   .demand-forecast .df-weeks .seg, .demand-forecast .df-filter { display: flex; width: 100%; }
   .demand-forecast .df-weeks .seg button { flex: 1 1 0; }
@@ -1559,7 +1565,7 @@ textarea.prompt-text:focus-visible { outline: 2px solid var(--ai); outline-offse
 .demand-forecast .df-skeleton .skel.h-chart { height: 200px; margin-top: 18px; }
 .demand-forecast .df-skeleton .skel.table { margin-top: 18px; }
 .demand-forecast .callout .acts .ask-chip { margin-top: 2px; }
-@container main (max-width: 559px) {
+@container demand-forecast (max-width: 559px) {
   .demand-forecast .df-measures .seg { display: flex; width: 100%; }
   .demand-forecast .df-run { grid-template-columns: minmax(0, 1fr); }
 }
