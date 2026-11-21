@@ -1607,8 +1607,43 @@ node validation/capture_screenshots.mjs
 ```
 
 In place of `ADL_REFRESH` and `ADL_CSRF`, `ADL_SESSION` may carry one access token for a synthetic
-dev persona, signed in as `probe_footnote_readback.py` does (`cognito_personas.py`); the script
-sends it as the `adl_session` cookie and never prints it.
+dev persona; the script sends it as the `adl_session` cookie and never prints it. This one sign-in
+step needs no owner action. It signs in the dev persona `probe-a` through `cognito_personas.py`
+and sets `ADL_BASE_URL` and `ADL_SESSION` in the current shell only, printing nothing:
+
+```bash
+read -r ADL_BASE_URL ADL_SESSION < <(PROFILE=<profile> uv run python - <<'PY'
+import os, sys
+import boto3
+sys.path[:0] = ["src", "validation"]
+from cognito_personas import app_client, load_persona, published_parameter, sign_in
+session = boto3.Session(profile_name=os.environ["PROFILE"])
+ssm = session.client("ssm")
+tokens = sign_in(session.client("cognito-idp"), load_persona(ssm, "dev", "probe-a"), app_client(session, "dev"))
+print(published_parameter(ssm, "dev", "publicBaseUrl").rstrip("/"), tokens.access_token)
+PY
+)
+export ADL_BASE_URL ADL_SESSION ADL_CAPTURE_SKIP=prompt-administration
+```
+
+- The environment is always `dev`. `<profile>` must resolve to the dev account and its Region.
+- The token lasts about 15 minutes. Run the step again for a later capture.
+- `probe-a` is in no Cognito group, so the Prompt administration images are skipped.
+
+Optional inputs for a smaller run:
+
+| Input | Effect |
+|---|---|
+| `ADL_CAPTURE_ONLY` | Runs only the named captures, comma-separated, in the script's own order: `growth-check`, `portfolio`, `campaign-detail`, `retail-health`, `retail-product`, `products-and-ads`, `scorecard`, `new-customers`, `reach`, `retention`, `audiences`, `prompt-administration`, `chat`, `demand-forecast`. An unknown name fails the run. The two-place ad spend check runs only with `portfolio` |
+| `ADL_CAPTURE_OUT` | Writes to this folder, created if missing, in place of `docs/images/`. The folder is not held to the gallery's size budget |
+
+`demand-forecast` writes the forecast list (`demand-forecast.png`) and one product's stored
+forecast (`demand-forecast-product.png`). It runs only when named, because the README gallery
+does not include it.
+
+```bash
+ADL_CAPTURE_ONLY=demand-forecast ADL_CAPTURE_OUT=/tmp/adl-shots node validation/capture_screenshots.mjs
+```
 
 It exits 0 when every image was captured, 2 when a data-dependent surface was not available and
 was skipped (it prints a `SKIPPED` line naming the image, and the old file is left in place), and
