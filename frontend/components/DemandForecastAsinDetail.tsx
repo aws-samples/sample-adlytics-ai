@@ -2,7 +2,6 @@
 'use client';
 import { formatIsoDate } from '@/lib/exact-format';
 import {
-  accuracyClassCopy,
   figureText,
   modelCopy,
   skipReasonCopy,
@@ -53,7 +52,7 @@ export function DemandForecastAsinDetail({ detail, viewWeeks }: {
             {total ? <p>Forecast total (p50), next {viewWeeks} {grain}s: {figureText(total, target, row.currency_code)}</p> : null}
             {row.accuracy ? (
               <p>
-                {accuracyClassCopy[row.accuracy.accuracy_class]}. In testing, the actual was inside the range in{' '}
+                In testing, the actual was inside the range in{' '}
                 {row.accuracy.weeks_in_range} of {row.accuracy.weeks_scored} test {grain}s.
               </p>
             ) : null}

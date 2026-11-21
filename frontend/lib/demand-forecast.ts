@@ -583,12 +583,6 @@ export const freshnessCauseCopy: Readonly<Record<FreshnessCause, string>> = {
   last_run_failed: 'The last forecast run failed',
   last_run_held: 'A quality check held the last forecast run',
 };
-export const accuracyClassCopy: Readonly<Record<AccuracyClass, string>> = {
-  beat_naive: "Beat repeating last week's value",
-  not_beat_naive: "Did not beat repeating last week's value",
-  history_unchanging: 'History never changed, so there is no baseline to beat',
-  scale_unknown: 'Too few complete weeks to measure the baseline',
-};
 /** How a recent week's value is known (ADR-156, L-STATE): an inferred zero is never shown as observed. */
 export const weekStateCopy: Readonly<Record<WeekState, string>> = {
   observed: 'Reported',

@@ -10,7 +10,6 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, test } from 'vitest';
 import {
-  accuracyClassCopy,
   failureFamilyCopy,
   fetchDemandForecastDetail,
   fetchDemandForecastList,
@@ -94,7 +93,7 @@ test('every copy map has exactly the generated enum keys', () => {
   const maps: Array<[string, Record<string, unknown>]> = [
     ['SkipReason', skipReasonCopy], ['ModelName', modelCopy], ['RunOutcome', runOutcomeCopy],
     ['FailureFamily', failureFamilyCopy], ['FreshnessCause', freshnessCauseCopy],
-    ['AccuracyClass', accuracyClassCopy], ['Hold', holdCopy], ['SkipReason', reasonSentenceCopy],
+    ['Hold', holdCopy], ['SkipReason', reasonSentenceCopy],
     ['SkipReason', reasonNextStepCopy],
   ];
   for (const [name, map] of maps) {

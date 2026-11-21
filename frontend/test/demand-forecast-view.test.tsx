@@ -76,7 +76,8 @@ test('selecting a product loads its detail in place', async () => {
   render(<DemandForecastView/>);
   await userEvent.click(await screen.findByRole('button', { name: 'B0FIXTUR01' }));
   assert.ok(await screen.findByRole('heading', { name: /B0FIXTUR01: Fictional product 1/ }));
-  assert.ok(screen.getAllByText(/Beat repeating last week's value/).length > 0);
+  assert.ok(screen.getAllByText(/inside the range in 9 of 13 test weeks/).length > 0);
+  assert.equal(screen.queryByText(/Beat repeating|Did not beat/), null);
 });
 
 test('a malformed ASIN search is refused inline before any request', async () => {
