@@ -85,6 +85,11 @@ interface ChartSeries {
 /** The plot's own coordinates; axis labels sit outside it as HTML so text stays 12 px at any width. */
 const CHART = { height: 200, left: 6, right: 994, bottom: 194, top: 6 } as const;
 
+/** A plotted index's x in the plot's own coordinates, as `chartLayout` places points. */
+function chartX(index: number, count: number): number {
+  return count <= 1 ? (CHART.left + CHART.right) / 2 : CHART.left + (index * (CHART.right - CHART.left)) / (count - 1);
+}
+
 /** A zero-based chart (ADR-118 decision 7: counts and currency) always spans 0. */
 function chartLayout(series: readonly ChartSeries[], zeroBased = false): {
   readonly max: number;
@@ -106,7 +111,7 @@ function chartLayout(series: readonly ChartSeries[], zeroBased = false): {
       const runs: string[][] = [[]];
       values.forEach((value, index) => {
         if (value === null) { runs.push([]); return; }
-        const x = values.length === 1 ? (CHART.left + CHART.right) / 2 : CHART.left + (index * (CHART.right - CHART.left)) / (values.length - 1);
+        const x = chartX(index, values.length);
         const y = max === min ? (CHART.top + CHART.bottom) / 2 : CHART.top + ((max - Number(value)) * (CHART.bottom - CHART.top)) / (max - min);
         runs[runs.length - 1]?.push(`${x},${y}`);
       });
@@ -177,6 +182,94 @@ export function ChartLegend({ prior }: { readonly prior: boolean }) {
   return <p className="legend">
     <span><i aria-hidden="true" />Current window</span>
     {prior ? <span><i className="prior" aria-hidden="true" />Aligned prior window</span> : null}
+  </p>;
+}
+
+/** One recent week of one measure: its served state and exact value. */
+export interface BandRecentWeek {
+  readonly state: 'observed' | 'inferred_zero' | 'unknown';
+  readonly value: string | null;
+  readonly week: string;
+}
+/** The forecast weeks of the chosen view and their served low, likely and high values. */
+export interface BandForecast {
+  readonly high: readonly string[];
+  readonly likely: readonly string[];
+  readonly low: readonly string[];
+  readonly weeks: readonly string[];
+}
+
+/**
+ * The demand forecast product chart (design S2, D5): the served recent weeks by their state,
+ * then the chosen view's likely line and low-to-high band. It starts at zero (ADR-118 decision 7)
+ * and draws no numeric axis at all (G-01): the forecast table below is its exact scale, so no
+ * tick value is ever calculated in the browser. A `not known` week breaks the reported line; a
+ * week counted as zero plots at 0 as a hollow dot.
+ */
+export function ForecastBandChart({ ariaLabel, dividerLabel, forecast, recent }: {
+  readonly ariaLabel: string;
+  readonly dividerLabel: string;
+  readonly forecast: BandForecast;
+  readonly recent: readonly BandRecentWeek[];
+}) {
+  const count = recent.length + forecast.weeks.length;
+  const before: null[] = recent.map(() => null);
+  const after: null[] = forecast.weeks.map(() => null);
+  const reported: ChartValue[] = [...recent.map((week) => (week.state === 'unknown' ? null : week.value)), ...after];
+  const likely: ChartValue[] = [...before, ...forecast.likely];
+  const low: ChartValue[] = [...before, ...forecast.low];
+  const high: ChartValue[] = [...before, ...forecast.high];
+  const series: ChartSeries[] = [reported, likely, low, high]
+    .filter((values) => values.some((value) => value !== null))
+    .map((values) => ({ kind: 'current', values }));
+  const layout = chartLayout(series, true);
+  const first = recent[0]?.week ?? forecast.weeks[0];
+  const last = forecast.weeks[forecast.weeks.length - 1];
+  if (layout === null || first === undefined || last === undefined) {
+    return <p className="state-note"><span className="badge">No trend</span>There are no weekly values to draw for this measure. The exact values are in the table below.</p>;
+  }
+  const [highRun] = layout.points(high);
+  const [lowRun] = layout.points(low);
+  const band = highRun === undefined || lowRun === undefined ? null : `${highRun} ${lowRun.split(' ').reverse().join(' ')}`;
+  const dividerX = chartX(recent.length, count);
+  const dividerShare = dividerX / 1000;
+  // Where 0 sits, as chartLayout places a value (a flat series sits mid-plot).
+  const zeroY = layout.max === layout.min
+    ? (CHART.top + CHART.bottom) / 2
+    : CHART.top + (layout.max * (CHART.bottom - CHART.top)) / (layout.max - layout.min);
+  return <div className="series-chart df-chart">
+    <div className="df-plot">
+      <svg className="chart" viewBox={`0 0 1000 ${CHART.height}`} preserveAspectRatio="none" role="img" aria-label={ariaLabel}>
+        <line className="grid" x1={CHART.left} x2={CHART.right} y1={CHART.bottom} y2={CHART.bottom} />
+        {band === null ? null : <polygon className="df-band" points={band} />}
+        {recent.length === 0 ? null : <line className="df-divider" x1={dividerX} x2={dividerX} y1={CHART.top} y2={CHART.bottom} />}
+        <SeriesShape className="series df-likely" runs={layout.points(likely)} />
+        <SeriesShape className="series df-reported" runs={layout.points(reported)} />
+        {recent.map((week, index) => (week.state === 'inferred_zero'
+          ? <circle key={week.week} className="df-zero" cx={chartX(index, count)} cy={zeroY} r={5} />
+          : null))}
+      </svg>
+      {recent.length === 0 ? null : (
+        <span className={dividerShare > 0.5 ? 'df-divider-label end' : 'df-divider-label'} style={{ left: `${dividerShare * 100}%` }} aria-hidden="true">
+          {dividerLabel}
+        </span>
+      )}
+    </div>
+    <div className="x-axis" aria-hidden="true">
+      <span className="axis-label">{formatIsoDate(first)}</span>
+      <span className="axis-label">{formatIsoDate(last)}</span>
+    </div>
+    <p className="df-chart-note">Starts at zero. Exact weekly numbers are in the table below.</p>
+  </div>;
+}
+
+/** The chart's legend: only the marks the plotted series contain (G-14). */
+export function ForecastBandLegend({ reported, zero }: { readonly reported: boolean; readonly zero: boolean }) {
+  return <p className="legend df-legend">
+    {reported ? <span><i className="df-reported" aria-hidden="true" />Reported</span> : null}
+    <span><i className="df-likely" aria-hidden="true" />Likely</span>
+    <span><i className="df-range" aria-hidden="true" />Low to high</span>
+    {zero ? <span><i className="df-zero" aria-hidden="true" />No sales reported, counted as zero</span> : null}
   </p>;
 }
 

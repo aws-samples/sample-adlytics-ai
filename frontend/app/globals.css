@@ -1463,3 +1463,20 @@ textarea.prompt-text:focus-visible { outline: 2px solid var(--ai); outline-offse
   --df-divider: var(--stroke-strong);         /* "Forecast starts" line */
   --df-muted: var(--text-dim);                /* ASIN, "No forecast" cells, sub-labels */
 }
+/* The product chart (ForecastBandChart): no numeric axis (G-01); the table below is its scale. */
+.df-chart { grid-template-columns: minmax(0, 1fr); }
+.df-chart .df-plot { position: relative; grid-column: 1; grid-row: 1; padding-top: 20px; }
+.df-chart .df-plot .chart { height: 180px; }
+.df-chart .x-axis { grid-column: 1; }
+.df-chart .df-chart-note { grid-column: 1; font-size: 12px; color: var(--df-muted); }
+.chart .df-band { fill: var(--df-range); stroke: var(--df-range-edge); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.chart .series.df-likely { stroke: var(--df-likely); stroke-dasharray: 6 5; }
+.chart .series.df-reported { stroke: var(--df-reported); }
+.chart .df-zero { fill: none; stroke: var(--df-zero); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.chart .df-divider { stroke: var(--df-divider); stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+.df-divider-label { position: absolute; top: 0; margin-left: 4px; font-size: 12px; line-height: 18px; color: var(--df-muted); white-space: nowrap; }
+.df-divider-label.end { margin-left: 0; transform: translateX(calc(-100% - 4px)); }
+.legend i.df-reported { border-top-color: var(--df-reported); }
+.legend i.df-likely { border-top-style: dashed; border-top-color: var(--df-likely); }
+.legend i.df-range { height: 10px; border: 1px solid var(--df-range-edge); background: var(--df-range); }
+.legend i.df-zero { width: 10px; height: 10px; border: 2px solid var(--df-zero); border-radius: 50%; }
