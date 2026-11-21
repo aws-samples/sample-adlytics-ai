@@ -63,6 +63,10 @@ def test_the_catalog_doc_and_the_domain_catalog_are_equal() -> None:
         "ABS-SC-CH",
         # The paid-feature cards' who-acts line (E4), browser-owned.
         "PAID-NEXT",
+        # Demand forecast no generation, not in this forecast and read failure, browser-owned.
+        "ABS-DF-1",
+        "ABS-DF-2",
+        "ABS-DF-3",
     }
 
 
