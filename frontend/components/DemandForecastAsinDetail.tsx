@@ -307,7 +307,7 @@ function Withheld({ detail, measure, status }: {
       </StateCallout>
       {recent.length === 0 ? null : (
         <section className="df-strip-block" aria-labelledby="df-strip-title">
-          <h2 id="df-strip-title" className="df-h">Last {recent.length} weeks, {measureLowerCopy[measure]}</h2>
+          <h2 id="df-strip-title" className="df-h">Recent weeks, {measureLowerCopy[measure]}</h2>
           <ul className="df-strip">
             {weekRuns(recent, measure).map((run) => (
               <li key={run.weeks[0]?.week_start ?? run.range} className={`df-run ${run.state}`}>

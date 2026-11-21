@@ -173,6 +173,9 @@ test('the range and testing pop-ups claim only percentiles and where actuals lan
   assert.match(tested, /In 9 of those 13 weeks, actual units ordered landed inside the range from low to high; in the other weeks it landed below or above it\./);
   assert.match(INFO.tested(null, 'units_ordered').text, /isn't measured/);
   assert.doesNotMatch(INFO.short.text, /safe to promote/i);
+  // G-13: the supply-check framing, with no threshold and no classification of the product.
+  assert.match(INFO.short.text, /before a promotion when deciding whether the product needs a supply check/);
+  assert.doesNotMatch(INFO.short.text, /\d|many|more than/i);
 });
 
 test('the seeded questions name the ASIN and the served dates', () => {

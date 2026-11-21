@@ -198,11 +198,11 @@ test('a product with no forecast shows one callout, the measure switch and the w
   assert.ok(within(callout).getByRole('button', { name: 'Ask why this product has no forecast' }));
   assert.equal(screen.queryByRole('group', { name: 'Weeks to show' }), null);
   assert.equal(screen.queryByText('Weeks shipped less than ordered'), null);
-  assert.ok(screen.getByRole('heading', { name: 'Last 13 weeks, units ordered' }));
+  assert.ok(screen.getByRole('heading', { name: 'Recent weeks, units ordered' }));
   assert.ok(screen.getByText('Aug 9–Sep 13'));
   assert.ok(screen.getByText('Sep 20–Nov 1'));
   await userEvent.click(within(screen.getByRole('group', { name: 'Measure' })).getByRole('button', { name: 'Units shipped' }));
-  assert.ok(screen.getByRole('heading', { name: 'Last 13 weeks, units shipped' }));
+  assert.ok(screen.getByRole('heading', { name: 'Recent weeks, units shipped' }));
   assert.ok(screen.getByText('Aug 9–Nov 1'));
 });
 
