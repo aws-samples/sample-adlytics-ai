@@ -19,6 +19,9 @@ import {
 import { cloneRetention, retentionFixture, retentionTwoMarketFixture, RETENTION_REVISION } from '../test/fixtures/retention-v1-fixtures';
 import scorecardWeekly from '../test/fixtures/scorecard-7d-v2.json';
 import scorecardPending from '../test/fixtures/scorecard-pending-v2.json';
+import forecastList from '../test/fixtures/demand-forecast-list.json';
+import forecastNotForecast from '../test/fixtures/demand-forecast-detail-not-forecast.json';
+import forecastStatus from '../test/fixtures/demand-forecast-status-stale.json';
 
 const canonicalRoutes = ['/campaigns/'] as const;
 
@@ -819,4 +822,92 @@ test('a serving refusal shows the server\'s own text, and the status region keep
     (window as unknown as { adlyticsStatusRegion?: Element | null }).adlyticsStatusRegion === document.querySelector(selector)
   ), PAGE_STATUS)).toBe(true);
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+});
+
+/** The forecast read routes from the shared wire fixtures; a product read is the no-forecast product. */
+async function mockForecast(page: Page): Promise<void> {
+  await page.route('**/api/demand-forecast**', (route) => {
+    const url = new URL(route.request().url());
+    const body = url.pathname.endsWith('/status')
+      ? forecastStatus
+      : url.searchParams.has('asin') ? forecastNotForecast : forecastList;
+    return route.fulfill({ body: JSON.stringify(body), contentType: 'application/json', status: 200 });
+  });
+}
+/** Tab forward until the focused element is the one named, or give up after `limit` presses. */
+async function tabTo(page: Page, within: string, label: string, limit = 80): Promise<boolean> {
+  for (let press = 0; press < limit; press += 1) {
+    await page.keyboard.press('Tab');
+    const reached = await page.evaluate(([scope, name]) => {
+      const active = document.activeElement;
+      return active !== null && active.getAttribute('aria-label') === name && active.closest(scope ?? '') !== null;
+    }, [within, label]);
+    if (reached) return true;
+  }
+  return false;
+}
+async function noSidewaysOverflow(page: Page): Promise<void> {
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  // No cell's right edge passes the table's own border.
+  expect(await page.evaluate(() => [...document.querySelectorAll('.demand-forecast .dt-wrap')].flatMap((wrap) => {
+    const edge = wrap.getBoundingClientRect().right + 0.5;
+    // A stacked table's header row is clipped to 1 px and never painted, so only painted cells count.
+    const head = wrap.querySelector('thead');
+    const headPainted = head !== null && head.getBoundingClientRect().height > 1;
+    return [...wrap.querySelectorAll(headPainted ? 'td, th' : 'tbody td, tbody th')]
+      .filter((cell) => cell.getBoundingClientRect().right > edge)
+      .map((cell) => `${cell.textContent ?? ''} ${Math.round(cell.getBoundingClientRect().right)} > ${Math.round(edge)}`);
+  }))).toEqual([]);
+}
+async function axeClean(page: Page): Promise<void> {
+  for (const theme of ['light', 'dark'] as const) {
+    await page.locator('html').evaluate((element, next) => { element.dataset.theme = next; }, theme);
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+    const results = await new AxeBuilder({ page }).include('.demand-forecast').options({ rules: { 'color-contrast': { enabled: true } } }).analyze();
+    expect(results.violations).toEqual([]);
+  }
+}
+
+test('/demand-forecast/ lays out wide, stacks with the assistant open and never overflows at 390 px (G-03, G-04)', async ({ page }) => {
+  await mockAuthenticatedV2(page);
+  await mockForecast(page);
+  await page.addInitScript(() => { if (sessionStorage.getItem('df-e2e') === null) { localStorage.setItem('adlytics.chat-open', 'false'); sessionStorage.setItem('df-e2e', '1'); } });
+  await page.setViewportSize({ height: 900, width: 1440 });
+  const response = await page.goto('/demand-forecast/');
+  expect(response?.ok()).toBe(true);
+  const table = page.getByRole('table', { name: /^Likely totals, 13 weeks starting Nov 8, 2026/ });
+  await expect(table).toBeVisible();
+  await expect(page.locator('h1')).toHaveCount(1);
+  // Wide: the header row shows its pop-ups, the caption's stacked-form copies are hidden.
+  expect(await page.evaluate(() => document.querySelector('.main')?.clientWidth ?? 0)).toBeGreaterThanOrEqual(960);
+  await expect(page.locator('.df-list thead button[aria-label="About rank"]')).toBeVisible();
+  await expect(page.locator('.df-table-tips .stack-tips')).toBeHidden();
+  await page.locator('h1').focus();
+  expect(await tabTo(page, '.df-list thead', 'About rank')).toBe(true);
+  await noSidewaysOverflow(page);
+  await axeClean(page);
+  // The assistant open at its default width narrows the column below 960 px: the rows stack.
+  await page.locator('html').evaluate((element) => { element.dataset.theme = 'light'; });
+  await page.getByRole('button', { name: 'Assistant', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => document.querySelector('.main')?.clientWidth ?? 0)).toBeLessThan(960);
+  await expect(page.locator('.df-table-tips .stack-tips')).toBeVisible();
+  await expect(page.locator('.df-list thead button[aria-label="About rank"]')).toBeHidden();
+  await page.locator('h1').focus();
+  expect(await tabTo(page, '.df-table-tips .stack-tips', 'About rank')).toBe(true);
+  await noSidewaysOverflow(page);
+  await axeClean(page);
+  // 390 px: nothing scrolls sideways on the list or on the product without a forecast.
+  await page.getByRole('button', { name: 'Assistant', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => document.querySelector('.main')?.clientWidth ?? 0)).toBeGreaterThanOrEqual(960);
+  await page.setViewportSize({ height: 844, width: 390 });
+  await page.reload();
+  await expect(table).toBeVisible();
+  await expect(page.locator('h1')).toHaveCount(1);
+  await noSidewaysOverflow(page);
+  await page.getByRole('button', { name: 'Fictional product 3' }).click();
+  await expect(page.getByRole('heading', { level: 2, name: 'No forecast for this product' })).toBeVisible();
+  await expect(page.locator('h1')).toHaveText('Fictional product 3');
+  await expect(page.locator('h1')).toHaveCount(1);
+  await noSidewaysOverflow(page);
+  await axeClean(page);
 });
