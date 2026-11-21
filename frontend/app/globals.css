@@ -930,6 +930,24 @@ table.dt .row-pick button:hover { color: var(--accent); }
 .sec-line.dim, .dim { color: var(--text-dim); }
 .field-label { display: block; font-size: 12px; color: var(--text-dim); margin: 6px 0 4px; }
 select { min-height: 40px; border-radius: 10px; border: 1px solid var(--stroke-strong); background: var(--card); color: var(--text); padding: 6px 10px; font: inherit; font-size: 14px; max-width: 100%; }
+/* The one text input style, beside select (demand forecast finding 17: no flat grey block in dark mode). */
+.text-input { min-height: 40px; border-radius: 10px; border: 1px solid var(--stroke-strong); background: var(--card); color: var(--text); padding: 6px 10px; font: inherit; font-size: 14px; max-width: 100%; }
+.text-input::placeholder { color: var(--text-dim); }
+.text-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
+.text-input[aria-invalid="true"] { border-color: var(--bad); }
+/* InfoTip: a text-only disclosure under its button; inline under the term below a 560 px column. */
+.infotip { position: relative; display: inline-flex; vertical-align: middle; }
+.infotip-btn { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; min-height: 24px; padding: 0; margin: 0 0 0 2px; border: 0; border-radius: 999px; background: none; color: var(--text-dim); cursor: pointer; }
+.infotip-btn:hover, .infotip-btn[aria-expanded="true"] { color: var(--accent); }
+.infotip-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.infotip-panel { position: absolute; top: 100%; left: 0; z-index: 30; display: block; width: max-content; max-width: 320px; margin-top: 4px; padding: 10px 12px; background: var(--card); border: 1px solid var(--stroke-strong); border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); color: var(--text); font-size: 12.5px; font-weight: 400; line-height: 1.45; text-align: left; white-space: normal; letter-spacing: normal; text-transform: none; }
+.infotip.end .infotip-panel { left: auto; right: 0; }
+.infotip-panel strong { display: block; margin-bottom: 4px; font-size: 13px; color: var(--text); }
+.infotip-panel .line { display: block; margin-top: 4px; }
+@container main (max-width: 559px) {
+  .infotip { display: inline; position: static; }
+  .infotip-panel, .infotip.end .infotip-panel { position: static; width: auto; max-width: none; margin: 6px 0; box-shadow: none; }
+}
 
 /* ---------- prompt administration (ia §7.8) ---------- */
 .admin-stack { display: flex; flex-direction: column; gap: 20px; }
@@ -1434,3 +1452,14 @@ textarea.prompt-text:focus-visible { outline: 2px solid var(--ai); outline-offse
 .products-ads .channel-seg { margin: 8px 0; }
 .products-ads .pa-absent .reason { color: var(--text-dim); font-size: 12px; white-space: normal; }
 .scorecard .answer-basis { font-size: 13px; color: var(--text-dim); margin: -4px 0 8px; }
+/* ---------- demand forecast (forecasting LLD "Demand forecast page") ---------- */
+/* What each colour means on this page. Aliases of the theme tokens only. */
+.demand-forecast {
+  --df-reported: var(--text);                 /* reported weekly line and dots */
+  --df-likely: var(--accent);                 /* likely line, dashed */
+  --df-range: var(--accent-soft);             /* low-to-high band fill */
+  --df-range-edge: var(--chart-prior-strong); /* band edges: 4.45:1 light, 4.88:1 dark on --card */
+  --df-zero: var(--text-dim);                 /* hollow dot: no sales reported, counted as zero */
+  --df-divider: var(--stroke-strong);         /* "Forecast starts" line */
+  --df-muted: var(--text-dim);                /* ASIN, "No forecast" cells, sub-labels */
+}
