@@ -696,7 +696,7 @@ export const INFO = {
   }),
   short: {
     title: 'Weeks shipped less than ordered',
-    text: 'Weeks in which Amazon shipped fewer units to customers than customers ordered. It can mean stock ran short, or that orders were still waiting to ship. A week counts only when both figures were reported. A product with many such weeks needs a supply check before a promotion.',
+    text: 'Weeks in which Amazon shipped fewer units to customers than customers ordered. It can mean stock ran short, or that orders were still waiting to ship. A week counts only when both figures were reported.',
   },
   tested: (accuracy: Accuracy | null, target: Target): InfoText => ({
     title: 'How this forecast tested',
