@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: MIT-0
-import { formatCount, formatCurrency } from './exact-format';
+import type { Answer } from './answer';
+import {
+  formatCount, formatCurrency, formatIsoDate, formatIsoDateRangeShort, formatIsoInstantDate, formatIsoInstantShort,
+} from './exact-format';
 import { callApi } from './session';
 
 /**
@@ -39,8 +42,10 @@ const refusals = [
   'ROUTE_UNKNOWN', 'FORECAST_READ_FAILED', 'IDENTITY_REQUIRED',
 ] as const;
 export type Refused = typeof refusals[number];
-const weekStates = ['observed', 'inferred_zero', 'unknown'] as const;
+export const weekStates = ['observed', 'inferred_zero', 'unknown'] as const;
 export type WeekState = typeof weekStates[number];
+export const maseGaps = ['HISTORY_UNCHANGING', 'MASE_SCALE_UNKNOWN'] as const;
+export type MaseGap = typeof maseGaps[number];
 const views = ['4', '8', '13'] as const;
 export type ViewKey = typeof views[number];
 
@@ -74,7 +79,7 @@ export interface DemandForecastList {
   readonly currency_codes: readonly string[]; readonly status_target: Target;
 }
 export interface Accuracy {
-  readonly wql: string; readonly mase: string | null; readonly mase_gap: string | null;
+  readonly wql: string; readonly mase: string | null; readonly mase_gap: MaseGap | null;
   readonly weeks_in_range: number; readonly weeks_scored: number; readonly accuracy_class: AccuracyClass;
 }
 export interface TargetDetail extends ListTarget {
@@ -265,7 +270,7 @@ function accuracy(value: unknown): Accuracy {
   return {
     wql: text(raw.wql, 'wql', DECIMAL),
     mase: nullable(raw.mase, (inner) => text(inner, 'mase', DECIMAL)),
-    mase_gap: nullable(raw.mase_gap, (inner) => oneOf(inner, ['HISTORY_UNCHANGING', 'MASE_SCALE_UNKNOWN'] as const, 'mase_gap')),
+    mase_gap: nullable(raw.mase_gap, (inner) => oneOf(inner, maseGaps, 'mase_gap')),
     weeks_in_range: count(raw.weeks_in_range, 'weeks_in_range'),
     weeks_scored: count(raw.weeks_scored, 'weeks_scored'),
     accuracy_class: oneOf(raw.accuracy_class, accuracyClasses, 'accuracy_class'),
@@ -417,44 +422,147 @@ export function fetchDemandForecastStatus(signal?: AbortSignal): Promise<FetchRe
 
 // --- Copy -----------------------------------------------------------------------------------
 
+/** The order the page shows the measures in: demand first (design finding 6). */
+export const displayTargets: readonly Target[] = ['units_ordered', 'units_shipped', 'revenue_shipped', 'cogs_shipped'];
+
+/** The measure switch labels (L-MEASURE). */
 export const targetCopy: Readonly<Record<Target, string>> = {
-  units_ordered: 'Demand (ordered units)',
-  units_shipped: 'Shipped units',
+  units_ordered: 'Units ordered (demand)',
+  units_shipped: 'Units shipped',
   revenue_shipped: 'Shipped revenue',
-  cogs_shipped: 'Shipped cost of goods sold',
+  cogs_shipped: 'Amazon wholesale cost',
 };
-const unitWords: Readonly<Record<'units_ordered' | 'units_shipped', string>> = {
+/** The measure as a chart title or column name opens with it ("Units ordered by week"). */
+export const measureCopy: Readonly<Record<Target, string>> = {
+  units_ordered: 'Units ordered',
+  units_shipped: 'Units shipped',
+  revenue_shipped: 'Shipped revenue',
+  cogs_shipped: 'Amazon wholesale cost',
+};
+/** The measure inside a sentence ("Forecast, 13 weeks starting Nov 8, 2026, units ordered"). */
+export const measureLowerCopy: Readonly<Record<Target, string>> = {
   units_ordered: 'units ordered',
   units_shipped: 'units shipped',
+  revenue_shipped: 'shipped revenue',
+  cogs_shipped: 'Amazon wholesale cost',
+};
+/** The filter chips' measure word, from the list's `status_target` (G-05). */
+export const filterTargetCopy: Readonly<Record<Target, { readonly article: 'a' | 'an'; readonly label: string }>> = {
+  units_ordered: { article: 'an', label: 'ordered-units' },
+  units_shipped: { article: 'a', label: 'shipped-units' },
+  revenue_shipped: { article: 'a', label: 'shipped-revenue' },
+  cogs_shipped: { article: 'a', label: 'wholesale-cost' },
 };
 
+/** The short label for a filter chip and a list cell (design "Reason copy"). */
 export const skipReasonCopy: Readonly<Record<SkipReason, string>> = {
   ASIN_INACTIVE: 'No recent sales',
-  TARGET_VALUE_MISSING: 'Missing values in its history',
+  TARGET_VALUE_MISSING: 'Gaps in its sales history',
   INSUFFICIENT_CONTEXT: 'Too little history',
-  HOLDOUT_UNKNOWN: 'Too many unknown recent weeks to test accuracy',
+  HOLDOUT_UNKNOWN: 'Recent weeks not known',
   HOLDOUT_ALL_ZERO: 'No sales in the test weeks',
-  BACKTEST_BAND_UNORDERED: 'The accuracy test gave an inconsistent range',
+  BACKTEST_BAND_UNORDERED: 'The accuracy test failed a check',
   SEASONAL_LAG_UNKNOWN: "Last year's matching weeks are unknown",
   SEASONAL_LAG_UNKNOWN_AT_ORIGIN: "Last year's matching weeks are unknown for the forecast weeks",
   SEASONAL_RESIDUALS_TOO_FEW: 'Too few complete seasons',
   HISTORY_TOO_SHORT_FOR_SEASON: 'Less than a year of history',
-  ETS_INSUFFICIENT_KNOWN: 'Too few known weeks for the trend model',
-  ETS_FIT_FAILED: 'The trend model could not be fitted',
+  ETS_INSUFFICIENT_KNOWN: 'Too few known weeks for the trend method',
+  ETS_FIT_FAILED: "The trend method couldn't be fitted",
   ACCURACY_NOT_TESTABLE: "Accuracy couldn't be tested",
-  FORECAST_NOT_PUBLISHABLE: 'No model passed the accuracy check',
-  FORECAST_SHAPE_INVALID: 'The forecast had the wrong shape',
-  FORECAST_NOT_FINITE: 'The forecast was not a number',
-  FORECAST_BAND_UNORDERED: 'The forecast range was inconsistent',
-  FORECAST_NEGATIVE: 'The forecast was below zero',
-  PRODUCT_KEY_INVALID: 'The product identifier is not valid',
+  FORECAST_NOT_PUBLISHABLE: "Didn't meet every condition to be shown",
+  FORECAST_SHAPE_INVALID: 'The forecast failed a check',
+  FORECAST_NOT_FINITE: 'The forecast failed a check',
+  FORECAST_BAND_UNORDERED: 'The forecast failed a check',
+  FORECAST_NEGATIVE: 'The forecast failed a check',
+  PRODUCT_KEY_INVALID: "The product identifier isn't valid",
   DISPLAY_ASIN_COLLISION: 'Two products share one ASIN',
   CURRENCY_MIXED: 'Sales in more than one currency',
 };
+/** The product callout's sentence. `{measure}` is the selected measure, lower-case. */
+export const reasonSentenceCopy: Readonly<Record<SkipReason, string>> = {
+  ASIN_INACTIVE: "No sales of this product have been reported recently, so there's no recent pattern to forecast. The weeks below show what is known.",
+  TARGET_VALUE_MISSING: "Vendor Central left some of this product's weekly values blank, so there aren't enough complete weeks to forecast.",
+  INSUFFICIENT_CONTEXT: "This product doesn't have enough weeks of sales yet to forecast.",
+  HOLDOUT_UNKNOWN: "Too many of this product's most recent weeks are not known to test a forecast against them.",
+  HOLDOUT_ALL_ZERO: "This product sold nothing in the recent weeks a forecast is tested on, so its accuracy can't be measured.",
+  BACKTEST_BAND_UNORDERED: "The test forecast's low, likely and high came out in the wrong order, so it wasn't used.",
+  SEASONAL_LAG_UNKNOWN: "The weeks a year before the test weeks are not known, so the same-weeks-last-year comparison can't run.",
+  SEASONAL_LAG_UNKNOWN_AT_ORIGIN: "The weeks a year before the forecast weeks are not known, so the same-weeks-last-year comparison can't run.",
+  SEASONAL_RESIDUALS_TOO_FEW: "There aren't enough complete years of sales to compare this product with the same weeks last year.",
+  HISTORY_TOO_SHORT_FOR_SEASON: "This product has less than a year of sales, so it can't be compared with the same weeks last year.",
+  ETS_INSUFFICIENT_KNOWN: "Too few of this product's weeks are known for the trend and seasonality method to run.",
+  ETS_FIT_FAILED: "The trend and seasonality method couldn't fit this product's sales.",
+  ACCURACY_NOT_TESTABLE: "No simpler method could be tested on this product, so there's nothing to check a forecast against.",
+  FORECAST_NOT_PUBLISHABLE: 'No forecast met every condition required to show it for this product.',
+  FORECAST_SHAPE_INVALID: "The forecast didn't cover the right weeks, so it isn't shown.",
+  FORECAST_NOT_FINITE: "The forecast held a value that isn't a number, so it isn't shown.",
+  FORECAST_BAND_UNORDERED: "The forecast's low, likely and high came out in the wrong order, so it isn't shown.",
+  FORECAST_NEGATIVE: "The forecast went below zero, so it isn't shown.",
+  PRODUCT_KEY_INVALID: "This product's identifier in Vendor Central isn't a valid ASIN.",
+  DISPLAY_ASIN_COLLISION: "Two products in Vendor Central share this ASIN, so their sales can't be told apart.",
+  CURRENCY_MIXED: "This product's {measure} was reported in more than one currency, so it can't be added up week to week.",
+};
+export function reasonSentence(reason: SkipReason, target: Target): string {
+  return reasonSentenceCopy[reason].replace('{measure}', measureLowerCopy[target]);
+}
+
+/** A next step with the next new-data update's date, and the form used while status is loading or failed. */
+interface NextStep { readonly dated: (next: string) => string; readonly undated: string }
+const tryAgain: NextStep = { dated: (next) => `The update on ${next} tries again.`, undated: 'The next weekly update tries again.' };
+const tryNewest: NextStep = {
+  dated: (next) => `The update on ${next} tries again with the newest weeks.`,
+  undated: 'The next weekly update tries again with the newest weeks.',
+};
+const moreWeeks: NextStep = {
+  dated: () => 'A forecast becomes possible as more weeks of sales arrive.',
+  undated: 'A forecast becomes possible as more weeks of sales arrive.',
+};
+function fixed(text: string): NextStep {
+  return { dated: () => text, undated: text };
+}
+export const reasonNextStepCopy: Readonly<Record<SkipReason, NextStep>> = {
+  ASIN_INACTIVE: {
+    dated: (next) => `If it's still on sale, plan it by hand for now. The update on ${next} will check again after new sales data arrives; a forecast appears only once there's enough complete history.`,
+    undated: "If it's still on sale, plan it by hand for now. The next weekly update will check again after new sales data arrives; a forecast appears only once there's enough complete history.",
+  },
+  TARGET_VALUE_MISSING: {
+    dated: (next) => `The update on ${next} tries again. If the gaps stay, ask your administrator to check this product's Vendor Central sales report.`,
+    undated: "The next weekly update tries again. If the gaps stay, ask your administrator to check this product's Vendor Central sales report.",
+  },
+  INSUFFICIENT_CONTEXT: {
+    dated: (next) => `A forecast becomes possible once it has enough complete weeks of sales. The next update that can use new sales data is ${next}.`,
+    undated: 'A forecast becomes possible once it has enough complete weeks of sales.',
+  },
+  HOLDOUT_UNKNOWN: tryNewest,
+  HOLDOUT_ALL_ZERO: tryNewest,
+  BACKTEST_BAND_UNORDERED: tryAgain,
+  SEASONAL_LAG_UNKNOWN: tryAgain,
+  SEASONAL_LAG_UNKNOWN_AT_ORIGIN: tryAgain,
+  SEASONAL_RESIDUALS_TOO_FEW: moreWeeks,
+  HISTORY_TOO_SHORT_FOR_SEASON: moreWeeks,
+  ETS_INSUFFICIENT_KNOWN: tryAgain,
+  ETS_FIT_FAILED: tryAgain,
+  ACCURACY_NOT_TESTABLE: tryAgain,
+  FORECAST_NOT_PUBLISHABLE: tryAgain,
+  FORECAST_SHAPE_INVALID: tryAgain,
+  FORECAST_NOT_FINITE: tryAgain,
+  FORECAST_BAND_UNORDERED: tryAgain,
+  FORECAST_NEGATIVE: tryAgain,
+  PRODUCT_KEY_INVALID: fixed('Ask your administrator to check the product in Vendor Central.'),
+  DISPLAY_ASIN_COLLISION: fixed('Ask your administrator to check the products in Vendor Central.'),
+  CURRENCY_MIXED: fixed('Ask your administrator which marketplace this product should report in.'),
+};
+/** The next step for a withheld measure; `nextNewInputCheckAt` is null while status is loading or failed. */
+export function reasonNextStep(reason: SkipReason, nextNewInputCheckAt: string | null): string {
+  const step = reasonNextStepCopy[reason];
+  return nextNewInputCheckAt === null ? step.undated : step.dated(formatIsoInstantDate(nextNewInputCheckAt));
+}
+
+/** Plain model names (L-MODEL, G-15). */
 export const modelCopy: Readonly<Record<ModelName, string>> = {
-  chronos2: 'Chronos-2 forecast model',
-  seasonal_naive: "Last year's matching weeks",
-  ets: 'Trend and seasonality model',
+  chronos2: 'the Chronos-2 forecasting model',
+  seasonal_naive: 'the same weeks last year',
+  ets: 'the trend and seasonality method',
 };
 export const runOutcomeCopy: Readonly<Record<RunOutcome, string>> = {
   published: 'Published a new forecast',
@@ -481,22 +589,265 @@ export const accuracyClassCopy: Readonly<Record<AccuracyClass, string>> = {
   history_unchanging: 'History never changed, so there is no baseline to beat',
   scale_unknown: 'Too few complete weeks to measure the baseline',
 };
-/** How a recent week's value is known (ADR-156): an inferred zero is never shown as observed. */
+/** How a recent week's value is known (ADR-156, L-STATE): an inferred zero is never shown as observed. */
 export const weekStateCopy: Readonly<Record<WeekState, string>> = {
-  observed: 'Reported by Vendor Central',
+  observed: 'Reported',
   inferred_zero: 'No sales reported, counted as zero',
-  unknown: "Not known: the week's sales data is missing",
+  unknown: 'Not known',
+};
+/** The miss line when no average weekly miss is served. */
+export const maseGapCopy: Readonly<Record<MaseGap, string>> = {
+  HISTORY_UNCHANGING: "Sales didn't change from week to week before the test, so there's no usual change to compare the miss with.",
+  MASE_SCALE_UNKNOWN: 'Not enough history to measure the usual week-to-week change.',
 };
 export const holdCopy: Readonly<Record<Hold, string>> = {
   none: 'No hold',
   quality: 'Held by a quality check; the last good forecast is still shown',
 };
+export const weekStartCopy: Readonly<Record<Horizon['week_starts_on'], string>> = {
+  sunday: 'Sunday to Saturday weeks',
+};
+/** The freshness pill (L-FRESH-OK, L-FRESH-STALE); an unavailable forecast has no pill. */
+export const freshnessPillCopy: Readonly<Record<'fresh' | 'stale', (inputEnd: string) => string>> = {
+  fresh: (inputEnd) => `Up to date · sales through ${formatIsoDate(inputEnd)}`,
+  stale: (inputEnd) => `Out of date · sales through ${formatIsoDate(inputEnd)}`,
+};
 
-/** Render one server figure: money with its currency, units as a grouped count and unit word. */
-export function figureText(shown: Figure, target: Target, currencyCode: string | null): string {
+function lowerFirst(text: string): string {
+  return text.charAt(0).toLowerCase() + text.slice(1);
+}
+function plural(count: number, one: string, many: string): string {
+  return `${count} ${count === 1 ? one : many}`;
+}
+
+/**
+ * One out-of-date banner line per served cause (E-STALE). A line that would quote the latest
+ * update's date uses its no-date form while status is loading or failed.
+ */
+export function staleCauseLine(cause: FreshnessCause, freshness: Freshness, status: DemandForecastStatus | null): string {
+  const run = status?.last_run ?? null;
+  const when = run === null ? 'The latest weekly update' : `The weekly update on ${formatIsoInstantDate(run.at)}`;
+  if (cause === 'age_over_limit') {
+    const limit = `forecasts count as up to date for ${plural(freshness.stale_after_days, 'day', 'days')}.`;
+    return freshness.age_days === null
+      ? `It's older than the time it counts as up to date: ${limit}`
+      : `It was made ${plural(freshness.age_days, 'day', 'days')} ago; ${limit}`;
+  }
+  if (cause === 'last_run_held') return `${when} was held by a quality check.`;
+  const family = run?.failure_family ?? null;
+  return family === null ? `${when} didn't finish.` : `${when} didn't finish: ${lowerFirst(failureFamilyCopy[family])}.`;
+}
+/** The banner's closing line: what the page shows and when new sales data can next be used. */
+export function staleShownLine(provenance: Provenance, status: DemandForecastStatus | null): string {
+  const shown = `You're seeing the forecast made ${formatIsoInstantDate(provenance.published_at)} from sales through ${formatIsoDate(provenance.input_end)}.`;
+  return status === null
+    ? shown
+    : `${shown} The next update that can use new sales data is ${formatIsoInstantShort(status.next_new_input_check_at)}.`;
+}
+
+/** "today", "1 day ago", "N days ago" from the served age. */
+function ageText(ageDays: number): string {
+  return ageDays === 0 ? 'today' : `${plural(ageDays, 'day', 'days')} ago`;
+}
+/**
+ * The freshness pop-up (I-FRESH, S8): every status field the old status panel showed (D4). `made`
+ * and `rule` read the list or detail; `schedule` reads status, and is null while it is loading or
+ * failed.
+ */
+export function statusLines(
+  source: { readonly provenance: Provenance; readonly freshness: Freshness },
+  status: DemandForecastStatus | null,
+): { readonly made: string; readonly schedule: readonly string[] | null; readonly rule: string } {
+  const madeOn = formatIsoInstantDate(source.provenance.published_at);
+  const age = source.freshness.age_days === null ? '' : ` (${ageText(source.freshness.age_days)})`;
+  const made = `Made ${madeOn}${age} from Vendor Central sales through ${formatIsoDate(source.provenance.input_end)}.`;
+  const rule = `A forecast counts as up to date for ${plural(source.freshness.stale_after_days, 'day', 'days')} after it's made, unless the latest update failed or was held.`;
+  if (status === null) return { made, schedule: null, rule };
+  const run = status.last_run;
+  const schedule: string[] = [];
+  if (status.rollback_active && run?.outcome === 'rolled_back') {
+    schedule.push(`The latest update was undone on ${formatIsoInstantDate(run.at)}, so you're seeing the forecast made ${madeOn}.`);
+  } else if (status.rollback_active) {
+    schedule.push(`An earlier forecast was restored, so you're seeing the forecast made ${madeOn}.`);
+  } else if (run === null) {
+    schedule.push('No update has run yet.');
+  } else {
+    const family = run.failure_family === null ? '' : ` ${failureFamilyCopy[run.failure_family]}.`;
+    schedule.push(`Latest update, ${formatIsoInstantDate(run.at)}: ${lowerFirst(runOutcomeCopy[run.outcome])}.${family}`);
+  }
+  if (status.hold !== 'none') schedule.push(`${holdCopy[status.hold]}.`);
+  schedule.push(`Next daily check: ${formatIsoInstantShort(status.next_check_at)}.`);
+  schedule.push(`Next check that can use new sales data: ${formatIsoInstantShort(status.next_new_input_check_at)}.`);
+  return { made, schedule, rule };
+}
+
+/** An info pop-up: its title and its text (design "Info pop-ups"). */
+export interface InfoText { readonly title: string; readonly text: string }
+export const INFO = {
+  range: {
+    title: 'Low, likely and high',
+    text: "Low, likely and high are the forecast's 10th, 50th and 90th percentile forecasts for each week; likely is the middle one. The range from low to high is not a guarantee: actual demand can land outside it. In statistics: p10, p50 and p90.",
+  },
+  total: {
+    title: 'Likely total',
+    text: "The likely weekly forecasts for these weeks, added up when the forecast was made. Low and high don't add up across weeks, so there is no low or high total.",
+  },
+  rank: (defaultViewWeeks: number, firstWeek: string): InfoText => ({
+    title: 'Rank',
+    text: `Products are ranked by likely units ordered over the ${defaultViewWeeks} weeks starting ${formatIsoDate(firstWeek)}. The order stays the same when you pick fewer weeks.`,
+  }),
+  short: {
+    title: 'Weeks shipped less than ordered',
+    text: 'Weeks in which Amazon shipped fewer units to customers than customers ordered. It can mean stock ran short, or that orders were still waiting to ship. A week counts only when both figures were reported. A product with many such weeks needs a supply check before a promotion.',
+  },
+  tested: (accuracy: Accuracy | null, target: Target): InfoText => ({
+    title: 'How this forecast tested',
+    text: accuracy === null || accuracy.weeks_scored === 0
+      ? "This forecast couldn't be tested on enough recent weeks, so how often actuals land inside the range isn't measured."
+      : `Before the forecast was shown, it forecast this product's most recent weeks from the weeks before them. In ${accuracy.weeks_in_range} of those ${accuracy.weeks_scored} weeks, actual ${measureLowerCopy[target]} landed inside the range from low to high; in the other weeks it landed below or above it.`,
+  }),
+  miss: {
+    title: 'Average weekly miss',
+    text: 'How far the likely forecast was from actual sales in the test weeks, compared with how much sales usually move from one week to the next. Below 1× means the forecast missed by less than a typical weekly change. In statistics: MASE, the mean absolute scaled error.',
+  },
+  state: {
+    title: 'How we know each week',
+    text: "Reported: Vendor Central reported the week. No sales reported, counted as zero: the week's report arrived with no sales for this product. Not known: either the week's report didn't arrive, or the product had no sales for long enough that a zero can't be assumed.",
+  },
+  fresh: { title: 'About this forecast', text: '' },
+  cogs: {
+    title: 'Amazon wholesale cost',
+    text: "What Amazon pays the vendor for the units it shipped. From the vendor's side it is revenue received. It is not the vendor's own cost of goods.",
+  },
+  measures: {
+    title: 'The four measures',
+    text: "Units ordered (demand): units customers ordered. Units shipped: units Amazon shipped to customers. Shipped revenue: revenue from the units Amazon shipped, net of returns, as the vendor reports it. Amazon wholesale cost: what Amazon pays the vendor for the units it shipped. It is not the vendor's own cost of goods.",
+  },
+} as const;
+
+/** Render one server figure as a bare number: a grouped count, or money with its code. */
+export function figureNumber(shown: Figure, target: Target, currencyCode: string | null): string {
   if (moneyTargets.includes(target)) {
     if (currencyCode === null) throw new TypeError('A money figure needs its currency.');
     return formatCurrency(shown.display, currencyCode);
   }
-  return `${formatCount(shown.display)} ${unitWords[target as 'units_ordered' | 'units_shipped']}`;
+  return formatCount(shown.display);
 }
+/** Render one server figure for a tile or sentence: money with its code, units as "{n} units". */
+export function figureText(shown: Figure, target: Target, currencyCode: string | null): string {
+  const number = figureNumber(shown, target, currencyCode);
+  return moneyTargets.includes(target) ? number : `${number} units`;
+}
+
+function viewKey(viewWeeks: number): ViewKey {
+  const key = String(viewWeeks);
+  if (!(views as readonly string[]).includes(key)) throw new RangeError(`No served view of ${viewWeeks} weeks.`);
+  return key as ViewKey;
+}
+function windowStart(horizon: Horizon): string {
+  const first = horizon.weeks[0];
+  if (first === undefined) throw new RangeError('The horizon has no weeks.');
+  return formatIsoDate(first);
+}
+/** The product's name as a subject: the served title, or its ASIN when it has none (G-12). */
+export function productSubject(product: { readonly title: string | null; readonly asin: string }): string {
+  return product.title ?? product.asin;
+}
+
+/**
+ * The list's answer sentence (S1, G-12). Only an unfiltered page 1 answers: the template when
+ * its first row is rank 1 with a served ordered-units total for the chosen view, the count
+ * fallback otherwise. Page 2 or a filter shows none. The rank is by the default view, so the
+ * sentence names it, and it quotes the chosen view's served total.
+ */
+export function listAnswer(list: DemandForecastList, viewWeeks: number): Answer | null {
+  const horizon = list.horizon;
+  if (list.outcome !== 'complete' || horizon === null) return null;
+  if (list.query.status !== null || list.page !== 1) return null;
+  const start = windowStart(horizon);
+  const first = list.entries[0];
+  const total = first?.targets.units_ordered.p50_totals[viewKey(viewWeeks)] ?? null;
+  if (first !== undefined && first.rank === 1 && total !== null) {
+    return {
+      kind: 'answer',
+      text: `${productSubject(first)} leads the ${horizon.default_view_weeks}-week forecast: customers are likely to order ${formatCount(total.display)} units in the ${viewWeeks} weeks starting ${start}.`,
+    };
+  }
+  return {
+    kind: 'fallback',
+    text: list.item_count === null
+      ? `This forecast covers the ${viewWeeks} weeks starting ${start}.`
+      : `${plural(list.item_count, 'product', 'products')} in this forecast for the ${viewWeeks} weeks starting ${start}.`,
+  };
+}
+
+/** The product's answer sentence for one measure (L-ANSWER-DETAIL); none when that total isn't served. */
+export function detailAnswer(detail: DemandForecastDetail, target: Target, viewWeeks: number): Answer | null {
+  const row = detail.targets?.[target];
+  const horizon = detail.horizon;
+  if (row === undefined || horizon === null) return null;
+  const total = row.p50_totals[viewKey(viewWeeks)];
+  if (total === null) return null;
+  const subject = productSubject(detail);
+  const amount = figureNumber(total, target, row.currency_code);
+  const window = `in the ${viewWeeks} weeks starting ${windowStart(horizon)}.`;
+  const text = {
+    units_ordered: `Customers are likely to order ${amount} units of ${subject} ${window}`,
+    units_shipped: `Amazon is likely to ship ${amount} units of ${subject} ${window}`,
+    revenue_shipped: `Shipped revenue for ${subject} is likely to be ${amount} ${window}`,
+    cogs_shipped: `Amazon's wholesale cost for shipped units of ${subject} is likely to be ${amount} ${window}`,
+  }[target];
+  return { kind: 'answer', text };
+}
+
+/** Consecutive recent weeks with the same served state for one measure, in served order. */
+export interface WeekRun {
+  readonly state: WeekState;
+  readonly weeks: readonly RecentWeek[];
+  /** The run's dates without the year ("Aug 9–Sep 13"). */
+  readonly range: string;
+}
+export function weekRuns(recentWeeks: readonly RecentWeek[], target: Target): WeekRun[] {
+  const runs: { state: WeekState; weeks: RecentWeek[] }[] = [];
+  for (const week of recentWeeks) {
+    const state = week.targets[target].state;
+    const last = runs[runs.length - 1];
+    if (last !== undefined && last.state === state) last.weeks.push(week);
+    else runs.push({ state, weeks: [week] });
+  }
+  return runs.map((run) => {
+    const first = run.weeks[0]?.week_start ?? '';
+    const end = run.weeks[run.weeks.length - 1]?.week_start ?? first;
+    return { state: run.state, weeks: run.weeks, range: formatIsoDateRangeShort(first, end) };
+  });
+}
+
+/** The current complete list's product count, or null before one has loaded (G-08). */
+export function itemCountOf(list: DemandForecastList | null): number | null {
+  return list !== null && list.outcome === 'complete' ? list.item_count : null;
+}
+/** The search hint's example ASIN, kept with the generation it came from (G-08). */
+export interface ExampleAsin { readonly generationId: string; readonly asin: string }
+/** Only an unfiltered page 1 with entries supplies the example: its first row's ASIN. */
+export function exampleAsinFrom(list: DemandForecastList): ExampleAsin | null {
+  const first = list.entries[0];
+  if (list.outcome !== 'complete' || list.provenance === null || first === undefined) return null;
+  if (list.query.status !== null || list.page !== 1) return null;
+  return { generationId: list.provenance.generation_id, asin: first.asin };
+}
+/** The example ASIN, shown only while the page shows the generation it came from. */
+export function currentExampleAsin(example: ExampleAsin | null, generationId: string | null): string | null {
+  return example !== null && generationId !== null && example.generationId === generationId ? example.asin : null;
+}
+/** The inline search error (E-ASIN); without an example while none is current. */
+export function asinErrorText(example: string | null): string {
+  return example === null ? 'An ASIN is 10 letters or digits.' : `An ASIN is 10 letters or digits, for example ${example}.`;
+}
+
+/** The seeded assistant questions (S10): each names the ASIN and dates, so no page context is needed. */
+export const askQuestions = {
+  list: (horizon: Horizon) => `Which products have the highest forecast demand in the ${horizon.default_view_weeks} weeks starting ${windowStart(horizon)}?`,
+  product: (asin: string) => `Summarize the demand forecast for ${asin} beside its recent weeks.`,
+  range: (asin: string, viewWeeks: number, horizon: Horizon) => `Explain the low, likely and high demand forecast for ${asin} in the ${viewWeeks} weeks starting ${windowStart(horizon)}.`,
+  why: (asin: string) => `Why does ${asin} have no demand forecast?`,
+} as const;

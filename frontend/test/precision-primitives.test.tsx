@@ -26,6 +26,8 @@ import {
   formatIsoDate,
   formatIsoDateRange,
   formatIsoInstant,
+  formatIsoInstantDate,
+  formatIsoInstantShort,
   formatPercent,
   formatRatePercent,
   formatRatio,
@@ -156,7 +158,14 @@ test('formatIsoInstant prints a whole-second UTC instant and refuses anything el
     '',
   ]) {
     assert.throws(() => formatIsoInstant(value), RangeError, value);
+    assert.throws(() => formatIsoInstantShort(value), RangeError, value);
+    assert.throws(() => formatIsoInstantDate(value), RangeError, value);
   }
+});
+test('formatIsoInstantShort and formatIsoInstantDate reformat the served UTC instant without a time-zone change', () => {
+  assert.equal(formatIsoInstantShort('2026-11-21T13:00:00Z'), 'Nov 21, 2026, 13:00 UTC');
+  assert.equal(formatIsoInstantShort('2028-02-29T00:05:59Z'), 'Feb 29, 2028, 00:05 UTC');
+  assert.equal(formatIsoInstantDate('2026-11-21T23:59:59Z'), 'Nov 21, 2026');
 });
 
 test('semantic matrix retains exact row and column associations', () => {

@@ -135,8 +135,7 @@ export function formatIsoDate(value: string): string {
   return `${parts.monthLabel} ${parts.displayDay}, ${parts.year}`;
 }
 
-/** Render an RFC 3339 whole-second UTC instant as `YYYY-MM-DD HH:MM:SS UTC`, refusing anything else. */
-export function formatIsoInstant(value: string): string {
+function instantParts(value: string): { readonly date: DateParts; readonly hours: string; readonly minutes: string; readonly seconds: string } {
   const match = ISO_INSTANT.exec(value);
   const datePart = match?.[1];
   const hours = match?.[2];
@@ -147,8 +146,24 @@ export function formatIsoInstant(value: string): string {
     throw new RangeError(`Expected an RFC 3339 UTC instant, received ${JSON.stringify(value)}.`);
   }
   // Validates the calendar date (month length, leap years) without a runtime clock or locale.
-  dateParts(datePart);
-  return `${datePart} ${hours}:${minutes}:${seconds} UTC`;
+  return { date: dateParts(datePart), hours, minutes, seconds };
+}
+
+/** Render an RFC 3339 whole-second UTC instant as `YYYY-MM-DD HH:MM:SS UTC`, refusing anything else. */
+export function formatIsoInstant(value: string): string {
+  const parts = instantParts(value);
+  return `${parts.date.source} ${parts.hours}:${parts.minutes}:${parts.seconds} UTC`;
+}
+
+/** The same instant in the page's date style, to the minute: "Nov 21, 2026, 13:00 UTC". No time-zone change. */
+export function formatIsoInstantShort(value: string): string {
+  const parts = instantParts(value);
+  return `${formatIsoDate(parts.date.source)}, ${parts.hours}:${parts.minutes} UTC`;
+}
+
+/** The instant's UTC calendar date in the page's date style: "Nov 21, 2026". */
+export function formatIsoInstantDate(value: string): string {
+  return formatIsoDate(instantParts(value).date.source);
 }
 
 /** Render an inclusive ISO date range with an unambiguous, compact label. */

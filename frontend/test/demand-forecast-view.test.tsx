@@ -53,7 +53,7 @@ test('the ready list shows the stored totals, the server views and the status pa
   assert.ok(screen.getByText(/Held by a quality check, 2026-11-08 14:05:09 UTC/));
   await userEvent.click(screen.getByRole('radio', { name: '4 weeks' }));
   assert.ok(screen.getByRole('table', { name: /next 4 weeks/ }));
-  assert.ok(screen.getAllByText('80 units ordered').length > 0);
+  assert.ok(screen.getAllByText('80 units').length > 0);
 });
 
 test('a filter refetches page 1 of that status and an empty one says so', async () => {
@@ -214,12 +214,12 @@ test('recent history names each week as observed, inferred zero or not known', a
   });
   render(<DemandForecastView/>);
   await userEvent.click(await screen.findByRole('button', { name: 'B0FIXTUR01' }));
-  const table = await screen.findByRole('table', { name: 'Demand (ordered units), recent history by week' });
+  const table = await screen.findByRole('table', { name: 'Units ordered (demand), recent history by week' });
   const rows = within(table).getAllByRole('row').slice(1, 4).map((row) => Array.from(row.children, (cell) => cell.textContent));
   assert.deepEqual(rows, [
-    ['Aug 9, 2026', '0 units ordered', 'No sales reported, counted as zero', 'Not known'],
-    ['Aug 16, 2026', 'Not known', "Not known: the week's sales data is missing", 'Not known'],
-    ['Aug 23, 2026', '9 units ordered', 'Reported by Vendor Central', 'No'],
+    ['Aug 9, 2026', '0 units', 'No sales reported, counted as zero', 'Not known'],
+    ['Aug 16, 2026', 'Not known', 'Not known', 'Not known'],
+    ['Aug 23, 2026', '9 units', 'Reported', 'No'],
   ]);
   assert.equal(within(table).queryByText('Observed'), null);
 });

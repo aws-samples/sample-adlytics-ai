@@ -15,6 +15,7 @@ import {
   fetchDemandForecastDetail,
   fetchDemandForecastList,
   fetchDemandForecastStatus,
+  figureNumber,
   figureText,
   freshnessCauseCopy,
   holdCopy,
@@ -23,8 +24,14 @@ import {
   parseDemandForecastList,
   parseDemandForecastRefusal,
   parseDemandForecastStatus,
+  maseGapCopy,
+  maseGaps,
+  reasonNextStepCopy,
+  reasonSentenceCopy,
   runOutcomeCopy,
   skipReasonCopy,
+  weekStateCopy,
+  weekStates,
 } from '../lib/demand-forecast';
 import detail from './fixtures/demand-forecast-detail.json';
 import notForecast from './fixtures/demand-forecast-detail-not-forecast.json';
@@ -74,22 +81,28 @@ test('a money figure must carry two places and a unit figure none', () => {
 });
 
 test('figureText renders the server display: units grouped with their word, money with its code', () => {
-  assert.equal(figureText({ value: '1234.5000', display: '1235' }, 'units_ordered', null), '1,235 units ordered');
-  assert.equal(figureText({ value: '-2.5000', display: '-3' }, 'units_shipped', null), '-3 units shipped');
+  assert.equal(figureText({ value: '1234.5000', display: '1235' }, 'units_ordered', null), '1,235 units');
+  assert.equal(figureText({ value: '-2.5000', display: '-3' }, 'units_shipped', null), '-3 units');
+  assert.equal(figureNumber({ value: '1234.5000', display: '1235' }, 'units_ordered', null), '1,235');
+  assert.equal(figureNumber({ value: '16048.5000', display: '16048.50' }, 'revenue_shipped', 'USD'), '16,048.50 USD');
   assert.equal(figureText({ value: '12.3000', display: '12.30' }, 'revenue_shipped', 'USD'), '12.30 USD');
   assert.equal(figureText({ value: '-1234.5000', display: '-1234.50' }, 'cogs_shipped', 'USD'), '-1,234.50 USD');
   assert.throws(() => figureText({ value: '12.3000', display: '12.30' }, 'revenue_shipped', null), /currency/);
 });
 
 test('every copy map has exactly the generated enum keys', () => {
-  const maps: Array<[string, Record<string, string>]> = [
+  const maps: Array<[string, Record<string, unknown>]> = [
     ['SkipReason', skipReasonCopy], ['ModelName', modelCopy], ['RunOutcome', runOutcomeCopy],
     ['FailureFamily', failureFamilyCopy], ['FreshnessCause', freshnessCauseCopy],
-    ['AccuracyClass', accuracyClassCopy], ['Hold', holdCopy],
+    ['AccuracyClass', accuracyClassCopy], ['Hold', holdCopy], ['SkipReason', reasonSentenceCopy],
+    ['SkipReason', reasonNextStepCopy],
   ];
   for (const [name, map] of maps) {
     assert.deepEqual(Object.keys(map).sort(), [...(generated.enums[name] ?? [])].sort(), name);
   }
+  // Week states and MASE gaps are decoder enums with no generated list: pin them to the decoder's.
+  assert.deepEqual(Object.keys(weekStateCopy).sort(), [...weekStates].sort());
+  assert.deepEqual(Object.keys(maseGapCopy).sort(), [...maseGaps].sort());
 });
 
 function respond(status: number, body: unknown, seen: string[] = []): void {
