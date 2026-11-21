@@ -204,7 +204,7 @@ test('the header pop-ups and the stacked-form caption pop-ups are distinct contr
   const { container } = render(<DemandForecastView/>);
   const table = await screen.findByRole('table', { name: LIST_NAME });
   const head = table.querySelector('thead');
-  const tips = table.querySelector('caption .stack-tips');
+  const tips = container.querySelector('.df-table-tips .stack-tips');
   assert.ok(head && tips);
   const names = (root: Element) => [...root.querySelectorAll('button.infotip-btn')].map((button) => button.getAttribute('aria-label'));
   assert.deepEqual(names(head), ['About rank', 'About Amazon wholesale cost', 'About weeks shipped less than ordered']);

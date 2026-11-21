@@ -328,25 +328,25 @@ function ProductRegion({ asin, detail, list, onBack, onRetry, onRetryStatus, onV
 /** S7: a product opening reserves its tiles, chart and table. */
 function ProductSkeleton() {
   return (
-    <div className="df-skeleton" aria-busy="true" aria-label="Loading the product forecast">
+    <section className="df-skeleton" aria-busy="true" aria-label="Loading the product forecast">
       <div className="tiles detail-tiles"><span className="skel card"/><span className="skel card"/><span className="skel card"/><span className="skel card"/></div>
       <span className="skel h-chart"/>
       <span className="skel table"/>
-    </div>
+    </section>
   );
 }
 
 /** S7: the list's final layout in `.skel` shapes, under one busy region. */
 function ListSkeleton() {
   return (
-    <div className="df-skeleton" aria-busy="true" aria-label="Loading the forecast">
+    <section className="df-skeleton" aria-busy="true" aria-label="Loading the forecast">
       <div className="band df-scope">
         <div className="df-pills"><span className="skel h-label"/><span className="skel h-label"/><span className="skel h-label"/></div>
         <span className="skel df-skel-seg"/>
       </div>
       <span className="skel h-line"/>
       <span className="skel table"/>
-    </div>
+    </section>
   );
 }
 
@@ -444,19 +444,22 @@ function ForecastTable({ list, onSelect, onShowAll, viewWeeks }: {
   const rank = INFO.rank(horizon.default_view_weeks, first);
   const cogsTip = (className?: string) => <InfoTip title={INFO.cogs.title} label="About Amazon wholesale cost" className={className}>{INFO.cogs.text}</InfoTip>;
   const label = (target: Target) => (moneyTargets.includes(target) && singleCode !== null ? `${COLUMN[target]} ${singleCode}` : COLUMN[target]);
-  return (
+  // The pop-ups sit just above the table, never in its caption: a table holds only rows and
+  // headers (axe aria-required-children). The stacked form's copies of the header pop-ups live
+  // here too, because its clipped header row holds no focusable control (G-04).
+  return (<>
+    <p className="df-table-tips">
+      <span>Likely totals<InfoTip title={INFO.total.title}>{INFO.total.text}</InfoTip></span>
+      <span className="stack-tips">
+        <span>Rank<InfoTip title={rank.title}>{rank.text}</InfoTip></span>
+        <span>Amazon wholesale cost{cogsTip()}</span>
+        <span>Weeks shipped less than ordered<InfoTip title={INFO.short.title}>{INFO.short.text}</InfoTip></span>
+      </span>
+    </p>
     <DataTable
       className="df-list"
       title={`Likely totals, ${viewWeeks} weeks starting ${formatIsoDate(first)}`}
-      note={<>
-        <InfoTip title={INFO.total.title}>{INFO.total.text}</InfoTip>
-        {viewWeeks === horizon.default_view_weeks ? null : <span className="df-line">Rows stay ordered by {horizon.default_view_weeks}-week likely demand.</span>}
-        <span className="stack-tips">
-          <span>Rank<InfoTip title={rank.title}>{rank.text}</InfoTip></span>
-          <span>Amazon wholesale cost{cogsTip()}</span>
-          <span>Weeks shipped less than ordered<InfoTip title={INFO.short.title}>{INFO.short.text}</InfoTip></span>
-        </span>
-      </>}
+      note={viewWeeks === horizon.default_view_weeks ? undefined : `Rows stay ordered by ${horizon.default_view_weeks}-week likely demand.`}
     >
       <DtHead>
         <DtRow>
@@ -508,7 +511,7 @@ function ForecastTable({ list, onSelect, onShowAll, viewWeeks }: {
         })}
       </DtBody>
     </DataTable>
-  );
+  </>);
 }
 
 /** P1-9 (L-PAGER). */

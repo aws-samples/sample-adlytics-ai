@@ -1503,7 +1503,10 @@ textarea.prompt-text:focus-visible { outline: 2px solid var(--ai); outline-offse
 .demand-forecast table.dt thead th { white-space: normal; }
 .demand-forecast table.dt .row-pick button { white-space: normal; }
 .demand-forecast table.dt td.df-nofc, .demand-forecast table.dt td.df-empty { color: var(--df-muted); }
-.demand-forecast .stack-tips { display: none; }
+.demand-forecast .df-table-tips { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin-top: 14px; font-size: 12px; color: var(--text-dim); }
+.demand-forecast .df-table-tips > span { display: inline-flex; align-items: center; }
+.demand-forecast .df-table-tips > .stack-tips { display: none; }
+.demand-forecast .df-table-tips + .dt-wrap { margin-top: 6px; }
 .demand-forecast .df-pager { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px; margin-top: 12px; font-size: 13px; color: var(--text-dim); }
 .demand-forecast details.df-method { margin-top: 16px; font-size: 13px; color: var(--text); }
 .demand-forecast details.df-method summary { cursor: pointer; color: var(--accent); font-weight: 600; }
@@ -1528,8 +1531,9 @@ textarea.prompt-text:focus-visible { outline: 2px solid var(--ai); outline-offse
   .demand-forecast .dt-wrap.stackable table.dt td.df-merged, .demand-forecast .dt-wrap.stackable table.dt td.df-empty { display: block; text-align: left; }
   .demand-forecast .dt-wrap.stackable table.dt td.df-merged::before, .demand-forecast .dt-wrap.stackable table.dt td.df-empty::before { content: none; }
   .demand-forecast .df-list thead .infotip-btn { display: none; }
-  .demand-forecast .stack-tips { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 4px; }
+  .demand-forecast .df-table-tips > .stack-tips { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; }
   .demand-forecast .stack-tips > span { display: inline-flex; align-items: center; }
+  .demand-forecast .df-table-tips + .dt-wrap.stackable { margin-top: 6px; }
 }
 @container main (max-width: 559px) {
   .demand-forecast .df-tools { flex-direction: column; align-items: stretch; }

@@ -204,10 +204,8 @@ function Forecast({ detail, horizon, measure, row, viewWeeks }: {
         <button type="button" className="ask-chip" onClick={() => seedAssistantQuestion(askQuestions.product(detail.asin))}>Ask about this product</button>
         <button type="button" className="ask-chip" onClick={() => seedAssistantQuestion(askQuestions.range(detail.asin, viewWeeks, horizon))}>Explain the range</button>
       </p>
-      <DataTable
-        title={`Forecast, ${viewWeeks} weeks starting ${formatIsoDate(first)}, ${measureLowerCopy[measure]}`}
-        note={<>Low, likely and high for each week<InfoTip title={INFO.range.title}>{INFO.range.text}</InfoTip></>}
-      >
+      <p className="df-table-tips"><span>Low, likely and high for each week<InfoTip title={INFO.range.title}>{INFO.range.text}</InfoTip></span></p>
+      <DataTable title={`Forecast, ${viewWeeks} weeks starting ${formatIsoDate(first)}, ${measureLowerCopy[measure]}`}>
         <DtHead><DtRow><DtColumn>Week starting</DtColumn><DtColumn>Low</DtColumn><DtColumn>Likely</DtColumn><DtColumn>High</DtColumn></DtRow></DtHead>
         <DtBody>
           {weeks.map((week, index) => {
@@ -258,10 +256,8 @@ function RecentWeeks({ currencyCode, measure, recent }: {
   return (
     <details className="df-method df-recent">
       <summary>Recent weeks, with reporting status</summary>
-      <DataTable
-        title={`Recent weeks, ${measureLowerCopy[measure]}`}
-        note={<>How we know each week<InfoTip title={INFO.state.title}>{INFO.state.text}</InfoTip></>}
-      >
+      <p className="df-table-tips"><span>How we know each week<InfoTip title={INFO.state.title}>{INFO.state.text}</InfoTip></span></p>
+      <DataTable title={`Recent weeks, ${measureLowerCopy[measure]}`}>
         <DtHead><DtRow><DtColumn>Week starting</DtColumn><DtColumn>{measureCopy[measure]}</DtColumn><DtColumn>How we know</DtColumn><DtColumn>Shipped less than ordered</DtColumn></DtRow></DtHead>
         <DtBody>
           {recent.map((week) => {
