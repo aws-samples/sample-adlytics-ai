@@ -13,6 +13,7 @@ import {
   measureCopy,
   measureLowerCopy,
   modelCopy,
+  moneyTargets,
   plural,
   productSubject,
   reasonNextStep,
@@ -290,6 +291,8 @@ function Withheld({ detail, measure, status }: {
   const next = status?.next_new_input_check_at ?? null;
   const recent = detail.recent_weeks ?? [];
   const code = targets[measure].currency_code;
+  // Mixed-currency weeks carry no single code, so their amounts are not shown (GPT-01).
+  const amounts = !moneyTargets.includes(measure) || (reason !== 'CURRENCY_MIXED' && code !== null);
   return (
     <>
       <StateCallout
@@ -316,7 +319,7 @@ function Withheld({ detail, measure, status }: {
                   {weekStateCopy[run.state]}
                   {run.state === 'unknown' ? <InfoTip title={INFO.state.title} className="end">{INFO.state.text}</InfoTip> : null}
                 </span>
-                {run.state === 'observed' ? (
+                {run.state === 'observed' && amounts ? (
                   <span className="df-run-values">
                     {run.weeks.map((week) => {
                       const value = week.targets[measure].value;

@@ -206,6 +206,32 @@ test('a product with no forecast shows one callout, the measure switch and the w
   assert.ok(screen.getByText('Aug 9–Nov 1'));
 });
 
+test('a single-currency withheld money measure shows its weekly amounts with the code', async () => {
+  serve(forecastRoutes(notForecast));
+  page();
+  await userEvent.click(await screen.findByRole('button', { name: 'Fictional product 3' }));
+  await userEvent.click(within(await screen.findByRole('group', { name: 'Measure' })).getByRole('button', { name: 'Shipped revenue' }));
+  const strip = screen.getByRole('heading', { name: 'Recent weeks, shipped revenue' }).closest('section');
+  assert.ok(strip);
+  assert.ok(within(strip).getByText('Nov 1: 9.00 USD'));
+});
+test('a mixed-currency product loads and shows no money amount under one currency label', async () => {
+  const mixed = structuredClone(notForecast);
+  mixed.targets.revenue_shipped = { ...mixed.targets.revenue_shipped, withheld_reason: 'CURRENCY_MIXED', currency_code: null } as never;
+  mixed.targets.cogs_shipped = { ...mixed.targets.cogs_shipped, withheld_reason: 'CURRENCY_MIXED', currency_code: 'USD' } as never;
+  serve(forecastRoutes(mixed));
+  page();
+  await userEvent.click(await screen.findByRole('button', { name: 'Fictional product 3' }));
+  const measures = within(await screen.findByRole('group', { name: 'Measure' }));
+  for (const [button, name] of [['Shipped revenue', 'shipped revenue'], ['Amazon wholesale cost', 'Amazon wholesale cost']] as const) {
+    await userEvent.click(measures.getByRole('button', { name: button }));
+    assert.ok(screen.getByText(`This product's ${name} was reported in more than one currency, so it can't be added up week to week.`));
+    const strip = screen.getByRole('heading', { name: `Recent weeks, ${name}` }).closest('section');
+    assert.ok(strip);
+    assert.ok(within(strip).getByText('Aug 9–Nov 1'));
+    assert.equal(within(strip).queryByText(/USD|\d\.\d\d/), null);
+  }
+});
 test('with status failed, the next step drops its date and the pop-up offers Try again', async () => {
   serve(forecastRoutes(notForecast, () => [503, storeDown]));
   page();

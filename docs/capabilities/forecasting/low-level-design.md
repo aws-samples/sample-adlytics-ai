@@ -261,6 +261,8 @@ decisions D1 to D7 of the 2026-11-20 design review (approved 2026-11-21) shape i
 **Copy and binding rules.**
 - Every figure renders its server `display`: money through `formatCurrency(display, currency_code)`,
   or `formatCanonicalDecimal` under a one-currency header, and units through `formatCount(display)`.
+  A withheld money measure with `CURRENCY_MIXED` or no `currency_code` shows its week strip's dates
+  and reporting states but no amounts, since no single currency labels them.
   The browser never rounds, sums or ranks; it picks served items by index, groups weeks by served
   state, places chart points and formats dates.
 - No count the API doesn't serve: the week strip is headed "Recent weeks, {measure}", never a
