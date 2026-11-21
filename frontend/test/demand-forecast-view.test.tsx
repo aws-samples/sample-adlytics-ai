@@ -165,7 +165,7 @@ test('a server ASIN_INVALID shows the same inline error and returns focus to the
   await userEvent.type(input, 'B0FIXTUR0X');
   await userEvent.click(screen.getByRole('button', { name: 'Find' }));
   assert.ok(await screen.findByText('An ASIN is 10 letters or digits, for example B0FIXTUR02.'));
-  await waitFor(() => assert.equal(document.activeElement, screen.getByRole('textbox', { name: 'Find a product by ASIN' })));
+  await waitFor(() => assert.ok(document.activeElement === screen.getByRole('textbox', { name: 'Find a product by ASIN' })));
 });
 
 test('the example ASIN is dropped on Try again and shown again only from the new generation page 1 (G-08)', async () => {
@@ -313,7 +313,7 @@ test('a publish between the list and the detail renders neither until the latest
   published = true;
   const before = seen.length;
   await userEvent.click(screen.getByRole('button', { name: 'Show the latest forecast' }));
-  await screen.findByRole('table', { name: LIST_NAME });
+  await screen.findByText('ASIN B0FIXTUR01');
   assert.deepEqual(seen.slice(before).sort(), [
     '/api/demand-forecast',
     '/api/demand-forecast/status',

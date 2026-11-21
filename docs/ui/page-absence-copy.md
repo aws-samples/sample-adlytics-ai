@@ -187,6 +187,11 @@ persistent status region announces it ([temporal contract §6](temporal-control-
 - Trigger: the list is served as `unavailable`: no forecast generation has been published. `{next}` is the status's `next_new_input_check_at`; while status is loading or failed, the sentence naming it is left out and "after it" reads "after the next weekly update".
 - Title: "Demand forecast"
 - Text: "No forecast has been made yet. Forecasts are made from your Vendor Central sales history at a weekly update. The next update that can use new sales data is {next}. If no forecast appears after it, ask your administrator whether Vendor Central sales reports are reaching Adlytics."
+### ABS-DF-2
+- Surface: Demand forecast, product view
+- Trigger: a product read is served as `not_in_forecast`. `{asin}` is the served ASIN and `{item_count}` the current list's product count; before the list has loaded, the text reads "This ASIN isn't in this forecast. Check the ASIN, or choose a product from the list."
+- Title: "{asin} isn't in this forecast"
+- Text: "This forecast covers {item_count} products with Vendor Central sales history. Check the ASIN, or choose a product from the list."
 ### ABS-DF-3
 - Surface: Demand forecast, list or product
 - Trigger: the read failed: a refusal such as `FORECAST_STORE_UNAVAILABLE`, a 500, or a body that didn't decode. It renders in the shared page error with Try again; no refusal code is shown.

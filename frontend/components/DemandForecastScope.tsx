@@ -22,6 +22,18 @@ import { StateCallout } from './StatePanels';
  * banner. Every date is a served one; nothing here computes a figure.
  */
 
+/** E-READ (ABS-DF-3). */
+export const DEMAND_FORECAST_READ_FAILED_TEXT = "The forecast can't be loaded right now. Try again in a minute. If it keeps failing, tell your administrator.";
+/** E-NOGEN's title (ABS-DF-1): the page's own name. */
+export const DEMAND_FORECAST_NO_FORECAST_TITLE = 'Demand forecast';
+/** E-NOGEN (ABS-DF-1); `next` is the next new-data update, or null while status isn't ready. */
+export function noForecastYetText(next: string | null): string {
+  const lead = 'No forecast has been made yet. Forecasts are made from your Vendor Central sales history at a weekly update.';
+  return next === null
+    ? `${lead} If no forecast appears after the next weekly update, ask your administrator whether Vendor Central sales reports are reaching Adlytics.`
+    : `${lead} The next update that can use new sales data is ${next}. If no forecast appears after it, ask your administrator whether Vendor Central sales reports are reaching Adlytics.`;
+}
+
 export type Loaded<T> = { readonly state: 'loading' } | { readonly state: 'ready'; readonly value: T } | { readonly state: 'failed' };
 
 export function ScopeCard({ children }: { readonly children: ReactNode }) {

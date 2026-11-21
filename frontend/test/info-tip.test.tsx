@@ -31,7 +31,7 @@ test('Enter and Space toggle the panel and set aria-expanded; Escape closes it a
   assert.equal(button.getAttribute('aria-expanded'), 'true');
   await userEvent.keyboard('{Escape}');
   assert.equal(button.getAttribute('aria-expanded'), 'false');
-  assert.equal(document.activeElement, button);
+  assert.ok(document.activeElement === button);
 });
 
 test('hover alone never opens it', async () => {

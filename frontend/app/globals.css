@@ -1538,3 +1538,24 @@ textarea.prompt-text:focus-visible { outline: 2px solid var(--ai); outline-offse
   .demand-forecast .df-search .text-input { flex: 1 1 auto; width: auto; min-width: 0; }
   .demand-forecast .pill { white-space: normal; }
 }
+.demand-forecast .df-asin { font-size: 13px; color: var(--df-muted); margin: 0 0 10px; }
+.demand-forecast .df-measures { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.demand-forecast .df-measures .seg { flex-wrap: wrap; max-width: 100%; }
+.demand-forecast .detail-tiles .tile .v { font-size: 19px; }
+.demand-forecast .df-h { font-size: 14px; font-weight: 650; margin-top: 20px; }
+.demand-forecast .df-chart-block .legend { margin-top: 4px; }
+.demand-forecast .df-recent summary { margin-top: 4px; }
+.demand-forecast .df-strip { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.demand-forecast .df-run { display: grid; grid-template-columns: minmax(8rem, auto) minmax(0, 1fr); gap: 2px 12px; align-items: baseline; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); font-size: 13px; }
+.demand-forecast .df-run-dates { font-weight: 650; font-variant-numeric: tabular-nums; }
+.demand-forecast .df-run-state { color: var(--text); display: inline-flex; align-items: center; flex-wrap: wrap; }
+.demand-forecast .df-run.inferred_zero .df-run-state, .demand-forecast .df-run.unknown .df-run-state { color: var(--df-muted); }
+.demand-forecast .df-run-values { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 2px 14px; color: var(--df-muted); font-variant-numeric: tabular-nums; }
+.demand-forecast .df-skeleton .detail-tiles .skel.card { margin-top: 0; height: 110px; }
+.demand-forecast .df-skeleton .skel.h-chart { height: 200px; margin-top: 18px; }
+.demand-forecast .df-skeleton .skel.table { margin-top: 18px; }
+.demand-forecast .callout .acts .ask-chip { margin-top: 2px; }
+@container main (max-width: 559px) {
+  .demand-forecast .df-measures .seg { display: flex; width: 100%; }
+  .demand-forecast .df-run { grid-template-columns: minmax(0, 1fr); }
+}

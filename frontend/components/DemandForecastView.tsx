@@ -11,6 +11,7 @@ import {
   fetchDemandForecastDetail,
   fetchDemandForecastList,
   fetchDemandForecastStatus,
+  itemCountOf,
   filterTargetCopy,
   INFO,
   listAnswer,
@@ -32,16 +33,29 @@ import {
   type Target,
   type ViewKey,
 } from '@/lib/demand-forecast';
+import { useOpenEntity } from './AppShell';
 import { AnswerSentence } from './AnswerSentence';
 import { seedAssistantQuestion } from './ChatPanel';
 import { DataTable, DtBody, DtCell, DtColumn, DtHead, DtRow, DtRowHeader } from './DataTable';
 import { DemandForecastAsinDetail } from './DemandForecastAsinDetail';
-import { FreshnessPill, ScopeCard, StaleBanner, WeekControl, readyStatus, type Loaded } from './DemandForecastScope';
+import { PAGE_HEADING_ID } from './Dialog';
+import {
+  DEMAND_FORECAST_NO_FORECAST_TITLE,
+  DEMAND_FORECAST_READ_FAILED_TEXT,
+  FreshnessPill,
+  noForecastYetText,
+  ScopeCard,
+  StaleBanner,
+  WeekControl,
+  readyStatus,
+  type Loaded,
+} from './DemandForecastScope';
 import { InfoTip } from './InfoTip';
 import { PageAbsence } from './PageAbsence';
 import { PageError, StateCallout } from './StatePanels';
 
 export type { Loaded } from './DemandForecastScope';
+export { DEMAND_FORECAST_NO_FORECAST_TITLE, DEMAND_FORECAST_READ_FAILED_TEXT, noForecastYetText } from './DemandForecastScope';
 
 /**
  * The Demand forecast tab (ADR-163; forecasting LLD "Demand forecast page"). The shell draws the
@@ -55,17 +69,6 @@ export type { Loaded } from './DemandForecastScope';
 
 interface Keyed<T> { readonly key: string; readonly loaded: Loaded<T> }
 
-/** E-READ (ABS-DF-3). */
-export const DEMAND_FORECAST_READ_FAILED_TEXT = "The forecast can't be loaded right now. Try again in a minute. If it keeps failing, tell your administrator.";
-/** E-NOGEN's title (ABS-DF-1): the page's own name. */
-export const DEMAND_FORECAST_NO_FORECAST_TITLE = 'Demand forecast';
-/** E-NOGEN (ABS-DF-1); `next` is the next new-data update, or null while status isn't ready. */
-export function noForecastYetText(next: string | null): string {
-  const lead = 'No forecast has been made yet. Forecasts are made from your Vendor Central sales history at a weekly update.';
-  return next === null
-    ? `${lead} If no forecast appears after the next weekly update, ask your administrator whether Vendor Central sales reports are reaching Adlytics.`
-    : `${lead} The next update that can use new sales data is ${next}. If no forecast appears after it, ask your administrator whether Vendor Central sales reports are reaching Adlytics.`;
-}
 const MIXED_TEXT = 'A newer forecast was published while this page loaded.';
 const PAGE1_TEXT = 'The forecast was updated, so the list is back on page 1.';
 const ASIN = /^[A-Za-z0-9]{10}$/;
@@ -195,9 +198,30 @@ export function DemandForecastView() {
   const horizon = ready?.horizon ?? null;
   const weeks = viewWeeks ?? horizon?.default_view_weeks ?? null;
 
+  const onBack = useCallback(() => {
+    setSelected(null);
+    setSearchInvalid(false);
+  }, []);
+  const complete = ready !== null && ready.outcome === 'complete' && ready.provenance !== null && horizon !== null && weeks !== null
+    ? ready
+    : null;
+
   let body;
   if (mixed) {
     body = <StateCallout live="alert" title="Demand forecast" actions={<button type="button" className="btn" onClick={retry}>Show the latest forecast</button>}>{MIXED_TEXT}</StateCallout>;
+  } else if (selected !== null && (list.state === 'loading' || complete !== null)) {
+    body = <ProductRegion
+      asin={selected}
+      detail={detail ?? { state: 'loading' }}
+      key={selected}
+      list={complete}
+      onBack={onBack}
+      onRetry={retry}
+      onRetryStatus={retryStatus}
+      onViewWeeks={setViewWeeks}
+      status={status}
+      viewWeeks={weeks}
+    />;
   } else if (list.state === 'loading') {
     body = <ListSkeleton/>;
   } else if (list.state === 'failed') {
@@ -236,12 +260,80 @@ export function DemandForecastView() {
       <ForecastTable list={ready} viewWeeks={weeks} onSelect={setSelected} onShowAll={() => onQuery({ status: null, page: 1 })}/>
       <Pager list={ready} onPage={(page) => onQuery({ status: query.status, page })}/>
       <ListMethod list={ready}/>
-      {detail?.state === 'loading' ? <span className="skel table" aria-busy="true" aria-label="Loading the product forecast"/> : null}
-      {detail?.state === 'failed' ? <PageError message={DEMAND_FORECAST_READ_FAILED_TEXT} onRetry={retry}/> : null}
-      {detail?.state === 'ready' && detail.value !== null ? <DemandForecastAsinDetail detail={detail.value} viewWeeks={weeks}/> : null}
     </>;
   }
   return <div className="page demand-forecast">{body}</div>;
+}
+
+/** Focus fell to the document because the control that held it left with the view. */
+function focusLost(): boolean {
+  return document.activeElement === null || document.activeElement === document.body;
+}
+/**
+ * G-09: opening a product focuses the h1 (the product's name) once the product region replaces
+ * the list; closing it returns focus to the row that opened it, or to the h1 when that row isn't
+ * on the page. Neither moves focus that is still on a control.
+ */
+function useForecastDetailFocus(asin: string): void {
+  useEffect(() => {
+    if (focusLost()) document.getElementById(PAGE_HEADING_ID)?.focus();
+    return () => {
+      window.requestAnimationFrame(() => {
+        if (!focusLost() && document.activeElement?.id !== PAGE_HEADING_ID) return;
+        const row = [...document.querySelectorAll<HTMLButtonElement>('button[data-forecast-row]')]
+          .find((button) => button.dataset.forecastRow === asin);
+        (row ?? document.getElementById(PAGE_HEADING_ID))?.focus();
+      });
+    };
+  }, [asin]);
+}
+
+/**
+ * The product in place of the list (S2 to S4). It publishes the product as the open entity, so the
+ * shell's h1 names it with Back, and shows its skeleton until both the detail and the current
+ * list are ready; the list supplies the measure default and the product count (same generation).
+ */
+function ProductRegion({ asin, detail, list, onBack, onRetry, onRetryStatus, onViewWeeks, status, viewWeeks }: {
+  readonly asin: string;
+  readonly detail: Loaded<DemandForecastDetail | null>;
+  readonly list: DemandForecastList | null;
+  readonly onBack: () => void;
+  readonly onRetry: () => void;
+  readonly onRetryStatus: () => void;
+  readonly onViewWeeks: (weeks: number) => void;
+  readonly status: Loaded<DemandForecastStatus>;
+  readonly viewWeeks: number | null;
+}) {
+  const shown = detail.state === 'ready' ? detail.value : null;
+  const listed = list?.entries.find((entry) => entry.asin === asin);
+  const name = shown === null
+    ? (listed === undefined ? asin : listed.title ?? 'Untitled product')
+    : shown.outcome === 'not_in_forecast' ? null : shown.title ?? 'Untitled product';
+  useOpenEntity(name, onBack, 'Back to Demand forecast');
+  useForecastDetailFocus(asin);
+  if (detail.state === 'failed') return <PageError message={DEMAND_FORECAST_READ_FAILED_TEXT} onRetry={onRetry}/>;
+  if (shown === null || list === null || viewWeeks === null) return <ProductSkeleton/>;
+  return <DemandForecastAsinDetail
+    detail={shown}
+    itemCount={itemCountOf(list)}
+    onBack={onBack}
+    onRetryStatus={onRetryStatus}
+    onViewWeeks={onViewWeeks}
+    status={status}
+    statusTarget={list.status_target}
+    viewWeeks={viewWeeks}
+  />;
+}
+
+/** S7: a product opening reserves its tiles, chart and table. */
+function ProductSkeleton() {
+  return (
+    <div className="df-skeleton" aria-busy="true" aria-label="Loading the product forecast">
+      <div className="tiles detail-tiles"><span className="skel card"/><span className="skel card"/><span className="skel card"/><span className="skel card"/></div>
+      <span className="skel h-chart"/>
+      <span className="skel table"/>
+    </div>
+  );
 }
 
 /** S7: the list's final layout in `.skel` shapes, under one busy region. */
