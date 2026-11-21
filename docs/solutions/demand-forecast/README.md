@@ -21,20 +21,20 @@ Every persona and view is listed in [who it is for](../../business-context.md#wh
 What it answers:
 
 - For each product and each of the next 13 weeks: ordered units, shipped units, shipped revenue and shipped cost of goods (COGS).
-- Each figure as a middle estimate (p50) with a p10 to p90 range, and its 4-, 8- or 13-week p50 total.
+- Each figure as a likely value with a low-to-high range (the 10th to 90th percentile forecasts), and its 4-, 8- or 13-week likely total.
 - How accurate the shown model was: how many of its test weeks fell inside the range.
 - Whether a product has a forecast, and if not, the reason it was withheld.
 - Whether the forecast is fresh, when the last forecast run ended and how, and when the next check runs.
 
 Where you see it:
 
-- **The Demand forecast tab in the Retail hub** (`/demand-forecast/`). Every product ranked by forecast demand with its totals for the chosen 4, 8 or 13 weeks, a filter by forecast status, a pager, and a search by exact ASIN. A product opens in place: each target's weekly range, its accuracy and its recent 13 weeks, each marked observed, inferred as zero or unknown.
+- **The Demand forecast tab in the Retail hub** (`/demand-forecast/`). A one-line answer naming the product that leads demand, then every product ranked by forecast demand with its totals for the chosen 4, 8 or 13 weeks, filter chips for the reasons that have products, a pager, and a search by exact ASIN. A freshness pill says whether the forecast is up to date, and its pop-up holds the update schedule. A product opens in place of the list, one measure at a time: its likely total, a chart of recent weeks and the forecast range, the dated weekly table, how it tested, and its recent weeks marked reported, counted as zero or not known. A product with no forecast says why and what to do next.
 - **In chat.** Four tools read the same stored figures: `forecast_list_asins` (the top page, or one product by its ASIN), `forecast_query_asins` (weekly ranges for one to five products), `forecast_summarize_asin` (one product beside its recent history) and `forecast_compare_asins` (two to five products side by side).
 - **Through the API.** `GET /api/demand-forecast` and `GET /api/demand-forecast/status`, open to any signed-in user ([read API](../../capabilities/forecasting/low-level-design.md#read-api)).
 
 What it won't do:
 
-- **Show a forecast that doesn't beat simpler methods.** Each product's forecast is backtested on its recent weeks against two simpler methods, SeasonalNaive and ETS. A product is shown only where Chronos-2 beats both; otherwise its forecast is withheld with a reason.
+- **Show a forecast that doesn't beat simpler methods.** Each product's forecast is backtested on its recent weeks against two simpler methods, SeasonalNaive and ETS. Chronos-2 is shown only where it beats both; otherwise the simpler method that tested best is shown. A product with no method that passed its checks has no forecast, and the page says why.
 - **Say what a change would do.** The forecast projects from past weekly sales and product page views. It isn't a plan, and it doesn't say what a change in ad spend or price would cause.
 - **Forecast ad-attributed purchases or revenue.** That is a separate forecast, proposed and not built ([What's coming next](../../../README.md#whats-coming-next)).
 - **Compute a figure at read time.** The page, the tools and the API serve only the figures the forecast run stored; the assistant never computes, totals or estimates a figure ([ADR-163](../../decisions/adr-163-serve-demand-forecasts-and-status-through-a-read-api.md)).
