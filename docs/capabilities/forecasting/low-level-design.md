@@ -240,8 +240,10 @@ decisions D1 to D7 of the 2026-11-20 design review (approved 2026-11-21) shape i
 5. **Evidence.** The ranked table: rank (by the default view, named in its header), product name
    and ASIN, units ordered, units shipped, shipped revenue and Amazon wholesale cost for the chosen
    view, and weeks shipped less than ordered of the last 13. A product with no forecast shows one
-   "No forecast: {reason}" cell and a dash for its short-shipped count. The list stacks below a
-   960 px page column, so it stacks at 1440 px with the assistant open. Then the pager and "How this
+   "No forecast: {reason}" cell and a dash for its short-shipped count. The page column on this page is
+   up to 1180 px, and `.demand-forecast` is its own `demand-forecast` size container: the list stacks
+   below 912 px of that container, so it is wide at 1440 px with the assistant closed and stacks
+   with it open. Then the pager and "How this
    forecast is made".
 6. **Product, in place of the list.** The product's name becomes the h1, with Back, and takes
    focus; Back restores the filter, page and weeks and focuses the row. A measure switch defaults to
@@ -261,6 +263,11 @@ decisions D1 to D7 of the 2026-11-20 design review (approved 2026-11-21) shape i
   or `formatCanonicalDecimal` under a one-currency header, and units through `formatCount(display)`.
   The browser never rounds, sums or ranks; it picks served items by index, groups weeks by served
   state, places chart points and formats dates.
+- No count the API doesn't serve: the week strip is headed "Recent weeks, {measure}", never a
+  number of weeks.
+- The "Weeks shipped less than ordered" pop-up says to review the history before a promotion when
+  deciding whether the product needs a supply check, and that it shows neither inventory nor that a
+  promotion is safe. It sets no threshold and classifies no product.
 - Low, likely and high replace p10, p50 and p90; statistical names appear only inside info pop-ups.
 - Every enum value has a plain-words entry; a test fails when a map's keys differ from the generated
   enum, so no internal code reaches the page. A failure is described by its family in words.

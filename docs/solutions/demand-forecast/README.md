@@ -2,7 +2,7 @@
 
 > **A customer deployment can't show a forecast yet.** It can't load the Vendor Central history the forecast needs until the connector in slice 4. Only the dev environment, with synthetic data, has that history. See [Status](#status).
 
-See how much each product will sell over the next 13 weeks, from its Vendor Central history, with a range around every week.
+See how much each product will sell in a dated 4-, 8- or 13-week window starting on the forecast's first week, from its Vendor Central history, with a range around every week.
 
 One of the [Adlytics AI solutions](../../../README.md#solutions). It deploys with the full sample, which is sample code and not production-ready: read [Cost](../../../README.md#cost) and [Security considerations](../../../README.md#security-considerations) first. It runs on the shared [platform](../platform/README.md) and reads the same Vendor Central data as [Retail health](../retail-health/README.md).
 
@@ -10,9 +10,9 @@ One of the [Adlytics AI solutions](../../../README.md#solutions). It deploys wit
 
 | Reader | Question | Decision it leads to |
 |---|---|---|
-| Brand or category manager | How much will each product sell over the next 13 weeks? | Which products to push, and what to raise with Amazon |
+| Brand or category manager | How much will each product sell in the 4, 8 or 13 weeks starting on the date shown? | Which products to push, and what to raise with Amazon |
 | Vendor or supply planner | How many units will Amazon order and ship, and how wide is the range? | How much stock to plan for Amazon's orders |
-| Finance or CMO | What shipped revenue and cost of goods do the next 13 weeks hold? | The revenue and margin outlook |
+| Finance or CMO | What shipped revenue and Amazon wholesale cost does the dated forecast window hold? | The outlook for Amazon's wholesale spend, which is the vendor's revenue from Amazon |
 
 Every persona and view is listed in [who it is for](../../business-context.md#who-it-is-for). The product is read-only: every decision is made in your own tools.
 
@@ -20,7 +20,7 @@ Every persona and view is listed in [who it is for](../../business-context.md#wh
 
 What it answers:
 
-- For each product and each of the next 13 weeks: ordered units, shipped units, shipped revenue and shipped cost of goods (COGS).
+- For each product and each week of a 13-week window starting on the served first week (for example "13 weeks starting Nov 8, 2026"): ordered units, shipped units, shipped revenue and Amazon wholesale cost, which is what Amazon pays the vendor for the units it shipped. Weeks of the window can already have passed when you read it.
 - Each figure as a likely value with a low-to-high range (the 10th to 90th percentile forecasts), and its 4-, 8- or 13-week likely total.
 - How accurate the shown model was: how many of its test weeks fell inside the range.
 - Whether a product has a forecast, and if not, the reason it was withheld.
@@ -54,7 +54,7 @@ As of 2026-11-19. Each slice ships on its own.
 
 | Data | What it gives the forecast | Grain |
 |---|---|---|
-| Vendor Central sales report | Ordered and shipped units, shipped revenue and COGS: the four forecast targets | Product, summed from days into weeks that start on Sunday |
+| Vendor Central sales report | Ordered and shipped units, shipped revenue and Amazon wholesale cost (`cogs_shipped`): the four forecast targets | Product, summed from days into weeks that start on Sunday |
 | Vendor Central traffic report | Product page views, an input that informs the forecast but isn't forecast | Product and week |
 | Vendor Central product hierarchy | Product titles | Product |
 

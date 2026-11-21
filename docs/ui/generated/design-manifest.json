@@ -442,7 +442,7 @@
     "implementation_decision_date": "2026-10-07",
     "implementation_disposition": "approved_for_implementation",
     "path": "docs/ui/README.md",
-    "sha256": "4ce35e3f6114c274cb2581ef8c5e5026b7e00978dfb09914c0bd517ed741732e",
+    "sha256": "1a989f4644685badd5cc24ae2c0d32e534c64d7179697139e35574436814781f",
     "status": "Approved for implementation at manifest revision `2026-10-09.2` ([`design-manifest.yaml`](design-manifest.yaml)). The UI refresh added the Overview › Growth check and Retail health › Products and ads composed tabs ([ADR-151](../decisions/adr-151-compose-a-customer-tab-from-served-page-presentations.md)) and the shared answer-sentence and ratio-display rules in §8. Owner ratification of revisions `2026-10-09.1` and `2026-10-09.2` is pending. Earlier revisions are in this file's history."
   },
   "revision": "2026-10-09.2",
