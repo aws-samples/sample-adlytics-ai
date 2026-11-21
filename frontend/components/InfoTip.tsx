@@ -14,7 +14,7 @@ const OPEN_EVENT = 'infotip-open';
 
 export function InfoTip({ children, className, label, title }: {
   readonly children: ReactNode;
-  readonly className?: string;
+  readonly className?: string | undefined;
   /** The button's accessible name; defaults to "About {title}" with a lower-case first letter. */
   readonly label?: string;
   readonly title: string;

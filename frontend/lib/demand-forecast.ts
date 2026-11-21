@@ -601,16 +601,20 @@ export const holdCopy: Readonly<Record<Hold, string>> = {
 export const weekStartCopy: Readonly<Record<Horizon['week_starts_on'], string>> = {
   sunday: 'Sunday to Saturday weeks',
 };
+export const weekStartSentenceCopy: Readonly<Record<Horizon['week_starts_on'], string>> = {
+  sunday: 'Weeks run Sunday to Saturday.',
+};
 /** The freshness pill (L-FRESH-OK, L-FRESH-STALE); an unavailable forecast has no pill. */
 export const freshnessPillCopy: Readonly<Record<'fresh' | 'stale', (inputEnd: string) => string>> = {
   fresh: (inputEnd) => `Up to date · sales through ${formatIsoDate(inputEnd)}`,
   stale: (inputEnd) => `Out of date · sales through ${formatIsoDate(inputEnd)}`,
 };
 
-function lowerFirst(text: string): string {
+export function lowerFirst(text: string): string {
   return text.charAt(0).toLowerCase() + text.slice(1);
 }
-function plural(count: number, one: string, many: string): string {
+/** A served count with its noun: "1 product", "3 products". */
+export function plural(count: number, one: string, many: string): string {
   return `${count} ${count === 1 ? one : many}`;
 }
 

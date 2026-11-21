@@ -1480,3 +1480,61 @@ textarea.prompt-text:focus-visible { outline: 2px solid var(--ai); outline-offse
 .legend i.df-likely { border-top-style: dashed; border-top-color: var(--df-likely); }
 .legend i.df-range { height: 10px; border: 1px solid var(--df-range-edge); background: var(--df-range); }
 .legend i.df-zero { width: 10px; height: 10px; border: 2px solid var(--df-zero); border-radius: 50%; }
+/* The list and product views. Layout follows the page column (.main), never the viewport. */
+.demand-forecast .df-line { display: block; }
+.demand-forecast .df-scope { flex-direction: column; align-items: stretch; gap: 12px; margin-top: 4px; }
+.demand-forecast .df-pills { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.demand-forecast .df-fresh { display: inline-flex; align-items: center; gap: 2px; }
+.demand-forecast .df-weeks { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.demand-forecast .df-window { font-size: 12.5px; color: var(--df-muted); }
+.demand-forecast .answer-sentence { margin: 16px 0 0; }
+.demand-forecast .df-ask { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.demand-forecast .df-tools { display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: flex-end; justify-content: space-between; margin-top: 16px; }
+.demand-forecast .df-filter { flex-wrap: wrap; max-width: 100%; }
+.demand-forecast .df-filter button { min-height: 32px; text-align: left; }
+.demand-forecast .df-filter .n { margin-left: 2px; font-variant-numeric: tabular-nums; color: var(--df-muted); }
+.demand-forecast .df-search { display: flex; flex-direction: column; gap: 4px; }
+.demand-forecast .df-search label { font-size: 12px; font-weight: 600; color: var(--text-dim); }
+.demand-forecast .df-search-row { display: flex; gap: 8px; }
+.demand-forecast .df-search .text-input { width: 16ch; }
+.demand-forecast .df-hint { font-size: 12px; color: var(--df-muted); }
+.demand-forecast .df-error { font-size: 12px; color: var(--bad); }
+.demand-forecast .df-notice { margin-top: 12px; font-size: 13px; color: var(--text); }
+.demand-forecast table.dt thead th { white-space: normal; }
+.demand-forecast table.dt .row-pick button { white-space: normal; }
+.demand-forecast table.dt td.df-nofc, .demand-forecast table.dt td.df-empty { color: var(--df-muted); }
+.demand-forecast .stack-tips { display: none; }
+.demand-forecast .df-pager { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px; margin-top: 12px; font-size: 13px; color: var(--text-dim); }
+.demand-forecast details.df-method { margin-top: 16px; font-size: 13px; color: var(--text); }
+.demand-forecast details.df-method summary { cursor: pointer; color: var(--accent); font-weight: 600; }
+.demand-forecast details.df-method summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.demand-forecast details.df-method p { margin-top: 8px; max-width: 72ch; }
+.demand-forecast .df-skeleton .df-skel-seg { height: 30px; width: 220px; border-radius: 10px; }
+.demand-forecast .df-skeleton .skel.h-label { width: 110px; height: 22px; border-radius: 999px; }
+.demand-forecast .df-skeleton > .skel.h-line { height: 24px; margin: 18px 0 6px; width: 70%; }
+/* The list stacks below a 960 px column, so it stacks at 1440 px with the assistant open (G-03).
+   The rules repeat DataTable's own stacked form, scoped to this page. The clipped header row holds
+   no focusable control; its pop-ups move into the caption (G-04). */
+@container main (max-width: 959px) {
+  .demand-forecast .dt-wrap.stackable { overflow: visible; border: 0; background: none; margin-top: 16px; }
+  .demand-forecast .dt-wrap.stackable table.dt, .demand-forecast .dt-wrap.stackable table.dt tbody, .demand-forecast .dt-wrap.stackable table.dt tr { display: block; }
+  .demand-forecast .dt-wrap.stackable table.dt thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); }
+  .demand-forecast .dt-wrap.stackable table.dt caption { display: block; padding: 0 0 8px; }
+  .demand-forecast .dt-wrap.stackable table.dt tr { border: 1px solid var(--line); border-radius: 12px; background: var(--card); margin-bottom: 8px; padding: 6px 0; }
+  .demand-forecast .dt-wrap.stackable table.dt th[scope="row"] { display: block; text-align: left; border-bottom: 1px solid var(--line); white-space: normal; }
+  .demand-forecast .dt-wrap.stackable table.dt td { display: flex; justify-content: space-between; gap: 12px; text-align: right; border-bottom: 0; padding: 5px 12px; }
+  .demand-forecast .dt-wrap.stackable table.dt td::before { content: attr(data-label); text-align: left; color: var(--text-dim); font-size: 12px; font-weight: 600; flex: 1 1 50%; }
+  .demand-forecast .dt-wrap.stackable table.dt td > * { min-width: 0; }
+  .demand-forecast .dt-wrap.stackable table.dt td.df-merged, .demand-forecast .dt-wrap.stackable table.dt td.df-empty { display: block; text-align: left; }
+  .demand-forecast .dt-wrap.stackable table.dt td.df-merged::before, .demand-forecast .dt-wrap.stackable table.dt td.df-empty::before { content: none; }
+  .demand-forecast .df-list thead .infotip-btn { display: none; }
+  .demand-forecast .stack-tips { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 4px; }
+  .demand-forecast .stack-tips > span { display: inline-flex; align-items: center; }
+}
+@container main (max-width: 559px) {
+  .demand-forecast .df-tools { flex-direction: column; align-items: stretch; }
+  .demand-forecast .df-weeks .seg, .demand-forecast .df-filter { display: flex; width: 100%; }
+  .demand-forecast .df-weeks .seg button { flex: 1 1 0; }
+  .demand-forecast .df-search .text-input { flex: 1 1 auto; width: auto; min-width: 0; }
+  .demand-forecast .pill { white-space: normal; }
+}
