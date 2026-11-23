@@ -93,6 +93,23 @@ test('opening a product replaces the list, names the h1 and focuses it; Back res
   await waitFor(() => assert.equal(focused(), 'button:Fictional product 1'));
 });
 
+test('Back by keyboard returns focus to the row when the frame runs before the shell drops Back', async () => {
+  // A browser can run the closing frame while the focused Back control is still on the page.
+  serve(forecastRoutes(detail));
+  page();
+  await userEvent.click(await screen.findByRole('button', { name: 'Fictional product 1' }));
+  await screen.findByText('ASIN B0FIXTUR01');
+  const back = screen.getByRole('button', { name: 'Back to Demand forecast' });
+  back.focus();
+  const frame = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => { callback(0); return 0; });
+  try {
+    await userEvent.keyboard('{Enter}');
+    await screen.findByRole('table', { name: LIST_NAME });
+  } finally {
+    frame.mockRestore();
+  }
+  await waitFor(() => assert.equal(focused(), 'button:Fictional product 1'));
+});
 test('a product found by search that is not on the page returns focus to the h1', async () => {
   const offPage = { ...structuredClone(detail), asin: 'B0FIXTUR09', title: null };
   serve(forecastRoutes(offPage));

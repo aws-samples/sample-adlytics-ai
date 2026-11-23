@@ -270,16 +270,23 @@ function focusLost(): boolean {
   return document.activeElement === null || document.activeElement === document.body;
 }
 /**
+ * Focus is on the shell's Back control, which leaves with the product: in a browser the frame
+ * after the product closes can run before the shell drops it, so focus would fall to the body.
+ */
+function focusOnBack(): boolean {
+  return document.activeElement?.closest('.hub-back') != null;
+}
+/**
  * G-09: opening a product focuses the h1 (the product's name) once the product region replaces
  * the list; closing it returns focus to the row that opened it, or to the h1 when that row isn't
- * on the page. Neither moves focus that is still on a control.
+ * on the page. Neither moves focus that is still on a control other than the closing Back.
  */
 function useForecastDetailFocus(asin: string): void {
   useEffect(() => {
     if (focusLost()) document.getElementById(PAGE_HEADING_ID)?.focus();
     return () => {
       window.requestAnimationFrame(() => {
-        if (!focusLost() && document.activeElement?.id !== PAGE_HEADING_ID) return;
+        if (!focusLost() && !focusOnBack() && document.activeElement?.id !== PAGE_HEADING_ID) return;
         const row = [...document.querySelectorAll<HTMLButtonElement>('button[data-forecast-row]')]
           .find((button) => button.dataset.forecastRow === asin);
         (row ?? document.getElementById(PAGE_HEADING_ID))?.focus();
