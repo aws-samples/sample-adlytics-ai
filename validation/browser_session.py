@@ -33,6 +33,17 @@ _ENVIRONMENT: Final = "dev"
 _REGION: Final = "us-east-1"
 
 
+def target_refused(environment: str, region: str, command: list[str]) -> bool:
+    """Refuse every target but dev in us-east-1, and a run with no command to start."""
+    return environment != _ENVIRONMENT or region != _REGION or not command
+
+
+def child_environment(parent: dict[str, str], origin: str, token: str) -> dict[str, str]:
+    """Copy the parent's environment without an operator's cookie, adding the origin and session."""
+    env = {k: v for k, v in parent.items() if k not in {"ADL_REFRESH", "ADL_CSRF"}}
+    return env | {"ADL_BASE_URL": origin, "ADL_SESSION": token}
+
+
 def _parser() -> argparse.ArgumentParser:
     """Declare every target explicitly; only the persona has a default."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -49,7 +60,7 @@ def main(argv: list[str] | None = None) -> int:
     """Check the target, sign the persona in, and run the command with its session."""
     args = _parser().parse_args(argv)
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
-    if args.environment != _ENVIRONMENT or args.region != _REGION or not command:
+    if target_refused(args.environment, args.region, command):
         print("browser_session accepts only dev in us-east-1, with a command after --")
         return 2
     import boto3
@@ -68,8 +79,7 @@ def main(argv: list[str] | None = None) -> int:
         app_client(session, args.environment),
     )
     print(f"signed in {args.persona} in {time.monotonic() - started:.1f} s", flush=True)
-    env = {k: v for k, v in os.environ.items() if k not in {"ADL_REFRESH", "ADL_CSRF"}}
-    env |= {"ADL_BASE_URL": origin, "ADL_SESSION": tokens.access_token}
+    env = child_environment(dict(os.environ), origin, tokens.access_token)
     # A-SUBPROCESS-OPERATOR-001: operator argv, dev only; see docs/security-dispositions.md
     # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit
     code = subprocess.call(command, env=env)  # noqa: S603 -- the operator's argv, no shell

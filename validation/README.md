@@ -1583,7 +1583,8 @@ when a route it excludes is no longer allowlisted; a unit test pins the allowlis
 to the bake roster's pages.
 It needs the deployed origin and a signed-in session, plus the frontend's installed dev
 dependencies (Playwright and its Chromium: `npm ci` and `npx playwright install chromium` in
-`frontend/`). On dev, sign in with `browser_session.py`, which needs no owner action:
+`frontend/`). Run it only against an environment named `dev` holding synthetic data, by either
+sign-in path below. Sign in with `browser_session.py`, which needs no owner action:
 
 ```bash
 uv run python validation/browser_session.py --profile <profile> --environment dev \
@@ -1597,8 +1598,9 @@ uv run python validation/browser_session.py --profile <profile> --environment de
 - The token lasts about 15 minutes, so run one script per sign-in.
 - The probe's assistant step asks the deployed agent two real questions as that persona.
 
-For an environment other than dev, the probe takes `ADL_BASE_URL`, `ADL_REFRESH` and `ADL_CSRF`
-from `validation/.env.local` instead (template and cookie-harvest procedure in `env.example`):
+To run it as your own operator login on the same dev environment instead, the probe takes
+`ADL_BASE_URL`, `ADL_REFRESH` and `ADL_CSRF` from `validation/.env.local` (template and
+cookie-harvest procedure in `env.example`):
 
 ```bash
 set -a; source validation/.env.local; set +a
@@ -1623,8 +1625,8 @@ ADL_CAPTURE_SKIP=prompt-administration uv run python validation/browser_session.
 ```
 
 - `probe-a` is in no Cognito group, so the Prompt administration images are skipped.
-- With `ADL_REFRESH` and `ADL_CSRF` sourced from `validation/.env.local`, run
-  `node validation/capture_screenshots.mjs` directly instead.
+- With a dev operator login's `ADL_REFRESH` and `ADL_CSRF` sourced from `validation/.env.local`,
+  run `node validation/capture_screenshots.mjs` directly instead.
 
 Optional inputs for a smaller run:
 
