@@ -27,6 +27,14 @@ The screenshots come from a development deployment with synthetic data, in the l
 
 ### Close-ups
 
+![Four campaign insight cards: Trend shape marked Reading, saying purchases climbed from 258 to 327 across the week; Efficiency drift and Delivery and outcome marked Nothing noteworthy in dashed outlines; and Next check marked Idea to check; the two filled cards each end with Read from the values this page already shows](../../images/insight-cards.png)
+
+**Insight cards.** A filled card carries its tag and a reading. A card with nothing worth saying keeps its place in a dashed outline and says so, rather than disappearing. See [insight card states](../../ui/insight-presentation-contract.md#2-the-five-designed-card-states).
+
+![Delivery tiles for one Amazon DSP campaign: attributed purchases, attributed ROAS, ad spend, impressions, clicks, click-through rate, cost per click and cost per thousand impressions, each with its prior value and change](../../images/campaign-delivery.png)
+
+**Delivery tiles.** One Amazon DSP campaign's eight tiles, each against the prior window. Here cost per click rose 0.8% to 0.83 USD while cost per thousand impressions fell 1.0% to 85.61 USD.
+
 ![Campaigns table sorted by ad spend: a Late data note that states how days are bucketed with a See why link, a campaign search box, and the first three campaigns with ad spend, attributed ROAS, attributed purchases and click-through rate as a percentage, each with its change](../../images/portfolio-campaigns-table.png)
 
 **Campaigns table.** Every campaign, ranked by the column you choose, so a media buyer can sort by return to find the ones to fix; "Find a campaign" searches every channel. The Late data note says how the source's days are bucketed, and See why opens the reason.

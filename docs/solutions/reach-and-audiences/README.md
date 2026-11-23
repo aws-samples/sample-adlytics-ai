@@ -31,6 +31,10 @@ The screenshots come from a development deployment with synthetic data, in the l
 
 **Frequency.** The share who bought rises from 2.00% at 1 ad to 5.30% at 10 or more, while sales per ad dollar fall from 11.26× to 2.13×, which helps a media buyer set a frequency cap. The notice says this shows association, not cause. Return per channel reads "Not available per channel", because one purchase can follow ads on several channels.
 
+![A one-line notice reading This shows association, not cause. Shoppers were not randomly assigned to groups, with a collapsed Why this is association, not cause disclosure](../../images/reach-caveat.png)
+
+**Association notice.** Reach's findings about what shoppers did next carry this one line, with the reasons behind a disclosure, so a difference between groups isn't read as an effect of the ads.
+
 ![The Where this campaign's sales came from disclosure opened to the DSP campaigns by segment card: a campaign selector with one synthetic DSP campaign chosen, and impressions, CPM and ROAS per segment for that campaign](../../images/audiences-campaigns.png)
 
 **DSP campaigns by segment.** For one DSP campaign, impressions, CPM and return per segment, with its provider where it has one. The synthetic data is flat here: CPM is 85.25 USD on every segment and return is 4.80× to 4.81×.

@@ -327,26 +327,7 @@ async function captureInsightDialogs(page) {
     }
     if (hasDeep && await deep.locator('.deep-standout').count() > 0 && await deep.locator('.deep-discriminator').count() > 0) {
       await settled(page, dialog);
-      // Narration only: the narration card plus a small margin, kept inside the dialog's box.
       await dialog.evaluate((node) => { node.scrollTop = 0; });
-      const dialogBox = await dialog.boundingBox();
-      const leadBox = await dialog.locator('article.dialog-lead').first().boundingBox();
-      if (dialogBox === null || leadBox === null) {
-        throw new Error('insight-dialog-narration.png: the dialog geometry is unreadable.');
-      }
-      const margin = 10;
-      const left = Math.max(dialogBox.x, leadBox.x - margin);
-      const top = Math.max(dialogBox.y, leadBox.y - margin);
-      const right = Math.min(dialogBox.x + dialogBox.width, leadBox.x + leadBox.width + margin);
-      const bottom = Math.min(dialogBox.y + dialogBox.height, leadBox.y + leadBox.height + margin);
-      await withoutBackdrop(page, async () => {
-        await quiet(page);
-        await save('insight-dialog-narration.png', await page.screenshot({
-          ...SHOT,
-          scale: 'device',
-          clip: { x: left, y: top, width: right - left, height: bottom - top },
-        }));
-      });
       await fitDialog(page, dialog);
       await settled(page, dialog);
       // CSS scale: the full dialog is tall, and device scale would take most of the image budget.
@@ -357,9 +338,7 @@ async function captureInsightDialogs(page) {
     }
     await closeDialog(page, dialog);
   }
-  for (const name of ['insight-dialog-narration.png', 'insight-dialog.png']) {
-    skipped.push(`${name}: no filled portfolio insight rendered a filled deep analysis`);
-  }
+  skipped.push('insight-dialog.png: no filled portfolio insight rendered a filled deep analysis');
 }
 
 /** The portfolio trend chart and the campaigns table, each at the full page width. */
@@ -437,11 +416,11 @@ async function openCampaignRow(page, row, name) {
 
 /**
  * Campaign detail for a Sponsored Products campaign with filled cards beside a typed absence, then
- * an Amazon DSP campaign's detail and its delivery tiles (cost per click, CPM, click-through rate).
+ * an Amazon DSP campaign's delivery tiles (cost per click, CPM, click-through rate).
  */
 async function captureCampaignDetail(page) {
   if (SKIP.has('campaign-detail')) {
-    for (const name of ['campaign-detail.png', 'insight-cards.png', 'campaign-detail-dsp.png', 'campaign-delivery.png']) {
+    for (const name of ['campaign-detail.png', 'insight-cards.png', 'campaign-delivery.png']) {
       skipped.push(`${name}: skipped by ADL_CAPTURE_SKIP`);
     }
     return;
@@ -450,9 +429,7 @@ async function captureCampaignDetail(page) {
   await setAssistant(page, true);
   await captureSponsoredDetail(page);
   await openChannelCampaigns(page, 'amazon_dsp');
-  await setAssistant(page, true);
-  await openCampaignRow(page, page.locator('table.camp-table .name button').first(), 'campaign-detail-dsp.png');
-  await shotViewport(page, 'campaign-detail-dsp.png', 'css');
+  await openCampaignRow(page, page.locator('table.camp-table .name button').first(), 'campaign-delivery.png');
   // Collapsed assistant: the delivery tiles take the full page width.
   await setAssistant(page, false);
   const delivery = page.locator('.tiles', { has: page.locator('.tile:not(.empty)', { hasText: 'Cost per click' }) });
@@ -504,14 +481,9 @@ async function captureRetail(page) {
   }
   await setAssistant(page, true);
   await shotViewport(page, 'retail-health.png', 'css');
-  // "Ads beside retail" (7 days only): ad spend and its share of shipped sales beside the retail
-  // headline, at the full page width.
-  await setAssistant(page, false);
-  await shotSection(page, 'retail-ads-beside-retail.png', page.locator('section[data-slot="rh-ads"]'));
-  await setAssistant(page, true);
 }
 
-/** Growth check at `/`: one page shot with the assistant docked, then its answer band. */
+/** Growth check at `/`: one page shot with the assistant docked. */
 async function captureGrowthCheck(page) {
   await page.goto(`${BASE_URL}/`, { waitUntil: 'domcontentloaded' });
   await assertLight(page);
@@ -520,10 +492,6 @@ async function captureGrowthCheck(page) {
   await settled(page, page.locator('main'));
   await setAssistant(page, true);
   await shotViewport(page, 'growth-check.png', 'css');
-  // The answer sentence, the four tiles and the two daily charts.
-  await setAssistant(page, false);
-  await shotSection(page, 'growth-check-answer.png', page.locator('.overview > section.card').first());
-  await setAssistant(page, true);
 }
 
 async function capturePromptAdministration(page) {
@@ -605,10 +573,11 @@ async function shotSection(page, name, locator, pad = 12) {
  * The calendar and vintage pages (ADR-115 hubs): one page shot with the assistant docked, then
  * close-ups of the named sections with it closed, so each section takes the full main width.
  */
-async function captureRosterPage(page, { path, title, image, closeups }) {
-  await openRosterPage(page, path, title, closeups[0].heading ?? closeups[0].first);
+async function captureRosterPage(page, { path, title, image, first, closeups }) {
+  await openRosterPage(page, path, title, first ?? closeups[0].heading ?? closeups[0].first);
   await setAssistant(page, true);
   await shotViewport(page, image, 'css');
+  if (closeups.length === 0) return;
   await setAssistant(page, false);
   for (const closeup of closeups) {
     const locator = closeup.heading === undefined ? page.locator(closeup.selector) : sectionTitled(page, closeup.heading);
@@ -641,7 +610,8 @@ const ROSTER_PAGES = [
     path: '/new-customers/',
     title: 'New customers',
     image: 'new-customers.png',
-    closeups: [{ heading: 'Gateway products', image: 'new-customers-gateway.png' }],
+    first: 'Gateway products',
+    closeups: [],
   },
   {
     name: 'reach',
@@ -809,20 +779,6 @@ async function capturePortfolio(page) {
     throw new Error(`campaign-portfolio.png: the ad spend tile is not a two-place amount: ${JSON.stringify(spendTileText)}.`);
   }
   await shotViewport(page, 'campaign-portfolio.png', 'css');
-  const radios = page.getByRole('radiogroup', { name: 'Available reporting periods' });
-  await page.locator('[role="radiogroup"][aria-busy="false"]').first().waitFor({ timeout: 30_000 });
-  // The title band that holds the period control and its server-written notes.
-  const band = page.locator('*:has(> [role="radiogroup"][aria-label="Available reporting periods"]):has(> p.win-note)');
-  if (await radios.count() !== 1) throw new Error('time-window-control.png: the period control is missing.');
-  await shotPadded(page, 'time-window-control.png', band, 'device');
-  // The answer sentence, the tiles under it and, under All channels, the line that asks for a
-  // channel in place of the purchases and ROAS tiles.
-  const answer = page.locator('main [data-slot="answer"]').first();
-  const tiles = page.locator('.tiles').first();
-  if (await answer.count() === 0) throw new Error('metric-tiles.png: the portfolio shows no answer sentence.');
-  if (await tiles.locator('.tile').count() < 2) throw new Error('metric-tiles.png: the portfolio shows fewer than two tiles.');
-  await scrollTop(page);
-  await shotUnion(page, 'metric-tiles.png', [answer, tiles, page.getByText('Pick a channel to see its sales and return.', { exact: true })], 'device');
   await capturePortfolioEvidence(page);
   await captureMetricFocus(page);
   await captureInsightDialogs(page);

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT-0
 /** Validate the authenticated command-center UI without printing page or credential values. */
 
+import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 
@@ -15,8 +16,11 @@ const { chromium } = require('@playwright/test');
 const BASE_URL = (process.env.ADL_BASE_URL?.trim() ?? '').replace(/\/$/, '');
 const refresh = process.env.ADL_REFRESH?.trim() ?? '';
 const csrf = process.env.ADL_CSRF?.trim() ?? '';
-if (!BASE_URL || !refresh || !csrf) {
-  throw new Error('Source validation/.env.local (ADL_BASE_URL, ADL_REFRESH, ADL_CSRF) before running this probe.');
+// Or one access token for a synthetic persona (validation/browser_session.py), sent as the
+// `adl_session` cookie with a fresh double-submit value; it is never printed.
+const session = process.env.ADL_SESSION?.trim() ?? '';
+if (!BASE_URL || !(session || (refresh && csrf))) {
+  throw new Error('Set ADL_BASE_URL and either ADL_SESSION or ADL_REFRESH with ADL_CSRF before running this probe.');
 }
 let deepSectionsObserved = 0;
 
@@ -82,10 +86,15 @@ async function insightDialogChecks(page, surface) {
 const browser = await chromium.launch({ headless: true });
 try {
   const context = await browser.newContext({ viewport: { width: 1500, height: 1000 } });
-  await context.addCookies([
-    { name: 'adl_refresh', value: refresh, url: BASE_URL, httpOnly: true, secure: true, sameSite: 'Lax' },
-    { name: 'adl_csrf', value: csrf, url: BASE_URL, httpOnly: false, secure: true, sameSite: 'Lax' },
-  ]);
+  await context.addCookies(session
+    ? [
+      { name: 'adl_session', value: session, url: BASE_URL, httpOnly: true, secure: true, sameSite: 'Lax' },
+      { name: 'adl_csrf', value: randomBytes(16).toString('hex'), url: BASE_URL, httpOnly: false, secure: true, sameSite: 'Lax' },
+    ]
+    : [
+      { name: 'adl_refresh', value: refresh, url: BASE_URL, httpOnly: true, secure: true, sameSite: 'Lax' },
+      { name: 'adl_csrf', value: csrf, url: BASE_URL, httpOnly: false, secure: true, sameSite: 'Lax' },
+    ]);
   const page = await context.newPage();
   const browserErrors = [];
   const failedRequests = [];

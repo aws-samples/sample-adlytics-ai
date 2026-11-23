@@ -62,6 +62,7 @@ requires an explicit target environment.
 | Deployed acceptance | `probe_ingestion_cutover.py` | V2-only synthetic ingestion acceptance: immutable landing, exact attempt success, exact `CURRENT` advancement, and unchanged DLQ depth |
 | Demand-forecast scale probe | `make demand-forecast-scale-probe PROFILE= ENV=dev ACCOUNT= ASINS=` (`src/adapters/jobs/demand_forecast_scale_fixture`) | Dev only: stages a weekly input for N fictional ASINs in the processing bucket and starts the state machine at `Forecast` through its dev-only `ProbeStart` entry, to measure shard time at size; refused for any other environment and for a profile outside `ACCOUNT`. The manifest carries the deployed input builder's processor-code identity, which the job checks. The module's `--source catalogue` (no `ASINS`) stages the synthetic catalogue's 104-week Vendor history instead, labelled STAGED ([dev seeding](../docs/concepts/dev-seeding.md)) |
 | README screenshots | `capture_screenshots.mjs` | Drives a deployment loaded with synthetic data as a logged-in user in the light theme and writes the images the solution READMEs under `docs/solutions/` embed to `docs/images/`. Every chat image is a scripted fixture served in the browser, so no question reaches the deployed agent. Never mutates the deployment; fails on a missing surface or past the 6 MiB image budget; prints image names and sizes only |
+| Browser sign-in (dev only) | `browser_session.py` | Signs a synthetic dev persona in and runs one browser script, such as the browser acceptance or the screenshot capture, with `ADL_BASE_URL` and `ADL_SESSION` in that script's environment only. Refuses any target but `dev` in `us-east-1` and a profile outside the expected account; prints the account match, the sign-in time and the script's exit status, never a token |
 
 As of 2026-10-19, two strings in the validation tooling cite operator-local files that aren't
 published: the `source` field of `fixtures/graph-hold-clear-migration-v1.json` (an `acceptance.md`)
@@ -1580,10 +1581,24 @@ message. Each must also be axe-clean in light and dark (`roster_pages=data:N+abs
 The route list comes from `roster_routes.mjs`, which fails the probe when it would be empty or
 when a route it excludes is no longer allowlisted; a unit test pins the allowlist's page routes
 to the bake roster's pages.
-It needs `ADL_BASE_URL` (the deployed origin), `ADL_REFRESH`, and `ADL_CSRF` from
-`validation/.env.local` (template and cookie-harvest procedure in `env.example`), plus the
-frontend's installed dev dependencies (Playwright and its Chromium: `npm ci` and
-`npx playwright install chromium` in `frontend/`).
+It needs the deployed origin and a signed-in session, plus the frontend's installed dev
+dependencies (Playwright and its Chromium: `npm ci` and `npx playwright install chromium` in
+`frontend/`). On dev, sign in with `browser_session.py`, which needs no owner action:
+
+```bash
+uv run python validation/browser_session.py --profile <profile> --environment dev \
+  --region us-east-1 --expected-account <account> -- node validation/probe_frontend_browser.mjs
+```
+
+- It signs in the synthetic persona `probe-a` (`--persona` picks another) through
+  `cognito_personas.py` and reads the origin from the published `publicBaseUrl`.
+- The script gets `ADL_BASE_URL` and `ADL_SESSION` in its environment only, and sends the token
+  as the `adl_session` cookie. Nothing prints or stores the token.
+- The token lasts about 15 minutes, so run one script per sign-in.
+- The probe's assistant step asks the deployed agent two real questions as that persona.
+
+For an environment other than dev, the probe takes `ADL_BASE_URL`, `ADL_REFRESH` and `ADL_CSRF`
+from `validation/.env.local` instead (template and cookie-harvest procedure in `env.example`):
 
 ```bash
 set -a; source validation/.env.local; set +a
@@ -1597,38 +1612,19 @@ It prints one sanitized acceptance line and never page values; record the dated 
 
 `capture_screenshots.mjs` rewrites the images in `docs/images/` that the solution READMEs under
 [`docs/solutions/`](../docs/solutions/) embed. It
-takes the same inputs and frontend prerequisites as
-[the authenticated browser acceptance](#running-the-authenticated-browser-acceptance). Point
-`ADL_BASE_URL` only at a deployment holding synthetic data, because the images are committed.
+takes the same inputs, sign-in and frontend prerequisites as
+[the authenticated browser acceptance](#running-the-authenticated-browser-acceptance). Point it
+only at a deployment holding synthetic data, because the images are committed.
 
 ```bash
-set -a; source validation/.env.local; set +a
-node validation/capture_screenshots.mjs
+ADL_CAPTURE_SKIP=prompt-administration uv run python validation/browser_session.py \
+  --profile <profile> --environment dev --region us-east-1 --expected-account <account> \
+  -- node validation/capture_screenshots.mjs
 ```
 
-In place of `ADL_REFRESH` and `ADL_CSRF`, `ADL_SESSION` may carry one access token for a synthetic
-dev persona; the script sends it as the `adl_session` cookie and never prints it. This one sign-in
-step needs no owner action. It signs in the dev persona `probe-a` through `cognito_personas.py`
-and sets `ADL_BASE_URL` and `ADL_SESSION` in the current shell only, printing nothing:
-
-```bash
-read -r ADL_BASE_URL ADL_SESSION < <(PROFILE=<profile> uv run python - <<'PY'
-import os, sys
-import boto3
-sys.path[:0] = ["src", "validation"]
-from cognito_personas import app_client, load_persona, published_parameter, sign_in
-session = boto3.Session(profile_name=os.environ["PROFILE"])
-ssm = session.client("ssm")
-tokens = sign_in(session.client("cognito-idp"), load_persona(ssm, "dev", "probe-a"), app_client(session, "dev"))
-print(published_parameter(ssm, "dev", "publicBaseUrl").rstrip("/"), tokens.access_token)
-PY
-)
-export ADL_BASE_URL ADL_SESSION ADL_CAPTURE_SKIP=prompt-administration
-```
-
-- The environment is always `dev`. `<profile>` must resolve to the dev account and its Region.
-- The token lasts about 15 minutes. Run the step again for a later capture.
 - `probe-a` is in no Cognito group, so the Prompt administration images are skipped.
+- With `ADL_REFRESH` and `ADL_CSRF` sourced from `validation/.env.local`, run
+  `node validation/capture_screenshots.mjs` directly instead.
 
 Optional inputs for a smaller run:
 
@@ -1642,7 +1638,9 @@ forecast (`demand-forecast-product.png`). It runs only when named, because the R
 does not include it.
 
 ```bash
-ADL_CAPTURE_ONLY=demand-forecast ADL_CAPTURE_OUT=/tmp/adl-shots node validation/capture_screenshots.mjs
+ADL_CAPTURE_ONLY=demand-forecast ADL_CAPTURE_OUT=/tmp/adl-shots uv run python validation/browser_session.py \
+  --profile <profile> --environment dev --region us-east-1 --expected-account <account> \
+  -- node validation/capture_screenshots.mjs
 ```
 
 It exits 0 when every image was captured, 2 when a data-dependent surface was not available and
@@ -1651,8 +1649,8 @@ was skipped (it prints a `SKIPPED` line naming the image, and the old file is le
 author's, or the deployment's host. A person views every image before committing it.
 
 `ADL_CAPTURE_SKIP` takes a comma-separated list. `campaign-detail` leaves out campaign detail (the
-Sponsored Products and Amazon DSP details and their close-ups) when that surface is broken on the
-target. `prompt-administration` leaves out the two Prompt administration images when the
+Sponsored Products detail and its insight cards, and the Amazon DSP delivery tiles) when that surface
+is broken on the target. `prompt-administration` leaves out the two Prompt administration images when the
 signed-in user is not in the prompt-admin group. Each is reported as `SKIPPED` and the run exits 2,
 so a stale image is never mistaken for a fresh one. A detail whose delivery reads "Not enough data
 for this window" fails the run.
@@ -1696,6 +1694,12 @@ before the shot. The other images are still the 2026-10-23 capture.
   `docs/images/` totals 5,601,013 bytes within the 6 MiB budget. The operator agent viewed every
   image: synthetic data only, no email address, account number, host name or token. The solution
   READMEs' captions and prose were updated to the new windows and figures.
+- **Gallery trim, 2026-11-21.** The seven images no document embedded were deleted with their
+  capture steps: `campaign-detail-dsp`, `growth-check-answer`, `insight-dialog-narration`,
+  `metric-tiles`, `new-customers-gateway`, `retail-ads-beside-retail` and `time-window-control`.
+  The solution READMEs now embed `campaign-delivery.png`, `insight-cards.png`, `reach-caveat.png`
+  and `retention-curve.png`. The default run now writes 27 images, 25 when Prompt administration is
+  skipped, and `docs/images/` totals 4,872,421 bytes. No image was recaptured.
 - `reach-absence-light.png` and `reach-absence-dark.png` belong to
   [page absence copy](../docs/ui/page-absence-copy.md), not the README, and this script does not
   write them.
