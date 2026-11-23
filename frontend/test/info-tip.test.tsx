@@ -64,3 +64,31 @@ test('a given label names the button as written', () => {
   render(<InfoTip title="Amazon wholesale cost" label="About Amazon wholesale cost">C</InfoTip>);
   assert.ok(screen.getByRole('button', { name: 'About Amazon wholesale cost' }));
 });
+/** A DOMRect with only the horizontal edges a test sets. */
+function edges(left: number, right: number): DOMRect {
+  return { bottom: 0, height: 0, left, right, top: 0, width: right - left, x: left, y: 0, toJSON: () => ({}) } as DOMRect;
+}
+test('an open panel shifts inside the page column, so the column never scrolls sideways', async () => {
+  render(<div className="main">
+    <InfoTip title="Near the right edge">A</InfoTip>
+    <InfoTip title="Near the left edge" className="end">B</InfoTip>
+    <InfoTip title="Inside">C</InfoTip>
+  </div>);
+  const column = document.querySelector('.main');
+  assert.ok(column instanceof HTMLElement);
+  column.getBoundingClientRect = () => edges(0, 400);
+  const place = (name: string, left: number, right: number) => {
+    const button = screen.getByRole('button', { name });
+    panelOf(button).getBoundingClientRect = () => edges(left, right);
+    return button;
+  };
+  const right = place('About near the right edge', 300, 620);
+  await userEvent.click(right);
+  assert.equal(panelOf(right).style.transform, 'translateX(-228px)');
+  const left = place('About near the left edge', -50, 270);
+  await userEvent.click(left);
+  assert.equal(panelOf(left).style.transform, 'translateX(58px)');
+  const inside = place('About inside', 40, 360);
+  await userEvent.click(inside);
+  assert.equal(panelOf(inside).style.transform, '');
+});

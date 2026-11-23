@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT-0
 'use client';
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Icon } from './Icon';
 
 /**
@@ -11,6 +11,8 @@ import { Icon } from './Icon';
  * valid inside a `th`, `caption` or `p`.
  */
 const OPEN_EVENT = 'infotip-open';
+/** The gap an open panel keeps from the page column's edge when it has to shift. */
+const EDGE = 8;
 
 export function InfoTip({ children, className, label, title }: {
   readonly children: ReactNode;
@@ -23,6 +25,7 @@ export function InfoTip({ children, className, label, title }: {
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLSpanElement>(null);
   const button = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLSpanElement>(null);
   useEffect(() => {
     const onOther = (event: Event) => {
       if (event instanceof CustomEvent && event.detail !== id) setOpen(false);
@@ -30,6 +33,20 @@ export function InfoTip({ children, className, label, title }: {
     window.addEventListener(OPEN_EVENT, onOther);
     return () => window.removeEventListener(OPEN_EVENT, onOther);
   }, [id]);
+  useLayoutEffect(() => {
+    const node = panel.current;
+    if (!open || node === null) return;
+    // Under its button, shifted only as far as keeps it inside the page column, so an open
+    // pop-up never makes the column scroll sideways or slides under the assistant. CSSOM, so the
+    // CSP's style-src 'self' holds. An inline panel (below 560 px) already fits and never moves.
+    node.style.transform = '';
+    const column = (node.closest('.main') ?? document.documentElement).getBoundingClientRect();
+    const box = node.getBoundingClientRect();
+    let shift = 0;
+    if (box.right > column.right) shift = column.right - EDGE - box.right;
+    if (box.left + shift < column.left) shift = column.left + EDGE - box.left;
+    if (shift !== 0) node.style.transform = `translateX(${Math.round(shift)}px)`;
+  }, [open]);
   useEffect(() => {
     if (!open) return undefined;
     const onPointer = (event: PointerEvent) => {
@@ -63,7 +80,7 @@ export function InfoTip({ children, className, label, title }: {
       >
         <Icon name="info" small/>
       </button>
-      <span id={id} className="infotip-panel" hidden={!open}>
+      <span id={id} className="infotip-panel" hidden={!open} ref={panel}>
         <strong>{title}</strong>
         {children}
       </span>
