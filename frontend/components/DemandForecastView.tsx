@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT-0
 'use client';
-import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type FormEvent } from 'react';
 import { formatCanonicalDecimal, formatCount, formatCurrency, formatIsoDate, formatIsoInstantShort } from '@/lib/exact-format';
 import {
   asinErrorText,
@@ -12,6 +12,8 @@ import {
   fetchDemandForecastList,
   fetchDemandForecastStatus,
   FORECAST_START,
+  forecastHistoryState,
+  forecastSearch,
   hasDigit,
   isAsin,
   itemCountOf,
@@ -28,6 +30,8 @@ import {
   normalizedAsin,
   notInForecastInlineText,
   plural,
+  readForecastEntry,
+  readForecastLink,
   skipReasonCopy,
   skipReasons,
   startCopy,
@@ -87,8 +91,11 @@ type Opener =
   | { readonly kind: 'search' }
   | { readonly kind: 'browse' }
   | { readonly kind: 'reason'; readonly reason: SkipReason };
-/** Where focus goes once the view it names has its list (or none to wait for). */
-interface FocusGoal { readonly to: Opener | null; readonly wait: 'start' | 'browse' | null }
+/**
+ * Where focus goes once the view it names has its list (or none to wait for). Only a closing
+ * goal may take focus from the Back control, which leaves with the closed view.
+ */
+interface FocusGoal { readonly to: Opener | null; readonly wait: 'start' | 'browse' | null; readonly closing: boolean }
 /** The search box's inline outcome (H2), drawn on its own line under the card header (B-08). */
 type SearchOutcome =
   | { readonly kind: 'asin' }
@@ -145,10 +152,10 @@ function focusLost(): boolean {
 function focusOnBack(): boolean {
   return document.activeElement?.closest('.hub-back') != null;
 }
-/** Focus may move: it was lost, or is on the closing Back control, the crumb or the h1. */
-function focusMovable(): boolean {
+/** Focus may move: it was lost, or is on the h1, the crumb, or the Back control of a closing view. */
+function focusMovable(closing: boolean): boolean {
   const active = document.activeElement;
-  return focusLost() || focusOnBack() || active?.id === PAGE_HEADING_ID || active?.closest('.crumb') != null;
+  return focusLost() || (closing && focusOnBack()) || active?.id === PAGE_HEADING_ID || active?.closest('.crumb') != null;
 }
 function openerElement(opener: Opener, search: HTMLInputElement | null): HTMLElement | null {
   switch (opener.kind) {
@@ -160,15 +167,34 @@ function openerElement(opener: Opener, search: HTMLInputElement | null): HTMLEle
   }
 }
 
+/** What a page load shows: the view its URL names, and whether history needs writes (B-04). */
+interface Boot { readonly entry: ForecastEntry; readonly seed: boolean; readonly invalid: boolean }
+function bootRoute(): Boot {
+  const link = readForecastLink(window.location.search);
+  if (link === 'invalid') return { entry: FORECAST_START, seed: false, invalid: true };
+  const saved = readForecastEntry(window.history.state);
+  // A reload keeps its entry, so `from` and `depth` still give the Back label and target.
+  if (saved !== null && saved.view === link.view && saved.asin === link.asin) return { entry: saved, seed: false, invalid: false };
+  return { entry: link, seed: link.view !== 'start', invalid: false };
+}
+const subscribeNever = () => () => undefined;
+/** False while the static export hydrates, so the first render matches the prerendered H1. */
+function useHydrated(): boolean {
+  return useSyncExternalStore(subscribeNever, () => true, () => false);
+}
+
 export function DemandForecastView() {
-  const [entry, setEntry] = useState<ForecastEntry>(FORECAST_START);
+  // The URL is read once, on the client's first render; nothing it names renders until hydrated.
+  const [boot] = useState<Boot | null>(() => (typeof window === 'undefined' ? null : bootRoute()));
+  const hydrated = useHydrated();
+  const [entry, setEntry] = useState<ForecastEntry>(boot?.entry ?? FORECAST_START);
   const [browseQuery, setBrowseQuery] = useState<ListQuery>(START_QUERY);
   const [startResult, setStartResult] = useState<Keyed<DemandForecastList> | null>(null);
   const [browseResult, setBrowseResult] = useState<Keyed<DemandForecastList> | null>(null);
   const [statusResult, setStatusResult] = useState<Keyed<DemandForecastStatus> | null>(null);
   const [detailResult, setDetailResult] = useState<Keyed<DemandForecastDetail | null> | null>(null);
   const [search, setSearch] = useState('');
-  const [outcome, setOutcome] = useState<SearchOutcome | null>(null);
+  const [outcome, setOutcome] = useState<SearchOutcome | null>(boot?.invalid === true ? { kind: 'link' } : null);
   const [pendingAsin, setPendingAsin] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [viewWeeks, setViewWeeks] = useState<number | null>(null);
@@ -179,8 +205,13 @@ export function DemandForecastView() {
   const searchInput = useRef<HTMLInputElement>(null);
   const pending = useRef<PendingSearch | null>(null);
   const requestId = useRef(0);
-  const focusGoal = useRef<FocusGoal | null>(null);
+  // A link lands focus on its view's h1; an invalid one in the search box (B-04).
+  const focusGoal = useRef<FocusGoal | null>(boot === null || (!boot.invalid && boot.entry.view === 'start')
+    ? null
+    : { to: boot.invalid ? { kind: 'search' } : null, wait: null, closing: false });
   const openers = useRef<{ start?: Opener; all?: Opener }>({});
+  const tabJump = useRef(false);
+  const focusFrame = useRef<number | null>(null);
   const searchId = useId();
   const outcomeId = `${searchId}-outcome`;
   // Each result carries the request it answers, so a newer request reads as loading until its
@@ -254,27 +285,70 @@ export function DemandForecastView() {
     focusGoal.current = goal;
     setFocusTick((value) => value + 1);
   }, []);
-  /** Open a view from the one on screen; the opener is where focus returns when it closes. */
+  /**
+   * Open a view from the one on screen as a pushed history entry with its own URL (O-03), so the
+   * browser's Back closes it. The opener is where focus returns when it closes.
+   */
   const navigate = useCallback((next: ForecastEntry, opener: Opener) => {
     abortSearch();
     if (entry.view === 'start') openers.current.start = opener;
     if (entry.view === 'all') openers.current.all = opener;
+    window.history.pushState(forecastHistoryState(window.history.state, next), '', `${window.location.pathname}${forecastSearch(next)}`);
     setEntry(next);
-    moveFocus({ to: null, wait: null });
+    moveFocus({ to: null, wait: null, closing: false });
   }, [abortSearch, entry.view, moveFocus]);
-  /** Close the view on screen: a product returns to its opener's view, Browse all to H1. */
-  const close = useCallback(() => {
+  /** Closing is always the browser's Back: the entry under every view is this page's (seeded). */
+  const close = useCallback(() => window.history.back(), []);
+  /** The crumb's and the active tab's "Demand forecast" open H1 from any depth (O-02, B-01). */
+  const onTab = useCallback(() => {
+    if (entry.depth === 0) return;
     abortSearch();
-    const parent = entry.view === 'product' && entry.from === 'all' ? ALL : FORECAST_START;
-    const key = parent.view === 'all' ? 'all' : 'start';
-    const fallback: Opener | null = entry.view === 'product' && entry.asin !== null
-      ? { kind: 'row', asin: entry.asin }
-      : entry.view === 'all' ? { kind: 'browse' } : null;
-    const opener = openers.current[key] ?? fallback;
-    delete openers.current[key];
-    setEntry(parent);
-    moveFocus({ to: opener, wait: parent.view === 'all' ? 'browse' : 'start' });
+    tabJump.current = true;
+    window.history.go(-entry.depth);
+  }, [abortSearch, entry.depth]);
+
+  useEffect(() => {
+    // popstate renders the view the entry names; a pending search is aborted. Going back focuses
+    // the opener of the view returned to, or the row of the product closed; going forward, or
+    // landing after the tab link, focuses the h1.
+    const onPopState = (event: PopStateEvent) => {
+      const link = readForecastLink(window.location.search);
+      const next = readForecastEntry(event.state) ?? (link === 'invalid' ? FORECAST_START : link);
+      abortSearch();
+      let goal: FocusGoal = { to: null, wait: null, closing: next.depth < entry.depth };
+      if (tabJump.current) {
+        tabJump.current = false;
+        openers.current = {};
+      } else if (next.depth < entry.depth) {
+        const key = next.view === 'all' ? 'all' : 'start';
+        const fallback: Opener | null = entry.view === 'product' && entry.asin !== null
+          ? { kind: 'row', asin: entry.asin }
+          : entry.view === 'all' ? { kind: 'browse' } : null;
+        goal = { to: openers.current[key] ?? fallback, wait: next.view === 'all' ? 'browse' : 'start', closing: true };
+        delete openers.current[key];
+      }
+      setEntry(next);
+      moveFocus(goal);
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
   }, [abortSearch, entry, moveFocus]);
+
+  useEffect(() => {
+    // The history writes the load's URL needs (bootRoute): an invalid link is replaced by the bare
+    // URL; a fresh link gets an H1 entry seeded under it, so closing never leaves the app. Run
+    // twice (a development remount), it finds its own entry and writes nothing.
+    if (boot === null) return;
+    const bare = window.location.pathname;
+    if (boot.invalid) {
+      if (window.location.search !== '') window.history.replaceState(forecastHistoryState(window.history.state, FORECAST_START), '', bare);
+      return;
+    }
+    const current = readForecastEntry(window.history.state);
+    if (!boot.seed || (current?.view === boot.entry.view && current.asin === boot.entry.asin)) return;
+    window.history.replaceState(forecastHistoryState(window.history.state, FORECAST_START), '', bare);
+    window.history.pushState(forecastHistoryState(window.history.state, boot.entry), '', `${bare}${forecastSearch(boot.entry)}`);
+  }, [boot]);
 
   useEffect(() => {
     // The detail a search found is stored under its key, so opening it sends no second request.
@@ -304,12 +378,15 @@ export function DemandForecastView() {
     const goal = focusGoal.current;
     if (goal === null || (goal.wait === 'start' && !startSettled) || (goal.wait === 'browse' && !browseSettled)) return;
     focusGoal.current = null;
-    window.requestAnimationFrame(() => {
-      if (!focusMovable()) return;
+    focusFrame.current = window.requestAnimationFrame(() => {
+      focusFrame.current = null;
+      if (!focusMovable(goal.closing)) return;
       const target = goal.to === null ? null : openerElement(goal.to, searchInput.current);
       (target ?? document.getElementById(PAGE_HEADING_ID))?.focus();
     });
   }, [browseSettled, focusTick, startSettled]);
+  // A frame still pending when the page leaves must not move focus on whatever replaced it.
+  useEffect(() => () => { if (focusFrame.current !== null) window.cancelAnimationFrame(focusFrame.current); }, []);
 
   const startReady = start.state === 'ready' ? start.value : null;
   // The search example is the start list's first ASIN, kept with its generation (G-08).
@@ -398,7 +475,7 @@ export function DemandForecastView() {
   const shownExample = currentExampleAsin(example, startComplete?.provenance?.generation_id ?? null);
 
   const outcomeLine = (() => {
-    if (outcome === null) return null;
+    if (outcome === null || !hydrated) return null;
     switch (outcome.kind) {
       case 'asin': return <p id={outcomeId} className="df-outcome df-error" role="alert">{asinErrorText(shownExample)}</p>;
       case 'name': return <p id={outcomeId} className="df-outcome df-error" role="alert">{nameErrorText(shownExample)}</p>;
@@ -429,19 +506,22 @@ export function DemandForecastView() {
     value={search}
   />;
 
+  // Until hydrated the view is H1, as the export prerendered it.
+  const route = hydrated ? entry : FORECAST_START;
   let body;
   if (mixed) {
     body = <StateCallout live="alert" title="Demand forecast" actions={<button type="button" className="btn" onClick={retry}>Show the latest forecast</button>}>{MIXED_TEXT}</StateCallout>;
-  } else if (entry.view === 'product' && entry.asin !== null && (start.state === 'loading' || startComplete !== null)) {
+  } else if (route.view === 'product' && route.asin !== null && (start.state === 'loading' || startComplete !== null)) {
     body = <ProductRegion
-      asin={entry.asin}
-      backLabel={entry.from === 'all' ? startCopy.backToAll : startCopy.backToStart}
+      asin={route.asin}
+      backLabel={route.from === 'all' ? startCopy.backToAll : startCopy.backToStart}
       detail={detail ?? { state: 'loading' }}
-      key={entry.asin}
+      key={route.asin}
       list={startComplete}
       onBack={close}
       onRetry={retry}
       onRetryStatus={retryStatus}
+      onTab={onTab}
       onViewWeeks={setViewWeeks}
       status={status}
       viewWeeks={weeks}
@@ -451,7 +531,7 @@ export function DemandForecastView() {
   } else if (start.state === 'ready' && startComplete === null) {
     const next = readyStatus(status)?.next_new_input_check_at ?? null;
     body = <PageAbsence title={DEMAND_FORECAST_NO_FORECAST_TITLE} message={noForecastYetText(next === null ? null : formatIsoInstantShort(next))}/>;
-  } else if (entry.view === 'all') {
+  } else if (route.view === 'all') {
     body = <BrowseAll
       list={browse}
       notice={notice}
@@ -460,6 +540,7 @@ export function DemandForecastView() {
       onQuery={onBrowseQuery}
       onRetry={retry}
       onRetryStatus={retryStatus}
+      onTab={onTab}
       onViewWeeks={setViewWeeks}
       query={browseQuery}
       status={status}
@@ -519,7 +600,7 @@ function ScopeBlock({ list, onRetryStatus, onViewWeeks, status, viewWeeks }: {
  * H4: phase 1's full list, one click from the opening view. It publishes "All products" as the
  * open entity with Back, and unmounts while a product opened from it is shown (O-02).
  */
-function BrowseAll({ list, notice, onBack, onOpen, onQuery, onRetry, onRetryStatus, onViewWeeks, query, status, viewWeeks }: {
+function BrowseAll({ list, notice, onBack, onOpen, onQuery, onRetry, onRetryStatus, onTab, onViewWeeks, query, status, viewWeeks }: {
   readonly list: Loaded<DemandForecastList>;
   readonly notice: string | null;
   readonly onBack: () => void;
@@ -527,12 +608,13 @@ function BrowseAll({ list, notice, onBack, onOpen, onQuery, onRetry, onRetryStat
   readonly onQuery: (query: ListQuery) => void;
   readonly onRetry: () => void;
   readonly onRetryStatus: () => void;
+  readonly onTab: () => void;
   readonly onViewWeeks: (weeks: number) => void;
   readonly query: ListQuery;
   readonly status: Loaded<DemandForecastStatus>;
   readonly viewWeeks: number | null;
 }) {
-  useOpenEntity(startCopy.browseTitle, onBack, startCopy.backToStart);
+  useOpenEntity(startCopy.browseTitle, onBack, startCopy.backToStart, onTab);
   if (list.state === 'loading') return <ListSkeleton/>;
   if (list.state === 'failed') return <PageError message={DEMAND_FORECAST_READ_FAILED_TEXT} onRetry={onRetry}/>;
   const ready = completeList(list);
@@ -557,7 +639,7 @@ function BrowseAll({ list, notice, onBack, onOpen, onQuery, onRetry, onRetryStat
  * shell's h1 names it with Back, and shows its skeleton until both the detail and the start list
  * are ready; the start list supplies the measure default and the product count (same generation).
  */
-function ProductRegion({ asin, backLabel, detail, list, onBack, onRetry, onRetryStatus, onViewWeeks, status, viewWeeks }: {
+function ProductRegion({ asin, backLabel, detail, list, onBack, onRetry, onRetryStatus, onTab, onViewWeeks, status, viewWeeks }: {
   readonly asin: string;
   readonly backLabel: string;
   readonly detail: Loaded<DemandForecastDetail | null>;
@@ -565,6 +647,7 @@ function ProductRegion({ asin, backLabel, detail, list, onBack, onRetry, onRetry
   readonly onBack: () => void;
   readonly onRetry: () => void;
   readonly onRetryStatus: () => void;
+  readonly onTab: () => void;
   readonly onViewWeeks: (weeks: number) => void;
   readonly status: Loaded<DemandForecastStatus>;
   readonly viewWeeks: number | null;
@@ -574,7 +657,7 @@ function ProductRegion({ asin, backLabel, detail, list, onBack, onRetry, onRetry
   const name = shown === null
     ? (listed === undefined ? asin : listed.title ?? 'Untitled product')
     : shown.outcome === 'not_in_forecast' ? null : shown.title ?? 'Untitled product';
-  useOpenEntity(name, onBack, backLabel);
+  useOpenEntity(name, onBack, backLabel, onTab);
   if (detail.state === 'failed') return <PageError message={DEMAND_FORECAST_READ_FAILED_TEXT} onRetry={onRetry}/>;
   if (shown === null || list === null || viewWeeks === null) return <ProductSkeleton/>;
   return <DemandForecastAsinDetail

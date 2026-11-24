@@ -7,7 +7,7 @@
  * forecast window as "next" when it has started, or shows a no-forecast product as a measured zero.
  */
 import assert from 'node:assert/strict';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, test, vi } from 'vitest';
@@ -344,4 +344,127 @@ test('a failed product read keeps the entity and offers Try again', async () => 
   down = false;
   await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
   assert.ok(await screen.findByText('ASIN B0FIXTUR01'));
+});
+
+/** Wait for a history traversal's popstate to land. */
+async function traverse(step: () => void): Promise<void> {
+  await act(async () => {
+    const landed = new Promise((resolve) => window.addEventListener('popstate', resolve, { once: true }));
+    step();
+    await landed;
+  });
+}
+
+test('a product has its own URL; the browser Back closes it and Forward reopens it, keeping other state keys (O-03, B-02)', async () => {
+  window.history.replaceState({ sentinel: 'kept' }, '', '/demand-forecast/');
+  const seen = serve(forecastRoutes(detail));
+  page();
+  await userEvent.click(await screen.findByRole('button', { name: 'Fictional product 1' }));
+  await screen.findByText('ASIN B0FIXTUR01');
+  assert.equal(window.location.search, '?asin=B0FIXTUR01');
+  assert.deepEqual(window.history.state, { sentinel: 'kept', adlyticsForecast: { view: 'product', asin: 'B0FIXTUR01', from: 'start', depth: 1 } });
+  await traverse(() => window.history.back());
+  await screen.findByRole('table', { name: SHORT });
+  assert.equal(window.location.search, '');
+  await waitFor(() => assert.equal(focused(), 'button:Fictional product 1'));
+  await traverse(() => window.history.forward());
+  await screen.findByText('ASIN B0FIXTUR01');
+  await waitFor(() => assert.equal(focused(), 'h1:Fictional product 1'));
+  // The stored detail serves the return: still one product request.
+  assert.equal(seen.filter((url) => url.includes('asin=')).length, 1);
+  await userEvent.click(screen.getByRole('button', { name: 'Back to Demand forecast' }));
+  await screen.findByRole('table', { name: SHORT });
+  assert.equal((window.history.state as { sentinel?: string }).sentinel, 'kept');
+});
+
+test('a fresh product link seeds an H1 entry under it, so Back stays on the page (O-03)', async () => {
+  window.history.replaceState({ sentinel: 'kept' }, '', '/demand-forecast/?asin=b0fixtur01&utm=x');
+  serve(forecastRoutes(detail));
+  page();
+  await screen.findByText('ASIN B0FIXTUR01');
+  await waitFor(() => assert.equal(heading().textContent, 'Fictional product 1'));
+  await waitFor(() => assert.equal(focused(), 'h1:Fictional product 1'));
+  assert.equal(window.location.search, '?asin=B0FIXTUR01');
+  await userEvent.click(screen.getByRole('button', { name: 'Back to Demand forecast' }));
+  await screen.findByRole('table', { name: SHORT });
+  assert.equal(window.location.pathname, '/demand-forecast/');
+  assert.equal(window.location.search, '');
+  assert.deepEqual(window.history.state, { sentinel: 'kept', adlyticsForecast: { view: 'start', asin: null, from: 'start', depth: 0 } });
+});
+
+test('a fresh Browse all link opens unfiltered page 1 and Back opens H1', async () => {
+  window.history.replaceState(null, '', '/demand-forecast/?view=all');
+  serve(forecastRoutes(detail));
+  page();
+  await screen.findByRole('table', { name: LIST_NAME });
+  assert.equal(heading().textContent, 'All products');
+  await waitFor(() => assert.equal(focused(), 'h1:All products'));
+  await userEvent.click(screen.getByRole('button', { name: 'Back to Demand forecast' }));
+  await screen.findByRole('table', { name: SHORT });
+  assert.equal(window.location.search, '');
+});
+
+test('a reload on a product opened from Browse all keeps Back to all products and returns to Browse all', async () => {
+  serve(forecastRoutes(detail));
+  const first = page();
+  await openFromBrowse('Fictional product 1');
+  await screen.findByText('ASIN B0FIXTUR01');
+  assert.equal(window.location.search, '?asin=B0FIXTUR01');
+  first.unmount();
+  // A reload: the browser keeps the entries and their state.
+  page();
+  await screen.findByText('ASIN B0FIXTUR01');
+  await userEvent.click(screen.getByRole('button', { name: 'Back to all products' }));
+  await screen.findByRole('table', { name: LIST_NAME });
+  assert.equal(window.location.search, '?view=all');
+  assert.equal(heading().textContent, 'All products');
+  await waitFor(() => assert.equal(focused(), 'button:Fictional product 1'));
+});
+
+for (const link of ['?asin=B0FIX', '?asin=B0FIXTUR01&asin=B0FIXTUR02', '?asin=B0FIXTUR01&view=all', '?view=list', '?view=all&view=all']) {
+  test(`an invalid forecast link ${link} opens H1 on the bare URL and says so (B-04)`, async () => {
+    window.history.replaceState(null, '', `/demand-forecast/${link}`);
+    const seen = serve(forecastRoutes(detail));
+    page();
+    await screen.findByRole('table', { name: SHORT });
+    assert.equal(screen.getByText("This forecast link isn't valid.").getAttribute('role'), 'status');
+    assert.equal(window.location.search, '');
+    await waitFor(() => assert.ok(document.activeElement === searchBox(), focused()));
+    assert.equal(seen.filter((url) => url.includes('asin=')).length, 0);
+  });
+}
+
+test('a deep link to a product not in this forecast shows the callout, whose button opens H1', async () => {
+  window.history.replaceState(null, '', '/demand-forecast/?asin=B0NOTREAL0');
+  serve(forecastRoutes({
+    schema_version: 1, outcome: 'not_in_forecast', asin: 'B0NOTREAL0',
+    provenance: structuredClone(detail).provenance, freshness: structuredClone(detail).freshness, horizon: structuredClone(detail).horizon,
+    title: null, title_truncated: false, targets: null, recent_weeks: null, stockout_weeks_last_13: null, week_state_counts: null,
+  }));
+  page();
+  assert.ok(await screen.findByRole('heading', { name: "B0NOTREAL0 isn't in this forecast" }));
+  await userEvent.click(screen.getByRole('button', { name: 'Back to Demand forecast' }));
+  await screen.findByRole('table', { name: SHORT });
+  assert.equal(window.location.search, '');
+});
+
+test('the crumb and the active tab link open H1 from a product opened in Browse all (O-02, B-01)', async () => {
+  serve(forecastRoutes(detail));
+  page();
+  for (const control of ['crumb', 'tab'] as const) {
+    await openFromBrowse('Fictional product 1');
+    await screen.findByText('ASIN B0FIXTUR01');
+    assert.deepEqual(
+      within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getAllByRole('listitem').map((item) => item.textContent),
+      ['Retail health', 'Demand forecast', 'Fictional product 1'],
+    );
+    const link = control === 'crumb'
+      ? within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByRole('link', { name: 'Demand forecast' })
+      : within(screen.getByRole('navigation', { name: 'Sections of Retail health' })).getByRole('link', { name: 'Demand forecast' });
+    await traverse(() => { link.click(); });
+    await screen.findByRole('table', { name: SHORT });
+    assert.equal(window.location.search, '', control);
+    assert.equal(heading().textContent, 'Demand forecast');
+    if (control === 'crumb') await waitFor(() => assert.equal(focused(), 'h1:Demand forecast'));
+  }
 });

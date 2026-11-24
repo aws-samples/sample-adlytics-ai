@@ -309,7 +309,7 @@ test('while finding, a repeat is ignored, a new ASIN aborts the first, and the f
   await act(async () => { requests[1]?.answer.resolve([200, detail]); });
   assert.ok(await screen.findByText('ASIN B0FIXTUR01'));
   assert.equal(requests.length, 2);
-  assert.equal(window.location.search, '');
+  assert.equal(window.location.search, '?asin=B0FIXTUR01');
 });
 
 test('a different ASIN submitted while finding aborts the first, and a late answer to it is ignored (B-03)', async () => {
