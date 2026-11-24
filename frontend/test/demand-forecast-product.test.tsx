@@ -442,8 +442,11 @@ test('a deep link to a product not in this forecast shows the callout, whose but
     title: null, title_truncated: false, targets: null, recent_weeks: null, stockout_weeks_last_13: null, week_state_counts: null,
   }));
   page();
-  assert.ok(await screen.findByRole('heading', { name: "B0NOTREAL0 isn't in this forecast" }));
-  await userEvent.click(screen.getByRole('button', { name: 'Back to Demand forecast' }));
+  const callout = (await screen.findByRole('heading', { name: "B0NOTREAL0 isn't in this forecast" })).closest('section');
+  assert.ok(callout);
+  // The shell's Back leaves once the answer names no product; the callout's own button stays.
+  await waitFor(() => assert.equal(screen.queryAllByRole('button', { name: 'Back to Demand forecast' }).length, 1));
+  await userEvent.click(within(callout).getByRole('button', { name: 'Back to Demand forecast' }));
   await screen.findByRole('table', { name: SHORT });
   assert.equal(window.location.search, '');
 });
