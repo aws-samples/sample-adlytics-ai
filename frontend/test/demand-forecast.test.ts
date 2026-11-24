@@ -10,7 +10,18 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, test } from 'vitest';
 import {
+  FORECAST_START,
   failureFamilyCopy,
+  forecastHistoryState,
+  forecastSearch,
+  isAsin,
+  looksLikeName,
+  nameErrorText,
+  notInForecastInlineText,
+  readForecastEntry,
+  readForecastLink,
+  shortlistEntries,
+  startCopy,
   fetchDemandForecastDetail,
   fetchDemandForecastList,
   fetchDemandForecastStatus,
@@ -145,4 +156,82 @@ test('an aborted request rejects with its AbortError, never an invalid result', 
   const pending = fetchDemandForecastStatus(controller.signal);
   controller.abort();
   await assert.rejects(pending, (error: unknown) => error instanceof DOMException && error.name === 'AbortError');
+});
+
+type WireList = typeof listed;
+/** A page 1 of `count` forecast products, ranked 1 to `count`, built from the fixture's first row. */
+function rankedList(count: number): WireList {
+  const list = structuredClone(listed);
+  const [first] = list.entries;
+  assert.ok(first);
+  list.entries = Array.from({ length: count }, (_unused, index) => ({
+    ...structuredClone(first), rank: index + 1, asin: `B0RANK${String(index + 1).padStart(4, '0')}`, title: `Fictional product ${index + 1}`,
+  }));
+  list.item_count = count;
+  list.match_count = count;
+  return list;
+}
+
+test('Check these first is ranks 1 to 10 with a forecast, in served order, and only from page 1 unfiltered', () => {
+  const twelve = parseDemandForecastList(rankedList(12));
+  assert.deepEqual(shortlistEntries(twelve).map((entry) => entry.rank), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  // The fixture: rank 3 has no ordered-units forecast, so it is dropped and nothing replaces it.
+  assert.deepEqual(shortlistEntries(parseDemandForecastList(listed)).map((entry) => entry.asin), ['B0FIXTUR02', 'B0FIXTUR01']);
+  assert.deepEqual(shortlistEntries(parseDemandForecastList({ ...structuredClone(listed), query: { status: 'shown', page: 1 } })), []);
+  assert.deepEqual(shortlistEntries(parseDemandForecastList({ ...rankedList(12), page: 2, query: { status: null, page: 2 } })), []);
+  const withheld = rankedList(12);
+  withheld.entries.slice(0, 10).forEach((entry) => {
+    (entry.targets.units_ordered as { chosen_model: string | null; withheld_reason: string | null }).chosen_model = null;
+    (entry.targets.units_ordered as { chosen_model: string | null; withheld_reason: string | null }).withheld_reason = 'INSUFFICIENT_CONTEXT';
+  });
+  assert.deepEqual(shortlistEntries(parseDemandForecastList(withheld)), []);
+});
+
+test('the name rule runs only on input that fails the ASIN check; a 10-letter word is still sent', () => {
+  for (const name of ['Blender', 'ABC', 'Northstar Home Product 8', 'B0FIXTUR36X']) {
+    assert.equal(isAsin(name), false, name);
+    assert.equal(looksLikeName(name), true, name);
+  }
+  assert.equal(isAsin('B0FIX'), false);
+  assert.equal(looksLikeName('B0FIX'), false);
+  assert.equal(isAsin('TOOTHBRUSH'), true);
+  assert.equal(isAsin('b0fixtur36'), true);
+});
+
+test('a link opens one view only when it names exactly one valid route value (B-04)', () => {
+  assert.deepEqual(readForecastLink(''), FORECAST_START);
+  assert.deepEqual(readForecastLink('?utm=x'), FORECAST_START);
+  assert.deepEqual(readForecastLink('?asin=b0fixtur36&utm=x'), { view: 'product', asin: 'B0FIXTUR36', from: 'start', depth: 1 });
+  assert.deepEqual(readForecastLink('?view=all'), { view: 'all', asin: null, from: 'start', depth: 1 });
+  for (const bad of ['?asin=B0FIX', '?asin=', '?view=list', '?asin=B0FIXTUR36&asin=B0FIXTUR08', '?view=all&view=all', '?asin=B0FIXTUR36&view=all']) {
+    assert.equal(readForecastLink(bad), 'invalid', bad);
+  }
+});
+
+test('the history entry is read strictly and written beside every other key (B-02)', () => {
+  const product = { view: 'product', asin: 'B0FIXTUR36', from: 'all', depth: 2 } as const;
+  const written = forecastHistoryState({ __NA: true, sentinel: 'kept' }, product);
+  assert.deepEqual(written, { __NA: true, sentinel: 'kept', adlyticsForecast: product });
+  assert.deepEqual(readForecastEntry(written), product);
+  assert.deepEqual(forecastHistoryState(null, FORECAST_START), { adlyticsForecast: FORECAST_START });
+  assert.equal(readForecastEntry(null), null);
+  assert.equal(readForecastEntry({ adlyticsForecast: { ...product, depth: 1 } }), null);
+  assert.equal(readForecastEntry({ adlyticsForecast: { ...product, asin: 'B0FIX' } }), null);
+  assert.equal(readForecastEntry({ adlyticsForecast: { view: 'all', asin: null, from: 'start', depth: 1 } })?.view, 'all');
+  assert.equal(forecastSearch(product), '?asin=B0FIXTUR36');
+  assert.equal(forecastSearch({ view: 'all', asin: null, from: 'start', depth: 1 }), '?view=all');
+  assert.equal(forecastSearch(FORECAST_START), '');
+});
+
+test('the opening view copy reads the served measure, count and example', () => {
+  assert.equal(startCopy.basis(13), 'Largest forecast demand, ordered by 13-week likely units ordered');
+  assert.equal(startCopy.empty('units_ordered'), "No product has an ordered-units forecast in this update, so there's no demand to rank.");
+  assert.equal(startCopy.reasonShow(3, 'ASIN_INACTIVE'), 'Show the 3 products with no forecast: no recent sales');
+  assert.equal(startCopy.browse(61), 'Browse all 61 products');
+  assert.equal(startCopy.browse(null), 'Browse all products');
+  assert.equal(nameErrorText('B0FIXTUR36'), "Search finds a product by its ASIN, 10 letters or digits, for example B0FIXTUR36. Searching by product name isn't available here; pick a product from Check these first or Browse all.");
+  assert.equal(nameErrorText(null), "Search finds a product by its ASIN, 10 letters or digits. Searching by product name isn't available here; pick a product from Check these first or Browse all.");
+  assert.equal(notInForecastInlineText('B0NOTREAL0', 61, false), "B0NOTREAL0 isn't in this forecast. This forecast covers 61 products with Vendor Central sales history. Check the ASIN, or pick a product below.");
+  assert.equal(notInForecastInlineText('TOOTHBRUSH', 61, true), "TOOTHBRUSH isn't in this forecast. This forecast covers 61 products with Vendor Central sales history. Searching by product name isn't available here; pick a product from Check these first or Browse all.");
+  assert.equal(notInForecastInlineText('B0NOTREAL0', null, false), "B0NOTREAL0 isn't in this forecast. Check the ASIN, or pick a product below.");
 });

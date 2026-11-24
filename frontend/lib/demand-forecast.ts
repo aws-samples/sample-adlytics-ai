@@ -849,3 +849,120 @@ export const askQuestions = {
   range: (asin: string, viewWeeks: number, horizon: Horizon) => `Explain the low, likely and high demand forecast for ${asin} in the ${viewWeeks} weeks starting ${windowStart(horizon)}.`,
   why: (asin: string) => `Why does ${asin} have no demand forecast?`,
 } as const;
+
+// --- Opening view, search and links (hybrid design H1 to H4) --------------------------------
+
+/** The browser's ASIN check, the same pattern as the server's (`identity.py`). */
+const ASIN_PATTERN = /^[A-Za-z0-9]{10}$/;
+export function isAsin(text: string): boolean {
+  return ASIN_PATTERN.test(text);
+}
+/** The search box's value as the ASIN it asks for: trimmed and upper case. */
+export function normalizedAsin(text: string): string {
+  return text.trim().toUpperCase();
+}
+/**
+ * Input that failed the ASIN check and reads as a name (B-07): a space, more than 10 characters,
+ * or no digit. Never called on input that passes the ASIN check, so a 10-letter word is sent.
+ */
+export function looksLikeName(text: string): boolean {
+  const value = text.trim();
+  return /\s/.test(value) || value.length > 10 || !/\d/.test(value);
+}
+/** A `not_in_forecast` answer to input with no digit also says name search isn't available (O-04). */
+export function hasDigit(text: string): boolean {
+  return /\d/.test(text);
+}
+
+/** How many forecast ranks "Check these first" shows (OD-H2 A). */
+const SHORTLIST_RANKS = 10;
+/**
+ * "Check these first" (OD-H2 A): ranks 1 to 10 of a complete unfiltered page 1 whose status
+ * target has a forecast, in served order. Served fields only: no threshold, no sort.
+ */
+export function shortlistEntries(list: DemandForecastList): ListEntry[] {
+  if (list.outcome !== 'complete' || list.query.status !== null || list.page !== 1) return [];
+  return list.entries.filter((entry) => entry.rank <= SHORTLIST_RANKS && entry.targets[list.status_target].chosen_model !== null);
+}
+
+/** One history entry of the page (O-03): what it shows, where a product was opened from, how deep. */
+export interface ForecastEntry {
+  readonly view: 'start' | 'all' | 'product';
+  readonly asin: string | null;
+  readonly from: 'start' | 'all';
+  readonly depth: number;
+}
+export const FORECAST_START: ForecastEntry = { view: 'start', asin: null, from: 'start', depth: 0 };
+/** The key the page owns in `history.state`; every other key is left as it was (B-02). */
+const STATE_KEY = 'adlyticsForecast';
+
+/**
+ * The route a link names (B-04): no route parameter is the opening view; exactly one valid
+ * `asin`, or exactly one `view=all`, opens that view. A duplicate, both together, or an invalid
+ * value is invalid. Other parameters are ignored.
+ */
+export function readForecastLink(search: string): ForecastEntry | 'invalid' {
+  const parameters = new URLSearchParams(search);
+  const asins = parameters.getAll('asin');
+  const views = parameters.getAll('view');
+  if (asins.length + views.length === 0) return FORECAST_START;
+  if (asins.length + views.length > 1) return 'invalid';
+  const [asin] = asins;
+  if (asin !== undefined) return isAsin(asin) ? { view: 'product', asin: asin.toUpperCase(), from: 'start', depth: 1 } : 'invalid';
+  return views[0] === 'all' ? { view: 'all', asin: null, from: 'start', depth: 1 } : 'invalid';
+}
+/** The page's entry in a history state, or null when it holds none or a malformed one. */
+export function readForecastEntry(state: unknown): ForecastEntry | null {
+  if (typeof state !== 'object' || state === null) return null;
+  const entry: unknown = (state as Record<string, unknown>)[STATE_KEY];
+  if (typeof entry !== 'object' || entry === null) return null;
+  const { asin, depth, from, view } = entry as Record<string, unknown>;
+  if (from !== 'start' && from !== 'all') return null;
+  if (view === 'start' && asin === null && depth === 0) return { view, asin, from, depth };
+  if (view === 'all' && asin === null && depth === 1) return { view, asin, from, depth };
+  if (view === 'product' && typeof asin === 'string' && isAsin(asin) && depth === (from === 'all' ? 2 : 1)) return { view, asin, from, depth: from === 'all' ? 2 : 1 };
+  return null;
+}
+/** A copy of the current history state with only the page's own key set (B-02). */
+export function forecastHistoryState(state: unknown, entry: ForecastEntry): Record<string, unknown> {
+  const base = typeof state === 'object' && state !== null ? state as Record<string, unknown> : {};
+  return { ...base, [STATE_KEY]: entry };
+}
+/** The query string an entry's URL carries: `?asin=`, `?view=all`, or none. */
+export function forecastSearch(entry: ForecastEntry): string {
+  if (entry.view === 'product' && entry.asin !== null) return `?asin=${encodeURIComponent(entry.asin)}`;
+  return entry.view === 'all' ? '?view=all' : '';
+}
+
+/** The opening view's and Browse all's own copy (hybrid copy deck). */
+export const startCopy = {
+  title: 'Check these first',
+  basis: (defaultViewWeeks: number) => `Largest forecast demand, ordered by ${defaultViewWeeks}-week likely units ordered`,
+  keep: (defaultViewWeeks: number) => `The order stays on ${defaultViewWeeks}-week likely units ordered.`,
+  hint: 'Before a promotion, review how often each one shipped less than ordered.',
+  caption: (viewWeeks: number, firstWeek: string) => `Check these first: largest forecast demand, ${viewWeeks} weeks starting ${formatIsoDate(firstWeek)}`,
+  empty: (target: Target) => `No product has ${filterTargetCopy[target].article} ${filterTargetCopy[target].label} forecast in this update, so there's no demand to rank.`,
+  reasonsLead: (target: Target) => `Products without ${filterTargetCopy[target].article} ${filterTargetCopy[target].label} forecast:`,
+  reasonShow: (count: number, reason: SkipReason) => `Show the ${plural(count, 'product', 'products')} with no forecast: ${lowerFirst(skipReasonCopy[reason])}`,
+  browse: (itemCount: number | null) => (itemCount === null ? 'Browse all products' : `Browse all ${plural(itemCount, 'product', 'products')}`),
+  browseTitle: 'All products',
+  backToStart: 'Back to Demand forecast',
+  backToAll: 'Back to all products',
+  searchLabel: 'Find any product by ASIN',
+  finding: 'Finding…',
+  readFailed: "The forecast can't be loaded right now. Try again in a minute.",
+  linkInvalid: "This forecast link isn't valid.",
+} as const;
+/** E-NAME: search finds a product by ASIN only; without the example while none is current. */
+export function nameErrorText(example: string | null): string {
+  const lead = `Search finds a product by its ASIN, 10 letters or digits${example === null ? '' : `, for example ${example}`}.`;
+  return `${lead} Searching by product name isn't available here; pick a product from Check these first or Browse all.`;
+}
+/** E-NOTIN-INLINE and E-NOTIN-NAME (O-04); without the count while it is null (G-08). */
+export function notInForecastInlineText(asin: string, itemCount: number | null, noDigit: boolean): string {
+  const covers = itemCount === null ? '' : ` This forecast covers ${plural(itemCount, 'product', 'products')} with Vendor Central sales history.`;
+  const next = noDigit
+    ? " Searching by product name isn't available here; pick a product from Check these first or Browse all."
+    : ' Check the ASIN, or pick a product below.';
+  return `${asin} isn't in this forecast.${covers}${next}`;
+}
