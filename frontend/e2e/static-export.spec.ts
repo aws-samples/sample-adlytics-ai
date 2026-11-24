@@ -20,6 +20,7 @@ import { cloneRetention, retentionFixture, retentionTwoMarketFixture, RETENTION_
 import scorecardWeekly from '../test/fixtures/scorecard-7d-v2.json';
 import scorecardPending from '../test/fixtures/scorecard-pending-v2.json';
 import forecastList from '../test/fixtures/demand-forecast-list.json';
+import forecastDetail from '../test/fixtures/demand-forecast-detail.json';
 import forecastNotForecast from '../test/fixtures/demand-forecast-detail-not-forecast.json';
 import forecastStatus from '../test/fixtures/demand-forecast-status-stale.json';
 
@@ -824,13 +825,14 @@ test('a serving refusal shows the server\'s own text, and the status region keep
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
 });
 
-/** The forecast read routes from the shared wire fixtures; a product read is the no-forecast product. */
+/** The forecast read routes from the shared wire fixtures; B0FIXTUR01 reads its forecast, any other product the no-forecast one. */
 async function mockForecast(page: Page): Promise<void> {
   await page.route('**/api/demand-forecast**', (route) => {
     const url = new URL(route.request().url());
+    const asin = url.searchParams.get('asin');
     const body = url.pathname.endsWith('/status')
       ? forecastStatus
-      : url.searchParams.has('asin') ? forecastNotForecast : forecastList;
+      : asin === null ? forecastList : asin === 'B0FIXTUR01' ? forecastDetail : forecastNotForecast;
     return route.fulfill({ body: JSON.stringify(body), contentType: 'application/json', status: 200 });
   });
 }
@@ -868,13 +870,53 @@ async function axeClean(page: Page): Promise<void> {
   }
 }
 
-test('/demand-forecast/ lays out wide, stacks with the assistant open and never overflows at 390 px (G-03, G-04)', async ({ page }) => {
+test('/demand-forecast/ Check these first stays a table with the assistant docked and stacks at 390 px', async ({ page }) => {
+  await mockAuthenticatedV2(page);
+  await mockForecast(page);
+  await page.addInitScript(() => { if (sessionStorage.getItem('df-e2e') === null) { localStorage.setItem('adlytics.chat-open', 'true'); sessionStorage.setItem('df-e2e', '1'); } });
+  await page.setViewportSize({ height: 1000, width: 1440 });
+  expect((await page.goto('/demand-forecast/'))?.ok()).toBe(true);
+  const short = page.getByRole('table', { name: /^Check these first: largest forecast demand, 13 weeks starting Nov 8, 2026/ });
+  await expect(short).toBeVisible();
+  await expect(page.locator('h1')).toHaveCount(1);
+  // With the assistant docked: four columns in a painted header row, its pop-ups there.
+  await expect(page.locator('.df-short thead button[aria-label="About rank"]')).toBeVisible();
+  await expect(page.locator('.df-short-tips')).toBeHidden();
+  // The first viewport shows the answer, the search and the first row.
+  const fold = await page.evaluate(() => ['[data-slot="answer"]', '.df-search', '.df-short tbody tr'].map((selector) => {
+    const box = document.querySelector(selector)?.getBoundingClientRect();
+    return box !== undefined && box.bottom <= globalThis.innerHeight;
+  }));
+  expect(fold).toEqual([true, true, true]);
+  await noSidewaysOverflow(page);
+  await axeClean(page);
+  await page.locator('html').evaluate((element) => { element.dataset.theme = 'light'; });
+  await page.getByRole('button', { name: 'Assistant', exact: true }).click();
+  await page.setViewportSize({ height: 844, width: 390 });
+  await page.reload();
+  await expect(short).toBeVisible();
+  // Stacked: the header row is clipped, its pop-ups move to the tips line, keyboard-reachable (G-04).
+  await expect(page.locator('.df-short-tips')).toBeVisible();
+  await expect(page.locator('.df-short thead button[aria-label="About rank"]')).toBeHidden();
+  await page.locator('h1').focus();
+  expect(await tabTo(page, '.df-short-tips', 'About rank')).toBe(true);
+  // Search first, above the card title; the advice line is hidden (O-11).
+  expect(await page.evaluate(() => (document.querySelector('.df-search')?.getBoundingClientRect().top ?? 0)
+    < (document.querySelector('.df-start h2')?.getBoundingClientRect().top ?? 0))).toBe(true);
+  await expect(page.locator('.df-short-hint')).toBeHidden();
+  await noSidewaysOverflow(page);
+  await axeClean(page);
+});
+
+test('/demand-forecast/ Browse all lays out wide, stacks with the assistant open and never overflows at 390 px (G-03, G-04)', async ({ page }) => {
   await mockAuthenticatedV2(page);
   await mockForecast(page);
   await page.addInitScript(() => { if (sessionStorage.getItem('df-e2e') === null) { localStorage.setItem('adlytics.chat-open', 'false'); sessionStorage.setItem('df-e2e', '1'); } });
   await page.setViewportSize({ height: 900, width: 1440 });
   const response = await page.goto('/demand-forecast/');
   expect(response?.ok()).toBe(true);
+  await page.getByRole('link', { name: 'Browse all 3 products' }).click();
+  await expect(page.locator('h1')).toHaveText('All products');
   const table = page.getByRole('table', { name: /^Likely totals, 13 weeks starting Nov 8, 2026/ });
   await expect(table).toBeVisible();
   await expect(page.locator('h1')).toHaveCount(1);
@@ -896,12 +938,14 @@ test('/demand-forecast/ lays out wide, stacks with the assistant open and never 
   expect(await tabTo(page, '.df-table-tips .stack-tips', 'About rank')).toBe(true);
   await noSidewaysOverflow(page);
   await axeClean(page);
-  // 390 px: nothing scrolls sideways on the list or on the product without a forecast.
+  // 390 px: nothing scrolls sideways on the list or on the product without a forecast. A reload
+  // on ?view=all stays on Browse all.
   await page.getByRole('button', { name: 'Assistant', exact: true }).click();
   await expect.poll(() => page.evaluate(() => document.querySelector('.demand-forecast')?.clientWidth ?? 0)).toBeGreaterThanOrEqual(912);
   await page.setViewportSize({ height: 844, width: 390 });
   await page.reload();
   await expect(table).toBeVisible();
+  await expect(page.locator('h1')).toHaveText('All products');
   await expect(page.locator('h1')).toHaveCount(1);
   await noSidewaysOverflow(page);
   await page.getByRole('button', { name: 'Fictional product 3' }).click();
@@ -941,4 +985,89 @@ test('/demand-forecast/ at 390 px opens a pop-up on its own line under its term,
   await page.keyboard.press('Escape');
   await expect(panel).toBeHidden();
   await expect(button).toBeFocused();
+});
+
+test('/demand-forecast/ Back, Forward, a fresh link, a reload and the tab link keep the page and other history keys (B-02)', async ({ page }) => {
+  await mockAuthenticatedV2(page);
+  await mockForecast(page);
+  await page.addInitScript(() => { localStorage.setItem('adlytics.chat-open', 'false'); });
+  await page.setViewportSize({ height: 900, width: 1440 });
+  const h1 = page.locator('h1');
+  const short = page.getByRole('table', { name: /^Check these first/ });
+  const all = page.getByRole('table', { name: /^Likely totals/ });
+  const search = () => page.evaluate(() => globalThis.location.search);
+  // A page marker that a full reload would drop, and an unrelated state key on the first entry.
+  const marker = () => page.evaluate(() => (globalThis as unknown as { dfMarker?: number }).dfMarker === 1);
+  const keys = () => page.evaluate(() => ({
+    next: (globalThis.history.state as { __NA?: boolean } | null)?.__NA === true,
+    sentinel: (globalThis.history.state as { sentinel?: string } | null)?.sentinel ?? null,
+  }));
+  const focusedRow = () => page.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset.forecastRow ?? document.activeElement?.tagName ?? null);
+
+  await page.goto('/demand-forecast/');
+  await expect(short).toBeVisible();
+  await page.evaluate(() => {
+    globalThis.history.replaceState({ ...(globalThis.history.state as object), sentinel: 'kept' }, '');
+    (globalThis as unknown as { dfMarker?: number }).dfMarker = 1;
+  });
+  // Row, then the browser's Back and Forward.
+  await short.getByRole('button', { name: 'Fictional product 1' }).click();
+  await expect(h1).toHaveText('Fictional product 1');
+  expect(await search()).toBe('?asin=B0FIXTUR01');
+  expect(await keys()).toEqual({ next: true, sentinel: 'kept' });
+  await page.goBack();
+  await expect(short).toBeVisible();
+  await expect(h1).toHaveText('Demand forecast');
+  expect(await search()).toBe('');
+  await expect.poll(focusedRow).toBe('B0FIXTUR01');
+  await page.goForward();
+  await expect(h1).toHaveText('Fictional product 1');
+  await expect(h1).toBeFocused();
+  expect(await marker()).toBe(true);
+  expect(await keys()).toEqual({ next: true, sentinel: 'kept' });
+
+  // A fresh link, then the shell's Back: the seeded entry under it keeps the app's own keys.
+  await page.goto('/demand-forecast/?asin=B0FIXTUR01');
+  await expect(h1).toHaveText('Fictional product 1');
+  await expect(h1).toBeFocused();
+  await page.evaluate(() => { (globalThis as unknown as { dfMarker?: number }).dfMarker = 1; });
+  await page.getByRole('button', { name: 'Back to Demand forecast' }).click();
+  await expect(short).toBeVisible();
+  expect(await search()).toBe('');
+  expect(await page.evaluate(() => globalThis.location.pathname)).toBe('/demand-forecast/');
+  expect(await marker()).toBe(true);
+  expect((await keys()).next).toBe(true);
+
+  // Browse all, a product from it, a reload, then Back returns to Browse all.
+  await page.evaluate(() => { globalThis.history.replaceState({ ...(globalThis.history.state as object), sentinel: 'kept' }, ''); });
+  await page.getByRole('link', { name: 'Browse all 3 products' }).click();
+  await expect(h1).toHaveText('All products');
+  expect(await search()).toBe('?view=all');
+  await all.getByRole('button', { name: 'Fictional product 1' }).click();
+  await expect(h1).toHaveText('Fictional product 1');
+  await page.reload();
+  await expect(h1).toHaveText('Fictional product 1');
+  expect(await keys()).toEqual({ next: true, sentinel: 'kept' });
+  await page.evaluate(() => { (globalThis as unknown as { dfMarker?: number }).dfMarker = 1; });
+  await page.getByRole('button', { name: 'Back to all products' }).click();
+  await expect(all).toBeVisible();
+  await expect(h1).toHaveText('All products');
+  expect(await search()).toBe('?view=all');
+  await expect.poll(focusedRow).toBe('B0FIXTUR01');
+
+  // The active tab link from a product opened in Browse all opens the opening view (B-01).
+  await all.getByRole('button', { name: 'Fictional product 1' }).click();
+  await expect(h1).toHaveText('Fictional product 1');
+  await page.getByRole('navigation', { name: 'Sections of Retail health' }).getByRole('link', { name: 'Demand forecast', exact: true }).click();
+  await expect(short).toBeVisible();
+  await expect(h1).toHaveText('Demand forecast');
+  await expect(h1).toBeFocused();
+  expect(await search()).toBe('');
+  expect(await marker()).toBe(true);
+  expect(await keys()).toEqual({ next: true, sentinel: 'kept' });
+
+  // An invalid link opens H1 on the bare URL and says so (B-04).
+  await page.goto('/demand-forecast/?asin=B0FIXTUR01&view=all');
+  await expect(page.getByText("This forecast link isn't valid.")).toBeVisible();
+  expect(await search()).toBe('');
 });

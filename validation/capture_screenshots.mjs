@@ -673,44 +673,32 @@ async function captureProductsAndAds(page) {
 }
 
 /**
- * Demand forecast (ADR-163), opt-in through ADL_CAPTURE_ONLY: the page with its forecast list,
- * then one product's stored forecast, both with the assistant docked. The product is the first
- * list row with a total for every target, or the first row when none has.
+ * Demand forecast (ADR-163), opt-in through ADL_CAPTURE_ONLY: the opening view with "Check these
+ * first", then the first shortlisted product, both with the assistant docked. The product view
+ * replaces the opening view, so its shot is the top of the page.
  */
 async function captureDemandForecast(page) {
   await page.goto(`${BASE_URL}/demand-forecast/`, { waitUntil: 'domcontentloaded' });
   await assertLight(page);
-  // First match: dev on 2026-11-20 renders this page's heading twice.
   await page.getByRole('heading', { name: 'Demand forecast', level: 1 }).first().waitFor({ timeout: 60_000 });
+  await page.locator('main .df-start, main .callout').first().waitFor({ timeout: 60_000 });
   await settled(page, page.locator('main'));
-  const table = page.locator('main table', { has: page.locator('caption', { hasText: 'Forecast totals (p50)' }) });
-  if (await table.count() === 0) {
+  const row = page.locator('main .df-shortlist button[data-forecast-row]').first();
+  if (await row.count() === 0) {
     for (const name of ['demand-forecast.png', 'demand-forecast-product.png']) {
-      skipped.push(`${name}: the target shows no published forecast list`);
+      skipped.push(`${name}: the target shows no forecast product in Check these first`);
     }
     return;
   }
   await setAssistant(page, true);
+  await scrollTop(page);
   await shotViewport(page, 'demand-forecast.png', 'css');
-  const rows = table.locator('tbody tr');
-  const forecast = rows.filter({ hasNotText: 'Not forecast' });
-  const row = await forecast.count() > 0 ? forecast.first() : rows.first();
-  await row.locator('th[scope="row"] button').click();
-  const detail = page.locator('section[aria-labelledby="forecast-detail-heading"]');
-  await detail.waitFor({ timeout: 60_000 });
+  await row.click();
+  await page.locator('main .detail-tiles').waitFor({ timeout: 60_000 });
   await settled(page, page.locator('main'));
-  // The detail opens under the list and is taller than any viewport, so the shot is the viewport
-  // a user sees with its heading brought to the top, clear of the sticky top bar.
-  await detail.evaluate((node) => {
-    node.scrollIntoView({ block: 'start' });
-    const scroller = node.closest('main, .main');
-    if (scroller !== null && scroller.scrollHeight > scroller.clientHeight) scroller.scrollTop -= 96;
-    else window.scrollBy(0, -96);
-  });
-  await quiet(page);
-  await save('demand-forecast-product.png', await page.screenshot({ ...SHOT, scale: 'css' }));
+  await scrollTop(page);
+  await shotViewport(page, 'demand-forecast-product.png', 'css');
 }
-
 async function pushFrames(page, events) {
   await page.evaluate((frames) => {
     const encoder = new TextEncoder();

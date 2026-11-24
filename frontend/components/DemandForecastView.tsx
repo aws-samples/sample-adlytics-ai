@@ -152,10 +152,10 @@ function focusLost(): boolean {
 function focusOnBack(): boolean {
   return document.activeElement?.closest('.hub-back') != null;
 }
-/** Focus may move: it was lost, or is on the h1, the crumb, or the Back control of a closing view. */
+/** Focus may move: it was lost, or is on the h1, the crumb or tab link, or the Back control of a closing view. */
 function focusMovable(closing: boolean): boolean {
   const active = document.activeElement;
-  return focusLost() || (closing && focusOnBack()) || active?.id === PAGE_HEADING_ID || active?.closest('.crumb') != null;
+  return focusLost() || (closing && focusOnBack()) || active?.id === PAGE_HEADING_ID || active?.closest('.crumb, .tabs') != null;
 }
 function openerElement(opener: Opener, search: HTMLInputElement | null): HTMLElement | null {
   switch (opener.kind) {
