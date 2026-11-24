@@ -42,6 +42,7 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
   localStorage.clear();
 });
+beforeEach(() => { window.history.replaceState(null, '', '/demand-forecast/'); });
 
 type Route = (url: string) => [number, unknown] | null;
 const storeDown = { schema_version: 1, refused: 'FORECAST_STORE_UNAVAILABLE', code: 'ADLY-FORECAST_READ-0009', detail: 'x' };
@@ -70,25 +71,32 @@ function page() {
   return render(<AppShell pathname="/demand-forecast/" sessionId="conversation-fictional"><DemandForecastView/></AppShell>);
 }
 const LIST_NAME = /^Likely totals, 13 weeks starting Nov 8, 2026/;
+const SHORT = /^Check these first: largest forecast demand, 13 weeks starting Nov 8, 2026/;
 const heading = () => screen.getByRole('heading', { level: 1 });
+const searchBox = () => screen.getByRole('textbox', { name: 'Find any product by ASIN' });
+/** Open a product from Browse all: the shortlist lists only products with a forecast. */
+async function openFromBrowse(name: string): Promise<void> {
+  await userEvent.click(await screen.findByRole('link', { name: 'Browse all 3 products' }));
+  await userEvent.click(await screen.findByRole('button', { name }));
+}
 /** Where focus is, by name: comparing DOM nodes in an assertion message is expensive. */
 function focused(): string {
   const active = document.activeElement;
   return active === null ? 'none' : `${active.tagName.toLowerCase()}:${active.textContent ?? ''}`;
 }
 
-test('opening a product replaces the list, names the h1 and focuses it; Back restores the list and the row', async () => {
+test('opening a product replaces the opening view, names the h1 and focuses it; Back restores the view and the row', async () => {
   serve(forecastRoutes(detail));
   page();
-  await screen.findByRole('table', { name: LIST_NAME });
+  await screen.findByRole('table', { name: SHORT });
   await userEvent.click(screen.getByRole('button', { name: '8 weeks' }));
   await userEvent.click(screen.getByRole('button', { name: 'Fictional product 1' }));
   await screen.findByText('ASIN B0FIXTUR01');
-  assert.equal(screen.queryByRole('table', { name: /^Likely totals/ }), null);
+  assert.equal(screen.queryByRole('table', { name: /^Check these first/ }), null);
   assert.equal(heading().textContent, 'Fictional product 1');
   await waitFor(() => assert.equal(focused(), `h1:${heading().textContent ?? ''}`));
   await userEvent.click(screen.getByRole('button', { name: 'Back to Demand forecast' }));
-  await screen.findByRole('table', { name: /^Likely totals, 8 weeks starting Nov 8, 2026/ });
+  await screen.findByRole('table', { name: /^Check these first: largest forecast demand, 8 weeks starting Nov 8, 2026/ });
   assert.equal(heading().textContent, 'Demand forecast');
   await waitFor(() => assert.equal(focused(), 'button:Fictional product 1'));
 });
@@ -104,24 +112,71 @@ test('Back by keyboard returns focus to the row when the frame runs before the s
   const frame = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => { callback(0); return 0; });
   try {
     await userEvent.keyboard('{Enter}');
-    await screen.findByRole('table', { name: LIST_NAME });
+    await screen.findByRole('table', { name: SHORT });
   } finally {
     frame.mockRestore();
   }
   await waitFor(() => assert.equal(focused(), 'button:Fictional product 1'));
 });
-test('a product found by search that is not on the page returns focus to the h1', async () => {
+test('a product found by search returns focus to the search box', async () => {
   const offPage = { ...structuredClone(detail), asin: 'B0FIXTUR09', title: null };
   serve(forecastRoutes(offPage));
   page();
-  await screen.findByRole('table', { name: LIST_NAME });
-  await userEvent.type(screen.getByRole('textbox', { name: 'Find a product by ASIN' }), 'b0fixtur09');
-  await userEvent.click(screen.getByRole('button', { name: 'Find' }));
+  await screen.findByRole('table', { name: SHORT });
+  await userEvent.type(searchBox(), 'b0fixtur09{Enter}');
   await screen.findByText('ASIN B0FIXTUR09');
   assert.equal(heading().textContent, 'Untitled product');
+  await waitFor(() => assert.equal(focused(), 'h1:Untitled product'));
   await userEvent.click(screen.getByRole('button', { name: 'Back to Demand forecast' }));
+  await screen.findByRole('table', { name: SHORT });
+  await waitFor(() => assert.ok(document.activeElement === searchBox(), focused()));
+});
+
+test('Browse all is an open entity; a product opened there goes Back to the same filter, page and weeks, then to H1', async () => {
+  const twoPages = { ...structuredClone(listed), page_count: 2 };
+  const pageTwo = { ...structuredClone(listed), page: 2, page_count: 2, query: { status: null, page: 2 }, entries: structuredClone(listed).entries.slice(1) };
+  const seen = serve((url) => {
+    if (url.endsWith('/status')) return [200, stale];
+    if (url.includes('asin=')) return [200, detail];
+    return url.includes('page=2') ? [200, pageTwo] : [200, twoPages];
+  });
+  page();
+  await userEvent.click(await screen.findByRole('link', { name: 'Browse all 3 products' }));
   await screen.findByRole('table', { name: LIST_NAME });
-  await waitFor(() => assert.equal(focused(), `h1:${heading().textContent ?? ''}`));
+  assert.equal(heading().textContent, 'All products');
+  await waitFor(() => assert.equal(focused(), 'h1:All products'));
+  await userEvent.click(screen.getByRole('button', { name: '4 weeks' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Next' }));
+  assert.ok(await screen.findByText('Page 2 of 2 · 3 products'));
+  await userEvent.click(screen.getByRole('button', { name: 'Fictional product 1' }));
+  await screen.findByText('ASIN B0FIXTUR01');
+  await userEvent.click(screen.getByRole('button', { name: 'Back to all products' }));
+  assert.ok(await screen.findByText('Page 2 of 2 · 3 products'));
+  assert.ok(screen.getByRole('table', { name: /^Likely totals, 4 weeks/ }));
+  assert.equal(heading().textContent, 'All products');
+  await waitFor(() => assert.equal(focused(), 'button:Fictional product 1'));
+  await userEvent.click(screen.getByRole('button', { name: 'Back to Demand forecast' }));
+  // The opening view still reads the start list: ranks 1 to 10 and the leader answer (O-01).
+  const short = await screen.findByRole('table', { name: /^Check these first: largest forecast demand, 4 weeks/ });
+  assert.equal(within(short).getAllByRole('row').length, 3);
+  assert.ok(screen.getByText(/^Fictional product 2 leads the 13-week forecast/));
+  assert.equal(heading().textContent, 'Demand forecast');
+  await waitFor(() => assert.equal(focused(), 'a:Browse all 3 products ›'));
+  assert.deepEqual(seen.filter((url) => url.startsWith('/api/demand-forecast?page') || url === '/api/demand-forecast'), ['/api/demand-forecast', '/api/demand-forecast?page=2']);
+});
+
+test('Show them opens Browse all on its reason, and Back returns focus to it (B-09)', async () => {
+  serve((url) => {
+    if (url.endsWith('/status')) return [200, stale];
+    return url.includes('status=') ? [200, { ...structuredClone(listed), query: { status: 'INSUFFICIENT_CONTEXT', page: 1 }, entries: structuredClone(listed).entries.slice(2) }] : [200, listed];
+  });
+  page();
+  await userEvent.click(await screen.findByRole('button', { name: 'Show the 1 product with no forecast: too little history' }));
+  await screen.findByRole('table', { name: LIST_NAME });
+  assert.equal(screen.getByRole('button', { name: /^No ordered-units forecast: too little history/ }).getAttribute('aria-pressed'), 'true');
+  await userEvent.click(screen.getByRole('button', { name: 'Back to Demand forecast' }));
+  await screen.findByRole('table', { name: SHORT });
+  await waitFor(() => assert.equal(document.activeElement?.getAttribute('aria-label'), 'Show the 1 product with no forecast: too little history'));
 });
 
 test('a forecast measure shows the answer, tiles, chart and dated forecast table', async () => {
@@ -206,7 +261,7 @@ test('a product with no forecast shows one callout, the measure switch and the w
   });
   serve(forecastRoutes(runs));
   page();
-  await userEvent.click(await screen.findByRole('button', { name: 'Fictional product 3' }));
+  await openFromBrowse('Fictional product 3');
   const callout = (await screen.findByRole('heading', { name: 'No forecast for this product' })).closest('section');
   assert.ok(callout);
   assert.equal(screen.getAllByRole('heading', { name: /forecast for this product/ }).length, 1);
@@ -226,7 +281,7 @@ test('a product with no forecast shows one callout, the measure switch and the w
 test('a single-currency withheld money measure shows its weekly amounts with the code', async () => {
   serve(forecastRoutes(notForecast));
   page();
-  await userEvent.click(await screen.findByRole('button', { name: 'Fictional product 3' }));
+  await openFromBrowse('Fictional product 3');
   await userEvent.click(within(await screen.findByRole('group', { name: 'Measure' })).getByRole('button', { name: 'Shipped revenue' }));
   const strip = screen.getByRole('heading', { name: 'Recent weeks, shipped revenue' }).closest('section');
   assert.ok(strip);
@@ -238,7 +293,7 @@ test('a mixed-currency product loads and shows no money amount under one currenc
   mixed.targets.cogs_shipped = { ...mixed.targets.cogs_shipped, withheld_reason: 'CURRENCY_MIXED', currency_code: 'USD' } as never;
   serve(forecastRoutes(mixed));
   page();
-  await userEvent.click(await screen.findByRole('button', { name: 'Fictional product 3' }));
+  await openFromBrowse('Fictional product 3');
   const measures = within(await screen.findByRole('group', { name: 'Measure' }));
   for (const [button, name] of [['Shipped revenue', 'shipped revenue'], ['Amazon wholesale cost', 'Amazon wholesale cost']] as const) {
     await userEvent.click(measures.getByRole('button', { name: button }));
@@ -252,13 +307,13 @@ test('a mixed-currency product loads and shows no money amount under one currenc
 test('with status failed, the next step drops its date and the pop-up offers Try again', async () => {
   serve(forecastRoutes(notForecast, () => [503, storeDown]));
   page();
-  await userEvent.click(await screen.findByRole('button', { name: 'Fictional product 3' }));
+  await openFromBrowse('Fictional product 3');
   assert.ok(await screen.findByText('A forecast becomes possible once it has enough complete weeks of sales.'));
   await userEvent.click(screen.getByRole('button', { name: 'About this forecast' }));
   assert.ok(screen.getByText(/The update schedule can't be loaded right now\./));
 });
 
-test('a product not in this forecast says so with the served count and goes back to the list', async () => {
+test('a searched product not in this forecast answers under the box and keeps the opening view', async () => {
   const absent = {
     schema_version: 1, outcome: 'not_in_forecast', asin: 'B0NOTREAL0',
     provenance: structuredClone(detail).provenance, freshness: structuredClone(detail).freshness, horizon: structuredClone(detail).horizon,
@@ -266,14 +321,12 @@ test('a product not in this forecast says so with the served count and goes back
   };
   serve(forecastRoutes(absent));
   page();
-  await screen.findByRole('table', { name: LIST_NAME });
-  await userEvent.type(screen.getByRole('textbox', { name: 'Find a product by ASIN' }), 'B0NOTREAL0');
-  await userEvent.click(screen.getByRole('button', { name: 'Find' }));
-  assert.ok(await screen.findByRole('heading', { name: "B0NOTREAL0 isn't in this forecast" }));
-  assert.ok(screen.getByText('This forecast covers 3 products with Vendor Central sales history. Check the ASIN, or choose a product from the list.'));
+  await screen.findByRole('table', { name: SHORT });
+  await userEvent.type(searchBox(), 'B0NOTREAL0{Enter}');
+  assert.ok(await screen.findByText("B0NOTREAL0 isn't in this forecast. This forecast covers 3 products with Vendor Central sales history. Check the ASIN, or pick a product below."));
   assert.equal(heading().textContent, 'Demand forecast');
-  await userEvent.click(screen.getByRole('button', { name: 'Back to the list' }));
-  assert.ok(await screen.findByRole('table', { name: LIST_NAME }));
+  assert.ok(document.activeElement === searchBox(), focused());
+  assert.ok(screen.getByRole('table', { name: SHORT }));
 });
 
 test('a failed product read keeps the entity and offers Try again', async () => {

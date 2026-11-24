@@ -79,7 +79,7 @@ export function DemandForecastAsinDetail({ detail, itemCount, onBack, onRetrySta
   const [measure, setMeasure] = useState<Target>(statusTarget);
   if (detail.outcome === 'not_in_forecast') {
     return (
-      <StateCallout title={notInForecastTitle(detail.asin)} actions={<button type="button" className="btn" onClick={onBack}>Back to the list</button>}>
+      <StateCallout title={notInForecastTitle(detail.asin)} actions={<button type="button" className="btn" onClick={onBack}>Back to Demand forecast</button>}>
         {notInForecastText(itemCount)}
       </StateCallout>
     );

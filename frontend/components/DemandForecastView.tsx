@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT-0
 'use client';
-import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type RefObject } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { formatCanonicalDecimal, formatCount, formatCurrency, formatIsoDate, formatIsoInstantShort } from '@/lib/exact-format';
 import {
   asinErrorText,
@@ -11,25 +11,36 @@ import {
   fetchDemandForecastDetail,
   fetchDemandForecastList,
   fetchDemandForecastStatus,
+  FORECAST_START,
+  hasDigit,
+  isAsin,
   itemCountOf,
   filterTargetCopy,
   INFO,
   listAnswer,
+  looksLikeName,
   lowerFirst,
   measureCopy,
   modelCopy,
   modelNames,
   moneyTargets,
+  nameErrorText,
+  normalizedAsin,
+  notInForecastInlineText,
   plural,
   skipReasonCopy,
   skipReasons,
+  startCopy,
   weekStartSentenceCopy,
   type DemandForecastDetail,
   type DemandForecastList,
   type DemandForecastStatus,
   type ExampleAsin,
   type FetchResult,
+  type ForecastEntry,
   type ListEntry,
+  type ListQuery,
+  type SkipReason,
   type Target,
   type ViewKey,
 } from '@/lib/demand-forecast';
@@ -38,7 +49,6 @@ import { AnswerSentence } from './AnswerSentence';
 import { seedAssistantQuestion } from './ChatPanel';
 import { DataTable, DtBody, DtCell, DtColumn, DtHead, DtRow, DtRowHeader } from './DataTable';
 import { DemandForecastAsinDetail } from './DemandForecastAsinDetail';
-import { PAGE_HEADING_ID } from './Dialog';
 import {
   DEMAND_FORECAST_NO_FORECAST_TITLE,
   DEMAND_FORECAST_READ_FAILED_TEXT,
@@ -50,6 +60,8 @@ import {
   readyStatus,
   type Loaded,
 } from './DemandForecastScope';
+import { SearchBox, StartSkeleton, StartView } from './DemandForecastStart';
+import { PAGE_HEADING_ID } from './Dialog';
 import { InfoTip } from './InfoTip';
 import { PageAbsence } from './PageAbsence';
 import { PageError, StateCallout } from './StatePanels';
@@ -58,33 +70,55 @@ export type { Loaded } from './DemandForecastScope';
 export { DEMAND_FORECAST_NO_FORECAST_TITLE, DEMAND_FORECAST_READ_FAILED_TEXT, noForecastYetText } from './DemandForecastScope';
 
 /**
- * The Demand forecast tab (ADR-163; forecasting LLD "Demand forecast page"). The shell draws the
- * one h1. The list and status requests start together and each renders when ready: the list
- * carries its own freshness, so only the pill's schedule lines wait for status. A publish that
- * changes the page count returns the list to page 1 once; a service failure offers Try again; an
- * aborted request is not an error. The list, status and detail each name the generation they
- * read; when a publish lands between requests and they disagree, none of them renders, and Show
- * the latest forecast refetches all three together. Every figure is a served display string.
+ * The Demand forecast tab (ADR-163; forecasting LLD "Demand forecast page"; hybrid design). The
+ * shell draws the one h1. The page opens on the answer, "Check these first" and the one search
+ * box (H1); the full list is Browse all (H4); a product shows alone (H3). The start list is always
+ * the unfiltered page 1 and feeds the opening view; Browse all's filter and page never replace it
+ * (O-01). The lists, status and detail each name the generation they read; when a publish lands
+ * between requests and they disagree, none of them renders, and Show the latest forecast refetches
+ * them together. An aborted request is not an error. Every figure is a served display string.
  */
 
 interface Keyed<T> { readonly key: string; readonly loaded: Loaded<T> }
 
+/** What opened a view, so closing it returns focus there (G-09, B-09). */
+type Opener =
+  | { readonly kind: 'row'; readonly asin: string }
+  | { readonly kind: 'search' }
+  | { readonly kind: 'browse' }
+  | { readonly kind: 'reason'; readonly reason: SkipReason };
+/** Where focus goes once the view it names has its list (or none to wait for). */
+interface FocusGoal { readonly to: Opener | null; readonly wait: 'start' | 'browse' | null }
+/** The search box's inline outcome (H2), drawn on its own line under the card header (B-08). */
+type SearchOutcome =
+  | { readonly kind: 'asin' }
+  | { readonly kind: 'name' }
+  | { readonly kind: 'notin'; readonly asin: string; readonly noDigit: boolean }
+  | { readonly kind: 'unavailable' }
+  | { readonly kind: 'failed'; readonly asin: string }
+  | { readonly kind: 'link' };
+interface PendingSearch { readonly asin: string; readonly id: number; readonly controller: AbortController }
+
 const MIXED_TEXT = 'A newer forecast was published while this page loaded.';
 const PAGE1_TEXT = 'The forecast was updated, so the list is back on page 1.';
-const ASIN = /^[A-Za-z0-9]{10}$/;
+const ALL: ForecastEntry = { view: 'all', asin: null, from: 'start', depth: 1 };
+const START_QUERY: ListQuery = { status: null, page: 1 };
 
 function isAbort(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError';
 }
+function productEntry(asin: string, from: 'start' | 'all'): ForecastEntry {
+  return { view: 'product', asin, from, depth: from === 'all' ? 2 : 1 };
+}
 
 /** The generation each ready result read, `null` for none published; mixed results disagree. */
 function mixedGenerations(
-  list: Loaded<DemandForecastList>,
+  lists: readonly Loaded<DemandForecastList>[],
   status: Loaded<DemandForecastStatus>,
   detail: Loaded<DemandForecastDetail | null> | null,
 ): boolean {
   const read = new Set<string | null>();
-  if (list.state === 'ready') read.add(list.value.provenance?.generation_id ?? null);
+  for (const list of lists) if (list.state === 'ready') read.add(list.value.provenance?.generation_id ?? null);
   if (status.state === 'ready') read.add(status.value.generation?.generation_id ?? null);
   if (detail?.state === 'ready' && detail.value !== null) read.add(detail.value.provenance?.generation_id ?? null);
   return read.size > 1;
@@ -93,27 +127,72 @@ function mixedGenerations(
 function settle<T>(result: FetchResult<T>): Loaded<T> {
   return result.kind === 'ok' ? { state: 'ready', value: result.value } : { state: 'failed' };
 }
+/** A list the page can show: complete, with provenance and a horizon. */
+function completeList(list: Loaded<DemandForecastList>): DemandForecastList | null {
+  return list.state === 'ready' && list.value.outcome === 'complete' && list.value.provenance !== null && list.value.horizon !== null
+    ? list.value
+    : null;
+}
+
+/** Focus fell to the document because the control that held it left with the view. */
+function focusLost(): boolean {
+  return document.activeElement === null || document.activeElement === document.body;
+}
+/**
+ * Focus is on the shell's Back control, which leaves with the view: in a browser the frame after
+ * the view closes can run before the shell drops it, so focus would fall to the body (891bf4df).
+ */
+function focusOnBack(): boolean {
+  return document.activeElement?.closest('.hub-back') != null;
+}
+/** Focus may move: it was lost, or is on the closing Back control, the crumb or the h1. */
+function focusMovable(): boolean {
+  const active = document.activeElement;
+  return focusLost() || focusOnBack() || active?.id === PAGE_HEADING_ID || active?.closest('.crumb') != null;
+}
+function openerElement(opener: Opener, search: HTMLInputElement | null): HTMLElement | null {
+  switch (opener.kind) {
+    case 'row': return document.querySelector<HTMLElement>(`button[data-forecast-row="${opener.asin}"]`);
+    case 'search': return search;
+    case 'browse': return document.querySelector<HTMLElement>('a[data-forecast-browse]');
+    case 'reason': return document.querySelector<HTMLElement>(`button[data-forecast-reason="${opener.reason}"]`)
+      ?? document.querySelector<HTMLElement>('a[data-forecast-browse]');
+  }
+}
 
 export function DemandForecastView() {
-  const [query, setQuery] = useState<{ status: string | null; page: number }>({ status: null, page: 1 });
-  const [listResult, setListResult] = useState<Keyed<DemandForecastList> | null>(null);
+  const [entry, setEntry] = useState<ForecastEntry>(FORECAST_START);
+  const [browseQuery, setBrowseQuery] = useState<ListQuery>(START_QUERY);
+  const [startResult, setStartResult] = useState<Keyed<DemandForecastList> | null>(null);
+  const [browseResult, setBrowseResult] = useState<Keyed<DemandForecastList> | null>(null);
   const [statusResult, setStatusResult] = useState<Keyed<DemandForecastStatus> | null>(null);
   const [detailResult, setDetailResult] = useState<Keyed<DemandForecastDetail | null> | null>(null);
-  const [selected, setSelected] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [searchInvalid, setSearchInvalid] = useState(false);
-  const [refocusSearch, setRefocusSearch] = useState(0);
+  const [outcome, setOutcome] = useState<SearchOutcome | null>(null);
+  const [pendingAsin, setPendingAsin] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [viewWeeks, setViewWeeks] = useState<number | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [statusAttempt, setStatusAttempt] = useState(0);
   const [example, setExample] = useState<ExampleAsin | null>(null);
+  const [focusTick, setFocusTick] = useState(0);
   const searchInput = useRef<HTMLInputElement>(null);
+  const pending = useRef<PendingSearch | null>(null);
+  const requestId = useRef(0);
+  const focusGoal = useRef<FocusGoal | null>(null);
+  const openers = useRef<{ start?: Opener; all?: Opener }>({});
+  const searchId = useId();
+  const outcomeId = `${searchId}-outcome`;
   // Each result carries the request it answers, so a newer request reads as loading until its
   // own result lands, and no effect sets state before its fetch settles.
   const statusKey = `${attempt}|${statusAttempt}`;
-  const listKey = `${query.status ?? ''}|${query.page}|${attempt}`;
-  const detailKey = selected === null ? null : `${selected}|${attempt}`;
+  const startKey = `|1|${attempt}`;
+  const browseIsStart = browseQuery.status === null && browseQuery.page === 1;
+  const browseKey = `${browseQuery.status ?? ''}|${browseQuery.page}|${attempt}`;
+  const detailKey = entry.view === 'product' && entry.asin !== null ? `${entry.asin}|${attempt}` : null;
+  const browseWanted = entry.view === 'all' && !browseIsStart;
+  const haveBrowse = browseResult?.key === browseKey;
+  const haveDetail = detailKey !== null && detailResult?.key === detailKey;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -125,183 +204,362 @@ export function DemandForecastView() {
 
   useEffect(() => {
     const controller = new AbortController();
+    fetchDemandForecastList(START_QUERY, controller.signal)
+      .then((result) => setStartResult({ key: startKey, loaded: settle(result) }))
+      .catch((error: unknown) => { if (!isAbort(error)) setStartResult({ key: startKey, loaded: { state: 'failed' } }); });
+    return () => controller.abort();
+  }, [startKey]);
+
+  useEffect(() => {
+    // Browse all asks only for a filter or a later page, and only once per key: unfiltered page 1
+    // is the start list, and a stored result serves a return from a product (O-01).
+    if (!browseWanted || haveBrowse) return undefined;
+    const controller = new AbortController();
+    const query = browseQuery;
     const load = async () => {
       const result = await fetchDemandForecastList(query, controller.signal);
       if (result.kind === 'refused' && result.refusal.refused === 'PAGE_INVALID' && query.page !== 1) {
         // A publish changed the page count since the last list: back to page 1, which refetches
         // once. Page 1 always exists, so a second PAGE_INVALID shows the error panel.
         setNotice(PAGE1_TEXT);
-        setQuery({ status: query.status, page: 1 });
+        setBrowseQuery({ status: query.status, page: 1 });
         return;
       }
-      setListResult({ key: listKey, loaded: settle(result) });
+      setBrowseResult({ key: browseKey, loaded: settle(result) });
     };
-    load().catch((error: unknown) => { if (!isAbort(error)) setListResult({ key: listKey, loaded: { state: 'failed' } }); });
+    load().catch((error: unknown) => { if (!isAbort(error)) setBrowseResult({ key: browseKey, loaded: { state: 'failed' } }); });
     return () => controller.abort();
-  }, [query, listKey]);
+  }, [browseKey, browseQuery, browseWanted, haveBrowse]);
+
+  const start: Loaded<DemandForecastList> = startResult?.key === startKey ? startResult.loaded : { state: 'loading' };
+  const browse: Loaded<DemandForecastList> = browseIsStart
+    ? start
+    : browseResult?.key === browseKey ? browseResult.loaded : { state: 'loading' };
+  const status: Loaded<DemandForecastStatus> = statusResult?.key === statusKey ? statusResult.loaded : { state: 'loading' };
+  const detail: Loaded<DemandForecastDetail | null> | null = detailKey === null
+    ? null
+    : detailResult?.key === detailKey ? detailResult.loaded : { state: 'loading' };
+
+  /** Abort the pending search; its late answer, if any, is ignored (B-03). */
+  const abortSearch = useCallback(() => {
+    if (pending.current === null) return;
+    pending.current.controller.abort();
+    pending.current = null;
+    requestId.current += 1;
+    setPendingAsin(null);
+  }, []);
+  useEffect(() => () => pending.current?.controller.abort(), []);
+
+  const moveFocus = useCallback((goal: FocusGoal) => {
+    focusGoal.current = goal;
+    setFocusTick((value) => value + 1);
+  }, []);
+  /** Open a view from the one on screen; the opener is where focus returns when it closes. */
+  const navigate = useCallback((next: ForecastEntry, opener: Opener) => {
+    abortSearch();
+    if (entry.view === 'start') openers.current.start = opener;
+    if (entry.view === 'all') openers.current.all = opener;
+    setEntry(next);
+    moveFocus({ to: null, wait: null });
+  }, [abortSearch, entry.view, moveFocus]);
+  /** Close the view on screen: a product returns to its opener's view, Browse all to H1. */
+  const close = useCallback(() => {
+    abortSearch();
+    const parent = entry.view === 'product' && entry.from === 'all' ? ALL : FORECAST_START;
+    const key = parent.view === 'all' ? 'all' : 'start';
+    const fallback: Opener | null = entry.view === 'product' && entry.asin !== null
+      ? { kind: 'row', asin: entry.asin }
+      : entry.view === 'all' ? { kind: 'browse' } : null;
+    const opener = openers.current[key] ?? fallback;
+    delete openers.current[key];
+    setEntry(parent);
+    moveFocus({ to: opener, wait: parent.view === 'all' ? 'browse' : 'start' });
+  }, [abortSearch, entry, moveFocus]);
 
   useEffect(() => {
-    if (selected === null || detailKey === null) return undefined;
+    // The detail a search found is stored under its key, so opening it sends no second request.
+    if (detailKey === null || entry.asin === null || haveDetail) return undefined;
+    const asin = entry.asin;
     const controller = new AbortController();
-    fetchDemandForecastDetail(selected, controller.signal)
+    fetchDemandForecastDetail(asin, controller.signal)
       .then((result) => {
         if (result.kind === 'refused' && result.refusal.refused === 'ASIN_INVALID') {
-          // The server's format check agrees with the browser's: show the same inline error.
-          setSelected(null);
-          setSearchInvalid(true);
-          setRefocusSearch((value) => value + 1);
+          // The server's format check agrees with the browser's: close and show the inline error.
+          setSearch(asin);
+          setOutcome({ kind: 'asin' });
+          close();
           return;
         }
         setDetailResult({ key: detailKey, loaded: settle(result) });
       })
       .catch((error: unknown) => { if (!isAbort(error)) setDetailResult({ key: detailKey, loaded: { state: 'failed' } }); });
     return () => controller.abort();
-  }, [selected, detailKey]);
+  }, [close, detailKey, entry.asin, haveDetail]);
 
+  const startSettled = start.state !== 'loading';
+  const browseSettled = browse.state !== 'loading';
   useEffect(() => {
-    if (refocusSearch > 0) searchInput.current?.focus();
-  }, [refocusSearch]);
+    // G-09: once the view the goal names has its list, focus its opener, else the h1. Focus that
+    // is still on a control other than the closing Back, the crumb or the h1 never moves.
+    const goal = focusGoal.current;
+    if (goal === null || (goal.wait === 'start' && !startSettled) || (goal.wait === 'browse' && !browseSettled)) return;
+    focusGoal.current = null;
+    window.requestAnimationFrame(() => {
+      if (!focusMovable()) return;
+      const target = goal.to === null ? null : openerElement(goal.to, searchInput.current);
+      (target ?? document.getElementById(PAGE_HEADING_ID))?.focus();
+    });
+  }, [browseSettled, focusTick, startSettled]);
 
-  const list: Loaded<DemandForecastList> = listResult?.key === listKey ? listResult.loaded : { state: 'loading' };
-  const status: Loaded<DemandForecastStatus> = statusResult?.key === statusKey ? statusResult.loaded : { state: 'loading' };
-  const detail: Loaded<DemandForecastDetail | null> | null = detailKey === null
-    ? null
-    : detailResult?.key === detailKey ? detailResult.loaded : { state: 'loading' };
-
-  // The search example is the first ASIN of an unfiltered page 1, kept with its generation (G-08).
-  const offered = list.state === 'ready' ? exampleAsinFrom(list.value) : null;
+  const startReady = start.state === 'ready' ? start.value : null;
+  // The search example is the start list's first ASIN, kept with its generation (G-08).
+  const offered = startReady === null ? null : exampleAsinFrom(startReady);
   if (offered !== null && (offered.asin !== example?.asin || offered.generationId !== example.generationId)) setExample(offered);
 
+  useEffect(() => {
+    // The page-level error or absence replaces the view, so a pending search goes with it.
+    if (start.state === 'failed' || (startReady !== null && startReady.outcome === 'unavailable')) abortSearch();
+  }, [abortSearch, start.state, startReady]);
+
   const retry = useCallback(() => {
+    abortSearch();
+    setOutcome(null);
     setExample(null);
     setAttempt((value) => value + 1);
-  }, []);
+  }, [abortSearch]);
   const retryStatus = useCallback(() => setStatusAttempt((value) => value + 1), []);
-  const mixed = mixedGenerations(list, status, detail);
+  const mixed = mixedGenerations(entry.view === 'all' && !browseIsStart ? [start, browse] : [start], status, detail);
 
+  const runSearch = (asin: string) => {
+    abortSearch();
+    const id = requestId.current + 1;
+    requestId.current = id;
+    const controller = new AbortController();
+    pending.current = { asin, id, controller };
+    setPendingAsin(asin);
+    setOutcome(null);
+    const key = `${asin}|${attempt}`;
+    const done = () => {
+      pending.current = null;
+      setPendingAsin(null);
+    };
+    fetchDemandForecastDetail(asin, controller.signal)
+      .then((result) => {
+        if (requestId.current !== id) return;
+        done();
+        if (result.kind === 'refused' && result.refusal.refused === 'ASIN_INVALID') setOutcome({ kind: 'asin' });
+        else if (result.kind !== 'ok') setOutcome({ kind: 'failed', asin });
+        else if (result.value.outcome === 'not_in_forecast') setOutcome({ kind: 'notin', asin, noDigit: !hasDigit(asin) });
+        else if (result.value.outcome === 'unavailable') setOutcome({ kind: 'unavailable' });
+        else {
+          setDetailResult({ key, loaded: { state: 'ready', value: result.value } });
+          navigate(productEntry(asin, 'start'), { kind: 'search' });
+        }
+      })
+      .catch((error: unknown) => {
+        if (isAbort(error) || requestId.current !== id) return;
+        done();
+        setOutcome({ kind: 'failed', asin });
+      });
+  };
   const onSearch = (event: FormEvent) => {
     event.preventDefault();
-    const asin = search.trim();
-    if (!ASIN.test(asin)) {
-      setSearchInvalid(true);
+    const typed = search.trim();
+    if (!isAsin(typed)) {
+      abortSearch();
+      setOutcome({ kind: typed !== '' && looksLikeName(typed) ? 'name' : 'asin' });
       return;
     }
-    setSearchInvalid(false);
-    setSelected(asin.toUpperCase());
+    const asin = typed.toUpperCase();
+    // A repeat of the pending ASIN is ignored; a different one replaces it (O-05).
+    if (pending.current?.asin === asin) return;
+    runSearch(asin);
   };
-  const onQuery = (next: { status: string | null; page: number }) => {
+  const onSearchChange = (value: string) => {
+    setSearch(value);
+    // B-03: an edit that changes the ASIN cancels the pending search and a stale Try again.
+    const asin = normalizedAsin(value);
+    if (pending.current !== null && pending.current.asin !== asin) abortSearch();
+    if (outcome?.kind === 'failed' && outcome.asin !== asin) setOutcome(null);
+  };
+  const retrySearch = () => {
+    if (outcome?.kind !== 'failed' || normalizedAsin(search) !== outcome.asin) return;
+    runSearch(outcome.asin);
+    searchInput.current?.focus();
+  };
+  const onBrowseQuery = (next: ListQuery) => {
     setNotice(null);
-    setQuery(next);
+    setBrowseQuery(next);
   };
 
-  const ready = list.state === 'ready' ? list.value : null;
-  const horizon = ready?.horizon ?? null;
+  const horizon = startReady?.horizon ?? null;
   const weeks = viewWeeks ?? horizon?.default_view_weeks ?? null;
+  const startComplete = weeks === null ? null : completeList(start);
+  const shownExample = currentExampleAsin(example, startComplete?.provenance?.generation_id ?? null);
 
-  const onBack = useCallback(() => {
-    setSelected(null);
-    setSearchInvalid(false);
-  }, []);
-  const complete = ready !== null && ready.outcome === 'complete' && ready.provenance !== null && horizon !== null && weeks !== null
-    ? ready
-    : null;
+  const outcomeLine = (() => {
+    if (outcome === null) return null;
+    switch (outcome.kind) {
+      case 'asin': return <p id={outcomeId} className="df-outcome df-error" role="alert">{asinErrorText(shownExample)}</p>;
+      case 'name': return <p id={outcomeId} className="df-outcome df-error" role="alert">{nameErrorText(shownExample)}</p>;
+      case 'notin': return <p id={outcomeId} className="df-outcome" role="status">{notInForecastInlineText(outcome.asin, itemCountOf(startComplete), outcome.noDigit)}</p>;
+      case 'unavailable': {
+        // B-05: only while the start list loads; a ranked list never sits beside "no forecast".
+        if (start.state !== 'loading') return null;
+        const next = readyStatus(status)?.next_new_input_check_at ?? null;
+        return <p id={outcomeId} className="df-outcome" role="status">{noForecastYetText(next === null ? null : formatIsoInstantShort(next))}</p>;
+      }
+      case 'failed': return (
+        <p id={outcomeId} className="df-outcome" role="status">
+          {startCopy.readFailed}{' '}
+          <button type="button" className="btn link" onClick={retrySearch}>Try again</button>
+        </p>
+      );
+      case 'link': return <p id={outcomeId} className="df-outcome" role="status">{startCopy.linkInvalid}</p>;
+    }
+  })();
+  const searchBox = <SearchBox
+    busy={pendingAsin !== null}
+    describedBy={outcomeLine === null ? null : outcomeId}
+    id={searchId}
+    input={searchInput}
+    invalid={outcome?.kind === 'asin' || outcome?.kind === 'name'}
+    onChange={onSearchChange}
+    onSubmit={onSearch}
+    value={search}
+  />;
 
   let body;
   if (mixed) {
     body = <StateCallout live="alert" title="Demand forecast" actions={<button type="button" className="btn" onClick={retry}>Show the latest forecast</button>}>{MIXED_TEXT}</StateCallout>;
-  } else if (selected !== null && (list.state === 'loading' || complete !== null)) {
+  } else if (entry.view === 'product' && entry.asin !== null && (start.state === 'loading' || startComplete !== null)) {
     body = <ProductRegion
-      asin={selected}
+      asin={entry.asin}
+      backLabel={entry.from === 'all' ? startCopy.backToAll : startCopy.backToStart}
       detail={detail ?? { state: 'loading' }}
-      key={selected}
-      list={complete}
-      onBack={onBack}
+      key={entry.asin}
+      list={startComplete}
+      onBack={close}
       onRetry={retry}
       onRetryStatus={retryStatus}
       onViewWeeks={setViewWeeks}
       status={status}
       viewWeeks={weeks}
     />;
-  } else if (list.state === 'loading') {
-    body = <ListSkeleton/>;
-  } else if (list.state === 'failed') {
+  } else if (start.state === 'failed') {
     body = <PageError message={DEMAND_FORECAST_READ_FAILED_TEXT} onRetry={retry}/>;
-  } else if (ready === null || ready.outcome === 'unavailable' || ready.provenance === null || horizon === null || weeks === null) {
+  } else if (start.state === 'ready' && startComplete === null) {
     const next = readyStatus(status)?.next_new_input_check_at ?? null;
     body = <PageAbsence title={DEMAND_FORECAST_NO_FORECAST_TITLE} message={noForecastYetText(next === null ? null : formatIsoInstantShort(next))}/>;
+  } else if (entry.view === 'all') {
+    body = <BrowseAll
+      list={browse}
+      notice={notice}
+      onBack={close}
+      onOpen={(asin) => navigate(productEntry(asin, 'all'), { kind: 'row', asin })}
+      onQuery={onBrowseQuery}
+      onRetry={retry}
+      onRetryStatus={retryStatus}
+      onViewWeeks={setViewWeeks}
+      query={browseQuery}
+      status={status}
+      viewWeeks={weeks}
+    />;
+  } else if (startComplete === null || weeks === null) {
+    body = <StartSkeleton outcome={outcomeLine} search={searchBox}/>;
   } else {
-    const provenance = ready.provenance;
     body = <>
-      <ScopeCard>
-        <div className="df-pills">
-          {ready.item_count === null ? null : <span className="pill">{plural(ready.item_count, 'product', 'products')}</span>}
-          <span className="pill">Vendor Central · ordered and shipped</span>
-          <FreshnessPill freshness={ready.freshness} provenance={provenance} status={status} onRetryStatus={retryStatus}/>
-        </div>
-        <WeekControl horizon={horizon} viewWeeks={weeks} onViewWeeks={setViewWeeks}/>
-      </ScopeCard>
-      {ready.freshness.state === 'stale' ? <StaleBanner freshness={ready.freshness} provenance={provenance} status={readyStatus(status)}/> : null}
-      <AnswerSentence answer={listAnswer(ready, weeks)}/>
+      <ScopeBlock list={startComplete} onRetryStatus={retryStatus} onViewWeeks={setViewWeeks} status={status} viewWeeks={weeks}/>
+      <AnswerSentence answer={listAnswer(startComplete, weeks)}/>
       <p className="df-ask">
-        <button type="button" className="ask-chip" onClick={() => seedAssistantQuestion(askQuestions.list(horizon))}>Ask about this forecast</button>
+        <button type="button" className="ask-chip" onClick={() => { if (startComplete.horizon !== null) seedAssistantQuestion(askQuestions.list(startComplete.horizon)); }}>Ask about this forecast</button>
       </p>
-      <div className="df-tools">
-        <FilterChips list={ready} status={query.status} onChoose={(value) => onQuery({ status: value, page: 1 })}/>
-        <SearchForm
-          example={currentExampleAsin(example, provenance.generation_id)}
-          input={searchInput}
-          invalid={searchInvalid}
-          onChange={(value) => { setSearch(value); }}
-          onSubmit={onSearch}
-          value={search}
-        />
-      </div>
-      {notice ? <p role="status" className="df-notice">{notice}</p> : null}
-      <ForecastTable list={ready} viewWeeks={weeks} onSelect={setSelected} onShowAll={() => onQuery({ status: null, page: 1 })}/>
-      <Pager list={ready} onPage={(page) => onQuery({ status: query.status, page })}/>
-      <ListMethod list={ready}/>
+      <StartView
+        list={startComplete}
+        onBrowse={() => navigate(ALL, { kind: 'browse' })}
+        onOpen={(asin) => navigate(productEntry(asin, 'start'), { kind: 'row', asin })}
+        onReason={(reason) => {
+          onBrowseQuery({ status: reason, page: 1 });
+          navigate(ALL, { kind: 'reason', reason });
+        }}
+        outcome={outcomeLine}
+        search={searchBox}
+        viewWeeks={weeks}
+      />
+      <ListMethod list={startComplete}/>
     </>;
   }
   return <div className="page demand-forecast">{body}</div>;
 }
 
-/** Focus fell to the document because the control that held it left with the view. */
-function focusLost(): boolean {
-  return document.activeElement === null || document.activeElement === document.body;
+/** The scope card and, when the list is out of date, its banner (S1, S6). */
+function ScopeBlock({ list, onRetryStatus, onViewWeeks, status, viewWeeks }: {
+  readonly list: DemandForecastList;
+  readonly onRetryStatus: () => void;
+  readonly onViewWeeks: (weeks: number) => void;
+  readonly status: Loaded<DemandForecastStatus>;
+  readonly viewWeeks: number;
+}) {
+  const { horizon, provenance } = list;
+  if (horizon === null || provenance === null) return null;
+  return <>
+    <ScopeCard>
+      <div className="df-pills">
+        {list.item_count === null ? null : <span className="pill">{plural(list.item_count, 'product', 'products')}</span>}
+        <span className="pill">Vendor Central · ordered and shipped</span>
+        <FreshnessPill freshness={list.freshness} provenance={provenance} status={status} onRetryStatus={onRetryStatus}/>
+      </div>
+      <WeekControl horizon={horizon} viewWeeks={viewWeeks} onViewWeeks={onViewWeeks}/>
+    </ScopeCard>
+    {list.freshness.state === 'stale' ? <StaleBanner freshness={list.freshness} provenance={provenance} status={readyStatus(status)}/> : null}
+  </>;
 }
+
 /**
- * Focus is on the shell's Back control, which leaves with the product: in a browser the frame
- * after the product closes can run before the shell drops it, so focus would fall to the body.
+ * H4: phase 1's full list, one click from the opening view. It publishes "All products" as the
+ * open entity with Back, and unmounts while a product opened from it is shown (O-02).
  */
-function focusOnBack(): boolean {
-  return document.activeElement?.closest('.hub-back') != null;
-}
-/**
- * G-09: opening a product focuses the h1 (the product's name) once the product region replaces
- * the list; closing it returns focus to the row that opened it, or to the h1 when that row isn't
- * on the page. Neither moves focus that is still on a control other than the closing Back.
- */
-function useForecastDetailFocus(asin: string): void {
-  useEffect(() => {
-    if (focusLost()) document.getElementById(PAGE_HEADING_ID)?.focus();
-    return () => {
-      window.requestAnimationFrame(() => {
-        if (!focusLost() && !focusOnBack() && document.activeElement?.id !== PAGE_HEADING_ID) return;
-        const row = [...document.querySelectorAll<HTMLButtonElement>('button[data-forecast-row]')]
-          .find((button) => button.dataset.forecastRow === asin);
-        (row ?? document.getElementById(PAGE_HEADING_ID))?.focus();
-      });
-    };
-  }, [asin]);
+function BrowseAll({ list, notice, onBack, onOpen, onQuery, onRetry, onRetryStatus, onViewWeeks, query, status, viewWeeks }: {
+  readonly list: Loaded<DemandForecastList>;
+  readonly notice: string | null;
+  readonly onBack: () => void;
+  readonly onOpen: (asin: string) => void;
+  readonly onQuery: (query: ListQuery) => void;
+  readonly onRetry: () => void;
+  readonly onRetryStatus: () => void;
+  readonly onViewWeeks: (weeks: number) => void;
+  readonly query: ListQuery;
+  readonly status: Loaded<DemandForecastStatus>;
+  readonly viewWeeks: number | null;
+}) {
+  useOpenEntity(startCopy.browseTitle, onBack, startCopy.backToStart);
+  if (list.state === 'loading') return <ListSkeleton/>;
+  if (list.state === 'failed') return <PageError message={DEMAND_FORECAST_READ_FAILED_TEXT} onRetry={onRetry}/>;
+  const ready = completeList(list);
+  if (ready === null || viewWeeks === null) {
+    const next = readyStatus(status)?.next_new_input_check_at ?? null;
+    return <PageAbsence title={DEMAND_FORECAST_NO_FORECAST_TITLE} message={noForecastYetText(next === null ? null : formatIsoInstantShort(next))}/>;
+  }
+  return <>
+    <ScopeBlock list={ready} onRetryStatus={onRetryStatus} onViewWeeks={onViewWeeks} status={status} viewWeeks={viewWeeks}/>
+    <div className="df-tools">
+      <FilterChips list={ready} status={query.status} onChoose={(value) => onQuery({ status: value, page: 1 })}/>
+    </div>
+    {notice ? <p role="status" className="df-notice">{notice}</p> : null}
+    <ForecastTable list={ready} viewWeeks={viewWeeks} onSelect={onOpen} onShowAll={() => onQuery(START_QUERY)}/>
+    <Pager list={ready} onPage={(page) => onQuery({ status: query.status, page })}/>
+    <ListMethod list={ready}/>
+  </>;
 }
 
 /**
  * The product in place of the list (S2 to S4). It publishes the product as the open entity, so the
- * shell's h1 names it with Back, and shows its skeleton until both the detail and the current
- * list are ready; the list supplies the measure default and the product count (same generation).
+ * shell's h1 names it with Back, and shows its skeleton until both the detail and the start list
+ * are ready; the start list supplies the measure default and the product count (same generation).
  */
-function ProductRegion({ asin, detail, list, onBack, onRetry, onRetryStatus, onViewWeeks, status, viewWeeks }: {
+function ProductRegion({ asin, backLabel, detail, list, onBack, onRetry, onRetryStatus, onViewWeeks, status, viewWeeks }: {
   readonly asin: string;
+  readonly backLabel: string;
   readonly detail: Loaded<DemandForecastDetail | null>;
   readonly list: DemandForecastList | null;
   readonly onBack: () => void;
@@ -316,8 +574,7 @@ function ProductRegion({ asin, detail, list, onBack, onRetry, onRetryStatus, onV
   const name = shown === null
     ? (listed === undefined ? asin : listed.title ?? 'Untitled product')
     : shown.outcome === 'not_in_forecast' ? null : shown.title ?? 'Untitled product';
-  useOpenEntity(name, onBack, 'Back to Demand forecast');
-  useForecastDetailFocus(asin);
+  useOpenEntity(name, onBack, backLabel);
   if (detail.state === 'failed') return <PageError message={DEMAND_FORECAST_READ_FAILED_TEXT} onRetry={onRetry}/>;
   if (shown === null || list === null || viewWeeks === null) return <ProductSkeleton/>;
   return <DemandForecastAsinDetail
@@ -379,41 +636,6 @@ function FilterChips({ list, onChoose, status }: {
         </button>
       ))}
     </div>
-  );
-}
-
-/** P1-7: ASIN search with its hint and an inline error the input names (E-ASIN). */
-function SearchForm({ example, input, invalid, onChange, onSubmit, value }: {
-  readonly example: string | null;
-  readonly input: RefObject<HTMLInputElement | null>;
-  readonly invalid: boolean;
-  readonly onChange: (value: string) => void;
-  readonly onSubmit: (event: FormEvent) => void;
-  readonly value: string;
-}) {
-  const id = useId();
-  const hint = `${id}-hint`;
-  const error = `${id}-error`;
-  return (
-    <form role="search" className="df-search" onSubmit={onSubmit} noValidate>
-      <label htmlFor={id}>Find a product by ASIN</label>
-      <span className="df-search-row">
-        <input
-          id={id}
-          ref={input}
-          className="text-input"
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          aria-invalid={invalid}
-          aria-describedby={invalid ? `${hint} ${error}` : hint}
-          autoComplete="off"
-          spellCheck={false}
-        />
-        <button type="submit" className="btn">Find</button>
-      </span>
-      <span id={hint} className="df-hint">10 letters or digits</span>
-      {invalid ? <span id={error} className="df-error" role="alert">{asinErrorText(example)}</span> : null}
-    </form>
   );
 }
 
