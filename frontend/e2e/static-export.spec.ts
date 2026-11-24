@@ -911,3 +911,34 @@ test('/demand-forecast/ lays out wide, stacks with the assistant open and never 
   await noSidewaysOverflow(page);
   await axeClean(page);
 });
+
+test('/demand-forecast/ at 390 px opens a pop-up on its own line under its term, never squeezing it', async ({ page }) => {
+  await mockAuthenticatedV2(page);
+  await mockForecast(page);
+  await page.addInitScript(() => { localStorage.setItem('adlytics.chat-open', 'false'); });
+  await page.setViewportSize({ height: 844, width: 390 });
+  await page.goto('/demand-forecast/');
+  const pill = page.locator('.df-fresh > .pill');
+  await expect(pill).toBeVisible();
+  const closed = await pill.boundingBox();
+  const button = page.getByRole('button', { name: 'About this forecast', exact: true });
+  await button.click();
+  const panel = page.locator('.df-fresh .infotip-panel');
+  await expect(panel).toBeVisible();
+  const [open, buttonBox, panelBox] = await Promise.all([pill.boundingBox(), button.boundingBox(), panel.boundingBox()]);
+  expect(closed && open && buttonBox && panelBox).toBeTruthy();
+  if (closed === null || open === null || buttonBox === null || panelBox === null) return;
+  // The term keeps its width and the button stays beside it; the panel starts below both.
+  expect(Math.abs(open.width - closed.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(buttonBox.y + buttonBox.height / 2 - (open.y + open.height / 2))).toBeLessThanOrEqual(4);
+  expect(panelBox.y).toBeGreaterThanOrEqual(Math.max(open.y + open.height, buttonBox.y + buttonBox.height) - 1);
+  expect(await page.evaluate(() => {
+    const main = document.querySelector('.main')?.getBoundingClientRect();
+    const box = document.querySelector('.df-fresh .infotip-panel')?.getBoundingClientRect();
+    return main !== undefined && box !== undefined && box.left >= main.left - 1 && box.right <= main.right + 1;
+  })).toBe(true);
+  await noSidewaysOverflow(page);
+  await page.keyboard.press('Escape');
+  await expect(panel).toBeHidden();
+  await expect(button).toBeFocused();
+});

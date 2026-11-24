@@ -947,6 +947,10 @@ select { min-height: 40px; border-radius: 10px; border: 1px solid var(--stroke-s
 @container main (max-width: 559px) {
   .infotip { display: inline; position: static; }
   .infotip-panel, .infotip.end .infotip-panel { position: static; width: auto; max-width: none; margin: 6px 0; box-shadow: none; }
+  /* Open in a flex row, the panel takes a full line under its term; the term and button keep their place. */
+  .infotip:has(> .infotip-panel:not([hidden])) { display: contents; }
+  .infotip-panel { flex-basis: 100%; }
+  .demand-forecast .df-fresh, .demand-forecast .df-table-tips > span, .demand-forecast .stack-tips > span, .demand-forecast .tile .k { flex-wrap: wrap; }
 }
 
 /* ---------- prompt administration (ia §7.8) ---------- */
