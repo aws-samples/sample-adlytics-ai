@@ -221,6 +221,10 @@ decisions D1 to D7 of the 2026-11-20 design review (approved 2026-11-21) shape i
 - D6: the product view shows one measure at a time.
 - D7: no Previous or Next product control.
 
+The hybrid layout of 2026-11-24 (owner decisions H1 to H5, `owner-decisions.md` "hybrid layout and
+search") opens on a short list and one search box, shows one product at a time, and moves the full
+list to Browse all.
+
 1. **Scope card.** Pills for `item_count` products, the source, and freshness ("Up to date" or "Out of
    date", with sales through `input_end`). The pill's pop-up holds every status field: when the
    forecast was made and its `age_days`, the latest update or rollback, any hold, the next daily
@@ -229,15 +233,26 @@ decisions D1 to D7 of the 2026-11-20 design review (approved 2026-11-21) shape i
    weeks").
 2. **Out-of-date banner.** When `freshness.state` is `stale`: one line per served cause, then what
    is shown and when new sales data can next be used.
-3. **Answer sentence.** Only on an unfiltered page 1 whose first row is rank 1 with a served
-   ordered-units total: "{title or ASIN} leads the {default}-week forecast: customers are likely to
-   order {total} units in the {V} weeks starting {date}". Otherwise the product-count fallback, or
-   nothing on a later page or filter. An ask chip seeds the assistant with a dated question.
-4. **Filter and search.** Chips read `counts_by_reason[status_target]` and name the status target's
-   measure ("With an ordered-units forecast"); each requests `?status=` and renders the server's
-   rows and `match_count`. The browser never filters. The ASIN search checks the format first and
-   shows an inline error whose example ASIN comes from the same generation's unfiltered page 1.
-5. **Evidence.** The ranked table: rank (by the default view, named in its header), product name
+3. **Answer sentence.** On the opening view, from the start list (the unfiltered page 1, never
+   replaced by Browse all's filter or page) when its first row is rank 1 with a served ordered-units
+   total: "{title or ASIN} leads the {default}-week forecast: customers are likely to order {total}
+   units in the {V} weeks starting {date}". Otherwise the product-count fallback. An ask chip seeds
+   the assistant with a dated question.
+4. **Check these first and search (H1, H2).** "Check these first" lists the start list's ranks 1 to
+   10 whose status target has a forecast, labelled "Largest forecast demand", never flagged: rank,
+   name and ASIN, likely units ordered for the chosen weeks, and weeks shipped less than ordered of
+   the last 13. It stacks below 560 px of the page container. A reasons line names each reason that
+   has products, with Show them opening Browse all on that filter; then "Browse all {item_count}
+   products". The one search box, "Find any product by ASIN", checks the format first: a short code
+   gets the ASIN error, input with a space, over 10 characters or no digit gets "Searching by
+   product name isn't available here". A valid ASIN shows "Finding…"; an edit or a new ASIN cancels
+   it and its late answer is ignored. Not in this forecast, a read failure (Try again for the ASIN
+   still in the box) and an invalid link answer on one line under the card header. Example ASINs
+   come from the start list's generation.
+5. **Browse all (H4).** An open entity, "All products", with Back. Chips read
+   `counts_by_reason[status_target]` and name the status target's measure ("With an ordered-units
+   forecast"); each requests `?status=` and renders the server's rows and `match_count`. The browser
+   never filters. The ranked table: rank (by the default view, named in its header), product name
    and ASIN, units ordered, units shipped, shipped revenue and Amazon wholesale cost for the chosen
    view, and weeks shipped less than ordered of the last 13. A product with no forecast shows one
    "No forecast: {reason}" cell and a dash for its short-shipped count. The page column on this page is
@@ -245,15 +260,21 @@ decisions D1 to D7 of the 2026-11-20 design review (approved 2026-11-21) shape i
    below 912 px of that container, so it is wide at 1440 px with the assistant closed and stacks
    with it open. Then the pager and "How this
    forecast is made".
-6. **Product, in place of the list.** The product's name becomes the h1, with Back, and takes
-   focus; Back restores the filter, page and weeks and focuses the row. A measure switch defaults to
+6. **Product, alone.** The product's name becomes the h1, with Back ("Back to all products" when
+   opened from Browse all), and takes focus. Opening a product or Browse all pushes a history entry
+   with `?asin=` or `?view=all`, so the browser's Back closes it; each write keeps every other
+   `history.state` key. A fresh link gets an opening-view entry under it, a reload keeps its entry,
+   and a duplicate, conflicting or invalid link opens the opening view with "This forecast link isn't
+   valid." Back restores Browse all's filter, page and weeks and returns focus to what opened the
+   view (row, search box, Browse all or Show them); Forward and links focus the h1. The crumb's and
+   the active tab's "Demand forecast" open the opening view. A measure switch defaults to
    `status_target`. A forecast measure shows the answer sentence, four tiles (likely total, the
    view's last week with low and high, inside the range in testing, weeks shipped less than
    ordered), a chart of the recent weeks by state and the low-to-high band with no numeric axis,
    the dated table "Forecast, {V} weeks starting {date}, {measure}", the recent weeks with how each
    is known, and the method lines. A withheld measure shows the reason, its next step (dated from
-   status, or its no-date form) and the recent weeks grouped by state. An ASIN not in the
-   forecast says so with the list's product count.
+   status, or its no-date form) and the recent weeks grouped by state. A link to an ASIN not in the
+   forecast says so with the list's product count, and its button opens the opening view.
 7. **Interruptions.** A publish between requests shows "A newer forecast was published while this
    page loaded" with Show the latest forecast. A read failure shows "The forecast can't be loaded
    right now" with Try again. A status failure leaves the page up and says so in the pop-up.
