@@ -15,7 +15,7 @@
 
 > **Revision, 2026-11-16: weekly retail demand forecast gated and stored in dev, not shown.**
 > Slice 1 added a weekly Vendor demand engine (Chronos-2 on ordered and shipped units, shipped
-> revenue and COGS, 13 weeks ahead) and its weekly input in dev on synthetic data
+> revenue and Amazon wholesale cost (`cogs_shipped`), 13 weeks ahead) and its weekly input in dev on synthetic data
 > ([ADR-160](../../decisions/adr-160-mount-the-jumpstart-chronos-2-artifact-and-enforce-isolation-in-iam.md);
 > [slice 1 acceptance](../../../validation/RESULTS.md#demand-forecast-slice-1-acceptance-on-landed-history-on-dev--2026-11-15)).
 > Slice 2 adds the daily check, the quality gate, the publisher and the retained store with its
@@ -27,8 +27,8 @@
 ## 1. Purpose and scope
 
 The **weekly retail demand forecast** gives a supply planner each product's expected demand on the
-Vendor Central basis: ordered units, shipped units, shipped revenue and cost of goods shipped, 13
-weeks ahead, with p10, p50 and p90 for every week. It runs offline, shows Chronos-2 only where it
+Vendor Central basis: ordered units, shipped units, shipped revenue and Amazon wholesale cost
+(`cogs_shipped`), 13 weeks ahead, with p10, p50 and p90 for every week. It runs offline, shows Chronos-2 only where it
 beats both simple models on a backtest, and keeps the last good generation when a run fails or is
 held ([ADR-156](../../decisions/adr-156-classify-forecast-weeks-as-observed-inferred-zero-or-unknown.md)
 to [ADR-160](../../decisions/adr-160-mount-the-jumpstart-chronos-2-artifact-and-enforce-isolation-in-iam.md)).

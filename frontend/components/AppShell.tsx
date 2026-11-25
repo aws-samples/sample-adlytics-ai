@@ -85,6 +85,8 @@ interface OpenEntity {
   readonly backLabel: string | null;
   readonly name: string;
   readonly onBack: (() => void) | null;
+  /** What the crumb's and the active tab's link do when set; otherwise the crumb calls onBack. */
+  readonly onTab: (() => void) | null;
 }
 
 const EntityContext = createContext<((entity: OpenEntity | null) => void) | null>(null);
@@ -93,14 +95,21 @@ const EntityContext = createContext<((entity: OpenEntity | null) => void) | null
  * Publish the entity open in place on this tab (a campaign) while mounted. It becomes the h1
  * and the crumb's last item; the crumb's tab link calls onBack to close it (ia §3.5). With a
  * `backLabel`, the hub header also draws that Back control between the tab strip and the h1.
+ * With `onTab`, the crumb's tab link and the active tab link call it instead, for a page whose
+ * tab name opens its first view rather than closing one level (hybrid forecast O-02, B-01).
  */
-export function useOpenEntity(name: string | null, onBack?: (() => void) | null, backLabel: string | null = null): void {
+export function useOpenEntity(
+  name: string | null,
+  onBack?: (() => void) | null,
+  backLabel: string | null = null,
+  onTab: (() => void) | null = null,
+): void {
   const publish = useContext(EntityContext);
   useEffect(() => {
     if (publish === null) return;
-    publish(name === null ? null : { backLabel, name, onBack: onBack ?? null });
+    publish(name === null ? null : { backLabel, name, onBack: onBack ?? null, onTab });
     return () => publish(null);
-  }, [backLabel, name, onBack, publish]);
+  }, [backLabel, name, onBack, onTab, publish]);
 }
 
 /** The hub a nav item opens: its first tab this session can see (ADR-115 decision 2). */
@@ -176,7 +185,7 @@ function crumbItems({ found, visible }: PagePlace, entity: OpenEntity | null): R
   const { hub, tab } = visible;
   const items: { label: string; href: string | null; onClick: (() => void) | null }[] = [];
   if (tab.label !== hub.label) items.push({ href: hubTarget(hub), label: hub.label, onClick: null });
-  items.push({ href: tab.route, label: tab.label, onClick: entity?.onBack ?? null });
+  items.push({ href: tab.route, label: tab.label, onClick: entity?.onTab ?? entity?.onBack ?? null });
   if (entity !== null) items.push({ href: null, label: entity.name, onClick: null });
   return items.map((item, index) => (index === items.length - 1 ? { ...item, href: null, onClick: null } : item));
 }
@@ -224,7 +233,16 @@ function HubHeader({ place, entity }: { readonly place: PagePlace; readonly enti
         <nav className="tabs" aria-label={`Sections of ${hub.label}`}>
           <ul>{hub.tabs.map((candidate) => (
             <li key={candidate.tab_id}>
-              <Link href={candidate.route} aria-current={candidate.tab_id === tab.tab_id ? 'page' : undefined}>
+              <Link
+                href={candidate.route}
+                aria-current={candidate.tab_id === tab.tab_id ? 'page' : undefined}
+                {...(candidate.tab_id !== tab.tab_id || entity?.onTab == null ? {} : {
+                  onClick: (event: MouseEvent<HTMLAnchorElement>) => {
+                    event.preventDefault();
+                    entity.onTab?.();
+                  },
+                })}
+              >
                 {candidate.label}
                 {/* UI refresh 3.8: each tab names the question it answers (readout persona framing). */}
                 {/* Hidden from assistive tech so the link's name stays the tab label; the open tab reads it as its lead line. */}

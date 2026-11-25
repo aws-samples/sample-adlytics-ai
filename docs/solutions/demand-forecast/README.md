@@ -2,7 +2,7 @@
 
 > **A customer deployment can't show a forecast yet.** It can't load the Vendor Central history the forecast needs until the connector in slice 4. Only the dev environment, with synthetic data, has that history. See [Status](#status).
 
-See how much each product will sell over the next 13 weeks, from its Vendor Central history, with a range around every week.
+See how much each product will sell in a dated 4-, 8- or 13-week window starting on the forecast's first week, from its Vendor Central history, with a range around every week.
 
 One of the [Adlytics AI solutions](../../../README.md#solutions). It deploys with the full sample, which is sample code and not production-ready: read [Cost](../../../README.md#cost) and [Security considerations](../../../README.md#security-considerations) first. It runs on the shared [platform](../platform/README.md) and reads the same Vendor Central data as [Retail health](../retail-health/README.md).
 
@@ -10,31 +10,37 @@ One of the [Adlytics AI solutions](../../../README.md#solutions). It deploys wit
 
 | Reader | Question | Decision it leads to |
 |---|---|---|
-| Brand or category manager | How much will each product sell over the next 13 weeks? | Which products to push, and what to raise with Amazon |
+| Brand or category manager | How much will each product sell in the 4, 8 or 13 weeks starting on the date shown? | Which products to push, and what to raise with Amazon |
 | Vendor or supply planner | How many units will Amazon order and ship, and how wide is the range? | How much stock to plan for Amazon's orders |
-| Finance or CMO | What shipped revenue and cost of goods do the next 13 weeks hold? | The revenue and margin outlook |
+| Finance or CMO | What shipped revenue and Amazon wholesale cost does the dated forecast window hold? | The outlook for Amazon's wholesale spend, which is the vendor's revenue from Amazon |
 
 Every persona and view is listed in [who it is for](../../business-context.md#who-it-is-for). The product is read-only: every decision is made in your own tools.
+## What you see
+These screenshots come from a development deployment with synthetic data, in the light theme, captured in November 2026. Products, ASINs and figures are fictional. To regenerate them, see [regenerating README screenshots](../../../validation/README.md#regenerating-readme-screenshots).
+![Demand forecast tab under Retail health, with its question What demand should I plan for?: chips for 61 products, Vendor Central ordered and shipped, and Up to date, sales through Nov 7, 2026; 4 weeks, 8 weeks and 13 weeks with 13 weeks chosen, for the 13 weeks starting Nov 8, 2026; an answer sentence saying Northstar Home Product 36 leads the 13-week forecast and customers are likely to order 17,826 units; an Ask about this forecast button; and Check these first, with a Find any product by ASIN box and the products ranked 1 to 7 by 13-week likely units ordered, each shipping less than ordered in 13 of the last 13 weeks, with the assistant docked on the right](../../images/demand-forecast.png)
+**Which products to plan for first.** The answer names the product that leads the 13-week forecast, and "Check these first" ranks the 10 products with the largest 13-week demand and shows how often each shipped less than ordered. The search box opens any product by its exact ASIN, and Browse all lists every product. See the [page design](../../capabilities/forecasting/low-level-design.md#demand-forecast-page).
+![Product view for Northstar Home Product 36, ASIN B0FIXTUR36, opened from Check these first: Back to Demand forecast, the same freshness chip and week control, a measure control on Units ordered (demand), an answer sentence saying customers are likely to order 17,826 units in the 13 weeks starting Nov 8, 2026, tiles for the likely total of 17,826 units, the week of Jan 31, 2027 with likely 1,197 and a low of 1,027 and high of 1,495, 9 of 13 test weeks inside the range for the Chronos-2 forecasting model, and 13 of the last 13 weeks shipped less than ordered, then a chart of reported weeks from Aug 9, 2026 and the likely forecast with its low-to-high range to Jan 31, 2027, with the assistant docked on the right](../../images/demand-forecast-product.png)
+**One product's forecast.** A product opens on its own link (`?asin=`), which the browser's Back closes, one measure at a time. Its tiles give the likely total, the last week's range, the test weeks inside the range with the model that made it, and how often it shipped less than ordered; the chart, weekly table and test detail follow.
 
 ## What it answers, and what it won't
 
 What it answers:
 
-- For each product and each of the next 13 weeks: ordered units, shipped units, shipped revenue and shipped cost of goods (COGS).
-- Each figure as a middle estimate (p50) with a p10 to p90 range, and its 4-, 8- or 13-week p50 total.
+- For each product and each week of a 13-week window starting on the served first week (for example "13 weeks starting Nov 8, 2026"): ordered units, shipped units, shipped revenue and Amazon wholesale cost, which is what Amazon pays the vendor for the units it shipped. Weeks of the window can already have passed when you read it.
+- Each figure as a likely value with a low-to-high range (the 10th to 90th percentile forecasts), and its 4-, 8- or 13-week likely total.
 - How accurate the shown model was: how many of its test weeks fell inside the range.
 - Whether a product has a forecast, and if not, the reason it was withheld.
 - Whether the forecast is fresh, when the last forecast run ended and how, and when the next check runs.
 
 Where you see it:
 
-- **The Demand forecast tab in the Retail hub** (`/demand-forecast/`). Every product ranked by forecast demand with its totals for the chosen 4, 8 or 13 weeks, a filter by forecast status, a pager, and a search by exact ASIN. A product opens in place: each target's weekly range, its accuracy and its recent 13 weeks, each marked observed, inferred as zero or unknown.
+- **The Demand forecast tab in the Retail hub** (`/demand-forecast/`). A one-line answer naming the product that leads demand, then "Check these first": the products ranked 1 to 10 by likely units ordered over the 13-week forecast (choosing 4 or 8 weeks changes the totals shown, not the order), each with how often it shipped less than ordered, beside one search box that finds any product by exact ASIN. Browse all lists every product ranked by forecast demand with all four measures, filter chips for the reasons that have products, and a pager. A freshness pill says whether the forecast is up to date, and its pop-up holds the update schedule. A product opens on its own, with its own link (`?asin=`) that the browser's Back closes, one measure at a time: its likely total, a chart of recent weeks and the forecast range, the dated weekly table, how it tested, and its recent weeks marked reported, counted as zero or not known. A product with no forecast says why and what to do next.
 - **In chat.** Four tools read the same stored figures: `forecast_list_asins` (the top page, or one product by its ASIN), `forecast_query_asins` (weekly ranges for one to five products), `forecast_summarize_asin` (one product beside its recent history) and `forecast_compare_asins` (two to five products side by side).
 - **Through the API.** `GET /api/demand-forecast` and `GET /api/demand-forecast/status`, open to any signed-in user ([read API](../../capabilities/forecasting/low-level-design.md#read-api)).
 
 What it won't do:
 
-- **Show a forecast that doesn't beat simpler methods.** Each product's forecast is backtested on its recent weeks against two simpler methods, SeasonalNaive and ETS. A product is shown only where Chronos-2 beats both; otherwise its forecast is withheld with a reason.
+- **Show a forecast that doesn't beat simpler methods.** Each product's forecast is backtested on its recent weeks against two simpler methods, SeasonalNaive and ETS. Chronos-2 is shown only where it beats both; otherwise the simpler method that tested best is shown. A product with no method that passed its checks has no forecast, and the page says why.
 - **Say what a change would do.** The forecast projects from past weekly sales and product page views. It isn't a plan, and it doesn't say what a change in ad spend or price would cause.
 - **Forecast ad-attributed purchases or revenue.** That is a separate forecast, proposed and not built ([What's coming next](../../../README.md#whats-coming-next)).
 - **Compute a figure at read time.** The page, the tools and the API serve only the figures the forecast run stored; the assistant never computes, totals or estimates a figure ([ADR-163](../../decisions/adr-163-serve-demand-forecasts-and-status-through-a-read-api.md)).
@@ -54,7 +60,7 @@ As of 2026-11-19. Each slice ships on its own.
 
 | Data | What it gives the forecast | Grain |
 |---|---|---|
-| Vendor Central sales report | Ordered and shipped units, shipped revenue and COGS: the four forecast targets | Product, summed from days into weeks that start on Sunday |
+| Vendor Central sales report | Ordered and shipped units, shipped revenue and Amazon wholesale cost (`cogs_shipped`): the four forecast targets | Product, summed from days into weeks that start on Sunday |
 | Vendor Central traffic report | Product page views, an input that informs the forecast but isn't forecast | Product and week |
 | Vendor Central product hierarchy | Product titles | Product |
 

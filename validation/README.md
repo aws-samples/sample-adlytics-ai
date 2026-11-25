@@ -1636,8 +1636,10 @@ Optional inputs for a smaller run:
 | `ADL_CAPTURE_OUT` | Writes to this folder, created if missing, in place of `docs/images/`. The folder is not held to the gallery's size budget |
 
 `demand-forecast` writes the forecast list (`demand-forecast.png`) and one product's stored
-forecast (`demand-forecast-product.png`). It runs only when named, because the README gallery
-does not include it.
+forecast (`demand-forecast-product.png`), which the
+[Demand forecast README](../docs/solutions/demand-forecast/README.md#what-you-see) embeds. It
+runs only when named, so a default run leaves those two images in place. With `ADL_CAPTURE_OUT`,
+as below, view the images, then copy them into `docs/images/`.
 
 ```bash
 ADL_CAPTURE_ONLY=demand-forecast ADL_CAPTURE_OUT=/tmp/adl-shots uv run python validation/browser_session.py \
@@ -1702,6 +1704,12 @@ before the shot. The other images are still the 2026-10-23 capture.
   The solution READMEs now embed `campaign-delivery.png`, `insight-cards.png`, `reach-caveat.png`
   and `retention-curve.png`. The default run now writes 27 images, 25 when Prompt administration is
   skipped, and `docs/images/` totals 4,872,421 bytes. No image was recaptured.
+- **Demand forecast added, 2026-11-25.** `demand-forecast.png` and `demand-forecast-product.png`
+  were captured 18:57 to 18:58 UTC with `ADL_CAPTURE_ONLY=demand-forecast` and `ADL_CAPTURE_OUT`,
+  persona `probe-a`, against the dev website origin holding synthetic data and serving the hybrid
+  Demand forecast page (`feat/forecast-ui-phase1` `3d29360a` with PR #7). Exit 0. Both were
+  viewed, then copied into `docs/images/`: synthetic data only, no email address, account number,
+  host name or token. `docs/images/` totals 5,262,043 bytes within the 6 MiB budget.
 - `reach-absence-light.png` and `reach-absence-dark.png` belong to
   [page absence copy](../docs/ui/page-absence-copy.md), not the README, and this script does not
   write them.

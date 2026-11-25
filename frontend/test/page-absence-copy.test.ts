@@ -11,6 +11,12 @@ import {
 } from '@/components/CampaignRouteAdapter';
 import { OVERVIEW_NO_SPEND_TREND, sourceIssueText } from '@/components/OverviewView';
 import { CHANNEL_NEW_CUSTOMERS_ABSENT } from '@/components/ScorecardView';
+import { notInForecastText, notInForecastTitle } from '@/components/DemandForecastAsinDetail';
+import {
+  DEMAND_FORECAST_NO_FORECAST_TITLE,
+  DEMAND_FORECAST_READ_FAILED_TEXT,
+  noForecastYetText,
+} from '@/components/DemandForecastView';
 import { PAID_FEATURE_NEXT_STEP } from '@/components/PageAbsence';
 import { PI_DOMAIN_FALLBACK } from '@/components/PresentationV2RouteController';
 import {
@@ -55,4 +61,11 @@ test('ABS-OV-1 and ABS-OV-2 in docs/ui/page-absence-copy.md are the Overview ban
   assert.equal(row('ABS-OV-2').text, OVERVIEW_NO_SPEND_TREND);
   assert.equal(row('ABS-SC-CH').text, CHANNEL_NEW_CUSTOMERS_ABSENT);
   assert.equal(row('PAID-NEXT').text, PAID_FEATURE_NEXT_STEP);
+});
+test('ABS-DF rows in docs/ui/page-absence-copy.md are the Demand forecast absence copy', () => {
+  assert.deepEqual(row('ABS-DF-1'), { text: noForecastYetText('{next}'), title: DEMAND_FORECAST_NO_FORECAST_TITLE });
+  const notIn = row('ABS-DF-2');
+  assert.equal(notIn.title?.replace('{asin}', 'B0NOTREAL0'), notInForecastTitle('B0NOTREAL0'));
+  assert.equal(notIn.text?.replace('{item_count}', '61'), notInForecastText(61));
+  assert.equal(row('ABS-DF-3').text, DEMAND_FORECAST_READ_FAILED_TEXT);
 });

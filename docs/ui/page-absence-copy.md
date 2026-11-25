@@ -4,7 +4,7 @@
 |---|---|
 | **Type** | Shared UI copy catalog |
 | **Status** | Owner-approved 2026-10-22 under OD-UX-9 (UI refresh), implemented under [ADR-139](../decisions/adr-139-serve-designed-absence-and-advance-pages-only-with-a-grantable-cohort.md). The browser-owned Campaigns and Retail health rows were revised to say what is missing, why, and who acts; ABS-RH-3 and ABS-RH-4 give Retail health distinct empty and insufficient copy |
-| **Owns** | Every server-owned page-level absence text, the serving-refusal text, the one browser fallback for a `domain` refusal, and the browser-owned Campaigns and Retail health absence text |
+| **Owns** | Every server-owned page-level absence text, the serving-refusal text, the one browser fallback for a `domain` refusal, and the browser-owned Campaigns, Retail health and Demand forecast absence text |
 | **Parent** | [Decision Workspace UI](README.md) |
 
 Each v2 `window_unavailable.message` is chosen from this catalog by an explicit trigger
@@ -14,7 +14,9 @@ the browser's `PI_DOMAIN_FALLBACK` (`frontend/components/PresentationV2RouteCont
 ABS-CAMP-2, ABS-RH-1 to ABS-RH-4 equal the `CAMPAIGN_ABSENCE_…` and `RETAIL_HEALTH_…` constants
 (`frontend/components/CampaignRouteAdapter.tsx`, `frontend/components/RetailHealthRouteAdapter.tsx`), ABS-OV-1 and ABS-OV-2 equal the Overview's
 `sourceIssueText` and `OVERVIEW_NO_SPEND_TREND` (`frontend/components/OverviewView.tsx`), ABS-SC-CH equals
-`CHANNEL_NEW_CUSTOMERS_ABSENT` (`frontend/components/ScorecardView.tsx`), and PAID-NEXT equals `PAID_FEATURE_NEXT_STEP`
+`CHANNEL_NEW_CUSTOMERS_ABSENT` (`frontend/components/ScorecardView.tsx`), the ABS-DF rows equal the Demand forecast's
+`noForecastYetText`, `DEMAND_FORECAST_…` and not-in-forecast constants (`frontend/components/DemandForecastView.tsx`,
+`frontend/components/DemandForecastAsinDetail.tsx`), and PAID-NEXT equals `PAID_FEATURE_NEXT_STEP`
 (`frontend/components/PageAbsence.tsx`),
 whose v1 contract carries no server text. Equality tests on both sides read this file. `{period_label}` is the served period's label. Each page LLD's
 "Designed states" table links its row here and restates no text.
@@ -180,6 +182,20 @@ persistent status region announces it ([temporal contract §6](temporal-control-
 - Surface: Overview › Growth check, daily ad spend chart
 - Trigger: the served Campaigns body has no portfolio trend for the window.
 - Text: "This window has no daily ad spend to draw."
+### ABS-DF-1
+- Surface: Demand forecast
+- Trigger: the list is served as `unavailable`: no forecast generation has been published. `{next}` is the status's `next_new_input_check_at`; while status is loading or failed, the sentence naming it is left out and "after it" reads "after the next weekly update".
+- Title: "Demand forecast"
+- Text: "No forecast has been made yet. Forecasts are made from your Vendor Central sales history at a weekly update. The next update that can use new sales data is {next}. If no forecast appears after it, ask your administrator whether Vendor Central sales reports are reaching Adlytics."
+### ABS-DF-2
+- Surface: Demand forecast, product view
+- Trigger: a product opened from a `?asin=` link is served as `not_in_forecast`; an ASIN typed in the search box answers on one line under it instead ([forecasting LLD, Demand forecast page, item 4](../capabilities/forecasting/low-level-design.md#demand-forecast-page)). `{asin}` is the served ASIN and `{item_count}` the current list's product count; before the list has loaded, the text reads "This ASIN isn't in this forecast. Check the ASIN, or choose a product from the list."
+- Title: "{asin} isn't in this forecast"
+- Text: "This forecast covers {item_count} products with Vendor Central sales history. Check the ASIN, or choose a product from the list."
+### ABS-DF-3
+- Surface: Demand forecast, list or product
+- Trigger: the read failed: a refusal such as `FORECAST_STORE_UNAVAILABLE`, a 500, or a body that didn't decode. It renders in the shared page error with Try again; no refusal code is shown.
+- Text: "The forecast can't be loaded right now. Try again in a minute. If it keeps failing, tell your administrator."
 ## Why the wording
 
 Reach, Audiences and Retention are Amazon Marketing Cloud packs (each LLD's "Materializer"). A Reach

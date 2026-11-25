@@ -219,6 +219,27 @@ test('an entity with a Back label draws it between the tab strip and the h1, and
   assert.equal(screen.queryByRole('button', { name: 'Back to campaigns' }), null);
 });
 
+function EntityPageWithTab({ onBack, onTab }: { readonly onBack: () => void; readonly onTab: () => void }) {
+  useOpenEntity('Fictional product 1', onBack, 'Back to all products', onTab);
+  return <p>Detail open</p>;
+}
+
+test('with onTab, the crumb tab link and the active tab link call it, never onBack (O-02, B-01)', () => {
+  installMediaQuery();
+  const calls: string[] = [];
+  render(shell('/demand-forecast/', {}, <EntityPageWithTab onBack={() => calls.push('back')} onTab={() => calls.push('tab')}/>));
+  const crumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
+  assert.equal(fireEvent.click(within(crumb).getByRole('link', { name: 'Demand forecast' })), false);
+  const strip = screen.getByRole('navigation', { name: 'Sections of Retail health' });
+  const active = within(strip).getByRole('link', { name: 'Demand forecast' });
+  assert.equal(active.getAttribute('aria-current'), 'page');
+  // false: the click's default (a navigation to the same route) was prevented.
+  assert.equal(fireEvent.click(active), false);
+  // Another tab's link keeps its own navigation.
+  assert.equal(fireEvent.click(within(strip).getByRole('link', { name: 'Products and ads' })), true);
+  assert.deepEqual(calls, ['tab', 'tab']);
+});
+
 test('the rail tooltip shows the full label and Escape dismisses it until focus leaves', () => {
   installMediaQuery();
   render(shell());

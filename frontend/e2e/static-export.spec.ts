@@ -19,6 +19,10 @@ import {
 import { cloneRetention, retentionFixture, retentionTwoMarketFixture, RETENTION_REVISION } from '../test/fixtures/retention-v1-fixtures';
 import scorecardWeekly from '../test/fixtures/scorecard-7d-v2.json';
 import scorecardPending from '../test/fixtures/scorecard-pending-v2.json';
+import forecastList from '../test/fixtures/demand-forecast-list.json';
+import forecastDetail from '../test/fixtures/demand-forecast-detail.json';
+import forecastNotForecast from '../test/fixtures/demand-forecast-detail-not-forecast.json';
+import forecastStatus from '../test/fixtures/demand-forecast-status-stale.json';
 
 const canonicalRoutes = ['/campaigns/'] as const;
 
@@ -819,4 +823,434 @@ test('a serving refusal shows the server\'s own text, and the status region keep
     (window as unknown as { adlyticsStatusRegion?: Element | null }).adlyticsStatusRegion === document.querySelector(selector)
   ), PAGE_STATUS)).toBe(true);
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+});
+
+/** The forecast read routes from the shared wire fixtures; B0FIXTUR01 reads its forecast, any other product the no-forecast one. */
+async function mockForecast(page: Page, { detail = forecastDetail, list = forecastList }: {
+  readonly detail?: typeof forecastDetail;
+  readonly list?: typeof forecastList;
+} = {}): Promise<void> {
+  await page.route('**/api/demand-forecast**', (route) => {
+    const url = new URL(route.request().url());
+    const asin = url.searchParams.get('asin');
+    const body = url.pathname.endsWith('/status')
+      ? forecastStatus
+      : asin === null ? list : asin === 'B0FIXTUR01' ? detail : forecastNotForecast;
+    return route.fulfill({ body: JSON.stringify(body), contentType: 'application/json', status: 200 });
+  });
+}
+/** Tab forward until the focused element is the one named, or give up after `limit` presses. */
+async function tabTo(page: Page, within: string, label: string, limit = 80): Promise<boolean> {
+  for (let press = 0; press < limit; press += 1) {
+    await page.keyboard.press('Tab');
+    const reached = await page.evaluate(([scope, name]) => {
+      const active = document.activeElement;
+      return active !== null && active.getAttribute('aria-label') === name && active.closest(scope ?? '') !== null;
+    }, [within, label]);
+    if (reached) return true;
+  }
+  return false;
+}
+async function noSidewaysOverflow(page: Page): Promise<void> {
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  // No cell's right edge passes the table's own border.
+  expect(await page.evaluate(() => [...document.querySelectorAll('.demand-forecast .dt-wrap')].flatMap((wrap) => {
+    const edge = wrap.getBoundingClientRect().right + 0.5;
+    // A stacked table's header row is clipped to 1 px and never painted, so only painted cells count.
+    const head = wrap.querySelector('thead');
+    const headPainted = head !== null && head.getBoundingClientRect().height > 1;
+    return [...wrap.querySelectorAll(headPainted ? 'td, th' : 'tbody td, tbody th')]
+      .filter((cell) => cell.getBoundingClientRect().right > edge)
+      .map((cell) => `${cell.textContent ?? ''} ${Math.round(cell.getBoundingClientRect().right)} > ${Math.round(edge)}`);
+  }))).toEqual([]);
+}
+async function axeClean(page: Page): Promise<void> {
+  for (const theme of ['light', 'dark'] as const) {
+    await page.locator('html').evaluate((element, next) => { element.dataset.theme = next; }, theme);
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+    const results = await new AxeBuilder({ page }).include('.demand-forecast').options({ rules: { 'color-contrast': { enabled: true } } }).analyze();
+    expect(results.violations).toEqual([]);
+  }
+}
+
+test('/demand-forecast/ Check these first stays a table with the assistant docked and stacks at 390 px', async ({ page }) => {
+  await mockAuthenticatedV2(page);
+  await mockForecast(page);
+  await page.addInitScript(() => { if (sessionStorage.getItem('df-e2e') === null) { localStorage.setItem('adlytics.chat-open', 'true'); sessionStorage.setItem('df-e2e', '1'); } });
+  await page.setViewportSize({ height: 1000, width: 1440 });
+  expect((await page.goto('/demand-forecast/'))?.ok()).toBe(true);
+  const short = page.getByRole('table', { name: /^Check these first: largest forecast demand, 13 weeks starting Nov 8, 2026/ });
+  await expect(short).toBeVisible();
+  await expect(page.locator('h1')).toHaveCount(1);
+  // With the assistant docked: four columns in a painted header row, its pop-ups there.
+  await expect(page.locator('.df-short thead button[aria-label="About rank"]')).toBeVisible();
+  await expect(page.locator('.df-short-tips')).toBeHidden();
+  // The rows themselves stay a table: the 912 px Browse all stacking leaves the shortlist out (G-03).
+  const rowDisplay = () => page.evaluate(() => { const row = document.querySelector('.df-short tbody tr'); return row === null ? null : getComputedStyle(row).display; });
+  expect(await page.evaluate(() => document.querySelector('.demand-forecast')?.clientWidth ?? 0)).toBeLessThan(912);
+  expect(await rowDisplay()).toBe('table-row');
+  // The first viewport shows the answer, the search and the first row.
+  const fold = await page.evaluate(() => ['[data-slot="answer"]', '.df-search', '.df-short tbody tr'].map((selector) => {
+    const box = document.querySelector(selector)?.getBoundingClientRect();
+    return box !== undefined && box.bottom <= globalThis.innerHeight;
+  }));
+  expect(fold).toEqual([true, true, true]);
+  await noSidewaysOverflow(page);
+  await axeClean(page);
+  await page.locator('html').evaluate((element) => { element.dataset.theme = 'light'; });
+  await page.getByRole('button', { name: 'Assistant', exact: true }).click();
+  await page.setViewportSize({ height: 844, width: 390 });
+  await page.reload();
+  await expect(short).toBeVisible();
+  // Stacked: the header row is clipped, its pop-ups move to the tips line, keyboard-reachable (G-04).
+  await expect(page.locator('.df-short-tips')).toBeVisible();
+  await expect(page.locator('.df-short thead button[aria-label="About rank"]')).toBeHidden();
+  expect(await rowDisplay()).toBe('block');
+  await page.locator('h1').focus();
+  expect(await tabTo(page, '.df-short-tips', 'About rank')).toBe(true);
+  // Search first, above the card title; the advice line is hidden (O-11).
+  expect(await page.evaluate(() => (document.querySelector('.df-search')?.getBoundingClientRect().top ?? 0)
+    < (document.querySelector('.df-start h2')?.getBoundingClientRect().top ?? 0))).toBe(true);
+  await expect(page.locator('.df-short-hint')).toBeHidden();
+  await noSidewaysOverflow(page);
+  await axeClean(page);
+});
+
+test('/demand-forecast/ Browse all lays out wide, stacks with the assistant open and never overflows at 390 px (G-03, G-04)', async ({ page }) => {
+  await mockAuthenticatedV2(page);
+  await mockForecast(page);
+  await page.addInitScript(() => { if (sessionStorage.getItem('df-e2e') === null) { localStorage.setItem('adlytics.chat-open', 'false'); sessionStorage.setItem('df-e2e', '1'); } });
+  await page.setViewportSize({ height: 900, width: 1440 });
+  const response = await page.goto('/demand-forecast/');
+  expect(response?.ok()).toBe(true);
+  await page.getByRole('link', { name: 'Browse all 3 products' }).click();
+  await expect(page.locator('h1')).toHaveText('All products');
+  const table = page.getByRole('table', { name: /^Likely totals, 13 weeks starting Nov 8, 2026/ });
+  await expect(table).toBeVisible();
+  await expect(page.locator('h1')).toHaveCount(1);
+  // Wide: the header row shows its pop-ups, the caption's stacked-form copies are hidden.
+  expect(await page.evaluate(() => document.querySelector('.demand-forecast')?.clientWidth ?? 0)).toBeGreaterThanOrEqual(912);
+  await expect(page.locator('.df-list thead button[aria-label="About rank"]')).toBeVisible();
+  await expect(page.locator('.df-table-tips .stack-tips')).toBeHidden();
+  const rowDisplay = () => page.evaluate(() => { const row = document.querySelector('.df-list tbody tr'); return row === null ? null : getComputedStyle(row).display; });
+  expect(await rowDisplay()).toBe('table-row');
+  // The tips line leads into the table 6 px above it in every form, never the stacked wrap's 16 px.
+  const tipsGap = () => page.evaluate(() => { const wrap = document.querySelector('.df-list')?.parentElement; return wrap === null || wrap === undefined ? null : getComputedStyle(wrap).marginTop; });
+  expect(await tipsGap()).toBe('6px');
+  await page.locator('h1').focus();
+  expect(await tabTo(page, '.df-list thead', 'About rank')).toBe(true);
+  await noSidewaysOverflow(page);
+  await axeClean(page);
+  // The assistant open at its default width narrows the forecast container below 912 px: the rows stack.
+  await page.locator('html').evaluate((element) => { element.dataset.theme = 'light'; });
+  await page.getByRole('button', { name: 'Assistant', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => document.querySelector('.demand-forecast')?.clientWidth ?? 0)).toBeLessThan(912);
+  // The rows themselves stack, not only the header pop-ups (Browse all is a direct child of the container).
+  await expect.poll(rowDisplay).toBe('block');
+  expect(await tipsGap()).toBe('6px');
+  // The page's stacked form keeps all of DataTable's: a cell with a basis is a grid, and a selected
+  // row is outlined in the accent with untinted cells. No forecast row uses either yet, so mark one.
+  expect(await page.evaluate(() => {
+    const row = document.querySelector('.df-list tbody tr');
+    const cell = row?.querySelector('td');
+    const host = document.querySelector('.demand-forecast');
+    if (row === null || row === undefined || cell === null || cell === undefined || host === null) return null;
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--accent)';
+    host.append(probe);
+    row.setAttribute('aria-selected', 'true');
+    cell.classList.add('has-basis');
+    const seen = [getComputedStyle(cell).display, getComputedStyle(row).borderTopColor === getComputedStyle(probe).color, getComputedStyle(cell).backgroundColor];
+    cell.classList.remove('has-basis');
+    row.removeAttribute('aria-selected');
+    probe.remove();
+    return seen;
+  })).toEqual(['grid', true, 'rgba(0, 0, 0, 0)']);
+  await expect(page.locator('.df-table-tips .stack-tips')).toBeVisible();
+  await expect(page.locator('.df-list thead button[aria-label="About rank"]')).toBeHidden();
+  await page.locator('h1').focus();
+  expect(await tabTo(page, '.df-table-tips .stack-tips', 'About rank')).toBe(true);
+  await noSidewaysOverflow(page);
+  await axeClean(page);
+  // 390 px: nothing scrolls sideways on the list or on the product without a forecast. A reload
+  // on ?view=all stays on Browse all.
+  await page.getByRole('button', { name: 'Assistant', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => document.querySelector('.demand-forecast')?.clientWidth ?? 0)).toBeGreaterThanOrEqual(912);
+  await page.setViewportSize({ height: 844, width: 390 });
+  await page.reload();
+  await expect(table).toBeVisible();
+  await expect(page.locator('h1')).toHaveText('All products');
+  await expect(page.locator('h1')).toHaveCount(1);
+  expect(await rowDisplay()).toBe('block');
+  expect(await tipsGap()).toBe('6px');
+  // A product without a forecast reads as one unlabelled line across its card, as in phase 1.
+  expect(await page.evaluate(() => {
+    const cell = document.querySelector('.df-list td.df-merged');
+    return cell === null ? null : [getComputedStyle(cell).display, getComputedStyle(cell, '::before').content];
+  })).toEqual(['block', 'none']);
+  await noSidewaysOverflow(page);
+  await page.getByRole('button', { name: 'Fictional product 3' }).click();
+  await expect(page.getByRole('heading', { level: 2, name: 'No forecast for this product' })).toBeVisible();
+  await expect(page.locator('h1')).toHaveText('Fictional product 3');
+  await expect(page.locator('h1')).toHaveCount(1);
+  await noSidewaysOverflow(page);
+  await axeClean(page);
+});
+
+test('/demand-forecast/ at 390 px wraps the longest allowed unbroken product name in both lists, the product h1 and its answer', async ({ page }) => {
+  // title_max_bytes is 400 (contracts/forecasting/demand-forecast.yaml): one 400-byte word, no break.
+  const name = `Fictional${'X'.repeat(391)}`;
+  const list = structuredClone(forecastList);
+  const entry = list.entries.find((candidate) => candidate.asin === 'B0FIXTUR01');
+  expect(entry).toBeTruthy();
+  if (entry === undefined) return;
+  entry.title = name;
+  await mockAuthenticatedV2(page);
+  await mockForecast(page, { detail: { ...structuredClone(forecastDetail), title: name }, list });
+  await page.addInitScript(() => { localStorage.setItem('adlytics.chat-open', 'false'); });
+  await page.setViewportSize({ height: 844, width: 390 });
+  await page.goto('/demand-forecast/');
+  await expect(page.getByRole('table', { name: /^Check these first/ })).toBeVisible();
+  const row = page.getByRole('button', { name });
+  await expect(row).toBeVisible();
+  await noSidewaysOverflow(page);
+  // Every match sits inside the viewport: a page that clips its overflow would hide it from the check above.
+  const fits = (selector: string) => page.evaluate((target) => {
+    const boxes = [...document.querySelectorAll(target)].map((element) => element.getBoundingClientRect());
+    return boxes.length > 0 && boxes.every((box) => box.right <= document.documentElement.clientWidth);
+  }, selector);
+  expect(await fits('.df-short tbody th.row-pick button')).toBe(true);
+  await row.click();
+  await expect(page.getByText('ASIN B0FIXTUR01')).toBeVisible();
+  await expect(page.locator('h1')).toHaveText(name);
+  await noSidewaysOverflow(page);
+  expect(await fits('h1')).toBe(true);
+  // The same name in the full list.
+  await page.goBack();
+  await page.getByRole('link', { name: 'Browse all 3 products' }).click();
+  await expect(page.getByRole('table', { name: /^Likely totals/ })).toBeVisible();
+  await noSidewaysOverflow(page);
+  expect(await fits('.df-list tbody th.row-pick button')).toBe(true);
+});
+test('/demand-forecast/ at 390 px opens a pop-up on its own line under its term, never squeezing it', async ({ page }) => {
+  await mockAuthenticatedV2(page);
+  await mockForecast(page);
+  await page.addInitScript(() => { localStorage.setItem('adlytics.chat-open', 'false'); });
+  await page.setViewportSize({ height: 844, width: 390 });
+  await page.goto('/demand-forecast/');
+  const pill = page.locator('.df-fresh > .pill');
+  await expect(pill).toBeVisible();
+  const closed = await pill.boundingBox();
+  const button = page.getByRole('button', { name: 'About this forecast', exact: true });
+  await button.click();
+  const panel = page.locator('.df-fresh .infotip-panel');
+  await expect(panel).toBeVisible();
+  const [open, buttonBox, panelBox] = await Promise.all([pill.boundingBox(), button.boundingBox(), panel.boundingBox()]);
+  expect(closed && open && buttonBox && panelBox).toBeTruthy();
+  if (closed === null || open === null || buttonBox === null || panelBox === null) return;
+  // The term keeps its width and the button stays beside it; the panel starts below both.
+  expect(Math.abs(open.width - closed.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(buttonBox.y + buttonBox.height / 2 - (open.y + open.height / 2))).toBeLessThanOrEqual(4);
+  expect(panelBox.y).toBeGreaterThanOrEqual(Math.max(open.y + open.height, buttonBox.y + buttonBox.height) - 1);
+  expect(await page.evaluate(() => {
+    const main = document.querySelector('.main')?.getBoundingClientRect();
+    const box = document.querySelector('.df-fresh .infotip-panel')?.getBoundingClientRect();
+    return main !== undefined && box !== undefined && box.left >= main.left - 1 && box.right <= main.right + 1;
+  })).toBe(true);
+  await noSidewaysOverflow(page);
+  await page.keyboard.press('Escape');
+  await expect(panel).toBeHidden();
+  await expect(button).toBeFocused();
+});
+test('/demand-forecast/ a pop-up shifted at a wide width and left open stays inside the column after a resize to 390 px (GPT-R2-02)', async ({ page }) => {
+  await mockAuthenticatedV2(page);
+  await mockForecast(page);
+  await page.addInitScript(() => { localStorage.setItem('adlytics.chat-open', 'false'); });
+  await page.setViewportSize({ height: 900, width: 1440 });
+  await page.goto('/demand-forecast/?asin=B0FIXTUR01');
+  await expect(page.locator('h1')).toHaveText('Fictional product 1');
+  const panel = page.locator('.tile .k .infotip-panel').first();
+  await page.locator('.tile .k .infotip-btn').first().click();
+  await expect(panel).toBeVisible();
+  // The precondition: at this width the panel had to shift to stay inside the column.
+  expect(await panel.evaluate((node) => (node as HTMLElement).style.transform)).not.toBe('');
+  await page.setViewportSize({ height: 844, width: 390 });
+  await expect(panel).toBeVisible();
+  // Inline below 560 px, it sits on its own line under its term: the wide-width shift is gone.
+  await expect.poll(() => panel.evaluate((node) => (node as HTMLElement).style.transform)).toBe('');
+  await expect.poll(() => page.evaluate(() => {
+    const main = document.querySelector('.main')?.getBoundingClientRect();
+    const box = document.querySelector('.tile .k .infotip-panel:not([hidden])')?.getBoundingClientRect();
+    return main !== undefined && box !== undefined && box.left >= main.left - 1 && box.right <= main.right + 1;
+  })).toBe(true);
+  await noSidewaysOverflow(page);
+});
+
+/** True when the open pop-up matching `selector` lies inside the page column. */
+function panelInsideColumn(page: Page, selector: string): Promise<boolean> {
+  return page.evaluate((target) => {
+    const main = document.querySelector('.main')?.getBoundingClientRect();
+    const box = document.querySelector(target)?.getBoundingClientRect();
+    return main !== undefined && box !== undefined && box.left >= main.left - 1 && box.right <= main.right + 1;
+  }, selector);
+}
+test('/demand-forecast/ an open pop-up whose own size changes is placed again against the column edge', async ({ page }) => {
+  await mockAuthenticatedV2(page);
+  await mockForecast(page);
+  await page.addInitScript(() => { localStorage.setItem('adlytics.chat-open', 'false'); });
+  await page.setViewportSize({ height: 900, width: 700 });
+  await page.goto('/demand-forecast/');
+  await page.getByRole('button', { name: 'About this forecast', exact: true }).click();
+  const panel = page.locator('.df-fresh .infotip-panel');
+  await expect(panel).toBeVisible();
+  const gap = () => page.evaluate(() => {
+    const main = document.querySelector('.main')?.getBoundingClientRect();
+    const box = document.querySelector('.df-fresh .infotip-panel')?.getBoundingClientRect();
+    return main === undefined || box === undefined ? null : Math.round(main.right - box.right);
+  });
+  // The precondition: at 700 px the 320 px panel shifts left to keep 8 px from the column's right edge.
+  expect(await panel.evaluate((node) => (node as HTMLElement).style.transform)).not.toBe('');
+  expect(await gap()).toBe(8);
+  // The panel narrows while it stays open, as when its content changes: it is placed again 8 px
+  // from the edge, not left where the wider panel needed it.
+  await panel.evaluate((node) => { (node as HTMLElement).style.maxWidth = '200px'; });
+  await expect.poll(gap).toBe(8);
+  await noSidewaysOverflow(page);
+});
+test('/demand-forecast/ an open pop-up is placed again by the next render after its term moves sideways', async ({ page }) => {
+  await mockAuthenticatedV2(page);
+  await mockForecast(page);
+  await page.addInitScript(() => { localStorage.setItem('adlytics.chat-open', 'false'); });
+  await page.setViewportSize({ height: 900, width: 1440 });
+  await page.goto('/demand-forecast/?asin=B0FIXTUR01');
+  await expect(page.locator('h1')).toHaveText('Fictional product 1');
+  const panel = page.locator('.tile .k .infotip-panel').first();
+  await page.locator('.tile .k .infotip-btn').first().click();
+  await expect(panel).toBeVisible();
+  expect(await panelInsideColumn(page, '.tile .k .infotip-panel:not([hidden])')).toBe(true);
+  // A reflow moves the term 150 px left without resizing the column or the panel, which no
+  // observer reports (a re-measured table column does this to a header's term). The column's
+  // height is held, so the shorter 4-week view below doesn't resize it either.
+  await page.evaluate(() => {
+    const main = document.querySelector('.main');
+    if (main instanceof HTMLElement) main.style.height = getComputedStyle(main).height;
+  });
+  await page.evaluate(() => new Promise((resolve) => { requestAnimationFrame(() => requestAnimationFrame(resolve)); }));
+  await page.evaluate(() => {
+    const tile = document.querySelector('.tile');
+    if (tile instanceof HTMLElement) { tile.style.position = 'relative'; tile.style.left = '-150px'; }
+  });
+  expect(await panelInsideColumn(page, '.tile .k .infotip-panel:not([hidden])')).toBe(false);
+  // The next render, a week view chosen by keyboard so the pop-up stays open, places it again.
+  await page.getByRole('button', { name: '4 weeks' }).press('Enter');
+  await expect(panel).toBeVisible();
+  await expect.poll(() => panelInsideColumn(page, '.tile .k .infotip-panel:not([hidden])')).toBe(true);
+});
+test('/demand-forecast/ Back, Forward, a fresh link, a reload and the tab link keep the page and other history keys (B-02)', async ({ page }) => {
+  await mockAuthenticatedV2(page);
+  await mockForecast(page);
+  await page.addInitScript(() => { localStorage.setItem('adlytics.chat-open', 'false'); });
+  await page.setViewportSize({ height: 900, width: 1440 });
+  const h1 = page.locator('h1');
+  const short = page.getByRole('table', { name: /^Check these first/ });
+  const all = page.getByRole('table', { name: /^Likely totals/ });
+  const search = () => page.evaluate(() => globalThis.location.search);
+  // A page marker that a full reload would drop, and an unrelated state key on the first entry.
+  const marker = () => page.evaluate(() => (globalThis as unknown as { dfMarker?: number }).dfMarker === 1);
+  const keys = () => page.evaluate(() => ({
+    next: (globalThis.history.state as { __NA?: boolean } | null)?.__NA === true,
+    sentinel: (globalThis.history.state as { sentinel?: string } | null)?.sentinel ?? null,
+  }));
+  const focusedRow = () => page.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset.forecastRow ?? document.activeElement?.tagName ?? null);
+
+  await page.goto('/demand-forecast/');
+  await expect(short).toBeVisible();
+  await page.evaluate(() => {
+    globalThis.history.replaceState({ ...(globalThis.history.state as object), sentinel: 'kept' }, '');
+    (globalThis as unknown as { dfMarker?: number }).dfMarker = 1;
+  });
+  // Row, then the browser's Back and Forward.
+  await short.getByRole('button', { name: 'Fictional product 1' }).click();
+  await expect(h1).toHaveText('Fictional product 1');
+  expect(await search()).toBe('?asin=B0FIXTUR01');
+  expect(await keys()).toEqual({ next: true, sentinel: 'kept' });
+  await page.goBack();
+  await expect(short).toBeVisible();
+  await expect(h1).toHaveText('Demand forecast');
+  expect(await search()).toBe('');
+  await expect.poll(focusedRow).toBe('B0FIXTUR01');
+  await page.goForward();
+  await expect(h1).toHaveText('Fictional product 1');
+  await expect(h1).toBeFocused();
+  expect(await marker()).toBe(true);
+  expect(await keys()).toEqual({ next: true, sentinel: 'kept' });
+  // Back after Forward returns to the same row: the opener is known in this visit (G-09).
+  await page.goBack();
+  await expect(short).toBeVisible();
+  await expect.poll(focusedRow).toBe('B0FIXTUR01');
+
+  // A fresh link, then the shell's Back: the seeded entry under it keeps the app's own keys.
+  await page.goto('/demand-forecast/?asin=B0FIXTUR01');
+  await expect(h1).toHaveText('Fictional product 1');
+  await expect(h1).toBeFocused();
+  await page.evaluate(() => { (globalThis as unknown as { dfMarker?: number }).dfMarker = 1; });
+  await page.getByRole('button', { name: 'Back to Demand forecast' }).click();
+  await expect(short).toBeVisible();
+  // No opener is known for a link, so focus goes to the opening view's h1 (G-09).
+  await expect(h1).toBeFocused();
+  expect(await search()).toBe('');
+  expect(await page.evaluate(() => globalThis.location.pathname)).toBe('/demand-forecast/');
+  expect(await marker()).toBe(true);
+  expect((await keys()).next).toBe(true);
+
+  // Browse all, a product from it, a reload, then Back returns to Browse all.
+  await page.evaluate(() => { globalThis.history.replaceState({ ...(globalThis.history.state as object), sentinel: 'kept' }, ''); });
+  const browseAll = page.getByRole('link', { name: 'Browse all 3 products' });
+  await browseAll.click();
+  await expect(h1).toHaveText('All products');
+  expect(await search()).toBe('?view=all');
+  // Back, Forward, then Back again: focus returns to the Browse all link both times (G-09).
+  for (let pass = 0; pass < 2; pass += 1) {
+    await page.goBack();
+    await expect(short).toBeVisible();
+    await expect(browseAll).toBeFocused();
+    await page.goForward();
+    await expect(h1).toHaveText('All products');
+    await expect(h1).toBeFocused();
+  }
+  await all.getByRole('button', { name: 'Fictional product 1' }).click();
+  await expect(h1).toHaveText('Fictional product 1');
+  // The same for a product opened from Browse all: Back, Forward, Back return to its row.
+  for (let pass = 0; pass < 2; pass += 1) {
+    await page.goBack();
+    await expect(all).toBeVisible();
+    await expect.poll(focusedRow).toBe('B0FIXTUR01');
+    await page.goForward();
+    await expect(h1).toHaveText('Fictional product 1');
+  }
+  await page.reload();
+  await expect(h1).toHaveText('Fictional product 1');
+  expect(await keys()).toEqual({ next: true, sentinel: 'kept' });
+  await page.evaluate(() => { (globalThis as unknown as { dfMarker?: number }).dfMarker = 1; });
+  await page.getByRole('button', { name: 'Back to all products' }).click();
+  await expect(all).toBeVisible();
+  await expect(h1).toHaveText('All products');
+  expect(await search()).toBe('?view=all');
+  await expect.poll(focusedRow).toBe('B0FIXTUR01');
+
+  // The active tab link from a product opened in Browse all opens the opening view (B-01).
+  await all.getByRole('button', { name: 'Fictional product 1' }).click();
+  await expect(h1).toHaveText('Fictional product 1');
+  await page.getByRole('navigation', { name: 'Sections of Retail health' }).getByRole('link', { name: 'Demand forecast', exact: true }).click();
+  await expect(short).toBeVisible();
+  await expect(h1).toHaveText('Demand forecast');
+  await expect(h1).toBeFocused();
+  expect(await search()).toBe('');
+  expect(await marker()).toBe(true);
+  expect(await keys()).toEqual({ next: true, sentinel: 'kept' });
+
+  // An invalid link opens H1 on the bare URL and says so (B-04).
+  await page.goto('/demand-forecast/?asin=B0FIXTUR01&view=all');
+  await expect(page.getByText("This forecast link isn't valid.")).toBeVisible();
+  expect(await search()).toBe('');
 });

@@ -27,6 +27,8 @@ const PATHS = {
   flat: <path d="M5 12h14" />,
   // "Back to …" from a detail open in place (ia §7.3a item 1).
   back: <path d="M15 6l-6 6 6 6" />,
+  // An info pop-up's button (InfoTip).
+  info: <><circle cx="12" cy="12" r="9" /><path d="M12 11v5.5M12 7.5v.01" /></>,
 } satisfies Record<string, ReactNode>;
 
 export type IconName = keyof typeof PATHS;
