@@ -927,6 +927,8 @@ test('/demand-forecast/ Browse all lays out wide, stacks with the assistant open
   expect(await page.evaluate(() => document.querySelector('.demand-forecast')?.clientWidth ?? 0)).toBeGreaterThanOrEqual(912);
   await expect(page.locator('.df-list thead button[aria-label="About rank"]')).toBeVisible();
   await expect(page.locator('.df-table-tips .stack-tips')).toBeHidden();
+  const rowDisplay = () => page.evaluate(() => { const row = document.querySelector('.df-list tbody tr'); return row === null ? null : getComputedStyle(row).display; });
+  expect(await rowDisplay()).toBe('table-row');
   await page.locator('h1').focus();
   expect(await tabTo(page, '.df-list thead', 'About rank')).toBe(true);
   await noSidewaysOverflow(page);
@@ -935,6 +937,8 @@ test('/demand-forecast/ Browse all lays out wide, stacks with the assistant open
   await page.locator('html').evaluate((element) => { element.dataset.theme = 'light'; });
   await page.getByRole('button', { name: 'Assistant', exact: true }).click();
   await expect.poll(() => page.evaluate(() => document.querySelector('.demand-forecast')?.clientWidth ?? 0)).toBeLessThan(912);
+  // The rows themselves stack, not only the header pop-ups (Browse all is a direct child of the container).
+  await expect.poll(rowDisplay).toBe('block');
   await expect(page.locator('.df-table-tips .stack-tips')).toBeVisible();
   await expect(page.locator('.df-list thead button[aria-label="About rank"]')).toBeHidden();
   await page.locator('h1').focus();
