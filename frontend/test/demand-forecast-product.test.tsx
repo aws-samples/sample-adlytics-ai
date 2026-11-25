@@ -390,6 +390,8 @@ test('a fresh product link seeds an H1 entry under it, so Back stays on the page
   assert.equal(window.location.pathname, '/demand-forecast/');
   assert.equal(window.location.search, '');
   assert.deepEqual(window.history.state, { sentinel: 'kept', adlyticsForecast: { view: 'start', asin: null, from: 'start', depth: 0 } });
+  // No opener is known for a link, so focus goes to the h1, not the product's row (G-09).
+  await waitFor(() => assert.equal(focused(), 'h1:Demand forecast'));
 });
 
 test('a fresh Browse all link opens unfiltered page 1 and Back opens H1', async () => {
@@ -402,7 +404,26 @@ test('a fresh Browse all link opens unfiltered page 1 and Back opens H1', async 
   await userEvent.click(screen.getByRole('button', { name: 'Back to Demand forecast' }));
   await screen.findByRole('table', { name: SHORT });
   assert.equal(window.location.search, '');
+  await waitFor(() => assert.equal(focused(), 'h1:Demand forecast'));
 });
+
+for (const [view, open] of [
+  ['a product opened from the shortlist', async () => { await userEvent.click(await screen.findByRole('button', { name: 'Fictional product 1' })); await screen.findByText('ASIN B0FIXTUR01'); }],
+  ['Browse all', async () => { await userEvent.click(await screen.findByRole('link', { name: 'Browse all 3 products' })); await screen.findByRole('table', { name: LIST_NAME }); }],
+] as const) {
+  test(`after a reload on ${view}, Back focuses the opening view's h1: the opener is not known (G-09)`, async () => {
+    serve(forecastRoutes(detail));
+    const first = page();
+    await open();
+    first.unmount();
+    page();
+    await waitFor(() => assert.notEqual(heading().textContent, 'Demand forecast'));
+    await userEvent.click(screen.getByRole('button', { name: 'Back to Demand forecast' }));
+    await screen.findByRole('table', { name: SHORT });
+    assert.equal(window.location.search, '');
+    await waitFor(() => assert.equal(focused(), 'h1:Demand forecast'));
+  });
+}
 
 test('a reload on a product opened from Browse all keeps Back to all products and returns to Browse all', async () => {
   serve(forecastRoutes(detail));
