@@ -1548,7 +1548,8 @@ textarea.prompt-text:focus-visible { outline: 2px solid var(--ai); outline-offse
   .demand-forecast .df-list thead .infotip-btn { display: none; }
   .demand-forecast .df-table-tips > .stack-tips { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; }
   .demand-forecast .stack-tips > span { display: inline-flex; align-items: center; }
-  .demand-forecast .df-table-tips + .dt-wrap.stackable { margin-top: 6px; }
+  /* The same exclusion as the wrap rule above, so this 6 px outranks its 16 px. */
+  .demand-forecast .df-table-tips + .dt-wrap.stackable:not(.df-shortlist > .dt-wrap) { margin-top: 6px; }
 }
 /* The opening view (hybrid H1): the card's title left and search right, then the outcome line
    on its own full-width line (B-08), the shortlist, the reasons line and Browse all. The

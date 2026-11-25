@@ -929,6 +929,9 @@ test('/demand-forecast/ Browse all lays out wide, stacks with the assistant open
   await expect(page.locator('.df-table-tips .stack-tips')).toBeHidden();
   const rowDisplay = () => page.evaluate(() => { const row = document.querySelector('.df-list tbody tr'); return row === null ? null : getComputedStyle(row).display; });
   expect(await rowDisplay()).toBe('table-row');
+  // The tips line leads into the table 6 px above it in every form, never the stacked wrap's 16 px.
+  const tipsGap = () => page.evaluate(() => { const wrap = document.querySelector('.df-list')?.parentElement; return wrap === null || wrap === undefined ? null : getComputedStyle(wrap).marginTop; });
+  expect(await tipsGap()).toBe('6px');
   await page.locator('h1').focus();
   expect(await tabTo(page, '.df-list thead', 'About rank')).toBe(true);
   await noSidewaysOverflow(page);
@@ -939,6 +942,7 @@ test('/demand-forecast/ Browse all lays out wide, stacks with the assistant open
   await expect.poll(() => page.evaluate(() => document.querySelector('.demand-forecast')?.clientWidth ?? 0)).toBeLessThan(912);
   // The rows themselves stack, not only the header pop-ups (Browse all is a direct child of the container).
   await expect.poll(rowDisplay).toBe('block');
+  expect(await tipsGap()).toBe('6px');
   await expect(page.locator('.df-table-tips .stack-tips')).toBeVisible();
   await expect(page.locator('.df-list thead button[aria-label="About rank"]')).toBeHidden();
   await page.locator('h1').focus();
@@ -954,6 +958,8 @@ test('/demand-forecast/ Browse all lays out wide, stacks with the assistant open
   await expect(table).toBeVisible();
   await expect(page.locator('h1')).toHaveText('All products');
   await expect(page.locator('h1')).toHaveCount(1);
+  expect(await rowDisplay()).toBe('block');
+  expect(await tipsGap()).toBe('6px');
   await noSidewaysOverflow(page);
   await page.getByRole('button', { name: 'Fictional product 3' }).click();
   await expect(page.getByRole('heading', { level: 2, name: 'No forecast for this product' })).toBeVisible();
