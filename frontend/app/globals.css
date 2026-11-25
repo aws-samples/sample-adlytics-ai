@@ -1543,6 +1543,13 @@ textarea.prompt-text:focus-visible { outline: 2px solid var(--ai); outline-offse
   .demand-forecast .dt-wrap.stackable:not(.df-shortlist > .dt-wrap) table.dt td { display: flex; justify-content: space-between; gap: 12px; text-align: right; border-bottom: 0; padding: 5px 12px; }
   .demand-forecast .dt-wrap.stackable:not(.df-shortlist > .dt-wrap) table.dt td::before { content: attr(data-label); text-align: left; color: var(--text-dim); font-size: 12px; font-weight: 600; flex: 1 1 50%; }
   .demand-forecast .dt-wrap.stackable:not(.df-shortlist > .dt-wrap) table.dt td > * { min-width: 0; }
+  /* DataTable's basis cell and selected row, so this copy of its stacked form leaves nothing out. */
+  .demand-forecast .dt-wrap.stackable:not(.df-shortlist > .dt-wrap) table.dt td.has-basis { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; align-items: start; }
+  .demand-forecast .dt-wrap.stackable:not(.df-shortlist > .dt-wrap) table.dt td.has-basis::before { grid-column: 1; grid-row: 1; }
+  .demand-forecast .dt-wrap.stackable:not(.df-shortlist > .dt-wrap) table.dt td.has-basis .basis-inline { display: block; grid-column: 1; grid-row: 2; text-align: left; margin-top: 2px; }
+  .demand-forecast .dt-wrap.stackable:not(.df-shortlist > .dt-wrap) table.dt td.has-basis .cv { grid-column: 2; grid-row: 1 / span 2; display: flex; flex-wrap: wrap; gap: 4px 8px; justify-content: flex-end; align-items: baseline; }
+  .demand-forecast .dt-wrap.stackable:not(.df-shortlist > .dt-wrap) table.dt tbody tr[aria-selected="true"] { border-color: var(--accent); }
+  .demand-forecast .dt-wrap.stackable:not(.df-shortlist > .dt-wrap) table.dt tbody tr[aria-selected="true"] > * { background: none; }
   .demand-forecast .dt-wrap.stackable:not(.df-shortlist > .dt-wrap) table.dt td.df-merged, .demand-forecast .dt-wrap.stackable:not(.df-shortlist > .dt-wrap) table.dt td.df-empty { display: block; text-align: left; }
   .demand-forecast .dt-wrap.stackable:not(.df-shortlist > .dt-wrap) table.dt td.df-merged::before, .demand-forecast .dt-wrap.stackable:not(.df-shortlist > .dt-wrap) table.dt td.df-empty::before { content: none; }
   .demand-forecast .df-list thead .infotip-btn { display: none; }

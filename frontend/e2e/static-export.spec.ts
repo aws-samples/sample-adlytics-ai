@@ -948,6 +948,24 @@ test('/demand-forecast/ Browse all lays out wide, stacks with the assistant open
   // The rows themselves stack, not only the header pop-ups (Browse all is a direct child of the container).
   await expect.poll(rowDisplay).toBe('block');
   expect(await tipsGap()).toBe('6px');
+  // The page's stacked form keeps all of DataTable's: a cell with a basis is a grid, and a selected
+  // row is outlined in the accent with untinted cells. No forecast row uses either yet, so mark one.
+  expect(await page.evaluate(() => {
+    const row = document.querySelector('.df-list tbody tr');
+    const cell = row?.querySelector('td');
+    const host = document.querySelector('.demand-forecast');
+    if (row === null || row === undefined || cell === null || cell === undefined || host === null) return null;
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--accent)';
+    host.append(probe);
+    row.setAttribute('aria-selected', 'true');
+    cell.classList.add('has-basis');
+    const seen = [getComputedStyle(cell).display, getComputedStyle(row).borderTopColor === getComputedStyle(probe).color, getComputedStyle(cell).backgroundColor];
+    cell.classList.remove('has-basis');
+    row.removeAttribute('aria-selected');
+    probe.remove();
+    return seen;
+  })).toEqual(['grid', true, 'rgba(0, 0, 0, 0)']);
   await expect(page.locator('.df-table-tips .stack-tips')).toBeVisible();
   await expect(page.locator('.df-list thead button[aria-label="About rank"]')).toBeHidden();
   await page.locator('h1').focus();
