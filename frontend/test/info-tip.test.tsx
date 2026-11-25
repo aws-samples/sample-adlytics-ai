@@ -34,6 +34,19 @@ test('Enter and Space toggle the panel and set aria-expanded; Escape closes it a
   assert.ok(document.activeElement === button);
 });
 
+test('Escape from a control inside the open panel closes it and puts focus on the button', async () => {
+  render(<p>Status <InfoTip title="About this forecast" label="About this forecast">
+    The update schedule can&apos;t be loaded right now. <button type="button">Try again</button>
+  </InfoTip></p>);
+  const button = screen.getByRole('button', { name: 'About this forecast' });
+  await userEvent.click(button);
+  const retry = screen.getByRole('button', { name: 'Try again' });
+  retry.focus();
+  await userEvent.keyboard('{Escape}');
+  assert.equal(button.getAttribute('aria-expanded'), 'false');
+  assert.equal(panelOf(button).hidden, true);
+  assert.ok(document.activeElement === button);
+});
 test('hover alone never opens it', async () => {
   render(<InfoTip title="Rank">Ranked by likely units ordered.</InfoTip>);
   const button = screen.getByRole('button', { name: 'About rank' });

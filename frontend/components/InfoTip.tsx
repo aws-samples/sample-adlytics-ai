@@ -6,8 +6,9 @@ import { Icon } from './Icon';
 /**
  * An info pop-up (demand forecast design, "Info pop-up behaviour"): a disclosure button and a
  * text-only panel right after it in the DOM, so reading order follows. Click, Enter or Space
- * toggles it; hover never opens it (WCAG 1.4.13). Escape closes it with focus kept on the button,
- * a pointer press outside closes it, and opening one closes any other. Built from spans, so it is
+ * toggles it; hover never opens it (WCAG 1.4.13). Escape, on the button or on a control inside the
+ * open panel, closes it and puts focus on the button; a pointer press outside closes it, and
+ * opening one closes any other. Built from spans, so it is
  * valid inside a `th`, `caption` or `p`.
  */
 const OPEN_EVENT = 'infotip-open';
@@ -62,7 +63,17 @@ export function InfoTip({ children, className, label, title }: {
   };
   const name = label ?? `About ${title.charAt(0).toLowerCase()}${title.slice(1)}`;
   return (
-    <span className={className === undefined ? 'infotip' : `infotip ${className}`} ref={wrap}>
+    <span
+      className={className === undefined ? 'infotip' : `infotip ${className}`}
+      ref={wrap}
+      onKeyDown={(event) => {
+        // On the wrapper, so Escape from a control inside the panel (Try again) closes it too.
+        if (event.key !== 'Escape' || !open) return;
+        event.stopPropagation();
+        setOpen(false);
+        button.current?.focus();
+      }}
+    >
       <button
         type="button"
         className="infotip-btn"
@@ -71,12 +82,6 @@ export function InfoTip({ children, className, label, title }: {
         aria-expanded={open}
         aria-controls={id}
         onClick={toggle}
-        onKeyDown={(event) => {
-          if (event.key !== 'Escape' || !open) return;
-          event.stopPropagation();
-          setOpen(false);
-          button.current?.focus();
-        }}
       >
         <Icon name="info" small/>
       </button>
