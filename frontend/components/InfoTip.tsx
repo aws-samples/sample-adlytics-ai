@@ -53,9 +53,14 @@ export function InfoTip({ children, className, label, title }: {
     return () => window.removeEventListener(OPEN_EVENT, onOther);
   }, [id]);
   useLayoutEffect(() => {
+    // Placed after every render while open, not only when it opens: a render can move the button
+    // sideways without resizing anything (a Browse all page landing re-measures the table's
+    // columns while a header pop-up stays open), and no observer reports a move.
+    if (open && panel.current !== null) place(panel.current);
+  });
+  useLayoutEffect(() => {
     const node = panel.current;
     if (!open || node === null) return undefined;
-    place(node);
     // A resize or rotation while it is open moves the column's edge, or makes the panel inline,
     // and the panel's own content can change its size (the freshness pop-up's schedule lines
     // landing), so it is placed again whenever the column or the panel changes size. jsdom has

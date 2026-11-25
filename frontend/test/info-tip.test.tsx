@@ -140,3 +140,19 @@ test('an open panel whose own content changes its size is placed again (the fres
     vi.unstubAllGlobals();
   }
 });
+test('an open panel is placed again when a render moves its button without resizing anything', async () => {
+  const view = (page: number) => <div className="main"><InfoTip title="Rank">Page {page}</InfoTip></div>;
+  const { rerender } = render(view(1));
+  const column = document.querySelector('.main');
+  assert.ok(column instanceof HTMLElement);
+  column.getBoundingClientRect = () => edges(0, 400);
+  const button = screen.getByRole('button', { name: 'About rank' });
+  const panel = panelOf(button);
+  panel.getBoundingClientRect = () => edges(40, 360);
+  await userEvent.click(button);
+  assert.equal(panel.style.transform, '');
+  // A later page lands: the table re-measures its columns and the button moves right.
+  panel.getBoundingClientRect = () => edges(150, 470);
+  rerender(view(2));
+  assert.equal(panel.style.transform, 'translateX(-78px)');
+});

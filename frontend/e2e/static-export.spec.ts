@@ -1048,6 +1048,14 @@ test('/demand-forecast/ a pop-up shifted at a wide width and left open stays ins
   await noSidewaysOverflow(page);
 });
 
+/** True when the open pop-up matching `selector` lies inside the page column. */
+function panelInsideColumn(page: Page, selector: string): Promise<boolean> {
+  return page.evaluate((target) => {
+    const main = document.querySelector('.main')?.getBoundingClientRect();
+    const box = document.querySelector(target)?.getBoundingClientRect();
+    return main !== undefined && box !== undefined && box.left >= main.left - 1 && box.right <= main.right + 1;
+  }, selector);
+}
 test('/demand-forecast/ an open pop-up whose own size changes is placed again against the column edge', async ({ page }) => {
   await mockAuthenticatedV2(page);
   await mockForecast(page);
@@ -1070,6 +1078,35 @@ test('/demand-forecast/ an open pop-up whose own size changes is placed again ag
   await panel.evaluate((node) => { (node as HTMLElement).style.maxWidth = '200px'; });
   await expect.poll(gap).toBe(8);
   await noSidewaysOverflow(page);
+});
+test('/demand-forecast/ an open pop-up is placed again by the next render after its term moves sideways', async ({ page }) => {
+  await mockAuthenticatedV2(page);
+  await mockForecast(page);
+  await page.addInitScript(() => { localStorage.setItem('adlytics.chat-open', 'false'); });
+  await page.setViewportSize({ height: 900, width: 1440 });
+  await page.goto('/demand-forecast/?asin=B0FIXTUR01');
+  await expect(page.locator('h1')).toHaveText('Fictional product 1');
+  const panel = page.locator('.tile .k .infotip-panel').first();
+  await page.locator('.tile .k .infotip-btn').first().click();
+  await expect(panel).toBeVisible();
+  expect(await panelInsideColumn(page, '.tile .k .infotip-panel:not([hidden])')).toBe(true);
+  // A reflow moves the term 150 px left without resizing the column or the panel, which no
+  // observer reports (a re-measured table column does this to a header's term). The column's
+  // height is held, so the shorter 4-week view below doesn't resize it either.
+  await page.evaluate(() => {
+    const main = document.querySelector('.main');
+    if (main instanceof HTMLElement) main.style.height = getComputedStyle(main).height;
+  });
+  await page.evaluate(() => new Promise((resolve) => { requestAnimationFrame(() => requestAnimationFrame(resolve)); }));
+  await page.evaluate(() => {
+    const tile = document.querySelector('.tile');
+    if (tile instanceof HTMLElement) { tile.style.position = 'relative'; tile.style.left = '-150px'; }
+  });
+  expect(await panelInsideColumn(page, '.tile .k .infotip-panel:not([hidden])')).toBe(false);
+  // The next render, a week view chosen by keyboard so the pop-up stays open, places it again.
+  await page.getByRole('button', { name: '4 weeks' }).press('Enter');
+  await expect(panel).toBeVisible();
+  await expect.poll(() => panelInsideColumn(page, '.tile .k .infotip-panel:not([hidden])')).toBe(true);
 });
 test('/demand-forecast/ Back, Forward, a fresh link, a reload and the tab link keep the page and other history keys (B-02)', async ({ page }) => {
   await mockAuthenticatedV2(page);
