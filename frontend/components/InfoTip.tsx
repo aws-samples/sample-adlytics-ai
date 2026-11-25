@@ -36,17 +36,27 @@ export function InfoTip({ children, className, label, title }: {
   }, [id]);
   useLayoutEffect(() => {
     const node = panel.current;
-    if (!open || node === null) return;
+    if (!open || node === null) return undefined;
     // Under its button, shifted only as far as keeps it inside the page column, so an open
     // pop-up never makes the column scroll sideways or slides under the assistant. CSSOM, so the
     // CSP's style-src 'self' holds. An inline panel (below 560 px) already fits and never moves.
-    node.style.transform = '';
-    const column = (node.closest('.main') ?? document.documentElement).getBoundingClientRect();
-    const box = node.getBoundingClientRect();
-    let shift = 0;
-    if (box.right > column.right) shift = column.right - EDGE - box.right;
-    if (box.left + shift < column.left) shift = column.left + EDGE - box.left;
-    if (shift !== 0) node.style.transform = `translateX(${Math.round(shift)}px)`;
+    const container = node.closest('.main') ?? document.documentElement;
+    const place = () => {
+      node.style.transform = '';
+      const column = container.getBoundingClientRect();
+      const box = node.getBoundingClientRect();
+      let shift = 0;
+      if (box.right > column.right) shift = column.right - EDGE - box.right;
+      if (box.left + shift < column.left) shift = column.left + EDGE - box.left;
+      if (shift !== 0) node.style.transform = `translateX(${Math.round(shift)}px)`;
+    };
+    place();
+    // A resize or rotation while it is open moves the column's edge, or makes the panel inline,
+    // so it is placed again whenever the column changes size. jsdom has no ResizeObserver.
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(place);
+    observer.observe(container);
+    return () => observer.disconnect();
   }, [open]);
   useEffect(() => {
     if (!open) return undefined;

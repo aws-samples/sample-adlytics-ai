@@ -1024,6 +1024,29 @@ test('/demand-forecast/ at 390 px opens a pop-up on its own line under its term,
   await expect(panel).toBeHidden();
   await expect(button).toBeFocused();
 });
+test('/demand-forecast/ a pop-up shifted at a wide width and left open stays inside the column after a resize to 390 px (GPT-R2-02)', async ({ page }) => {
+  await mockAuthenticatedV2(page);
+  await mockForecast(page);
+  await page.addInitScript(() => { localStorage.setItem('adlytics.chat-open', 'false'); });
+  await page.setViewportSize({ height: 900, width: 1440 });
+  await page.goto('/demand-forecast/?asin=B0FIXTUR01');
+  await expect(page.locator('h1')).toHaveText('Fictional product 1');
+  const panel = page.locator('.tile .k .infotip-panel').first();
+  await page.locator('.tile .k .infotip-btn').first().click();
+  await expect(panel).toBeVisible();
+  // The precondition: at this width the panel had to shift to stay inside the column.
+  expect(await panel.evaluate((node) => (node as HTMLElement).style.transform)).not.toBe('');
+  await page.setViewportSize({ height: 844, width: 390 });
+  await expect(panel).toBeVisible();
+  // Inline below 560 px, it sits on its own line under its term: the wide-width shift is gone.
+  await expect.poll(() => panel.evaluate((node) => (node as HTMLElement).style.transform)).toBe('');
+  await expect.poll(() => page.evaluate(() => {
+    const main = document.querySelector('.main')?.getBoundingClientRect();
+    const box = document.querySelector('.tile .k .infotip-panel:not([hidden])')?.getBoundingClientRect();
+    return main !== undefined && box !== undefined && box.left >= main.left - 1 && box.right <= main.right + 1;
+  })).toBe(true);
+  await noSidewaysOverflow(page);
+});
 
 test('/demand-forecast/ Back, Forward, a fresh link, a reload and the tab link keep the page and other history keys (B-02)', async ({ page }) => {
   await mockAuthenticatedV2(page);
