@@ -25,6 +25,12 @@ These screenshots come from a development deployment with synthetic data, in the
 
 **Whether won customers come back, by the channel that won them.** By quarter 3, 37.1% of customers won by DSP only had bought again, against 37.1% won by sponsored ads only and 36.8% won by both; the groups are this close in the synthetic data, so the three lines overlap. A note says cohorts are grouped by quarter because too many monthly cells had too few shoppers. The By cohort table switches between a repeat after an ad and any repeat purchase. The assistant's starter question still asks about "month 3" ([Known limits](../../../README.md#known-limits)). See [Retention](../../ui/retention/README.md).
 
+### Close-up
+
+![Chart titled Bought again by then, signed-in shoppers: the share of each group who had bought again by quarters 1 to 3, plotted from 0% to 37.1%, with a legend giving quarter 3 as 37.1% won by DSP only, 37.1% won by sponsored ads only and 36.8% won by both, and a Show values disclosure](../../images/retention-curve.png)
+
+**Retention chart.** One line per group, plotted from 0%, with the exact values behind Show values for anyone who needs to cite them.
+
 ## What it answers, and what it won't
 
 Example questions:
