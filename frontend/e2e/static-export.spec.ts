@@ -826,13 +826,16 @@ test('a serving refusal shows the server\'s own text, and the status region keep
 });
 
 /** The forecast read routes from the shared wire fixtures; B0FIXTUR01 reads its forecast, any other product the no-forecast one. */
-async function mockForecast(page: Page): Promise<void> {
+async function mockForecast(page: Page, { detail = forecastDetail, list = forecastList }: {
+  readonly detail?: typeof forecastDetail;
+  readonly list?: typeof forecastList;
+} = {}): Promise<void> {
   await page.route('**/api/demand-forecast**', (route) => {
     const url = new URL(route.request().url());
     const asin = url.searchParams.get('asin');
     const body = url.pathname.endsWith('/status')
       ? forecastStatus
-      : asin === null ? forecastList : asin === 'B0FIXTUR01' ? forecastDetail : forecastNotForecast;
+      : asin === null ? list : asin === 'B0FIXTUR01' ? detail : forecastNotForecast;
     return route.fulfill({ body: JSON.stringify(body), contentType: 'application/json', status: 200 });
   });
 }
@@ -956,6 +959,41 @@ test('/demand-forecast/ Browse all lays out wide, stacks with the assistant open
   await axeClean(page);
 });
 
+test('/demand-forecast/ at 390 px wraps the longest allowed unbroken product name in both lists, the product h1 and its answer', async ({ page }) => {
+  // title_max_bytes is 400 (contracts/forecasting/demand-forecast.yaml): one 400-byte word, no break.
+  const name = `Fictional${'X'.repeat(391)}`;
+  const list = structuredClone(forecastList);
+  const entry = list.entries.find((candidate) => candidate.asin === 'B0FIXTUR01');
+  expect(entry).toBeTruthy();
+  if (entry === undefined) return;
+  entry.title = name;
+  await mockAuthenticatedV2(page);
+  await mockForecast(page, { detail: { ...structuredClone(forecastDetail), title: name }, list });
+  await page.addInitScript(() => { localStorage.setItem('adlytics.chat-open', 'false'); });
+  await page.setViewportSize({ height: 844, width: 390 });
+  await page.goto('/demand-forecast/');
+  await expect(page.getByRole('table', { name: /^Check these first/ })).toBeVisible();
+  const row = page.getByRole('button', { name });
+  await expect(row).toBeVisible();
+  await noSidewaysOverflow(page);
+  // Every match sits inside the viewport: a page that clips its overflow would hide it from the check above.
+  const fits = (selector: string) => page.evaluate((target) => {
+    const boxes = [...document.querySelectorAll(target)].map((element) => element.getBoundingClientRect());
+    return boxes.length > 0 && boxes.every((box) => box.right <= document.documentElement.clientWidth);
+  }, selector);
+  expect(await fits('.df-short tbody th.row-pick button')).toBe(true);
+  await row.click();
+  await expect(page.getByText('ASIN B0FIXTUR01')).toBeVisible();
+  await expect(page.locator('h1')).toHaveText(name);
+  await noSidewaysOverflow(page);
+  expect(await fits('h1')).toBe(true);
+  // The same name in the full list.
+  await page.goBack();
+  await page.getByRole('link', { name: 'Browse all 3 products' }).click();
+  await expect(page.getByRole('table', { name: /^Likely totals/ })).toBeVisible();
+  await noSidewaysOverflow(page);
+  expect(await fits('.df-list tbody th.row-pick button')).toBe(true);
+});
 test('/demand-forecast/ at 390 px opens a pop-up on its own line under its term, never squeezing it', async ({ page }) => {
   await mockAuthenticatedV2(page);
   await mockForecast(page);

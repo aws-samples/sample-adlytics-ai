@@ -1496,7 +1496,7 @@ textarea.prompt-text:focus-visible { outline: 2px solid var(--ai); outline-offse
 .demand-forecast .df-fresh { display: inline-flex; align-items: center; gap: 2px; }
 .demand-forecast .df-weeks { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
 .demand-forecast .df-window { font-size: 12.5px; color: var(--df-muted); }
-.demand-forecast .answer-sentence { margin: 16px 0 0; }
+.demand-forecast .answer-sentence { margin: 16px 0 0; overflow-wrap: anywhere; }
 .demand-forecast .df-ask { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .demand-forecast .df-tools { display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: flex-end; justify-content: space-between; margin-top: 16px; }
 .demand-forecast .df-filter { flex-wrap: wrap; max-width: 100%; }
@@ -1510,7 +1510,10 @@ textarea.prompt-text:focus-visible { outline: 2px solid var(--ai); outline-offse
 .demand-forecast .df-error { font-size: 12px; color: var(--bad); }
 .demand-forecast .df-notice { margin-top: 12px; font-size: 13px; color: var(--text); }
 .demand-forecast table.dt thead th { white-space: normal; }
-.demand-forecast table.dt .row-pick button { white-space: normal; }
+.demand-forecast table.dt .row-pick button { white-space: normal; overflow-wrap: anywhere; }
+/* A served name may be one 400-byte word: the row names, the open product's h1 and its answer
+   sentence (above) break anywhere. */
+.content:has(> .demand-forecast) > .hubhead h1 { overflow-wrap: anywhere; }
 .demand-forecast table.dt td.df-nofc, .demand-forecast table.dt td.df-empty { color: var(--df-muted); }
 .demand-forecast .df-table-tips { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin-top: 14px; font-size: 12px; color: var(--text-dim); }
 .demand-forecast .df-table-tips > span { display: inline-flex; align-items: center; }
