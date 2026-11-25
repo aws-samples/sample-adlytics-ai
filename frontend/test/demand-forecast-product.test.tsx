@@ -434,6 +434,18 @@ for (const link of ['?asin=B0FIX', '?asin=B0FIXTUR01&asin=B0FIXTUR02', '?asin=B0
   });
 }
 
+test('the invalid-link notice is gone once a product is opened and closed', async () => {
+  window.history.replaceState(null, '', '/demand-forecast/?asin=B0FIX');
+  serve(forecastRoutes(detail));
+  page();
+  await screen.findByRole('table', { name: SHORT });
+  assert.ok(screen.getByText("This forecast link isn't valid."));
+  await userEvent.click(screen.getByRole('button', { name: 'Fictional product 1' }));
+  await screen.findByText('ASIN B0FIXTUR01');
+  await traverse(() => window.history.back());
+  await screen.findByRole('table', { name: SHORT });
+  assert.equal(screen.queryByText("This forecast link isn't valid."), null);
+});
 test('a deep link to a product not in this forecast shows the callout, whose button opens H1', async () => {
   window.history.replaceState(null, '', '/demand-forecast/?asin=B0NOTREAL0');
   serve(forecastRoutes({

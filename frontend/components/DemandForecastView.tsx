@@ -294,6 +294,8 @@ export function DemandForecastView() {
     if (entry.view === 'start') openers.current.start = opener;
     if (entry.view === 'all') openers.current.all = opener;
     window.history.pushState(forecastHistoryState(window.history.state, next), '', `${window.location.pathname}${forecastSearch(next)}`);
+    // An invalid link's notice is about the load; once the planner moves on it no longer applies.
+    setOutcome((current) => (current?.kind === 'link' ? null : current));
     setEntry(next);
     moveFocus({ to: null, wait: null, closing: false });
   }, [abortSearch, entry.view, moveFocus]);
