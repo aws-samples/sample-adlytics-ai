@@ -1086,6 +1086,10 @@ test('/demand-forecast/ Back, Forward, a fresh link, a reload and the tab link k
   await expect(h1).toBeFocused();
   expect(await marker()).toBe(true);
   expect(await keys()).toEqual({ next: true, sentinel: 'kept' });
+  // Back after Forward returns to the same row: the opener is known in this visit (G-09).
+  await page.goBack();
+  await expect(short).toBeVisible();
+  await expect.poll(focusedRow).toBe('B0FIXTUR01');
 
   // A fresh link, then the shell's Back: the seeded entry under it keeps the app's own keys.
   await page.goto('/demand-forecast/?asin=B0FIXTUR01');
@@ -1094,6 +1098,8 @@ test('/demand-forecast/ Back, Forward, a fresh link, a reload and the tab link k
   await page.evaluate(() => { (globalThis as unknown as { dfMarker?: number }).dfMarker = 1; });
   await page.getByRole('button', { name: 'Back to Demand forecast' }).click();
   await expect(short).toBeVisible();
+  // No opener is known for a link, so focus goes to the opening view's h1 (G-09).
+  await expect(h1).toBeFocused();
   expect(await search()).toBe('');
   expect(await page.evaluate(() => globalThis.location.pathname)).toBe('/demand-forecast/');
   expect(await marker()).toBe(true);
@@ -1101,11 +1107,29 @@ test('/demand-forecast/ Back, Forward, a fresh link, a reload and the tab link k
 
   // Browse all, a product from it, a reload, then Back returns to Browse all.
   await page.evaluate(() => { globalThis.history.replaceState({ ...(globalThis.history.state as object), sentinel: 'kept' }, ''); });
-  await page.getByRole('link', { name: 'Browse all 3 products' }).click();
+  const browseAll = page.getByRole('link', { name: 'Browse all 3 products' });
+  await browseAll.click();
   await expect(h1).toHaveText('All products');
   expect(await search()).toBe('?view=all');
+  // Back, Forward, then Back again: focus returns to the Browse all link both times (G-09).
+  for (let pass = 0; pass < 2; pass += 1) {
+    await page.goBack();
+    await expect(short).toBeVisible();
+    await expect(browseAll).toBeFocused();
+    await page.goForward();
+    await expect(h1).toHaveText('All products');
+    await expect(h1).toBeFocused();
+  }
   await all.getByRole('button', { name: 'Fictional product 1' }).click();
   await expect(h1).toHaveText('Fictional product 1');
+  // The same for a product opened from Browse all: Back, Forward, Back return to its row.
+  for (let pass = 0; pass < 2; pass += 1) {
+    await page.goBack();
+    await expect(all).toBeVisible();
+    await expect.poll(focusedRow).toBe('B0FIXTUR01');
+    await page.goForward();
+    await expect(h1).toHaveText('Fictional product 1');
+  }
   await page.reload();
   await expect(h1).toHaveText('Fictional product 1');
   expect(await keys()).toEqual({ next: true, sentinel: 'kept' });

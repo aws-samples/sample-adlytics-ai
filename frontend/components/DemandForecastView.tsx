@@ -313,7 +313,8 @@ export function DemandForecastView() {
     // popstate renders the view the entry names; a pending search is aborted. Going back focuses
     // the opener of the view returned to; with none known (a link or a reload), only a product
     // whose entry says it came from Browse all proves its row, and anything else focuses the h1,
-    // as going forward or landing after the tab link does (G-09).
+    // as going forward or landing after the tab link does (G-09). An opener is kept once used, so
+    // Back after Forward returns to it again; the next view opened from there replaces it.
     const onPopState = (event: PopStateEvent) => {
       const link = readForecastLink(window.location.search);
       const next = readForecastEntry(event.state) ?? (link === 'invalid' ? FORECAST_START : link);
@@ -328,7 +329,6 @@ export function DemandForecastView() {
           ? { kind: 'row', asin: entry.asin }
           : null;
         goal = { to: openers.current[key] ?? fallback, wait: next.view === 'all' ? 'browse' : 'start', closing: true };
-        delete openers.current[key];
       }
       setEntry(next);
       moveFocus(goal);

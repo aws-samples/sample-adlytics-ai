@@ -375,6 +375,35 @@ test('a product has its own URL; the browser Back closes it and Forward reopens 
   await userEvent.click(screen.getByRole('button', { name: 'Back to Demand forecast' }));
   await screen.findByRole('table', { name: SHORT });
   assert.equal((window.history.state as { sentinel?: string }).sentinel, 'kept');
+  // Back after Forward returns to the same row: the opener is known in this visit (G-09).
+  await waitFor(() => assert.equal(focused(), 'button:Fictional product 1'));
+});
+
+test('in Browse all, Back after Forward returns focus to the opener again: the row, then the Browse all link (G-09)', async () => {
+  serve(forecastRoutes(detail));
+  page();
+  await openFromBrowse('Fictional product 1');
+  await screen.findByText('ASIN B0FIXTUR01');
+  for (let pass = 0; pass < 2; pass += 1) {
+    if (pass > 0) {
+      await traverse(() => window.history.forward());
+      await screen.findByText('ASIN B0FIXTUR01');
+      await waitFor(() => assert.equal(focused(), 'h1:Fictional product 1'));
+    }
+    await traverse(() => window.history.back());
+    await screen.findByRole('table', { name: LIST_NAME });
+    await waitFor(() => assert.equal(focused(), 'button:Fictional product 1'));
+  }
+  for (let pass = 0; pass < 2; pass += 1) {
+    if (pass > 0) {
+      await traverse(() => window.history.forward());
+      await screen.findByRole('table', { name: LIST_NAME });
+      await waitFor(() => assert.equal(focused(), 'h1:All products'));
+    }
+    await traverse(() => window.history.back());
+    await screen.findByRole('table', { name: SHORT });
+    await waitFor(() => assert.equal(focused(), 'a:Browse all 3 products ›'));
+  }
 });
 
 test('a fresh product link seeds an H1 entry under it, so Back stays on the page (O-03)', async () => {
