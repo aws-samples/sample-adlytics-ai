@@ -266,7 +266,10 @@ list to Browse all.
    `history.state` key. A fresh link gets an opening-view entry under it, a reload keeps its entry,
    and a duplicate, conflicting or invalid link opens the opening view with "This forecast link isn't
    valid." Back restores Browse all's filter, page and weeks and returns focus to what opened the
-   view (row, search box, Browse all or Show them); Forward and links focus the h1. The crumb's and
+   view (row, search box, Browse all or Show them), and again on a Back after Forward in the same
+   visit; Forward and links focus the h1. Back from a link or after a reload, when nothing on the
+   page opened the view, focuses the opening view's h1, except that a product whose history entry
+   says it came from Browse all returns focus to its row there. The crumb's and
    the active tab's "Demand forecast" open the opening view. A measure switch defaults to
    `status_target`. A forecast measure shows the answer sentence, four tiles (likely total, the
    view's last week with low and high, inside the range in testing, weeks shipped less than
