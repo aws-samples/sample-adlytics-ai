@@ -15,6 +15,24 @@ const OPEN_EVENT = 'infotip-open';
 /** The gap an open panel keeps from the page column's edge when it has to shift. */
 const EDGE = 8;
 
+function columnOf(node: HTMLElement): Element {
+  return node.closest('.main') ?? document.documentElement;
+}
+/**
+ * Under its button, shifted only as far as keeps it inside the page column, so an open pop-up
+ * never makes the column scroll sideways or slides under the assistant. CSSOM, so the CSP's
+ * style-src 'self' holds. An inline panel (below 560 px) already fits and never moves.
+ */
+function place(node: HTMLElement): void {
+  node.style.transform = '';
+  const column = columnOf(node).getBoundingClientRect();
+  const box = node.getBoundingClientRect();
+  let shift = 0;
+  if (box.right > column.right) shift = column.right - EDGE - box.right;
+  if (box.left + shift < column.left) shift = column.left + EDGE - box.left;
+  if (shift !== 0) node.style.transform = `translateX(${Math.round(shift)}px)`;
+}
+
 export function InfoTip({ children, className, label, title }: {
   readonly children: ReactNode;
   readonly className?: string | undefined;
@@ -37,25 +55,15 @@ export function InfoTip({ children, className, label, title }: {
   useLayoutEffect(() => {
     const node = panel.current;
     if (!open || node === null) return undefined;
-    // Under its button, shifted only as far as keeps it inside the page column, so an open
-    // pop-up never makes the column scroll sideways or slides under the assistant. CSSOM, so the
-    // CSP's style-src 'self' holds. An inline panel (below 560 px) already fits and never moves.
-    const container = node.closest('.main') ?? document.documentElement;
-    const place = () => {
-      node.style.transform = '';
-      const column = container.getBoundingClientRect();
-      const box = node.getBoundingClientRect();
-      let shift = 0;
-      if (box.right > column.right) shift = column.right - EDGE - box.right;
-      if (box.left + shift < column.left) shift = column.left + EDGE - box.left;
-      if (shift !== 0) node.style.transform = `translateX(${Math.round(shift)}px)`;
-    };
-    place();
+    place(node);
     // A resize or rotation while it is open moves the column's edge, or makes the panel inline,
-    // so it is placed again whenever the column changes size. jsdom has no ResizeObserver.
+    // and the panel's own content can change its size (the freshness pop-up's schedule lines
+    // landing), so it is placed again whenever the column or the panel changes size. jsdom has
+    // no ResizeObserver.
     if (typeof ResizeObserver === 'undefined') return undefined;
-    const observer = new ResizeObserver(place);
-    observer.observe(container);
+    const observer = new ResizeObserver(() => place(node));
+    observer.observe(columnOf(node));
+    observer.observe(node);
     return () => observer.disconnect();
   }, [open]);
   useEffect(() => {

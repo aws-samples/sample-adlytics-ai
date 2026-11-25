@@ -1048,6 +1048,29 @@ test('/demand-forecast/ a pop-up shifted at a wide width and left open stays ins
   await noSidewaysOverflow(page);
 });
 
+test('/demand-forecast/ an open pop-up whose own size changes is placed again against the column edge', async ({ page }) => {
+  await mockAuthenticatedV2(page);
+  await mockForecast(page);
+  await page.addInitScript(() => { localStorage.setItem('adlytics.chat-open', 'false'); });
+  await page.setViewportSize({ height: 900, width: 700 });
+  await page.goto('/demand-forecast/');
+  await page.getByRole('button', { name: 'About this forecast', exact: true }).click();
+  const panel = page.locator('.df-fresh .infotip-panel');
+  await expect(panel).toBeVisible();
+  const gap = () => page.evaluate(() => {
+    const main = document.querySelector('.main')?.getBoundingClientRect();
+    const box = document.querySelector('.df-fresh .infotip-panel')?.getBoundingClientRect();
+    return main === undefined || box === undefined ? null : Math.round(main.right - box.right);
+  });
+  // The precondition: at 700 px the 320 px panel shifts left to keep 8 px from the column's right edge.
+  expect(await panel.evaluate((node) => (node as HTMLElement).style.transform)).not.toBe('');
+  expect(await gap()).toBe(8);
+  // The panel narrows while it stays open, as when its content changes: it is placed again 8 px
+  // from the edge, not left where the wider panel needed it.
+  await panel.evaluate((node) => { (node as HTMLElement).style.maxWidth = '200px'; });
+  await expect.poll(gap).toBe(8);
+  await noSidewaysOverflow(page);
+});
 test('/demand-forecast/ Back, Forward, a fresh link, a reload and the tab link keep the page and other history keys (B-02)', async ({ page }) => {
   await mockAuthenticatedV2(page);
   await mockForecast(page);

@@ -5,9 +5,9 @@
  * open at once cover each other's terms.
  */
 import assert from 'node:assert/strict';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { test } from 'vitest';
+import { test, vi } from 'vitest';
 import { InfoTip } from '@/components/InfoTip';
 
 function panelOf(button: HTMLElement): HTMLElement {
@@ -104,4 +104,39 @@ test('an open panel shifts inside the page column, so the column never scrolls s
   const inside = place('About inside', 40, 360);
   await userEvent.click(inside);
   assert.equal(panelOf(inside).style.transform, '');
+});
+test('an open panel whose own content changes its size is placed again (the freshness pop-up)', async () => {
+  // jsdom has no ResizeObserver: this one reports a size change only to observers of that node.
+  const observers: { callback: ResizeObserverCallback; targets: Element[] }[] = [];
+  class FakeResizeObserver {
+    private readonly entry: { callback: ResizeObserverCallback; targets: Element[] };
+    constructor(callback: ResizeObserverCallback) {
+      this.entry = { callback, targets: [] };
+      observers.push(this.entry);
+    }
+    observe(target: Element) { this.entry.targets.push(target); }
+    unobserve() { /* not used */ }
+    disconnect() { this.entry.targets = []; }
+  }
+  const resized = (target: Element) => {
+    for (const { callback, targets } of observers) if (targets.includes(target)) callback([], {} as ResizeObserver);
+  };
+  vi.stubGlobal('ResizeObserver', FakeResizeObserver);
+  try {
+    render(<div className="main"><InfoTip title="About this forecast" label="About this forecast">Made Nov 8.</InfoTip></div>);
+    const column = document.querySelector('.main');
+    assert.ok(column instanceof HTMLElement);
+    column.getBoundingClientRect = () => edges(0, 400);
+    const button = screen.getByRole('button', { name: 'About this forecast' });
+    const panel = panelOf(button);
+    panel.getBoundingClientRect = () => edges(200, 380);
+    await userEvent.click(button);
+    assert.equal(panel.style.transform, '');
+    // The schedule lines land and the panel grows past the column's right edge.
+    panel.getBoundingClientRect = () => edges(200, 520);
+    act(() => resized(panel));
+    assert.equal(panel.style.transform, 'translateX(-128px)');
+  } finally {
+    vi.unstubAllGlobals();
+  }
 });
