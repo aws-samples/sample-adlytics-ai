@@ -255,7 +255,8 @@ list to Browse all.
    never filters. The ranked table: rank (by the default view, named in its header), product name
    and ASIN, units ordered, units shipped, shipped revenue and Amazon wholesale cost for the chosen
    view, and weeks shipped less than ordered of the last 13. A product with no forecast shows one
-   "No forecast: {reason}" cell and a dash for its short-shipped count. The page column on this page is
+   "No forecast: {reason}" cell and a dash for its short-shipped count; stacked, that cell is one
+   line across the card with no label. The page column on this page is
    up to 1180 px, and `.demand-forecast` is its own `demand-forecast` size container: the list stacks
    below 912 px of that container, so it is wide at 1440 px with the assistant closed and stacks
    with it open. Then the pager and "How this

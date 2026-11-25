@@ -965,6 +965,11 @@ test('/demand-forecast/ Browse all lays out wide, stacks with the assistant open
   await expect(page.locator('h1')).toHaveCount(1);
   expect(await rowDisplay()).toBe('block');
   expect(await tipsGap()).toBe('6px');
+  // A product without a forecast reads as one unlabelled line across its card, as in phase 1.
+  expect(await page.evaluate(() => {
+    const cell = document.querySelector('.df-list td.df-merged');
+    return cell === null ? null : [getComputedStyle(cell).display, getComputedStyle(cell, '::before').content];
+  })).toEqual(['block', 'none']);
   await noSidewaysOverflow(page);
   await page.getByRole('button', { name: 'Fictional product 3' }).click();
   await expect(page.getByRole('heading', { level: 2, name: 'No forecast for this product' })).toBeVisible();
