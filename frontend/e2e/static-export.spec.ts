@@ -885,6 +885,10 @@ test('/demand-forecast/ Check these first stays a table with the assistant docke
   // With the assistant docked: four columns in a painted header row, its pop-ups there.
   await expect(page.locator('.df-short thead button[aria-label="About rank"]')).toBeVisible();
   await expect(page.locator('.df-short-tips')).toBeHidden();
+  // The rows themselves stay a table: the 912 px Browse all stacking leaves the shortlist out (G-03).
+  const rowDisplay = () => page.evaluate(() => { const row = document.querySelector('.df-short tbody tr'); return row === null ? null : getComputedStyle(row).display; });
+  expect(await page.evaluate(() => document.querySelector('.demand-forecast')?.clientWidth ?? 0)).toBeLessThan(912);
+  expect(await rowDisplay()).toBe('table-row');
   // The first viewport shows the answer, the search and the first row.
   const fold = await page.evaluate(() => ['[data-slot="answer"]', '.df-search', '.df-short tbody tr'].map((selector) => {
     const box = document.querySelector(selector)?.getBoundingClientRect();
@@ -901,6 +905,7 @@ test('/demand-forecast/ Check these first stays a table with the assistant docke
   // Stacked: the header row is clipped, its pop-ups move to the tips line, keyboard-reachable (G-04).
   await expect(page.locator('.df-short-tips')).toBeVisible();
   await expect(page.locator('.df-short thead button[aria-label="About rank"]')).toBeHidden();
+  expect(await rowDisplay()).toBe('block');
   await page.locator('h1').focus();
   expect(await tabTo(page, '.df-short-tips', 'About rank')).toBe(true);
   // Search first, above the card title; the advice line is hidden (O-11).
