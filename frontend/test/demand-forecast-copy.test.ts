@@ -33,6 +33,7 @@ import {
 import detailFixture from './fixtures/demand-forecast-detail.json';
 import notForecastFixture from './fixtures/demand-forecast-detail-not-forecast.json';
 import listFixture from './fixtures/demand-forecast-list.json';
+import nextStepsFixture from './fixtures/demand-forecast-next-steps.json';
 import staleFixture from './fixtures/demand-forecast-status-stale.json';
 
 const list = parseDemandForecastList(listFixture);
@@ -108,6 +109,17 @@ test('the reason copy quotes no unserved date, and every next step has a no-date
   }
   assert.equal(reasonNextStep('HOLDOUT_UNKNOWN', '2026-11-26T13:00:00Z'), 'The update on Nov 26, 2026 tries again with the newest weeks.');
   assert.equal(reasonNextStep('INSUFFICIENT_CONTEXT', null), 'A forecast becomes possible once it has enough complete weeks of sales.');
+});
+
+test("every next step, dated and undated, is the copy chat's forecast tools serve", () => {
+  // tests/unit/test_forecast_tool.py pins the tool's undated copy to the same fixture, so a
+  // reworded step on either side fails a test instead of chat and page saying different things.
+  assert.deepEqual(Object.keys(nextStepsFixture).sort(), [...skipReasons].sort());
+  for (const reason of skipReasons) {
+    const pinned = nextStepsFixture[reason];
+    assert.equal(reasonNextStepCopy[reason].undated, pinned.undated, reason);
+    assert.equal(reasonNextStepCopy[reason].dated('{next}'), pinned.dated, reason);
+  }
 });
 
 test('the search example comes only from an unfiltered page 1 and only for its own generation (G-08)', () => {

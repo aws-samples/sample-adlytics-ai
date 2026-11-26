@@ -39,8 +39,9 @@ from tool_caller_support import import_tool_entrypoint, with_bearer
 from adapters.inbound.forecast_read.service import ForecastReadService, ReadContext
 from adapters.inbound.tool_handlers.forecast import (
     FORECAST_RENDERING,
-    INACTIVE_NEXT_STEP,
     MIXED_RENDERING,
+    NEXT_STEPS,
+    NO_PROMISE,
     ForecastTool,
     ForecastToolRequest,
     handle,
@@ -49,6 +50,7 @@ from adapters.inbound.tool_handlers.schemas import contract_for
 from adapters.outbound.telemetry import tracing
 from adapters.outbound.telemetry.tracing import FORECAST_GATEWAY
 from domain.forecasting import summaries
+from domain.forecasting.models import SkipReason
 from domain.forecasting.publish import RunOutcome
 from domain.narrative.publication import QualifierKind, RenderingKind
 from domain.narrative.shaped_response import ShapedResponse, UnitKind, Units
@@ -294,24 +296,56 @@ def test_compare_names_a_withheld_and_an_absent_product_without_rows() -> None:
 _INACTIVE = (
     "B0FIXTUR04 isn't forecast for demand (ordered units): no sales were reported for it in the "
     "13 weeks of data through 2026-11-07, so there is no recent pattern to forecast. That alone "
-    "doesn't say whether it is still for sale or what its future demand will be. If it's still "
-    "on sale, plan it by hand for now. The next weekly update will check again after new sales "
-    "data arrives; a forecast appears only once there's enough complete history."
+    "doesn't say whether it is still for sale or what its future demand will be."
+)
+_INACTIVE_NEXT_STEP = (
+    "Next step for a product withheld as ASIN_INACTIVE: If it's still on sale, plan it by hand for "
+    "now. The next weekly update will check again after new sales data arrives; a forecast "
+    "appears only once there's enough complete history. A next step says what has to happen "
+    "first, not that a forecast will follow: a product is forecast only when a forecasting method "
+    "passes its checks."
+)
+_NEXT_STEPS_FIXTURE = (
+    Path(__file__).resolve().parents[2] / "frontend/test/fixtures/demand-forecast-next-steps.json"
 )
 
 
-def test_the_no_recent_sales_next_step_is_the_pages_own_copy() -> None:
+def test_every_next_step_is_the_pages_own_undated_copy() -> None:
     """Chat added an unserved "it may be forecast later" (dev, Q4); the tool now serves the step.
 
-    The page owns the wording, so the tool's copy must be the page's undated form, character for
-    character, or chat and page would say different things about the same product.
+    The page owns the wording and `frontend/test/demand-forecast-copy.test.ts` pins both of its
+    forms to the same fixture, so the tool's copy must be the fixture's undated form for every
+    reason, or chat and page would say different things about the same product.
     """
-    page = (Path(__file__).resolve().parents[2] / "frontend/lib/demand-forecast.ts").read_text(
-        encoding="utf-8"
-    )
-    block = page.split("ASIN_INACTIVE: {", 1)[1].split("},", 1)[0]
-    undated = block.split("undated:", 1)[1].strip().rstrip(",")
-    assert json.loads(undated) == INACTIVE_NEXT_STEP
+    pinned = json.loads(_NEXT_STEPS_FIXTURE.read_text(encoding="utf-8"))
+    assert {reason.value: text for reason, text in NEXT_STEPS.items()} == {
+        reason: step["undated"] for reason, step in pinned.items()
+    }
+    assert set(NEXT_STEPS) == set(SkipReason)
+
+
+def test_a_withheld_reasons_next_step_is_stated_once_and_as_a_prerequisite() -> None:
+    """A filter to withheld products repeated one next step per row (review, round 3).
+
+    Chat also turned "appears only once" into "will appear once"; the line says it isn't a promise.
+    """
+    views = [
+        item(1),
+        item(4, shown=False, reason="ASIN_INACTIVE"),
+        item(5, shown=False, reason="ASIN_INACTIVE"),
+        item(6, shown=False, reason="CURRENCY_MIXED"),
+    ]
+    entries = ranked(views)
+    reader = FakeReader(current=pointer(), meta=generation(entries), stored_pages=pages(entries))
+    answer = _answer(ForecastTool.LIST, reader)
+    claims = [answer.narrative[i] for i in answer.data.claim_narrative_indices]
+    steps = [line for line in claims if line.startswith("Next step for")]
+    assert steps == [
+        _INACTIVE_NEXT_STEP,
+        "Next step for a product withheld as CURRENCY_MIXED: Ask your administrator which "
+        f"marketplace this product should report in. {NO_PROMISE}",
+    ]
+    assert sum(line.startswith(("B0FIXTUR04 ", "B0FIXTUR05 ")) for line in claims) == 2
 
 
 @pytest.mark.parametrize(
@@ -339,12 +373,13 @@ def test_a_product_with_no_recent_sales_is_named_by_a_claim_that_says_no_more_th
     )
     answer = _answer(tool, reader, **arguments)
     claims = [answer.narrative[i] for i in answer.data.claim_narrative_indices]
-    assert claims[0] == _INACTIVE
+    assert claims[:2] == [_INACTIVE, _INACTIVE_NEXT_STEP]
     grounding = answer.metadata.grounding
     assert grounding is not None
-    assert [(r.kind, r.text) for r in grounding.renderings if r.text == _INACTIVE] == [
-        (RenderingKind.CLAIM, _INACTIVE)
-    ]
+    for line in (_INACTIVE, _INACTIVE_NEXT_STEP):
+        assert [(r.kind, r.text) for r in grounding.renderings if r.text == line] == [
+            (RenderingKind.CLAIM, line)
+        ]
 
 
 def test_a_stale_forecast_carries_the_stale_qualifier_with_its_cause() -> None:

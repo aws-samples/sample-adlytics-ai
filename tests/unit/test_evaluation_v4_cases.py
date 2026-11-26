@@ -503,10 +503,22 @@ def _shape(context: dict[str, object]) -> set[tuple[str, frozenset[str]]]:
 _INACTIVE_REASON = (
     "B0FIXT0104 isn't forecast for demand (ordered units): no sales were reported for it in the "
     "13 weeks of data through 2026-11-07, so there is no recent pattern to forecast. That alone "
-    "doesn't say whether it is still for sale or what its future demand will be. If it's still "
-    "on sale, plan it by hand for now. The next weekly update will check again after new sales "
-    "data arrives; a forecast appears only once there's enough complete history."
+    "doesn't say whether it is still for sale or what its future demand will be."
 )
+_INACTIVE_NEXT_STEP = (
+    "Next step for a product withheld as ASIN_INACTIVE: If it's still on sale, plan it by hand for "
+    "now. The next weekly update will check again after new sales data arrives; a forecast "
+    "appears only once there's enough complete history. A next step says what has to happen "
+    "first, not that a forecast will follow: a product is forecast only when a forecasting method "
+    "passes its checks."
+)
+_WITHHELD_ANSWER = (
+    "B0FIXT0104 (Fictional product 104) has no demand forecast because no sales were reported for "
+    "it in the 13 weeks of data through 2026-11-07, so there is no recent pattern to forecast. "
+    "That alone doesn't say whether it is still for sale or what its future demand will be. The "
+    "next weekly update will check again after new sales data arrives, and a forecast "
+)
+_CONDITIONAL = "appears only once there's enough complete history."
 _FORECAST_QUALIFIER = (
     "Forecasts here continue the observed pattern, aren't causal predictions and exclude "
     "promotions."
@@ -551,6 +563,7 @@ def test_the_forecast_reason_cases_carry_the_context_the_forecast_tool_returns()
     question = "Why is there no demand forecast for fictional product B0FIXT0104?"
     assertions = [
         _INACTIVE_REASON,
+        _INACTIVE_NEXT_STEP,
         "The forecast qualifier: forecasts continue the observed pattern, aren't causal "
         "predictions and exclude promotions.",
     ]
@@ -561,29 +574,8 @@ def test_the_forecast_reason_cases_carry_the_context_the_forecast_tool_returns()
         "question": question,
         "trusted_assertions": assertions,
         "grounded_context": inactive,
-        "candidate": (
-            "B0FIXT0104 (Fictional product 104) has no demand forecast because no sales were "
-            "reported for it in the 13 weeks of data through 2026-11-07, so there is no recent "
-            "pattern to forecast. That alone doesn't say whether it is still for sale or what its "
-            "future demand will be. The next weekly update will check again after new sales data "
-            "arrives, and a forecast appears only once there's enough complete history. "
-            f"{_FORECAST_QUALIFIER}"
-        ),
+        "candidate": f"{_WITHHELD_ANSWER}{_CONDITIONAL} {_FORECAST_QUALIFIER}",
         "expected": {"grounded_correctness": "Grounded", "internal_consistency": "Consistent"},
-    }
-    assert records["withheld_forecast_reason_extended_to_availability"] == {
-        "name": "withheld_forecast_reason_extended_to_availability",
-        "kind": "fluent_unsupported",
-        "question": question,
-        "trusted_assertions": assertions,
-        "grounded_context": inactive,
-        "candidate": (
-            "B0FIXT0104 (Fictional product 104) has no demand forecast because the product is "
-            "inactive: no sales were reported for it in the 13 weeks of data through 2026-11-07. "
-            "Inactive products aren't currently available for sale, so they won't generate "
-            f"future demand. {_FORECAST_QUALIFIER}"
-        ),
-        "expected": {"grounded_correctness": ["Unsupported", "Partially Grounded"]},
     }
     assert records["shown_forecast_total_stated_as_returned"] == {
         "name": "shown_forecast_total_stated_as_returned",
@@ -603,11 +595,10 @@ def test_the_forecast_reason_cases_carry_the_context_the_forecast_tool_returns()
         ),
         "expected": {"grounded_correctness": "Grounded", "internal_consistency": "Consistent"},
     }
-    # The committed context itself carries the reason as a claim, so a regenerated case that lost
-    # it can't pass under the same name.
+    # The committed context itself carries the reason and its next step as claims, so a
+    # regenerated case that lost either can't pass under the same name.
     committed = json.loads(inactive)
-    assert [
-        item["kind"]
-        for item in committed["evidence"][0]["renderings"]
-        if item["text"] == _INACTIVE_REASON
-    ] == ["claim"]
+    for line in (_INACTIVE_REASON, _INACTIVE_NEXT_STEP):
+        assert [
+            item["kind"] for item in committed["evidence"][0]["renderings"] if item["text"] == line
+        ] == ["claim"]

@@ -1,0 +1,86 @@
+{
+  "ASIN_INACTIVE": {
+    "undated": "If it's still on sale, plan it by hand for now. The next weekly update will check again after new sales data arrives; a forecast appears only once there's enough complete history.",
+    "dated": "If it's still on sale, plan it by hand for now. The update on {next} will check again after new sales data arrives; a forecast appears only once there's enough complete history."
+  },
+  "TARGET_VALUE_MISSING": {
+    "undated": "The next weekly update tries again. If the gaps stay, ask your administrator to check this product's Vendor Central sales report.",
+    "dated": "The update on {next} tries again. If the gaps stay, ask your administrator to check this product's Vendor Central sales report."
+  },
+  "INSUFFICIENT_CONTEXT": {
+    "undated": "A forecast becomes possible once it has enough complete weeks of sales.",
+    "dated": "A forecast becomes possible once it has enough complete weeks of sales. The next update that can use new sales data is {next}."
+  },
+  "HOLDOUT_UNKNOWN": {
+    "undated": "The next weekly update tries again with the newest weeks.",
+    "dated": "The update on {next} tries again with the newest weeks."
+  },
+  "HOLDOUT_ALL_ZERO": {
+    "undated": "The next weekly update tries again with the newest weeks.",
+    "dated": "The update on {next} tries again with the newest weeks."
+  },
+  "BACKTEST_BAND_UNORDERED": {
+    "undated": "The next weekly update tries again.",
+    "dated": "The update on {next} tries again."
+  },
+  "SEASONAL_LAG_UNKNOWN": {
+    "undated": "The next weekly update tries again.",
+    "dated": "The update on {next} tries again."
+  },
+  "SEASONAL_LAG_UNKNOWN_AT_ORIGIN": {
+    "undated": "The next weekly update tries again.",
+    "dated": "The update on {next} tries again."
+  },
+  "SEASONAL_RESIDUALS_TOO_FEW": {
+    "undated": "A forecast becomes possible as more weeks of sales arrive.",
+    "dated": "A forecast becomes possible as more weeks of sales arrive."
+  },
+  "HISTORY_TOO_SHORT_FOR_SEASON": {
+    "undated": "A forecast becomes possible as more weeks of sales arrive.",
+    "dated": "A forecast becomes possible as more weeks of sales arrive."
+  },
+  "ETS_INSUFFICIENT_KNOWN": {
+    "undated": "The next weekly update tries again.",
+    "dated": "The update on {next} tries again."
+  },
+  "ETS_FIT_FAILED": {
+    "undated": "The next weekly update tries again.",
+    "dated": "The update on {next} tries again."
+  },
+  "ACCURACY_NOT_TESTABLE": {
+    "undated": "The next weekly update tries again.",
+    "dated": "The update on {next} tries again."
+  },
+  "FORECAST_NOT_PUBLISHABLE": {
+    "undated": "The next weekly update tries again.",
+    "dated": "The update on {next} tries again."
+  },
+  "FORECAST_SHAPE_INVALID": {
+    "undated": "The next weekly update tries again.",
+    "dated": "The update on {next} tries again."
+  },
+  "FORECAST_NOT_FINITE": {
+    "undated": "The next weekly update tries again.",
+    "dated": "The update on {next} tries again."
+  },
+  "FORECAST_BAND_UNORDERED": {
+    "undated": "The next weekly update tries again.",
+    "dated": "The update on {next} tries again."
+  },
+  "FORECAST_NEGATIVE": {
+    "undated": "The next weekly update tries again.",
+    "dated": "The update on {next} tries again."
+  },
+  "PRODUCT_KEY_INVALID": {
+    "undated": "Ask your administrator to check the product in Vendor Central.",
+    "dated": "Ask your administrator to check the product in Vendor Central."
+  },
+  "DISPLAY_ASIN_COLLISION": {
+    "undated": "Ask your administrator to check the products in Vendor Central.",
+    "dated": "Ask your administrator to check the products in Vendor Central."
+  },
+  "CURRENCY_MIXED": {
+    "undated": "Ask your administrator which marketplace this product should report in.",
+    "dated": "Ask your administrator which marketplace this product should report in."
+  }
+}
