@@ -11,7 +11,8 @@ Callers may rely on:
 - `forecast_list_asins` returns page 1 of one filter with `match_count` and `page_count`, labelled
   truncated when more match, or one product by exact ASIN. It never pages (agent-contract-tool);
 - a withheld product is named in a claim line with its stored reason, worded to say no more than
-  the reason establishes (`_Frame.withheld`), so the answer and its evaluation read the same words;
+  the reason establishes and ending with the reason's code (`_Frame.withheld`), so the answer and
+  its evaluation read the same words and each next-step line names the products it applies to;
 - each withheld reason in a response adds one claim line with the page's next step for it and
   says that the step is a prerequisite, not a promise of a forecast (`NEXT_STEPS`, `NO_PROMISE`);
 - arguments are validated here, each failure refused `FORECAST_ARGUMENT_INVALID` with
@@ -347,7 +348,10 @@ class _Frame:
             )
         else:
             why = "not forecast" if reason is None else _REASON_WORDS.get(reason, "not forecast")
-        return f"{asin} isn't forecast for {_TARGET_WORDS[target]}: {why}."
+        # The code is the key its next-step line names, so each step is attributable to its
+        # products where no value row carries `withheld_reason` (query, compare, money list).
+        code = "" if reason is None else f" (withheld as {reason.value})"
+        return f"{asin} isn't forecast for {_TARGET_WORDS[target]}: {why}{code}."
 
 
 def _respond(  # noqa: PLR0913 -- one envelope from its typed parts

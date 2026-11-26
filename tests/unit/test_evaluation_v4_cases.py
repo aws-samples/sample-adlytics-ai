@@ -505,7 +505,8 @@ def _shape(context: dict[str, object]) -> set[tuple[str, frozenset[str]]]:
 _INACTIVE_REASON = (
     "B0FIXT0104 isn't forecast for demand (ordered units): no sales were reported for it in the "
     "13 weeks of data through 2026-11-07, so there is no recent pattern to forecast. That alone "
-    "doesn't say whether it is still for sale or what its future demand will be."
+    "doesn't say whether it is still for sale or what its future demand will be (withheld as "
+    "ASIN_INACTIVE)."
 )
 _INACTIVE_NEXT_STEP = (
     "Next step for a product withheld as ASIN_INACTIVE: If it's still on sale, plan it by hand for "

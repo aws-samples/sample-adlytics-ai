@@ -120,13 +120,17 @@ def test_a_money_list_carries_two_place_figures_in_their_currency() -> None:
     assert answer.data.values[0]["p50_total_4w"] == Decimal("4938.00")
     assert answer.data.values[0]["p50_total_13w"] == Decimal("16048.50")
     assert [row["asin"] for row in answer.data.values] == ["B0FIXTUR02", "B0FIXTUR01"]
-    assert "B0FIXTUR03 isn't forecast for shipped revenue: too little history." in (
-        answer.narrative
-    )
+    assert _WITHHELD_REVENUE in answer.narrative
 
 
-_WITHHELD_REVENUE = "B0FIXTUR03 isn't forecast for shipped revenue: too little history."
-_WITHHELD_COGS = "B0FIXTUR03 isn't forecast for shipped cost of goods sold: too little history."
+_WITHHELD_REVENUE = (
+    "B0FIXTUR03 isn't forecast for shipped revenue: too little history (withheld as "
+    "INSUFFICIENT_CONTEXT)."
+)
+_WITHHELD_COGS = (
+    "B0FIXTUR03 isn't forecast for shipped cost of goods sold: too little history (withheld as "
+    "INSUFFICIENT_CONTEXT)."
+)
 _ABSENT = "B0FIXTUR09 is not in this forecast."
 
 
@@ -287,8 +291,8 @@ def test_compare_names_a_withheld_and_an_absent_product_without_rows() -> None:
     )
     assert {row["asin"] for row in answer.data.values} == {"B0FIXTUR01"}
     assert (
-        "B0FIXTUR03 isn't forecast for demand (ordered units): too little history."
-        in answer.narrative
+        "B0FIXTUR03 isn't forecast for demand (ordered units): too little history (withheld as "
+        "INSUFFICIENT_CONTEXT)." in answer.narrative
     )
     assert "B0FIXTUR09 is not in this forecast." in answer.narrative
 
@@ -296,7 +300,8 @@ def test_compare_names_a_withheld_and_an_absent_product_without_rows() -> None:
 _INACTIVE = (
     "B0FIXTUR04 isn't forecast for demand (ordered units): no sales were reported for it in the "
     "13 weeks of data through 2026-11-07, so there is no recent pattern to forecast. That alone "
-    "doesn't say whether it is still for sale or what its future demand will be."
+    "doesn't say whether it is still for sale or what its future demand will be (withheld as "
+    "ASIN_INACTIVE)."
 )
 _INACTIVE_NEXT_STEP = (
     "Next step for a product withheld as ASIN_INACTIVE: If it's still on sale, plan it by hand for "
@@ -346,6 +351,53 @@ def test_a_withheld_reasons_next_step_is_stated_once_and_as_a_prerequisite() -> 
         f"marketplace this product should report in. {NO_PROMISE}",
     ]
     assert sum(line.startswith(("B0FIXTUR04 ", "B0FIXTUR05 ")) for line in claims) == 2
+
+
+_STEP_PREFIX = "Next step for a product withheld as "
+
+
+@pytest.mark.parametrize(
+    ("tool", "arguments"),
+    [
+        (ForecastTool.LIST, {}),
+        (ForecastTool.QUERY, {"asins": ["B0FIXTUR06", "B0FIXTUR07"]}),
+        (ForecastTool.COMPARE, {"asins": ["B0FIXTUR06", "B0FIXTUR07"]}),
+    ],
+)
+def test_each_next_step_names_a_code_that_only_its_own_products_claim_lines_carry(
+    tool: ForecastTool, arguments: dict[str, Any]
+) -> None:
+    """Query, compare and a money list serve no row with `withheld_reason` (review round 3, F1).
+
+    Two reasons with no plain wording read alike, so without the code on each product's line chat
+    could give one product the other's next step: ask an administrator instead of wait.
+    """
+    views = [
+        item(1),
+        item(6, shown=False, reason="CURRENCY_MIXED"),
+        item(7, shown=False, reason="ETS_FIT_FAILED"),
+    ]
+    entries = ranked(views)
+    reader = FakeReader(
+        current=pointer(),
+        meta=generation(entries),
+        stored_pages=pages(entries),
+        items={view.candidate.display_asin: view for view in views},
+    )
+    answer = _answer(tool, reader, target="revenue_shipped", **arguments)
+    assert all(row["asin"] == "B0FIXTUR01" for row in answer.data.values)
+    claims = [answer.narrative[i] for i in answer.data.claim_narrative_indices]
+    steps = [line.removeprefix(_STEP_PREFIX) for line in claims if line.startswith(_STEP_PREFIX)]
+    codes = [step.split(":")[0] for step in steps]
+    attributed = {
+        code: [line.split(" ")[0] for line in claims if line.endswith(f"(withheld as {code}).")]
+        for code in codes
+    }
+    assert attributed == {"CURRENCY_MIXED": ["B0FIXTUR06"], "ETS_FIT_FAILED": ["B0FIXTUR07"]}
+    assert (
+        "B0FIXTUR06 isn't forecast for shipped revenue: not forecast (withheld as CURRENCY_MIXED)."
+        in claims
+    )
 
 
 @pytest.mark.parametrize(
