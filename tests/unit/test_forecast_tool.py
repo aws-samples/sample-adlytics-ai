@@ -13,6 +13,7 @@ import json
 import time as time_module
 from datetime import UTC, date, datetime, time
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -38,6 +39,7 @@ from tool_caller_support import import_tool_entrypoint, with_bearer
 from adapters.inbound.forecast_read.service import ForecastReadService, ReadContext
 from adapters.inbound.tool_handlers.forecast import (
     FORECAST_RENDERING,
+    INACTIVE_NEXT_STEP,
     MIXED_RENDERING,
     ForecastTool,
     ForecastToolRequest,
@@ -292,8 +294,24 @@ def test_compare_names_a_withheld_and_an_absent_product_without_rows() -> None:
 _INACTIVE = (
     "B0FIXTUR04 isn't forecast for demand (ordered units): no sales were reported for it in the "
     "13 weeks of data through 2026-11-07, so there is no recent pattern to forecast. That alone "
-    "doesn't say whether it is still for sale or what its future demand will be."
+    "doesn't say whether it is still for sale or what its future demand will be. If it's still "
+    "on sale, plan it by hand for now. The next weekly update will check again after new sales "
+    "data arrives; a forecast appears only once there's enough complete history."
 )
+
+
+def test_the_no_recent_sales_next_step_is_the_pages_own_copy() -> None:
+    """Chat added an unserved "it may be forecast later" (dev, Q4); the tool now serves the step.
+
+    The page owns the wording, so the tool's copy must be the page's undated form, character for
+    character, or chat and page would say different things about the same product.
+    """
+    page = (Path(__file__).resolve().parents[2] / "frontend/lib/demand-forecast.ts").read_text(
+        encoding="utf-8"
+    )
+    block = page.split("ASIN_INACTIVE: {", 1)[1].split("},", 1)[0]
+    undated = block.split("undated:", 1)[1].strip().rstrip(",")
+    assert json.loads(undated) == INACTIVE_NEXT_STEP
 
 
 @pytest.mark.parametrize(

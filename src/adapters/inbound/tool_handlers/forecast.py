@@ -88,6 +88,12 @@ _REASON_WORDS: Final = {
     SkipReason.INSUFFICIENT_CONTEXT: "too little history",
     SkipReason.TARGET_VALUE_MISSING: "missing values in its history",
 }
+INACTIVE_NEXT_STEP: Final = (
+    "If it's still on sale, plan it by hand for now. The next weekly update will check again "
+    "after new sales data arrives; a forecast appears only once there's enough complete history."
+)
+"""The page's undated next step for `ASIN_INACTIVE`, verbatim from `reasonNextStepCopy` in
+`frontend/lib/demand-forecast.ts`, which owns the wording; a test fails if the two differ."""
 FORECAST_RENDERING: Final = (
     "Forecast, not observed: it continues the observed pattern, isn't a causal prediction and "
     "excludes promotions."
@@ -275,7 +281,8 @@ class _Frame:
 
         `ASIN_INACTIVE` means only that no sales were reported in the activity window, so the
         line says that and names what it doesn't establish: whether the product is still for sale
-        and what its future demand will be.
+        and what its future demand will be. It then states the page's next step, so an answer
+        about when a forecast may appear rests on served words.
         """
         if reason is SkipReason.ASIN_INACTIVE:
             why = (
@@ -284,8 +291,8 @@ class _Frame:
                 "That alone doesn't say whether it is still for sale or what its future demand "
                 "will be"
             )
-        else:
-            why = "not forecast" if reason is None else _REASON_WORDS.get(reason, "not forecast")
+            return f"{asin} isn't forecast for {_TARGET_WORDS[target]}: {why}. {INACTIVE_NEXT_STEP}"
+        why = "not forecast" if reason is None else _REASON_WORDS.get(reason, "not forecast")
         return f"{asin} isn't forecast for {_TARGET_WORDS[target]}: {why}."
 
 

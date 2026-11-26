@@ -503,7 +503,9 @@ def _shape(context: dict[str, object]) -> set[tuple[str, frozenset[str]]]:
 _INACTIVE_REASON = (
     "B0FIXT0104 isn't forecast for demand (ordered units): no sales were reported for it in the "
     "13 weeks of data through 2026-11-07, so there is no recent pattern to forecast. That alone "
-    "doesn't say whether it is still for sale or what its future demand will be."
+    "doesn't say whether it is still for sale or what its future demand will be. If it's still "
+    "on sale, plan it by hand for now. The next weekly update will check again after new sales "
+    "data arrives; a forecast appears only once there's enough complete history."
 )
 _FORECAST_QUALIFIER = (
     "Forecasts here continue the observed pattern, aren't causal predictions and exclude "
@@ -540,7 +542,8 @@ def test_the_forecast_reason_cases_carry_the_context_the_forecast_tool_returns()
     """Chat said a product withheld for no recent sales "isn't available for sale" (dev, Q4).
 
     The truthful answer and the false one differ only in the claim the stored reason doesn't
-    support, so the pair grades that claim; the shown-product case is the positive control.
+    support, so the pair grades that claim; the shown-product case is the positive control. The
+    truthful answer says when a forecast can appear only in the served next step's terms.
     """
     records = {
         str(record["name"]): record for record in _records("validation/evaluation-v4-cases.json")
@@ -562,7 +565,9 @@ def test_the_forecast_reason_cases_carry_the_context_the_forecast_tool_returns()
             "B0FIXT0104 (Fictional product 104) has no demand forecast because no sales were "
             "reported for it in the 13 weeks of data through 2026-11-07, so there is no recent "
             "pattern to forecast. That alone doesn't say whether it is still for sale or what its "
-            f"future demand will be. {_FORECAST_QUALIFIER}"
+            "future demand will be. The next weekly update will check again after new sales data "
+            "arrives, and a forecast appears only once there's enough complete history. "
+            f"{_FORECAST_QUALIFIER}"
         ),
         "expected": {"grounded_correctness": "Grounded", "internal_consistency": "Consistent"},
     }
