@@ -14,8 +14,8 @@ Callers may rely on:
   the reason establishes and ending with the reason's code (`_Frame.withheld`), so the answer and
   its evaluation read the same words and each next step's code matches its products' lines;
 - each withheld reason in a response adds one claim line with the page's next step for it, and
-  one more claim line, once per response, says a step is a prerequisite, not a promise of a
-  forecast (`NEXT_STEPS`, `NO_PROMISE`);
+  that line says the step is a prerequisite, not a promise of a forecast (`NEXT_STEPS`,
+  `NO_PROMISE`);
 - arguments are validated here, each failure refused `FORECAST_ARGUMENT_INVALID` with
   `context.rule`, because the tool schema can't state counts or closed values.
 """
@@ -142,7 +142,9 @@ NO_PROMISE: Final = (
     "forecast only when a forecasting method passes its checks."
 )
 """Chat turned "a forecast appears only once there's enough complete history" into "a forecast
-will appear once ..." (dev, Q4); this line keeps the prerequisite a prerequisite."""
+will appear once ..." (dev, Q4); this sentence keeps the prerequisite a prerequisite. It ends
+each next-step line: on a line of its own, chat dropped it from all three Q4 answers (dev,
+2026-11-26)."""
 FORECAST_RENDERING: Final = (
     "Forecast, not observed: it continues the observed pattern, isn't a causal prediction and "
     "excludes promotions."
@@ -366,9 +368,9 @@ def _respond(  # noqa: PLR0913 -- one envelope from its typed parts
     truncated_line: str | None = None,
 ) -> ShapedResponse:
     for reason in dict.fromkeys(draft.reasons):
-        draft.claim(f"Next step for a product withheld as {reason.value}: {NEXT_STEPS[reason]}")
-    if draft.reasons:
-        draft.claim(NO_PROMISE)
+        draft.claim(
+            f"Next step for a product withheld as {reason.value}: {NEXT_STEPS[reason]} {NO_PROMISE}"
+        )
     mixed = grain.dimensions[-1] == "series"
     qualifiers: list[AnswerQualifier] = []
     if draft.values:
