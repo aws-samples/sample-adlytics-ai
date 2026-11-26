@@ -511,9 +511,11 @@ _INACTIVE_REASON = (
 _INACTIVE_NEXT_STEP = (
     "Next step for a product withheld as ASIN_INACTIVE: If it's still on sale, plan it by hand for "
     "now. The next weekly update will check again after new sales data arrives; a forecast "
-    "appears only once there's enough complete history. A next step says what has to happen "
-    "first, not that a forecast will follow: a product is forecast only when a forecasting method "
-    "passes its checks."
+    "appears only once there's enough complete history."
+)
+_NO_PROMISE = (
+    "A next step says what has to happen first, not that a forecast will follow: a product is "
+    "forecast only when a forecasting method passes its checks."
 )
 _WITHHELD_ANSWER = (
     "B0FIXT0104 (Fictional product 104) has no demand forecast because no sales were reported for "
@@ -573,6 +575,7 @@ def test_the_forecast_reason_cases_carry_the_context_the_forecast_tool_returns()
     assertions = [
         _INACTIVE_REASON,
         _INACTIVE_NEXT_STEP,
+        _NO_PROMISE,
         "The forecast qualifier: forecasts continue the observed pattern, aren't causal "
         "predictions and exclude promotions.",
     ]
@@ -630,7 +633,7 @@ def test_the_forecast_reason_cases_carry_the_context_the_forecast_tool_returns()
     # The committed context itself carries the reason and its next step as claims, so a
     # regenerated case that lost either can't pass under the same name.
     committed = json.loads(inactive)
-    for line in (_INACTIVE_REASON, _INACTIVE_NEXT_STEP):
+    for line in (_INACTIVE_REASON, _INACTIVE_NEXT_STEP, _NO_PROMISE):
         assert [
             item["kind"] for item in committed["evidence"][0]["renderings"] if item["text"] == line
         ] == ["claim"]

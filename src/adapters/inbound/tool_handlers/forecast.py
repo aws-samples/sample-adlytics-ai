@@ -12,9 +12,10 @@ Callers may rely on:
   truncated when more match, or one product by exact ASIN. It never pages (agent-contract-tool);
 - a withheld product is named in a claim line with its stored reason, worded to say no more than
   the reason establishes and ending with the reason's code (`_Frame.withheld`), so the answer and
-  its evaluation read the same words and each next-step line names the products it applies to;
-- each withheld reason in a response adds one claim line with the page's next step for it and
-  says that the step is a prerequisite, not a promise of a forecast (`NEXT_STEPS`, `NO_PROMISE`);
+  its evaluation read the same words and each next step's code matches its products' lines;
+- each withheld reason in a response adds one claim line with the page's next step for it, and
+  one more claim line, once per response, says a step is a prerequisite, not a promise of a
+  forecast (`NEXT_STEPS`, `NO_PROMISE`);
 - arguments are validated here, each failure refused `FORECAST_ARGUMENT_INVALID` with
   `context.rule`, because the tool schema can't state counts or closed values.
 """
@@ -365,9 +366,9 @@ def _respond(  # noqa: PLR0913 -- one envelope from its typed parts
     truncated_line: str | None = None,
 ) -> ShapedResponse:
     for reason in dict.fromkeys(draft.reasons):
-        draft.claim(
-            f"Next step for a product withheld as {reason.value}: {NEXT_STEPS[reason]} {NO_PROMISE}"
-        )
+        draft.claim(f"Next step for a product withheld as {reason.value}: {NEXT_STEPS[reason]}")
+    if draft.reasons:
+        draft.claim(NO_PROMISE)
     mixed = grain.dimensions[-1] == "series"
     qualifiers: list[AnswerQualifier] = []
     if draft.values:

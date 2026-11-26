@@ -306,9 +306,7 @@ _INACTIVE = (
 _INACTIVE_NEXT_STEP = (
     "Next step for a product withheld as ASIN_INACTIVE: If it's still on sale, plan it by hand for "
     "now. The next weekly update will check again after new sales data arrives; a forecast "
-    "appears only once there's enough complete history. A next step says what has to happen "
-    "first, not that a forecast will follow: a product is forecast only when a forecasting method "
-    "passes its checks."
+    "appears only once there's enough complete history."
 )
 _NEXT_STEPS_FIXTURE = (
     Path(__file__).resolve().parents[2] / "frontend/test/fixtures/demand-forecast-next-steps.json"
@@ -332,7 +330,8 @@ def test_every_next_step_is_the_pages_own_undated_copy() -> None:
 def test_a_withheld_reasons_next_step_is_stated_once_and_as_a_prerequisite() -> None:
     """A filter to withheld products repeated one next step per row (review, round 3).
 
-    Chat also turned "appears only once" into "will appear once"; the line says it isn't a promise.
+    Chat also turned "appears only once" into "will appear once"; one line after the steps says
+    none is a promise, stated once however many reasons the answer has (review round 3, L2).
     """
     views = [
         item(1),
@@ -348,8 +347,10 @@ def test_a_withheld_reasons_next_step_is_stated_once_and_as_a_prerequisite() -> 
     assert steps == [
         _INACTIVE_NEXT_STEP,
         "Next step for a product withheld as CURRENCY_MIXED: Ask your administrator which "
-        f"marketplace this product should report in. {NO_PROMISE}",
+        "marketplace this product should report in.",
     ]
+    assert claims[-1] == NO_PROMISE
+    assert claims.count(NO_PROMISE) == 1
     assert sum(line.startswith(("B0FIXTUR04 ", "B0FIXTUR05 ")) for line in claims) == 2
 
 
@@ -425,10 +426,10 @@ def test_a_product_with_no_recent_sales_is_named_by_a_claim_that_says_no_more_th
     )
     answer = _answer(tool, reader, **arguments)
     claims = [answer.narrative[i] for i in answer.data.claim_narrative_indices]
-    assert claims[:2] == [_INACTIVE, _INACTIVE_NEXT_STEP]
+    assert claims[:3] == [_INACTIVE, _INACTIVE_NEXT_STEP, NO_PROMISE]
     grounding = answer.metadata.grounding
     assert grounding is not None
-    for line in (_INACTIVE, _INACTIVE_NEXT_STEP):
+    for line in (_INACTIVE, _INACTIVE_NEXT_STEP, NO_PROMISE):
         assert [(r.kind, r.text) for r in grounding.renderings if r.text == line] == [
             (RenderingKind.CLAIM, line)
         ]
