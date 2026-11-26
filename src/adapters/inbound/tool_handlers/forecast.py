@@ -10,6 +10,8 @@ Callers may rely on:
   qualifier and a non-additivity rule, so the model never totals weeks or products;
 - `forecast_list_asins` returns page 1 of one filter with `match_count` and `page_count`, labelled
   truncated when more match, or one product by exact ASIN. It never pages (agent-contract-tool);
+- a withheld product is named in a claim line with its stored reason, worded to say no more than
+  the reason establishes (`_Frame.withheld`), so the answer and its evaluation read the same words;
 - arguments are validated here, each failure refused `FORECAST_ARGUMENT_INVALID` with
   `context.rule`, because the tool schema can't state counts or closed values.
 """
@@ -84,7 +86,6 @@ _CAUSE_WORDS: Final = {
 }
 _REASON_WORDS: Final = {
     SkipReason.INSUFFICIENT_CONTEXT: "too little history",
-    SkipReason.ASIN_INACTIVE: "no recent sales",
     SkipReason.TARGET_VALUE_MISSING: "missing values in its history",
 }
 FORECAST_RENDERING: Final = (
@@ -202,10 +203,6 @@ def _text(value: str, target: str, currency: str | None) -> str:
     return f"{display_whole(Decimal(value)):,}"
 
 
-def _reason(reason: SkipReason | None) -> str:
-    return "not forecast" if reason is None else _REASON_WORDS.get(reason, "not forecast")
-
-
 def _midnight(day: date) -> datetime:
     return datetime.combine(day, time.min, tzinfo=UTC)
 
@@ -243,7 +240,13 @@ class _Call:
                 pointer, self.context.now, self.policy.serving.stale_after_days
             )
         )
-        return _Frame(self.request, pointer, self.arguments, freshness)
+        return _Frame(
+            self.request,
+            pointer,
+            self.arguments,
+            freshness,
+            self.policy.missing_weeks.activity_window_weeks,
+        )
 
 
 @dataclass(frozen=True)
@@ -254,6 +257,7 @@ class _Frame:
     pointer: CurrentPointer
     arguments: _Arguments
     freshness: FreshnessV1
+    activity_weeks: int
 
     @property
     def first_week(self) -> date:
@@ -265,6 +269,24 @@ class _Frame:
         published = self.pointer.published_at
         stamp = "" if published is None else read_api.api_instant(published)
         return f"Forecast from data through {self.pointer.input_end}, published {stamp}."
+
+    def withheld(self, asin: str, target: str, reason: SkipReason | None) -> str:
+        """Say why a product isn't forecast, and no more than its stored reason establishes.
+
+        `ASIN_INACTIVE` means only that no sales were reported in the activity window, so the
+        line says that and names what it doesn't establish: whether the product is still for sale
+        and what its future demand will be.
+        """
+        if reason is SkipReason.ASIN_INACTIVE:
+            why = (
+                f"no sales were reported for it in the {self.activity_weeks} weeks of data "
+                f"through {self.pointer.input_end}, so there is no recent pattern to forecast. "
+                "That alone doesn't say whether it is still for sale or what its future demand "
+                "will be"
+            )
+        else:
+            why = "not forecast" if reason is None else _REASON_WORDS.get(reason, "not forecast")
+        return f"{asin} isn't forecast for {_TARGET_WORDS[target]}: {why}."
 
 
 def _respond(  # noqa: PLR0913 -- one envelope from its typed parts
@@ -412,13 +434,12 @@ def _list(call: _Call, service: ForecastReadService) -> ReadResult[ShapedRespons
     currency = _currency([entry.targets[target] for entry in entries], target)  # pyright: ignore[reportArgumentType]
     for entry in entries:
         row: RosterTargetV1 = entry.targets[target]  # pyright: ignore[reportAssignmentType]
-        if target in MONEY_TARGETS and row.chosen_model is None:
-            # A withheld money row has no figure and so no currency to state; it is named instead.
-            draft.narrative.append(
-                f"{entry.display_asin} isn't forecast for {_TARGET_WORDS[target]}: "
-                f"{_reason(row.withheld_reason)}."
-            )
-            continue
+        if row.chosen_model is None:
+            # The stored reason is a claim line: the answer states it as the tool words it.
+            draft.claim(frame.withheld(entry.display_asin, target, row.withheld_reason))
+            if target in MONEY_TARGETS:
+                # A withheld money row has no figure and so no currency to state; it is named only.
+                continue
         draft.values.append(_list_row(entry, target, ranked=asin is None))
     week = frame.first_week
     answer = _respond(
@@ -447,17 +468,16 @@ def _band_fields(target: str, currency: str | None, *, recent: bool) -> tuple[Cl
     )
 
 
-def _absent(draft: _Draft, found: tuple[str, AsinItemView | None], target: str) -> bool:
+def _absent(frame: _Frame, draft: _Draft, found: tuple[str, AsinItemView | None]) -> bool:
     """Name a product that contributes no row, and say whether it does."""
     asin, view = found
+    target = frame.arguments.target
     if view is None:
         draft.narrative.append(f"{asin} is not in this forecast.")
         return True
     row = view.candidate.targets[target]  # pyright: ignore[reportArgumentType]
     if row.chosen_model is None:
-        draft.narrative.append(
-            f"{asin} isn't forecast for {_TARGET_WORDS[target]}: {_reason(row.withheld_reason)}."
-        )
+        draft.claim(frame.withheld(asin, target, row.withheld_reason))
         return True
     return False
 
@@ -499,7 +519,7 @@ def _rows(call: _Call, service: ForecastReadService) -> ReadResult[ShapedRespons
     starts: list[date] = []
     currencies: list[RosterTargetV1] = []
     for asin, view in zip(arguments.asins, rows.items, strict=True):
-        if _absent(draft, (asin, view), target) or view is None:
+        if _absent(frame, draft, (asin, view)) or view is None:
             continue
         candidate = view.candidate
         currencies.append(view.roster.targets[target])  # pyright: ignore[reportArgumentType]

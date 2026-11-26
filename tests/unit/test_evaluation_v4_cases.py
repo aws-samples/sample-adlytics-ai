@@ -2,13 +2,16 @@
 """Fictional grounded Evaluation V4 calibration-corpus contract."""
 
 import json
+import time
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import cast
 
+import forecast_read_support as forecast_support
 import pytest
 import test_audience_segments as segments
 from evaluation_gate_support import evaluator_document, spec_document
+from forecast_series_support import policy as forecast_policy
 from publication_support import StubPublications
 from test_dimension_labels import (
     SCOPE,
@@ -16,7 +19,10 @@ from test_dimension_labels import (
 )
 from test_measurement_tool import StubQueries
 
+from adapters.inbound.forecast_read.service import ForecastReadService, ReadContext
 from adapters.inbound.tool_handlers.dimension_labels import DimensionLabelResolver
+from adapters.inbound.tool_handlers.forecast import ForecastTool, ForecastToolRequest
+from adapters.inbound.tool_handlers.forecast import handle as forecast_handle
 from adapters.inbound.tool_handlers.measurement import (
     MeasurementTool,
     MeasurementTooling,
@@ -88,6 +94,9 @@ def test_v4_calibration_cases_are_balanced_and_pin_the_observed_failure() -> Non
         "reports_purchases_as_customers",
         "states_a_remembered_figure_when_the_metric_has_no_data",
         "restates_a_remembered_figure_after_a_refusal",
+        "withheld_forecast_reason_stated_as_returned",
+        "withheld_forecast_reason_extended_to_availability",
+        "shown_forecast_total_stated_as_returned",
     }
     expected = [cast("dict[str, object]", record["expected"]) for record in records]
     grounded: set[str] = set()
@@ -149,6 +158,9 @@ def test_every_calibrated_dimension_has_enough_cases_and_both_outcomes() -> None
                 "reports_purchases_as_customers": "fluent_unsupported",
                 "states_a_remembered_figure_when_the_metric_has_no_data": "contradiction",
                 "restates_a_remembered_figure_after_a_refusal": "fluent_unsupported",
+                "withheld_forecast_reason_stated_as_returned": "known_correct",
+                "withheld_forecast_reason_extended_to_availability": "fluent_unsupported",
+                "shown_forecast_total_stated_as_returned": "known_correct",
             },
         ),
     ],
@@ -486,3 +498,111 @@ def _shape(context: dict[str, object]) -> set[tuple[str, frozenset[str]]]:
                 for item in cast("list[dict[str, object]]", evidence[level])
             )
     return shapes
+
+
+_INACTIVE_REASON = (
+    "B0FIXT0104 isn't forecast for demand (ordered units): no sales were reported for it in the "
+    "13 weeks of data through 2026-11-07, so there is no recent pattern to forecast. That alone "
+    "doesn't say whether it is still for sale or what its future demand will be."
+)
+_FORECAST_QUALIFIER = (
+    "Forecasts here continue the observed pattern, aren't causal predictions and exclude "
+    "promotions."
+)
+
+
+def forecast_lookup_context(asin: str) -> str:
+    """One `forecast_list_asins` lookup by exact ASIN over two fictional products.
+
+    B0FIXT0104 is withheld `ASIN_INACTIVE`; B0FIXT0105 is shown with a stored 13-week total.
+    """
+    inactive = forecast_support.item(104, shown=False, reason="ASIN_INACTIVE")
+    shown = forecast_support.item(105, p50="42.0000")
+    entries = forecast_support.ranked([shown, inactive])
+    reader = forecast_support.FakeReader(
+        current=forecast_support.pointer(),
+        meta=forecast_support.generation(entries),
+        stored_pages=forecast_support.pages(entries),
+        items={view.candidate.display_asin: view for view in (inactive, shown)},
+    )
+    service = ForecastReadService(reader, forecast_support.VALUES, forecast_policy())
+    now = forecast_support.NOW
+    read = forecast_handle(
+        ForecastToolRequest(ForecastTool.LIST, {"asin": asin}, now, "corr-fictional"),
+        service,
+        ReadContext(now, time.monotonic() + 60),
+    )
+    return _fictional(read.response)
+
+
+@pytest.mark.covers("ADR-083", "ADR-163")
+def test_the_forecast_reason_cases_carry_the_context_the_forecast_tool_returns() -> None:
+    """Chat said a product withheld for no recent sales "isn't available for sale" (dev, Q4).
+
+    The truthful answer and the false one differ only in the claim the stored reason doesn't
+    support, so the pair grades that claim; the shown-product case is the positive control.
+    """
+    records = {
+        str(record["name"]): record for record in _records("validation/evaluation-v4-cases.json")
+    }
+    question = "Why is there no demand forecast for fictional product B0FIXT0104?"
+    assertions = [
+        _INACTIVE_REASON,
+        "The forecast qualifier: forecasts continue the observed pattern, aren't causal "
+        "predictions and exclude promotions.",
+    ]
+    inactive = forecast_lookup_context("B0FIXT0104")
+    assert records["withheld_forecast_reason_stated_as_returned"] == {
+        "name": "withheld_forecast_reason_stated_as_returned",
+        "kind": "known_correct",
+        "question": question,
+        "trusted_assertions": assertions,
+        "grounded_context": inactive,
+        "candidate": (
+            "B0FIXT0104 (Fictional product 104) has no demand forecast because no sales were "
+            "reported for it in the 13 weeks of data through 2026-11-07, so there is no recent "
+            "pattern to forecast. That alone doesn't say whether it is still for sale or what its "
+            f"future demand will be. {_FORECAST_QUALIFIER}"
+        ),
+        "expected": {"grounded_correctness": "Grounded", "internal_consistency": "Consistent"},
+    }
+    assert records["withheld_forecast_reason_extended_to_availability"] == {
+        "name": "withheld_forecast_reason_extended_to_availability",
+        "kind": "fluent_unsupported",
+        "question": question,
+        "trusted_assertions": assertions,
+        "grounded_context": inactive,
+        "candidate": (
+            "B0FIXT0104 (Fictional product 104) has no demand forecast because the product is "
+            "inactive: no sales were reported for it in the 13 weeks of data through 2026-11-07. "
+            "Inactive products aren't currently available for sale, so they won't generate "
+            f"future demand. {_FORECAST_QUALIFIER}"
+        ),
+        "expected": {"grounded_correctness": ["Unsupported", "Partially Grounded"]},
+    }
+    assert records["shown_forecast_total_stated_as_returned"] == {
+        "name": "shown_forecast_total_stated_as_returned",
+        "kind": "known_correct",
+        "question": "What is the 13-week demand forecast for fictional product B0FIXT0105?",
+        "trusted_assertions": [
+            "The stored likely (p50) forecast total of units ordered for B0FIXT0105 over the "
+            "next 13 weeks is 546.",
+            "The forecast qualifier: forecasts continue the observed pattern, aren't causal "
+            "predictions and exclude promotions.",
+        ],
+        "grounded_context": forecast_lookup_context("B0FIXT0105"),
+        "candidate": (
+            "The likely (p50) demand forecast for B0FIXT0105 (Fictional product 105) over the "
+            "next 13 weeks is **546 units ordered**. This is a forecast, not observed sales: it "
+            "continues the observed pattern, isn't a causal prediction and excludes promotions."
+        ),
+        "expected": {"grounded_correctness": "Grounded", "internal_consistency": "Consistent"},
+    }
+    # The committed context itself carries the reason as a claim, so a regenerated case that lost
+    # it can't pass under the same name.
+    committed = json.loads(inactive)
+    assert [
+        item["kind"]
+        for item in committed["evidence"][0]["renderings"]
+        if item["text"] == _INACTIVE_REASON
+    ] == ["claim"]

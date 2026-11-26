@@ -24,6 +24,7 @@ from forecast_read_support import (
     fake_reader,
     generation,
     item,
+    pages,
     pointer,
     ranked,
 )
@@ -47,7 +48,7 @@ from adapters.outbound.telemetry import tracing
 from adapters.outbound.telemetry.tracing import FORECAST_GATEWAY
 from domain.forecasting import summaries
 from domain.forecasting.publish import RunOutcome
-from domain.narrative.publication import QualifierKind
+from domain.narrative.publication import QualifierKind, RenderingKind
 from domain.narrative.shaped_response import ShapedResponse, UnitKind, Units
 from domain.shared_kernel.errors import AdlyticsError
 from domain.shared_kernel.provenance import FreshnessStatus, MeasurementBasis
@@ -286,6 +287,46 @@ def test_compare_names_a_withheld_and_an_absent_product_without_rows() -> None:
         in answer.narrative
     )
     assert "B0FIXTUR09 is not in this forecast." in answer.narrative
+
+
+_INACTIVE = (
+    "B0FIXTUR04 isn't forecast for demand (ordered units): no sales were reported for it in the "
+    "13 weeks of data through 2026-11-07, so there is no recent pattern to forecast. That alone "
+    "doesn't say whether it is still for sale or what its future demand will be."
+)
+
+
+@pytest.mark.parametrize(
+    ("tool", "arguments"),
+    [
+        (ForecastTool.LIST, {"asin": "B0FIXTUR04"}),
+        (ForecastTool.LIST, {"status": "ASIN_INACTIVE"}),
+        (ForecastTool.SUMMARIZE, {"asin": "B0FIXTUR04", "target": "units_ordered"}),
+    ],
+)
+def test_a_product_with_no_recent_sales_is_named_by_a_claim_that_says_no_more_than_its_reason(
+    tool: ForecastTool, arguments: dict[str, Any]
+) -> None:
+    """A bare `ASIN_INACTIVE` let the agent claim the product isn't for sale (chat Q4, dev).
+
+    The line is a claim, so evaluation grades the answer against these exact words.
+    """
+    inactive = item(4, shown=False, reason="ASIN_INACTIVE")
+    entries = ranked([item(1), inactive])
+    reader = FakeReader(
+        current=pointer(),
+        meta=generation(entries),
+        stored_pages=pages(entries),
+        items={"B0FIXTUR04": inactive},
+    )
+    answer = _answer(tool, reader, **arguments)
+    claims = [answer.narrative[i] for i in answer.data.claim_narrative_indices]
+    assert claims[0] == _INACTIVE
+    grounding = answer.metadata.grounding
+    assert grounding is not None
+    assert [(r.kind, r.text) for r in grounding.renderings if r.text == _INACTIVE] == [
+        (RenderingKind.CLAIM, _INACTIVE)
+    ]
 
 
 def test_a_stale_forecast_carries_the_stale_qualifier_with_its_cause() -> None:
