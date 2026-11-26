@@ -96,7 +96,6 @@ def test_v4_calibration_cases_are_balanced_and_pin_the_observed_failure() -> Non
         "restates_a_remembered_figure_after_a_refusal",
         "withheld_forecast_reason_stated_as_returned",
         "withheld_forecast_reason_extended_to_availability",
-        "withheld_forecast_next_step_stated_as_a_promise",
         "withheld_forecast_reason_without_the_forecast_qualifier",
         "shown_forecast_total_stated_as_returned",
     }
@@ -162,7 +161,6 @@ def test_every_calibrated_dimension_has_enough_cases_and_both_outcomes() -> None
                 "restates_a_remembered_figure_after_a_refusal": "fluent_unsupported",
                 "withheld_forecast_reason_stated_as_returned": "known_correct",
                 "withheld_forecast_reason_extended_to_availability": "fluent_unsupported",
-                "withheld_forecast_next_step_stated_as_a_promise": "fluent_unsupported",
                 "withheld_forecast_reason_without_the_forecast_qualifier": "fluent_unsupported",
                 "shown_forecast_total_stated_as_returned": "known_correct",
             },
@@ -561,9 +559,11 @@ def test_the_forecast_reason_cases_carry_the_context_the_forecast_tool_returns()
     support, so the pair grades that claim; the shown-product case is the positive control.
 
     Chat then said a forecast "will appear once" there is enough history (dev, round 2), turning
-    the served prerequisite into a promise: the promise case differs from the truthful one only in
-    that wording. The live answer also omitted the forecast qualifier, which the case without it
-    grades, so a green corpus says what the shipped answer would grade.
+    the served prerequisite into a promise. The corpus holds no case for that wording: the live
+    grounded-correctness evaluator graded it Grounded (dev, 2026-11-26), so the gate could not
+    calibrate it; the served no-promise line is what stops it. The live answer also omitted the
+    forecast qualifier, which the case without it grades, so a green corpus says what the shipped
+    answer would grade.
     """
     records = {
         str(record["name"]): record for record in _records("validation/evaluation-v4-cases.json")
@@ -584,18 +584,6 @@ def test_the_forecast_reason_cases_carry_the_context_the_forecast_tool_returns()
         "grounded_context": inactive,
         "candidate": f"{_WITHHELD_ANSWER}{_CONDITIONAL} {_FORECAST_QUALIFIER}",
         "expected": {"grounded_correctness": "Grounded", "internal_consistency": "Consistent"},
-    }
-    assert records["withheld_forecast_next_step_stated_as_a_promise"] == {
-        "name": "withheld_forecast_next_step_stated_as_a_promise",
-        "kind": "fluent_unsupported",
-        "question": question,
-        "trusted_assertions": assertions,
-        "grounded_context": inactive,
-        "candidate": (
-            f"{_WITHHELD_ANSWER}will appear once there's enough complete history. "
-            f"{_FORECAST_QUALIFIER}"
-        ),
-        "expected": {"grounded_correctness": ["Unsupported", "Partially Grounded"]},
     }
     assert records["withheld_forecast_reason_without_the_forecast_qualifier"] == {
         "name": "withheld_forecast_reason_without_the_forecast_qualifier",
