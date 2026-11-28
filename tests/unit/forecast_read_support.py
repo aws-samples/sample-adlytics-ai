@@ -57,7 +57,9 @@ def _score(mase: str | None, gap: str | None = None) -> dict[str, Any]:
     }
 
 
-def _target(*, shown: bool, p50: str, mase: str | None = "0.8123") -> dict[str, Any]:
+def _target(  # noqa: PLR0913 -- one fictional target with keyword overrides
+    *, shown: bool, p50: str, mase: str | None = "0.8123", reason: str = "INSUFFICIENT_CONTEXT"
+) -> dict[str, Any]:
     evaluations = [
         {
             "model": model,
@@ -71,7 +73,7 @@ def _target(*, shown: bool, p50: str, mase: str | None = "0.8123") -> dict[str, 
     if not shown:
         return {
             "chosen_model": None,
-            "withheld_reason": "INSUFFICIENT_CONTEXT",
+            "withheld_reason": reason,
             "chosen_forecast": None,
             "gate_reason": None,
             "scored_weeks": 0,
@@ -97,14 +99,16 @@ def candidate(  # noqa: PLR0913 -- one fictional product with keyword overrides
     p50: str = "10.5000",
     money_p50: str = "1234.5000",
     week_states: tuple[str, ...] = (),
+    reason: str = "INSUFFICIENT_CONTEXT",
 ) -> CandidateSeriesV1:
     """Return one fictional product's candidate; withheld products withhold every target.
 
     `week_states` sets the state of the first recent weeks for every target; the rest are
-    observed.
+    observed. `reason` is the skip reason a withheld product carries.
     """
     targets = {
-        t: _target(shown=shown, p50=money_p50 if t in MONEY_TARGETS else p50) for t in TARGETS
+        t: _target(shown=shown, p50=money_p50 if t in MONEY_TARGETS else p50, reason=reason)
+        for t in TARGETS
     }
     states = [*week_states, *["observed"] * (13 - len(week_states))]
     stored_value = {"observed": "9.0000", "inferred_zero": "0.0000", "unknown": None}

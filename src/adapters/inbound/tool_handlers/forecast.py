@@ -10,6 +10,12 @@ Callers may rely on:
   qualifier and a non-additivity rule, so the model never totals weeks or products;
 - `forecast_list_asins` returns page 1 of one filter with `match_count` and `page_count`, labelled
   truncated when more match, or one product by exact ASIN. It never pages (agent-contract-tool);
+- a withheld product is named in a claim line with its stored reason, worded to say no more than
+  the reason establishes and ending with the reason's code (`_Frame.withheld`), so the answer and
+  its evaluation read the same words and each next step's code matches its products' lines;
+- each withheld reason in a response adds one claim line with the page's next step for it, and
+  that line says the step is a prerequisite, not a promise of a forecast (`NEXT_STEPS`,
+  `NO_PROMISE`);
 - arguments are validated here, each failure refused `FORECAST_ARGUMENT_INVALID` with
   `context.rule`, because the tool schema can't state counts or closed values.
 """
@@ -17,7 +23,7 @@ Callers may rely on:
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from enum import StrEnum
@@ -84,9 +90,61 @@ _CAUSE_WORDS: Final = {
 }
 _REASON_WORDS: Final = {
     SkipReason.INSUFFICIENT_CONTEXT: "too little history",
-    SkipReason.ASIN_INACTIVE: "no recent sales",
     SkipReason.TARGET_VALUE_MISSING: "missing values in its history",
 }
+_TRY_AGAIN: Final = "The next weekly update tries again."
+_TRY_NEWEST: Final = "The next weekly update tries again with the newest weeks."
+_MORE_WEEKS: Final = "A forecast becomes possible as more weeks of sales arrive."
+NEXT_STEPS: Final[Mapping[SkipReason, str]] = {
+    SkipReason.ASIN_INACTIVE: (
+        "If it's still on sale, plan it by hand for now. The next weekly update will check again "
+        "after new sales data arrives; a forecast appears only once there's enough complete "
+        "history."
+    ),
+    SkipReason.TARGET_VALUE_MISSING: (
+        "The next weekly update tries again. If the gaps stay, ask your administrator to check "
+        "this product's Vendor Central sales report."
+    ),
+    SkipReason.INSUFFICIENT_CONTEXT: (
+        "A forecast becomes possible once it has enough complete weeks of sales."
+    ),
+    SkipReason.HOLDOUT_UNKNOWN: _TRY_NEWEST,
+    SkipReason.HOLDOUT_ALL_ZERO: _TRY_NEWEST,
+    SkipReason.BACKTEST_BAND_UNORDERED: _TRY_AGAIN,
+    SkipReason.SEASONAL_LAG_UNKNOWN: _TRY_AGAIN,
+    SkipReason.SEASONAL_LAG_UNKNOWN_AT_ORIGIN: _TRY_AGAIN,
+    SkipReason.SEASONAL_RESIDUALS_TOO_FEW: _MORE_WEEKS,
+    SkipReason.HISTORY_TOO_SHORT_FOR_SEASON: _MORE_WEEKS,
+    SkipReason.ETS_INSUFFICIENT_KNOWN: _TRY_AGAIN,
+    SkipReason.ETS_FIT_FAILED: _TRY_AGAIN,
+    SkipReason.ACCURACY_NOT_TESTABLE: _TRY_AGAIN,
+    SkipReason.FORECAST_NOT_PUBLISHABLE: _TRY_AGAIN,
+    SkipReason.FORECAST_SHAPE_INVALID: _TRY_AGAIN,
+    SkipReason.FORECAST_NOT_FINITE: _TRY_AGAIN,
+    SkipReason.FORECAST_BAND_UNORDERED: _TRY_AGAIN,
+    SkipReason.FORECAST_NEGATIVE: _TRY_AGAIN,
+    SkipReason.PRODUCT_KEY_INVALID: (
+        "Ask your administrator to check the product in Vendor Central."
+    ),
+    SkipReason.DISPLAY_ASIN_COLLISION: (
+        "Ask your administrator to check the products in Vendor Central."
+    ),
+    SkipReason.CURRENCY_MIXED: (
+        "Ask your administrator which marketplace this product should report in."
+    ),
+}
+"""The page's next step for each reason in its undated form, verbatim from `reasonNextStepCopy`
+in `frontend/lib/demand-forecast.ts`, which owns the wording. The page shows the dated form once
+its status loads; both forms are pinned to `frontend/test/fixtures/demand-forecast-next-steps.json`,
+which a test on each side compares, so neither can change alone."""
+NO_PROMISE: Final = (
+    "A next step says what has to happen first, not that a forecast will follow: a product is "
+    "forecast only when a forecasting method passes its checks."
+)
+"""Chat turned "a forecast appears only once there's enough complete history" into "a forecast
+will appear once ..." (dev, Q4); this sentence keeps the prerequisite a prerequisite. It ends
+each next-step line: on a line of its own, chat dropped it from all three Q4 answers (dev,
+2026-11-26)."""
 FORECAST_RENDERING: Final = (
     "Forecast, not observed: it continues the observed pattern, isn't a causal prediction and "
     "excludes promotions."
@@ -202,10 +260,6 @@ def _text(value: str, target: str, currency: str | None) -> str:
     return f"{display_whole(Decimal(value)):,}"
 
 
-def _reason(reason: SkipReason | None) -> str:
-    return "not forecast" if reason is None else _REASON_WORDS.get(reason, "not forecast")
-
-
 def _midnight(day: date) -> datetime:
     return datetime.combine(day, time.min, tzinfo=UTC)
 
@@ -221,10 +275,17 @@ class _Draft:
     narrative: list[str]
     claims: list[int]
     values: list[dict[str, str | int | Decimal | None]]
+    reasons: list[SkipReason] = field(default_factory=list[SkipReason])
 
     def claim(self, line: str) -> None:
         self.claims.append(len(self.narrative))
         self.narrative.append(line)
+
+    def name_withheld(self, line: str, reason: SkipReason | None) -> None:
+        """Claim the withheld line and note its reason, whose next step is stated once."""
+        self.claim(line)
+        if reason is not None:
+            self.reasons.append(reason)
 
 
 @dataclass(frozen=True)
@@ -243,7 +304,13 @@ class _Call:
                 pointer, self.context.now, self.policy.serving.stale_after_days
             )
         )
-        return _Frame(self.request, pointer, self.arguments, freshness)
+        return _Frame(
+            self.request,
+            pointer,
+            self.arguments,
+            freshness,
+            self.policy.missing_weeks.activity_window_weeks,
+        )
 
 
 @dataclass(frozen=True)
@@ -254,6 +321,7 @@ class _Frame:
     pointer: CurrentPointer
     arguments: _Arguments
     freshness: FreshnessV1
+    activity_weeks: int
 
     @property
     def first_week(self) -> date:
@@ -266,6 +334,28 @@ class _Frame:
         stamp = "" if published is None else read_api.api_instant(published)
         return f"Forecast from data through {self.pointer.input_end}, published {stamp}."
 
+    def withheld(self, asin: str, target: str, reason: SkipReason | None) -> str:
+        """Say why a product isn't forecast, and no more than its stored reason establishes.
+
+        `ASIN_INACTIVE` means only that no sales were reported in the activity window, so the
+        line says that and names what it doesn't establish: whether the product is still for sale
+        and what its future demand will be. The reason's next step is a separate line, stated
+        once per response (`_respond`), so a list of withheld products doesn't repeat it per row.
+        """
+        if reason is SkipReason.ASIN_INACTIVE:
+            why = (
+                f"no sales were reported for it in the {self.activity_weeks} weeks of data "
+                f"through {self.pointer.input_end}, so there is no recent pattern to forecast. "
+                "That alone doesn't say whether it is still for sale or what its future demand "
+                "will be"
+            )
+        else:
+            why = "not forecast" if reason is None else _REASON_WORDS.get(reason, "not forecast")
+        # The code is the key its next-step line names, so each step is attributable to its
+        # products where no value row carries `withheld_reason` (query, compare, money list).
+        code = "" if reason is None else f" (withheld as {reason.value})"
+        return f"{asin} isn't forecast for {_TARGET_WORDS[target]}: {why}{code}."
+
 
 def _respond(  # noqa: PLR0913 -- one envelope from its typed parts
     frame: _Frame,
@@ -277,6 +367,10 @@ def _respond(  # noqa: PLR0913 -- one envelope from its typed parts
     coverage: tuple[date, date],
     truncated_line: str | None = None,
 ) -> ShapedResponse:
+    for reason in dict.fromkeys(draft.reasons):
+        draft.claim(
+            f"Next step for a product withheld as {reason.value}: {NEXT_STEPS[reason]} {NO_PROMISE}"
+        )
     mixed = grain.dimensions[-1] == "series"
     qualifiers: list[AnswerQualifier] = []
     if draft.values:
@@ -412,13 +506,15 @@ def _list(call: _Call, service: ForecastReadService) -> ReadResult[ShapedRespons
     currency = _currency([entry.targets[target] for entry in entries], target)  # pyright: ignore[reportArgumentType]
     for entry in entries:
         row: RosterTargetV1 = entry.targets[target]  # pyright: ignore[reportAssignmentType]
-        if target in MONEY_TARGETS and row.chosen_model is None:
-            # A withheld money row has no figure and so no currency to state; it is named instead.
-            draft.narrative.append(
-                f"{entry.display_asin} isn't forecast for {_TARGET_WORDS[target]}: "
-                f"{_reason(row.withheld_reason)}."
+        if row.chosen_model is None:
+            # The stored reason is a claim line: the answer states it as the tool words it.
+            draft.name_withheld(
+                frame.withheld(entry.display_asin, target, row.withheld_reason),
+                row.withheld_reason,
             )
-            continue
+            if target in MONEY_TARGETS:
+                # A withheld money row has no figure and so no currency to state; it is named only.
+                continue
         draft.values.append(_list_row(entry, target, ranked=asin is None))
     week = frame.first_week
     answer = _respond(
@@ -447,17 +543,16 @@ def _band_fields(target: str, currency: str | None, *, recent: bool) -> tuple[Cl
     )
 
 
-def _absent(draft: _Draft, found: tuple[str, AsinItemView | None], target: str) -> bool:
+def _absent(frame: _Frame, draft: _Draft, found: tuple[str, AsinItemView | None]) -> bool:
     """Name a product that contributes no row, and say whether it does."""
     asin, view = found
+    target = frame.arguments.target
     if view is None:
         draft.narrative.append(f"{asin} is not in this forecast.")
         return True
     row = view.candidate.targets[target]  # pyright: ignore[reportArgumentType]
     if row.chosen_model is None:
-        draft.narrative.append(
-            f"{asin} isn't forecast for {_TARGET_WORDS[target]}: {_reason(row.withheld_reason)}."
-        )
+        draft.name_withheld(frame.withheld(asin, target, row.withheld_reason), row.withheld_reason)
         return True
     return False
 
@@ -499,7 +594,7 @@ def _rows(call: _Call, service: ForecastReadService) -> ReadResult[ShapedRespons
     starts: list[date] = []
     currencies: list[RosterTargetV1] = []
     for asin, view in zip(arguments.asins, rows.items, strict=True):
-        if _absent(draft, (asin, view), target) or view is None:
+        if _absent(frame, draft, (asin, view)) or view is None:
             continue
         candidate = view.candidate
         currencies.append(view.roster.targets[target])  # pyright: ignore[reportArgumentType]

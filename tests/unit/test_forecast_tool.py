@@ -13,6 +13,7 @@ import json
 import time as time_module
 from datetime import UTC, date, datetime, time
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -24,6 +25,7 @@ from forecast_read_support import (
     fake_reader,
     generation,
     item,
+    pages,
     pointer,
     ranked,
 )
@@ -38,6 +40,7 @@ from adapters.inbound.forecast_read.service import ForecastReadService, ReadCont
 from adapters.inbound.tool_handlers.forecast import (
     FORECAST_RENDERING,
     MIXED_RENDERING,
+    NEXT_STEPS,
     ForecastTool,
     ForecastToolRequest,
     handle,
@@ -46,8 +49,9 @@ from adapters.inbound.tool_handlers.schemas import contract_for
 from adapters.outbound.telemetry import tracing
 from adapters.outbound.telemetry.tracing import FORECAST_GATEWAY
 from domain.forecasting import summaries
+from domain.forecasting.models import SkipReason
 from domain.forecasting.publish import RunOutcome
-from domain.narrative.publication import QualifierKind
+from domain.narrative.publication import QualifierKind, RenderingKind
 from domain.narrative.shaped_response import ShapedResponse, UnitKind, Units
 from domain.shared_kernel.errors import AdlyticsError
 from domain.shared_kernel.provenance import FreshnessStatus, MeasurementBasis
@@ -115,13 +119,17 @@ def test_a_money_list_carries_two_place_figures_in_their_currency() -> None:
     assert answer.data.values[0]["p50_total_4w"] == Decimal("4938.00")
     assert answer.data.values[0]["p50_total_13w"] == Decimal("16048.50")
     assert [row["asin"] for row in answer.data.values] == ["B0FIXTUR02", "B0FIXTUR01"]
-    assert "B0FIXTUR03 isn't forecast for shipped revenue: too little history." in (
-        answer.narrative
-    )
+    assert _WITHHELD_REVENUE in answer.narrative
 
 
-_WITHHELD_REVENUE = "B0FIXTUR03 isn't forecast for shipped revenue: too little history."
-_WITHHELD_COGS = "B0FIXTUR03 isn't forecast for shipped cost of goods sold: too little history."
+_WITHHELD_REVENUE = (
+    "B0FIXTUR03 isn't forecast for shipped revenue: too little history (withheld as "
+    "INSUFFICIENT_CONTEXT)."
+)
+_WITHHELD_COGS = (
+    "B0FIXTUR03 isn't forecast for shipped cost of goods sold: too little history (withheld as "
+    "INSUFFICIENT_CONTEXT)."
+)
 _ABSENT = "B0FIXTUR09 is not in this forecast."
 
 
@@ -282,10 +290,156 @@ def test_compare_names_a_withheld_and_an_absent_product_without_rows() -> None:
     )
     assert {row["asin"] for row in answer.data.values} == {"B0FIXTUR01"}
     assert (
-        "B0FIXTUR03 isn't forecast for demand (ordered units): too little history."
-        in answer.narrative
+        "B0FIXTUR03 isn't forecast for demand (ordered units): too little history (withheld as "
+        "INSUFFICIENT_CONTEXT)." in answer.narrative
     )
     assert "B0FIXTUR09 is not in this forecast." in answer.narrative
+
+
+_INACTIVE = (
+    "B0FIXTUR04 isn't forecast for demand (ordered units): no sales were reported for it in the "
+    "13 weeks of data through 2026-11-07, so there is no recent pattern to forecast. That alone "
+    "doesn't say whether it is still for sale or what its future demand will be (withheld as "
+    "ASIN_INACTIVE)."
+)
+_INACTIVE_NEXT_STEP = (
+    "Next step for a product withheld as ASIN_INACTIVE: If it's still on sale, plan it by hand for "
+    "now. The next weekly update will check again after new sales data arrives; a forecast "
+    "appears only once there's enough complete history. A next step says what has to happen "
+    "first, not that a forecast will follow: a product is forecast only when a forecasting method "
+    "passes its checks."
+)
+_CONDITION = (
+    "A next step says what has to happen first, not that a forecast will follow: a product is "
+    "forecast only when a forecasting method passes its checks."
+)
+_NEXT_STEPS_FIXTURE = (
+    Path(__file__).resolve().parents[2] / "frontend/test/fixtures/demand-forecast-next-steps.json"
+)
+
+
+def test_every_next_step_is_the_pages_own_undated_copy() -> None:
+    """Chat added an unserved "it may be forecast later" (dev, Q4); the tool now serves the step.
+
+    The page owns the wording and `frontend/test/demand-forecast-copy.test.ts` pins both of its
+    forms to the same fixture, so the tool's copy must be the fixture's undated form for every
+    reason, or chat and page would say different things about the same product.
+    """
+    pinned = json.loads(_NEXT_STEPS_FIXTURE.read_text(encoding="utf-8"))
+    assert {reason.value: text for reason, text in NEXT_STEPS.items()} == {
+        reason: step["undated"] for reason, step in pinned.items()
+    }
+    assert set(NEXT_STEPS) == set(SkipReason)
+
+
+def test_a_withheld_reasons_next_step_is_stated_once_and_as_a_prerequisite() -> None:
+    """A filter to withheld products repeated one next step per row (review, round 3).
+
+    Chat also turned "appears only once" into "will appear once"; each step says it isn't a promise.
+    """
+    views = [
+        item(1),
+        item(4, shown=False, reason="ASIN_INACTIVE"),
+        item(5, shown=False, reason="ASIN_INACTIVE"),
+        item(6, shown=False, reason="CURRENCY_MIXED"),
+    ]
+    entries = ranked(views)
+    reader = FakeReader(current=pointer(), meta=generation(entries), stored_pages=pages(entries))
+    answer = _answer(ForecastTool.LIST, reader)
+    claims = [answer.narrative[i] for i in answer.data.claim_narrative_indices]
+    steps = [line for line in claims if line.startswith("Next step for")]
+    assert steps == [
+        _INACTIVE_NEXT_STEP,
+        "Next step for a product withheld as CURRENCY_MIXED: Ask your administrator which "
+        "marketplace this product should report in. A next step says what has to happen first, "
+        "not that a forecast will follow: a product is forecast only when a forecasting method "
+        "passes its checks.",
+    ]
+    assert sum(line.startswith(("B0FIXTUR04 ", "B0FIXTUR05 ")) for line in claims) == 2
+
+
+_STEP_PREFIX = "Next step for a product withheld as "
+
+
+@pytest.mark.parametrize(
+    ("tool", "arguments"),
+    [
+        (ForecastTool.LIST, {}),
+        (ForecastTool.QUERY, {"asins": ["B0FIXTUR06", "B0FIXTUR07"]}),
+        (ForecastTool.COMPARE, {"asins": ["B0FIXTUR06", "B0FIXTUR07"]}),
+    ],
+)
+def test_each_next_step_names_a_code_that_only_its_own_products_claim_lines_carry(
+    tool: ForecastTool, arguments: dict[str, Any]
+) -> None:
+    """Query, compare and a money list serve no row with `withheld_reason` (review round 3, F1).
+
+    Two reasons with no plain wording read alike, so without the code on each product's line chat
+    could give one product the other's next step: ask an administrator instead of wait. Each step
+    also carries its no-promise condition: on a line of its own, chat dropped it (dev, 2026-11-26).
+    """
+    views = [
+        item(1),
+        item(6, shown=False, reason="CURRENCY_MIXED"),
+        item(7, shown=False, reason="ETS_FIT_FAILED"),
+    ]
+    entries = ranked(views)
+    reader = FakeReader(
+        current=pointer(),
+        meta=generation(entries),
+        stored_pages=pages(entries),
+        items={view.candidate.display_asin: view for view in views},
+    )
+    answer = _answer(tool, reader, target="revenue_shipped", **arguments)
+    assert all(row["asin"] == "B0FIXTUR01" for row in answer.data.values)
+    claims = [answer.narrative[i] for i in answer.data.claim_narrative_indices]
+    steps = [line.removeprefix(_STEP_PREFIX) for line in claims if line.startswith(_STEP_PREFIX)]
+    codes = [step.split(":")[0] for step in steps]
+    attributed = {
+        code: [line.split(" ")[0] for line in claims if line.endswith(f"(withheld as {code}).")]
+        for code in codes
+    }
+    assert attributed == {"CURRENCY_MIXED": ["B0FIXTUR06"], "ETS_FIT_FAILED": ["B0FIXTUR07"]}
+    assert [step.endswith(f" {_CONDITION}") for step in steps] == [True, True]
+    assert _CONDITION not in claims
+    assert (
+        "B0FIXTUR06 isn't forecast for shipped revenue: not forecast (withheld as CURRENCY_MIXED)."
+        in claims
+    )
+
+
+@pytest.mark.parametrize(
+    ("tool", "arguments"),
+    [
+        (ForecastTool.LIST, {"asin": "B0FIXTUR04"}),
+        (ForecastTool.LIST, {"status": "ASIN_INACTIVE"}),
+        (ForecastTool.SUMMARIZE, {"asin": "B0FIXTUR04", "target": "units_ordered"}),
+    ],
+)
+def test_a_product_with_no_recent_sales_is_named_by_a_claim_that_says_no_more_than_its_reason(
+    tool: ForecastTool, arguments: dict[str, Any]
+) -> None:
+    """A bare `ASIN_INACTIVE` let the agent claim the product isn't for sale (chat Q4, dev).
+
+    The line is a claim, so evaluation grades the answer against these exact words.
+    """
+    inactive = item(4, shown=False, reason="ASIN_INACTIVE")
+    entries = ranked([item(1), inactive])
+    reader = FakeReader(
+        current=pointer(),
+        meta=generation(entries),
+        stored_pages=pages(entries),
+        items={"B0FIXTUR04": inactive},
+    )
+    answer = _answer(tool, reader, **arguments)
+    claims = [answer.narrative[i] for i in answer.data.claim_narrative_indices]
+    assert claims[:2] == [_INACTIVE, _INACTIVE_NEXT_STEP]
+    grounding = answer.metadata.grounding
+    assert grounding is not None
+    for line in (_INACTIVE, _INACTIVE_NEXT_STEP):
+        assert [(r.kind, r.text) for r in grounding.renderings if r.text == line] == [
+            (RenderingKind.CLAIM, line)
+        ]
 
 
 def test_a_stale_forecast_carries_the_stale_qualifier_with_its_cause() -> None:
